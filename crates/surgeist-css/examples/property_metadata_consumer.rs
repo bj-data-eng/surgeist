@@ -3,6 +3,8 @@
 //! CSS Box 3, Backgrounds 3, Cascade 5, Color 4, Fonts 4, Writing Modes 4,
 //! Variables 1, Conditional Rules 5, Display 3, Containment 2, Sizing 3/4,
 //! and the pinned Grid 3 define values and shorthand semantics.
+//! Grid 2 (2025-03-26) §7.6 defines implicit track sizes as noninherited,
+//! initially one `auto` breadth: https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#auto-tracks
 //! Grammar-handle identity, explicit unavailable metadata, and source occurrence
 //! retention are Surgeist public contracts. No contextual style is resolved.
 use surgeist_css::CssKnownProperty as P;
@@ -101,6 +103,8 @@ const LONGHANDS: &[P] = &[
     P::ListStyleImage,
     P::MarkerSide,
     P::FlowTolerance,
+    P::GridAutoRows,
+    P::GridAutoColumns,
     P::GridAutoFlow,
     P::GridTemplateAreas,
     P::GridRowStart,
@@ -529,6 +533,16 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         CssLonghandValueRef::ContainerType(v) => assert_eq!(*v, CssContainerType::Normal),
         CssLonghandValueRef::Position(v) => assert_eq!(*v, CssLayoutPosition::Static),
         CssLonghandValueRef::GridAutoFlow(v) => assert_eq!(*v, CssGridAutoFlow::Normal),
+        CssLonghandValueRef::GridAutoRows(v) | CssLonghandValueRef::GridAutoColumns(v) => {
+            let [size] = v.sizes() else {
+                panic!("exactly one implicit track initial")
+            };
+            assert_eq!(size.kind(), CssGridTrackSizeKind::Breadth);
+            assert_eq!(
+                size.breadth().unwrap().kind(),
+                CssGridTrackBreadthKind::Auto
+            );
+        }
         CssLonghandValueRef::GridTemplateAreas(v) => {
             assert_eq!(v, &CssGridTemplateAreas::None)
         }
@@ -868,7 +882,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 247);
+    assert_eq!(expected.len(), 249);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {

@@ -125,7 +125,7 @@ fn names_numbers_math_and_duplicate_entries_remain_authored_and_ordered() {
 }
 
 #[test]
-fn small_integer_legacy_view_keeps_omitted_operands_and_duplicates_distinct() {
+fn small_integer_values_keep_omitted_operands_and_duplicates_distinct() {
     let source = declaration(
         CssKnownProperty::CounterIncrement,
         "chapter section -2 chapter 0",
@@ -135,18 +135,19 @@ fn small_integer_legacy_view_keeps_omitted_operands_and_duplicates_distinct() {
     else {
         panic!("counter increment wrapper")
     };
-    let Some(CssCounterChanges::Changes(changes)) = wrapper.i01_subset() else {
-        panic!("small integers have a legacy representation")
-    };
-    let [first, second, third] = changes.changes() else {
+    let [first, second, third] = wrapper.value().changes().unwrap() else {
         panic!("three ordered authored entries")
     };
     assert_eq!(first.name().as_str(), "chapter");
     assert_eq!(first.value(), None);
     assert_eq!(second.name().as_str(), "section");
-    assert_eq!(second.value(), Some(-2));
+    assert!(
+        matches!(second.value(), Some(CssIntegerValue::Literal(value)) if value.numeric().representation() == "-2")
+    );
     assert_eq!(third.name().as_str(), "chapter");
-    assert_eq!(third.value(), Some(0));
+    assert!(
+        matches!(third.value(), Some(CssIntegerValue::Literal(value)) if value.numeric().representation() == "0")
+    );
 }
 
 #[test]

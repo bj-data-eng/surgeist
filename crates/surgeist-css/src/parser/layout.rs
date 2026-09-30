@@ -507,14 +507,14 @@ impl AllowedAlignmentKeywords {
 
 pub(super) fn parse_content_alignment<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssAlignment, ParseError<'i, Error>> {
+) -> std::result::Result<crate::CssAlignmentValue, ParseError<'i, Error>> {
     parse_alignment(input, AllowedAlignmentKeywords::content())
 }
 
 pub(super) fn parse_alignment<'i, 't>(
     input: &mut Parser<'i, 't>,
     options: AllowedAlignmentKeywords,
-) -> std::result::Result<CssAlignment, ParseError<'i, Error>> {
+) -> std::result::Result<crate::CssAlignmentValue, ParseError<'i, Error>> {
     let first = input.expect_ident_cloned().map_err(basic)?;
     let first = first.to_ascii_lowercase();
     let safe = first == "safe";
@@ -542,16 +542,44 @@ pub(super) fn parse_alignment<'i, 't>(
     }
 
     match keyword.as_str() {
-        "normal" if options.normal && !has_overflow_prefix => Ok(CssAlignment::Normal),
-        "start" if !has_overflow_prefix => Ok(CssAlignment::Start),
-        "end" if safe => Ok(CssAlignment::SafeEnd),
-        "end" => Ok(CssAlignment::End),
-        "flex-start" if !has_overflow_prefix => Ok(CssAlignment::FlexStart),
-        "flex-end" if safe => Ok(CssAlignment::SafeFlexEnd),
-        "flex-end" => Ok(CssAlignment::FlexEnd),
-        "center" if safe => Ok(CssAlignment::SafeCenter),
-        "center" => Ok(CssAlignment::Center),
-        "baseline" if !has_overflow_prefix => Ok(CssAlignment::Baseline),
+        "normal" if options.normal && !has_overflow_prefix => {
+            Ok(crate::CssAlignmentValue::Normal { overflow: None })
+        }
+        "start" if !has_overflow_prefix => Ok(crate::CssAlignmentValue::Position {
+            overflow: None,
+            position: crate::CssAlignmentPosition::Start,
+        }),
+        "end" if safe => Ok(crate::CssAlignmentValue::Position {
+            overflow: Some(crate::CssOverflowPosition::Safe),
+            position: crate::CssAlignmentPosition::End,
+        }),
+        "end" => Ok(crate::CssAlignmentValue::Position {
+            overflow: None,
+            position: crate::CssAlignmentPosition::End,
+        }),
+        "flex-start" if !has_overflow_prefix => Ok(crate::CssAlignmentValue::Position {
+            overflow: None,
+            position: crate::CssAlignmentPosition::FlexStart,
+        }),
+        "flex-end" if safe => Ok(crate::CssAlignmentValue::Position {
+            overflow: Some(crate::CssOverflowPosition::Safe),
+            position: crate::CssAlignmentPosition::FlexEnd,
+        }),
+        "flex-end" => Ok(crate::CssAlignmentValue::Position {
+            overflow: None,
+            position: crate::CssAlignmentPosition::FlexEnd,
+        }),
+        "center" if safe => Ok(crate::CssAlignmentValue::Position {
+            overflow: Some(crate::CssOverflowPosition::Safe),
+            position: crate::CssAlignmentPosition::Center,
+        }),
+        "center" => Ok(crate::CssAlignmentValue::Position {
+            overflow: None,
+            position: crate::CssAlignmentPosition::Center,
+        }),
+        "baseline" if !has_overflow_prefix => Ok(crate::CssAlignmentValue::Baseline(
+            crate::CssBaselinePosition::Baseline,
+        )),
         "first" => {
             let baseline = input.expect_ident_cloned().map_err(basic)?;
             if has_overflow_prefix {
@@ -561,7 +589,9 @@ pub(super) fn parse_alignment<'i, 't>(
                     unsupported_keyword_reason("alignment", format!("{first} first {baseline}")),
                 ))
             } else if baseline.eq_ignore_ascii_case("baseline") {
-                Ok(CssAlignment::FirstBaseline)
+                Ok(crate::CssAlignmentValue::Baseline(
+                    crate::CssBaselinePosition::First,
+                ))
             } else {
                 Err(unsupported_value(
                     input,
@@ -579,7 +609,9 @@ pub(super) fn parse_alignment<'i, 't>(
                     unsupported_keyword_reason("alignment", format!("{first} last {baseline}")),
                 ))
             } else if baseline.eq_ignore_ascii_case("baseline") {
-                Ok(CssAlignment::LastBaseline)
+                Ok(crate::CssAlignmentValue::Baseline(
+                    crate::CssBaselinePosition::Last,
+                ))
             } else {
                 Err(unsupported_value(
                     input,
@@ -588,15 +620,15 @@ pub(super) fn parse_alignment<'i, 't>(
                 ))
             }
         }
-        "stretch" if !has_overflow_prefix => Ok(CssAlignment::Stretch),
+        "stretch" if !has_overflow_prefix => Ok(crate::CssAlignmentValue::Stretch),
         "space-between" if options.distribution && !has_overflow_prefix => {
-            Ok(CssAlignment::SpaceBetween)
+            Ok(crate::CssAlignmentValue::SpaceBetween)
         }
         "space-around" if options.distribution && !has_overflow_prefix => {
-            Ok(CssAlignment::SpaceAround)
+            Ok(crate::CssAlignmentValue::SpaceAround)
         }
         "space-evenly" if options.distribution && !has_overflow_prefix => {
-            Ok(CssAlignment::SpaceEvenly)
+            Ok(crate::CssAlignmentValue::SpaceEvenly)
         }
         _ => Err(unsupported_value(
             input,

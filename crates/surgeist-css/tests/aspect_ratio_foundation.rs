@@ -4,11 +4,11 @@
 //! The expected spellings below come from those grammars, not parser output.
 
 use surgeist_css::{
-    CssAspectRatio, CssAspectRatioValue, CssComponentValue, CssContributionValueRef,
-    CssContributions, CssExpansion, CssExpansionErrorKind, CssGlobalKeyword, CssImportance,
-    CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLonghandValueRef,
-    CssNormalizedItem, CssNumberCalculation, CssPropertyKindRef, CssPropertyNameRef,
-    CssRatioOperand, CssRecoveryAction, CssSpecifiedRatio, CssSpecifiedValueSerializationErrorKind,
+    CssAspectRatioValue, CssComponentValue, CssContributionValueRef, CssContributions,
+    CssExpansion, CssExpansionErrorKind, CssGlobalKeyword, CssImportance, CssInitialValueRef,
+    CssKnownProperty, CssKnownPropertyValueRef, CssLonghandValueRef, CssNormalizedItem,
+    CssNumberCalculation, CssPropertyKindRef, CssPropertyNameRef, CssRatioOperand,
+    CssRecoveryAction, CssSpecifiedRatio, CssSpecifiedValueSerializationErrorKind,
     CssSpecifiedValueSerializationLimits, CssValueOrigin, expand_declaration, normalize_sheet,
     parse_component_values, parse_property_value, parse_sheet, parse_style_attribute,
 };
@@ -45,13 +45,55 @@ fn checked(value: &str) -> surgeist_css::CssDeclaration {
     declaration
 }
 
-fn assert_no_i01_projection(declaration: &surgeist_css::CssDeclaration, value: &str) {
+fn assert_authored_ratio(declaration: &surgeist_css::CssDeclaration, value: &str) {
     let CssKnownPropertyValueRef::AspectRatio(authored) =
         declaration.known().unwrap().property_value().unwrap()
     else {
         panic!("expected aspect-ratio: {value}")
     };
-    assert!(authored.i01_subset().is_none(), "{value}");
+    assert_eq!(authored.as_css(), value);
+    let ratio = match authored.ratio() {
+        CssAspectRatioValue::Auto => {
+            assert!(value.eq_ignore_ascii_case("auto"));
+            return;
+        }
+        CssAspectRatioValue::Ratio(ratio) => {
+            assert!(!value.to_ascii_lowercase().contains("auto"));
+            ratio
+        }
+        CssAspectRatioValue::AutoRatio(ratio) => {
+            assert!(value.to_ascii_lowercase().contains("auto"));
+            ratio
+        }
+        _ => panic!("selected ratio domain"),
+    };
+    assert_eq!(ratio.denominator().is_some(), value.contains('/'));
+    let numeric_text = value
+        .trim()
+        .trim_start_matches("auto ")
+        .trim_start_matches("AUTO ")
+        .trim_end_matches(" auto")
+        .trim_end_matches(" AUTO");
+    for (operand, spelling) in std::iter::once((
+        ratio.numerator(),
+        numeric_text.split('/').next().unwrap().trim(),
+    ))
+    .chain(
+        ratio
+            .denominator()
+            .map(|operand| (operand, numeric_text.split('/').nth(1).unwrap().trim())),
+    ) {
+        if let Some(component) = operand.literal_component() {
+            assert!(
+                matches!(component.view(), surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Number(number)) if number.representation() == spelling)
+            );
+        } else {
+            assert!(
+                operand.calculation().is_some(),
+                "symbolic operand: {spelling}"
+            );
+        }
+    }
 }
 
 #[test]
@@ -64,8 +106,8 @@ fn preferred_ratio_accepts_auto_optional_pair_and_both_keyword_orders() {
         "AUTO 16 / 9",
         "16 / 9 AUTO",
     ] {
-        assert_no_i01_projection(&parsed(value), value);
-        assert_no_i01_projection(&checked(value), value);
+        assert_authored_ratio(&parsed(value), value);
+        assert_authored_ratio(&checked(value), value);
     }
     let sheet = parse_sheet(".x{aspect-ratio:auto 16/9}");
     assert!(sheet.is_clean(), "{:?}", sheet.diagnostics());
@@ -86,8 +128,8 @@ fn preferred_ratio_accepts_zero_and_exact_extreme_number_components() {
         "1e999 / 1e-999",
         "auto 1e999 / 1e-999",
     ] {
-        assert_no_i01_projection(&parsed(value), value);
-        assert_no_i01_projection(&checked(value), value);
+        assert_authored_ratio(&parsed(value), value);
+        assert_authored_ratio(&checked(value), value);
     }
 }
 
@@ -100,13 +142,13 @@ fn preferred_ratio_accepts_numeric_math_in_each_component() {
         "min(16, 9) / max(3, 2) auto",
         "calc(-1)",
     ] {
-        assert_no_i01_projection(&parsed(value), value);
-        assert_no_i01_projection(&checked(value), value);
+        assert_authored_ratio(&parsed(value), value);
+        assert_authored_ratio(&checked(value), value);
     }
 }
 
 #[test]
-fn only_a_positive_ordinary_number_has_the_frozen_i01_projection() {
+fn ordinary_numbers_keep_their_authored_single_operand() {
     for value in ["1.5", "16"] {
         for declaration in [parsed(value), checked(value)] {
             let CssKnownPropertyValueRef::AspectRatio(authored) =
@@ -114,13 +156,18 @@ fn only_a_positive_ordinary_number_has_the_frozen_i01_projection() {
             else {
                 panic!("expected aspect-ratio: {value}")
             };
-            let expected = CssAspectRatio::try_new(value.parse().unwrap()).unwrap();
-            assert_eq!(authored.i01_subset(), Some(&expected));
+            let CssAspectRatioValue::Ratio(ratio) = authored.ratio() else {
+                panic!("ratio")
+            };
+            assert!(ratio.denominator().is_none());
+            assert!(
+                matches!(ratio.numerator().literal_component().unwrap().view(), surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Number(number)) if number.representation() == value)
+            );
         }
     }
     for value in ["1.5/1", "auto 1.5", "calc(1.5)"] {
-        assert_no_i01_projection(&parsed(value), value);
-        assert_no_i01_projection(&checked(value), value);
+        assert_authored_ratio(&parsed(value), value);
+        assert_authored_ratio(&checked(value), value);
     }
 }
 

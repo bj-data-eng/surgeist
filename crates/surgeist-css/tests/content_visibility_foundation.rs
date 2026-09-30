@@ -94,7 +94,7 @@ fn only_three_keywords_construct_exact_typed_authored_values_and_one_terminal() 
             else {
                 panic!("checked content-visibility value")
             };
-            assert_eq!(value.i01_subset(), Some(&expected));
+            assert_eq!(value.value(), &expected);
             assert_eq!(value.as_css(), text);
             assert_eq!(
                 source.value_components().serialize().unwrap().as_css(),
@@ -241,7 +241,7 @@ fn pending_substitutions_reenter_whole_grammar_without_losing_original_occurrenc
             else {
                 panic!("valid replacement has its expected typed value")
             };
-            assert_eq!(parsed.i01_subset(), Some(&expected));
+            assert_eq!(parsed.value(), &expected);
             assert!(item.source().same_occurrence(&source));
             assert_eq!(item.source().importance(), CssImportance::Important);
             assert_eq!(item.replacement_components(), Some(&replacement));

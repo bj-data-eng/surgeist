@@ -1,10 +1,6 @@
 //! Checked, symbolic CSS Generated Content 3 values.
 
-use crate::{
-    CssBuiltInCounterStyle, CssContent, CssContentItem, CssContentList, CssContentString,
-    CssCounterFunction, CssCounterName, CssCounterStyle, CssCounterStyleName, CssCountersFunction,
-    CssIdent, CssImage, CssImageValue, CssUrl,
-};
+use crate::{CssContentString, CssIdent, CssImage, CssUrl};
 
 fn reserved(name: &str) -> bool {
     matches!(
@@ -512,79 +508,4 @@ pub enum CssContentValue {
     Normal,
     None,
     Generated(CssGeneratedContent),
-}
-
-pub(crate) fn content_i01(value: &CssContentValue) -> Option<CssContent> {
-    match value {
-        CssContentValue::Normal => Some(CssContent::Normal),
-        CssContentValue::None => Some(CssContent::None),
-        CssContentValue::Generated(generated) => {
-            if generated.alternative().is_some() {
-                return None;
-            }
-            let items = generated
-                .items()
-                .iter()
-                .map(legacy_item)
-                .collect::<Option<Vec<_>>>()?;
-            Some(CssContent::Items(CssContentList::try_new(items)?))
-        }
-    }
-}
-
-fn legacy_item(item: &CssContentValueItem) -> Option<CssContentItem> {
-    Some(match item {
-        CssContentValueItem::String(value) => CssContentItem::String(value.clone()),
-        CssContentValueItem::Image(image) => match image.value() {
-            CssImageValue::Url(url) => CssContentItem::Url(url.clone()),
-            _ => return None,
-        },
-        CssContentValueItem::OpenQuote => CssContentItem::OpenQuote,
-        CssContentValueItem::CloseQuote => CssContentItem::CloseQuote,
-        CssContentValueItem::NoOpenQuote => CssContentItem::NoOpenQuote,
-        CssContentValueItem::NoCloseQuote => CssContentItem::NoCloseQuote,
-        CssContentValueItem::Counter(value) => CssContentItem::Counter(CssCounterFunction::new(
-            CssCounterName::try_new(value.name().as_str())?,
-            legacy_optional_style(value.style())?,
-        )),
-        CssContentValueItem::Counters(value) => CssContentItem::Counters(CssCountersFunction::new(
-            CssCounterName::try_new(value.name().as_str())?,
-            value.separator().clone(),
-            legacy_optional_style(value.style())?,
-        )),
-        _ => return None,
-    })
-}
-
-pub(crate) fn legacy_style(style: &CssCounterStyleValue) -> Option<CssCounterStyle> {
-    let CssCounterStyleValue::Named(name) = style else {
-        return None;
-    };
-    let builtin = match name.as_str() {
-        "disc" => Some(CssBuiltInCounterStyle::Disc),
-        "circle" => Some(CssBuiltInCounterStyle::Circle),
-        "square" => Some(CssBuiltInCounterStyle::Square),
-        "decimal" => Some(CssBuiltInCounterStyle::Decimal),
-        "decimal-leading-zero" => Some(CssBuiltInCounterStyle::DecimalLeadingZero),
-        "lower-alpha" => Some(CssBuiltInCounterStyle::LowerAlpha),
-        "upper-alpha" => Some(CssBuiltInCounterStyle::UpperAlpha),
-        "lower-latin" => Some(CssBuiltInCounterStyle::LowerLatin),
-        "upper-latin" => Some(CssBuiltInCounterStyle::UpperLatin),
-        "lower-roman" => Some(CssBuiltInCounterStyle::LowerRoman),
-        "upper-roman" => Some(CssBuiltInCounterStyle::UpperRoman),
-        _ => None,
-    };
-    match builtin {
-        Some(builtin) => Some(CssCounterStyle::BuiltIn(builtin)),
-        None => Some(CssCounterStyle::Named(CssCounterStyleName::try_new(
-            name.as_str(),
-        )?)),
-    }
-}
-
-fn legacy_optional_style(style: Option<&CssCounterStyleValue>) -> Option<Option<CssCounterStyle>> {
-    match style {
-        None => Some(None),
-        Some(style) => Some(Some(legacy_style(style)?)),
-    }
 }

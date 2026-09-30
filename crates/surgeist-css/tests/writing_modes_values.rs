@@ -319,13 +319,13 @@ fn parsed_wrapper_accessors_serialize_case_escapes_and_trivia_without_mutation()
         }
         let (raw, canonical, error) = match source.known().unwrap().property_value().unwrap() {
             CssKnownPropertyValueRef::Direction(value) => {
-                project!(value, value.current(), CssDirection::Rtl)
+                project!(value, value.value(), CssDirection::Rtl)
             }
             CssKnownPropertyValueRef::UnicodeBidi(value) => {
                 project!(value, value.bidi(), CssUnicodeBidi::IsolateOverride)
             }
             CssKnownPropertyValueRef::WritingMode(value) => {
-                project!(value, value.current(), CssWritingMode::SidewaysLr)
+                project!(value, value.value(), CssWritingMode::SidewaysLr)
             }
             CssKnownPropertyValueRef::TextOrientation(value) => {
                 project!(value, value.orientation(), CssTextOrientation::Upright)

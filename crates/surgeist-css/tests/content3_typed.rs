@@ -61,7 +61,7 @@ fn generic_and_ordinary_counter_names_have_distinct_checked_domains() {
 #[test]
 fn all_predefined_counter_styles_normalize_but_custom_names_keep_case() {
     // Counter Styles 3's complete selected predefined set, independent of the
-    // older eleven-value CssBuiltInCounterStyle projection.
+    // restricted predefined counter-style keyword subset.
     let predefined = [
         "decimal",
         "decimal-leading-zero",
@@ -142,7 +142,7 @@ fn all_predefined_counter_styles_normalize_but_custom_names_keep_case() {
         else {
             panic!("parsed counter style")
         };
-        let CssContentValue::Generated(generated) = wrapper.current() else {
+        let CssContentValue::Generated(generated) = wrapper.value() else {
             panic!("generated counter")
         };
         let [CssContentValueItem::Counter(counter)] = generated.items() else {
@@ -164,7 +164,7 @@ fn all_predefined_counter_styles_normalize_but_custom_names_keep_case() {
     else {
         panic!("escaped custom counter")
     };
-    let CssContentValue::Generated(generated) = wrapper.current() else {
+    let CssContentValue::Generated(generated) = wrapper.value() else {
         panic!("custom generated")
     };
     let [CssContentValueItem::Counter(counter)] = generated.items() else {
@@ -317,15 +317,15 @@ fn canonical_functions_omit_only_defined_defaults_and_retain_symbolic_targets() 
 }
 
 #[test]
-fn current_and_legacy_projection_distinguish_new_grammar_from_exact_old_values() {
+fn parsed_content_retains_strings_counters_and_images() {
     let ordinary = parsed("\"caption\" counter(chapter)");
     let CssKnownPropertyValueRef::Content(wrapper) =
         ordinary.known().unwrap().property_value().unwrap()
     else {
         panic!("content wrapper")
     };
-    assert!(matches!(wrapper.current(), CssContentValue::Generated(_)));
-    assert!(wrapper.i01_subset().is_some());
+    assert!(matches!(wrapper.value(), CssContentValue::Generated(_)));
+
     assert!(matches!(
         ordinary.value_components().items()[0].origin(),
         CssValueOrigin::Parsed(_)
@@ -336,9 +336,9 @@ fn current_and_legacy_projection_distinguish_new_grammar_from_exact_old_values()
     else {
         panic!("current content")
     };
-    assert!(wrapper.i01_subset().is_none());
+
     assert_eq!(
-        wrapper.current().serialize_specified().unwrap(),
+        wrapper.value().serialize_specified().unwrap(),
         "contents linear-gradient(red, blue)"
     );
     let programmatic = parse_property_value(
@@ -358,7 +358,7 @@ fn current_and_legacy_projection_distinguish_new_grammar_from_exact_old_values()
         panic!("programmatic content")
     };
     assert_eq!(
-        value.current(),
+        value.value(),
         &CssContentValue::Generated(
             CssGeneratedContent::try_new(vec![CssContentValueItem::Contents], None).unwrap()
         )
@@ -432,7 +432,7 @@ fn nested_symbols_images_preserve_math_modifier_order_and_shared_budget() {
     else {
         panic!("nested content")
     };
-    let CssContentValue::Generated(generated) = wrapper.current() else {
+    let CssContentValue::Generated(generated) = wrapper.value() else {
         panic!("generated content")
     };
     let [CssContentValueItem::Counter(counter)] = generated.items() else {
@@ -511,10 +511,10 @@ fn nested_symbols_images_preserve_math_modifier_order_and_shared_budget() {
         "flag"
     );
     let canonical = "counter(chapter, symbols(linear-gradient(red calc(2% + 1px), blue) url(\"#star\" policy(flag))))";
-    assert_eq!(wrapper.current().serialize_specified().unwrap(), canonical);
+    assert_eq!(wrapper.value().serialize_specified().unwrap(), canonical);
     assert_eq!(
         wrapper
-            .current()
+            .value()
             .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
                 128,
                 256,
@@ -525,7 +525,7 @@ fn nested_symbols_images_preserve_math_modifier_order_and_shared_budget() {
     );
     assert_eq!(
         wrapper
-            .current()
+            .value()
             .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
                 128,
                 256,
@@ -537,7 +537,7 @@ fn nested_symbols_images_preserve_math_modifier_order_and_shared_budget() {
     );
     assert_eq!(
         wrapper
-            .current()
+            .value()
             .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
                 6,
                 256,

@@ -46,7 +46,7 @@ fn literal_width_has_independently_expected_typed_value_and_supplied_importance(
     else {
         panic!("width")
     };
-    assert_eq!(value.current().serialize_specified().unwrap(), "10px");
+    assert_eq!(value.value().serialize_specified().unwrap(), "10px");
     assert!(declaration.same_occurrence(&declaration.clone()));
 }
 

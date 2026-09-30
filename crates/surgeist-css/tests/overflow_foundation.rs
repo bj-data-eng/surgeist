@@ -172,7 +172,7 @@ fn terminals_accept_five_keywords_and_overlay_alias_with_strict_recovery() {
 }
 
 #[test]
-fn terminal_initials_and_old_i01_projection_preserve_authored_overflow() {
+fn terminal_initials_and_wrappers_preserve_authored_overflow() {
     for name in LONGHANDS {
         let property = grammar(name).target_property();
         let CssPropertyKindRef::Longhand(longhand) = grammar(name).metadata().unwrap().kind()
@@ -214,20 +214,20 @@ fn terminal_initials_and_old_i01_projection_preserve_authored_overflow() {
         ] {
             let source = declaration(name, old);
             let subset = match source.known().unwrap().property_value().unwrap() {
-                CssKnownPropertyValueRef::OverflowX(value) => value.i01_subset(),
-                CssKnownPropertyValueRef::OverflowY(value) => value.i01_subset(),
+                CssKnownPropertyValueRef::OverflowX(value) => value.value(),
+                CssKnownPropertyValueRef::OverflowY(value) => value.value(),
                 _ => panic!("{name} has its existing property wrapper"),
             };
-            assert_eq!(subset, Some(&expected));
+            assert_eq!(subset, &expected);
         }
         for keyword in ["auto", "overlay"] {
             let source = declaration(name, keyword);
             let subset = match source.known().unwrap().property_value().unwrap() {
-                CssKnownPropertyValueRef::OverflowX(value) => value.i01_subset(),
-                CssKnownPropertyValueRef::OverflowY(value) => value.i01_subset(),
+                CssKnownPropertyValueRef::OverflowX(value) => value.value(),
+                CssKnownPropertyValueRef::OverflowY(value) => value.value(),
                 _ => panic!("{name} has its existing property wrapper"),
             };
-            assert!(subset.is_none(), "{name}:{keyword} is outside I01");
+            assert_eq!(*subset, CssOverflow::Auto, "{name}:{keyword}");
         }
     }
 }
@@ -278,28 +278,13 @@ fn shorthand_sets_only_x_then_y_and_preserves_uncomputed_axis_values() {
         }
     }
     for (authored, expected) in [
-        (
-            "visible",
-            CssOverflowI01PropertyValue::Single(CssOverflow::Visible),
-        ),
-        (
-            "hidden",
-            CssOverflowI01PropertyValue::Single(CssOverflow::Hidden),
-        ),
-        (
-            "clip",
-            CssOverflowI01PropertyValue::Single(CssOverflow::Clip),
-        ),
-        (
-            "scroll",
-            CssOverflowI01PropertyValue::Single(CssOverflow::Scroll),
-        ),
+        ("visible", CssOverflowValue::new(CssOverflow::Visible, None)),
+        ("hidden", CssOverflowValue::new(CssOverflow::Hidden, None)),
+        ("clip", CssOverflowValue::new(CssOverflow::Clip, None)),
+        ("scroll", CssOverflowValue::new(CssOverflow::Scroll, None)),
         (
             "hidden clip",
-            CssOverflowI01PropertyValue::Pair(CssOverflowAxes {
-                x: CssOverflow::Hidden,
-                y: CssOverflow::Clip,
-            }),
+            CssOverflowValue::new(CssOverflow::Hidden, Some(CssOverflow::Clip)),
         ),
     ] {
         let source = declaration(SHORTHAND, authored);
@@ -308,7 +293,7 @@ fn shorthand_sets_only_x_then_y_and_preserves_uncomputed_axis_values() {
         else {
             panic!("existing overflow wrapper")
         };
-        assert_eq!(value.i01_subset(), Some(&expected));
+        assert_eq!(value.value(), &expected);
     }
     for authored in ["auto", "overlay", "visible auto"] {
         let source = declaration(SHORTHAND, authored);
@@ -317,7 +302,10 @@ fn shorthand_sets_only_x_then_y_and_preserves_uncomputed_axis_values() {
         else {
             panic!("existing overflow wrapper")
         };
-        assert!(value.i01_subset().is_none());
+        assert_eq!(
+            value.value().serialize_specified().unwrap(),
+            authored.replace("overlay", "auto")
+        );
     }
     assert_eq!(
         one_value(&declaration("overflow-x", "overlay")),

@@ -26,11 +26,11 @@ fn corner(name: &str, text: &str) -> CssCornerRadiusValue {
         .property_value()
         .unwrap();
     match value {
-        CssKnownPropertyValueRef::BorderTopLeftRadius(v) => v.current().clone(),
-        CssKnownPropertyValueRef::BorderStartStartRadius(v) => v.current().clone(),
-        CssKnownPropertyValueRef::BorderStartEndRadius(v) => v.current().clone(),
-        CssKnownPropertyValueRef::BorderEndStartRadius(v) => v.current().clone(),
-        CssKnownPropertyValueRef::BorderEndEndRadius(v) => v.current().clone(),
+        CssKnownPropertyValueRef::BorderTopLeftRadius(v) => v.value().clone(),
+        CssKnownPropertyValueRef::BorderStartStartRadius(v) => v.value().clone(),
+        CssKnownPropertyValueRef::BorderStartEndRadius(v) => v.value().clone(),
+        CssKnownPropertyValueRef::BorderEndStartRadius(v) => v.value().clone(),
+        CssKnownPropertyValueRef::BorderEndEndRadius(v) => v.value().clone(),
         _ => panic!("corner value"),
     }
 }
@@ -283,14 +283,14 @@ fn symbolic_math_remains_typed_and_shares_aggregate_limits() {
 }
 
 #[test]
-fn physical_compatibility_projection_is_exact_and_preserves_math_type() {
-    for (text, expected) in [
-        ("1px", true),
-        ("16777216px", true),
-        ("-0%", true),
-        ("1e100px", false),
-        ("1e-100%", false),
-        ("16777216.00000000001px", false),
+fn physical_corners_preserve_exact_magnitudes_and_math_type() {
+    for text in [
+        "1px",
+        "16777216px",
+        "-0%",
+        "1e100px",
+        "1e-100%",
+        "16777216.00000000001px",
     ] {
         let report = parse_style_attribute(&format!("border-top-left-radius:{text}"));
         assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
@@ -302,7 +302,26 @@ fn physical_compatibility_projection_is_exact_and_preserves_math_type() {
         else {
             panic!("physical corner")
         };
-        assert_eq!(wrapper.i01_subset().is_some(), expected, "{text}");
+        let horizontal = wrapper.value().horizontal();
+        let component = horizontal.literal_component().expect("literal radius");
+        match component.view() {
+            CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) => {
+                assert_eq!(unit, "px");
+                assert_eq!(number.representation(), text.strip_suffix("px").unwrap());
+            }
+            CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) => {
+                assert_eq!(number.representation(), text.strip_suffix('%').unwrap());
+            }
+            _ => panic!("exact radius token"),
+        }
+        assert!(wrapper.value().authored_vertical().is_none());
+        let CssValueOrigin::Parsed(origin) = horizontal.origin() else {
+            panic!("original declaration origin")
+        };
+        assert_eq!(
+            origin.source().as_str(),
+            format!("border-top-left-radius:{text}")
+        );
     }
     let report = parse_style_attribute("border-top-left-radius:calc(1px + 2%)");
     assert!(report.is_clean());
@@ -314,14 +333,12 @@ fn physical_compatibility_projection_is_exact_and_preserves_math_type() {
     else {
         panic!("math corner")
     };
-    let original = wrapper.current().horizontal().calculation().unwrap();
-    let CssLength::Calc(CssCalcLength::Typed(legacy)) = wrapper.i01_subset().unwrap().horizontal()
-    else {
-        panic!("legacy typed math")
-    };
-    assert_eq!(legacy.components(), original.components());
-    assert_eq!(legacy.numeric_type(), original.numeric_type());
-    assert_eq!(legacy.origin(), original.origin());
+    let original = wrapper.value().horizontal().calculation().unwrap();
+    assert_eq!(
+        original.numeric_type().percent_hint(),
+        Some(CssNumericDimension::Length)
+    );
+    assert!(matches!(original.origin(), CssValueOrigin::Parsed(_)));
     let report = parse_style_attribute("border-radius:1e100px / 2%");
     assert!(report.is_clean());
     let CssKnownPropertyValueRef::BorderRadius(wrapper) = report.syntax()[0]
@@ -332,10 +349,9 @@ fn physical_compatibility_projection_is_exact_and_preserves_math_type() {
     else {
         panic!("physical shorthand")
     };
-    assert!(wrapper.i01_subset().is_none());
     assert_eq!(
         wrapper
-            .current()
+            .value()
             .top_left()
             .horizontal()
             .serialize_specified()

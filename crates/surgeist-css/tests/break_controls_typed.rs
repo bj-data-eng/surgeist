@@ -101,8 +101,8 @@ fn constructed_components_retain_programmatic_provenance_and_typed_mapping() {
         assert_eq!(declaration.known().unwrap().property(), target);
         assert_eq!(declaration.known().unwrap().grammar(), grammar);
         match declaration.known().unwrap().property_value().unwrap() {
-            CssKnownPropertyValueRef::BreakBefore(value) => assert_eq!(value.current(), &expected),
-            CssKnownPropertyValueRef::BreakAfter(value) => assert_eq!(value.current(), &expected),
+            CssKnownPropertyValueRef::BreakBefore(value) => assert_eq!(value.value(), &expected),
+            CssKnownPropertyValueRef::BreakAfter(value) => assert_eq!(value.value(), &expected),
             _ => panic!("typed between break"),
         }
     }
@@ -120,7 +120,7 @@ fn constructed_components_retain_programmatic_provenance_and_typed_mapping() {
     else {
         panic!("typed inside break")
     };
-    assert_eq!(value.current(), &CssBreakInside::Avoid);
+    assert_eq!(value.value(), &CssBreakInside::Avoid);
 }
 
 #[test]
@@ -166,11 +166,11 @@ fn parsed_wrappers_keep_authored_spelling_and_distinct_legacy_grammar() {
         assert_eq!(known.grammar().name(), name);
         match known.property_value().unwrap() {
             CssKnownPropertyValueRef::BreakBefore(value) => {
-                assert_eq!(value.current(), &expected);
+                assert_eq!(value.value(), &expected);
                 assert_eq!(value.as_css(), authored);
             }
             CssKnownPropertyValueRef::BreakAfter(value) => {
-                assert_eq!(value.current(), &expected);
+                assert_eq!(value.value(), &expected);
                 assert_eq!(value.as_css(), authored);
             }
             _ => panic!("expected before or after"),
@@ -187,7 +187,7 @@ fn parsed_wrappers_keep_authored_spelling_and_distinct_legacy_grammar() {
         else {
             panic!("typed break-inside")
         };
-        assert_eq!(value.current(), &expected);
+        assert_eq!(value.value(), &expected);
         assert_eq!(declaration.known().unwrap().grammar().name(), grammar);
     }
 }

@@ -236,7 +236,7 @@ fn three_keyword_controls_accept_their_exact_selected_domains() {
         else {
             panic!("existing text-overflow property wrapper")
         };
-        assert_eq!(value.i01_subset(), Some(&expected));
+        assert_eq!(value.value(), &expected);
     }
 }
 

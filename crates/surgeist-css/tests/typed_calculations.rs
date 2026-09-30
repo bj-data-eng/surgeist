@@ -206,7 +206,7 @@ fn property_consumers_accept_typed_products_and_groups_with_later_siblings() {
         else {
             panic!("expected width wrapper");
         };
-        assert!(matches!(width.current(), CssSizeValue::BoxSize(
+        assert!(matches!(width.value(), CssSizeValue::BoxSize(
             CssBoxSize::LengthPercentage(length)
         ) if length.calculation().is_some()));
     }
@@ -411,7 +411,7 @@ fn typed_length_consumer_exposes_exact_products_and_sums() {
     let CssKnownPropertyValueRef::Width(width) = width.property_value().unwrap() else {
         panic!("expected width wrapper");
     };
-    let CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length)) = width.current() else {
+    let CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length)) = width.value() else {
         panic!("the sum must use the exact numeric owner");
     };
     let calculation = length.calculation().expect("exact numeric owner");
@@ -424,7 +424,7 @@ fn typed_length_consumer_exposes_exact_products_and_sums() {
     let CssKnownPropertyValueRef::Height(height) = height.property_value().unwrap() else {
         panic!("expected height wrapper");
     };
-    let CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length)) = height.current() else {
+    let CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length)) = height.value() else {
         panic!("expected calculated height");
     };
     assert_eq!(height.as_css(), "calc((1px + 2%) * 3)");
@@ -488,7 +488,6 @@ fn scalar_property_accessors_distinguish_literals_from_deferred_calculations() {
         panic!("expected flex-grow wrapper");
     };
     assert!(value.factor().calculation().is_some());
-    assert!(value.i01_subset().is_none());
 
     let CssKnownPropertyValueRef::FlexShrink(value) = report.syntax()[2]
         .known()
@@ -539,7 +538,6 @@ fn scalar_property_accessors_distinguish_literals_from_deferred_calculations() {
         calculation_body(calculation.expression()),
         CssCalculationExpressionRef::Product(_)
     ));
-    assert!(value.i01_subset().is_none());
 
     let CssKnownPropertyValueRef::Flex(value) = report.syntax()[6]
         .known()
@@ -559,7 +557,6 @@ fn scalar_property_accessors_distinguish_literals_from_deferred_calculations() {
         Some(CssFlexBasisRef::Size(CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(value))))
             if value.calculation().is_some()
     ));
-    assert!(value.i01_subset().is_none());
 
     let CssKnownPropertyValueRef::FlowTolerance(value) = report.syntax()[7]
         .known()
@@ -627,7 +624,7 @@ fn opacity_keeps_number_and_percentage_calculation_roots_symbolic() {
 }
 
 #[test]
-fn scalar_property_accessors_preserve_literal_compatibility_projections() {
+fn scalar_property_accessors_preserve_exact_literal_domains() {
     let report = parse_style_attribute(
         "opacity: 0.5; flex-grow: 2; flex-shrink: 0; order: -2; z-index: auto; \
          aspect-ratio: 1.5; flex: 2 0 10rem",
@@ -656,7 +653,6 @@ fn scalar_property_accessors_preserve_literal_compatibility_projections() {
         panic!("expected flex-grow wrapper");
     };
     assert_eq!(value.factor().serialize_specified().unwrap(), "2");
-    assert_eq!(value.i01_subset().unwrap().value(), 2.0);
 
     let CssKnownPropertyValueRef::FlexShrink(value) = report.syntax()[2]
         .known()
@@ -667,7 +663,6 @@ fn scalar_property_accessors_preserve_literal_compatibility_projections() {
         panic!("expected flex-shrink wrapper");
     };
     assert_eq!(value.factor().serialize_specified().unwrap(), "0");
-    assert_eq!(value.i01_subset().unwrap().value(), 0.0);
 
     let CssKnownPropertyValueRef::Order(value) = report.syntax()[3]
         .known()
@@ -703,7 +698,6 @@ fn scalar_property_accessors_preserve_literal_compatibility_projections() {
     assert!(
         matches!(value.ratio(), CssAspectRatioValue::Ratio(ratio) if ratio.denominator().is_none() && ratio.numerator().literal_component().is_some())
     );
-    assert_eq!(value.i01_subset().unwrap().value(), 1.5);
 
     let CssKnownPropertyValueRef::Flex(value) = report.syntax()[6]
         .known()
@@ -724,7 +718,6 @@ fn scalar_property_accessors_preserve_literal_compatibility_projections() {
         components.shrink().unwrap().serialize_specified().unwrap(),
         "0"
     );
-    assert!(value.i01_subset().is_some());
 }
 
 #[test]

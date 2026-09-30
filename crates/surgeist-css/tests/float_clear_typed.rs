@@ -111,42 +111,40 @@ fn every_clear_keyword_serializes_and_both_expands_as_its_own_value() {
 }
 
 #[test]
-fn wrappers_keep_current_keyword_and_only_project_original_i01_values() {
-    for (text, current, legacy) in [
-        ("none", CssFloat::None, true),
-        ("left", CssFloat::Left, true),
-        ("right", CssFloat::Right, true),
-        ("INLINE-START", CssFloat::InlineStart, false),
-        ("inline-end", CssFloat::InlineEnd, false),
+fn wrappers_keep_physical_and_flow_relative_keywords() {
+    for (text, current) in [
+        ("none", CssFloat::None),
+        ("left", CssFloat::Left),
+        ("right", CssFloat::Right),
+        ("INLINE-START", CssFloat::InlineStart),
+        ("inline-end", CssFloat::InlineEnd),
     ] {
         let source = parsed("float", text);
         let Some(CssKnownPropertyValueRef::Float(value)) = source.known().unwrap().property_value()
         else {
             panic!("float wrapper")
         };
-        assert_eq!(*value.current(), current);
-        assert_eq!(value.i01_subset().is_some(), legacy);
+        assert_eq!(*value.value(), current);
         assert_eq!(value.as_css(), text);
         assert_eq!(
             ordinary(&source).view(),
             CssLonghandValueRef::Float(&current)
         );
     }
-    for (text, current, legacy) in [
-        ("none", CssClear::None, true),
-        ("left", CssClear::Left, true),
-        ("right", CssClear::Right, true),
-        ("both", CssClear::Both, true),
-        ("inline-start", CssClear::InlineStart, false),
-        ("INLINE-END", CssClear::InlineEnd, false),
+    for (text, current) in [
+        ("none", CssClear::None),
+        ("left", CssClear::Left),
+        ("right", CssClear::Right),
+        ("both", CssClear::Both),
+        ("inline-start", CssClear::InlineStart),
+        ("INLINE-END", CssClear::InlineEnd),
     ] {
         let source = parsed("clear", text);
         let Some(CssKnownPropertyValueRef::Clear(value)) = source.known().unwrap().property_value()
         else {
             panic!("clear wrapper")
         };
-        assert_eq!(*value.current(), current);
-        assert_eq!(value.i01_subset().is_some(), legacy);
+        assert_eq!(*value.value(), current);
         assert_eq!(value.as_css(), text);
         assert_eq!(
             ordinary(&source).view(),

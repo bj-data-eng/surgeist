@@ -159,9 +159,9 @@ fn position_accepts_exact_five_keywords_and_has_static_noninherited_initial() {
             panic!("existing position wrapper")
         };
         assert_eq!(
-            value.i01_subset(),
-            Some(&expected),
-            "{keyword} remains in I01"
+            value.value(),
+            &expected,
+            "{keyword} retains its position value"
         );
         assert!(
             one_value(&source).property().known_property() == grammar("position").target_property()
@@ -231,14 +231,14 @@ fn eight_insets_accept_exact_signed_length_percentages_or_auto() {
     }
     for name in ["top", "right", "bottom", "left"] {
         let source = declaration(name, "1px");
-        let has_i01 = match source.known().unwrap().property_value().unwrap() {
-            CssKnownPropertyValueRef::Top(value) => value.i01_subset().is_some(),
-            CssKnownPropertyValueRef::Right(value) => value.i01_subset().is_some(),
-            CssKnownPropertyValueRef::Bottom(value) => value.i01_subset().is_some(),
-            CssKnownPropertyValueRef::Left(value) => value.i01_subset().is_some(),
+        let inset = match source.known().unwrap().property_value().unwrap() {
+            CssKnownPropertyValueRef::Top(value) => value.value(),
+            CssKnownPropertyValueRef::Right(value) => value.value(),
+            CssKnownPropertyValueRef::Bottom(value) => value.value(),
+            CssKnownPropertyValueRef::Left(value) => value.value(),
             _ => panic!("existing physical inset wrapper"),
         };
-        assert!(has_i01, "{name}:1px remains in I01");
+        assert_eq!(inset.serialize_specified().unwrap(), "1px");
     }
 }
 

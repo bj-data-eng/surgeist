@@ -896,7 +896,7 @@ fn assert_content3_contents_acceptance(row: &Row) -> bool {
     else {
         panic!("checked content wrapper")
     };
-    let surgeist_css::CssContentValue::Generated(generated) = value.current() else {
+    let surgeist_css::CssContentValue::Generated(generated) = value.value() else {
         panic!("generated contents")
     };
     assert!(matches!(
@@ -909,9 +909,9 @@ fn assert_content3_contents_acceptance(row: &Row) -> bool {
             surgeist_css::CssContentValueItem::Contents
         ])
     ));
-    assert!(value.i01_subset().is_none());
+
     assert_eq!(value.as_css(), "contents");
-    assert_eq!(value.current().serialize_specified().unwrap(), "contents");
+    assert_eq!(value.value().serialize_specified().unwrap(), "contents");
     assert!(matches!(
         declaration.value_components().items()[0].origin(),
         surgeist_css::CssValueOrigin::Parsed(_)
@@ -977,10 +977,10 @@ fn assert_archived_alignment_match_parent_rejection(row: &Row) -> bool {
         panic!("current last-line value")
     };
     assert_eq!(
-        value.current(),
+        value.value(),
         &surgeist_css::CssTextAlignLastValue::Keyword(surgeist_css::CssTextAlign::MatchParent)
     );
-    assert_eq!(value.i01_subset(), None);
+
     assert_eq!(value.as_css(), "match-parent");
     let parsed = declaration
         .parsed_value()
@@ -1031,21 +1031,18 @@ fn assert_archived_overflow_auto_rejection(row: &Row) -> bool {
     );
     match known.property_value().expect("typed overflow value") {
         surgeist_css::CssKnownPropertyValueRef::Overflow(value) => {
-            assert_eq!(value.current().x(), surgeist_css::CssOverflow::Auto);
-            assert_eq!(value.current().authored_y(), None);
-            assert_eq!(value.current().y(), surgeist_css::CssOverflow::Auto);
+            assert_eq!(value.value().x(), surgeist_css::CssOverflow::Auto);
+            assert_eq!(value.value().authored_y(), None);
+            assert_eq!(value.value().y(), surgeist_css::CssOverflow::Auto);
             assert_eq!(value.as_css(), "auto");
-            assert_eq!(value.i01_subset(), None);
         }
         surgeist_css::CssKnownPropertyValueRef::OverflowX(value) => {
-            assert_eq!(*value.current(), surgeist_css::CssOverflow::Auto);
+            assert_eq!(*value.value(), surgeist_css::CssOverflow::Auto);
             assert_eq!(value.as_css(), "auto");
-            assert_eq!(value.i01_subset(), None);
         }
         surgeist_css::CssKnownPropertyValueRef::OverflowY(value) => {
-            assert_eq!(*value.current(), surgeist_css::CssOverflow::Auto);
+            assert_eq!(*value.value(), surgeist_css::CssOverflow::Auto);
             assert_eq!(value.as_css(), "auto");
-            assert_eq!(value.i01_subset(), None);
         }
         other => panic!("{} wrong typed value: {other:?}", row.case_id),
     }
@@ -1092,7 +1089,7 @@ fn assert_archived_inline_display_rejection(row: &Row) -> bool {
         }
     );
     assert_eq!(value.as_css(), "inline");
-    assert_eq!(value.i01_subset(), None);
+
     let parsed = declaration.parsed_value().unwrap();
     // The retained value range includes the space immediately after the colon;
     // the property wrapper's ordinary as_css() excludes that boundary trivia.
@@ -2348,73 +2345,6 @@ fn assert_captured_px(length: &surgeist_css::CssLength, expected: f32) {
     assert!(matches!(length, surgeist_css::CssLength::Px(value) if value.value() == expected));
 }
 
-macro_rules! assert_property_specific_value {
-    (
-        $property:expr,
-        $value:expr,
-        $semantic:expr,
-        $authored:expr,
-        $frozen:expr;
-        $($variant:ident,)*
-    ) => {
-        match ($property, $value) {
-            $(
-                (
-                    surgeist_css::CssKnownProperty::$variant,
-                    surgeist_css::CssKnownPropertyValueRef::$variant(value),
-                ) => {
-                    let expected_id =
-                        surgeist_css::CssKnownProperty::$variant.stable_id();
-                    assert_eq!(
-                        $authored.id, expected_id,
-                        "{} {} property-specific authored identity",
-                        $frozen.case_id, expected_id
-                    );
-                    assert_eq!(
-                        $authored.value_capability, "deferred-i01",
-                        "{} {} authored-value capability",
-                        $frozen.case_id, expected_id
-                    );
-                    assert_ne!(
-                        $authored.value, "<unavailable>",
-                        "{} {} deferred slice must remain explicit in the TSV",
-                        $frozen.case_id, expected_id
-                    );
-                    assert_eq!(
-                        value.as_css(),
-                        $authored.value,
-                        "{} {} concrete wrapper authored slice",
-                        $frozen.case_id, expected_id
-                    );
-                    let typed = value.i01_subset().unwrap_or_else(|| {
-                        panic!(
-                            "{}: {} concrete wrapper lacks its typed I01 payload",
-                            $frozen.case_id, expected_id
-                        )
-                    });
-                    if let Some(semantic) = $semantic {
-                        assert_eq!(
-                            semantic.id, expected_id,
-                            "{} {} property-specific semantic identity",
-                            $frozen.case_id, expected_id
-                        );
-                        assert_eq!(
-                            semantic.payload,
-                            format!("typed:{typed:?}"),
-                            "{} {} frozen I01 public Debug payload",
-                            $frozen.case_id, expected_id
-                        );
-                    }
-                }
-            )*
-            _ => panic!(
-                "{}: known property identity and concrete value wrapper disagree",
-                $frozen.case_id
-            ),
-        }
-    };
-}
-
 fn assert_captured_grid_columns(list: &surgeist_css::CssGridTrackList) {
     use surgeist_css::{
         CssGridGeneralTrackComponent as GeneralTrack, CssGridTrackRepeatComponent as RepeatMember,
@@ -2481,21 +2411,6 @@ fn assert_captured_font_metadata(
 // The six archived calculation witnesses predate exact lexical math trees.
 // Keep their captured payloads: independently render the historical text schema,
 // and check the current tree's operators, exact leaves, types and source spans.
-fn assert_captured_sum(
-    current: &surgeist_css::CssLength,
-    expected_css: &str,
-    first: (&str, bool),
-    second: (&str, bool),
-    subtract: bool,
-    source: &str,
-) -> String {
-    let surgeist_css::CssLength::Calc(surgeist_css::CssCalcLength::Typed(calculation)) = current
-    else {
-        panic!("captured calculation must retain the exact current tree");
-    };
-    assert_captured_sum_calculation(calculation, expected_css, first, second, subtract, source)
-}
-
 fn assert_captured_sum_calculation(
     calculation: &surgeist_css::CssLengthPercentageCalculation,
     expected_css: &str,
@@ -3155,9 +3070,9 @@ fn assert_known_property_value(
             assert_eq!(authored.value_capability, "public");
             assert_eq!(authored.value, "symbols(cyclic \"*\" \"+\")");
             assert_eq!(value.as_css(), authored.value);
-            assert!(value.i01_subset().is_none());
+
             assert_eq!(
-                value.current().serialize_specified().unwrap(),
+                value.value().serialize_specified().unwrap(),
                 "symbols(cyclic \"*\" \"+\")"
             );
             let semantic = semantic.expect("new current list-style-type value");
@@ -3174,31 +3089,17 @@ fn assert_known_property_value(
             assert_eq!(authored.value, "inside outside");
             assert_eq!(value.as_css(), authored.value);
             assert_eq!(
-                value.current().position(),
+                value.value().position(),
                 Some(surgeist_css::CssListStylePosition::Inside)
             );
             let Some(surgeist_css::CssListStyleTypeValue::CounterStyle(style)) =
-                value.current().style_type()
+                value.value().style_type()
             else {
                 panic!("custom style name after positional keyword")
             };
             assert_eq!(style.named().unwrap().as_str(), "outside");
-            let old = value
-                .i01_subset()
-                .expect("current pair is representable in I01");
             assert_eq!(
-                old.position(),
-                Some(surgeist_css::CssListStylePosition::Inside)
-            );
-            let Some(surgeist_css::CssListStyleType::CounterStyle(
-                surgeist_css::CssCounterStyle::Named(name),
-            )) = old.style_type()
-            else {
-                panic!("legacy representable named style")
-            };
-            assert_eq!(name.as_str(), "outside");
-            assert_eq!(
-                value.current().serialize_specified().unwrap(),
+                value.value().serialize_specified().unwrap(),
                 "inside outside"
             );
             let semantic = semantic.expect("new current list-style value");
@@ -3213,7 +3114,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::Gap,
             surgeist_css::CssKnownPropertyValueRef::Gap(value),
         ) => {
-            let gap = value.current();
+            let gap = value.value();
             assert!(gap.authored_column().is_none());
             assert_eq!(gap.row(), gap.column());
             let surgeist_css::CssGapValue::LengthPercentage(length) = gap.row() else {
@@ -3236,7 +3137,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::RowGap,
             surgeist_css::CssKnownPropertyValueRef::RowGap(value),
         ) => {
-            assert_eq!(value.current(), &surgeist_css::CssGapValue::Normal);
+            assert_eq!(value.value(), &surgeist_css::CssGapValue::Normal);
             assert_captured_numeric_metadata(
                 property.stable_id(),
                 value.as_css(),
@@ -3250,7 +3151,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::ColumnGap,
             surgeist_css::CssKnownPropertyValueRef::ColumnGap(value),
         ) => {
-            let surgeist_css::CssGapValue::LengthPercentage(length) = value.current() else {
+            let surgeist_css::CssGapValue::LengthPercentage(length) = value.value() else {
                 panic!("captured column gap is an exact numeric value")
             };
             let old = assert_frozen_spacing_literal(
@@ -3274,7 +3175,7 @@ fn assert_known_property_value(
         ) if authored.value == "calc(100% - 12px)" => {
             let surgeist_css::CssSizeValue::BoxSize(surgeist_css::CssBoxSize::LengthPercentage(
                 length,
-            )) = value.current()
+            )) = value.value()
             else {
                 panic!("frozen width calculation changed branch")
             };
@@ -3300,7 +3201,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::Width,
             surgeist_css::CssKnownPropertyValueRef::Width(value),
         ) => {
-            let payload = frozen_preferred_size_payload(value.current());
+            let payload = frozen_preferred_size_payload(value.value());
             assert_captured_numeric_metadata(
                 property.stable_id(),
                 value.as_css(),
@@ -3314,7 +3215,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::Height,
             surgeist_css::CssKnownPropertyValueRef::Height(value),
         ) => {
-            let payload = frozen_preferred_size_payload(value.current());
+            let payload = frozen_preferred_size_payload(value.value());
             assert_captured_numeric_metadata(
                 property.stable_id(),
                 value.as_css(),
@@ -3328,7 +3229,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::MinWidth,
             surgeist_css::CssKnownPropertyValueRef::MinWidth(value),
         ) => {
-            let payload = frozen_preferred_size_payload(value.current());
+            let payload = frozen_preferred_size_payload(value.value());
             assert_captured_numeric_metadata(
                 property.stable_id(),
                 value.as_css(),
@@ -3342,7 +3243,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::MinHeight,
             surgeist_css::CssKnownPropertyValueRef::MinHeight(value),
         ) => {
-            let payload = frozen_preferred_size_payload(value.current());
+            let payload = frozen_preferred_size_payload(value.value());
             assert_captured_numeric_metadata(
                 property.stable_id(),
                 value.as_css(),
@@ -3357,7 +3258,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownPropertyValueRef::MaxWidth(value),
         ) => {
             let payload = value
-                .current()
+                .value()
                 .box_size()
                 .map(frozen_box_size_payload)
                 .unwrap_or_else(|| "None".into());
@@ -3375,7 +3276,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownPropertyValueRef::MaxHeight(value),
         ) => {
             let payload = value
-                .current()
+                .value()
                 .box_size()
                 .map(frozen_box_size_payload)
                 .unwrap_or_else(|| "None".into());
@@ -3393,8 +3294,11 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::Left,
             surgeist_css::CssKnownPropertyValueRef::Left(value),
         ) if authored.value == "calc(3px + 4%)" => {
-            let old = assert_captured_sum(
-                value.i01_subset().unwrap(),
+            let old = assert_captured_sum_calculation(
+                match value.value() {
+                    surgeist_css::CssInsetValue::LengthPercentage(v) => v.calculation().unwrap(),
+                    _ => panic!("captured inset calculation"),
+                },
                 "calc(3px + 4%)",
                 ("3", false),
                 ("4", true),
@@ -3417,7 +3321,7 @@ fn assert_known_property_value(
         ) if authored.value == "calc(3px + 4%)" => {
             let old = assert_captured_sum_calculation(
                 value
-                    .current()
+                    .value()
                     .length_percentage()
                     .unwrap()
                     .calculation()
@@ -3443,7 +3347,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownPropertyValueRef::PaddingBottom(value),
         ) if authored.value == "calc(3px + 4%)" => {
             let old = assert_captured_sum_calculation(
-                value.current().length_percentage().calculation().unwrap(),
+                value.value().length_percentage().calculation().unwrap(),
                 "calc(3px + 4%)",
                 ("3", false),
                 ("4", true),
@@ -3464,17 +3368,17 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::BorderBottomLeftRadius,
             surgeist_css::CssKnownPropertyValueRef::BorderBottomLeftRadius(value),
         ) if authored.value == "calc(1px + 2%)" => {
-            let current = value.i01_subset().unwrap();
-            let horizontal = assert_captured_sum(
-                current.horizontal(),
+            let current = value.value();
+            let horizontal = assert_captured_sum_calculation(
+                current.horizontal().calculation().unwrap(),
                 "calc(1px + 2%)",
                 ("1", false),
                 ("2", true),
                 false,
                 frozen.input,
             );
-            let vertical = assert_captured_sum(
-                current.vertical(),
+            let vertical = assert_captured_sum_calculation(
+                current.vertical().calculation().unwrap(),
                 "calc(1px + 2%)",
                 ("1", false),
                 ("2", true),
@@ -3496,7 +3400,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::Padding,
             surgeist_css::CssKnownPropertyValueRef::Padding(value),
         ) if authored.value == "1px 2% calc(3px + 4%) 0" => {
-            let current = value.current();
+            let current = value.value();
             assert_eq!(current.authored_values().len(), 4);
             let [top, right, bottom, left] = current.assigned_values();
             assert_frozen_spacing_literal(
@@ -3540,7 +3444,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownPropertyValueRef::Margin(value),
         ) => {
             assert_eq!(authored.value, "auto 10px 5%");
-            let current = value.current();
+            let current = value.value();
             assert_eq!(current.kind(), surgeist_css::CssBoxSideKind::Physical);
             assert_eq!(current.authored_values().len(), 3);
             let [top, right, bottom, left] = current.assigned_values();
@@ -3564,7 +3468,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::MarginTop,
             surgeist_css::CssKnownPropertyValueRef::MarginTop(value),
         ) => {
-            let old = frozen_margin_payload(value.current(), authored.value);
+            let old = frozen_margin_payload(value.value(), authored.value);
             assert_captured_numeric_metadata(
                 property.stable_id(),
                 value.as_css(),
@@ -3578,7 +3482,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::MarginRight,
             surgeist_css::CssKnownPropertyValueRef::MarginRight(value),
         ) => {
-            let old = frozen_margin_payload(value.current(), authored.value);
+            let old = frozen_margin_payload(value.value(), authored.value);
             assert_captured_numeric_metadata(
                 property.stable_id(),
                 value.as_css(),
@@ -3592,7 +3496,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::MarginBottom,
             surgeist_css::CssKnownPropertyValueRef::MarginBottom(value),
         ) => {
-            let old = frozen_margin_payload(value.current(), authored.value);
+            let old = frozen_margin_payload(value.value(), authored.value);
             assert_captured_numeric_metadata(
                 property.stable_id(),
                 value.as_css(),
@@ -3606,7 +3510,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::MarginLeft,
             surgeist_css::CssKnownPropertyValueRef::MarginLeft(value),
         ) => {
-            let old = frozen_margin_payload(value.current(), authored.value);
+            let old = frozen_margin_payload(value.value(), authored.value);
             assert_captured_numeric_metadata(
                 property.stable_id(),
                 value.as_css(),
@@ -3620,7 +3524,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::PaddingTop,
             surgeist_css::CssKnownPropertyValueRef::PaddingTop(value),
         ) => {
-            let old = frozen_padding_payload(value.current(), authored.value);
+            let old = frozen_padding_payload(value.value(), authored.value);
             assert_captured_numeric_metadata(
                 property.stable_id(),
                 value.as_css(),
@@ -3634,7 +3538,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::PaddingRight,
             surgeist_css::CssKnownPropertyValueRef::PaddingRight(value),
         ) => {
-            let old = frozen_padding_payload(value.current(), authored.value);
+            let old = frozen_padding_payload(value.value(), authored.value);
             assert_captured_numeric_metadata(
                 property.stable_id(),
                 value.as_css(),
@@ -3648,7 +3552,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::PaddingBottom,
             surgeist_css::CssKnownPropertyValueRef::PaddingBottom(value),
         ) => {
-            let old = frozen_padding_payload(value.current(), authored.value);
+            let old = frozen_padding_payload(value.value(), authored.value);
             assert_captured_numeric_metadata(
                 property.stable_id(),
                 value.as_css(),
@@ -3662,7 +3566,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::PaddingLeft,
             surgeist_css::CssKnownPropertyValueRef::PaddingLeft(value),
         ) => {
-            let old = frozen_padding_payload(value.current(), authored.value);
+            let old = frozen_padding_payload(value.value(), authored.value);
             assert_captured_numeric_metadata(
                 property.stable_id(),
                 value.as_css(),
@@ -3683,8 +3587,8 @@ fn assert_known_property_value(
             assert_eq!(authored.value_capability, "public");
             assert_eq!(authored.value, "0.1em");
             assert_eq!(value.as_css(), "0.1em");
-            assert!(value.i01_subset().is_none());
-            let CssTextSpacingAdjustment::LengthPercentage(length) = value.current() else {
+
+            let CssTextSpacingAdjustment::LengthPercentage(length) = value.value() else {
                 panic!("exact current letter spacing")
             };
             let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) =
@@ -3695,7 +3599,7 @@ fn assert_known_property_value(
             assert_eq!(number.representation(), "0.1");
             assert_eq!(unit, "em");
             assert!(matches!(length.origin(), CssValueOrigin::Parsed(_)));
-            assert_eq!(value.current().serialize_specified().unwrap(), "0.1em");
+            assert_eq!(value.value().serialize_specified().unwrap(), "0.1em");
             if let Some(semantic) = semantic {
                 assert_eq!(semantic.id, property.stable_id());
                 assert_eq!(semantic.payload, "typed:LengthPercentage(0.1em)");
@@ -3758,7 +3662,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownPropertyValueRef::FontStyle(value),
         ) => {
             assert_eq!(
-                value.current(),
+                value.value(),
                 &surgeist_css::CssFontStyle::Keyword(surgeist_css::CssFontStyleKeyword::Italic)
             );
             assert_captured_numeric_metadata(
@@ -3776,7 +3680,7 @@ fn assert_known_property_value(
         ) => {
             let surgeist_css::CssFontWeight::Absolute(surgeist_css::CssAbsoluteFontWeight::Number(
                 number,
-            )) = value.current()
+            )) = value.value()
             else {
                 panic!("{}: expected captured numeric font weight", frozen.case_id);
             };
@@ -3851,7 +3755,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownPropertyValueRef::FontWidth(value),
         ) => {
             assert_eq!(
-                value.current(),
+                value.value(),
                 &surgeist_css::CssFontWidth::Keyword(
                     surgeist_css::CssFontWidthKeyword::SemiCondensed
                 )
@@ -4560,96 +4464,1600 @@ fn assert_known_property_value(
         }
         return;
     }
-    assert_property_specific_value!(
-        property,
-        value,
-        semantic,
-        authored,
-        frozen;
-            All,
-            Display,
-            BoxSizing,
-            Position,
-            Direction,
-            Overflow,
-            OverflowX,
-            OverflowY,
-            FlexDirection,
-            FlexWrap,
-            Float,
-            Clear,
-            AlignContent,
-            JustifyContent,
-            AlignItems,
-            AlignSelf,
-            JustifyItems,
-            JustifySelf,
-            PlaceContent,
-            PlaceItems,
-            PlaceSelf,
-            Visibility,
-            Content,
-            ContentVisibility,
-            ListStyleType,
-            ListStylePosition,
-            ListStyleImage,
-            ListStyle,
-            CounterReset,
-            CounterIncrement,
-            CounterSet,
-            FlexBasis,
-            WritingMode,
-            TextAlign,
-            TextAlignLast,
-            TextIndent,
-            VerticalAlign,
-            LetterSpacing,
-            TextWrap,
-            WhiteSpace,
-            WordBreak,
-            OverflowWrap,
-            TextOverflow,
-            TextDecorationLine,
-            TextDecorationStyle,
-            TextDecorationThickness,
-            TextTransform,
-            Inset,
-            Top,
-            Right,
-            Bottom,
-            Left,
-            BoxDecorationBreak,
-            BorderWidth,
-            BorderTopWidth,
-            BorderRightWidth,
-            BorderBottomWidth,
-            BorderLeftWidth,
-            BorderStyle,
-            BorderTopStyle,
-            BorderRightStyle,
-            BorderBottomStyle,
-            BorderLeftStyle,
-            BorderRadius,
-            BorderTopLeftRadius,
-            BorderTopRightRadius,
-            BorderBottomRightRadius,
-            BorderBottomLeftRadius,
-            FlexGrow,
-            FlexShrink,
-            Flex,
-            JustifyTracks,
-            AlignTracks,
-            AspectRatio,
-            ScrollbarWidth,
-            Cursor,
-            PointerEvents,
-            UserSelect,
-            OutlineStyle,
-            OutlineWidth,
-            Translate,
-            Rotate,
-            Scale,
-    );
+    // Decode the selected immutable historical payloads into concrete expectations.
+    // No live Debug rendering or production compatibility graph participates.
+    use surgeist_css::*;
+    match (property, value) {
+        (CssKnownProperty::Display, CssKnownPropertyValueRef::Display(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Block"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_eq!(
+                typed,
+                &CssDisplayValue::OutsideInside {
+                    outside: CssDisplayOutside::Block,
+                    inside: CssDisplayInside::Flow
+                }
+            );
+        }
+        (CssKnownProperty::BoxSizing, CssKnownPropertyValueRef::BoxSizing(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "BorderBox"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let decoded = match expected {
+                "BorderBox" => CssBoxSizing::BorderBox,
+                _ => panic!("unknown captured keyword"),
+            };
+            assert_eq!(typed, &decoded);
+        }
+        (CssKnownProperty::Position, CssKnownPropertyValueRef::Position(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Sticky"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let decoded = match expected {
+                "Sticky" => CssLayoutPosition::Sticky,
+                _ => panic!("unknown captured keyword"),
+            };
+            assert_eq!(typed, &decoded);
+        }
+        (CssKnownProperty::Direction, CssKnownPropertyValueRef::Direction(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Rtl"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let decoded = match expected {
+                "Rtl" => CssDirection::Rtl,
+                _ => panic!("unknown captured keyword"),
+            };
+            assert_eq!(typed, &decoded);
+        }
+        (CssKnownProperty::Overflow, CssKnownPropertyValueRef::Overflow(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Pair(CssOverflowAxes { x: Hidden, y: Scroll })"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_eq!(typed.x(), CssOverflow::Hidden);
+            assert_eq!(typed.authored_y(), Some(CssOverflow::Scroll));
+        }
+        (CssKnownProperty::OverflowX, CssKnownPropertyValueRef::OverflowX(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Clip"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let decoded = match expected {
+                "Clip" => CssOverflow::Clip,
+                _ => panic!("unknown captured keyword"),
+            };
+            assert_eq!(typed, &decoded);
+        }
+        (CssKnownProperty::OverflowY, CssKnownPropertyValueRef::OverflowY(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Visible"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let decoded = match expected {
+                "Visible" => CssOverflow::Visible,
+                _ => panic!("unknown captured keyword"),
+            };
+            assert_eq!(typed, &decoded);
+        }
+        (CssKnownProperty::FlexDirection, CssKnownPropertyValueRef::FlexDirection(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "ColumnReverse"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let decoded = match expected {
+                "ColumnReverse" => CssFlexDirection::ColumnReverse,
+                _ => panic!("unknown captured keyword"),
+            };
+            assert_eq!(typed, &decoded);
+        }
+        (CssKnownProperty::FlexWrap, CssKnownPropertyValueRef::FlexWrap(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "WrapReverse"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let decoded = match expected {
+                "WrapReverse" => CssFlexWrap::WrapReverse,
+                _ => panic!("unknown captured keyword"),
+            };
+            assert_eq!(typed, &decoded);
+        }
+        (CssKnownProperty::Float, CssKnownPropertyValueRef::Float(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Left"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let decoded = match expected {
+                "Left" => CssFloat::Left,
+                _ => panic!("unknown captured keyword"),
+            };
+            assert_eq!(typed, &decoded);
+        }
+        (CssKnownProperty::Clear, CssKnownPropertyValueRef::Clear(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Both"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let decoded = match expected {
+                "Both" => CssClear::Both,
+                _ => panic!("unknown captured keyword"),
+            };
+            assert_eq!(typed, &decoded);
+        }
+        (CssKnownProperty::AlignContent, CssKnownPropertyValueRef::AlignContent(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "SpaceBetween"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_eq!(typed.value(), CssAlignmentValue::SpaceBetween);
+        }
+        (CssKnownProperty::JustifyContent, CssKnownPropertyValueRef::JustifyContent(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "SafeCenter"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_eq!(
+                typed.value(),
+                CssAlignmentValue::Position {
+                    overflow: Some(CssOverflowPosition::Safe),
+                    position: CssAlignmentPosition::Center
+                }
+            );
+        }
+        (CssKnownProperty::AlignItems, CssKnownPropertyValueRef::AlignItems(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "FirstBaseline"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_eq!(
+                typed.value(),
+                CssAlignmentValue::Baseline(CssBaselinePosition::First)
+            );
+        }
+        (CssKnownProperty::AlignSelf, CssKnownPropertyValueRef::AlignSelf(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "SafeFlexEnd"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_eq!(
+                typed.value(),
+                CssAlignmentValue::Position {
+                    overflow: Some(CssOverflowPosition::Safe),
+                    position: CssAlignmentPosition::FlexEnd
+                }
+            );
+        }
+        (CssKnownProperty::JustifyItems, CssKnownPropertyValueRef::JustifyItems(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Stretch"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_eq!(typed.value(), CssAlignmentValue::Stretch);
+        }
+        (CssKnownProperty::JustifySelf, CssKnownPropertyValueRef::JustifySelf(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Center"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_eq!(
+                typed.value(),
+                CssAlignmentValue::Position {
+                    overflow: None,
+                    position: CssAlignmentPosition::Center
+                }
+            );
+        }
+        (CssKnownProperty::PlaceContent, CssKnownPropertyValueRef::PlaceContent(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(
+                    expected,
+                    "Content(CssPlaceContentAlignment { first: Center, second: End })"
+                ),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_eq!(
+                typed.align().value(),
+                CssAlignmentValue::Position {
+                    overflow: None,
+                    position: CssAlignmentPosition::Center
+                }
+            );
+            assert_eq!(
+                typed.justify().value(),
+                CssAlignmentValue::Position {
+                    overflow: None,
+                    position: CssAlignmentPosition::End
+                }
+            );
+        }
+        (CssKnownProperty::PlaceItems, CssKnownPropertyValueRef::PlaceItems(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(
+                    expected,
+                    "Items(CssPlaceItemsAlignment { first: Stretch, second: Stretch })"
+                ),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_eq!(typed.align().value(), CssAlignmentValue::Stretch);
+            assert_eq!(typed.justify().value(), CssAlignmentValue::Stretch);
+        }
+        (CssKnownProperty::PlaceSelf, CssKnownPropertyValueRef::PlaceSelf(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(
+                    expected,
+                    "Items(CssPlaceItemsAlignment { first: End, second: Center })"
+                ),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_eq!(
+                typed.align().value(),
+                CssAlignmentValue::Position {
+                    overflow: None,
+                    position: CssAlignmentPosition::End
+                }
+            );
+            assert_eq!(
+                typed.justify().value(),
+                CssAlignmentValue::Position {
+                    overflow: None,
+                    position: CssAlignmentPosition::Center
+                }
+            );
+        }
+        (CssKnownProperty::Visibility, CssKnownPropertyValueRef::Visibility(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Collapse"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let decoded = match expected {
+                "Collapse" => CssVisibility::Collapse,
+                _ => panic!("unknown captured keyword"),
+            };
+            assert_eq!(typed, &decoded);
+        }
+        (CssKnownProperty::Content, CssKnownPropertyValueRef::Content(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(
+                    expected,
+                    "Items(CssContentList { items: [String(CssContentString { value: \"Chapter \" })] })"
+                        | "Items(CssContentList { items: [String(CssContentString { value: \"x\" })] })"
+                ),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let CssContentValue::Generated(generated) = typed else {
+                panic!("captured generated string");
+            };
+            assert!(generated.alternative().is_none());
+            let [CssContentValueItem::String(text)] = generated.items() else {
+                panic!("one captured string");
+            };
+            let decoded: String = serde_json::from_str(
+                expected
+                    .split("value: ")
+                    .nth(1)
+                    .unwrap()
+                    .split(" }")
+                    .next()
+                    .unwrap(),
+            )
+            .unwrap();
+            assert_eq!(text.as_str(), decoded);
+        }
+        (
+            CssKnownProperty::ContentVisibility,
+            CssKnownPropertyValueRef::ContentVisibility(value),
+        ) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Auto"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let decoded = match expected {
+                "Auto" => CssContentVisibility::Auto,
+                _ => panic!("unknown captured keyword"),
+            };
+            assert_eq!(typed, &decoded);
+        }
+        (CssKnownProperty::ListStyleType, CssKnownPropertyValueRef::ListStyleType(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "CounterStyle(BuiltIn(Square))"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let CssListStyleTypeValue::CounterStyle(style) = typed else {
+                panic!("captured named style");
+            };
+            assert_eq!(style.named().unwrap().as_str(), "square");
+        }
+        (
+            CssKnownProperty::ListStylePosition,
+            CssKnownPropertyValueRef::ListStylePosition(value),
+        ) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Inside"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let decoded = match expected {
+                "Inside" => CssListStylePosition::Inside,
+                _ => panic!("unknown captured keyword"),
+            };
+            assert_eq!(typed, &decoded);
+        }
+        (CssKnownProperty::ListStyleImage, CssKnownPropertyValueRef::ListStyleImage(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Url(CssUrl { value: \"marker.svg\" })"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert!(matches!(typed, CssImageValue::Url(url) if url.as_str() == "marker.svg"));
+        }
+        (CssKnownProperty::ListStyle, CssKnownPropertyValueRef::ListStyle(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(
+                    expected,
+                    "CssListStyle { style_type: Some(CounterStyle(BuiltIn(Square))), position: Some(Inside), image: Some(Url(CssUrl { value: \"marker.svg\" })) }"
+                ),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_eq!(typed.position(), Some(CssListStylePosition::Inside));
+            assert!(
+                matches!(typed.style_type(), Some(CssListStyleTypeValue::CounterStyle(style)) if style.named().unwrap().as_str() == "square")
+            );
+            assert!(
+                matches!(typed.image(), Some(CssImageValue::Url(url)) if url.as_str() == "marker.svg")
+            );
+        }
+        (CssKnownProperty::CounterReset, CssKnownPropertyValueRef::CounterReset(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(
+                    expected,
+                    "Changes(CssCounterChangeList { changes: [CssCounterChange { name: CssCounterName { name: \"section\" }, value: Some(2) }] })"
+                ),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let [change] = typed.changes().unwrap() else {
+                panic!("one captured counter");
+            };
+            assert_eq!(change.name().as_str(), "section");
+            let Some(CssIntegerValue::Literal(integer)) = change.value() else {
+                panic!("captured explicit integer");
+            };
+            assert_eq!(integer.numeric().representation(), "2");
+        }
+        (CssKnownProperty::CounterIncrement, CssKnownPropertyValueRef::CounterIncrement(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(
+                    expected,
+                    "Changes(CssCounterChangeList { changes: [CssCounterChange { name: CssCounterName { name: \"section\" }, value: Some(1) }] })"
+                ),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let [change] = typed.changes().unwrap() else {
+                panic!("one captured counter");
+            };
+            assert_eq!(change.name().as_str(), "section");
+            let Some(CssIntegerValue::Literal(integer)) = change.value() else {
+                panic!("captured explicit integer");
+            };
+            assert_eq!(integer.numeric().representation(), "1");
+        }
+        (CssKnownProperty::CounterSet, CssKnownPropertyValueRef::CounterSet(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(
+                    expected,
+                    "Changes(CssCounterChangeList { changes: [CssCounterChange { name: CssCounterName { name: \"section\" }, value: Some(3) }] })"
+                ),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let [change] = typed.changes().unwrap() else {
+                panic!("one captured counter");
+            };
+            assert_eq!(change.name().as_str(), "section");
+            let Some(CssIntegerValue::Literal(integer)) = change.value() else {
+                panic!("captured explicit integer");
+            };
+            assert_eq!(integer.numeric().representation(), "3");
+        }
+        (CssKnownProperty::FlexBasis, CssKnownPropertyValueRef::FlexBasis(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(
+                    expected,
+                    "Dimension(CssLengthDimension { value: CssFiniteNumber { value: 10.0 }, unit: Rem })"
+                ),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_archive_basis(typed);
+        }
+        (CssKnownProperty::WritingMode, CssKnownPropertyValueRef::WritingMode(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "VerticalRl"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let decoded = match expected {
+                "VerticalRl" => CssWritingMode::VerticalRl,
+                _ => panic!("unknown captured keyword"),
+            };
+            assert_eq!(typed, &decoded);
+        }
+        (CssKnownProperty::TextAlign, CssKnownPropertyValueRef::TextAlign(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Start"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_eq!(
+                typed,
+                &CssTextAlignValue::Alignment(CssTextAlignAllValue::Keyword(CssTextAlign::Start))
+            );
+        }
+        (CssKnownProperty::TextAlignLast, CssKnownPropertyValueRef::TextAlignLast(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Justify"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_eq!(
+                typed,
+                &CssTextAlignLastValue::Keyword(CssTextAlign::Justify)
+            );
+        }
+        (CssKnownProperty::TextIndent, CssKnownPropertyValueRef::TextIndent(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(
+                    expected,
+                    "CssTextIndent { length: Dimension(CssLengthDimension { value: CssFiniteNumber { value: 1.0 }, unit: Rem }), hanging: true, each_line: true }"
+                ),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert!(typed.hanging());
+            assert!(typed.each_line());
+            assert!(
+                matches!(typed.length(), CssLength::Dimension(length) if length.value() == 1.0 && length.unit() == CssLengthUnit::Rem)
+            );
+        }
+        (CssKnownProperty::VerticalAlign, CssKnownPropertyValueRef::VerticalAlign(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Super"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let decoded = match expected {
+                "Super" => CssVerticalAlign::Super,
+                _ => panic!("unknown captured keyword"),
+            };
+            assert_eq!(typed, &decoded);
+        }
+        (CssKnownProperty::TextWrap, CssKnownPropertyValueRef::TextWrap(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Balance"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let decoded = match expected {
+                "Balance" => CssTextWrap::Balance,
+                _ => panic!("unknown captured keyword"),
+            };
+            assert_eq!(typed, &decoded);
+        }
+        (CssKnownProperty::WhiteSpace, CssKnownPropertyValueRef::WhiteSpace(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "PreWrap"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let decoded = match expected {
+                "PreWrap" => CssWhiteSpace::PreWrap,
+                _ => panic!("unknown captured keyword"),
+            };
+            assert_eq!(typed, &decoded);
+        }
+        (CssKnownProperty::WordBreak, CssKnownPropertyValueRef::WordBreak(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "KeepAll"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let decoded = match expected {
+                "KeepAll" => CssWordBreak::KeepAll,
+                _ => panic!("unknown captured keyword"),
+            };
+            assert_eq!(typed, &decoded);
+        }
+        (CssKnownProperty::OverflowWrap, CssKnownPropertyValueRef::OverflowWrap(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Anywhere"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let decoded = match expected {
+                "Anywhere" => CssOverflowWrap::Anywhere,
+                _ => panic!("unknown captured keyword"),
+            };
+            assert_eq!(typed, &decoded);
+        }
+        (CssKnownProperty::TextOverflow, CssKnownPropertyValueRef::TextOverflow(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Ellipsis"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let decoded = match expected {
+                "Ellipsis" => CssTextOverflow::Ellipsis,
+                _ => panic!("unknown captured keyword"),
+            };
+            assert_eq!(typed, &decoded);
+        }
+        (
+            CssKnownProperty::TextDecorationLine,
+            CssKnownPropertyValueRef::TextDecorationLine(value),
+        ) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(
+                    expected,
+                    "CssTextDecorationLine { components: [Underline, Overline], none: false }"
+                ),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert!(!typed.is_none());
+            assert_eq!(
+                typed.components(),
+                &[
+                    CssTextDecorationLineComponent::Underline,
+                    CssTextDecorationLineComponent::Overline
+                ]
+            );
+        }
+        (
+            CssKnownProperty::TextDecorationStyle,
+            CssKnownPropertyValueRef::TextDecorationStyle(value),
+        ) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Wavy"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let decoded = match expected {
+                "Wavy" => CssTextDecorationStyle::Wavy,
+                _ => panic!("unknown captured keyword"),
+            };
+            assert_eq!(typed, &decoded);
+        }
+        (
+            CssKnownProperty::TextDecorationThickness,
+            CssKnownPropertyValueRef::TextDecorationThickness(value),
+        ) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(
+                    expected,
+                    "Length(CssTextDecorationThicknessLength { length: Px(CssFiniteNumber { value: 2.0 }) })"
+                ),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let CssTextDecorationThickness::Length(length) = typed else {
+                panic!("captured thickness");
+            };
+            assert_captured_px(length.length(), 2.0);
+        }
+        (CssKnownProperty::TextTransform, CssKnownPropertyValueRef::TextTransform(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Uppercase"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let decoded = match expected {
+                "Uppercase" => CssTextTransform::Uppercase,
+                _ => panic!("unknown captured keyword"),
+            };
+            assert_eq!(typed, &decoded);
+        }
+        (CssKnownProperty::Inset, CssKnownPropertyValueRef::Inset(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(
+                    expected,
+                    "CssEdges { top: Auto, right: Px(CssFiniteNumber { value: 10.0 }), bottom: Percent(CssFiniteNumber { value: 5.0 }), left: Px(CssFiniteNumber { value: 10.0 }) }"
+                ),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_eq!(typed.kind(), CssBoxSideKind::Physical);
+            assert_eq!(typed.authored_values().len(), 3);
+            let [a, b, c, d] = typed.assigned_values();
+            assert_eq!(a, &CssInsetValue::Auto);
+            assert_archive_inset(b, "10", Some("px"));
+            assert_archive_inset(c, "5", Some("%"));
+            assert_eq!(b, d);
+        }
+        (CssKnownProperty::Top, CssKnownPropertyValueRef::Top(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Auto"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_eq!(typed, &CssInsetValue::Auto);
+        }
+        (CssKnownProperty::Right, CssKnownPropertyValueRef::Right(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Px(CssFiniteNumber { value: 10.0 })"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_archive_inset(typed, "10", Some("px"));
+        }
+        (CssKnownProperty::Bottom, CssKnownPropertyValueRef::Bottom(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Percent(CssFiniteNumber { value: 5.0 })"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_archive_inset(typed, "5", Some("%"));
+        }
+        (
+            CssKnownProperty::BoxDecorationBreak,
+            CssKnownPropertyValueRef::BoxDecorationBreak(value),
+        ) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Clone"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let decoded = match expected {
+                "Clone" => CssBoxDecorationBreak::Clone,
+                _ => panic!("unknown captured keyword"),
+            };
+            assert_eq!(typed, &decoded);
+        }
+        (CssKnownProperty::BorderWidth, CssKnownPropertyValueRef::BorderWidth(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(
+                    expected,
+                    "CssEdges { top: Px(CssFiniteNumber { value: 1.0 }), right: Px(CssFiniteNumber { value: 2.0 }), bottom: Px(CssFiniteNumber { value: 3.0 }), left: Px(CssFiniteNumber { value: 4.0 }) }"
+                ),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_eq!(typed.authored_values().len(), 4);
+            for (width, expected) in typed
+                .assigned_values()
+                .into_iter()
+                .zip(["1", "2", "3", "4"])
+            {
+                assert_archive_width(width, expected);
+            }
+        }
+        (CssKnownProperty::BorderTopWidth, CssKnownPropertyValueRef::BorderTopWidth(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Px(CssFiniteNumber { value: 1.0 })"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_archive_width(typed, "1");
+        }
+        (CssKnownProperty::BorderRightWidth, CssKnownPropertyValueRef::BorderRightWidth(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Px(CssFiniteNumber { value: 2.0 })"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_archive_width(typed, "2");
+        }
+        (
+            CssKnownProperty::BorderBottomWidth,
+            CssKnownPropertyValueRef::BorderBottomWidth(value),
+        ) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Px(CssFiniteNumber { value: 3.0 })"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_archive_width(typed, "3");
+        }
+        (CssKnownProperty::BorderLeftWidth, CssKnownPropertyValueRef::BorderLeftWidth(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Px(CssFiniteNumber { value: 4.0 })"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_archive_width(typed, "4");
+        }
+        (CssKnownProperty::BorderStyle, CssKnownPropertyValueRef::BorderStyle(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(
+                    expected,
+                    "CssBorderStyles { top: None, right: Hidden, bottom: Dotted, left: Dashed }"
+                ),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_eq!(
+                typed.authored_values(),
+                &[
+                    CssBorderStyle::None,
+                    CssBorderStyle::Hidden,
+                    CssBorderStyle::Dotted,
+                    CssBorderStyle::Dashed
+                ]
+            );
+            assert_eq!(
+                typed.assigned_values(),
+                [
+                    &CssBorderStyle::None,
+                    &CssBorderStyle::Hidden,
+                    &CssBorderStyle::Dotted,
+                    &CssBorderStyle::Dashed
+                ]
+            );
+        }
+        (CssKnownProperty::BorderTopStyle, CssKnownPropertyValueRef::BorderTopStyle(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Solid"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let decoded = match expected {
+                "Solid" => CssBorderStyle::Solid,
+                _ => panic!("unknown captured keyword"),
+            };
+            assert_eq!(typed, &decoded);
+        }
+        (CssKnownProperty::BorderRightStyle, CssKnownPropertyValueRef::BorderRightStyle(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Double"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let decoded = match expected {
+                "Double" => CssBorderStyle::Double,
+                _ => panic!("unknown captured keyword"),
+            };
+            assert_eq!(typed, &decoded);
+        }
+        (
+            CssKnownProperty::BorderBottomStyle,
+            CssKnownPropertyValueRef::BorderBottomStyle(value),
+        ) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Ridge"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let decoded = match expected {
+                "Ridge" => CssBorderStyle::Ridge,
+                _ => panic!("unknown captured keyword"),
+            };
+            assert_eq!(typed, &decoded);
+        }
+        (CssKnownProperty::BorderLeftStyle, CssKnownPropertyValueRef::BorderLeftStyle(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Outset"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let decoded = match expected {
+                "Outset" => CssBorderStyle::Outset,
+                _ => panic!("unknown captured keyword"),
+            };
+            assert_eq!(typed, &decoded);
+        }
+        (CssKnownProperty::BorderRadius, CssKnownPropertyValueRef::BorderRadius(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(
+                    expected,
+                    "CssBorderRadii { top_left: CssCornerRadius { horizontal: Px(CssFiniteNumber { value: 1.0 }), vertical: Px(CssFiniteNumber { value: 4.0 }) }, top_right: CssCornerRadius { horizontal: Px(CssFiniteNumber { value: 2.0 }), vertical: Px(CssFiniteNumber { value: 5.0 }) }, bottom_right: CssCornerRadius { horizontal: Px(CssFiniteNumber { value: 3.0 }), vertical: Px(CssFiniteNumber { value: 4.0 }) }, bottom_left: CssCornerRadius { horizontal: Px(CssFiniteNumber { value: 2.0 }), vertical: Px(CssFiniteNumber { value: 5.0 }) } }"
+                ),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_eq!(typed.horizontal_values().len(), 3);
+            assert_eq!(typed.authored_vertical_values().unwrap().len(), 2);
+            for (component, expected) in typed.horizontal_values().iter().zip(["1", "2", "3"]) {
+                assert_archive_literal(
+                    component.literal_component().unwrap(),
+                    expected,
+                    Some("px"),
+                );
+            }
+            for (component, expected) in typed
+                .authored_vertical_values()
+                .unwrap()
+                .iter()
+                .zip(["4", "5"])
+            {
+                assert_archive_literal(
+                    component.literal_component().unwrap(),
+                    expected,
+                    Some("px"),
+                );
+            }
+            for (corner, (h, v)) in [
+                typed.top_left(),
+                typed.top_right(),
+                typed.bottom_right(),
+                typed.bottom_left(),
+            ]
+            .into_iter()
+            .zip([("1", "4"), ("2", "5"), ("3", "4"), ("2", "5")])
+            {
+                assert_archive_literal(
+                    corner.horizontal().literal_component().unwrap(),
+                    h,
+                    Some("px"),
+                );
+                assert_archive_literal(
+                    corner.vertical().literal_component().unwrap(),
+                    v,
+                    Some("px"),
+                );
+            }
+        }
+        (
+            CssKnownProperty::BorderTopLeftRadius,
+            CssKnownPropertyValueRef::BorderTopLeftRadius(value),
+        ) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(
+                    expected,
+                    "CssCornerRadius { horizontal: Px(CssFiniteNumber { value: 4.0 }), vertical: Percent(CssFiniteNumber { value: 10.0 }) }"
+                ),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_archive_literal(
+                typed.horizontal().literal_component().unwrap(),
+                "4",
+                Some("px"),
+            );
+            assert_archive_literal(
+                typed
+                    .authored_vertical()
+                    .unwrap()
+                    .literal_component()
+                    .unwrap(),
+                "10",
+                Some("%"),
+            );
+        }
+        (
+            CssKnownProperty::BorderTopRightRadius,
+            CssKnownPropertyValueRef::BorderTopRightRadius(value),
+        ) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(
+                    expected,
+                    "CssCornerRadius { horizontal: Px(CssFiniteNumber { value: 1.0 }), vertical: Px(CssFiniteNumber { value: 1.0 }) }"
+                ),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_archive_literal(
+                typed.horizontal().literal_component().unwrap(),
+                "1",
+                Some("px"),
+            );
+            assert!(typed.authored_vertical().is_none());
+            assert_eq!(typed.horizontal(), typed.vertical());
+        }
+        (
+            CssKnownProperty::BorderBottomRightRadius,
+            CssKnownPropertyValueRef::BorderBottomRightRadius(value),
+        ) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(
+                    expected,
+                    "CssCornerRadius { horizontal: Percent(CssFiniteNumber { value: 10.0 }), vertical: Percent(CssFiniteNumber { value: 10.0 }) }"
+                ),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_archive_literal(
+                typed.horizontal().literal_component().unwrap(),
+                "10",
+                Some("%"),
+            );
+            assert!(typed.authored_vertical().is_none());
+            assert_eq!(typed.horizontal(), typed.vertical());
+        }
+        (CssKnownProperty::FlexGrow, CssKnownPropertyValueRef::FlexGrow(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(
+                    expected,
+                    "CssFlexFactor { value: CssNonNegativeNumber { value: CssFiniteNumber { value: 2.0 } } }"
+                ),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.factor();
+            assert_archive_literal(typed.literal_component().unwrap(), "2", None);
+        }
+        (CssKnownProperty::FlexShrink, CssKnownPropertyValueRef::FlexShrink(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(
+                    expected,
+                    "CssFlexFactor { value: CssNonNegativeNumber { value: CssFiniteNumber { value: 0.0 } } }"
+                ),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.factor();
+            assert_archive_literal(typed.literal_component().unwrap(), "0", None);
+        }
+        (CssKnownProperty::Flex, CssKnownPropertyValueRef::Flex(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(
+                    expected,
+                    "Components { grow: CssFlexFactor { value: CssNonNegativeNumber { value: CssFiniteNumber { value: 2.0 } } }, shrink: Some(CssFlexFactor { value: CssNonNegativeNumber { value: CssFiniteNumber { value: 0.0 } } }), basis: Some(Dimension(CssLengthDimension { value: CssFiniteNumber { value: 10.0 }, unit: Rem })) }"
+                ),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let CssFlexValue::Components(components) = typed else {
+                panic!("captured flex components");
+            };
+            assert_archive_literal(
+                components.grow().unwrap().literal_component().unwrap(),
+                "2",
+                None,
+            );
+            assert_archive_literal(
+                components.shrink().unwrap().literal_component().unwrap(),
+                "0",
+                None,
+            );
+            assert_archive_basis(components.basis().unwrap());
+        }
+        (CssKnownProperty::JustifyTracks, CssKnownPropertyValueRef::JustifyTracks(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "SpaceEvenly"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_eq!(*typed, CssAlignmentValue::SpaceEvenly);
+        }
+        (CssKnownProperty::AlignTracks, CssKnownPropertyValueRef::AlignTracks(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Center"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_eq!(
+                *typed,
+                CssAlignmentValue::Position {
+                    overflow: None,
+                    position: CssAlignmentPosition::Center
+                }
+            );
+        }
+        (CssKnownProperty::AspectRatio, CssKnownPropertyValueRef::AspectRatio(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(
+                    expected,
+                    "CssAspectRatio { value: CssFiniteNumber { value: 1.5 } }"
+                ),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.ratio();
+            let CssAspectRatioValue::Ratio(ratio) = typed else {
+                panic!("captured ratio");
+            };
+            assert!(ratio.denominator().is_none());
+            assert_archive_literal(ratio.numerator().literal_component().unwrap(), "1.5", None);
+        }
+        (CssKnownProperty::ScrollbarWidth, CssKnownPropertyValueRef::ScrollbarWidth(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Thin"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let decoded = match expected {
+                "Thin" => CssScrollbarWidth::Thin,
+                _ => panic!("unknown captured keyword"),
+            };
+            assert_eq!(typed, &decoded);
+        }
+        (CssKnownProperty::Cursor, CssKnownPropertyValueRef::Cursor(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Keyword(Grab)"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_eq!(typed, &CssCursor::Keyword(CssCursorKeyword::Grab));
+        }
+        (CssKnownProperty::PointerEvents, CssKnownPropertyValueRef::PointerEvents(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "None"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let decoded = match expected {
+                "None" => CssPointerEvents::None,
+                _ => panic!("unknown captured keyword"),
+            };
+            assert_eq!(typed, &decoded);
+        }
+        (CssKnownProperty::UserSelect, CssKnownPropertyValueRef::UserSelect(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Text"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let decoded = match expected {
+                "Text" => CssUserSelect::Text,
+                _ => panic!("unknown captured keyword"),
+            };
+            assert_eq!(typed, &decoded);
+        }
+        (CssKnownProperty::OutlineWidth, CssKnownPropertyValueRef::OutlineWidth(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Length(Px(CssFiniteNumber { value: 2.0 }))"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let CssOutlineWidth::Length(length) = typed else {
+                panic!("captured outline width");
+            };
+            assert_captured_px(length, 2.0);
+        }
+        (CssKnownProperty::Translate, CssKnownPropertyValueRef::Translate(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(
+                    expected,
+                    "Values(CssTranslateValues { values: [Px(CssFiniteNumber { value: 10.0 }), Px(CssFiniteNumber { value: 20.0 })] })"
+                ),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let CssTranslate::Values(values) = typed else {
+                panic!("captured translate");
+            };
+            let [x, y] = values.values() else {
+                panic!("two captured translate coordinates");
+            };
+            assert_captured_px(x, 10.0);
+            assert_captured_px(y, 20.0);
+        }
+        (CssKnownProperty::Rotate, CssKnownPropertyValueRef::Rotate(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Value(\"45deg\")"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            assert_eq!(typed, &CssRotate::Value("45deg".to_owned()));
+        }
+        (CssKnownProperty::Scale, CssKnownPropertyValueRef::Scale(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Values(CssScaleValues { values: [1.5, 2.0] })"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let CssScale::Values(values) = typed else {
+                panic!("captured scale");
+            };
+            assert_eq!(values.values(), &[1.5, 2.0]);
+        }
+        (CssKnownProperty::OutlineStyle, CssKnownPropertyValueRef::OutlineStyle(value)) => {
+            assert_archive_wrapper(property, value.as_css(), semantic, authored);
+            let expected = semantic
+                .expect("captured semantic value")
+                .payload
+                .strip_prefix("typed:")
+                .unwrap();
+            assert!(
+                matches!(expected, "Auto"),
+                "unknown archived {property:?} expectation: {expected}"
+            );
+            let typed = value.value();
+            let decoded = match expected {
+                "Auto" => CssOutlineStyle::Auto,
+                _ => panic!("unknown captured keyword"),
+            };
+            assert_eq!(typed, &decoded);
+        }
+        _ => panic!(
+            "{}: no decoded expectation for {property:?}",
+            frozen.case_id
+        ),
+    }
 }
 fn global_keyword_css(keyword: surgeist_css::CssGlobalKeyword) -> &'static str {
     match keyword {
@@ -4978,4 +6386,55 @@ fn assert_strict_parity(row: &Row) {
         }
         _ => unreachable!(),
     }
+}
+
+fn assert_archive_wrapper(
+    property: surgeist_css::CssKnownProperty,
+    css: &str,
+    semantic: Option<FrozenSemanticValue<'_>>,
+    authored: &AuthoredDeclaration<'_>,
+) {
+    assert_eq!(authored.id, property.stable_id());
+    assert_eq!(authored.value_capability, "deferred-i01");
+    assert_ne!(authored.value, "<unavailable>");
+    assert_eq!(css, authored.value);
+    assert_eq!(semantic.unwrap().id, property.stable_id());
+}
+fn assert_archive_literal(
+    component: &surgeist_css::CssComponentValue,
+    expected: &str,
+    expected_unit: Option<&str>,
+) {
+    use surgeist_css::{CssComponentValueRef, CssValueTokenRef};
+    let (number, unit) = match component.view() {
+        CssComponentValueRef::Token(CssValueTokenRef::Number(number)) => (number, None),
+        CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) => (number, Some("%")),
+        CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) => {
+            (number, Some(unit))
+        }
+        _ => panic!("captured literal numeric leaf"),
+    };
+    assert_eq!(number.representation(), expected);
+    assert_eq!(unit, expected_unit);
+}
+fn assert_archive_width(width: &surgeist_css::CssBorderWidth, expected: &str) {
+    let surgeist_css::CssBorderWidth::Length(length) = width else {
+        panic!("captured exact border width");
+    };
+    assert_archive_literal(length.literal_component().unwrap(), expected, Some("px"));
+}
+fn assert_archive_inset(inset: &surgeist_css::CssInsetValue, expected: &str, unit: Option<&str>) {
+    let surgeist_css::CssInsetValue::LengthPercentage(length) = inset else {
+        panic!("captured inset literal");
+    };
+    assert_archive_literal(length.literal_component().unwrap(), expected, unit);
+}
+fn assert_archive_basis(basis: &surgeist_css::CssFlexBasisValue) {
+    use surgeist_css::{CssBoxSize, CssFlexBasisRef, CssSizeValue};
+    let CssFlexBasisRef::Size(CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length))) =
+        basis.view()
+    else {
+        panic!("captured flex basis");
+    };
+    assert_archive_literal(length.literal_component().unwrap(), "10", Some("rem"));
 }

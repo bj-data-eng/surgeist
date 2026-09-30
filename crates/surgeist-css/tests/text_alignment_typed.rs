@@ -19,7 +19,7 @@ fn shorthand(value: &str) -> CssTextAlignValue {
     else {
         panic!("text-align current value")
     };
-    value.current().clone()
+    value.value().clone()
 }
 
 fn all(value: &str) -> CssTextAlignAllValue {
@@ -29,7 +29,7 @@ fn all(value: &str) -> CssTextAlignAllValue {
     else {
         panic!("text-align-all current value")
     };
-    value.current().clone()
+    value.value().clone()
 }
 
 fn last(value: &str) -> CssTextAlignLastValue {
@@ -39,7 +39,7 @@ fn last(value: &str) -> CssTextAlignLastValue {
     else {
         panic!("text-align-last current value")
     };
-    *value.current()
+    *value.value()
 }
 
 fn assigned(value: &str) -> (CssTextAlignAllValue, CssTextAlignLastValue) {
@@ -265,33 +265,53 @@ fn invalid_decoded_clusters_components_and_literal_bad_newlines_are_rejected() {
 }
 
 #[test]
-fn legacy_i01_projections_keep_their_frozen_types_and_boundaries() {
+fn parsed_alignment_values_keep_keywords_and_character_domains() {
     for (text, expected) in [
-        ("start", Some(CssTextAlign::Start)),
-        ("match-parent", Some(CssTextAlign::MatchParent)),
-        ("justify-all", None),
-        ("\".\"", None),
+        (
+            "start",
+            CssTextAlignValue::Alignment(CssTextAlignAllValue::Keyword(CssTextAlign::Start)),
+        ),
+        (
+            "match-parent",
+            CssTextAlignValue::Alignment(CssTextAlignAllValue::Keyword(CssTextAlign::MatchParent)),
+        ),
+        ("justify-all", CssTextAlignValue::JustifyAll),
     ] {
         let source = one("text-align", text);
-        let Some(CssKnownPropertyValueRef::TextAlign(value)) =
-            source.known().unwrap().property_value()
+        let CssKnownPropertyValueRef::TextAlign(value) =
+            source.known().unwrap().property_value().unwrap()
         else {
-            panic!("wrapper")
+            panic!("alignment")
         };
-        assert_eq!(value.i01_subset().copied(), expected);
+        assert_eq!(value.value(), &expected);
     }
+    let source = one("text-align", "\".\"");
+    let CssKnownPropertyValueRef::TextAlign(value) =
+        source.known().unwrap().property_value().unwrap()
+    else {
+        panic!("alignment")
+    };
+    assert!(
+        matches!(value.value(), CssTextAlignValue::Alignment(CssTextAlignAllValue::Character(character)) if character.decoded() == "." && character.authored_fallback().is_none())
+    );
     for (text, expected) in [
-        ("auto", Some(CssTextAlignLast::Auto)),
-        ("justify", Some(CssTextAlignLast::Justify)),
-        ("match-parent", None),
+        ("auto", CssTextAlignLastValue::Auto),
+        (
+            "justify",
+            CssTextAlignLastValue::Keyword(CssTextAlign::Justify),
+        ),
+        (
+            "match-parent",
+            CssTextAlignLastValue::Keyword(CssTextAlign::MatchParent),
+        ),
     ] {
         let source = one("text-align-last", text);
-        let Some(CssKnownPropertyValueRef::TextAlignLast(value)) =
-            source.known().unwrap().property_value()
+        let CssKnownPropertyValueRef::TextAlignLast(value) =
+            source.known().unwrap().property_value().unwrap()
         else {
-            panic!("wrapper")
+            panic!("last alignment")
         };
-        assert_eq!(value.i01_subset().copied(), expected);
+        assert_eq!(value.value(), &expected);
     }
 }
 

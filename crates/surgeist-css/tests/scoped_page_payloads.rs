@@ -27,7 +27,7 @@ fn assert_margin(page: &CssPageRule) {
     else {
         panic!("typed margin")
     };
-    let [top, right, bottom, left] = value.current().assigned_values();
+    let [top, right, bottom, left] = value.value().assigned_values();
     for (side, expected) in [(top, "-1px"), (right, "2%"), (left, "3cm")] {
         let CssMarginValue::LengthPercentage(length_percentage) = side else {
             panic!("exact page margin literal")

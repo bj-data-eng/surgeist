@@ -3,7 +3,7 @@
 mod font_face_support;
 
 use surgeist_css::{
-    CssAnimationName, CssContent, CssContentItem, CssErrorCode, CssFontFamilyNameKind,
+    CssAnimationName, CssContentValue, CssContentValueItem, CssErrorCode, CssFontFamilyNameKind,
     CssGlobalKeyword, CssImageValue, CssKnownDeclaredValueRef, CssKnownPropertyValueRef,
     CssNthPattern, CssPseudoClass, CssRecoveryAction, CssRule, CssSelector, CssSupportStatus,
     CssSupportsConditionKind, CssUrlModifier, feature_metadata, parse_sheet, parse_style_attribute,
@@ -157,9 +157,9 @@ fn c14_remaining_shared_values_are_typed() {
         panic!("expected content");
     };
     assert!(matches!(
-        content.i01_subset(),
-        Some(CssContent::Items(items))
-            if matches!(items.items(), [CssContentItem::String(value)] if value.as_str() == "line\nbreak")
+        content.value(),
+        CssContentValue::Generated(items)
+            if matches!(items.items(), [CssContentValueItem::String(value)] if value.as_str() == "line\nbreak")
     ));
 
     let rejected_url = parse_style_attribute("background-image: url(theme.css cors); width: 2px");

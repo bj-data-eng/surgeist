@@ -239,17 +239,17 @@ fn is_css2_page_margin_value(parsed: &ParsedDeclaration) -> bool {
     };
     match known.property_value() {
         Some(CssKnownPropertyValueRef::Margin(value)) => {
-            value.current().kind() == CssBoxSideKind::Physical
+            value.value().kind() == CssBoxSideKind::Physical
                 && value
-                    .current()
+                    .value()
                     .assigned_values()
                     .into_iter()
                     .all(is_css2_page_margin)
         }
-        Some(CssKnownPropertyValueRef::MarginTop(value)) => is_css2_page_margin(value.current()),
-        Some(CssKnownPropertyValueRef::MarginRight(value)) => is_css2_page_margin(value.current()),
-        Some(CssKnownPropertyValueRef::MarginBottom(value)) => is_css2_page_margin(value.current()),
-        Some(CssKnownPropertyValueRef::MarginLeft(value)) => is_css2_page_margin(value.current()),
+        Some(CssKnownPropertyValueRef::MarginTop(value)) => is_css2_page_margin(value.value()),
+        Some(CssKnownPropertyValueRef::MarginRight(value)) => is_css2_page_margin(value.value()),
+        Some(CssKnownPropertyValueRef::MarginBottom(value)) => is_css2_page_margin(value.value()),
+        Some(CssKnownPropertyValueRef::MarginLeft(value)) => is_css2_page_margin(value.value()),
         _ => false,
     }
 }

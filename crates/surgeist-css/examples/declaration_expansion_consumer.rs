@@ -23,8 +23,8 @@ use surgeist_css::{
     CssLength, CssLonghandContribution, CssLonghandContributions, CssLonghandValueRef,
     CssPendingSubstitution, CssPredefinedColorSpace, CssPropertyNameRef, CssPropertyValueErrorKind,
     CssSerializedOrigin, CssSpecifiedNonNegativeLength, CssTextAlign, CssTextAlignAllValue,
-    CssTextAlignLastValue, CssUnresolvedStandard, CssValueOrigin, expand_declaration,
-    parse_component_values, parse_property_value, parse_style_attribute,
+    CssTextAlignLastValue, CssTextAlignValue, CssUnresolvedStandard, CssValueOrigin,
+    expand_declaration, parse_component_values, parse_property_value, parse_style_attribute,
 };
 
 const MARGINS: [Property; 4] = [
@@ -292,14 +292,14 @@ fn four_sided_length_shorthands() {
                 CssKnownPropertyValueRef::Margin(value) => {
                     assert_eq!(value.as_css(), css);
                     value
-                        .current()
+                        .value()
                         .assigned_values()
                         .map(|side| side.serialize_specified().unwrap())
                 }
                 CssKnownPropertyValueRef::Padding(value) => {
                     assert_eq!(value.as_css(), css);
                     value
-                        .current()
+                        .value()
                         .assigned_values()
                         .map(|side| side.serialize_specified().unwrap())
                 }
@@ -330,7 +330,7 @@ fn four_sided_length_shorthands() {
         };
         assert_eq!(
             authored
-                .current()
+                .value()
                 .assigned_values()
                 .map(|width| width.serialize_specified().unwrap()),
             expected.map(|n| format!("{n}px"))
@@ -350,7 +350,7 @@ fn four_sided_length_shorthands() {
     };
     assert_eq!(
         authored
-            .current()
+            .value()
             .assigned_values()
             .map(|side| side.serialize_specified().unwrap()),
         ["auto", "10%", "-3px", "10%"]
@@ -404,11 +404,11 @@ fn four_sided_styles_and_current_colors() {
             panic!("authored border style")
         };
         assert_eq!(
-            authored.current().kind(),
+            authored.value().kind(),
             surgeist_css::CssBoxSideKind::Physical
         );
         assert_eq!(
-            authored.current().assigned_values().map(|value| *value),
+            authored.value().assigned_values().map(|value| *value),
             expected
         );
         assert_eq!(
@@ -975,7 +975,7 @@ fn strict_reentry_rejects_atomically_and_preserves_out_of_slice_identity() {
     else {
         panic!("original text-align declaration");
     };
-    assert_eq!(value.i01_subset(), None);
+    assert_eq!(value.value(), &CssTextAlignValue::JustifyAll);
     assert_eq!(value.as_css(), "justify-all");
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
         expand_declaration(&source).unwrap()

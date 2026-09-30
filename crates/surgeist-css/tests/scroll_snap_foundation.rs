@@ -484,14 +484,14 @@ fn snap_models_retain_optional_components_and_serialize_selected_keywords() {
         panic!("typed snap type")
     };
     assert_eq!(
-        *value.current(),
+        *value.value(),
         CssScrollSnapType::axis(
             CssScrollSnapAxis::Block,
             Some(CssScrollSnapStrictness::Proximity)
         )
     );
     assert_eq!(value.as_css(), "BlOcK PrOxImItY");
-    assert_eq!(value.current().serialize_specified().unwrap(), "block");
+    assert_eq!(value.value().serialize_specified().unwrap(), "block");
     assert_eq!(
         CssScrollSnapType::axis(CssScrollSnapAxis::X, None)
             .serialize_specified()
@@ -518,13 +518,13 @@ fn snap_models_retain_optional_components_and_serialize_selected_keywords() {
     else {
         panic!("typed snap alignment")
     };
-    assert_eq!(value.current().block(), CssScrollSnapAlignment::Start);
+    assert_eq!(value.value().block(), CssScrollSnapAlignment::Start);
     assert_eq!(
-        value.current().authored_inline(),
+        value.value().authored_inline(),
         Some(CssScrollSnapAlignment::Start)
     );
-    assert_eq!(value.current().inline(), CssScrollSnapAlignment::Start);
-    assert_eq!(value.current().serialize_specified().unwrap(), "start");
+    assert_eq!(value.value().inline(), CssScrollSnapAlignment::Start);
+    assert_eq!(value.value().serialize_specified().unwrap(), "start");
     let one = CssScrollSnapAlign::new(CssScrollSnapAlignment::End, None);
     assert_eq!(one.authored_inline(), None);
     assert_eq!(one.inline(), CssScrollSnapAlignment::End);
@@ -554,10 +554,10 @@ fn snap_models_retain_optional_components_and_serialize_selected_keywords() {
         panic!("typed scroll margin top")
     };
     assert!(matches!(
-        value.current().origin(),
+        value.value().origin(),
         CssValueOrigin::Programmatic
     ));
-    assert_eq!(value.current().serialize_specified().unwrap(), "-2px");
+    assert_eq!(value.value().serialize_specified().unwrap(), "-2px");
 }
 
 #[test]

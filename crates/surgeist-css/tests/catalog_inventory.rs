@@ -281,18 +281,15 @@ fn authored_property_cases_exercise_public_parser_behavior() {
             assert_eq!(known.property().stable_id(), vector.id);
             match known.property_value().expect("typed overflow value") {
                 CssKnownPropertyValueRef::Overflow(value) => {
-                    assert_eq!(value.current().x(), CssOverflow::Auto);
-                    assert_eq!(value.current().authored_y(), None);
-                    assert_eq!(value.current().y(), CssOverflow::Auto);
-                    assert!(value.i01_subset().is_none());
+                    assert_eq!(value.value().x(), CssOverflow::Auto);
+                    assert_eq!(value.value().authored_y(), None);
+                    assert_eq!(value.value().y(), CssOverflow::Auto);
                 }
                 CssKnownPropertyValueRef::OverflowX(value) => {
-                    assert_eq!(*value.current(), CssOverflow::Auto);
-                    assert!(value.i01_subset().is_none());
+                    assert_eq!(*value.value(), CssOverflow::Auto);
                 }
                 CssKnownPropertyValueRef::OverflowY(value) => {
-                    assert_eq!(*value.current(), CssOverflow::Auto);
-                    assert!(value.i01_subset().is_none());
+                    assert_eq!(*value.value(), CssOverflow::Auto);
                 }
                 other => panic!("{} wrong current overflow value: {other:?}", vector.id),
             }

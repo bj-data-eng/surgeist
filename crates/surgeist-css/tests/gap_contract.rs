@@ -50,7 +50,7 @@ fn row_value(declaration: &CssDeclaration) -> CssGapValue {
     else {
         panic!("row-gap wrapper")
     };
-    wrapper.current().clone()
+    wrapper.value().clone()
 }
 
 fn column_value(declaration: &CssDeclaration) -> CssGapValue {
@@ -62,7 +62,7 @@ fn column_value(declaration: &CssDeclaration) -> CssGapValue {
     else {
         panic!("column-gap wrapper")
     };
-    wrapper.current().clone()
+    wrapper.value().clone()
 }
 
 fn gap_value(declaration: &CssDeclaration) -> CssGapShorthand {
@@ -74,7 +74,7 @@ fn gap_value(declaration: &CssDeclaration) -> CssGapShorthand {
     else {
         panic!("gap wrapper")
     };
-    wrapper.current().clone()
+    wrapper.value().clone()
 }
 
 #[test]

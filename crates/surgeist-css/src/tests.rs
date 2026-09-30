@@ -1,9 +1,9 @@
 use super::*;
 use crate::test_support::{
     AcceptedDeclarationCase, AcceptedValueCase, ExpectedErrorKind, RejectedDeclarationCase,
-    RejectedSheetCase, assert_accepts_declarations, assert_accepts_value_cases,
-    assert_rejects_declarations, assert_rejects_sheets, assert_sheet_rejected,
-    parse_single_declaration,
+    RejectedSheetCase, SemanticPropertyTestExt, assert_accepts_declarations,
+    assert_accepts_value_cases, assert_rejects_declarations, assert_rejects_sheets,
+    assert_sheet_rejected, parse_single_declaration,
 };
 
 fn source_position(line: u32, column: u32) -> CssSourcePosition {
@@ -45,6 +45,56 @@ fn oblique_angle(spelling: &str) -> CssFontObliqueAngle {
         .expect("valid exact oblique angle")
 }
 
+fn content_counter_name(spelling: &str) -> CssContentCounterName {
+    CssContentCounterName::try_new(CssIdent::try_new(spelling).unwrap()).unwrap()
+}
+
+fn counter_style(spelling: &str) -> CssCounterStyleValue {
+    CssCounterStyleValue::try_named(CssIdent::try_new(spelling).unwrap()).unwrap()
+}
+
+fn nonnegative_number(spelling: &str) -> CssSpecifiedNonNegativeNumber {
+    CssSpecifiedNonNegativeNumber::try_from_component(
+        CssComponentValue::try_number(spelling).unwrap(),
+    )
+    .unwrap()
+}
+
+fn number_spelling(component: &CssComponentValue) -> &str {
+    let CssComponentValueRef::Token(CssValueTokenRef::Number(number)) = component.view() else {
+        panic!("expected exact number token");
+    };
+    number.representation()
+}
+
+fn assert_length_literal(
+    component: &CssComponentValue,
+    expected_number: &str,
+    expected_unit: &str,
+) {
+    let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) =
+        component.view()
+    else {
+        panic!("expected exact dimension token");
+    };
+    assert_eq!(number.representation(), expected_number);
+    assert_eq!(unit, expected_unit);
+}
+
+fn assert_percentage_literal(component: &CssComponentValue, expected_number: &str) {
+    let CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) = component.view() else {
+        panic!("expected exact percentage token");
+    };
+    assert_eq!(number.representation(), expected_number);
+}
+
+fn assert_integer_literal(value: &CssIntegerValue, expected: &str) {
+    let CssIntegerValue::Literal(integer) = value else {
+        panic!("expected exact integer literal")
+    };
+    assert_eq!(integer.numeric().representation(), expected);
+}
+
 macro_rules! face_value {
     ($descriptors:expr, $kind:ident) => {{
         let descriptor = $descriptors
@@ -60,96 +110,6 @@ macro_rules! face_value {
 }
 
 macro_rules! declaration_value {
-    ($input:expr, Opacity) => {
-        semantic_value!($input, Opacity)
-    };
-    ($input:expr, Order) => {
-        semantic_value!($input, Order)
-    };
-    ($input:expr, ZIndex) => {
-        semantic_value!($input, ZIndex)
-    };
-    ($input:expr, Color) => {
-        semantic_value!($input, Color)
-    };
-    ($input:expr, BackgroundImage) => {
-        semantic_accessor_value!($input, BackgroundImage, images)
-    };
-    ($input:expr, MaskImage) => {
-        semantic_accessor_value!($input, MaskImage, images)
-    };
-    ($input:expr, BackgroundColor) => {
-        semantic_value!($input, BackgroundColor)
-    };
-    ($input:expr, BorderColor) => {
-        semantic_value!($input, BorderColor)
-    };
-    ($input:expr, OutlineColor) => {
-        semantic_value!($input, OutlineColor)
-    };
-    ($input:expr, TextDecorationColor) => {
-        semantic_value!($input, TextDecorationColor)
-    };
-    ($input:expr, TextDecoration) => {
-        semantic_value!($input, TextDecoration)
-    };
-    ($input:expr, Outline) => {
-        semantic_value!($input, Outline)
-    };
-    ($input:expr, Filter) => {
-        semantic_value!($input, Filter)
-    };
-    ($input:expr, BackdropFilter) => {
-        semantic_value!($input, BackdropFilter)
-    };
-    ($input:expr, Border) => {
-        semantic_value!($input, Border)
-    };
-    ($input:expr, BorderTop) => {
-        semantic_value!($input, BorderTop)
-    };
-    ($input:expr, BorderRight) => {
-        semantic_value!($input, BorderRight)
-    };
-    ($input:expr, BorderBottom) => {
-        semantic_value!($input, BorderBottom)
-    };
-    ($input:expr, BorderLeft) => {
-        semantic_value!($input, BorderLeft)
-    };
-    ($input:expr, BoxShadow) => {
-        semantic_value!($input, BoxShadow)
-    };
-    ($input:expr, Transform) => {
-        semantic_value!($input, Transform)
-    };
-    ($input:expr, ClipPath) => {
-        semantic_value!($input, ClipPath)
-    };
-    ($input:expr, Mask) => {
-        semantic_value!($input, Mask)
-    };
-    ($input:expr, BackgroundPosition) => {
-        semantic_accessor_value!($input, BackgroundPosition, positions)
-    };
-    ($input:expr, BackgroundSize) => {
-        semantic_accessor_value!($input, BackgroundSize, sizes)
-    };
-    ($input:expr, BackgroundRepeat) => {
-        semantic_accessor_value!($input, BackgroundRepeat, repeats)
-    };
-    ($input:expr, BackgroundOrigin) => {
-        semantic_accessor_value!($input, BackgroundOrigin, boxes)
-    };
-    ($input:expr, BackgroundClip) => {
-        semantic_accessor_value!($input, BackgroundClip, boxes)
-    };
-    ($input:expr, BackgroundAttachment) => {
-        semantic_accessor_value!($input, BackgroundAttachment, attachments)
-    };
-    ($input:expr, TransformOrigin) => {
-        semantic_accessor_value!($input, TransformOrigin, origin)
-    };
     ($input:expr, $variant:ident) => {{
         let declaration = declaration($input, CssProperty::$variant);
         let value = declaration
@@ -159,21 +119,7 @@ macro_rules! declaration_value {
         let CssKnownPropertyValueRef::$variant(value) = value else {
             panic!("property wrapper did not match requested property");
         };
-        value.i01_subset().expect("I01 property payload").clone()
-    }};
-}
-
-macro_rules! semantic_accessor_value {
-    ($input:expr, $variant:ident, $accessor:ident) => {{
-        let declaration = declaration($input, CssProperty::$variant);
-        let CssKnownPropertyValueRef::$variant(value) = declaration
-            .known()
-            .and_then(|known| known.property_value())
-            .expect("ordinary semantic value")
-        else {
-            panic!("semantic wrapper did not match requested property");
-        };
-        value.$accessor().clone()
+        value.semantic_value().clone()
     }};
 }
 
@@ -187,7 +133,7 @@ macro_rules! semantic_value {
         let CssKnownPropertyValueRef::$variant(value) = value else {
             panic!("property wrapper did not match requested property");
         };
-        value.value().clone()
+        value.semantic_value().clone()
     }};
 }
 
@@ -215,7 +161,7 @@ macro_rules! spacing_value {
         let CssKnownPropertyValueRef::$variant(value) = value else {
             panic!("spacing wrapper did not match requested property");
         };
-        value.current().clone()
+        value.semantic_value().clone()
     }};
 }
 
@@ -227,7 +173,7 @@ macro_rules! sizing_value {
         else {
             panic!("checked width")
         };
-        value.current().clone()
+        value.semantic_value().clone()
     }};
 }
 
@@ -248,38 +194,11 @@ macro_rules! single_declaration_value {
         let CssKnownPropertyValueRef::$variant(value) = value else {
             panic!("property wrapper did not match requested property");
         };
-        value.i01_subset().expect("I01 property payload").clone()
+        value.semantic_value().clone()
     }};
 }
 
 macro_rules! declaration_payload {
-    ($declaration:expr, Opacity) => {{
-        let declaration = &$declaration;
-        let CssKnownPropertyValueRef::Opacity(value) =
-            declaration.known().unwrap().property_value().unwrap()
-        else {
-            panic!("semantic property")
-        };
-        value.value().clone()
-    }};
-    ($declaration:expr, Order) => {{
-        let declaration = &$declaration;
-        let CssKnownPropertyValueRef::Order(value) =
-            declaration.known().unwrap().property_value().unwrap()
-        else {
-            panic!("semantic property")
-        };
-        value.value().clone()
-    }};
-    ($declaration:expr, ZIndex) => {{
-        let declaration = &$declaration;
-        let CssKnownPropertyValueRef::ZIndex(value) =
-            declaration.known().unwrap().property_value().unwrap()
-        else {
-            panic!("semantic property")
-        };
-        value.value().clone()
-    }};
     ($declaration:expr, $variant:ident) => {{
         let declaration = &$declaration;
         let value = declaration
@@ -289,7 +208,7 @@ macro_rules! declaration_payload {
         let CssKnownPropertyValueRef::$variant(value) = value else {
             panic!("property wrapper did not match requested property");
         };
-        value.i01_subset().expect("I01 property payload").clone()
+        value.semantic_value().clone()
     }};
 }
 
@@ -310,10 +229,9 @@ macro_rules! timing_payload {
 macro_rules! declaration_global {
     ($input:expr, $variant:ident) => {{
         let declaration = declaration($input, CssProperty::$variant);
-        declaration
-            .known()
-            .and_then(|known| known.global())
-            .expect("global declaration value")
+        let known = declaration.known().expect("known global declaration");
+        assert!(known.property_value().is_none());
+        known.global().expect("global declaration value")
     }};
 }
 
@@ -1775,68 +1693,91 @@ fn custom_property_name_constructor_preserves_case_and_rejects_non_custom_names(
 
 #[test]
 fn list_counter_and_content_models_preserve_authored_shapes() {
-    let counter_name = CssCounterName::try_new("section").unwrap();
-    let counter_style =
-        CssCounterStyle::Named(CssCounterStyleName::try_new("chapter-style").unwrap());
-    let counter = CssCounterFunction::new(counter_name.clone(), Some(counter_style.clone()));
+    let counter_name = content_counter_name("section");
+    let counter_style = counter_style("chapter-style");
+    let counter = CssContentCounter::new(counter_name.clone(), Some(counter_style.clone()));
     assert_eq!(counter.name(), &counter_name);
     assert_eq!(counter.style(), Some(&counter_style));
 
     let separator = CssContentString::try_new(".").unwrap();
     let counters =
-        CssCountersFunction::new(counter_name.clone(), separator.clone(), Some(counter_style));
+        CssContentCounters::new(counter_name.clone(), separator.clone(), Some(counter_style));
     assert_eq!(counters.name(), &counter_name);
     assert_eq!(counters.separator(), &separator);
     assert!(counters.style().is_some());
 
-    let attr = CssAttributeName::try_new("data-label").unwrap();
-    let content_list = CssContentList::try_new(vec![
-        CssContentItem::String(CssContentString::try_new("Chapter ").unwrap()),
-        CssContentItem::Counter(counter),
-        CssContentItem::Counters(counters),
-        CssContentItem::Attr(attr.clone()),
-        CssContentItem::Url(CssUrl::try_new("marker.svg").unwrap()),
-        CssContentItem::OpenQuote,
-        CssContentItem::CloseQuote,
-        CssContentItem::NoOpenQuote,
-        CssContentItem::NoCloseQuote,
-    ])
+    let content_list = CssGeneratedContent::try_new(
+        vec![
+            CssContentValueItem::String(CssContentString::try_new("Chapter ").unwrap()),
+            CssContentValueItem::Counter(counter),
+            CssContentValueItem::Counters(counters),
+            CssContentValueItem::Contents,
+            CssContentValueItem::Image(
+                CssImage::try_new(CssImageValue::Url(CssUrl::try_new("marker.svg").unwrap()))
+                    .unwrap(),
+            ),
+            CssContentValueItem::OpenQuote,
+            CssContentValueItem::CloseQuote,
+            CssContentValueItem::NoOpenQuote,
+            CssContentValueItem::NoCloseQuote,
+        ],
+        None,
+    )
     .unwrap();
     assert_eq!(content_list.items().len(), 9);
-    let list_style = CssListStyle::try_new(
-        Some(CssListStyleType::String(
+    assert!(content_list.alternative().is_none());
+    let [
+        CssContentValueItem::String(prefix),
+        CssContentValueItem::Counter(counter),
+        CssContentValueItem::Counters(counters),
+        CssContentValueItem::Contents,
+        CssContentValueItem::Image(image),
+        CssContentValueItem::OpenQuote,
+        CssContentValueItem::CloseQuote,
+        CssContentValueItem::NoOpenQuote,
+        CssContentValueItem::NoCloseQuote,
+    ] = content_list.items()
+    else {
+        panic!("expected authored generated content order");
+    };
+    assert_eq!(prefix.as_str(), "Chapter ");
+    assert_eq!(counter.name(), &counter_name);
+    assert_eq!(counters.separator(), &separator);
+    let CssImageValue::Url(url) = image.value() else {
+        panic!("expected generated content image URL");
+    };
+    assert_eq!(url.as_str(), "marker.svg");
+    let list_style = CssListStyleValue::try_new(
+        Some(CssListStyleTypeValue::String(
             CssContentString::try_new("*").unwrap(),
         )),
         Some(CssListStylePosition::Inside),
-        Some(CssListStyleImage::Url(
-            CssUrl::try_new("bullet.svg").unwrap(),
-        )),
+        Some(CssImageValue::Url(CssUrl::try_new("bullet.svg").unwrap())),
     )
     .unwrap();
     assert!(matches!(
         list_style.style_type(),
-        Some(CssListStyleType::String(_))
+        Some(CssListStyleTypeValue::String(_))
     ));
     assert_eq!(list_style.position(), Some(CssListStylePosition::Inside));
-    assert!(matches!(
-        list_style.image(),
-        Some(CssListStyleImage::Url(_))
-    ));
-    let counter_change = CssCounterChange::new(counter_name.clone(), Some(4));
+    assert!(matches!(list_style.image(), Some(CssImageValue::Url(_))));
+    let counter_change = CssCounterChangeValue::new(
+        counter_name.clone(),
+        Some(CssIntegerValue::Literal(CssIntegerLiteral::from_i32(4))),
+    );
     assert_eq!(counter_change.name(), &counter_name);
-    assert_eq!(counter_change.value(), Some(4));
-    let changes = CssCounterChangeList::try_new(vec![counter_change]).unwrap();
-    assert_eq!(changes.changes().len(), 1);
-    assert_eq!(changes.changes()[0].name(), &counter_name);
+    assert_integer_literal(counter_change.value().unwrap(), "4");
+    let changes = CssCounterChangesValue::try_changes(vec![counter_change]).unwrap();
+    assert_eq!(changes.changes().unwrap().len(), 1);
+    assert_eq!(changes.changes().unwrap()[0].name(), &counter_name);
 }
 
 #[test]
 fn list_counter_and_content_constructors_reject_invalid_states() {
     assert_eq!(CssContentString::try_new("bad\0string"), None);
-    assert_eq!(CssContentList::try_new(Vec::new()), None);
-    assert_eq!(CssCounterChangeList::try_new(Vec::new()), None);
-    assert_eq!(CssCounterChanges::try_changes(Vec::new()), None);
-    assert_eq!(CssListStyle::try_new(None, None, None), None);
+    assert_eq!(CssGeneratedContent::try_new(Vec::new(), None), None);
+    assert_eq!(CssCounterChangesValue::try_changes(Vec::new()), None);
+    assert_eq!(CssListStyleValue::try_new(None, None, None), None);
 
     for name in [
         "",
@@ -1847,12 +1788,15 @@ fn list_counter_and_content_constructors_reject_invalid_states() {
         "revert-layer",
         "none",
     ] {
-        assert_eq!(CssCounterName::try_new(name), None, "{name:?} rejected");
+        assert_eq!(
+            CssIdent::try_new(name)
+                .ok()
+                .and_then(CssContentCounterName::try_new),
+            None,
+            "{name:?} rejected"
+        );
     }
-    assert_eq!(
-        CssCounterName::try_new("list-item").unwrap().as_str(),
-        "list-item"
-    );
+    assert_eq!(content_counter_name("list-item").as_str(), "list-item");
 }
 
 #[test]
@@ -1906,84 +1850,108 @@ fn counter_style_name_constructor_uses_counter_style_ident_rules() {
 #[test]
 fn parses_generated_content_values_symbolically() {
     let cases = [
-        ("content normal", "normal", CssContent::Normal),
-        ("content none", "none", CssContent::None),
+        ("content normal", "normal", CssContentValue::Normal),
+        ("content none", "none", CssContentValue::None),
         (
             "content string",
             "\"Chapter \"",
-            CssContent::Items(
-                CssContentList::try_new(vec![CssContentItem::String(
-                    CssContentString::try_new("Chapter ").unwrap(),
-                )])
+            CssContentValue::Generated(
+                CssGeneratedContent::try_new(
+                    vec![CssContentValueItem::String(
+                        CssContentString::try_new("Chapter ").unwrap(),
+                    )],
+                    None,
+                )
                 .unwrap(),
             ),
         ),
         (
             "content url",
             "url(marker.svg)",
-            CssContent::Items(
-                CssContentList::try_new(vec![CssContentItem::Url(
-                    CssUrl::try_new("marker.svg").unwrap(),
-                )])
+            CssContentValue::Generated(
+                CssGeneratedContent::try_new(
+                    vec![CssContentValueItem::Image(
+                        CssImage::try_new(CssImageValue::Url(
+                            CssUrl::try_new("marker.svg").unwrap(),
+                        ))
+                        .unwrap(),
+                    )],
+                    None,
+                )
                 .unwrap(),
             ),
         ),
         (
             "content counter",
             "counter(section)",
-            CssContent::Items(
-                CssContentList::try_new(vec![CssContentItem::Counter(CssCounterFunction::new(
-                    CssCounterName::try_new("section").unwrap(),
+            CssContentValue::Generated(
+                CssGeneratedContent::try_new(
+                    vec![CssContentValueItem::Counter(CssContentCounter::new(
+                        content_counter_name("section"),
+                        None,
+                    ))],
                     None,
-                ))])
+                )
                 .unwrap(),
             ),
         ),
         (
             "content counter with style",
             "counter(section, upper-roman)",
-            CssContent::Items(
-                CssContentList::try_new(vec![CssContentItem::Counter(CssCounterFunction::new(
-                    CssCounterName::try_new("section").unwrap(),
-                    Some(CssCounterStyle::BuiltIn(CssBuiltInCounterStyle::UpperRoman)),
-                ))])
+            CssContentValue::Generated(
+                CssGeneratedContent::try_new(
+                    vec![CssContentValueItem::Counter(CssContentCounter::new(
+                        content_counter_name("section"),
+                        Some(counter_style("upper-roman")),
+                    ))],
+                    None,
+                )
                 .unwrap(),
             ),
         ),
         (
             "content counters",
             "counters(section, \".\")",
-            CssContent::Items(
-                CssContentList::try_new(vec![CssContentItem::Counters(CssCountersFunction::new(
-                    CssCounterName::try_new("section").unwrap(),
-                    CssContentString::try_new(".").unwrap(),
+            CssContentValue::Generated(
+                CssGeneratedContent::try_new(
+                    vec![CssContentValueItem::Counters(CssContentCounters::new(
+                        content_counter_name("section"),
+                        CssContentString::try_new(".").unwrap(),
+                        None,
+                    ))],
                     None,
-                ))])
+                )
                 .unwrap(),
             ),
         ),
         (
             "content counters with style",
             "counters(section, \".\", lower-alpha)",
-            CssContent::Items(
-                CssContentList::try_new(vec![CssContentItem::Counters(CssCountersFunction::new(
-                    CssCounterName::try_new("section").unwrap(),
-                    CssContentString::try_new(".").unwrap(),
-                    Some(CssCounterStyle::BuiltIn(CssBuiltInCounterStyle::LowerAlpha)),
-                ))])
+            CssContentValue::Generated(
+                CssGeneratedContent::try_new(
+                    vec![CssContentValueItem::Counters(CssContentCounters::new(
+                        content_counter_name("section"),
+                        CssContentString::try_new(".").unwrap(),
+                        Some(counter_style("lower-alpha")),
+                    ))],
+                    None,
+                )
                 .unwrap(),
             ),
         ),
         (
             "content quote keywords",
             "open-quote close-quote no-open-quote no-close-quote",
-            CssContent::Items(
-                CssContentList::try_new(vec![
-                    CssContentItem::OpenQuote,
-                    CssContentItem::CloseQuote,
-                    CssContentItem::NoOpenQuote,
-                    CssContentItem::NoCloseQuote,
-                ])
+            CssContentValue::Generated(
+                CssGeneratedContent::try_new(
+                    vec![
+                        CssContentValueItem::OpenQuote,
+                        CssContentValueItem::CloseQuote,
+                        CssContentValueItem::NoOpenQuote,
+                        CssContentValueItem::NoCloseQuote,
+                    ],
+                    None,
+                )
                 .unwrap(),
             ),
         ),
@@ -2011,6 +1979,7 @@ fn content_attribute_reference_retains_pending_authored_components() {
             .substitution_dependent()
             .expect("valid attr() remains pending until attribute substitution");
         assert_eq!(pending.as_css(), authored);
+        assert!(declaration.known().unwrap().property_value().is_none());
         let components = declaration.value_components();
         assert!(!components.items().is_empty());
         assert_eq!(components.serialize().unwrap().as_css().trim(), authored);
@@ -2025,17 +1994,15 @@ fn content_attribute_reference_retains_pending_authored_components() {
 fn parses_list_style_longhands_and_shorthand_symbolically() {
     assert_eq!(
         single_declaration_value!("list-style-type", ListStyleType, "square"),
-        CssListStyleType::CounterStyle(CssCounterStyle::BuiltIn(CssBuiltInCounterStyle::Square,))
+        CssListStyleTypeValue::CounterStyle(counter_style("square"))
     );
     assert_eq!(
         single_declaration_value!("list-style-type", ListStyleType, "custom-counter"),
-        CssListStyleType::CounterStyle(CssCounterStyle::Named(
-            CssCounterStyleName::try_new("custom-counter").unwrap(),
-        ))
+        CssListStyleTypeValue::CounterStyle(counter_style("custom-counter"))
     );
     assert_eq!(
         single_declaration_value!("list-style-type", ListStyleType, "\"*\""),
-        CssListStyleType::String(CssContentString::try_new("*").unwrap(),)
+        CssListStyleTypeValue::String(CssContentString::try_new("*").unwrap(),)
     );
     assert_eq!(
         single_declaration_value!("list-style-position", ListStylePosition, "inside"),
@@ -2043,47 +2010,45 @@ fn parses_list_style_longhands_and_shorthand_symbolically() {
     );
     assert_eq!(
         single_declaration_value!("list-style-image", ListStyleImage, "url(marker.svg)"),
-        CssListStyleImage::Url(CssUrl::try_new("marker.svg").unwrap(),)
+        CssImageValue::Url(CssUrl::try_new("marker.svg").unwrap(),)
     );
 
     let list_style =
         single_declaration_value!("list-style", ListStyle, "url(marker.svg) inside square");
     assert_eq!(
         list_style.style_type(),
-        Some(&CssListStyleType::CounterStyle(CssCounterStyle::BuiltIn(
-            CssBuiltInCounterStyle::Square,
+        Some(&CssListStyleTypeValue::CounterStyle(counter_style(
+            "square"
         )))
     );
     assert_eq!(list_style.position(), Some(CssListStylePosition::Inside));
     assert_eq!(
         list_style.image(),
-        Some(&CssListStyleImage::Url(
-            CssUrl::try_new("marker.svg").unwrap()
-        ))
+        Some(&CssImageValue::Url(CssUrl::try_new("marker.svg").unwrap()))
     );
 
     let list_style = single_declaration_value!("list-style", ListStyle, "none inside");
-    assert_eq!(list_style.style_type(), Some(&CssListStyleType::None));
-    assert_eq!(list_style.image(), Some(&CssListStyleImage::None));
+    assert_eq!(list_style.style_type(), Some(&CssListStyleTypeValue::None));
+    assert_eq!(list_style.image(), Some(&CssImageValue::None));
     assert_eq!(list_style.position(), Some(CssListStylePosition::Inside));
 
     let list_style = single_declaration_value!("list-style", ListStyle, "none");
-    assert_eq!(list_style.style_type(), Some(&CssListStyleType::None));
-    assert_eq!(list_style.image(), Some(&CssListStyleImage::None));
+    assert_eq!(list_style.style_type(), Some(&CssListStyleTypeValue::None));
+    assert_eq!(list_style.image(), Some(&CssImageValue::None));
     assert_eq!(list_style.position(), None);
 
     for authored_value in ["square none", "none square"] {
         let list_style = single_declaration_value!("list-style", ListStyle, authored_value);
         assert_eq!(
             list_style.style_type(),
-            Some(&CssListStyleType::CounterStyle(CssCounterStyle::BuiltIn(
-                CssBuiltInCounterStyle::Square,
+            Some(&CssListStyleTypeValue::CounterStyle(counter_style(
+                "square"
             ))),
             "{authored_value}"
         );
         assert_eq!(
             list_style.image(),
-            Some(&CssListStyleImage::None),
+            Some(&CssImageValue::None),
             "{authored_value}"
         );
         assert_eq!(list_style.position(), None, "{authored_value}");
@@ -2093,14 +2058,12 @@ fn parses_list_style_longhands_and_shorthand_symbolically() {
         let list_style = single_declaration_value!("list-style", ListStyle, authored_value);
         assert_eq!(
             list_style.style_type(),
-            Some(&CssListStyleType::None),
+            Some(&CssListStyleTypeValue::None),
             "{authored_value}"
         );
         assert_eq!(
             list_style.image(),
-            Some(&CssListStyleImage::Url(
-                CssUrl::try_new("marker.svg").unwrap()
-            )),
+            Some(&CssImageValue::Url(CssUrl::try_new("marker.svg").unwrap())),
             "{authored_value}"
         );
         assert_eq!(list_style.position(), None, "{authored_value}");
@@ -2111,7 +2074,7 @@ fn parses_list_style_longhands_and_shorthand_symbolically() {
 fn parses_counter_change_values_symbolically() {
     assert_eq!(
         single_declaration_value!("counter-reset", CounterReset, "none"),
-        CssCounterChanges::None
+        CssCounterChangesValue::none()
     );
 
     for property in ["counter-reset", "counter-increment", "counter-set"] {
@@ -2129,16 +2092,14 @@ fn parses_counter_change_values_symbolically() {
             }
             _ => unreachable!(),
         };
-        let CssCounterChanges::Changes(changes) = value else {
-            panic!("{property} should parse counter changes");
-        };
-        assert_eq!(changes.changes().len(), 3, "{property}");
-        assert_eq!(changes.changes()[0].name().as_str(), "section");
-        assert_eq!(changes.changes()[0].value(), Some(2));
-        assert_eq!(changes.changes()[1].name().as_str(), "page");
-        assert_eq!(changes.changes()[1].value(), Some(-1));
-        assert_eq!(changes.changes()[2].name().as_str(), "item");
-        assert_eq!(changes.changes()[2].value(), None);
+        let changes = value.changes().expect("nonempty counter changes");
+        assert_eq!(changes.len(), 3, "{property}");
+        assert_eq!(changes[0].name().as_str(), "section");
+        assert_integer_literal(changes[0].value().unwrap(), "2");
+        assert_eq!(changes[1].name().as_str(), "page");
+        assert_integer_literal(changes[1].value().unwrap(), "-1");
+        assert_eq!(changes[2].name().as_str(), "item");
+        assert_eq!(changes[2].value(), None);
     }
 }
 
@@ -2161,30 +2122,24 @@ fn public_api_exposes_generated_content_list_style_and_counter_values() {
         .iter()
         .find(|declaration| declaration.property() == CssProperty::Content)
         .unwrap();
-    let CssContent::Items(content_list) = declaration_payload!(*content, Content) else {
+    let CssContentValue::Generated(content_list) = declaration_payload!(*content, Content) else {
         panic!("expected content item list");
     };
     let [
-        CssContentItem::String(prefix),
-        CssContentItem::Counter(counter),
-        CssContentItem::Counters(counters),
-        CssContentItem::OpenQuote,
+        CssContentValueItem::String(prefix),
+        CssContentValueItem::Counter(counter),
+        CssContentValueItem::Counters(counters),
+        CssContentValueItem::OpenQuote,
     ] = content_list.items()
     else {
         panic!("expected inspectable generated content items");
     };
     assert_eq!(prefix.as_str(), "Chapter ");
     assert_eq!(counter.name().as_str(), "section");
-    assert!(matches!(
-        counter.style(),
-        Some(CssCounterStyle::BuiltIn(CssBuiltInCounterStyle::UpperRoman))
-    ));
+    assert_eq!(counter.style(), Some(&counter_style("upper-roman")));
     assert_eq!(counters.name().as_str(), "item");
     assert_eq!(counters.separator().as_str(), ".");
-    assert!(matches!(
-        counters.style(),
-        Some(CssCounterStyle::BuiltIn(CssBuiltInCounterStyle::LowerAlpha))
-    ));
+    assert_eq!(counters.style(), Some(&counter_style("lower-alpha")));
 
     let CssSelector::Compound(selector) = style.selectors().selectors()[0].selector() else {
         panic!("expected compound pseudo-element selector");
@@ -2202,12 +2157,12 @@ fn public_api_exposes_generated_content_list_style_and_counter_values() {
     let list_style = declaration_payload!(*list_style, ListStyle);
     assert_eq!(
         list_style.style_type(),
-        Some(&CssListStyleType::CounterStyle(CssCounterStyle::BuiltIn(
-            CssBuiltInCounterStyle::Square,
+        Some(&CssListStyleTypeValue::CounterStyle(counter_style(
+            "square"
         )))
     );
     assert_eq!(list_style.position(), Some(CssListStylePosition::Inside));
-    let Some(CssListStyleImage::Url(marker)) = list_style.image() else {
+    let Some(CssImageValue::Url(marker)) = list_style.image() else {
         panic!("expected marker URL slot");
     };
     assert_eq!(marker.as_str(), "marker.svg");
@@ -2217,17 +2172,14 @@ fn public_api_exposes_generated_content_list_style_and_counter_values() {
         .iter()
         .find(|declaration| declaration.property() == CssProperty::CounterReset)
         .unwrap();
-    let CssCounterChanges::Changes(changes) = declaration_payload!(*counter_reset, CounterReset)
-    else {
-        panic!("expected counter change list");
-    };
-    let [section, page, item] = changes.changes() else {
+    let changes = declaration_payload!(*counter_reset, CounterReset);
+    let [section, page, item] = changes.changes().unwrap() else {
         panic!("expected three counter changes");
     };
     assert_eq!(section.name().as_str(), "section");
-    assert_eq!(section.value(), Some(1));
+    assert_integer_literal(section.value().unwrap(), "1");
     assert_eq!(page.name().as_str(), "page");
-    assert_eq!(page.value(), Some(-1));
+    assert_integer_literal(page.value().unwrap(), "-1");
     assert_eq!(item.name().as_str(), "item");
     assert_eq!(item.value(), None);
 }
@@ -2262,7 +2214,7 @@ fn rejects_invalid_generated_content_and_list_counter_forms() {
 }
 
 #[test]
-fn current_content_accepts_generated_lists_replacement_and_symbols_style() {
+fn content_accepts_generated_lists_replacement_and_symbols_style() {
     for (authored, expected) in [
         ("\"x\" / \"alt\"", "\"x\" / \"alt\""),
         ("contents", "contents"),
@@ -2280,8 +2232,69 @@ fn current_content_accepts_generated_lists_replacement_and_symbols_style() {
         else {
             panic!("expected typed content for {authored}");
         };
-        assert!(matches!(wrapper.current(), CssContentValue::Generated(_)));
-        assert_eq!(wrapper.current().serialize_specified().unwrap(), expected);
+        let CssContentValue::Generated(generated) = wrapper.value() else {
+            panic!("expected generated content for {authored}");
+        };
+        match authored {
+            "\"x\" / \"alt\"" => {
+                let [CssContentValueItem::String(text)] = generated.items() else {
+                    panic!("expected single generated string");
+                };
+                assert_eq!(text.as_str(), "x");
+                let [CssContentAlternativeItem::String(alternative)] =
+                    generated.alternative().unwrap().items()
+                else {
+                    panic!("expected single alternative string");
+                };
+                assert_eq!(alternative.as_str(), "alt");
+            }
+            "contents" => {
+                assert_eq!(generated.items(), &[CssContentValueItem::Contents]);
+                assert!(generated.alternative().is_none());
+            }
+            "linear-gradient(red, blue)" => {
+                let CssGeneratedContentBodyRef::Replacement(image) = generated.body() else {
+                    panic!("expected sole image replacement");
+                };
+                let CssImageValue::Gradient(CssGradient::Linear(gradient)) = image.value() else {
+                    panic!("expected linear replacement gradient");
+                };
+                assert!(gradient.direction().is_none());
+                let [
+                    CssColorStopListItem::Stop(red),
+                    CssColorStopListItem::Stop(blue),
+                ] = gradient.stops().items()
+                else {
+                    panic!("expected two ordered replacement colors");
+                };
+                assert_eq!(red.color().named().unwrap().name(), "red");
+                assert_eq!(blue.color().named().unwrap().name(), "blue");
+                assert!(red.position().is_none());
+                assert!(blue.position().is_none());
+                assert!(generated.alternative().is_none());
+            }
+            _ => {
+                let [CssContentValueItem::Counter(counter)] = generated.items() else {
+                    panic!("expected single generated counter");
+                };
+                assert_eq!(counter.name().as_str(), "item");
+                let Some(CssCounterStyleValue::Symbols(style)) = counter.style() else {
+                    panic!("expected symbols counter style");
+                };
+                assert_eq!(style.system(), Some(CssSymbolsSystem::Cyclic));
+                let [
+                    CssCounterSymbolValue::String(first),
+                    CssCounterSymbolValue::String(second),
+                ] = style.symbols()
+                else {
+                    panic!("expected ordered counter symbols");
+                };
+                assert_eq!(first.as_str(), "*");
+                assert_eq!(second.as_str(), "+");
+                assert!(generated.alternative().is_none());
+            }
+        }
+        assert_eq!(wrapper.value().serialize_specified().unwrap(), expected);
     }
 }
 
@@ -2369,6 +2382,7 @@ fn custom_values_accept_plain_and_empty_variable_fallback_forms() {
 fn supported_properties_accept_variable_dependent_values_symbolically() {
     let declaration = single_declaration(".panel { gap: var(--space, 8px); }");
     assert_eq!(declaration.property(), &CssProperty::Gap);
+    assert!(declaration.known().unwrap().property_value().is_none());
     let value = declaration
         .known()
         .unwrap()
@@ -2381,6 +2395,7 @@ fn supported_properties_accept_variable_dependent_values_symbolically() {
 fn supported_properties_accept_embedded_variable_dependent_values_symbolically() {
     let declaration = single_declaration(".panel { width: calc(var(--w) + 1px); }");
     assert_eq!(declaration.property(), &CssProperty::Width);
+    assert!(declaration.known().unwrap().property_value().is_none());
     let value = declaration
         .known()
         .unwrap()
@@ -2393,6 +2408,7 @@ fn supported_properties_accept_embedded_variable_dependent_values_symbolically()
 fn variable_dependent_values_skip_post_substitution_validation() {
     let declaration = single_declaration(".panel { color: var(--brand, 8px); }");
     assert_eq!(declaration.property(), &CssProperty::Color);
+    assert!(declaration.known().unwrap().property_value().is_none());
     let value = declaration
         .known()
         .unwrap()
@@ -4945,27 +4961,29 @@ fn rejection_negative_numbers_and_public_constructor_invariants_matrix() {
 
 #[test]
 fn numeric_properties_use_property_specific_authored_models() {
-    assert_eq!(
-        declaration_payload!(single_declaration(".panel { opacity: 0.5; }"), Opacity)
-            .serialize_specified()
-            .unwrap(),
-        "0.5"
+    let opacity = declaration_payload!(single_declaration(".panel { opacity: 0.5; }"), Opacity);
+    let CssOpacityValue::Scalar(opacity) = opacity else {
+        panic!("ordinary opacity scalar")
+    };
+    assert_eq!(opacity.kind(), CssOpacityScalarKind::Number);
+    assert_eq!(opacity.numeric().representation(), "0.5");
+    let grow = declaration_payload!(single_declaration(".panel { flex-grow: 2; }"), FlexGrow);
+    assert_eq!(number_spelling(grow.literal_component().unwrap()), "2");
+    assert!(grow.calculation().is_none());
+    let shrink = declaration_payload!(single_declaration(".panel { flex-shrink: 0; }"), FlexShrink);
+    assert_eq!(number_spelling(shrink.literal_component().unwrap()), "0");
+    let ratio = declaration_payload!(
+        single_declaration(".panel { aspect-ratio: 1.5; }"),
+        AspectRatio
     );
+    let CssAspectRatioValue::Ratio(ratio) = ratio else {
+        panic!("specified ratio")
+    };
     assert_eq!(
-        declaration_payload!(single_declaration(".panel { flex-grow: 2; }"), FlexGrow),
-        CssFlexFactor::try_new(2.0).unwrap()
+        number_spelling(ratio.numerator().literal_component().unwrap()),
+        "1.5"
     );
-    assert_eq!(
-        declaration_payload!(single_declaration(".panel { flex-shrink: 0; }"), FlexShrink),
-        CssFlexFactor::try_new(0.0).unwrap()
-    );
-    assert_eq!(
-        declaration_payload!(
-            single_declaration(".panel { aspect-ratio: 1.5; }"),
-            AspectRatio
-        ),
-        CssAspectRatio::try_new(1.5).unwrap()
-    );
+    assert!(ratio.denominator().is_none());
     assert_eq!(
         declaration_payload!(
             single_declaration(".panel { scrollbar-width: thin; }"),
@@ -4973,15 +4991,16 @@ fn numeric_properties_use_property_specific_authored_models() {
         ),
         CssScrollbarWidth::Thin
     );
+    let exact = CssOpacityScalar::try_from_component(CssComponentValue::try_number("0.5").unwrap())
+        .unwrap();
+    assert_eq!(exact.numeric().representation(), "0.5");
     assert_eq!(
-        CssOpacityScalar::try_from_component(CssComponentValue::try_number("0.5").unwrap())
-            .unwrap()
-            .numeric()
-            .representation(),
-        "0.5"
+        number_spelling(nonnegative_number("2").literal_component().unwrap()),
+        "2"
     );
-    assert_eq!(CssFlexFactor::try_new(2.0).unwrap().value(), 2.0);
-    assert_eq!(CssAspectRatio::try_new(1.5).unwrap().value(), 1.5);
+    let operand =
+        CssRatioOperand::try_from_component(CssComponentValue::try_number("1.5").unwrap()).unwrap();
+    assert_eq!(number_spelling(operand.literal_component().unwrap()), "1.5");
 }
 
 #[test]
@@ -5034,10 +5053,19 @@ fn numeric_property_models_reject_invalid_authored_values() {
         },
     ]);
 
-    assert_eq!(CssFlexFactor::try_new(-1.0), None);
-    assert_eq!(CssFlexFactor::try_new(f32::INFINITY), None);
-    assert_eq!(CssAspectRatio::try_new(0.0), None);
-    assert_eq!(CssAspectRatio::try_new(f32::NEG_INFINITY), None);
+    assert!(
+        CssSpecifiedNonNegativeNumber::try_from_component(
+            CssComponentValue::try_number("-1").unwrap()
+        )
+        .is_err()
+    );
+    assert!(
+        CssRatioOperand::try_from_component(CssComponentValue::try_number("-1").unwrap()).is_err()
+    );
+    assert!(CssComponentValue::try_number("Infinity").is_err());
+    let zero =
+        CssRatioOperand::try_from_component(CssComponentValue::try_number("0").unwrap()).unwrap();
+    assert_eq!(number_spelling(zero.literal_component().unwrap()), "0");
 }
 
 #[test]
@@ -5087,20 +5115,36 @@ fn constructor_invariants_reject_invalid_public_numeric_values() {
         CssCalcLength::Px(CssFiniteNumber::try_new(1.0).unwrap())
     );
 
-    assert_eq!(CssFlexFactor::try_new(f32::NAN), None);
-    assert_eq!(CssFlexFactor::try_new(-1.0), None);
-    assert_eq!(
-        CssFlex::components(
-            CssFlexFactor::try_new(1.0).unwrap(),
-            Some(CssFlexFactor::try_new(0.0).unwrap()),
-            Some(CssLength::px(2.0)),
-        ),
-        CssFlex::Components {
-            grow: CssFlexFactor::try_new(1.0).unwrap(),
-            shrink: Some(CssFlexFactor::try_new(0.0).unwrap()),
-            basis: Some(CssLength::px(2.0)),
-        }
+    assert!(CssComponentValue::try_number("NaN").is_err());
+    assert!(
+        CssSpecifiedNonNegativeNumber::try_from_component(
+            CssComponentValue::try_number("-1").unwrap()
+        )
+        .is_err()
     );
+    let grow = nonnegative_number("1");
+    let shrink = nonnegative_number("0");
+    let basis = CssFlexBasisValue::from(CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(
+        CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+            CssComponentValue::try_token("2px").unwrap(),
+        )
+        .unwrap(),
+    )));
+    let components = CssFlexComponents::try_new(Some(grow), Some(shrink), Some(basis)).unwrap();
+    assert_eq!(
+        number_spelling(components.grow().unwrap().literal_component().unwrap()),
+        "1"
+    );
+    assert_eq!(
+        number_spelling(components.shrink().unwrap().literal_component().unwrap()),
+        "0"
+    );
+    let CssFlexBasisRef::Size(CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length))) =
+        components.basis().unwrap().view()
+    else {
+        panic!("length flex basis")
+    };
+    assert_length_literal(length.literal_component().unwrap(), "2", "px");
 }
 
 #[test]
@@ -7990,7 +8034,7 @@ fn unit_matrix_accepts_every_supported_length_unit_in_ordinary_length_contexts()
         else {
             panic!("checked width")
         };
-        let CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length)) = value.current() else {
+        let CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length)) = value.value() else {
             panic!("ordinary length")
         };
         let Some(component) = length.literal_component() else {
@@ -8014,7 +8058,7 @@ fn unit_matrix_accepts_every_supported_length_unit_in_calc_contexts() {
         else {
             panic!("checked width")
         };
-        let calc = sizing_calculation(value.current());
+        let calc = sizing_calculation(value.value());
         let CssCalculationExpressionRef::NestedCalc(root) = calc.expression() else {
             panic!("expected calc root")
         };
@@ -8254,44 +8298,77 @@ fn parses_position_float_clear_visibility_values() {
 #[test]
 fn parses_content_alignment_and_place_shorthands() {
     assert_eq!(
-        declaration_value!(".panel { align-content: space-between; }", AlignContent),
-        CssAlignment::SpaceBetween
+        declaration_value!(".panel { align-content: space-between; }", AlignContent).value(),
+        CssAlignmentValue::SpaceBetween
     );
     assert_eq!(
-        declaration_value!(".panel { justify-content: safe center; }", JustifyContent),
-        CssAlignment::SafeCenter
+        declaration_value!(".panel { justify-content: safe center; }", JustifyContent).value(),
+        CssAlignmentValue::Position {
+            overflow: Some(CssOverflowPosition::Safe),
+            position: CssAlignmentPosition::Center
+        }
     );
     assert_eq!(
-        declaration_value!(".panel { align-items: first baseline; }", AlignItems),
-        CssAlignItems::FirstBaseline
+        declaration_value!(".panel { align-items: first baseline; }", AlignItems).value(),
+        CssAlignmentValue::Baseline(CssBaselinePosition::First)
+    );
+    let content = declaration_value!(".panel { place-content: center end; }", PlaceContent);
+    assert_eq!(
+        content.align().value(),
+        CssAlignmentValue::Position {
+            overflow: None,
+            position: CssAlignmentPosition::Center
+        }
     );
     assert_eq!(
-        declaration_value!(".panel { place-content: center end; }", PlaceContent),
-        CssPlaceAlignment::content(CssAlignment::Center, CssAlignment::End)
+        content.justify().value(),
+        CssAlignmentValue::Position {
+            overflow: None,
+            position: CssAlignmentPosition::End
+        }
+    );
+    let items = declaration_value!(".panel { place-items: stretch; }", PlaceItems);
+    assert_eq!(items.align().value(), CssAlignmentValue::Stretch);
+    assert_eq!(items.justify().value(), CssAlignmentValue::Stretch);
+    let own = declaration_value!(".panel { place-self: end center; }", PlaceSelf);
+    assert_eq!(
+        own.align().value(),
+        CssAlignmentValue::Position {
+            overflow: None,
+            position: CssAlignmentPosition::End
+        }
     );
     assert_eq!(
-        declaration_value!(".panel { place-items: stretch; }", PlaceItems),
-        CssPlaceAlignment::items_all(CssAlignItems::Stretch)
-    );
-    assert_eq!(
-        declaration_value!(".panel { place-self: end center; }", PlaceSelf),
-        CssPlaceAlignment::items(CssAlignItems::End, CssAlignItems::Center)
+        own.justify().value(),
+        CssAlignmentValue::Position {
+            overflow: None,
+            position: CssAlignmentPosition::Center
+        }
     );
 }
 
 #[test]
 fn preserves_explicit_safe_alignment_values() {
     assert_eq!(
-        declaration_value!(".panel { align-items: safe end; }", AlignItems),
-        CssAlignItems::SafeEnd
+        declaration_value!(".panel { align-items: safe end; }", AlignItems).value(),
+        CssAlignmentValue::Position {
+            overflow: Some(CssOverflowPosition::Safe),
+            position: CssAlignmentPosition::End
+        }
     );
     assert_eq!(
-        declaration_value!(".panel { align-self: safe flex-end; }", AlignSelf),
-        CssAlignItems::SafeFlexEnd
+        declaration_value!(".panel { align-self: safe flex-end; }", AlignSelf).value(),
+        CssAlignmentValue::Position {
+            overflow: Some(CssOverflowPosition::Safe),
+            position: CssAlignmentPosition::FlexEnd
+        }
     );
     assert_eq!(
-        declaration_value!(".panel { justify-content: safe center; }", JustifyContent),
-        CssAlignment::SafeCenter
+        declaration_value!(".panel { justify-content: safe center; }", JustifyContent).value(),
+        CssAlignmentValue::Position {
+            overflow: Some(CssOverflowPosition::Safe),
+            position: CssAlignmentPosition::Center
+        }
     );
 }
 
@@ -8426,8 +8503,8 @@ fn parses_authored_normal_gap_without_canonicalizing_it() {
     else {
         panic!("gap wrapper")
     };
-    assert_eq!(value.current().row(), &CssGapValue::Normal);
-    assert!(value.current().authored_column().is_none());
+    assert_eq!(value.value().row(), &CssGapValue::Normal);
+    assert!(value.value().authored_column().is_none());
     assert_eq!(value.as_css(), "normal");
 }
 
@@ -8439,7 +8516,7 @@ fn parses_authored_calc_gap_without_canonicalizing_it() {
     else {
         panic!("gap wrapper")
     };
-    match value.current().row() {
+    match value.value().row() {
         CssGapValue::LengthPercentage(length) => {
             assert!(length.calculation().is_some());
             assert_eq!(value.as_css(), "calc(8px + 2%)");
@@ -8474,11 +8551,11 @@ fn parses_typography_and_text_keyword_families() {
     );
     assert_eq!(
         declaration_value!(".panel { text-align: start; }", TextAlign),
-        CssTextAlign::Start
+        CssTextAlignValue::Alignment(CssTextAlignAllValue::Keyword(CssTextAlign::Start))
     );
     assert_eq!(
         declaration_value!(".panel { text-align-last: justify; }", TextAlignLast),
-        CssTextAlignLast::Justify
+        CssTextAlignLastValue::Keyword(CssTextAlign::Justify)
     );
     assert_eq!(
         declaration_value!(".panel { text-wrap: balance; }", TextWrap),
@@ -8518,7 +8595,7 @@ fn parses_typography_and_text_length_families() {
     );
     assert_eq!(
         declaration_value!(".panel { letter-spacing: normal; }", LetterSpacing),
-        CssLetterSpacing::Normal
+        CssTextSpacingAdjustment::Normal
     );
     let authored = declaration(
         ".panel { letter-spacing: 0.1em; }",
@@ -8533,18 +8610,19 @@ fn parses_typography_and_text_length_families() {
     };
     assert_eq!(spacing.as_css(), "0.1em");
     assert!(matches!(
-        spacing.current(),
+        spacing.value(),
         CssTextSpacingAdjustment::LengthPercentage(value)
             if value.serialize_specified().unwrap() == "0.1em"
     ));
-    assert!(spacing.i01_subset().is_none()); // Decimal 0.1 is not binary32-exact.
-    assert_eq!(
-        declaration_value!(".panel { letter-spacing: 0.25em; }", LetterSpacing),
-        CssLetterSpacing::Length(CssLetterSpacingLength::new(CssLength::dimension(
-            0.25,
-            CssLengthUnit::Em
-        )))
-    );
+    let CssTextSpacingAdjustment::LengthPercentage(length) = spacing.value() else {
+        panic!("exact letter spacing")
+    };
+    assert_length_literal(length.literal_component().unwrap(), "0.1", "em");
+    let spacing = declaration_value!(".panel { letter-spacing: 0.25em; }", LetterSpacing);
+    let CssTextSpacingAdjustment::LengthPercentage(length) = spacing else {
+        panic!("exact letter spacing")
+    };
+    assert_length_literal(length.literal_component().unwrap(), "0.25", "em");
     assert_eq!(
         declaration_value!(
             ".panel { text-decoration-thickness: from-font; }",
@@ -8575,7 +8653,7 @@ fn parses_font_families_and_font_shorthand_as_authored_syntax() {
         .property_value()
         .unwrap()
     else {
-        panic!("expected current font-family");
+        panic!("expected authored font-family");
     };
     let family = value.families();
     assert_eq!(
@@ -8592,10 +8670,10 @@ fn parses_font_families_and_font_shorthand_as_authored_syntax() {
         .known()
         .and_then(|known| known.property_value())
     else {
-        panic!("expected current font-weight");
+        panic!("expected authored font-weight");
     };
     assert_eq!(
-        weight.current(),
+        weight.value(),
         &CssFontWeight::Absolute(CssAbsoluteFontWeight::Number(weight_number("725")))
     );
     let style_declaration = declaration(".panel { font-style: italic; }", CssProperty::FontStyle);
@@ -8603,10 +8681,10 @@ fn parses_font_families_and_font_shorthand_as_authored_syntax() {
         .known()
         .and_then(|known| known.property_value())
     else {
-        panic!("expected current font-style");
+        panic!("expected authored font-style");
     };
     assert_eq!(
-        style.current(),
+        style.value(),
         &CssFontStyle::Keyword(CssFontStyleKeyword::Italic)
     );
     let width_declaration = declaration(
@@ -8617,10 +8695,10 @@ fn parses_font_families_and_font_shorthand_as_authored_syntax() {
         .known()
         .and_then(|known| known.property_value())
     else {
-        panic!("expected current font-width");
+        panic!("expected authored font-width");
     };
     assert_eq!(
-        width.current(),
+        width.value(),
         &CssFontWidth::Keyword(CssFontWidthKeyword::SemiCondensed)
     );
     let variant_declaration = declaration(
@@ -8631,7 +8709,7 @@ fn parses_font_families_and_font_shorthand_as_authored_syntax() {
         .known()
         .and_then(|known| known.property_value())
     else {
-        panic!("expected current font-variant");
+        panic!("expected authored font-variant");
     };
     let CssFontVariantValue::Values(values) = variant.variant() else {
         panic!("expected small-caps subgroup");
@@ -8645,7 +8723,7 @@ fn parses_font_families_and_font_shorthand_as_authored_syntax() {
         .known()
         .and_then(|known| known.property_value())
     else {
-        panic!("expected current font-feature-settings");
+        panic!("expected authored font-feature-settings");
     };
     let CssAuthoredFontFeatureSettings::Features(list) = features.settings() else {
         panic!("expected feature list");
@@ -8667,7 +8745,7 @@ fn parses_font_families_and_font_shorthand_as_authored_syntax() {
     let CssKnownPropertyValueRef::Font(value) =
         font_declaration.known().unwrap().property_value().unwrap()
     else {
-        panic!("expected current font shorthand");
+        panic!("expected authored font shorthand");
     };
     let CssFontValue::Explicit(font) = value.font() else {
         panic!("expected an explicit font");
@@ -8810,9 +8888,11 @@ fn checked_typography_constructors_reject_invalid_states() {
     );
     assert_eq!(feature.tag().as_str(), "kern");
     assert_eq!(CssVerticalAlignLength::try_new(CssLength::Auto), None);
-    assert_eq!(
-        CssLetterSpacingLength::try_new(CssLength::percent(10.0)),
-        None
+    assert!(
+        CssSpecifiedLengthPercentage::try_from_component(
+            CssComponentValue::try_token("auto").unwrap()
+        )
+        .is_err()
     );
     assert_eq!(
         CssTextDecorationThicknessLength::try_new(CssLength::px(-1.0)),
@@ -9512,29 +9592,44 @@ fn accepts_margin_auto() {
 
 #[test]
 fn parses_spacing_inset_and_z_index_values() {
-    assert_eq!(
-        declaration_value!(".panel { inset: auto 10px 5%; }", Inset),
-        CssEdges::new(
-            CssLength::Auto,
-            CssLength::px(10.0),
-            CssLength::percent(5.0),
-            CssLength::px(10.0),
-        )
+    let inset = declaration_value!(".panel { inset: auto 10px 5%; }", Inset);
+    assert_eq!(inset.authored_values().len(), 3);
+    let [top, right, bottom, left] = inset.assigned_values();
+    assert_eq!(top, &CssInsetValue::Auto);
+    assert_length_literal(
+        right
+            .length_percentage()
+            .unwrap()
+            .literal_component()
+            .unwrap(),
+        "10",
+        "px",
     );
-    let CssLength::Calc(CssCalcLength::Typed(top)) =
-        declaration_value!(".panel { top: calc(10px + 5%); }", Top)
-    else {
-        panic!("expected exact inset calculation")
-    };
+    assert_percentage_literal(
+        bottom
+            .length_percentage()
+            .unwrap()
+            .literal_component()
+            .unwrap(),
+        "5",
+    );
+    assert_length_literal(
+        left.length_percentage()
+            .unwrap()
+            .literal_component()
+            .unwrap(),
+        "10",
+        "px",
+    );
+    let top = declaration_value!(".panel { top: calc(10px + 5%); }", Top);
+    let top = top.length_percentage().unwrap().calculation().unwrap();
     assert_eq!(top.result_type(), CssCalculationType::LengthPercentage);
     assert_eq!(top.serialize().unwrap().as_css(), "calc(10px + 5%)");
-    assert_eq!(
-        match declaration_value!(".panel { z-index: -2; }", ZIndex) {
-            CssZIndexValue::Integer(value) => value.serialize_specified().unwrap(),
-            _ => panic!("integer z-index"),
-        },
-        "-2"
-    );
+    let CssZIndexValue::Integer(value) = declaration_value!(".panel { z-index: -2; }", ZIndex)
+    else {
+        panic!("integer z-index")
+    };
+    assert_integer_literal(&value, "-2");
     assert_eq!(
         declaration_value!(
             ".panel { box-decoration-break: clone; }",
@@ -9556,22 +9651,28 @@ fn parses_spacing_longhands_with_existing_component_rules() {
             .unwrap(),
         "12px"
     );
-    assert_eq!(
-        declaration_value!(".panel { border-right-width: 2px; }", BorderRightWidth),
-        CssLength::px(2.0)
-    );
+    let width = declaration_value!(".panel { border-right-width: 2px; }", BorderRightWidth);
+    let CssBorderWidth::Length(length) = width else {
+        panic!("exact border width")
+    };
+    assert_length_literal(length.literal_component().unwrap(), "2", "px");
 }
 
 #[test]
 fn parses_border_style_and_border_shorthand_values() {
+    let styles = declaration_value!(".panel { border-style: solid dashed; }", BorderStyle);
     assert_eq!(
-        declaration_value!(".panel { border-style: solid dashed; }", BorderStyle),
-        CssBorderStyles::new(
-            CssBorderStyle::Solid,
-            CssBorderStyle::Dashed,
-            CssBorderStyle::Solid,
-            CssBorderStyle::Dashed,
-        )
+        styles.authored_values(),
+        &[CssBorderStyle::Solid, CssBorderStyle::Dashed]
+    );
+    assert_eq!(
+        styles.assigned_values(),
+        [
+            &CssBorderStyle::Solid,
+            &CssBorderStyle::Dashed,
+            &CssBorderStyle::Solid,
+            &CssBorderStyle::Dashed
+        ]
     );
     assert_eq!(
         declaration_value!(".panel { border-left-style: groove; }", BorderLeftStyle),
@@ -9597,25 +9698,52 @@ fn parses_border_style_and_border_shorthand_values() {
 
 #[test]
 fn parses_border_radius_shorthand_and_longhands() {
-    assert_eq!(
-        declaration_value!(
-            ".panel { border-top-left-radius: 4px 10%; }",
-            BorderTopLeftRadius
-        ),
-        CssCornerRadius::new(CssLength::px(4.0), CssLength::percent(10.0),)
+    let corner = declaration_value!(
+        ".panel { border-top-left-radius: 4px 10%; }",
+        BorderTopLeftRadius
     );
-    assert_eq!(
-        declaration_value!(
-            ".panel { border-radius: 1px 2px 3px / 4px 5px; }",
-            BorderRadius
-        ),
-        CssBorderRadii::new(
-            CssCornerRadius::new(CssLength::px(1.0), CssLength::px(4.0)),
-            CssCornerRadius::new(CssLength::px(2.0), CssLength::px(5.0)),
-            CssCornerRadius::new(CssLength::px(3.0), CssLength::px(4.0)),
-            CssCornerRadius::new(CssLength::px(2.0), CssLength::px(5.0)),
-        )
+    assert_length_literal(corner.horizontal().literal_component().unwrap(), "4", "px");
+    assert_percentage_literal(
+        corner
+            .authored_vertical()
+            .unwrap()
+            .literal_component()
+            .unwrap(),
+        "10",
     );
+    assert_percentage_literal(corner.vertical().literal_component().unwrap(), "10");
+    let radii = declaration_value!(
+        ".panel { border-radius: 1px 2px 3px / 4px 5px; }",
+        BorderRadius
+    );
+    assert_eq!(radii.horizontal_values().len(), 3);
+    assert_eq!(radii.authored_vertical_values().unwrap().len(), 2);
+    for (corner, horizontal, vertical) in [
+        (radii.top_left(), "1", "4"),
+        (radii.top_right(), "2", "5"),
+        (radii.bottom_right(), "3", "4"),
+        (radii.bottom_left(), "2", "5"),
+    ] {
+        assert_length_literal(
+            corner.horizontal().literal_component().unwrap(),
+            horizontal,
+            "px",
+        );
+        assert_length_literal(
+            corner
+                .authored_vertical()
+                .unwrap()
+                .literal_component()
+                .unwrap(),
+            vertical,
+            "px",
+        );
+        assert_length_literal(
+            corner.vertical().literal_component().unwrap(),
+            vertical,
+            "px",
+        );
+    }
 }
 
 #[test]
@@ -10054,35 +10182,47 @@ fn parses_grid_template_and_grid_shorthands() {
 
 #[test]
 fn parses_order_flex_and_track_alignment() {
+    let order = declaration_value!(".panel { order: -2; }", Order);
+    let CssIntegerValue::Literal(integer) = order else {
+        panic!("exact order integer")
+    };
+    assert_eq!(integer.numeric().representation(), "-2");
+    let flex = declaration_value!(".panel { flex: 2 0 10rem; }", Flex);
+    let CssFlexValue::Components(components) = flex else {
+        panic!("authored flex components")
+    };
     assert_eq!(
-        declaration_value!(".panel { order: -2; }", Order)
-            .serialize_specified()
-            .unwrap(),
-        "-2"
+        number_spelling(components.grow().unwrap().literal_component().unwrap()),
+        "2"
     );
     assert_eq!(
-        declaration_value!(".panel { flex: 2 0 10rem; }", Flex),
-        CssFlex::Components {
-            grow: CssFlexFactor::try_new(2.0).unwrap(),
-            shrink: Some(CssFlexFactor::try_new(0.0).unwrap()),
-            basis: Some(CssLength::dimension(10.0, CssLengthUnit::Rem)),
-        }
+        number_spelling(components.shrink().unwrap().literal_component().unwrap()),
+        "0"
     );
+    let CssFlexBasisRef::Size(CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length))) =
+        components.basis().unwrap().view()
+    else {
+        panic!("length flex basis")
+    };
+    assert_length_literal(length.literal_component().unwrap(), "10", "rem");
     assert_eq!(
         declaration_value!(".panel { flex: none; }", Flex),
-        CssFlex::None
+        CssFlexValue::None
     );
     assert_eq!(
         declaration_value!(".panel { flex: auto; }", Flex),
-        CssFlex::Auto
+        CssFlexValue::Auto
     );
     assert_eq!(
         declaration_value!(".panel { justify-tracks: space-evenly; }", JustifyTracks),
-        CssAlignment::SpaceEvenly
+        CssAlignmentValue::SpaceEvenly
     );
     assert_eq!(
         declaration_value!(".panel { align-tracks: center; }", AlignTracks),
-        CssAlignment::Center
+        CssAlignmentValue::Position {
+            overflow: None,
+            position: CssAlignmentPosition::Center
+        }
     );
 }
 

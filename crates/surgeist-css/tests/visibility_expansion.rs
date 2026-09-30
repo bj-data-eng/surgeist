@@ -198,7 +198,7 @@ fn visibility_existing_keyword_grammar_identity_and_recovery_are_preserved() {
             else {
                 panic!("visibility wrapper")
             };
-            assert_eq!(value.i01_subset(), Some(&expected));
+            assert_eq!(value.value(), &expected);
             assert_eq!(value.as_css(), text);
         }
     }

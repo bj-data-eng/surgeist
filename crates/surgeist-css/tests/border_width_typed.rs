@@ -22,7 +22,7 @@ fn parsed_width(text: &str) -> CssBorderWidth {
     else {
         panic!("typed width")
     };
-    value.current().clone()
+    value.value().clone()
 }
 
 fn red() -> CssColor {
@@ -241,38 +241,36 @@ fn pure_length_calculation_projects_without_a_percentage_basis_or_tree_reinterpr
     else {
         panic!("typed width")
     };
-    let CssBorderWidth::Length(current) = wrapper.current() else {
+    let CssBorderWidth::Length(current) = wrapper.value() else {
         panic!("exact math")
     };
     let original = current.calculation().unwrap();
-    let CssLength::Calc(CssCalcLength::Typed(legacy)) = wrapper.i01_subset().unwrap() else {
-        panic!("typed I01 math")
-    };
-    assert_eq!(legacy.components(), original.components());
-    assert_eq!(legacy.numeric_type(), original.numeric_type());
-    assert_eq!(legacy.numeric_type().percent_hint(), None);
+    let calculation = original;
+    assert!(matches!(calculation.origin(), CssValueOrigin::Parsed(_)));
+    assert_eq!(calculation.numeric_type().percent_hint(), None);
     assert_eq!(
-        legacy
+        calculation
             .numeric_type()
             .exponent(CssNumericDimension::Percentage),
         0
     );
     assert_eq!(
-        legacy.numeric_type().exponent(CssNumericDimension::Length),
+        calculation
+            .numeric_type()
+            .exponent(CssNumericDimension::Length),
         1
     );
-    assert_eq!(legacy.origin(), original.origin());
 }
 
 #[test]
-fn physical_compatibility_projection_never_narrows_exact_literals() {
-    for (text, expected) in [
-        ("1px", true),
-        ("16777216px", true),
-        ("-0px", true),
-        ("1e100px", false),
-        ("1e-100px", false),
-        ("16777216.00000000001px", false),
+fn physical_widths_retain_extreme_literals() {
+    for text in [
+        "1px",
+        "16777216px",
+        "-0px",
+        "1e100px",
+        "1e-100px",
+        "16777216.00000000001px",
     ] {
         let report = parse_style_attribute(&format!("border-top-width:{text}"));
         assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
@@ -284,8 +282,7 @@ fn physical_compatibility_projection_never_narrows_exact_literals() {
         else {
             panic!("physical width")
         };
-        assert_eq!(width.i01_subset().is_some(), expected, "{text}");
-        assert_eq!(width.current(), &parsed_width(text));
+        assert_eq!(width.value(), &parsed_width(text));
     }
     let logical = parse_style_attribute("border-width:logical thin medium");
     assert!(logical.is_clean());
@@ -297,8 +294,7 @@ fn physical_compatibility_projection_never_narrows_exact_literals() {
     else {
         panic!("logical widths")
     };
-    assert!(value.i01_subset().is_none());
-    assert_eq!(value.current().kind(), CssBoxSideKind::Logical);
+    assert_eq!(value.value().kind(), CssBoxSideKind::Logical);
 }
 
 #[test]

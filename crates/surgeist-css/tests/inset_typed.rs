@@ -86,7 +86,7 @@ fn exact_literals_math_and_origin_blind_equality() {
         else {
             panic!("top")
         };
-        assert_eq!(parsed_value.current(), &value);
+        assert_eq!(parsed_value.value(), &value);
         let expected = match text {
             "1e999px" => format!("1{}px", "0".repeat(999)),
             "-1e999%" => format!("-1{}%", "0".repeat(999)),
@@ -99,7 +99,7 @@ fn exact_literals_math_and_origin_blind_equality() {
         assert_eq!(value.serialize_specified().unwrap(), expected);
         assert_eq!(parsed_value.as_css(), text);
         if let CssInsetValue::LengthPercentage(numeric) = &value {
-            assert!(numeric.origin() != parsed_value.current().origin().unwrap());
+            assert!(numeric.origin() != parsed_value.value().origin().unwrap());
         }
     }
     assert_ne!(inset("1px"), inset("1.0px"));
@@ -221,7 +221,7 @@ fn aggregate_serialization_limits_include_each_authored_component() {
 }
 
 #[test]
-fn physical_compatibility_projection_requires_exact_binary32() {
+fn physical_insets_preserve_all_checked_magnitudes() {
     for text in ["1px", "-1px", "1.5px", "10%", "auto", "0"] {
         let source = wrapper("top", text);
         let CssKnownPropertyValueRef::Top(value) =
@@ -229,8 +229,7 @@ fn physical_compatibility_projection_requires_exact_binary32() {
         else {
             panic!("top")
         };
-        assert!(value.i01_subset().is_some(), "{text}");
-        assert_eq!(value.current(), &inset(text));
+        assert_eq!(value.value(), &inset(text));
     }
     for text in ["1e999px", "1e-999px", "16777216.00000000001px"] {
         let source = wrapper("top", text);
@@ -239,8 +238,7 @@ fn physical_compatibility_projection_requires_exact_binary32() {
         else {
             panic!("top")
         };
-        assert!(value.i01_subset().is_none(), "{text}");
-        assert_eq!(value.current(), &inset(text));
+        assert_eq!(value.value(), &inset(text));
     }
     let physical = wrapper("inset", "auto 10px 5%");
     let CssKnownPropertyValueRef::Inset(value) =
@@ -249,26 +247,25 @@ fn physical_compatibility_projection_requires_exact_binary32() {
         panic!("inset")
     };
     assert_eq!(
-        value.i01_subset(),
-        Some(&CssEdges::new(
-            CssLength::Auto,
-            CssLength::try_px(10.0).unwrap(),
-            CssLength::try_percent(5.0).unwrap(),
-            CssLength::try_px(10.0).unwrap()
-        ))
+        value.value().authored_values(),
+        &[inset("auto"), inset("10px"), inset("5%")]
     );
-    assert_eq!(value.current().kind(), CssBoxSideKind::Physical);
+    assert_eq!(value.value().serialize_specified().unwrap(), "auto 10px 5%");
+    assert_eq!(
+        value.value().assigned_values(),
+        [&inset("auto"), &inset("10px"), &inset("5%"), &inset("10px")]
+    );
+    assert_eq!(value.value().kind(), CssBoxSideKind::Physical);
     let logical = wrapper("inset", "logical auto 10px 5%");
     let CssKnownPropertyValueRef::Inset(value) = logical.known().unwrap().property_value().unwrap()
     else {
         panic!("inset")
     };
-    assert!(value.i01_subset().is_none());
-    assert_eq!(value.current().kind(), CssBoxSideKind::Logical);
+    assert_eq!(value.value().kind(), CssBoxSideKind::Logical);
 }
 
 #[test]
-fn physical_wrappers_compare_current_math_without_legacy_diagnostic_origins() {
+fn physical_wrappers_compare_authored_math_without_diagnostic_origins() {
     let first = parse_style_attribute("top:calc(1px + 2%);");
     let second = parse_style_attribute("color:red; top:calc(1px + 2%);");
     assert!(first.is_clean() && second.is_clean());
@@ -287,8 +284,7 @@ fn physical_wrappers_compare_current_math_without_legacy_diagnostic_origins() {
     };
     assert_eq!(left.as_css(), "calc(1px + 2%)");
     assert_eq!(left, right);
-    assert!(left.i01_subset().is_some() && right.i01_subset().is_some());
-    assert_ne!(left.current().origin(), right.current().origin());
+    assert_ne!(left.value().origin(), right.value().origin());
 
     let distinct = wrapper("top", "calc(2% + 1px)");
     let CssKnownPropertyValueRef::Top(distinct) =
@@ -321,5 +317,4 @@ fn physical_wrappers_compare_current_math_without_legacy_diagnostic_origins() {
         panic!("inset")
     };
     assert_eq!(left, right);
-    assert!(left.i01_subset().is_some());
 }

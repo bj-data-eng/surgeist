@@ -4,8 +4,8 @@
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#url-empty
 
 use surgeist_css::{
-    CssComponentValue, CssComponentValues, CssContent, CssContentItem, CssCursor, CssCursorKeyword,
-    CssImageValue, CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssListStyleImage,
+    CssComponentValue, CssComponentValues, CssContentValue, CssContentValueItem, CssCursor,
+    CssCursorKeyword, CssImageValue, CssImportance, CssKnownProperty, CssKnownPropertyValueRef,
     CssMaskLayer, CssMaskList, CssPropertyNameRef, CssRecoveryAction, CssUrl, CssUrlModifier,
     CssValueOrigin, parse_property_value, parse_style_attribute, validate_style_attribute,
 };
@@ -25,17 +25,17 @@ fn assert_url_payload(name: &str, value: CssKnownPropertyValueRef<'_>, expected:
             CssImageValue::Url(url) if url.as_str() == expected
         )),
         CssKnownPropertyValueRef::ListStyleImage(value) => assert!(matches!(
-            value.i01_subset(),
-            Some(CssListStyleImage::Url(url)) if url.as_str() == expected
+            value.value(),
+            CssImageValue::Url(url) if url.as_str() == expected
         )),
         CssKnownPropertyValueRef::Content(value) => assert!(matches!(
-            value.i01_subset(),
-            Some(CssContent::Items(items))
-                if matches!(items.items(), [CssContentItem::Url(url)] if url.as_str() == expected)
+            value.value(),
+            CssContentValue::Generated(items)
+                if matches!(items.items(), [CssContentValueItem::Image(image)] if matches!(image.value(), CssImageValue::Url(url) if url.as_str() == expected))
         )),
         CssKnownPropertyValueRef::Cursor(value) => assert!(matches!(
-            value.i01_subset(),
-            Some(CssCursor::Urls(urls))
+            value.value(),
+            CssCursor::Urls(urls)
                 if matches!(urls.urls().urls(), [url] if url.as_str() == expected)
                     && urls.fallback() == CssCursorKeyword::Auto
         )),
@@ -48,8 +48,8 @@ fn assert_url_payload(name: &str, value: CssKnownPropertyValueRef<'_>, expected:
             Some(CssImageValue::Url(url)) if url.as_str() == expected
         )),
         CssKnownPropertyValueRef::ListStyle(value) => assert!(matches!(
-            value.i01_subset(),
-            Some(style) if matches!(style.image(), Some(CssListStyleImage::Url(url)) if url.as_str() == expected)
+            value.value().image(),
+            Some(CssImageValue::Url(url)) if url.as_str() == expected
         )),
         CssKnownPropertyValueRef::Mask(value) => {
             let expected_mask = CssMaskList::try_new(vec![

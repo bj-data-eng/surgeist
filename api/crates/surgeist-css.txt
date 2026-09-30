@@ -19,37 +19,6 @@ pub surgeist_css::CssAbsoluteFontWeight::Number(surgeist_css::CssFontWeightNumbe
 impl surgeist_css::CssAbsoluteFontWeight
 pub fn surgeist_css::CssAbsoluteFontWeight::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssAbsoluteFontWeight::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
-#[non_exhaustive] pub enum surgeist_css::CssAlignItems
-pub surgeist_css::CssAlignItems::Baseline
-pub surgeist_css::CssAlignItems::Center
-pub surgeist_css::CssAlignItems::End
-pub surgeist_css::CssAlignItems::FirstBaseline
-pub surgeist_css::CssAlignItems::FlexEnd
-pub surgeist_css::CssAlignItems::FlexStart
-pub surgeist_css::CssAlignItems::LastBaseline
-pub surgeist_css::CssAlignItems::Normal
-pub surgeist_css::CssAlignItems::SafeCenter
-pub surgeist_css::CssAlignItems::SafeEnd
-pub surgeist_css::CssAlignItems::SafeFlexEnd
-pub surgeist_css::CssAlignItems::Start
-pub surgeist_css::CssAlignItems::Stretch
-#[non_exhaustive] pub enum surgeist_css::CssAlignment
-pub surgeist_css::CssAlignment::Baseline
-pub surgeist_css::CssAlignment::Center
-pub surgeist_css::CssAlignment::End
-pub surgeist_css::CssAlignment::FirstBaseline
-pub surgeist_css::CssAlignment::FlexEnd
-pub surgeist_css::CssAlignment::FlexStart
-pub surgeist_css::CssAlignment::LastBaseline
-pub surgeist_css::CssAlignment::Normal
-pub surgeist_css::CssAlignment::SafeCenter
-pub surgeist_css::CssAlignment::SafeEnd
-pub surgeist_css::CssAlignment::SafeFlexEnd
-pub surgeist_css::CssAlignment::SpaceAround
-pub surgeist_css::CssAlignment::SpaceBetween
-pub surgeist_css::CssAlignment::SpaceEvenly
-pub surgeist_css::CssAlignment::Start
-pub surgeist_css::CssAlignment::Stretch
 #[non_exhaustive] pub enum surgeist_css::CssAlignmentPosition
 pub surgeist_css::CssAlignmentPosition::Center
 pub surgeist_css::CssAlignmentPosition::End
@@ -331,18 +300,6 @@ pub surgeist_css::CssBreakInside::AvoidRegion
 impl surgeist_css::CssBreakInside
 pub fn surgeist_css::CssBreakInside::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssBreakInside::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
-#[non_exhaustive] pub enum surgeist_css::CssBuiltInCounterStyle
-pub surgeist_css::CssBuiltInCounterStyle::Circle
-pub surgeist_css::CssBuiltInCounterStyle::Decimal
-pub surgeist_css::CssBuiltInCounterStyle::DecimalLeadingZero
-pub surgeist_css::CssBuiltInCounterStyle::Disc
-pub surgeist_css::CssBuiltInCounterStyle::LowerAlpha
-pub surgeist_css::CssBuiltInCounterStyle::LowerLatin
-pub surgeist_css::CssBuiltInCounterStyle::LowerRoman
-pub surgeist_css::CssBuiltInCounterStyle::Square
-pub surgeist_css::CssBuiltInCounterStyle::UpperAlpha
-pub surgeist_css::CssBuiltInCounterStyle::UpperLatin
-pub surgeist_css::CssBuiltInCounterStyle::UpperRoman
 #[non_exhaustive] pub enum surgeist_css::CssCalcLength
 pub surgeist_css::CssCalcLength::Dimension(surgeist_css::CssLengthDimension)
 pub surgeist_css::CssCalcLength::Percent(surgeist_css::CssFiniteNumber)
@@ -736,24 +693,10 @@ pub surgeist_css::CssContainerValueDomain::Ratio
 pub surgeist_css::CssContainerValueDomain::ScrollDirection
 pub surgeist_css::CssContainerValueDomain::Snapped
 pub surgeist_css::CssContainerValueDomain::Stuck
-#[non_exhaustive] pub enum surgeist_css::CssContent
-pub surgeist_css::CssContent::Items(surgeist_css::CssContentList)
-pub surgeist_css::CssContent::None
-pub surgeist_css::CssContent::Normal
 #[non_exhaustive] pub enum surgeist_css::CssContentAlternativeItem
 pub surgeist_css::CssContentAlternativeItem::Counter(surgeist_css::CssContentCounter)
 pub surgeist_css::CssContentAlternativeItem::Counters(surgeist_css::CssContentCounters)
 pub surgeist_css::CssContentAlternativeItem::String(surgeist_css::CssContentString)
-#[non_exhaustive] pub enum surgeist_css::CssContentItem
-pub surgeist_css::CssContentItem::Attr(surgeist_css::CssAttributeName)
-pub surgeist_css::CssContentItem::CloseQuote
-pub surgeist_css::CssContentItem::Counter(surgeist_css::CssCounterFunction)
-pub surgeist_css::CssContentItem::Counters(surgeist_css::CssCountersFunction)
-pub surgeist_css::CssContentItem::NoCloseQuote
-pub surgeist_css::CssContentItem::NoOpenQuote
-pub surgeist_css::CssContentItem::OpenQuote
-pub surgeist_css::CssContentItem::String(surgeist_css::CssContentString)
-pub surgeist_css::CssContentItem::Url(surgeist_css::CssUrl)
 #[non_exhaustive] pub enum surgeist_css::CssContentReferenceMode
 pub surgeist_css::CssContentReferenceMode::After
 pub surgeist_css::CssContentReferenceMode::Before
@@ -807,18 +750,10 @@ pub surgeist_css::CssContributionValueRef::UserAgentInitial(surgeist_css::CssUse
 pub surgeist_css::CssContributions::Custom(surgeist_css::CssCustomPropertyContribution)
 pub surgeist_css::CssContributions::Longhands(surgeist_css::CssLonghandContributions)
 pub surgeist_css::CssContributions::UniversalReset(surgeist_css::CssUniversalReset)
-#[non_exhaustive] pub enum surgeist_css::CssCounterChanges
-pub surgeist_css::CssCounterChanges::Changes(surgeist_css::CssCounterChangeList)
-pub surgeist_css::CssCounterChanges::None
-impl surgeist_css::CssCounterChanges
-pub fn surgeist_css::CssCounterChanges::try_changes(changes: alloc::vec::Vec<surgeist_css::CssCounterChange>) -> core::option::Option<Self>
 #[non_exhaustive] pub enum surgeist_css::CssCounterProperty
 pub surgeist_css::CssCounterProperty::Increment
 pub surgeist_css::CssCounterProperty::Reset
 pub surgeist_css::CssCounterProperty::Set
-#[non_exhaustive] pub enum surgeist_css::CssCounterStyle
-pub surgeist_css::CssCounterStyle::BuiltIn(surgeist_css::CssBuiltInCounterStyle)
-pub surgeist_css::CssCounterStyle::Named(surgeist_css::CssCounterStyleName)
 #[non_exhaustive] pub enum surgeist_css::CssCounterStyleDescriptorRef<'a>
 pub surgeist_css::CssCounterStyleDescriptorRef::AdditiveSymbols(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterAdditiveSymbols>)
 pub surgeist_css::CssCounterStyleDescriptorRef::Fallback(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleName>)
@@ -975,15 +910,6 @@ pub surgeist_css::CssDirection::Rtl
 impl surgeist_css::CssDirection
 pub fn surgeist_css::CssDirection::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssDirection::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
-#[non_exhaustive] pub enum surgeist_css::CssDisplay
-pub surgeist_css::CssDisplay::Block
-pub surgeist_css::CssDisplay::Flex
-pub surgeist_css::CssDisplay::Grid
-pub surgeist_css::CssDisplay::GridLanes
-pub surgeist_css::CssDisplay::InlineBlock
-pub surgeist_css::CssDisplay::InlineGrid
-pub surgeist_css::CssDisplay::InlineGridLanes
-pub surgeist_css::CssDisplay::None
 #[non_exhaustive] pub enum surgeist_css::CssDisplayBox
 pub surgeist_css::CssDisplayBox::Contents
 pub surgeist_css::CssDisplayBox::None
@@ -1144,15 +1070,6 @@ pub surgeist_css::CssFilterNumber::Literal(surgeist_css::CssNonNegativeNumber)
 #[non_exhaustive] pub enum surgeist_css::CssFilterPercentage
 pub surgeist_css::CssFilterPercentage::Calculation(surgeist_css::CssPercentageCalculation)
 pub surgeist_css::CssFilterPercentage::Literal(surgeist_css::CssNonNegativeNumber)
-#[non_exhaustive] pub enum surgeist_css::CssFlex
-pub surgeist_css::CssFlex::Auto
-pub surgeist_css::CssFlex::Components
-pub surgeist_css::CssFlex::Components::basis: core::option::Option<surgeist_css::CssLength>
-pub surgeist_css::CssFlex::Components::grow: surgeist_css::CssFlexFactor
-pub surgeist_css::CssFlex::Components::shrink: core::option::Option<surgeist_css::CssFlexFactor>
-pub surgeist_css::CssFlex::None
-impl surgeist_css::CssFlex
-pub const fn surgeist_css::CssFlex::components(grow: surgeist_css::CssFlexFactor, shrink: core::option::Option<surgeist_css::CssFlexFactor>, basis: core::option::Option<surgeist_css::CssLength>) -> Self
 #[non_exhaustive] pub enum surgeist_css::CssFlexBasisRef<'a>
 pub surgeist_css::CssFlexBasisRef::CalcSize(&'a surgeist_css::CssCalcSize)
 pub surgeist_css::CssFlexBasisRef::Content
@@ -2147,7 +2064,6 @@ pub surgeist_css::CssKnownPropertyValueRef::AlignContent(&'a surgeist_css::CssAl
 pub surgeist_css::CssKnownPropertyValueRef::AlignItems(&'a surgeist_css::CssAlignItemsPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::AlignSelf(&'a surgeist_css::CssAlignSelfPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::AlignTracks(&'a surgeist_css::CssAlignTracksPropertyValue)
-pub surgeist_css::CssKnownPropertyValueRef::All(&'a surgeist_css::CssAllPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Animation(&'a surgeist_css::CssAnimationPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::AnimationDelay(&'a surgeist_css::CssAnimationDelayPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::AnimationDirection(&'a surgeist_css::CssAnimationDirectionPropertyValue)
@@ -2567,9 +2483,6 @@ pub surgeist_css::CssLengthUnit::Vmin
 pub surgeist_css::CssLengthUnit::Vw
 impl surgeist_css::CssLengthUnit
 pub const fn surgeist_css::CssLengthUnit::as_css_str(self) -> &'static str
-#[non_exhaustive] pub enum surgeist_css::CssLetterSpacing
-pub surgeist_css::CssLetterSpacing::Length(surgeist_css::CssLetterSpacingLength)
-pub surgeist_css::CssLetterSpacing::Normal
 #[non_exhaustive] pub enum surgeist_css::CssLineHeight
 pub surgeist_css::CssLineHeight::LengthPercentage(surgeist_css::CssSpecifiedNonNegativeLengthPercentage)
 pub surgeist_css::CssLineHeight::Normal
@@ -2583,19 +2496,12 @@ pub fn surgeist_css::CssLineHeight::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssLinearGradientDirection
 pub surgeist_css::CssLinearGradientDirection::Angle(surgeist_css::CssGradientAngle)
 pub surgeist_css::CssLinearGradientDirection::SideOrCorner(surgeist_css::CssSideOrCorner)
-#[non_exhaustive] pub enum surgeist_css::CssListStyleImage
-pub surgeist_css::CssListStyleImage::None
-pub surgeist_css::CssListStyleImage::Url(surgeist_css::CssUrl)
 #[non_exhaustive] pub enum surgeist_css::CssListStylePosition
 pub surgeist_css::CssListStylePosition::Inside
 pub surgeist_css::CssListStylePosition::Outside
 impl surgeist_css::CssListStylePosition
 pub fn surgeist_css::CssListStylePosition::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssListStylePosition::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
-#[non_exhaustive] pub enum surgeist_css::CssListStyleType
-pub surgeist_css::CssListStyleType::CounterStyle(surgeist_css::CssCounterStyle)
-pub surgeist_css::CssListStyleType::None
-pub surgeist_css::CssListStyleType::String(surgeist_css::CssContentString)
 #[non_exhaustive] pub enum surgeist_css::CssListStyleTypeValue
 pub surgeist_css::CssListStyleTypeValue::CounterStyle(surgeist_css::CssCounterStyleValue)
 pub surgeist_css::CssListStyleTypeValue::None
@@ -3195,9 +3101,6 @@ pub surgeist_css::CssOverflow::Visible
 impl surgeist_css::CssOverflow
 pub fn surgeist_css::CssOverflow::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssOverflow::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
-#[non_exhaustive] pub enum surgeist_css::CssOverflowI01PropertyValue
-pub surgeist_css::CssOverflowI01PropertyValue::Pair(surgeist_css::CssOverflowAxes)
-pub surgeist_css::CssOverflowI01PropertyValue::Single(surgeist_css::CssOverflow)
 #[non_exhaustive] pub enum surgeist_css::CssOverflowPosition
 pub surgeist_css::CssOverflowPosition::Safe
 pub surgeist_css::CssOverflowPosition::Unsafe
@@ -3212,14 +3115,6 @@ pub fn surgeist_css::CssOverflowWrap::serialize_specified_with_limits(&self, lim
 pub surgeist_css::CssPageSelector::First
 pub surgeist_css::CssPageSelector::Left
 pub surgeist_css::CssPageSelector::Right
-#[non_exhaustive] pub enum surgeist_css::CssPlaceAlignment
-pub surgeist_css::CssPlaceAlignment::Content(surgeist_css::CssPlaceContentAlignment)
-pub surgeist_css::CssPlaceAlignment::Items(surgeist_css::CssPlaceItemsAlignment)
-impl surgeist_css::CssPlaceAlignment
-pub const fn surgeist_css::CssPlaceAlignment::content(first: surgeist_css::CssAlignment, second: surgeist_css::CssAlignment) -> Self
-pub const fn surgeist_css::CssPlaceAlignment::content_all(value: surgeist_css::CssAlignment) -> Self
-pub const fn surgeist_css::CssPlaceAlignment::items(first: surgeist_css::CssAlignItems, second: surgeist_css::CssAlignItems) -> Self
-pub const fn surgeist_css::CssPlaceAlignment::items_all(value: surgeist_css::CssAlignItems) -> Self
 #[non_exhaustive] pub enum surgeist_css::CssPointerCapability
 pub surgeist_css::CssPointerCapability::Coarse
 pub surgeist_css::CssPointerCapability::Fine
@@ -3755,14 +3650,6 @@ impl surgeist_css::CssTextAlignAllValue
 pub const fn surgeist_css::CssTextAlignAllValue::initial() -> Self
 pub fn surgeist_css::CssTextAlignAllValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssTextAlignAllValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
-#[non_exhaustive] pub enum surgeist_css::CssTextAlignLast
-pub surgeist_css::CssTextAlignLast::Auto
-pub surgeist_css::CssTextAlignLast::Center
-pub surgeist_css::CssTextAlignLast::End
-pub surgeist_css::CssTextAlignLast::Justify
-pub surgeist_css::CssTextAlignLast::Left
-pub surgeist_css::CssTextAlignLast::Right
-pub surgeist_css::CssTextAlignLast::Start
 #[non_exhaustive] pub enum surgeist_css::CssTextAlignLastValue
 pub surgeist_css::CssTextAlignLastValue::Auto
 pub surgeist_css::CssTextAlignLastValue::Keyword(surgeist_css::CssTextAlign)
@@ -4060,9 +3947,6 @@ pub surgeist_css::CssWordBreak::BreakAll
 pub surgeist_css::CssWordBreak::BreakWord
 pub surgeist_css::CssWordBreak::KeepAll
 pub surgeist_css::CssWordBreak::Normal
-#[non_exhaustive] pub enum surgeist_css::CssWordSpacing
-pub surgeist_css::CssWordSpacing::Length(surgeist_css::CssWordSpacingLength)
-pub surgeist_css::CssWordSpacing::Normal
 #[non_exhaustive] pub enum surgeist_css::CssWritingMode
 pub surgeist_css::CssWritingMode::HorizontalTb
 pub surgeist_css::CssWritingMode::SidewaysLr
@@ -4101,8 +3985,7 @@ pub surgeist_css::ErrorKind::UnsupportedProperty(surgeist_css::CssUnsupportedPro
 pub struct surgeist_css::CssAlignContentPropertyValue
 impl surgeist_css::CssAlignContentPropertyValue
 pub fn surgeist_css::CssAlignContentPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssAlignContentPropertyValue::current(&self) -> &surgeist_css::CssAlignContentValue
-pub const fn surgeist_css::CssAlignContentPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssAlignment>
+pub const fn surgeist_css::CssAlignContentPropertyValue::value(&self) -> &surgeist_css::CssAlignContentValue
 pub struct surgeist_css::CssAlignContentValue(_)
 impl surgeist_css::CssAlignContentValue
 pub fn surgeist_css::CssAlignContentValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
@@ -4112,8 +3995,7 @@ pub const fn surgeist_css::CssAlignContentValue::value(&self) -> surgeist_css::C
 pub struct surgeist_css::CssAlignItemsPropertyValue
 impl surgeist_css::CssAlignItemsPropertyValue
 pub fn surgeist_css::CssAlignItemsPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssAlignItemsPropertyValue::current(&self) -> &surgeist_css::CssAlignItemsValue
-pub const fn surgeist_css::CssAlignItemsPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssAlignItems>
+pub const fn surgeist_css::CssAlignItemsPropertyValue::value(&self) -> &surgeist_css::CssAlignItemsValue
 pub struct surgeist_css::CssAlignItemsValue(_)
 impl surgeist_css::CssAlignItemsValue
 pub fn surgeist_css::CssAlignItemsValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
@@ -4123,8 +4005,7 @@ pub const fn surgeist_css::CssAlignItemsValue::value(&self) -> surgeist_css::Css
 pub struct surgeist_css::CssAlignSelfPropertyValue
 impl surgeist_css::CssAlignSelfPropertyValue
 pub fn surgeist_css::CssAlignSelfPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssAlignSelfPropertyValue::current(&self) -> &surgeist_css::CssAlignSelfValue
-pub const fn surgeist_css::CssAlignSelfPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssAlignItems>
+pub const fn surgeist_css::CssAlignSelfPropertyValue::value(&self) -> &surgeist_css::CssAlignSelfValue
 pub struct surgeist_css::CssAlignSelfValue(_)
 impl surgeist_css::CssAlignSelfValue
 pub fn surgeist_css::CssAlignSelfValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
@@ -4134,11 +4015,7 @@ pub const fn surgeist_css::CssAlignSelfValue::value(&self) -> surgeist_css::CssA
 pub struct surgeist_css::CssAlignTracksPropertyValue
 impl surgeist_css::CssAlignTracksPropertyValue
 pub fn surgeist_css::CssAlignTracksPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssAlignTracksPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssAlignment>
-pub struct surgeist_css::CssAllPropertyValue
-impl surgeist_css::CssAllPropertyValue
-pub fn surgeist_css::CssAllPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssAllPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssAllDeclaredValue>
+pub const fn surgeist_css::CssAlignTracksPropertyValue::value(&self) -> &surgeist_css::CssAlignmentValue
 pub struct surgeist_css::CssAlphaColor
 impl surgeist_css::CssAlphaColor
 pub const fn surgeist_css::CssAlphaColor::alpha(&self) -> core::option::Option<&surgeist_css::CssRelativeColorExpression>
@@ -4248,14 +4125,9 @@ pub struct surgeist_css::CssAnimationTimingFunctionPropertyValue
 impl surgeist_css::CssAnimationTimingFunctionPropertyValue
 pub fn surgeist_css::CssAnimationTimingFunctionPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssAnimationTimingFunctionPropertyValue::timing_functions(&self) -> &surgeist_css::CssEasingList
-pub struct surgeist_css::CssAspectRatio
-impl surgeist_css::CssAspectRatio
-pub fn surgeist_css::CssAspectRatio::try_new(value: f32) -> core::option::Option<Self>
-pub const fn surgeist_css::CssAspectRatio::value(self) -> f32
 pub struct surgeist_css::CssAspectRatioPropertyValue
 impl surgeist_css::CssAspectRatioPropertyValue
 pub fn surgeist_css::CssAspectRatioPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssAspectRatioPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssAspectRatio>
 pub const fn surgeist_css::CssAspectRatioPropertyValue::ratio(&self) -> &surgeist_css::CssAspectRatioValue
 pub struct surgeist_css::CssAtRuleName(_)
 impl surgeist_css::CssAtRuleName
@@ -4361,7 +4233,6 @@ pub struct surgeist_css::CssBackgroundPropertyValue
 impl surgeist_css::CssBackgroundPropertyValue
 pub fn surgeist_css::CssBackgroundPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssBackgroundPropertyValue::background(&self) -> &surgeist_css::CssBackground
-pub fn surgeist_css::CssBackgroundPropertyValue::color(&self) -> core::option::Option<&surgeist_css::CssColor>
 pub struct surgeist_css::CssBackgroundRepeatList
 impl surgeist_css::CssBackgroundRepeatList
 pub fn surgeist_css::CssBackgroundRepeatList::repeats(&self) -> &[surgeist_css::CssBackgroundRepeat]
@@ -4385,7 +4256,7 @@ pub fn surgeist_css::CssBlendModeList::try_new(modes: alloc::vec::Vec<surgeist_c
 pub struct surgeist_css::CssBlockSizePropertyValue
 impl surgeist_css::CssBlockSizePropertyValue
 pub fn surgeist_css::CssBlockSizePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBlockSizePropertyValue::current(&self) -> &surgeist_css::CssSizeValue
+pub const fn surgeist_css::CssBlockSizePropertyValue::value(&self) -> &surgeist_css::CssSizeValue
 pub struct surgeist_css::CssBorder
 impl surgeist_css::CssBorder
 pub const fn surgeist_css::CssBorder::color(&self) -> core::option::Option<&surgeist_css::CssColor>
@@ -4409,11 +4280,11 @@ pub const fn surgeist_css::CssBorderBlockEndPropertyValue::value(&self) -> &surg
 pub struct surgeist_css::CssBorderBlockEndStylePropertyValue
 impl surgeist_css::CssBorderBlockEndStylePropertyValue
 pub fn surgeist_css::CssBorderBlockEndStylePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBorderBlockEndStylePropertyValue::current(&self) -> &surgeist_css::CssBorderStyle
+pub const fn surgeist_css::CssBorderBlockEndStylePropertyValue::value(&self) -> &surgeist_css::CssBorderStyle
 pub struct surgeist_css::CssBorderBlockEndWidthPropertyValue
 impl surgeist_css::CssBorderBlockEndWidthPropertyValue
 pub fn surgeist_css::CssBorderBlockEndWidthPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBorderBlockEndWidthPropertyValue::current(&self) -> &surgeist_css::CssBorderWidth
+pub const fn surgeist_css::CssBorderBlockEndWidthPropertyValue::value(&self) -> &surgeist_css::CssBorderWidth
 pub struct surgeist_css::CssBorderBlockPropertyValue
 impl surgeist_css::CssBorderBlockPropertyValue
 pub fn surgeist_css::CssBorderBlockPropertyValue::as_css(&self) -> &str
@@ -4429,19 +4300,19 @@ pub const fn surgeist_css::CssBorderBlockStartPropertyValue::value(&self) -> &su
 pub struct surgeist_css::CssBorderBlockStartStylePropertyValue
 impl surgeist_css::CssBorderBlockStartStylePropertyValue
 pub fn surgeist_css::CssBorderBlockStartStylePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBorderBlockStartStylePropertyValue::current(&self) -> &surgeist_css::CssBorderStyle
+pub const fn surgeist_css::CssBorderBlockStartStylePropertyValue::value(&self) -> &surgeist_css::CssBorderStyle
 pub struct surgeist_css::CssBorderBlockStartWidthPropertyValue
 impl surgeist_css::CssBorderBlockStartWidthPropertyValue
 pub fn surgeist_css::CssBorderBlockStartWidthPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBorderBlockStartWidthPropertyValue::current(&self) -> &surgeist_css::CssBorderWidth
+pub const fn surgeist_css::CssBorderBlockStartWidthPropertyValue::value(&self) -> &surgeist_css::CssBorderWidth
 pub struct surgeist_css::CssBorderBlockStylePropertyValue
 impl surgeist_css::CssBorderBlockStylePropertyValue
 pub fn surgeist_css::CssBorderBlockStylePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBorderBlockStylePropertyValue::current(&self) -> &surgeist_css::CssBorderStylePair
+pub const fn surgeist_css::CssBorderBlockStylePropertyValue::value(&self) -> &surgeist_css::CssBorderStylePair
 pub struct surgeist_css::CssBorderBlockWidthPropertyValue
 impl surgeist_css::CssBorderBlockWidthPropertyValue
 pub fn surgeist_css::CssBorderBlockWidthPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBorderBlockWidthPropertyValue::current(&self) -> &surgeist_css::CssBorderWidthPair
+pub const fn surgeist_css::CssBorderBlockWidthPropertyValue::value(&self) -> &surgeist_css::CssBorderWidthPair
 pub struct surgeist_css::CssBorderBottomColorPropertyValue
 impl surgeist_css::CssBorderBottomColorPropertyValue
 pub fn surgeist_css::CssBorderBottomColorPropertyValue::as_css(&self) -> &str
@@ -4449,10 +4320,7 @@ pub const fn surgeist_css::CssBorderBottomColorPropertyValue::value(&self) -> &s
 pub struct surgeist_css::CssBorderBottomLeftRadiusPropertyValue
 impl surgeist_css::CssBorderBottomLeftRadiusPropertyValue
 pub fn surgeist_css::CssBorderBottomLeftRadiusPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBorderBottomLeftRadiusPropertyValue::current(&self) -> &surgeist_css::CssCornerRadiusValue
-pub const fn surgeist_css::CssBorderBottomLeftRadiusPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssCornerRadius>
-impl core::cmp::PartialEq for surgeist_css::CssBorderBottomLeftRadiusPropertyValue
-pub fn surgeist_css::CssBorderBottomLeftRadiusPropertyValue::eq(&self, other: &Self) -> bool
+pub const fn surgeist_css::CssBorderBottomLeftRadiusPropertyValue::value(&self) -> &surgeist_css::CssCornerRadiusValue
 pub struct surgeist_css::CssBorderBottomPropertyValue
 impl surgeist_css::CssBorderBottomPropertyValue
 pub fn surgeist_css::CssBorderBottomPropertyValue::as_css(&self) -> &str
@@ -4460,23 +4328,15 @@ pub const fn surgeist_css::CssBorderBottomPropertyValue::value(&self) -> &surgei
 pub struct surgeist_css::CssBorderBottomRightRadiusPropertyValue
 impl surgeist_css::CssBorderBottomRightRadiusPropertyValue
 pub fn surgeist_css::CssBorderBottomRightRadiusPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBorderBottomRightRadiusPropertyValue::current(&self) -> &surgeist_css::CssCornerRadiusValue
-pub const fn surgeist_css::CssBorderBottomRightRadiusPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssCornerRadius>
-impl core::cmp::PartialEq for surgeist_css::CssBorderBottomRightRadiusPropertyValue
-pub fn surgeist_css::CssBorderBottomRightRadiusPropertyValue::eq(&self, other: &Self) -> bool
+pub const fn surgeist_css::CssBorderBottomRightRadiusPropertyValue::value(&self) -> &surgeist_css::CssCornerRadiusValue
 pub struct surgeist_css::CssBorderBottomStylePropertyValue
 impl surgeist_css::CssBorderBottomStylePropertyValue
 pub fn surgeist_css::CssBorderBottomStylePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBorderBottomStylePropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssBorderStyle>
-impl surgeist_css::CssBorderBottomStylePropertyValue
-pub const fn surgeist_css::CssBorderBottomStylePropertyValue::current(&self) -> &surgeist_css::CssBorderStyle
+pub const fn surgeist_css::CssBorderBottomStylePropertyValue::value(&self) -> &surgeist_css::CssBorderStyle
 pub struct surgeist_css::CssBorderBottomWidthPropertyValue
 impl surgeist_css::CssBorderBottomWidthPropertyValue
 pub fn surgeist_css::CssBorderBottomWidthPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBorderBottomWidthPropertyValue::current(&self) -> &surgeist_css::CssBorderWidth
-pub const fn surgeist_css::CssBorderBottomWidthPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssLength>
-impl core::cmp::PartialEq for surgeist_css::CssBorderBottomWidthPropertyValue
-pub fn surgeist_css::CssBorderBottomWidthPropertyValue::eq(&self, other: &Self) -> bool
+pub const fn surgeist_css::CssBorderBottomWidthPropertyValue::value(&self) -> &surgeist_css::CssBorderWidth
 pub struct surgeist_css::CssBorderCollapsePropertyValue
 impl surgeist_css::CssBorderCollapsePropertyValue
 pub fn surgeist_css::CssBorderCollapsePropertyValue::as_css(&self) -> &str
@@ -4511,11 +4371,11 @@ pub fn surgeist_css::CssBorderColors::try_new(colors: alloc::vec::Vec<surgeist_c
 pub struct surgeist_css::CssBorderEndEndRadiusPropertyValue
 impl surgeist_css::CssBorderEndEndRadiusPropertyValue
 pub fn surgeist_css::CssBorderEndEndRadiusPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBorderEndEndRadiusPropertyValue::current(&self) -> &surgeist_css::CssCornerRadiusValue
+pub const fn surgeist_css::CssBorderEndEndRadiusPropertyValue::value(&self) -> &surgeist_css::CssCornerRadiusValue
 pub struct surgeist_css::CssBorderEndStartRadiusPropertyValue
 impl surgeist_css::CssBorderEndStartRadiusPropertyValue
 pub fn surgeist_css::CssBorderEndStartRadiusPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBorderEndStartRadiusPropertyValue::current(&self) -> &surgeist_css::CssCornerRadiusValue
+pub const fn surgeist_css::CssBorderEndStartRadiusPropertyValue::value(&self) -> &surgeist_css::CssCornerRadiusValue
 pub struct surgeist_css::CssBorderImage
 impl surgeist_css::CssBorderImage
 pub const fn surgeist_css::CssBorderImage::outset(&self) -> core::option::Option<&surgeist_css::CssBorderImageOutset>
@@ -4589,11 +4449,11 @@ pub const fn surgeist_css::CssBorderInlineEndPropertyValue::value(&self) -> &sur
 pub struct surgeist_css::CssBorderInlineEndStylePropertyValue
 impl surgeist_css::CssBorderInlineEndStylePropertyValue
 pub fn surgeist_css::CssBorderInlineEndStylePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBorderInlineEndStylePropertyValue::current(&self) -> &surgeist_css::CssBorderStyle
+pub const fn surgeist_css::CssBorderInlineEndStylePropertyValue::value(&self) -> &surgeist_css::CssBorderStyle
 pub struct surgeist_css::CssBorderInlineEndWidthPropertyValue
 impl surgeist_css::CssBorderInlineEndWidthPropertyValue
 pub fn surgeist_css::CssBorderInlineEndWidthPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBorderInlineEndWidthPropertyValue::current(&self) -> &surgeist_css::CssBorderWidth
+pub const fn surgeist_css::CssBorderInlineEndWidthPropertyValue::value(&self) -> &surgeist_css::CssBorderWidth
 pub struct surgeist_css::CssBorderInlinePropertyValue
 impl surgeist_css::CssBorderInlinePropertyValue
 pub fn surgeist_css::CssBorderInlinePropertyValue::as_css(&self) -> &str
@@ -4609,19 +4469,19 @@ pub const fn surgeist_css::CssBorderInlineStartPropertyValue::value(&self) -> &s
 pub struct surgeist_css::CssBorderInlineStartStylePropertyValue
 impl surgeist_css::CssBorderInlineStartStylePropertyValue
 pub fn surgeist_css::CssBorderInlineStartStylePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBorderInlineStartStylePropertyValue::current(&self) -> &surgeist_css::CssBorderStyle
+pub const fn surgeist_css::CssBorderInlineStartStylePropertyValue::value(&self) -> &surgeist_css::CssBorderStyle
 pub struct surgeist_css::CssBorderInlineStartWidthPropertyValue
 impl surgeist_css::CssBorderInlineStartWidthPropertyValue
 pub fn surgeist_css::CssBorderInlineStartWidthPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBorderInlineStartWidthPropertyValue::current(&self) -> &surgeist_css::CssBorderWidth
+pub const fn surgeist_css::CssBorderInlineStartWidthPropertyValue::value(&self) -> &surgeist_css::CssBorderWidth
 pub struct surgeist_css::CssBorderInlineStylePropertyValue
 impl surgeist_css::CssBorderInlineStylePropertyValue
 pub fn surgeist_css::CssBorderInlineStylePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBorderInlineStylePropertyValue::current(&self) -> &surgeist_css::CssBorderStylePair
+pub const fn surgeist_css::CssBorderInlineStylePropertyValue::value(&self) -> &surgeist_css::CssBorderStylePair
 pub struct surgeist_css::CssBorderInlineWidthPropertyValue
 impl surgeist_css::CssBorderInlineWidthPropertyValue
 pub fn surgeist_css::CssBorderInlineWidthPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBorderInlineWidthPropertyValue::current(&self) -> &surgeist_css::CssBorderWidthPair
+pub const fn surgeist_css::CssBorderInlineWidthPropertyValue::value(&self) -> &surgeist_css::CssBorderWidthPair
 pub struct surgeist_css::CssBorderLeftColorPropertyValue
 impl surgeist_css::CssBorderLeftColorPropertyValue
 pub fn surgeist_css::CssBorderLeftColorPropertyValue::as_css(&self) -> &str
@@ -4633,16 +4493,11 @@ pub const fn surgeist_css::CssBorderLeftPropertyValue::value(&self) -> &surgeist
 pub struct surgeist_css::CssBorderLeftStylePropertyValue
 impl surgeist_css::CssBorderLeftStylePropertyValue
 pub fn surgeist_css::CssBorderLeftStylePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBorderLeftStylePropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssBorderStyle>
-impl surgeist_css::CssBorderLeftStylePropertyValue
-pub const fn surgeist_css::CssBorderLeftStylePropertyValue::current(&self) -> &surgeist_css::CssBorderStyle
+pub const fn surgeist_css::CssBorderLeftStylePropertyValue::value(&self) -> &surgeist_css::CssBorderStyle
 pub struct surgeist_css::CssBorderLeftWidthPropertyValue
 impl surgeist_css::CssBorderLeftWidthPropertyValue
 pub fn surgeist_css::CssBorderLeftWidthPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBorderLeftWidthPropertyValue::current(&self) -> &surgeist_css::CssBorderWidth
-pub const fn surgeist_css::CssBorderLeftWidthPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssLength>
-impl core::cmp::PartialEq for surgeist_css::CssBorderLeftWidthPropertyValue
-pub fn surgeist_css::CssBorderLeftWidthPropertyValue::eq(&self, other: &Self) -> bool
+pub const fn surgeist_css::CssBorderLeftWidthPropertyValue::value(&self) -> &surgeist_css::CssBorderWidth
 pub struct surgeist_css::CssBorderPropertyValue
 impl surgeist_css::CssBorderPropertyValue
 pub fn surgeist_css::CssBorderPropertyValue::as_css(&self) -> &str
@@ -4657,10 +4512,7 @@ pub const fn surgeist_css::CssBorderRadii::new(top_left: surgeist_css::CssCorner
 pub struct surgeist_css::CssBorderRadiusPropertyValue
 impl surgeist_css::CssBorderRadiusPropertyValue
 pub fn surgeist_css::CssBorderRadiusPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBorderRadiusPropertyValue::current(&self) -> &surgeist_css::CssBorderRadiusShorthand
-pub const fn surgeist_css::CssBorderRadiusPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssBorderRadii>
-impl core::cmp::PartialEq for surgeist_css::CssBorderRadiusPropertyValue
-pub fn surgeist_css::CssBorderRadiusPropertyValue::eq(&self, other: &Self) -> bool
+pub const fn surgeist_css::CssBorderRadiusPropertyValue::value(&self) -> &surgeist_css::CssBorderRadiusShorthand
 pub struct surgeist_css::CssBorderRadiusShorthand
 impl surgeist_css::CssBorderRadiusShorthand
 pub fn surgeist_css::CssBorderRadiusShorthand::authored_vertical_values(&self) -> core::option::Option<&[surgeist_css::CssSpecifiedNonNegativeLengthPercentage]>
@@ -4687,16 +4539,11 @@ pub const fn surgeist_css::CssBorderRightPropertyValue::value(&self) -> &surgeis
 pub struct surgeist_css::CssBorderRightStylePropertyValue
 impl surgeist_css::CssBorderRightStylePropertyValue
 pub fn surgeist_css::CssBorderRightStylePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBorderRightStylePropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssBorderStyle>
-impl surgeist_css::CssBorderRightStylePropertyValue
-pub const fn surgeist_css::CssBorderRightStylePropertyValue::current(&self) -> &surgeist_css::CssBorderStyle
+pub const fn surgeist_css::CssBorderRightStylePropertyValue::value(&self) -> &surgeist_css::CssBorderStyle
 pub struct surgeist_css::CssBorderRightWidthPropertyValue
 impl surgeist_css::CssBorderRightWidthPropertyValue
 pub fn surgeist_css::CssBorderRightWidthPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBorderRightWidthPropertyValue::current(&self) -> &surgeist_css::CssBorderWidth
-pub const fn surgeist_css::CssBorderRightWidthPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssLength>
-impl core::cmp::PartialEq for surgeist_css::CssBorderRightWidthPropertyValue
-pub fn surgeist_css::CssBorderRightWidthPropertyValue::eq(&self, other: &Self) -> bool
+pub const fn surgeist_css::CssBorderRightWidthPropertyValue::value(&self) -> &surgeist_css::CssBorderWidth
 pub struct surgeist_css::CssBorderSpacing
 impl surgeist_css::CssBorderSpacing
 pub const fn surgeist_css::CssBorderSpacing::horizontal(&self) -> &surgeist_css::CssBorderSpacingLength
@@ -4719,11 +4566,11 @@ pub const fn surgeist_css::CssBorderSpacingPropertyValue::spacing(&self) -> &sur
 pub struct surgeist_css::CssBorderStartEndRadiusPropertyValue
 impl surgeist_css::CssBorderStartEndRadiusPropertyValue
 pub fn surgeist_css::CssBorderStartEndRadiusPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBorderStartEndRadiusPropertyValue::current(&self) -> &surgeist_css::CssCornerRadiusValue
+pub const fn surgeist_css::CssBorderStartEndRadiusPropertyValue::value(&self) -> &surgeist_css::CssCornerRadiusValue
 pub struct surgeist_css::CssBorderStartStartRadiusPropertyValue
 impl surgeist_css::CssBorderStartStartRadiusPropertyValue
 pub fn surgeist_css::CssBorderStartStartRadiusPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBorderStartStartRadiusPropertyValue::current(&self) -> &surgeist_css::CssCornerRadiusValue
+pub const fn surgeist_css::CssBorderStartStartRadiusPropertyValue::value(&self) -> &surgeist_css::CssCornerRadiusValue
 pub struct surgeist_css::CssBorderStylePair
 impl surgeist_css::CssBorderStylePair
 pub const fn surgeist_css::CssBorderStylePair::authored_end(&self) -> core::option::Option<&surgeist_css::CssBorderStyle>
@@ -4735,10 +4582,7 @@ pub const fn surgeist_css::CssBorderStylePair::start(&self) -> &surgeist_css::Cs
 pub struct surgeist_css::CssBorderStylePropertyValue
 impl surgeist_css::CssBorderStylePropertyValue
 pub fn surgeist_css::CssBorderStylePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBorderStylePropertyValue::current(&self) -> &surgeist_css::CssBorderStyleShorthand
-pub const fn surgeist_css::CssBorderStylePropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssBorderStyles>
-impl core::cmp::PartialEq for surgeist_css::CssBorderStylePropertyValue
-pub fn surgeist_css::CssBorderStylePropertyValue::eq(&self, other: &Self) -> bool
+pub const fn surgeist_css::CssBorderStylePropertyValue::value(&self) -> &surgeist_css::CssBorderStyleShorthand
 pub struct surgeist_css::CssBorderStyleShorthand
 impl surgeist_css::CssBorderStyleShorthand
 pub fn surgeist_css::CssBorderStyleShorthand::assigned_values(&self) -> [&surgeist_css::CssBorderStyle; 4]
@@ -4747,14 +4591,6 @@ pub const fn surgeist_css::CssBorderStyleShorthand::kind(&self) -> surgeist_css:
 pub fn surgeist_css::CssBorderStyleShorthand::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssBorderStyleShorthand::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssBorderStyleShorthand::try_new(kind: surgeist_css::CssBoxSideKind, values: alloc::vec::Vec<surgeist_css::CssBorderStyle>) -> core::option::Option<Self>
-pub struct surgeist_css::CssBorderStyles
-pub surgeist_css::CssBorderStyles::bottom: surgeist_css::CssBorderStyle
-pub surgeist_css::CssBorderStyles::left: surgeist_css::CssBorderStyle
-pub surgeist_css::CssBorderStyles::right: surgeist_css::CssBorderStyle
-pub surgeist_css::CssBorderStyles::top: surgeist_css::CssBorderStyle
-impl surgeist_css::CssBorderStyles
-pub const fn surgeist_css::CssBorderStyles::all(value: surgeist_css::CssBorderStyle) -> Self
-pub const fn surgeist_css::CssBorderStyles::new(top: surgeist_css::CssBorderStyle, right: surgeist_css::CssBorderStyle, bottom: surgeist_css::CssBorderStyle, left: surgeist_css::CssBorderStyle) -> Self
 pub struct surgeist_css::CssBorderTopColorPropertyValue
 impl surgeist_css::CssBorderTopColorPropertyValue
 pub fn surgeist_css::CssBorderTopColorPropertyValue::as_css(&self) -> &str
@@ -4762,10 +4598,7 @@ pub const fn surgeist_css::CssBorderTopColorPropertyValue::value(&self) -> &surg
 pub struct surgeist_css::CssBorderTopLeftRadiusPropertyValue
 impl surgeist_css::CssBorderTopLeftRadiusPropertyValue
 pub fn surgeist_css::CssBorderTopLeftRadiusPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBorderTopLeftRadiusPropertyValue::current(&self) -> &surgeist_css::CssCornerRadiusValue
-pub const fn surgeist_css::CssBorderTopLeftRadiusPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssCornerRadius>
-impl core::cmp::PartialEq for surgeist_css::CssBorderTopLeftRadiusPropertyValue
-pub fn surgeist_css::CssBorderTopLeftRadiusPropertyValue::eq(&self, other: &Self) -> bool
+pub const fn surgeist_css::CssBorderTopLeftRadiusPropertyValue::value(&self) -> &surgeist_css::CssCornerRadiusValue
 pub struct surgeist_css::CssBorderTopPropertyValue
 impl surgeist_css::CssBorderTopPropertyValue
 pub fn surgeist_css::CssBorderTopPropertyValue::as_css(&self) -> &str
@@ -4773,23 +4606,15 @@ pub const fn surgeist_css::CssBorderTopPropertyValue::value(&self) -> &surgeist_
 pub struct surgeist_css::CssBorderTopRightRadiusPropertyValue
 impl surgeist_css::CssBorderTopRightRadiusPropertyValue
 pub fn surgeist_css::CssBorderTopRightRadiusPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBorderTopRightRadiusPropertyValue::current(&self) -> &surgeist_css::CssCornerRadiusValue
-pub const fn surgeist_css::CssBorderTopRightRadiusPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssCornerRadius>
-impl core::cmp::PartialEq for surgeist_css::CssBorderTopRightRadiusPropertyValue
-pub fn surgeist_css::CssBorderTopRightRadiusPropertyValue::eq(&self, other: &Self) -> bool
+pub const fn surgeist_css::CssBorderTopRightRadiusPropertyValue::value(&self) -> &surgeist_css::CssCornerRadiusValue
 pub struct surgeist_css::CssBorderTopStylePropertyValue
 impl surgeist_css::CssBorderTopStylePropertyValue
 pub fn surgeist_css::CssBorderTopStylePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBorderTopStylePropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssBorderStyle>
-impl surgeist_css::CssBorderTopStylePropertyValue
-pub const fn surgeist_css::CssBorderTopStylePropertyValue::current(&self) -> &surgeist_css::CssBorderStyle
+pub const fn surgeist_css::CssBorderTopStylePropertyValue::value(&self) -> &surgeist_css::CssBorderStyle
 pub struct surgeist_css::CssBorderTopWidthPropertyValue
 impl surgeist_css::CssBorderTopWidthPropertyValue
 pub fn surgeist_css::CssBorderTopWidthPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBorderTopWidthPropertyValue::current(&self) -> &surgeist_css::CssBorderWidth
-pub const fn surgeist_css::CssBorderTopWidthPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssLength>
-impl core::cmp::PartialEq for surgeist_css::CssBorderTopWidthPropertyValue
-pub fn surgeist_css::CssBorderTopWidthPropertyValue::eq(&self, other: &Self) -> bool
+pub const fn surgeist_css::CssBorderTopWidthPropertyValue::value(&self) -> &surgeist_css::CssBorderWidth
 pub struct surgeist_css::CssBorderWidthPair
 impl surgeist_css::CssBorderWidthPair
 pub fn surgeist_css::CssBorderWidthPair::authored_end(&self) -> core::option::Option<&surgeist_css::CssBorderWidth>
@@ -4801,10 +4626,7 @@ pub fn surgeist_css::CssBorderWidthPair::start(&self) -> &surgeist_css::CssBorde
 pub struct surgeist_css::CssBorderWidthPropertyValue
 impl surgeist_css::CssBorderWidthPropertyValue
 pub fn surgeist_css::CssBorderWidthPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBorderWidthPropertyValue::current(&self) -> &surgeist_css::CssBorderWidthShorthand
-pub const fn surgeist_css::CssBorderWidthPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssEdges>
-impl core::cmp::PartialEq for surgeist_css::CssBorderWidthPropertyValue
-pub fn surgeist_css::CssBorderWidthPropertyValue::eq(&self, other: &Self) -> bool
+pub const fn surgeist_css::CssBorderWidthPropertyValue::value(&self) -> &surgeist_css::CssBorderWidthShorthand
 pub struct surgeist_css::CssBorderWidthShorthand
 impl surgeist_css::CssBorderWidthShorthand
 pub fn surgeist_css::CssBorderWidthShorthand::assigned_values(&self) -> [&surgeist_css::CssBorderWidth; 4]
@@ -4816,10 +4638,7 @@ pub fn surgeist_css::CssBorderWidthShorthand::try_new(kind: surgeist_css::CssBox
 pub struct surgeist_css::CssBottomPropertyValue
 impl surgeist_css::CssBottomPropertyValue
 pub fn surgeist_css::CssBottomPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBottomPropertyValue::current(&self) -> &surgeist_css::CssInsetValue
-pub const fn surgeist_css::CssBottomPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssLength>
-impl core::cmp::PartialEq for surgeist_css::CssBottomPropertyValue
-pub fn surgeist_css::CssBottomPropertyValue::eq(&self, other: &Self) -> bool
+pub const fn surgeist_css::CssBottomPropertyValue::value(&self) -> &surgeist_css::CssInsetValue
 pub struct surgeist_css::CssBoxCalcSize(_)
 impl surgeist_css::CssBoxCalcSize
 pub fn surgeist_css::CssBoxCalcSize::as_calc_size(&self) -> &surgeist_css::CssCalcSize
@@ -4832,7 +4651,7 @@ pub fn surgeist_css::CssBoxCalcSize::try_from(value: surgeist_css::CssCalcSize) 
 pub struct surgeist_css::CssBoxDecorationBreakPropertyValue
 impl surgeist_css::CssBoxDecorationBreakPropertyValue
 pub fn surgeist_css::CssBoxDecorationBreakPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBoxDecorationBreakPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssBoxDecorationBreak>
+pub const fn surgeist_css::CssBoxDecorationBreakPropertyValue::value(&self) -> &surgeist_css::CssBoxDecorationBreak
 pub struct surgeist_css::CssBoxShadowList
 impl surgeist_css::CssBoxShadowList
 pub fn surgeist_css::CssBoxShadowList::shadows(&self) -> &[surgeist_css::CssShadow]
@@ -4844,21 +4663,19 @@ pub const fn surgeist_css::CssBoxShadowPropertyValue::value(&self) -> &surgeist_
 pub struct surgeist_css::CssBoxSizingPropertyValue
 impl surgeist_css::CssBoxSizingPropertyValue
 pub fn surgeist_css::CssBoxSizingPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBoxSizingPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssBoxSizing>
-impl surgeist_css::CssBoxSizingPropertyValue
-pub const fn surgeist_css::CssBoxSizingPropertyValue::current(&self) -> &surgeist_css::CssBoxSizing
+pub const fn surgeist_css::CssBoxSizingPropertyValue::value(&self) -> &surgeist_css::CssBoxSizing
 pub struct surgeist_css::CssBreakAfterPropertyValue
 impl surgeist_css::CssBreakAfterPropertyValue
 pub fn surgeist_css::CssBreakAfterPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBreakAfterPropertyValue::current(&self) -> &surgeist_css::CssBreakBetween
+pub const fn surgeist_css::CssBreakAfterPropertyValue::value(&self) -> &surgeist_css::CssBreakBetween
 pub struct surgeist_css::CssBreakBeforePropertyValue
 impl surgeist_css::CssBreakBeforePropertyValue
 pub fn surgeist_css::CssBreakBeforePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBreakBeforePropertyValue::current(&self) -> &surgeist_css::CssBreakBetween
+pub const fn surgeist_css::CssBreakBeforePropertyValue::value(&self) -> &surgeist_css::CssBreakBetween
 pub struct surgeist_css::CssBreakInsidePropertyValue
 impl surgeist_css::CssBreakInsidePropertyValue
 pub fn surgeist_css::CssBreakInsidePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssBreakInsidePropertyValue::current(&self) -> &surgeist_css::CssBreakInside
+pub const fn surgeist_css::CssBreakInsidePropertyValue::value(&self) -> &surgeist_css::CssBreakInside
 pub struct surgeist_css::CssByteOffset(_)
 impl surgeist_css::CssByteOffset
 pub const fn surgeist_css::CssByteOffset::value(self) -> usize
@@ -4971,8 +4788,7 @@ pub const fn surgeist_css::CssCircleShape::radius(&self) -> &surgeist_css::CssCi
 pub struct surgeist_css::CssClearPropertyValue
 impl surgeist_css::CssClearPropertyValue
 pub fn surgeist_css::CssClearPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssClearPropertyValue::current(&self) -> &surgeist_css::CssClear
-pub const fn surgeist_css::CssClearPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssClear>
+pub const fn surgeist_css::CssClearPropertyValue::value(&self) -> &surgeist_css::CssClear
 pub struct surgeist_css::CssClipLength
 impl surgeist_css::CssClipLength
 pub fn surgeist_css::CssClipLength::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
@@ -5136,7 +4952,7 @@ pub const fn surgeist_css::CssColumnFillPropertyValue::fill(&self) -> &surgeist_
 pub struct surgeist_css::CssColumnGapPropertyValue
 impl surgeist_css::CssColumnGapPropertyValue
 pub fn surgeist_css::CssColumnGapPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssColumnGapPropertyValue::current(&self) -> &surgeist_css::CssGapValue
+pub const fn surgeist_css::CssColumnGapPropertyValue::value(&self) -> &surgeist_css::CssGapValue
 pub struct surgeist_css::CssColumnRule
 impl surgeist_css::CssColumnRule
 pub const fn surgeist_css::CssColumnRule::color(&self) -> core::option::Option<&surgeist_css::CssColor>
@@ -5278,15 +5094,15 @@ pub fn surgeist_css::CssContainComponentList::try_new(components: alloc::vec::Ve
 pub struct surgeist_css::CssContainIntrinsicBlockSizePropertyValue
 impl surgeist_css::CssContainIntrinsicBlockSizePropertyValue
 pub fn surgeist_css::CssContainIntrinsicBlockSizePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssContainIntrinsicBlockSizePropertyValue::current(&self) -> &surgeist_css::CssContainIntrinsicSizeValue
+pub const fn surgeist_css::CssContainIntrinsicBlockSizePropertyValue::value(&self) -> &surgeist_css::CssContainIntrinsicSizeValue
 pub struct surgeist_css::CssContainIntrinsicHeightPropertyValue
 impl surgeist_css::CssContainIntrinsicHeightPropertyValue
 pub fn surgeist_css::CssContainIntrinsicHeightPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssContainIntrinsicHeightPropertyValue::current(&self) -> &surgeist_css::CssContainIntrinsicSizeValue
+pub const fn surgeist_css::CssContainIntrinsicHeightPropertyValue::value(&self) -> &surgeist_css::CssContainIntrinsicSizeValue
 pub struct surgeist_css::CssContainIntrinsicInlineSizePropertyValue
 impl surgeist_css::CssContainIntrinsicInlineSizePropertyValue
 pub fn surgeist_css::CssContainIntrinsicInlineSizePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssContainIntrinsicInlineSizePropertyValue::current(&self) -> &surgeist_css::CssContainIntrinsicSizeValue
+pub const fn surgeist_css::CssContainIntrinsicInlineSizePropertyValue::value(&self) -> &surgeist_css::CssContainIntrinsicSizeValue
 pub struct surgeist_css::CssContainIntrinsicSize
 impl surgeist_css::CssContainIntrinsicSize
 pub fn surgeist_css::CssContainIntrinsicSize::authored_height(&self) -> core::option::Option<&surgeist_css::CssContainIntrinsicSizeValue>
@@ -5298,7 +5114,7 @@ pub fn surgeist_css::CssContainIntrinsicSize::width(&self) -> &surgeist_css::Css
 pub struct surgeist_css::CssContainIntrinsicSizePropertyValue
 impl surgeist_css::CssContainIntrinsicSizePropertyValue
 pub fn surgeist_css::CssContainIntrinsicSizePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssContainIntrinsicSizePropertyValue::current(&self) -> &surgeist_css::CssContainIntrinsicSize
+pub const fn surgeist_css::CssContainIntrinsicSizePropertyValue::value(&self) -> &surgeist_css::CssContainIntrinsicSize
 pub struct surgeist_css::CssContainIntrinsicSizeValue
 impl surgeist_css::CssContainIntrinsicSizeValue
 pub fn surgeist_css::CssContainIntrinsicSizeValue::fallback(&self) -> &surgeist_css::CssContainIntrinsicSizeFallback
@@ -5310,7 +5126,7 @@ pub fn surgeist_css::CssContainIntrinsicSizeValue::with_auto(fallback: surgeist_
 pub struct surgeist_css::CssContainIntrinsicWidthPropertyValue
 impl surgeist_css::CssContainIntrinsicWidthPropertyValue
 pub fn surgeist_css::CssContainIntrinsicWidthPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssContainIntrinsicWidthPropertyValue::current(&self) -> &surgeist_css::CssContainIntrinsicSizeValue
+pub const fn surgeist_css::CssContainIntrinsicWidthPropertyValue::value(&self) -> &surgeist_css::CssContainIntrinsicSizeValue
 pub struct surgeist_css::CssContainPropertyValue
 impl surgeist_css::CssContainPropertyValue
 pub fn surgeist_css::CssContainPropertyValue::as_css(&self) -> &str
@@ -5494,10 +5310,6 @@ pub const fn surgeist_css::CssContentCounters::name(&self) -> &surgeist_css::Css
 pub const fn surgeist_css::CssContentCounters::new(name: surgeist_css::CssContentCounterName, separator: surgeist_css::CssContentString, style: core::option::Option<surgeist_css::CssCounterStyleValue>) -> Self
 pub const fn surgeist_css::CssContentCounters::separator(&self) -> &surgeist_css::CssContentString
 pub const fn surgeist_css::CssContentCounters::style(&self) -> core::option::Option<&surgeist_css::CssCounterStyleValue>
-pub struct surgeist_css::CssContentList
-impl surgeist_css::CssContentList
-pub fn surgeist_css::CssContentList::items(&self) -> &[surgeist_css::CssContentItem]
-pub fn surgeist_css::CssContentList::try_new(items: alloc::vec::Vec<surgeist_css::CssContentItem>) -> core::option::Option<Self>
 pub struct surgeist_css::CssContentName(_)
 impl surgeist_css::CssContentName
 pub fn surgeist_css::CssContentName::as_str(&self) -> &str
@@ -5505,8 +5317,7 @@ pub fn surgeist_css::CssContentName::try_new(name: surgeist_css::CssIdent) -> co
 pub struct surgeist_css::CssContentPropertyValue
 impl surgeist_css::CssContentPropertyValue
 pub fn surgeist_css::CssContentPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssContentPropertyValue::current(&self) -> &surgeist_css::CssContentValue
-pub const fn surgeist_css::CssContentPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssContent>
+pub const fn surgeist_css::CssContentPropertyValue::value(&self) -> &surgeist_css::CssContentValue
 pub struct surgeist_css::CssContentString
 impl surgeist_css::CssContentString
 pub fn surgeist_css::CssContentString::as_str(&self) -> &str
@@ -5514,9 +5325,7 @@ pub fn surgeist_css::CssContentString::try_new(value: impl core::convert::Into<a
 pub struct surgeist_css::CssContentVisibilityPropertyValue
 impl surgeist_css::CssContentVisibilityPropertyValue
 pub fn surgeist_css::CssContentVisibilityPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssContentVisibilityPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssContentVisibility>
-impl surgeist_css::CssContentVisibilityPropertyValue
-pub const fn surgeist_css::CssContentVisibilityPropertyValue::current(&self) -> &surgeist_css::CssContentVisibility
+pub const fn surgeist_css::CssContentVisibilityPropertyValue::value(&self) -> &surgeist_css::CssContentVisibility
 pub struct surgeist_css::CssCornerRadius
 impl surgeist_css::CssCornerRadius
 pub const fn surgeist_css::CssCornerRadius::horizontal(&self) -> &surgeist_css::CssLength
@@ -5540,15 +5349,6 @@ pub struct surgeist_css::CssCounterAdditiveTuple
 impl surgeist_css::CssCounterAdditiveTuple
 pub const fn surgeist_css::CssCounterAdditiveTuple::symbol(&self) -> &surgeist_css::CssCounterSymbol
 pub const fn surgeist_css::CssCounterAdditiveTuple::weight(&self) -> u32
-pub struct surgeist_css::CssCounterChange
-impl surgeist_css::CssCounterChange
-pub const fn surgeist_css::CssCounterChange::name(&self) -> &surgeist_css::CssCounterName
-pub const fn surgeist_css::CssCounterChange::new(name: surgeist_css::CssCounterName, value: core::option::Option<i32>) -> Self
-pub const fn surgeist_css::CssCounterChange::value(&self) -> core::option::Option<i32>
-pub struct surgeist_css::CssCounterChangeList
-impl surgeist_css::CssCounterChangeList
-pub fn surgeist_css::CssCounterChangeList::changes(&self) -> &[surgeist_css::CssCounterChange]
-pub fn surgeist_css::CssCounterChangeList::try_new(changes: alloc::vec::Vec<surgeist_css::CssCounterChange>) -> core::option::Option<Self>
 pub struct surgeist_css::CssCounterChangeValue
 impl surgeist_css::CssCounterChangeValue
 pub const fn surgeist_css::CssCounterChangeValue::name(&self) -> &surgeist_css::CssContentCounterName
@@ -5562,30 +5362,18 @@ pub fn surgeist_css::CssCounterChangesValue::try_changes(changes: alloc::vec::Ve
 impl surgeist_css::CssCounterChangesValue
 pub fn surgeist_css::CssCounterChangesValue::serialize_specified(&self, property: surgeist_css::CssCounterProperty) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssCounterChangesValue::serialize_specified_with_limits(&self, property: surgeist_css::CssCounterProperty, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
-pub struct surgeist_css::CssCounterFunction
-impl surgeist_css::CssCounterFunction
-pub const fn surgeist_css::CssCounterFunction::name(&self) -> &surgeist_css::CssCounterName
-pub const fn surgeist_css::CssCounterFunction::new(name: surgeist_css::CssCounterName, style: core::option::Option<surgeist_css::CssCounterStyle>) -> Self
-pub const fn surgeist_css::CssCounterFunction::style(&self) -> core::option::Option<&surgeist_css::CssCounterStyle>
 pub struct surgeist_css::CssCounterIncrementPropertyValue
 impl surgeist_css::CssCounterIncrementPropertyValue
 pub fn surgeist_css::CssCounterIncrementPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssCounterIncrementPropertyValue::current(&self) -> &surgeist_css::CssCounterChangesValue
-pub const fn surgeist_css::CssCounterIncrementPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssCounterChanges>
-pub struct surgeist_css::CssCounterName
-impl surgeist_css::CssCounterName
-pub fn surgeist_css::CssCounterName::as_str(&self) -> &str
-pub fn surgeist_css::CssCounterName::try_new(name: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub const fn surgeist_css::CssCounterIncrementPropertyValue::value(&self) -> &surgeist_css::CssCounterChangesValue
 pub struct surgeist_css::CssCounterResetPropertyValue
 impl surgeist_css::CssCounterResetPropertyValue
 pub fn surgeist_css::CssCounterResetPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssCounterResetPropertyValue::current(&self) -> &surgeist_css::CssCounterChangesValue
-pub const fn surgeist_css::CssCounterResetPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssCounterChanges>
+pub const fn surgeist_css::CssCounterResetPropertyValue::value(&self) -> &surgeist_css::CssCounterChangesValue
 pub struct surgeist_css::CssCounterSetPropertyValue
 impl surgeist_css::CssCounterSetPropertyValue
 pub fn surgeist_css::CssCounterSetPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssCounterSetPropertyValue::current(&self) -> &surgeist_css::CssCounterChangesValue
-pub const fn surgeist_css::CssCounterSetPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssCounterChanges>
+pub const fn surgeist_css::CssCounterSetPropertyValue::value(&self) -> &surgeist_css::CssCounterChangesValue
 pub struct surgeist_css::CssCounterStyleDescriptors
 impl surgeist_css::CssCounterStyleDescriptors
 pub const fn surgeist_css::CssCounterStyleDescriptors::additive_symbols(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterAdditiveSymbols>>
@@ -5637,12 +5425,6 @@ pub fn surgeist_css::CssCounterSymbolIdent::try_new(value: impl core::convert::I
 pub struct surgeist_css::CssCounterSymbols
 impl surgeist_css::CssCounterSymbols
 pub fn surgeist_css::CssCounterSymbols::symbols(&self) -> &[surgeist_css::CssCounterSymbol]
-pub struct surgeist_css::CssCountersFunction
-impl surgeist_css::CssCountersFunction
-pub const fn surgeist_css::CssCountersFunction::name(&self) -> &surgeist_css::CssCounterName
-pub const fn surgeist_css::CssCountersFunction::new(name: surgeist_css::CssCounterName, separator: surgeist_css::CssContentString, style: core::option::Option<surgeist_css::CssCounterStyle>) -> Self
-pub const fn surgeist_css::CssCountersFunction::separator(&self) -> &surgeist_css::CssContentString
-pub const fn surgeist_css::CssCountersFunction::style(&self) -> core::option::Option<&surgeist_css::CssCounterStyle>
 pub struct surgeist_css::CssCubicBezier
 impl surgeist_css::CssCubicBezier
 pub fn surgeist_css::CssCubicBezier::try_new(x1: surgeist_css::CssEasingNumber, y1: surgeist_css::CssEasingNumber, x2: surgeist_css::CssEasingNumber, y2: surgeist_css::CssEasingNumber) -> core::option::Option<Self>
@@ -5657,7 +5439,7 @@ pub const fn surgeist_css::CssCubicBezierX::value(&self) -> &surgeist_css::CssEa
 pub struct surgeist_css::CssCursorPropertyValue
 impl surgeist_css::CssCursorPropertyValue
 pub fn surgeist_css::CssCursorPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssCursorPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssCursor>
+pub const fn surgeist_css::CssCursorPropertyValue::value(&self) -> &surgeist_css::CssCursor
 pub struct surgeist_css::CssCursorUrlList
 impl surgeist_css::CssCursorUrlList
 pub fn surgeist_css::CssCursorUrlList::try_new(urls: alloc::vec::Vec<surgeist_css::CssUrl>) -> core::option::Option<Self>
@@ -5778,9 +5560,7 @@ pub const fn surgeist_css::CssDescriptorValueError::expectation(&self) -> surgei
 pub struct surgeist_css::CssDirectionPropertyValue
 impl surgeist_css::CssDirectionPropertyValue
 pub fn surgeist_css::CssDirectionPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssDirectionPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssDirection>
-impl surgeist_css::CssDirectionPropertyValue
-pub const fn surgeist_css::CssDirectionPropertyValue::current(&self) -> &surgeist_css::CssDirection
+pub const fn surgeist_css::CssDirectionPropertyValue::value(&self) -> &surgeist_css::CssDirection
 pub struct surgeist_css::CssDirectionality
 impl surgeist_css::CssDirectionality
 pub fn surgeist_css::CssDirectionality::as_str(&self) -> &str
@@ -5790,7 +5570,6 @@ pub fn surgeist_css::CssDirectionality::try_new(value: impl core::convert::Into<
 pub struct surgeist_css::CssDisplayPropertyValue
 impl surgeist_css::CssDisplayPropertyValue
 pub fn surgeist_css::CssDisplayPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssDisplayPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssDisplay>
 pub const fn surgeist_css::CssDisplayPropertyValue::value(&self) -> &surgeist_css::CssDisplayValue
 pub struct surgeist_css::CssDropShadow
 impl surgeist_css::CssDropShadow
@@ -5812,14 +5591,6 @@ pub struct surgeist_css::CssEasingList
 impl surgeist_css::CssEasingList
 pub fn surgeist_css::CssEasingList::try_new(values: alloc::vec::Vec<surgeist_css::CssEasing>) -> core::option::Option<Self>
 pub fn surgeist_css::CssEasingList::values(&self) -> &[surgeist_css::CssEasing]
-pub struct surgeist_css::CssEdges
-pub surgeist_css::CssEdges::bottom: surgeist_css::CssLength
-pub surgeist_css::CssEdges::left: surgeist_css::CssLength
-pub surgeist_css::CssEdges::right: surgeist_css::CssLength
-pub surgeist_css::CssEdges::top: surgeist_css::CssLength
-impl surgeist_css::CssEdges
-pub fn surgeist_css::CssEdges::all(value: surgeist_css::CssLength) -> Self
-pub const fn surgeist_css::CssEdges::new(top: surgeist_css::CssLength, right: surgeist_css::CssLength, bottom: surgeist_css::CssLength, left: surgeist_css::CssLength) -> Self
 pub struct surgeist_css::CssEllipseRadii
 impl surgeist_css::CssEllipseRadii
 pub const fn surgeist_css::CssEllipseRadii::horizontal(&self) -> &surgeist_css::CssShapeLengthPercentage
@@ -5907,8 +5678,7 @@ pub const fn surgeist_css::CssFiniteNumber::value(self) -> f32
 pub struct surgeist_css::CssFlexBasisPropertyValue
 impl surgeist_css::CssFlexBasisPropertyValue
 pub fn surgeist_css::CssFlexBasisPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssFlexBasisPropertyValue::current(&self) -> &surgeist_css::CssFlexBasisValue
-pub const fn surgeist_css::CssFlexBasisPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssLength>
+pub const fn surgeist_css::CssFlexBasisPropertyValue::value(&self) -> &surgeist_css::CssFlexBasisValue
 pub struct surgeist_css::CssFlexBasisValue(_)
 impl surgeist_css::CssFlexBasisValue
 pub const fn surgeist_css::CssFlexBasisValue::content() -> Self
@@ -5941,14 +5711,7 @@ pub fn surgeist_css::CssFlexComponents::try_new(grow: core::option::Option<surge
 pub struct surgeist_css::CssFlexDirectionPropertyValue
 impl surgeist_css::CssFlexDirectionPropertyValue
 pub fn surgeist_css::CssFlexDirectionPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssFlexDirectionPropertyValue::current(&self) -> &surgeist_css::CssFlexDirection
-pub const fn surgeist_css::CssFlexDirectionPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssFlexDirection>
-impl surgeist_css::CssFlexDirectionPropertyValue
-pub const fn surgeist_css::CssFlexDirectionPropertyValue::exact_i01_projection(&self) -> core::option::Option<&surgeist_css::CssFlexDirection>
-pub struct surgeist_css::CssFlexFactor
-impl surgeist_css::CssFlexFactor
-pub fn surgeist_css::CssFlexFactor::try_new(value: f32) -> core::option::Option<Self>
-pub const fn surgeist_css::CssFlexFactor::value(self) -> f32
+pub const fn surgeist_css::CssFlexDirectionPropertyValue::value(&self) -> &surgeist_css::CssFlexDirection
 pub struct surgeist_css::CssFlexFlow
 impl surgeist_css::CssFlexFlow
 pub const fn surgeist_css::CssFlexFlow::direction(&self) -> surgeist_css::CssFlexDirection
@@ -5964,29 +5727,22 @@ pub struct surgeist_css::CssFlexGrowPropertyValue
 impl surgeist_css::CssFlexGrowPropertyValue
 pub fn surgeist_css::CssFlexGrowPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssFlexGrowPropertyValue::factor(&self) -> &surgeist_css::CssSpecifiedNonNegativeNumber
-pub const fn surgeist_css::CssFlexGrowPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssFlexFactor>
 pub struct surgeist_css::CssFlexPropertyValue
 impl surgeist_css::CssFlexPropertyValue
 pub fn surgeist_css::CssFlexPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssFlexPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssFlex>
 pub const fn surgeist_css::CssFlexPropertyValue::value(&self) -> &surgeist_css::CssFlexValue
 pub struct surgeist_css::CssFlexShrinkPropertyValue
 impl surgeist_css::CssFlexShrinkPropertyValue
 pub fn surgeist_css::CssFlexShrinkPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssFlexShrinkPropertyValue::factor(&self) -> &surgeist_css::CssSpecifiedNonNegativeNumber
-pub const fn surgeist_css::CssFlexShrinkPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssFlexFactor>
 pub struct surgeist_css::CssFlexWrapPropertyValue
 impl surgeist_css::CssFlexWrapPropertyValue
 pub fn surgeist_css::CssFlexWrapPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssFlexWrapPropertyValue::current(&self) -> &surgeist_css::CssFlexWrap
-pub const fn surgeist_css::CssFlexWrapPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssFlexWrap>
-impl surgeist_css::CssFlexWrapPropertyValue
-pub const fn surgeist_css::CssFlexWrapPropertyValue::exact_i01_projection(&self) -> core::option::Option<&surgeist_css::CssFlexWrap>
+pub const fn surgeist_css::CssFlexWrapPropertyValue::value(&self) -> &surgeist_css::CssFlexWrap
 pub struct surgeist_css::CssFloatPropertyValue
 impl surgeist_css::CssFloatPropertyValue
 pub fn surgeist_css::CssFloatPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssFloatPropertyValue::current(&self) -> &surgeist_css::CssFloat
-pub const fn surgeist_css::CssFloatPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssFloat>
+pub const fn surgeist_css::CssFloatPropertyValue::value(&self) -> &surgeist_css::CssFloat
 pub struct surgeist_css::CssFlowTolerance
 impl surgeist_css::CssFlowTolerance
 pub const fn surgeist_css::CssFlowTolerance::as_ref(&self) -> surgeist_css::CssFlowToleranceRef<'_>
@@ -6242,7 +5998,7 @@ pub const fn surgeist_css::CssFontSizePropertyValue::size(&self) -> &surgeist_cs
 pub struct surgeist_css::CssFontStylePropertyValue
 impl surgeist_css::CssFontStylePropertyValue
 pub fn surgeist_css::CssFontStylePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssFontStylePropertyValue::current(&self) -> &surgeist_css::CssFontStyle
+pub const fn surgeist_css::CssFontStylePropertyValue::value(&self) -> &surgeist_css::CssFontStyle
 pub struct surgeist_css::CssFontSynthesisPropertyValue
 impl surgeist_css::CssFontSynthesisPropertyValue
 pub fn surgeist_css::CssFontSynthesisPropertyValue::as_css(&self) -> &str
@@ -6360,15 +6116,15 @@ pub fn surgeist_css::CssFontWeightNumber::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssFontWeightPropertyValue
 impl surgeist_css::CssFontWeightPropertyValue
 pub fn surgeist_css::CssFontWeightPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssFontWeightPropertyValue::current(&self) -> &surgeist_css::CssFontWeight
+pub const fn surgeist_css::CssFontWeightPropertyValue::value(&self) -> &surgeist_css::CssFontWeight
 pub struct surgeist_css::CssFontWidthPropertyValue
 impl surgeist_css::CssFontWidthPropertyValue
 pub fn surgeist_css::CssFontWidthPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssFontWidthPropertyValue::current(&self) -> &surgeist_css::CssFontWidth
+pub const fn surgeist_css::CssFontWidthPropertyValue::value(&self) -> &surgeist_css::CssFontWidth
 pub struct surgeist_css::CssFrameSizingPropertyValue
 impl surgeist_css::CssFrameSizingPropertyValue
 pub fn surgeist_css::CssFrameSizingPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssFrameSizingPropertyValue::current(&self) -> &surgeist_css::CssFrameSizing
+pub const fn surgeist_css::CssFrameSizingPropertyValue::value(&self) -> &surgeist_css::CssFrameSizing
 pub struct surgeist_css::CssFrequencyCalculation
 impl surgeist_css::CssFrequencyCalculation
 pub fn surgeist_css::CssFrequencyCalculation::components(&self) -> &surgeist_css::CssComponentValues
@@ -6395,7 +6151,7 @@ pub const fn surgeist_css::CssFunctionValue::values(&self) -> &surgeist_css::Css
 pub struct surgeist_css::CssGapPropertyValue
 impl surgeist_css::CssGapPropertyValue
 pub fn surgeist_css::CssGapPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssGapPropertyValue::current(&self) -> &surgeist_css::CssGapShorthand
+pub const fn surgeist_css::CssGapPropertyValue::value(&self) -> &surgeist_css::CssGapShorthand
 pub struct surgeist_css::CssGapShorthand
 impl surgeist_css::CssGapShorthand
 pub const fn surgeist_css::CssGapShorthand::authored_column(&self) -> core::option::Option<&surgeist_css::CssGapValue>
@@ -6644,7 +6400,7 @@ pub fn surgeist_css::CssGridTrackSizeList::try_new(sizes: alloc::vec::Vec<surgei
 pub struct surgeist_css::CssHeightPropertyValue
 impl surgeist_css::CssHeightPropertyValue
 pub fn surgeist_css::CssHeightPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssHeightPropertyValue::current(&self) -> &surgeist_css::CssSizeValue
+pub const fn surgeist_css::CssHeightPropertyValue::value(&self) -> &surgeist_css::CssSizeValue
 pub struct surgeist_css::CssHexColor
 impl surgeist_css::CssHexColor
 pub fn surgeist_css::CssHexColor::digits(&self) -> &str
@@ -6721,31 +6477,31 @@ pub fn surgeist_css::CssImportUrl::fmt(&self, formatter: &mut core::fmt::Formatt
 pub struct surgeist_css::CssInlineSizePropertyValue
 impl surgeist_css::CssInlineSizePropertyValue
 pub fn surgeist_css::CssInlineSizePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssInlineSizePropertyValue::current(&self) -> &surgeist_css::CssSizeValue
+pub const fn surgeist_css::CssInlineSizePropertyValue::value(&self) -> &surgeist_css::CssSizeValue
 pub struct surgeist_css::CssInsetBlockEndPropertyValue
 impl surgeist_css::CssInsetBlockEndPropertyValue
 pub fn surgeist_css::CssInsetBlockEndPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssInsetBlockEndPropertyValue::current(&self) -> &surgeist_css::CssInsetValue
+pub const fn surgeist_css::CssInsetBlockEndPropertyValue::value(&self) -> &surgeist_css::CssInsetValue
 pub struct surgeist_css::CssInsetBlockPropertyValue
 impl surgeist_css::CssInsetBlockPropertyValue
 pub fn surgeist_css::CssInsetBlockPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssInsetBlockPropertyValue::current(&self) -> &surgeist_css::CssInsetPair
+pub const fn surgeist_css::CssInsetBlockPropertyValue::value(&self) -> &surgeist_css::CssInsetPair
 pub struct surgeist_css::CssInsetBlockStartPropertyValue
 impl surgeist_css::CssInsetBlockStartPropertyValue
 pub fn surgeist_css::CssInsetBlockStartPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssInsetBlockStartPropertyValue::current(&self) -> &surgeist_css::CssInsetValue
+pub const fn surgeist_css::CssInsetBlockStartPropertyValue::value(&self) -> &surgeist_css::CssInsetValue
 pub struct surgeist_css::CssInsetInlineEndPropertyValue
 impl surgeist_css::CssInsetInlineEndPropertyValue
 pub fn surgeist_css::CssInsetInlineEndPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssInsetInlineEndPropertyValue::current(&self) -> &surgeist_css::CssInsetValue
+pub const fn surgeist_css::CssInsetInlineEndPropertyValue::value(&self) -> &surgeist_css::CssInsetValue
 pub struct surgeist_css::CssInsetInlinePropertyValue
 impl surgeist_css::CssInsetInlinePropertyValue
 pub fn surgeist_css::CssInsetInlinePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssInsetInlinePropertyValue::current(&self) -> &surgeist_css::CssInsetPair
+pub const fn surgeist_css::CssInsetInlinePropertyValue::value(&self) -> &surgeist_css::CssInsetPair
 pub struct surgeist_css::CssInsetInlineStartPropertyValue
 impl surgeist_css::CssInsetInlineStartPropertyValue
 pub fn surgeist_css::CssInsetInlineStartPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssInsetInlineStartPropertyValue::current(&self) -> &surgeist_css::CssInsetValue
+pub const fn surgeist_css::CssInsetInlineStartPropertyValue::value(&self) -> &surgeist_css::CssInsetValue
 pub struct surgeist_css::CssInsetPair
 impl surgeist_css::CssInsetPair
 pub fn surgeist_css::CssInsetPair::authored_end(&self) -> core::option::Option<&surgeist_css::CssInsetValue>
@@ -6757,10 +6513,7 @@ pub fn surgeist_css::CssInsetPair::start(&self) -> &surgeist_css::CssInsetValue
 pub struct surgeist_css::CssInsetPropertyValue
 impl surgeist_css::CssInsetPropertyValue
 pub fn surgeist_css::CssInsetPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssInsetPropertyValue::current(&self) -> &surgeist_css::CssInsetShorthand
-pub const fn surgeist_css::CssInsetPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssEdges>
-impl core::cmp::PartialEq for surgeist_css::CssInsetPropertyValue
-pub fn surgeist_css::CssInsetPropertyValue::eq(&self, other: &Self) -> bool
+pub const fn surgeist_css::CssInsetPropertyValue::value(&self) -> &surgeist_css::CssInsetShorthand
 pub struct surgeist_css::CssInsetShape
 impl surgeist_css::CssInsetShape
 pub const fn surgeist_css::CssInsetShape::new(offsets: surgeist_css::CssInsetShapeOffsets, round: core::option::Option<surgeist_css::CssBorderRadii>) -> Self
@@ -6808,8 +6561,7 @@ pub const fn surgeist_css::CssIsolationPropertyValue::isolation(&self) -> &surge
 pub struct surgeist_css::CssJustifyContentPropertyValue
 impl surgeist_css::CssJustifyContentPropertyValue
 pub fn surgeist_css::CssJustifyContentPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssJustifyContentPropertyValue::current(&self) -> &surgeist_css::CssJustifyContentValue
-pub const fn surgeist_css::CssJustifyContentPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssAlignment>
+pub const fn surgeist_css::CssJustifyContentPropertyValue::value(&self) -> &surgeist_css::CssJustifyContentValue
 pub struct surgeist_css::CssJustifyContentValue(_)
 impl surgeist_css::CssJustifyContentValue
 pub fn surgeist_css::CssJustifyContentValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
@@ -6819,8 +6571,7 @@ pub const fn surgeist_css::CssJustifyContentValue::value(&self) -> surgeist_css:
 pub struct surgeist_css::CssJustifyItemsPropertyValue
 impl surgeist_css::CssJustifyItemsPropertyValue
 pub fn surgeist_css::CssJustifyItemsPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssJustifyItemsPropertyValue::current(&self) -> &surgeist_css::CssJustifyItemsValue
-pub const fn surgeist_css::CssJustifyItemsPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssAlignItems>
+pub const fn surgeist_css::CssJustifyItemsPropertyValue::value(&self) -> &surgeist_css::CssJustifyItemsValue
 pub struct surgeist_css::CssJustifyItemsValue(_)
 impl surgeist_css::CssJustifyItemsValue
 pub fn surgeist_css::CssJustifyItemsValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
@@ -6830,8 +6581,7 @@ pub const fn surgeist_css::CssJustifyItemsValue::value(&self) -> surgeist_css::C
 pub struct surgeist_css::CssJustifySelfPropertyValue
 impl surgeist_css::CssJustifySelfPropertyValue
 pub fn surgeist_css::CssJustifySelfPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssJustifySelfPropertyValue::current(&self) -> &surgeist_css::CssJustifySelfValue
-pub const fn surgeist_css::CssJustifySelfPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssAlignItems>
+pub const fn surgeist_css::CssJustifySelfPropertyValue::value(&self) -> &surgeist_css::CssJustifySelfValue
 pub struct surgeist_css::CssJustifySelfValue(_)
 impl surgeist_css::CssJustifySelfValue
 pub fn surgeist_css::CssJustifySelfValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
@@ -6841,7 +6591,7 @@ pub const fn surgeist_css::CssJustifySelfValue::value(&self) -> surgeist_css::Cs
 pub struct surgeist_css::CssJustifyTracksPropertyValue
 impl surgeist_css::CssJustifyTracksPropertyValue
 pub fn surgeist_css::CssJustifyTracksPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssJustifyTracksPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssAlignment>
+pub const fn surgeist_css::CssJustifyTracksPropertyValue::value(&self) -> &surgeist_css::CssAlignmentValue
 pub struct surgeist_css::CssKeyframeBlock
 impl surgeist_css::CssKeyframeBlock
 pub const fn surgeist_css::CssKeyframeBlock::declarations(&self) -> &surgeist_css::CssKeyframeDeclarationList
@@ -6936,10 +6686,7 @@ pub fn surgeist_css::CssLchColor::try_new(lightness: surgeist_css::CssColorCompo
 pub struct surgeist_css::CssLeftPropertyValue
 impl surgeist_css::CssLeftPropertyValue
 pub fn surgeist_css::CssLeftPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssLeftPropertyValue::current(&self) -> &surgeist_css::CssInsetValue
-pub const fn surgeist_css::CssLeftPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssLength>
-impl core::cmp::PartialEq for surgeist_css::CssLeftPropertyValue
-pub fn surgeist_css::CssLeftPropertyValue::eq(&self, other: &Self) -> bool
+pub const fn surgeist_css::CssLeftPropertyValue::value(&self) -> &surgeist_css::CssInsetValue
 pub struct surgeist_css::CssLengthCalculation
 impl surgeist_css::CssLengthCalculation
 pub fn surgeist_css::CssLengthCalculation::components(&self) -> &surgeist_css::CssComponentValues
@@ -6975,15 +6722,10 @@ pub fn surgeist_css::CssLengthPercentageCalculation::try_dimension(value: f32, u
 pub fn surgeist_css::CssLengthPercentageCalculation::try_percentage(value: f32) -> core::option::Option<Self>
 pub fn surgeist_css::CssLengthPercentageCalculation::try_sum(first: Self, rest: impl core::iter::traits::collect::IntoIterator<Item = (surgeist_css::CssCalculationSumOperator, Self)>) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 pub fn surgeist_css::CssLengthPercentageCalculation::try_sum_with_limits(first: Self, rest: impl core::iter::traits::collect::IntoIterator<Item = (surgeist_css::CssCalculationSumOperator, Self)>, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
-pub struct surgeist_css::CssLetterSpacingLength
-impl surgeist_css::CssLetterSpacingLength
-pub const fn surgeist_css::CssLetterSpacingLength::length(&self) -> &surgeist_css::CssLength
-pub fn surgeist_css::CssLetterSpacingLength::try_new(length: surgeist_css::CssLength) -> core::option::Option<Self>
 pub struct surgeist_css::CssLetterSpacingPropertyValue
 impl surgeist_css::CssLetterSpacingPropertyValue
 pub fn surgeist_css::CssLetterSpacingPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssLetterSpacingPropertyValue::current(&self) -> &surgeist_css::CssTextSpacingAdjustment
-pub const fn surgeist_css::CssLetterSpacingPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssLetterSpacing>
+pub const fn surgeist_css::CssLetterSpacingPropertyValue::value(&self) -> &surgeist_css::CssTextSpacingAdjustment
 pub struct surgeist_css::CssLineHeightPropertyValue
 impl surgeist_css::CssLineHeightPropertyValue
 pub fn surgeist_css::CssLineHeightPropertyValue::as_css(&self) -> &str
@@ -6997,32 +6739,22 @@ pub const fn surgeist_css::CssLinearGradient::direction(&self) -> core::option::
 pub const fn surgeist_css::CssLinearGradient::stops(&self) -> &surgeist_css::CssColorStopList
 impl surgeist_css::CssLinearGradient
 pub const fn surgeist_css::CssLinearGradient::new(direction: core::option::Option<surgeist_css::CssLinearGradientDirection>, stops: surgeist_css::CssColorStopList) -> Self
-pub struct surgeist_css::CssListStyle
-impl surgeist_css::CssListStyle
-pub const fn surgeist_css::CssListStyle::image(&self) -> core::option::Option<&surgeist_css::CssListStyleImage>
-pub const fn surgeist_css::CssListStyle::position(&self) -> core::option::Option<surgeist_css::CssListStylePosition>
-pub const fn surgeist_css::CssListStyle::style_type(&self) -> core::option::Option<&surgeist_css::CssListStyleType>
-pub fn surgeist_css::CssListStyle::try_new(style_type: core::option::Option<surgeist_css::CssListStyleType>, position: core::option::Option<surgeist_css::CssListStylePosition>, image: core::option::Option<surgeist_css::CssListStyleImage>) -> core::option::Option<Self>
 pub struct surgeist_css::CssListStyleImagePropertyValue
 impl surgeist_css::CssListStyleImagePropertyValue
 pub fn surgeist_css::CssListStyleImagePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssListStyleImagePropertyValue::current(&self) -> &surgeist_css::CssImageValue
-pub const fn surgeist_css::CssListStyleImagePropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssListStyleImage>
+pub const fn surgeist_css::CssListStyleImagePropertyValue::value(&self) -> &surgeist_css::CssImageValue
 pub struct surgeist_css::CssListStylePositionPropertyValue
 impl surgeist_css::CssListStylePositionPropertyValue
 pub fn surgeist_css::CssListStylePositionPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssListStylePositionPropertyValue::current(&self) -> &surgeist_css::CssListStylePosition
-pub const fn surgeist_css::CssListStylePositionPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssListStylePosition>
+pub const fn surgeist_css::CssListStylePositionPropertyValue::value(&self) -> &surgeist_css::CssListStylePosition
 pub struct surgeist_css::CssListStylePropertyValue
 impl surgeist_css::CssListStylePropertyValue
 pub fn surgeist_css::CssListStylePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssListStylePropertyValue::current(&self) -> &surgeist_css::CssListStyleValue
-pub const fn surgeist_css::CssListStylePropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssListStyle>
+pub const fn surgeist_css::CssListStylePropertyValue::value(&self) -> &surgeist_css::CssListStyleValue
 pub struct surgeist_css::CssListStyleTypePropertyValue
 impl surgeist_css::CssListStyleTypePropertyValue
 pub fn surgeist_css::CssListStyleTypePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssListStyleTypePropertyValue::current(&self) -> &surgeist_css::CssListStyleTypeValue
-pub const fn surgeist_css::CssListStyleTypePropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssListStyleType>
+pub const fn surgeist_css::CssListStyleTypePropertyValue::value(&self) -> &surgeist_css::CssListStyleTypeValue
 pub struct surgeist_css::CssListStyleValue
 impl surgeist_css::CssListStyleValue
 pub const fn surgeist_css::CssListStyleValue::image(&self) -> core::option::Option<&surgeist_css::CssImageValue>
@@ -7061,35 +6793,35 @@ pub fn surgeist_css::CssLonghandValue::view(&self) -> surgeist_css::CssLonghandV
 pub struct surgeist_css::CssMarginBlockEndPropertyValue
 impl surgeist_css::CssMarginBlockEndPropertyValue
 pub fn surgeist_css::CssMarginBlockEndPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMarginBlockEndPropertyValue::current(&self) -> &surgeist_css::CssMarginValue
+pub const fn surgeist_css::CssMarginBlockEndPropertyValue::value(&self) -> &surgeist_css::CssMarginValue
 pub struct surgeist_css::CssMarginBlockPropertyValue
 impl surgeist_css::CssMarginBlockPropertyValue
 pub fn surgeist_css::CssMarginBlockPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMarginBlockPropertyValue::current(&self) -> &surgeist_css::CssMarginPair
+pub const fn surgeist_css::CssMarginBlockPropertyValue::value(&self) -> &surgeist_css::CssMarginPair
 pub struct surgeist_css::CssMarginBlockStartPropertyValue
 impl surgeist_css::CssMarginBlockStartPropertyValue
 pub fn surgeist_css::CssMarginBlockStartPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMarginBlockStartPropertyValue::current(&self) -> &surgeist_css::CssMarginValue
+pub const fn surgeist_css::CssMarginBlockStartPropertyValue::value(&self) -> &surgeist_css::CssMarginValue
 pub struct surgeist_css::CssMarginBottomPropertyValue
 impl surgeist_css::CssMarginBottomPropertyValue
 pub fn surgeist_css::CssMarginBottomPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMarginBottomPropertyValue::current(&self) -> &surgeist_css::CssMarginValue
+pub const fn surgeist_css::CssMarginBottomPropertyValue::value(&self) -> &surgeist_css::CssMarginValue
 pub struct surgeist_css::CssMarginInlineEndPropertyValue
 impl surgeist_css::CssMarginInlineEndPropertyValue
 pub fn surgeist_css::CssMarginInlineEndPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMarginInlineEndPropertyValue::current(&self) -> &surgeist_css::CssMarginValue
+pub const fn surgeist_css::CssMarginInlineEndPropertyValue::value(&self) -> &surgeist_css::CssMarginValue
 pub struct surgeist_css::CssMarginInlinePropertyValue
 impl surgeist_css::CssMarginInlinePropertyValue
 pub fn surgeist_css::CssMarginInlinePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMarginInlinePropertyValue::current(&self) -> &surgeist_css::CssMarginPair
+pub const fn surgeist_css::CssMarginInlinePropertyValue::value(&self) -> &surgeist_css::CssMarginPair
 pub struct surgeist_css::CssMarginInlineStartPropertyValue
 impl surgeist_css::CssMarginInlineStartPropertyValue
 pub fn surgeist_css::CssMarginInlineStartPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMarginInlineStartPropertyValue::current(&self) -> &surgeist_css::CssMarginValue
+pub const fn surgeist_css::CssMarginInlineStartPropertyValue::value(&self) -> &surgeist_css::CssMarginValue
 pub struct surgeist_css::CssMarginLeftPropertyValue
 impl surgeist_css::CssMarginLeftPropertyValue
 pub fn surgeist_css::CssMarginLeftPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMarginLeftPropertyValue::current(&self) -> &surgeist_css::CssMarginValue
+pub const fn surgeist_css::CssMarginLeftPropertyValue::value(&self) -> &surgeist_css::CssMarginValue
 pub struct surgeist_css::CssMarginPair(_)
 impl surgeist_css::CssMarginPair
 pub fn surgeist_css::CssMarginPair::authored_end(&self) -> core::option::Option<&surgeist_css::CssMarginValue>
@@ -7101,11 +6833,11 @@ pub fn surgeist_css::CssMarginPair::start(&self) -> &surgeist_css::CssMarginValu
 pub struct surgeist_css::CssMarginPropertyValue
 impl surgeist_css::CssMarginPropertyValue
 pub fn surgeist_css::CssMarginPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMarginPropertyValue::current(&self) -> &surgeist_css::CssMarginShorthand
+pub const fn surgeist_css::CssMarginPropertyValue::value(&self) -> &surgeist_css::CssMarginShorthand
 pub struct surgeist_css::CssMarginRightPropertyValue
 impl surgeist_css::CssMarginRightPropertyValue
 pub fn surgeist_css::CssMarginRightPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMarginRightPropertyValue::current(&self) -> &surgeist_css::CssMarginValue
+pub const fn surgeist_css::CssMarginRightPropertyValue::value(&self) -> &surgeist_css::CssMarginValue
 pub struct surgeist_css::CssMarginShorthand(_)
 impl surgeist_css::CssMarginShorthand
 pub fn surgeist_css::CssMarginShorthand::assigned_values(&self) -> [&surgeist_css::CssMarginValue; 4]
@@ -7117,11 +6849,11 @@ pub fn surgeist_css::CssMarginShorthand::try_new(kind: surgeist_css::CssBoxSideK
 pub struct surgeist_css::CssMarginTopPropertyValue
 impl surgeist_css::CssMarginTopPropertyValue
 pub fn surgeist_css::CssMarginTopPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMarginTopPropertyValue::current(&self) -> &surgeist_css::CssMarginValue
+pub const fn surgeist_css::CssMarginTopPropertyValue::value(&self) -> &surgeist_css::CssMarginValue
 pub struct surgeist_css::CssMarkerSidePropertyValue
 impl surgeist_css::CssMarkerSidePropertyValue
 pub fn surgeist_css::CssMarkerSidePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMarkerSidePropertyValue::current(&self) -> &surgeist_css::CssMarkerSide
+pub const fn surgeist_css::CssMarkerSidePropertyValue::value(&self) -> &surgeist_css::CssMarkerSide
 pub struct surgeist_css::CssMaskImagePropertyValue
 impl surgeist_css::CssMaskImagePropertyValue
 pub fn surgeist_css::CssMaskImagePropertyValue::as_css(&self) -> &str
@@ -7153,15 +6885,15 @@ pub const fn surgeist_css::CssMaskSizePropertyValue::sizes(&self) -> &surgeist_c
 pub struct surgeist_css::CssMaxBlockSizePropertyValue
 impl surgeist_css::CssMaxBlockSizePropertyValue
 pub fn surgeist_css::CssMaxBlockSizePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMaxBlockSizePropertyValue::current(&self) -> &surgeist_css::CssMaxSizeValue
+pub const fn surgeist_css::CssMaxBlockSizePropertyValue::value(&self) -> &surgeist_css::CssMaxSizeValue
 pub struct surgeist_css::CssMaxHeightPropertyValue
 impl surgeist_css::CssMaxHeightPropertyValue
 pub fn surgeist_css::CssMaxHeightPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMaxHeightPropertyValue::current(&self) -> &surgeist_css::CssMaxSizeValue
+pub const fn surgeist_css::CssMaxHeightPropertyValue::value(&self) -> &surgeist_css::CssMaxSizeValue
 pub struct surgeist_css::CssMaxInlineSizePropertyValue
 impl surgeist_css::CssMaxInlineSizePropertyValue
 pub fn surgeist_css::CssMaxInlineSizePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMaxInlineSizePropertyValue::current(&self) -> &surgeist_css::CssMaxSizeValue
+pub const fn surgeist_css::CssMaxInlineSizePropertyValue::value(&self) -> &surgeist_css::CssMaxSizeValue
 pub struct surgeist_css::CssMaxSizePair(_)
 impl surgeist_css::CssMaxSizePair
 pub fn surgeist_css::CssMaxSizePair::authored_height(&self) -> core::option::Option<&surgeist_css::CssMaxSizeValue>
@@ -7173,7 +6905,7 @@ pub fn surgeist_css::CssMaxSizePair::width(&self) -> &surgeist_css::CssMaxSizeVa
 pub struct surgeist_css::CssMaxSizePropertyValue
 impl surgeist_css::CssMaxSizePropertyValue
 pub fn surgeist_css::CssMaxSizePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMaxSizePropertyValue::current(&self) -> &surgeist_css::CssMaxSizePair
+pub const fn surgeist_css::CssMaxSizePropertyValue::value(&self) -> &surgeist_css::CssMaxSizePair
 pub struct surgeist_css::CssMaxSizeValue(_)
 impl surgeist_css::CssMaxSizeValue
 pub const surgeist_css::CssMaxSizeValue::NONE: Self
@@ -7185,7 +6917,7 @@ pub fn surgeist_css::CssMaxSizeValue::try_box_size(value: surgeist_css::CssBoxSi
 pub struct surgeist_css::CssMaxWidthPropertyValue
 impl surgeist_css::CssMaxWidthPropertyValue
 pub fn surgeist_css::CssMaxWidthPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMaxWidthPropertyValue::current(&self) -> &surgeist_css::CssMaxSizeValue
+pub const fn surgeist_css::CssMaxWidthPropertyValue::value(&self) -> &surgeist_css::CssMaxSizeValue
 pub struct surgeist_css::CssMediaCondition
 impl surgeist_css::CssMediaCondition
 pub const fn surgeist_css::CssMediaCondition::kind(&self) -> &surgeist_css::CssMediaConditionKind
@@ -7244,27 +6976,27 @@ pub fn surgeist_css::CssMediaRule::rules(&self) -> &[surgeist_css::CssRule]
 pub struct surgeist_css::CssMinBlockSizePropertyValue
 impl surgeist_css::CssMinBlockSizePropertyValue
 pub fn surgeist_css::CssMinBlockSizePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMinBlockSizePropertyValue::current(&self) -> &surgeist_css::CssSizeValue
+pub const fn surgeist_css::CssMinBlockSizePropertyValue::value(&self) -> &surgeist_css::CssSizeValue
 pub struct surgeist_css::CssMinHeightPropertyValue
 impl surgeist_css::CssMinHeightPropertyValue
 pub fn surgeist_css::CssMinHeightPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMinHeightPropertyValue::current(&self) -> &surgeist_css::CssSizeValue
+pub const fn surgeist_css::CssMinHeightPropertyValue::value(&self) -> &surgeist_css::CssSizeValue
 pub struct surgeist_css::CssMinInlineSizePropertyValue
 impl surgeist_css::CssMinInlineSizePropertyValue
 pub fn surgeist_css::CssMinInlineSizePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMinInlineSizePropertyValue::current(&self) -> &surgeist_css::CssSizeValue
+pub const fn surgeist_css::CssMinInlineSizePropertyValue::value(&self) -> &surgeist_css::CssSizeValue
 pub struct surgeist_css::CssMinIntrinsicSizingPropertyValue
 impl surgeist_css::CssMinIntrinsicSizingPropertyValue
 pub fn surgeist_css::CssMinIntrinsicSizingPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMinIntrinsicSizingPropertyValue::current(&self) -> &surgeist_css::CssMinIntrinsicSizing
+pub const fn surgeist_css::CssMinIntrinsicSizingPropertyValue::value(&self) -> &surgeist_css::CssMinIntrinsicSizing
 pub struct surgeist_css::CssMinSizePropertyValue
 impl surgeist_css::CssMinSizePropertyValue
 pub fn surgeist_css::CssMinSizePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMinSizePropertyValue::current(&self) -> &surgeist_css::CssSizePair
+pub const fn surgeist_css::CssMinSizePropertyValue::value(&self) -> &surgeist_css::CssSizePair
 pub struct surgeist_css::CssMinWidthPropertyValue
 impl surgeist_css::CssMinWidthPropertyValue
 pub fn surgeist_css::CssMinWidthPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMinWidthPropertyValue::current(&self) -> &surgeist_css::CssSizeValue
+pub const fn surgeist_css::CssMinWidthPropertyValue::value(&self) -> &surgeist_css::CssSizeValue
 pub struct surgeist_css::CssMixBlendModePropertyValue
 impl surgeist_css::CssMixBlendModePropertyValue
 pub fn surgeist_css::CssMixBlendModePropertyValue::as_css(&self) -> &str
@@ -7471,11 +7203,11 @@ pub const fn surgeist_css::CssOutlinePropertyValue::value(&self) -> &surgeist_cs
 pub struct surgeist_css::CssOutlineStylePropertyValue
 impl surgeist_css::CssOutlineStylePropertyValue
 pub fn surgeist_css::CssOutlineStylePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssOutlineStylePropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssOutlineStyle>
+pub const fn surgeist_css::CssOutlineStylePropertyValue::value(&self) -> &surgeist_css::CssOutlineStyle
 pub struct surgeist_css::CssOutlineWidthPropertyValue
 impl surgeist_css::CssOutlineWidthPropertyValue
 pub fn surgeist_css::CssOutlineWidthPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssOutlineWidthPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssOutlineWidth>
+pub const fn surgeist_css::CssOutlineWidthPropertyValue::value(&self) -> &surgeist_css::CssOutlineWidth
 pub struct surgeist_css::CssOverflowAxes
 pub surgeist_css::CssOverflowAxes::x: surgeist_css::CssOverflow
 pub surgeist_css::CssOverflowAxes::y: surgeist_css::CssOverflow
@@ -7484,7 +7216,7 @@ pub const fn surgeist_css::CssOverflowAxes::new(x: surgeist_css::CssOverflow, y:
 pub struct surgeist_css::CssOverflowBlockPropertyValue
 impl surgeist_css::CssOverflowBlockPropertyValue
 pub fn surgeist_css::CssOverflowBlockPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssOverflowBlockPropertyValue::current(&self) -> &surgeist_css::CssOverflow
+pub const fn surgeist_css::CssOverflowBlockPropertyValue::value(&self) -> &surgeist_css::CssOverflow
 pub struct surgeist_css::CssOverflowClipMargin
 impl surgeist_css::CssOverflowClipMargin
 pub const fn surgeist_css::CssOverflowClipMargin::authored_box_edge(&self) -> core::option::Option<surgeist_css::CssBoxEdgeKeyword>
@@ -7501,16 +7233,15 @@ pub fn surgeist_css::CssOverflowClipMargin::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssOverflowClipMarginPropertyValue
 impl surgeist_css::CssOverflowClipMarginPropertyValue
 pub fn surgeist_css::CssOverflowClipMarginPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssOverflowClipMarginPropertyValue::current(&self) -> &surgeist_css::CssOverflowClipMargin
+pub const fn surgeist_css::CssOverflowClipMarginPropertyValue::value(&self) -> &surgeist_css::CssOverflowClipMargin
 pub struct surgeist_css::CssOverflowInlinePropertyValue
 impl surgeist_css::CssOverflowInlinePropertyValue
 pub fn surgeist_css::CssOverflowInlinePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssOverflowInlinePropertyValue::current(&self) -> &surgeist_css::CssOverflow
+pub const fn surgeist_css::CssOverflowInlinePropertyValue::value(&self) -> &surgeist_css::CssOverflow
 pub struct surgeist_css::CssOverflowPropertyValue
 impl surgeist_css::CssOverflowPropertyValue
 pub fn surgeist_css::CssOverflowPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssOverflowPropertyValue::current(&self) -> &surgeist_css::CssOverflowValue
-pub const fn surgeist_css::CssOverflowPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssOverflowI01PropertyValue>
+pub const fn surgeist_css::CssOverflowPropertyValue::value(&self) -> &surgeist_css::CssOverflowValue
 pub struct surgeist_css::CssOverflowValue
 impl surgeist_css::CssOverflowValue
 pub const fn surgeist_css::CssOverflowValue::authored_y(&self) -> core::option::Option<surgeist_css::CssOverflow>
@@ -7522,51 +7253,47 @@ pub const fn surgeist_css::CssOverflowValue::y(&self) -> surgeist_css::CssOverfl
 pub struct surgeist_css::CssOverflowWrapPropertyValue
 impl surgeist_css::CssOverflowWrapPropertyValue
 pub fn surgeist_css::CssOverflowWrapPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssOverflowWrapPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssOverflowWrap>
-impl surgeist_css::CssOverflowWrapPropertyValue
-pub const fn surgeist_css::CssOverflowWrapPropertyValue::current(&self) -> &surgeist_css::CssOverflowWrap
+pub const fn surgeist_css::CssOverflowWrapPropertyValue::value(&self) -> &surgeist_css::CssOverflowWrap
 pub struct surgeist_css::CssOverflowXPropertyValue
 impl surgeist_css::CssOverflowXPropertyValue
 pub fn surgeist_css::CssOverflowXPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssOverflowXPropertyValue::current(&self) -> &surgeist_css::CssOverflow
-pub const fn surgeist_css::CssOverflowXPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssOverflow>
+pub const fn surgeist_css::CssOverflowXPropertyValue::value(&self) -> &surgeist_css::CssOverflow
 pub struct surgeist_css::CssOverflowYPropertyValue
 impl surgeist_css::CssOverflowYPropertyValue
 pub fn surgeist_css::CssOverflowYPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssOverflowYPropertyValue::current(&self) -> &surgeist_css::CssOverflow
-pub const fn surgeist_css::CssOverflowYPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssOverflow>
+pub const fn surgeist_css::CssOverflowYPropertyValue::value(&self) -> &surgeist_css::CssOverflow
 pub struct surgeist_css::CssPaddingBlockEndPropertyValue
 impl surgeist_css::CssPaddingBlockEndPropertyValue
 pub fn surgeist_css::CssPaddingBlockEndPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssPaddingBlockEndPropertyValue::current(&self) -> &surgeist_css::CssPaddingValue
+pub const fn surgeist_css::CssPaddingBlockEndPropertyValue::value(&self) -> &surgeist_css::CssPaddingValue
 pub struct surgeist_css::CssPaddingBlockPropertyValue
 impl surgeist_css::CssPaddingBlockPropertyValue
 pub fn surgeist_css::CssPaddingBlockPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssPaddingBlockPropertyValue::current(&self) -> &surgeist_css::CssPaddingPair
+pub const fn surgeist_css::CssPaddingBlockPropertyValue::value(&self) -> &surgeist_css::CssPaddingPair
 pub struct surgeist_css::CssPaddingBlockStartPropertyValue
 impl surgeist_css::CssPaddingBlockStartPropertyValue
 pub fn surgeist_css::CssPaddingBlockStartPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssPaddingBlockStartPropertyValue::current(&self) -> &surgeist_css::CssPaddingValue
+pub const fn surgeist_css::CssPaddingBlockStartPropertyValue::value(&self) -> &surgeist_css::CssPaddingValue
 pub struct surgeist_css::CssPaddingBottomPropertyValue
 impl surgeist_css::CssPaddingBottomPropertyValue
 pub fn surgeist_css::CssPaddingBottomPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssPaddingBottomPropertyValue::current(&self) -> &surgeist_css::CssPaddingValue
+pub const fn surgeist_css::CssPaddingBottomPropertyValue::value(&self) -> &surgeist_css::CssPaddingValue
 pub struct surgeist_css::CssPaddingInlineEndPropertyValue
 impl surgeist_css::CssPaddingInlineEndPropertyValue
 pub fn surgeist_css::CssPaddingInlineEndPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssPaddingInlineEndPropertyValue::current(&self) -> &surgeist_css::CssPaddingValue
+pub const fn surgeist_css::CssPaddingInlineEndPropertyValue::value(&self) -> &surgeist_css::CssPaddingValue
 pub struct surgeist_css::CssPaddingInlinePropertyValue
 impl surgeist_css::CssPaddingInlinePropertyValue
 pub fn surgeist_css::CssPaddingInlinePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssPaddingInlinePropertyValue::current(&self) -> &surgeist_css::CssPaddingPair
+pub const fn surgeist_css::CssPaddingInlinePropertyValue::value(&self) -> &surgeist_css::CssPaddingPair
 pub struct surgeist_css::CssPaddingInlineStartPropertyValue
 impl surgeist_css::CssPaddingInlineStartPropertyValue
 pub fn surgeist_css::CssPaddingInlineStartPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssPaddingInlineStartPropertyValue::current(&self) -> &surgeist_css::CssPaddingValue
+pub const fn surgeist_css::CssPaddingInlineStartPropertyValue::value(&self) -> &surgeist_css::CssPaddingValue
 pub struct surgeist_css::CssPaddingLeftPropertyValue
 impl surgeist_css::CssPaddingLeftPropertyValue
 pub fn surgeist_css::CssPaddingLeftPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssPaddingLeftPropertyValue::current(&self) -> &surgeist_css::CssPaddingValue
+pub const fn surgeist_css::CssPaddingLeftPropertyValue::value(&self) -> &surgeist_css::CssPaddingValue
 pub struct surgeist_css::CssPaddingPair(_)
 impl surgeist_css::CssPaddingPair
 pub fn surgeist_css::CssPaddingPair::authored_end(&self) -> core::option::Option<&surgeist_css::CssPaddingValue>
@@ -7578,11 +7305,11 @@ pub fn surgeist_css::CssPaddingPair::start(&self) -> &surgeist_css::CssPaddingVa
 pub struct surgeist_css::CssPaddingPropertyValue
 impl surgeist_css::CssPaddingPropertyValue
 pub fn surgeist_css::CssPaddingPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssPaddingPropertyValue::current(&self) -> &surgeist_css::CssPaddingShorthand
+pub const fn surgeist_css::CssPaddingPropertyValue::value(&self) -> &surgeist_css::CssPaddingShorthand
 pub struct surgeist_css::CssPaddingRightPropertyValue
 impl surgeist_css::CssPaddingRightPropertyValue
 pub fn surgeist_css::CssPaddingRightPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssPaddingRightPropertyValue::current(&self) -> &surgeist_css::CssPaddingValue
+pub const fn surgeist_css::CssPaddingRightPropertyValue::value(&self) -> &surgeist_css::CssPaddingValue
 pub struct surgeist_css::CssPaddingShorthand(_)
 impl surgeist_css::CssPaddingShorthand
 pub fn surgeist_css::CssPaddingShorthand::assigned_values(&self) -> [&surgeist_css::CssPaddingValue; 4]
@@ -7594,7 +7321,7 @@ pub fn surgeist_css::CssPaddingShorthand::try_new(kind: surgeist_css::CssBoxSide
 pub struct surgeist_css::CssPaddingTopPropertyValue
 impl surgeist_css::CssPaddingTopPropertyValue
 pub fn surgeist_css::CssPaddingTopPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssPaddingTopPropertyValue::current(&self) -> &surgeist_css::CssPaddingValue
+pub const fn surgeist_css::CssPaddingTopPropertyValue::value(&self) -> &surgeist_css::CssPaddingValue
 pub struct surgeist_css::CssPaddingValue(_)
 impl surgeist_css::CssPaddingValue
 pub fn surgeist_css::CssPaddingValue::length_percentage(&self) -> &surgeist_css::CssSpecifiedNonNegativeLengthPercentage
@@ -7670,17 +7397,10 @@ pub fn surgeist_css::CssPercentageCalculation::try_from_components(values: surge
 pub fn surgeist_css::CssPercentageCalculation::try_from_components_with_limits(values: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 impl surgeist_css::CssPercentageCalculation
 pub fn surgeist_css::CssPercentageCalculation::try_literal(value: f32) -> core::option::Option<Self>
-pub struct surgeist_css::CssPlaceContentAlignment
-impl surgeist_css::CssPlaceContentAlignment
-pub const fn surgeist_css::CssPlaceContentAlignment::all(value: surgeist_css::CssAlignment) -> Self
-pub const fn surgeist_css::CssPlaceContentAlignment::first(self) -> surgeist_css::CssAlignment
-pub const fn surgeist_css::CssPlaceContentAlignment::new(first: surgeist_css::CssAlignment, second: surgeist_css::CssAlignment) -> Self
-pub const fn surgeist_css::CssPlaceContentAlignment::second(self) -> surgeist_css::CssAlignment
 pub struct surgeist_css::CssPlaceContentPropertyValue
 impl surgeist_css::CssPlaceContentPropertyValue
 pub fn surgeist_css::CssPlaceContentPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssPlaceContentPropertyValue::current(&self) -> &surgeist_css::CssPlaceContentValue
-pub const fn surgeist_css::CssPlaceContentPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssPlaceAlignment>
+pub const fn surgeist_css::CssPlaceContentPropertyValue::value(&self) -> &surgeist_css::CssPlaceContentValue
 pub struct surgeist_css::CssPlaceContentValue
 impl surgeist_css::CssPlaceContentValue
 pub const fn surgeist_css::CssPlaceContentValue::align(&self) -> surgeist_css::CssAlignContentValue
@@ -7689,17 +7409,10 @@ pub const fn surgeist_css::CssPlaceContentValue::justify(&self) -> surgeist_css:
 pub const fn surgeist_css::CssPlaceContentValue::new(align: surgeist_css::CssAlignContentValue, justify: surgeist_css::CssJustifyContentValue) -> Self
 pub fn surgeist_css::CssPlaceContentValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssPlaceContentValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
-pub struct surgeist_css::CssPlaceItemsAlignment
-impl surgeist_css::CssPlaceItemsAlignment
-pub const fn surgeist_css::CssPlaceItemsAlignment::all(value: surgeist_css::CssAlignItems) -> Self
-pub const fn surgeist_css::CssPlaceItemsAlignment::first(self) -> surgeist_css::CssAlignItems
-pub const fn surgeist_css::CssPlaceItemsAlignment::new(first: surgeist_css::CssAlignItems, second: surgeist_css::CssAlignItems) -> Self
-pub const fn surgeist_css::CssPlaceItemsAlignment::second(self) -> surgeist_css::CssAlignItems
 pub struct surgeist_css::CssPlaceItemsPropertyValue
 impl surgeist_css::CssPlaceItemsPropertyValue
 pub fn surgeist_css::CssPlaceItemsPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssPlaceItemsPropertyValue::current(&self) -> &surgeist_css::CssPlaceItemsValue
-pub const fn surgeist_css::CssPlaceItemsPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssPlaceAlignment>
+pub const fn surgeist_css::CssPlaceItemsPropertyValue::value(&self) -> &surgeist_css::CssPlaceItemsValue
 pub struct surgeist_css::CssPlaceItemsValue
 impl surgeist_css::CssPlaceItemsValue
 pub const fn surgeist_css::CssPlaceItemsValue::align(&self) -> surgeist_css::CssAlignItemsValue
@@ -7711,8 +7424,7 @@ pub fn surgeist_css::CssPlaceItemsValue::serialize_specified_with_limits(&self, 
 pub struct surgeist_css::CssPlaceSelfPropertyValue
 impl surgeist_css::CssPlaceSelfPropertyValue
 pub fn surgeist_css::CssPlaceSelfPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssPlaceSelfPropertyValue::current(&self) -> &surgeist_css::CssPlaceSelfValue
-pub const fn surgeist_css::CssPlaceSelfPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssPlaceAlignment>
+pub const fn surgeist_css::CssPlaceSelfPropertyValue::value(&self) -> &surgeist_css::CssPlaceSelfValue
 pub struct surgeist_css::CssPlaceSelfValue
 impl surgeist_css::CssPlaceSelfValue
 pub const fn surgeist_css::CssPlaceSelfValue::align(&self) -> surgeist_css::CssAlignSelfValue
@@ -7724,7 +7436,7 @@ pub fn surgeist_css::CssPlaceSelfValue::serialize_specified_with_limits(&self, l
 pub struct surgeist_css::CssPointerEventsPropertyValue
 impl surgeist_css::CssPointerEventsPropertyValue
 pub fn surgeist_css::CssPointerEventsPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssPointerEventsPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssPointerEvents>
+pub const fn surgeist_css::CssPointerEventsPropertyValue::value(&self) -> &surgeist_css::CssPointerEvents
 pub struct surgeist_css::CssPolygonPoint
 impl surgeist_css::CssPolygonPoint
 pub fn surgeist_css::CssPolygonPoint::try_new(x: surgeist_css::CssLength, y: surgeist_css::CssLength) -> core::option::Option<Self>
@@ -7759,9 +7471,7 @@ pub const fn surgeist_css::CssPositionOffset::value(&self) -> &surgeist_css::Css
 pub struct surgeist_css::CssPositionPropertyValue
 impl surgeist_css::CssPositionPropertyValue
 pub fn surgeist_css::CssPositionPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssPositionPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssLayoutPosition>
-impl surgeist_css::CssPositionPropertyValue
-pub const fn surgeist_css::CssPositionPropertyValue::current(&self) -> &surgeist_css::CssLayoutPosition
+pub const fn surgeist_css::CssPositionPropertyValue::value(&self) -> &surgeist_css::CssLayoutPosition
 pub struct surgeist_css::CssPositiveIntegerLiteral
 impl surgeist_css::CssPositiveIntegerLiteral
 pub const fn surgeist_css::CssPositiveIntegerLiteral::integer(&self) -> &surgeist_css::CssIntegerLiteral
@@ -7979,18 +7689,15 @@ pub fn surgeist_css::CssRgbColor::try_new(syntax: surgeist_css::CssColorSyntax, 
 pub struct surgeist_css::CssRightPropertyValue
 impl surgeist_css::CssRightPropertyValue
 pub fn surgeist_css::CssRightPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssRightPropertyValue::current(&self) -> &surgeist_css::CssInsetValue
-pub const fn surgeist_css::CssRightPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssLength>
-impl core::cmp::PartialEq for surgeist_css::CssRightPropertyValue
-pub fn surgeist_css::CssRightPropertyValue::eq(&self, other: &Self) -> bool
+pub const fn surgeist_css::CssRightPropertyValue::value(&self) -> &surgeist_css::CssInsetValue
 pub struct surgeist_css::CssRotatePropertyValue
 impl surgeist_css::CssRotatePropertyValue
 pub fn surgeist_css::CssRotatePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssRotatePropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssRotate>
+pub const fn surgeist_css::CssRotatePropertyValue::value(&self) -> &surgeist_css::CssRotate
 pub struct surgeist_css::CssRowGapPropertyValue
 impl surgeist_css::CssRowGapPropertyValue
 pub fn surgeist_css::CssRowGapPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssRowGapPropertyValue::current(&self) -> &surgeist_css::CssGapValue
+pub const fn surgeist_css::CssRowGapPropertyValue::value(&self) -> &surgeist_css::CssGapValue
 pub struct surgeist_css::CssRuleContext
 impl surgeist_css::CssRuleContext
 pub fn surgeist_css::CssRuleContext::kind(&self) -> surgeist_css::CssRuleContextKindRef<'_>
@@ -8000,7 +7707,7 @@ pub fn surgeist_css::CssRuleContext::same_context(&self, other: &Self) -> bool
 pub struct surgeist_css::CssScalePropertyValue
 impl surgeist_css::CssScalePropertyValue
 pub fn surgeist_css::CssScalePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssScalePropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssScale>
+pub const fn surgeist_css::CssScalePropertyValue::value(&self) -> &surgeist_css::CssScale
 pub struct surgeist_css::CssScaleValues
 impl surgeist_css::CssScaleValues
 pub fn surgeist_css::CssScaleValues::try_new(values: alloc::vec::Vec<f32>) -> core::option::Option<Self>
@@ -8056,39 +7763,39 @@ pub const fn surgeist_css::CssScopedSupportsRule::rules(&self) -> &surgeist_css:
 pub struct surgeist_css::CssScrollBehaviorPropertyValue
 impl surgeist_css::CssScrollBehaviorPropertyValue
 pub fn surgeist_css::CssScrollBehaviorPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssScrollBehaviorPropertyValue::current(&self) -> &surgeist_css::CssScrollBehavior
+pub const fn surgeist_css::CssScrollBehaviorPropertyValue::value(&self) -> &surgeist_css::CssScrollBehavior
 pub struct surgeist_css::CssScrollMarginBlockEndPropertyValue
 impl surgeist_css::CssScrollMarginBlockEndPropertyValue
 pub fn surgeist_css::CssScrollMarginBlockEndPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssScrollMarginBlockEndPropertyValue::current(&self) -> &surgeist_css::CssSpecifiedLength
+pub const fn surgeist_css::CssScrollMarginBlockEndPropertyValue::value(&self) -> &surgeist_css::CssSpecifiedLength
 pub struct surgeist_css::CssScrollMarginBlockPropertyValue
 impl surgeist_css::CssScrollMarginBlockPropertyValue
 pub fn surgeist_css::CssScrollMarginBlockPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssScrollMarginBlockPropertyValue::current(&self) -> &surgeist_css::CssScrollMarginPair
+pub const fn surgeist_css::CssScrollMarginBlockPropertyValue::value(&self) -> &surgeist_css::CssScrollMarginPair
 pub struct surgeist_css::CssScrollMarginBlockStartPropertyValue
 impl surgeist_css::CssScrollMarginBlockStartPropertyValue
 pub fn surgeist_css::CssScrollMarginBlockStartPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssScrollMarginBlockStartPropertyValue::current(&self) -> &surgeist_css::CssSpecifiedLength
+pub const fn surgeist_css::CssScrollMarginBlockStartPropertyValue::value(&self) -> &surgeist_css::CssSpecifiedLength
 pub struct surgeist_css::CssScrollMarginBottomPropertyValue
 impl surgeist_css::CssScrollMarginBottomPropertyValue
 pub fn surgeist_css::CssScrollMarginBottomPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssScrollMarginBottomPropertyValue::current(&self) -> &surgeist_css::CssSpecifiedLength
+pub const fn surgeist_css::CssScrollMarginBottomPropertyValue::value(&self) -> &surgeist_css::CssSpecifiedLength
 pub struct surgeist_css::CssScrollMarginInlineEndPropertyValue
 impl surgeist_css::CssScrollMarginInlineEndPropertyValue
 pub fn surgeist_css::CssScrollMarginInlineEndPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssScrollMarginInlineEndPropertyValue::current(&self) -> &surgeist_css::CssSpecifiedLength
+pub const fn surgeist_css::CssScrollMarginInlineEndPropertyValue::value(&self) -> &surgeist_css::CssSpecifiedLength
 pub struct surgeist_css::CssScrollMarginInlinePropertyValue
 impl surgeist_css::CssScrollMarginInlinePropertyValue
 pub fn surgeist_css::CssScrollMarginInlinePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssScrollMarginInlinePropertyValue::current(&self) -> &surgeist_css::CssScrollMarginPair
+pub const fn surgeist_css::CssScrollMarginInlinePropertyValue::value(&self) -> &surgeist_css::CssScrollMarginPair
 pub struct surgeist_css::CssScrollMarginInlineStartPropertyValue
 impl surgeist_css::CssScrollMarginInlineStartPropertyValue
 pub fn surgeist_css::CssScrollMarginInlineStartPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssScrollMarginInlineStartPropertyValue::current(&self) -> &surgeist_css::CssSpecifiedLength
+pub const fn surgeist_css::CssScrollMarginInlineStartPropertyValue::value(&self) -> &surgeist_css::CssSpecifiedLength
 pub struct surgeist_css::CssScrollMarginLeftPropertyValue
 impl surgeist_css::CssScrollMarginLeftPropertyValue
 pub fn surgeist_css::CssScrollMarginLeftPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssScrollMarginLeftPropertyValue::current(&self) -> &surgeist_css::CssSpecifiedLength
+pub const fn surgeist_css::CssScrollMarginLeftPropertyValue::value(&self) -> &surgeist_css::CssSpecifiedLength
 pub struct surgeist_css::CssScrollMarginPair(_)
 impl surgeist_css::CssScrollMarginPair
 pub const fn surgeist_css::CssScrollMarginPair::authored_end(&self) -> core::option::Option<&surgeist_css::CssSpecifiedLength>
@@ -8100,11 +7807,11 @@ pub const fn surgeist_css::CssScrollMarginPair::start(&self) -> &surgeist_css::C
 pub struct surgeist_css::CssScrollMarginPropertyValue
 impl surgeist_css::CssScrollMarginPropertyValue
 pub fn surgeist_css::CssScrollMarginPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssScrollMarginPropertyValue::current(&self) -> &surgeist_css::CssScrollMarginShorthand
+pub const fn surgeist_css::CssScrollMarginPropertyValue::value(&self) -> &surgeist_css::CssScrollMarginShorthand
 pub struct surgeist_css::CssScrollMarginRightPropertyValue
 impl surgeist_css::CssScrollMarginRightPropertyValue
 pub fn surgeist_css::CssScrollMarginRightPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssScrollMarginRightPropertyValue::current(&self) -> &surgeist_css::CssSpecifiedLength
+pub const fn surgeist_css::CssScrollMarginRightPropertyValue::value(&self) -> &surgeist_css::CssSpecifiedLength
 pub struct surgeist_css::CssScrollMarginShorthand(_)
 impl surgeist_css::CssScrollMarginShorthand
 pub fn surgeist_css::CssScrollMarginShorthand::authored_values(&self) -> &[surgeist_css::CssSpecifiedLength]
@@ -8116,39 +7823,39 @@ pub fn surgeist_css::CssScrollMarginShorthand::try_new(kind: surgeist_css::CssSc
 pub struct surgeist_css::CssScrollMarginTopPropertyValue
 impl surgeist_css::CssScrollMarginTopPropertyValue
 pub fn surgeist_css::CssScrollMarginTopPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssScrollMarginTopPropertyValue::current(&self) -> &surgeist_css::CssSpecifiedLength
+pub const fn surgeist_css::CssScrollMarginTopPropertyValue::value(&self) -> &surgeist_css::CssSpecifiedLength
 pub struct surgeist_css::CssScrollPaddingBlockEndPropertyValue
 impl surgeist_css::CssScrollPaddingBlockEndPropertyValue
 pub fn surgeist_css::CssScrollPaddingBlockEndPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssScrollPaddingBlockEndPropertyValue::current(&self) -> &surgeist_css::CssScrollPaddingValue
+pub const fn surgeist_css::CssScrollPaddingBlockEndPropertyValue::value(&self) -> &surgeist_css::CssScrollPaddingValue
 pub struct surgeist_css::CssScrollPaddingBlockPropertyValue
 impl surgeist_css::CssScrollPaddingBlockPropertyValue
 pub fn surgeist_css::CssScrollPaddingBlockPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssScrollPaddingBlockPropertyValue::current(&self) -> &surgeist_css::CssScrollPaddingPair
+pub const fn surgeist_css::CssScrollPaddingBlockPropertyValue::value(&self) -> &surgeist_css::CssScrollPaddingPair
 pub struct surgeist_css::CssScrollPaddingBlockStartPropertyValue
 impl surgeist_css::CssScrollPaddingBlockStartPropertyValue
 pub fn surgeist_css::CssScrollPaddingBlockStartPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssScrollPaddingBlockStartPropertyValue::current(&self) -> &surgeist_css::CssScrollPaddingValue
+pub const fn surgeist_css::CssScrollPaddingBlockStartPropertyValue::value(&self) -> &surgeist_css::CssScrollPaddingValue
 pub struct surgeist_css::CssScrollPaddingBottomPropertyValue
 impl surgeist_css::CssScrollPaddingBottomPropertyValue
 pub fn surgeist_css::CssScrollPaddingBottomPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssScrollPaddingBottomPropertyValue::current(&self) -> &surgeist_css::CssScrollPaddingValue
+pub const fn surgeist_css::CssScrollPaddingBottomPropertyValue::value(&self) -> &surgeist_css::CssScrollPaddingValue
 pub struct surgeist_css::CssScrollPaddingInlineEndPropertyValue
 impl surgeist_css::CssScrollPaddingInlineEndPropertyValue
 pub fn surgeist_css::CssScrollPaddingInlineEndPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssScrollPaddingInlineEndPropertyValue::current(&self) -> &surgeist_css::CssScrollPaddingValue
+pub const fn surgeist_css::CssScrollPaddingInlineEndPropertyValue::value(&self) -> &surgeist_css::CssScrollPaddingValue
 pub struct surgeist_css::CssScrollPaddingInlinePropertyValue
 impl surgeist_css::CssScrollPaddingInlinePropertyValue
 pub fn surgeist_css::CssScrollPaddingInlinePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssScrollPaddingInlinePropertyValue::current(&self) -> &surgeist_css::CssScrollPaddingPair
+pub const fn surgeist_css::CssScrollPaddingInlinePropertyValue::value(&self) -> &surgeist_css::CssScrollPaddingPair
 pub struct surgeist_css::CssScrollPaddingInlineStartPropertyValue
 impl surgeist_css::CssScrollPaddingInlineStartPropertyValue
 pub fn surgeist_css::CssScrollPaddingInlineStartPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssScrollPaddingInlineStartPropertyValue::current(&self) -> &surgeist_css::CssScrollPaddingValue
+pub const fn surgeist_css::CssScrollPaddingInlineStartPropertyValue::value(&self) -> &surgeist_css::CssScrollPaddingValue
 pub struct surgeist_css::CssScrollPaddingLeftPropertyValue
 impl surgeist_css::CssScrollPaddingLeftPropertyValue
 pub fn surgeist_css::CssScrollPaddingLeftPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssScrollPaddingLeftPropertyValue::current(&self) -> &surgeist_css::CssScrollPaddingValue
+pub const fn surgeist_css::CssScrollPaddingLeftPropertyValue::value(&self) -> &surgeist_css::CssScrollPaddingValue
 pub struct surgeist_css::CssScrollPaddingPair(_)
 impl surgeist_css::CssScrollPaddingPair
 pub const fn surgeist_css::CssScrollPaddingPair::authored_end(&self) -> core::option::Option<&surgeist_css::CssScrollPaddingValue>
@@ -8160,11 +7867,11 @@ pub const fn surgeist_css::CssScrollPaddingPair::start(&self) -> &surgeist_css::
 pub struct surgeist_css::CssScrollPaddingPropertyValue
 impl surgeist_css::CssScrollPaddingPropertyValue
 pub fn surgeist_css::CssScrollPaddingPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssScrollPaddingPropertyValue::current(&self) -> &surgeist_css::CssScrollPaddingShorthand
+pub const fn surgeist_css::CssScrollPaddingPropertyValue::value(&self) -> &surgeist_css::CssScrollPaddingShorthand
 pub struct surgeist_css::CssScrollPaddingRightPropertyValue
 impl surgeist_css::CssScrollPaddingRightPropertyValue
 pub fn surgeist_css::CssScrollPaddingRightPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssScrollPaddingRightPropertyValue::current(&self) -> &surgeist_css::CssScrollPaddingValue
+pub const fn surgeist_css::CssScrollPaddingRightPropertyValue::value(&self) -> &surgeist_css::CssScrollPaddingValue
 pub struct surgeist_css::CssScrollPaddingShorthand(_)
 impl surgeist_css::CssScrollPaddingShorthand
 pub fn surgeist_css::CssScrollPaddingShorthand::authored_values(&self) -> &[surgeist_css::CssScrollPaddingValue]
@@ -8176,7 +7883,7 @@ pub fn surgeist_css::CssScrollPaddingShorthand::try_new(kind: surgeist_css::CssS
 pub struct surgeist_css::CssScrollPaddingTopPropertyValue
 impl surgeist_css::CssScrollPaddingTopPropertyValue
 pub fn surgeist_css::CssScrollPaddingTopPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssScrollPaddingTopPropertyValue::current(&self) -> &surgeist_css::CssScrollPaddingValue
+pub const fn surgeist_css::CssScrollPaddingTopPropertyValue::value(&self) -> &surgeist_css::CssScrollPaddingValue
 pub struct surgeist_css::CssScrollSnapAlign
 impl surgeist_css::CssScrollSnapAlign
 pub const fn surgeist_css::CssScrollSnapAlign::authored_inline(&self) -> core::option::Option<surgeist_css::CssScrollSnapAlignment>
@@ -8188,23 +7895,23 @@ pub fn surgeist_css::CssScrollSnapAlign::serialize_specified_with_limits(&self, 
 pub struct surgeist_css::CssScrollSnapAlignPropertyValue
 impl surgeist_css::CssScrollSnapAlignPropertyValue
 pub fn surgeist_css::CssScrollSnapAlignPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssScrollSnapAlignPropertyValue::current(&self) -> &surgeist_css::CssScrollSnapAlign
+pub const fn surgeist_css::CssScrollSnapAlignPropertyValue::value(&self) -> &surgeist_css::CssScrollSnapAlign
 pub struct surgeist_css::CssScrollSnapStopPropertyValue
 impl surgeist_css::CssScrollSnapStopPropertyValue
 pub fn surgeist_css::CssScrollSnapStopPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssScrollSnapStopPropertyValue::current(&self) -> &surgeist_css::CssScrollSnapStop
+pub const fn surgeist_css::CssScrollSnapStopPropertyValue::value(&self) -> &surgeist_css::CssScrollSnapStop
 pub struct surgeist_css::CssScrollSnapTypePropertyValue
 impl surgeist_css::CssScrollSnapTypePropertyValue
 pub fn surgeist_css::CssScrollSnapTypePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssScrollSnapTypePropertyValue::current(&self) -> &surgeist_css::CssScrollSnapType
+pub const fn surgeist_css::CssScrollSnapTypePropertyValue::value(&self) -> &surgeist_css::CssScrollSnapType
 pub struct surgeist_css::CssScrollbarGutterPropertyValue
 impl surgeist_css::CssScrollbarGutterPropertyValue
 pub fn surgeist_css::CssScrollbarGutterPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssScrollbarGutterPropertyValue::current(&self) -> &surgeist_css::CssScrollbarGutter
+pub const fn surgeist_css::CssScrollbarGutterPropertyValue::value(&self) -> &surgeist_css::CssScrollbarGutter
 pub struct surgeist_css::CssScrollbarWidthPropertyValue
 impl surgeist_css::CssScrollbarWidthPropertyValue
 pub fn surgeist_css::CssScrollbarWidthPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssScrollbarWidthPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssScrollbarWidth>
+pub const fn surgeist_css::CssScrollbarWidthPropertyValue::value(&self) -> &surgeist_css::CssScrollbarWidth
 pub struct surgeist_css::CssSelectorContext
 impl surgeist_css::CssSelectorContext
 pub fn surgeist_css::CssSelectorContext::parent(&self) -> core::option::Option<&Self>
@@ -8281,7 +7988,7 @@ pub fn surgeist_css::CssSizePair::width(&self) -> &surgeist_css::CssSizeValue
 pub struct surgeist_css::CssSizePropertyValue
 impl surgeist_css::CssSizePropertyValue
 pub fn surgeist_css::CssSizePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssSizePropertyValue::current(&self) -> &surgeist_css::CssSizePair
+pub const fn surgeist_css::CssSizePropertyValue::value(&self) -> &surgeist_css::CssSizePair
 pub struct surgeist_css::CssSourcePosition
 impl surgeist_css::CssSourcePosition
 pub const fn surgeist_css::CssSourcePosition::byte_offset(self) -> surgeist_css::CssByteOffset
@@ -8572,17 +8279,15 @@ pub const fn surgeist_css::CssTargetText::target(&self) -> &surgeist_css::CssCon
 pub struct surgeist_css::CssTextAlignAllPropertyValue
 impl surgeist_css::CssTextAlignAllPropertyValue
 pub fn surgeist_css::CssTextAlignAllPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssTextAlignAllPropertyValue::current(&self) -> &surgeist_css::CssTextAlignAllValue
+pub const fn surgeist_css::CssTextAlignAllPropertyValue::value(&self) -> &surgeist_css::CssTextAlignAllValue
 pub struct surgeist_css::CssTextAlignLastPropertyValue
 impl surgeist_css::CssTextAlignLastPropertyValue
 pub fn surgeist_css::CssTextAlignLastPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssTextAlignLastPropertyValue::current(&self) -> &surgeist_css::CssTextAlignLastValue
-pub const fn surgeist_css::CssTextAlignLastPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssTextAlignLast>
+pub const fn surgeist_css::CssTextAlignLastPropertyValue::value(&self) -> &surgeist_css::CssTextAlignLastValue
 pub struct surgeist_css::CssTextAlignPropertyValue
 impl surgeist_css::CssTextAlignPropertyValue
 pub fn surgeist_css::CssTextAlignPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssTextAlignPropertyValue::current(&self) -> &surgeist_css::CssTextAlignValue
-pub const fn surgeist_css::CssTextAlignPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssTextAlign>
+pub const fn surgeist_css::CssTextAlignPropertyValue::value(&self) -> &surgeist_css::CssTextAlignValue
 pub struct surgeist_css::CssTextCombineDigitCount
 impl surgeist_css::CssTextCombineDigitCount
 pub const fn surgeist_css::CssTextCombineDigitCount::calculation(&self) -> core::option::Option<&surgeist_css::CssIntegerCalculation>
@@ -8612,7 +8317,7 @@ pub fn surgeist_css::CssTextDecorationLine::try_new(components: alloc::vec::Vec<
 pub struct surgeist_css::CssTextDecorationLinePropertyValue
 impl surgeist_css::CssTextDecorationLinePropertyValue
 pub fn surgeist_css::CssTextDecorationLinePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssTextDecorationLinePropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssTextDecorationLine>
+pub const fn surgeist_css::CssTextDecorationLinePropertyValue::value(&self) -> &surgeist_css::CssTextDecorationLine
 pub struct surgeist_css::CssTextDecorationPropertyValue
 impl surgeist_css::CssTextDecorationPropertyValue
 pub fn surgeist_css::CssTextDecorationPropertyValue::as_css(&self) -> &str
@@ -8620,7 +8325,7 @@ pub const fn surgeist_css::CssTextDecorationPropertyValue::value(&self) -> &surg
 pub struct surgeist_css::CssTextDecorationStylePropertyValue
 impl surgeist_css::CssTextDecorationStylePropertyValue
 pub fn surgeist_css::CssTextDecorationStylePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssTextDecorationStylePropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssTextDecorationStyle>
+pub const fn surgeist_css::CssTextDecorationStylePropertyValue::value(&self) -> &surgeist_css::CssTextDecorationStyle
 pub struct surgeist_css::CssTextDecorationThicknessLength
 impl surgeist_css::CssTextDecorationThicknessLength
 pub const fn surgeist_css::CssTextDecorationThicknessLength::length(&self) -> &surgeist_css::CssLength
@@ -8628,7 +8333,7 @@ pub fn surgeist_css::CssTextDecorationThicknessLength::try_new(length: surgeist_
 pub struct surgeist_css::CssTextDecorationThicknessPropertyValue
 impl surgeist_css::CssTextDecorationThicknessPropertyValue
 pub fn surgeist_css::CssTextDecorationThicknessPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssTextDecorationThicknessPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssTextDecorationThickness>
+pub const fn surgeist_css::CssTextDecorationThicknessPropertyValue::value(&self) -> &surgeist_css::CssTextDecorationThickness
 pub struct surgeist_css::CssTextIndent
 impl surgeist_css::CssTextIndent
 pub const fn surgeist_css::CssTextIndent::each_line(&self) -> bool
@@ -8638,7 +8343,7 @@ pub fn surgeist_css::CssTextIndent::try_new(length: surgeist_css::CssLength, han
 pub struct surgeist_css::CssTextIndentPropertyValue
 impl surgeist_css::CssTextIndentPropertyValue
 pub fn surgeist_css::CssTextIndentPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssTextIndentPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssTextIndent>
+pub const fn surgeist_css::CssTextIndentPropertyValue::value(&self) -> &surgeist_css::CssTextIndent
 pub struct surgeist_css::CssTextOrientationPropertyValue
 impl surgeist_css::CssTextOrientationPropertyValue
 pub fn surgeist_css::CssTextOrientationPropertyValue::as_css(&self) -> &str
@@ -8646,17 +8351,15 @@ pub const fn surgeist_css::CssTextOrientationPropertyValue::orientation(&self) -
 pub struct surgeist_css::CssTextOverflowPropertyValue
 impl surgeist_css::CssTextOverflowPropertyValue
 pub fn surgeist_css::CssTextOverflowPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssTextOverflowPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssTextOverflow>
-impl surgeist_css::CssTextOverflowPropertyValue
-pub const fn surgeist_css::CssTextOverflowPropertyValue::current(&self) -> &surgeist_css::CssTextOverflow
+pub const fn surgeist_css::CssTextOverflowPropertyValue::value(&self) -> &surgeist_css::CssTextOverflow
 pub struct surgeist_css::CssTextTransformPropertyValue
 impl surgeist_css::CssTextTransformPropertyValue
 pub fn surgeist_css::CssTextTransformPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssTextTransformPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssTextTransform>
+pub const fn surgeist_css::CssTextTransformPropertyValue::value(&self) -> &surgeist_css::CssTextTransform
 pub struct surgeist_css::CssTextWrapPropertyValue
 impl surgeist_css::CssTextWrapPropertyValue
 pub fn surgeist_css::CssTextWrapPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssTextWrapPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssTextWrap>
+pub const fn surgeist_css::CssTextWrapPropertyValue::value(&self) -> &surgeist_css::CssTextWrap
 pub struct surgeist_css::CssTimeCalculation
 impl surgeist_css::CssTimeCalculation
 pub fn surgeist_css::CssTimeCalculation::components(&self) -> &surgeist_css::CssComponentValues
@@ -8677,10 +8380,7 @@ pub const fn surgeist_css::CssTokenSummary::kind(&self) -> surgeist_css::CssToke
 pub struct surgeist_css::CssTopPropertyValue
 impl surgeist_css::CssTopPropertyValue
 pub fn surgeist_css::CssTopPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssTopPropertyValue::current(&self) -> &surgeist_css::CssInsetValue
-pub const fn surgeist_css::CssTopPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssLength>
-impl core::cmp::PartialEq for surgeist_css::CssTopPropertyValue
-pub fn surgeist_css::CssTopPropertyValue::eq(&self, other: &Self) -> bool
+pub const fn surgeist_css::CssTopPropertyValue::value(&self) -> &surgeist_css::CssInsetValue
 pub struct surgeist_css::CssTransformBox
 impl surgeist_css::CssTransformBox
 pub const fn surgeist_css::CssTransformBox::edge(&self) -> surgeist_css::CssBoxEdgeKeyword
@@ -8803,7 +8503,7 @@ pub const fn surgeist_css::CssTransitionTimingFunctionPropertyValue::timing_func
 pub struct surgeist_css::CssTranslatePropertyValue
 impl surgeist_css::CssTranslatePropertyValue
 pub fn surgeist_css::CssTranslatePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssTranslatePropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssTranslate>
+pub const fn surgeist_css::CssTranslatePropertyValue::value(&self) -> &surgeist_css::CssTranslate
 pub struct surgeist_css::CssTranslateValues
 impl surgeist_css::CssTranslateValues
 pub fn surgeist_css::CssTranslateValues::try_new(values: alloc::vec::Vec<surgeist_css::CssLength>) -> core::option::Option<Self>
@@ -8911,7 +8611,7 @@ pub fn surgeist_css::CssUrlModifierFunction::fmt(&self, formatter: &mut core::fm
 pub struct surgeist_css::CssUserSelectPropertyValue
 impl surgeist_css::CssUserSelectPropertyValue
 pub fn surgeist_css::CssUserSelectPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssUserSelectPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssUserSelect>
+pub const fn surgeist_css::CssUserSelectPropertyValue::value(&self) -> &surgeist_css::CssUserSelect
 pub struct surgeist_css::CssUtf16ColumnIndex(_)
 impl surgeist_css::CssUtf16ColumnIndex
 pub const fn surgeist_css::CssUtf16ColumnIndex::value(self) -> u32
@@ -8935,17 +8635,15 @@ pub fn surgeist_css::CssVerticalAlignLength::try_new(length: surgeist_css::CssLe
 pub struct surgeist_css::CssVerticalAlignPropertyValue
 impl surgeist_css::CssVerticalAlignPropertyValue
 pub fn surgeist_css::CssVerticalAlignPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssVerticalAlignPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssVerticalAlign>
+pub const fn surgeist_css::CssVerticalAlignPropertyValue::value(&self) -> &surgeist_css::CssVerticalAlign
 pub struct surgeist_css::CssVisibilityPropertyValue
 impl surgeist_css::CssVisibilityPropertyValue
 pub fn surgeist_css::CssVisibilityPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssVisibilityPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssVisibility>
-impl surgeist_css::CssVisibilityPropertyValue
-pub const fn surgeist_css::CssVisibilityPropertyValue::current(&self) -> &surgeist_css::CssVisibility
+pub const fn surgeist_css::CssVisibilityPropertyValue::value(&self) -> &surgeist_css::CssVisibility
 pub struct surgeist_css::CssWhiteSpacePropertyValue
 impl surgeist_css::CssWhiteSpacePropertyValue
 pub fn surgeist_css::CssWhiteSpacePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssWhiteSpacePropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssWhiteSpace>
+pub const fn surgeist_css::CssWhiteSpacePropertyValue::value(&self) -> &surgeist_css::CssWhiteSpace
 pub struct surgeist_css::CssWidowsPropertyValue
 impl surgeist_css::CssWidowsPropertyValue
 pub fn surgeist_css::CssWidowsPropertyValue::as_css(&self) -> &str
@@ -8953,26 +8651,19 @@ pub const fn surgeist_css::CssWidowsPropertyValue::minimum(&self) -> &surgeist_c
 pub struct surgeist_css::CssWidthPropertyValue
 impl surgeist_css::CssWidthPropertyValue
 pub fn surgeist_css::CssWidthPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssWidthPropertyValue::current(&self) -> &surgeist_css::CssSizeValue
+pub const fn surgeist_css::CssWidthPropertyValue::value(&self) -> &surgeist_css::CssSizeValue
 pub struct surgeist_css::CssWordBreakPropertyValue
 impl surgeist_css::CssWordBreakPropertyValue
 pub fn surgeist_css::CssWordBreakPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssWordBreakPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssWordBreak>
-pub struct surgeist_css::CssWordSpacingLength
-impl surgeist_css::CssWordSpacingLength
-pub fn surgeist_css::CssWordSpacingLength::try_new(value: surgeist_css::CssLength) -> core::option::Option<Self>
-pub const fn surgeist_css::CssWordSpacingLength::value(&self) -> &surgeist_css::CssLength
+pub const fn surgeist_css::CssWordBreakPropertyValue::value(&self) -> &surgeist_css::CssWordBreak
 pub struct surgeist_css::CssWordSpacingPropertyValue
 impl surgeist_css::CssWordSpacingPropertyValue
 pub fn surgeist_css::CssWordSpacingPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssWordSpacingPropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssWordSpacing>
 pub const fn surgeist_css::CssWordSpacingPropertyValue::spacing(&self) -> &surgeist_css::CssTextSpacingAdjustment
 pub struct surgeist_css::CssWritingModePropertyValue
 impl surgeist_css::CssWritingModePropertyValue
 pub fn surgeist_css::CssWritingModePropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssWritingModePropertyValue::i01_subset(&self) -> core::option::Option<&surgeist_css::CssWritingMode>
-impl surgeist_css::CssWritingModePropertyValue
-pub const fn surgeist_css::CssWritingModePropertyValue::current(&self) -> &surgeist_css::CssWritingMode
+pub const fn surgeist_css::CssWritingModePropertyValue::value(&self) -> &surgeist_css::CssWritingMode
 pub struct surgeist_css::CssZIndexPropertyValue
 impl surgeist_css::CssZIndexPropertyValue
 pub fn surgeist_css::CssZIndexPropertyValue::as_css(&self) -> &str

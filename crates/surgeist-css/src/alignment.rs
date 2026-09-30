@@ -1,10 +1,7 @@
 //! Checked authored values for the nine Box Alignment 3 properties.
 
 use crate::specified_serialization::SpecifiedSerializationContext;
-use crate::{
-    CssAlignItems, CssAlignment, CssPlaceAlignment, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits,
-};
+use crate::{CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits};
 
 type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
 
@@ -332,116 +329,4 @@ fn serialize_value_into(
             Ok(())
         }
     }
-}
-
-pub(crate) fn content_i01(value: &CssAlignmentValue) -> Option<CssAlignment> {
-    use CssAlignment as L;
-    use CssAlignmentValue as V;
-    Some(match *value {
-        V::Normal { overflow: None } => L::Normal,
-        V::Stretch => L::Stretch,
-        V::Baseline(CssBaselinePosition::Baseline) => L::Baseline,
-        V::Baseline(CssBaselinePosition::First) => L::FirstBaseline,
-        V::Baseline(CssBaselinePosition::Last) => L::LastBaseline,
-        V::SpaceBetween => L::SpaceBetween,
-        V::SpaceAround => L::SpaceAround,
-        V::SpaceEvenly => L::SpaceEvenly,
-        V::Position { overflow, position } => match (overflow, position) {
-            (None, CssAlignmentPosition::Start) => L::Start,
-            (None, CssAlignmentPosition::End) => L::End,
-            (Some(CssOverflowPosition::Safe), CssAlignmentPosition::End) => L::SafeEnd,
-            (None, CssAlignmentPosition::FlexStart) => L::FlexStart,
-            (None, CssAlignmentPosition::FlexEnd) => L::FlexEnd,
-            (Some(CssOverflowPosition::Safe), CssAlignmentPosition::FlexEnd) => L::SafeFlexEnd,
-            (None, CssAlignmentPosition::Center) => L::Center,
-            (Some(CssOverflowPosition::Safe), CssAlignmentPosition::Center) => L::SafeCenter,
-            _ => return None,
-        },
-        _ => return None,
-    })
-}
-
-pub(crate) fn items_i01(value: &CssAlignmentValue) -> Option<CssAlignItems> {
-    use CssAlignItems as L;
-    use CssAlignmentValue as V;
-    Some(match *value {
-        V::Normal { overflow: None } => L::Normal,
-        V::Stretch => L::Stretch,
-        V::Baseline(CssBaselinePosition::Baseline) => L::Baseline,
-        V::Baseline(CssBaselinePosition::First) => L::FirstBaseline,
-        V::Baseline(CssBaselinePosition::Last) => L::LastBaseline,
-        V::Position { overflow, position } => match (overflow, position) {
-            (None, CssAlignmentPosition::Start) => L::Start,
-            (None, CssAlignmentPosition::End) => L::End,
-            (Some(CssOverflowPosition::Safe), CssAlignmentPosition::End) => L::SafeEnd,
-            (None, CssAlignmentPosition::FlexStart) => L::FlexStart,
-            (None, CssAlignmentPosition::FlexEnd) => L::FlexEnd,
-            (Some(CssOverflowPosition::Safe), CssAlignmentPosition::FlexEnd) => L::SafeFlexEnd,
-            (None, CssAlignmentPosition::Center) => L::Center,
-            (Some(CssOverflowPosition::Safe), CssAlignmentPosition::Center) => L::SafeCenter,
-            _ => return None,
-        },
-        _ => return None,
-    })
-}
-
-macro_rules! project_longhand {
-    ($fn:ident, $ty:ident, $legacy:ty, $convert:ident) => {
-        pub(crate) fn $fn(value: &$ty) -> Option<$legacy> {
-            $convert(&value.value())
-        }
-    };
-}
-
-project_longhand!(
-    align_content_i01,
-    CssAlignContentValue,
-    CssAlignment,
-    content_i01
-);
-project_longhand!(
-    justify_content_i01,
-    CssJustifyContentValue,
-    CssAlignment,
-    content_i01
-);
-project_longhand!(
-    align_items_i01,
-    CssAlignItemsValue,
-    CssAlignItems,
-    items_i01
-);
-project_longhand!(
-    justify_items_i01,
-    CssJustifyItemsValue,
-    CssAlignItems,
-    items_i01
-);
-project_longhand!(align_self_i01, CssAlignSelfValue, CssAlignItems, items_i01);
-project_longhand!(
-    justify_self_i01,
-    CssJustifySelfValue,
-    CssAlignItems,
-    items_i01
-);
-
-pub(crate) fn place_content_i01(value: &CssPlaceContentValue) -> Option<CssPlaceAlignment> {
-    Some(CssPlaceAlignment::content(
-        content_i01(&value.align.value())?,
-        content_i01(&value.justify.value())?,
-    ))
-}
-
-pub(crate) fn place_items_i01(value: &CssPlaceItemsValue) -> Option<CssPlaceAlignment> {
-    Some(CssPlaceAlignment::items(
-        items_i01(&value.align.value())?,
-        items_i01(&value.justify.value())?,
-    ))
-}
-
-pub(crate) fn place_self_i01(value: &CssPlaceSelfValue) -> Option<CssPlaceAlignment> {
-    Some(CssPlaceAlignment::items(
-        items_i01(&value.align.value())?,
-        items_i01(&value.justify.value())?,
-    ))
 }

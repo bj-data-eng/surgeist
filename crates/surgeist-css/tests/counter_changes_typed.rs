@@ -24,9 +24,9 @@ fn parsed(property: CssKnownProperty, value: &str) -> CssDeclaration {
 
 fn current(declaration: &CssDeclaration) -> &CssCounterChangesValue {
     match declaration.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::CounterReset(value) => value.current(),
-        CssKnownPropertyValueRef::CounterIncrement(value) => value.current(),
-        CssKnownPropertyValueRef::CounterSet(value) => value.current(),
+        CssKnownPropertyValueRef::CounterReset(value) => value.value(),
+        CssKnownPropertyValueRef::CounterIncrement(value) => value.value(),
+        CssKnownPropertyValueRef::CounterSet(value) => value.value(),
         _ => panic!("counter longhand"),
     }
 }
@@ -126,7 +126,7 @@ fn decoded_names_are_escaped_and_exact_large_integers_stay_exact() {
 }
 
 #[test]
-fn exact_small_tokens_project_to_legacy_only_when_names_and_values_fit() {
+fn small_counter_tokens_preserve_lexemes_and_escaped_names() {
     let padded =
         CssIntegerLiteral::try_from_component(CssComponentValue::try_token("-0002").unwrap())
             .unwrap();
@@ -142,12 +142,14 @@ fn exact_small_tokens_project_to_legacy_only_when_names_and_values_fit() {
         else {
             panic!("reset wrapper")
         };
-        wrapper.i01_subset().cloned()
+        wrapper.value().clone()
     };
-    let Some(CssCounterChanges::Changes(old)) = old_view else {
-        panic!("exact small literal projects")
+    let old = old_view.changes().unwrap();
+    let Some(CssIntegerValue::Literal(literal)) = old[0].value() else {
+        panic!("checked integer")
     };
-    assert_eq!(old.changes()[0].value(), Some(-2));
+    assert_eq!(literal.numeric().representation(), "-0002");
+    assert!(matches!(literal.origin(), CssValueOrigin::Parsed(_)));
     assert_eq!(
         representable
             .serialize_specified(CssCounterProperty::Reset)
@@ -162,13 +164,12 @@ fn exact_small_tokens_project_to_legacy_only_when_names_and_values_fit() {
         panic!("reset wrapper")
     };
     assert_eq!(
-        wrapper.current().changes().unwrap()[0].name().as_str(),
+        wrapper.value().changes().unwrap()[0].name().as_str(),
         "chapter name"
     );
-    assert!(wrapper.i01_subset().is_none());
     assert_eq!(
         wrapper
-            .current()
+            .value()
             .serialize_specified(CssCounterProperty::Reset)
             .unwrap(),
         r"chapter\ name 2"
@@ -176,7 +177,7 @@ fn exact_small_tokens_project_to_legacy_only_when_names_and_values_fit() {
 }
 
 #[test]
-fn parsed_current_values_preserve_full_source_origins_and_conditional_legacy() {
+fn parsed_values_preserve_full_source_origins() {
     for property in [
         CssKnownProperty::CounterReset,
         CssKnownProperty::CounterIncrement,
@@ -211,14 +212,6 @@ fn parsed_current_values_preserve_full_source_origins_and_conditional_legacy() {
                 "chapter 0 section -2 chapter 0"
             }
         );
-        match ordinary.known().unwrap().property_value().unwrap() {
-            CssKnownPropertyValueRef::CounterReset(value) => assert!(value.i01_subset().is_some()),
-            CssKnownPropertyValueRef::CounterIncrement(value) => {
-                assert!(value.i01_subset().is_some())
-            }
-            CssKnownPropertyValueRef::CounterSet(value) => assert!(value.i01_subset().is_some()),
-            _ => panic!("counter wrapper"),
-        }
 
         let huge_source = format!("{}:chapter 2147483648", property.canonical_name());
         let huge = parsed(property, "chapter 2147483648");
@@ -238,14 +231,6 @@ fn parsed_current_values_preserve_full_source_origins_and_conditional_legacy() {
             &huge_source[span.start().byte_offset().value()..span.end().byte_offset().value()],
             "2147483648"
         );
-        match huge.known().unwrap().property_value().unwrap() {
-            CssKnownPropertyValueRef::CounterReset(value) => assert!(value.i01_subset().is_none()),
-            CssKnownPropertyValueRef::CounterIncrement(value) => {
-                assert!(value.i01_subset().is_none())
-            }
-            CssKnownPropertyValueRef::CounterSet(value) => assert!(value.i01_subset().is_none()),
-            _ => panic!("counter wrapper"),
-        }
         let math_source = format!("{}:chapter calc(2.5)", property.canonical_name());
         let math = parsed(property, "chapter calc(2.5)");
         let [change] = current(&math).changes().unwrap() else {
@@ -270,14 +255,6 @@ fn parsed_current_values_preserve_full_source_origins_and_conditional_legacy() {
             .serialize_specified(CssCounterProperty::Reset)
             .unwrap();
         assert_eq!(canonical, "chapter calc(2.5)");
-        match math.known().unwrap().property_value().unwrap() {
-            CssKnownPropertyValueRef::CounterReset(value) => assert!(value.i01_subset().is_none()),
-            CssKnownPropertyValueRef::CounterIncrement(value) => {
-                assert!(value.i01_subset().is_none())
-            }
-            CssKnownPropertyValueRef::CounterSet(value) => assert!(value.i01_subset().is_none()),
-            _ => panic!("counter wrapper"),
-        }
     }
 }
 

@@ -48,7 +48,7 @@ fn width(name: &str, value: &str, checked: bool) -> CssFontWidth {
     else {
         panic!("font-width typed wrapper")
     };
-    wrapper.current().clone()
+    wrapper.value().clone()
 }
 
 #[test]
@@ -171,7 +171,7 @@ fn parsed_percentages_keep_source_origin_and_symbolic_math_unresolved() {
     else {
         panic!("font-width wrapper for legacy name")
     };
-    let CssFontWidth::Percentage(parsed) = wrapper.current() else {
+    let CssFontWidth::Percentage(parsed) = wrapper.value() else {
         panic!("exact parsed percentage")
     };
     assert!(matches!(parsed.origin(), CssValueOrigin::Parsed(_)));

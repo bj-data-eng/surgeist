@@ -83,12 +83,6 @@ fn checked_owners() -> Vec<CheckedOwner> {
             CssBorderSpacingLength::try_new(v).is_some()
         }),
         ("clip length", |v| CssClipLength::try_new(v).is_some()),
-        ("word spacing", |v| {
-            CssWordSpacingLength::try_new(v).is_some()
-        }),
-        ("letter spacing", |v| {
-            CssLetterSpacingLength::try_new(v).is_some()
-        }),
         ("border image outset", |v| {
             CssBorderImageOutsetLength::try_new(v).is_some()
         }),
@@ -257,6 +251,32 @@ fn grid_track_accepts(value: CssLength, mode: u8) -> bool {
 #[test]
 fn checked_length_owners_admit_valid_typed_symbolic_subtraction() {
     let sum = Calculation::try_sum(operand("2px"), [(Op::Subtract, operand("1px"))]).unwrap();
+    // Both spacing properties now consume the checked length-percentage owner
+    // directly; preserve the same symbolic subtraction admission at that boundary.
+    for name in ["word-spacing", "letter-spacing"] {
+        use surgeist_css::*;
+        let declaration = parse_property_value_for_grammar(
+            CssPropertyGrammar::from_name(name).unwrap(),
+            sum.components().clone(),
+            CssImportance::Normal,
+        )
+        .unwrap();
+        let spacing = match declaration.known().unwrap().property_value().unwrap() {
+            CssKnownPropertyValueRef::WordSpacing(value) => value.spacing(),
+            CssKnownPropertyValueRef::LetterSpacing(value) => value.value(),
+            _ => panic!("spacing owner"),
+        };
+        assert_eq!(
+            spacing
+                .length_percentage()
+                .unwrap()
+                .calculation()
+                .unwrap()
+                .components(),
+            sum.components()
+        );
+        assert_eq!(spacing.serialize_specified().unwrap(), "calc(1px)");
+    }
     let rejected: Vec<_> = checked_owners()
         .into_iter()
         .filter_map(|(name, admit)| {

@@ -218,7 +218,7 @@ fn defaults_permutations_case_and_comments_preserve_specified_meaning_and_raw_te
 }
 
 #[test]
-fn legacy_specified_identity_is_distinct_and_frozen_projection_is_exact() {
+fn legacy_specified_identity_is_distinct_and_all_domains_are_preserved() {
     for (legacy, modern) in [
         ("inline-block", "inline flow-root"),
         ("inline-table", "inline table"),
@@ -229,38 +229,20 @@ fn legacy_specified_identity_is_distinct_and_frozen_projection_is_exact() {
             value(&declaration(legacy)).value(),
             value(&declaration(modern)).value()
         );
-        assert_eq!(value(&declaration(modern)).i01_subset(), None);
+    }
+    for (text, expected) in cases() {
+        assert_eq!(value(&declaration(expected)).value(), &text);
     }
     for (text, expected) in [
-        ("block", CssDisplay::Block),
-        ("flow", CssDisplay::Block),
-        ("block flow", CssDisplay::Block),
-        ("flex", CssDisplay::Flex),
-        ("block flex", CssDisplay::Flex),
-        ("grid", CssDisplay::Grid),
-        ("grid block", CssDisplay::Grid),
-        ("inline-block", CssDisplay::InlineBlock),
-        ("inline-grid", CssDisplay::InlineGrid),
-        ("grid-lanes", CssDisplay::GridLanes),
-        ("inline-grid-lanes", CssDisplay::InlineGridLanes),
-        ("none", CssDisplay::None),
+        ("flow", "block"),
+        ("block flow", "block"),
+        ("block flex", "flex"),
+        ("grid block", "grid"),
     ] {
         assert_eq!(
-            value(&declaration(text)).i01_subset(),
-            Some(&expected),
-            "{text}"
+            value(&declaration(text)).value(),
+            value(&declaration(expected)).value()
         );
-    }
-    for text in [
-        "inline",
-        "table-cell",
-        "contents",
-        "list-item",
-        "inline-table",
-        "inline-flex",
-        "run-in",
-    ] {
-        assert_eq!(value(&declaration(text)).i01_subset(), None, "{text}");
     }
 }
 

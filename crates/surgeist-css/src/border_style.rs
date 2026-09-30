@@ -2,7 +2,7 @@
 
 use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{
-    CssBorderStyle, CssBorderStyles, CssBoxSideKind, CssSpecifiedValueSerializationError,
+    CssBorderStyle, CssBoxSideKind, CssSpecifiedValueSerializationError,
     CssSpecifiedValueSerializationLimits,
 };
 
@@ -169,12 +169,4 @@ impl CssBorderStyleShorthand {
             Ok(())
         })
     }
-}
-
-pub(crate) fn legacy_shorthand(value: &CssBorderStyleShorthand) -> Option<CssBorderStyles> {
-    if value.kind == CssBoxSideKind::Logical {
-        return None;
-    }
-    let [top, right, bottom, left] = value.assigned_values();
-    Some(CssBorderStyles::new(*top, *right, *bottom, *left))
 }

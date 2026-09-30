@@ -29,7 +29,7 @@ fn basis(text: &str) -> CssFlexBasisValue {
     else {
         panic!("typed flex basis: {source}")
     };
-    value.current().clone()
+    value.value().clone()
 }
 
 fn flex(text: &str) -> CssFlexValue {

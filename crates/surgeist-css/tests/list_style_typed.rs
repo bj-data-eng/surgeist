@@ -27,7 +27,7 @@ fn shorthand(value: &CssDeclaration) -> &CssListStyleValue {
     else {
         panic!("typed list-style")
     };
-    wrapper.current()
+    wrapper.value()
 }
 
 #[test]
@@ -61,15 +61,14 @@ fn checked_construction_keeps_all_absent_invalid_and_borrows_authored_components
 }
 
 #[test]
-fn current_wrappers_keep_exact_legacy_views_only_where_representable() {
+fn parsed_wrappers_keep_named_functional_and_image_domains() {
     let type_old = parsed(CssKnownProperty::ListStyleType, "square");
     let CssKnownPropertyValueRef::ListStyleType(wrapper) =
         type_old.known().unwrap().property_value().unwrap()
     else {
         panic!("type")
     };
-    assert_eq!(wrapper.current().serialize_specified().unwrap(), "square");
-    assert!(wrapper.i01_subset().is_some());
+    assert_eq!(wrapper.value().serialize_specified().unwrap(), "square");
 
     let type_new = parsed(CssKnownProperty::ListStyleType, "symbols(cyclic \"*\")");
     let CssKnownPropertyValueRef::ListStyleType(wrapper) =
@@ -78,10 +77,9 @@ fn current_wrappers_keep_exact_legacy_views_only_where_representable() {
         panic!("functional type")
     };
     assert_eq!(
-        wrapper.current().serialize_specified().unwrap(),
+        wrapper.value().serialize_specified().unwrap(),
         "symbols(cyclic \"*\")"
     );
-    assert!(wrapper.i01_subset().is_none());
 
     let image_old = parsed(CssKnownProperty::ListStyleImage, "url(\"#star\")");
     let CssKnownPropertyValueRef::ListStyleImage(wrapper) =
@@ -90,10 +88,9 @@ fn current_wrappers_keep_exact_legacy_views_only_where_representable() {
         panic!("image")
     };
     assert_eq!(
-        wrapper.current().serialize_specified().unwrap(),
+        wrapper.value().serialize_specified().unwrap(),
         "url(\"#star\")"
     );
-    assert!(wrapper.i01_subset().is_some());
 
     let image_new = parsed(
         CssKnownProperty::ListStyleImage,
@@ -105,10 +102,9 @@ fn current_wrappers_keep_exact_legacy_views_only_where_representable() {
         panic!("gradient image")
     };
     assert_eq!(
-        wrapper.current().serialize_specified().unwrap(),
+        wrapper.value().serialize_specified().unwrap(),
         "linear-gradient(red, blue)"
     );
-    assert!(wrapper.i01_subset().is_none());
 
     let old = parsed(CssKnownProperty::ListStyle, "inside url(\"a\") square");
     let CssKnownPropertyValueRef::ListStyle(wrapper) =
@@ -116,9 +112,9 @@ fn current_wrappers_keep_exact_legacy_views_only_where_representable() {
     else {
         panic!("shorthand")
     };
-    assert!(wrapper.i01_subset().is_some());
+
     assert_eq!(
-        wrapper.current().position(),
+        wrapper.value().position(),
         Some(CssListStylePosition::Inside)
     );
     let new = parsed(CssKnownProperty::ListStyle, "symbols(cyclic \"*\") inside");
@@ -127,7 +123,21 @@ fn current_wrappers_keep_exact_legacy_views_only_where_representable() {
     else {
         panic!("functional shorthand")
     };
-    assert!(wrapper.i01_subset().is_none());
+    assert_eq!(
+        wrapper.value().position(),
+        Some(CssListStylePosition::Inside)
+    );
+    assert_eq!(wrapper.value().image(), None);
+    let Some(CssListStyleTypeValue::CounterStyle(CssCounterStyleValue::Symbols(symbols))) =
+        wrapper.value().style_type()
+    else {
+        panic!("functional counter style")
+    };
+    assert_eq!(symbols.system(), Some(CssSymbolsSystem::Cyclic));
+    assert_eq!(
+        symbols.symbols(),
+        &[CssCounterSymbolValue::String(string("*"))]
+    );
 }
 
 #[test]
@@ -310,8 +320,8 @@ fn nested_symbols_images_share_the_shorthand_budget_and_original_source() {
         let full_source = format!("{}:{authored}", property.canonical_name());
         let source = parsed(property, authored);
         let current = match source.known().unwrap().property_value().unwrap() {
-            CssKnownPropertyValueRef::ListStyleType(wrapper) => wrapper.current(),
-            CssKnownPropertyValueRef::ListStyle(wrapper) => wrapper.current().style_type().unwrap(),
+            CssKnownPropertyValueRef::ListStyleType(wrapper) => wrapper.value(),
+            CssKnownPropertyValueRef::ListStyle(wrapper) => wrapper.value().style_type().unwrap(),
             _ => panic!("checked list style type"),
         };
         let CssListStyleTypeValue::CounterStyle(CssCounterStyleValue::Symbols(symbols)) = current

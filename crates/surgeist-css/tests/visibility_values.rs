@@ -39,13 +39,13 @@ fn visibility_initial_and_constructed_values_have_exact_typed_payloads() {
             else {
                 panic!("visibility")
             };
-            assert_eq!(value.current(), &expected);
-            assert_eq!(value.i01_subset(), Some(&expected));
+            assert_eq!(value.value(), &expected);
+            assert_eq!(value.value(), &expected);
             assert_eq!(value.as_css(), text);
-            assert_eq!(value.current().serialize_specified().unwrap(), canonical);
+            assert_eq!(value.value().serialize_specified().unwrap(), canonical);
             assert_eq!(
                 value
-                    .current()
+                    .value()
                     .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
                         1, 1, 0
                     ))
@@ -123,8 +123,8 @@ fn visibility_canonical_keywords_obey_exact_limits_without_mutation() {
         else {
             panic!("visibility")
         };
-        assert_eq!(parsed.current(), &value);
-        assert_eq!(parsed.current().serialize_specified().unwrap(), expected);
+        assert_eq!(parsed.value(), &value);
+        assert_eq!(parsed.value().serialize_specified().unwrap(), expected);
         assert_eq!(parsed.as_css(), expected);
     }
 }

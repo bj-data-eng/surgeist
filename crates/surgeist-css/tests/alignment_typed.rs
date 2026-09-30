@@ -227,7 +227,7 @@ fn shorthand_construction_and_omission_default_values_work_without_parsing() {
 }
 
 #[test]
-fn parsed_wrappers_expose_current_values_and_only_exact_legacy_projections() {
+fn parsed_wrappers_expose_authored_alignment_values() {
     let source = declaration("align-content: CENTER !important");
     let CssKnownPropertyValueRef::AlignContent(value) =
         source.known().unwrap().property_value().unwrap()
@@ -236,10 +236,9 @@ fn parsed_wrappers_expose_current_values_and_only_exact_legacy_projections() {
     };
     assert_eq!(value.as_css(), "CENTER");
     assert_eq!(
-        value.current().value(),
+        value.value().value(),
         position(None, CssAlignmentPosition::Center)
     );
-    assert_eq!(value.i01_subset(), Some(&CssAlignment::Center));
 
     let source = declaration("justify-content: right");
     let CssKnownPropertyValueRef::JustifyContent(value) =
@@ -248,10 +247,9 @@ fn parsed_wrappers_expose_current_values_and_only_exact_legacy_projections() {
         panic!("justify-content wrapper")
     };
     assert_eq!(
-        value.current().value(),
+        value.value().value(),
         position(None, CssAlignmentPosition::Right)
     );
-    assert_eq!(value.i01_subset(), None);
 
     let source = declaration("align-items: self-start");
     let CssKnownPropertyValueRef::AlignItems(value) =
@@ -260,10 +258,9 @@ fn parsed_wrappers_expose_current_values_and_only_exact_legacy_projections() {
         panic!("align-items wrapper")
     };
     assert_eq!(
-        value.current().value(),
+        value.value().value(),
         position(None, CssAlignmentPosition::SelfStart)
     );
-    assert_eq!(value.i01_subset(), None);
 
     let source = declaration("align-self: auto");
     let CssKnownPropertyValueRef::AlignSelf(value) =
@@ -271,8 +268,7 @@ fn parsed_wrappers_expose_current_values_and_only_exact_legacy_projections() {
     else {
         panic!("align-self wrapper")
     };
-    assert_eq!(value.current().value(), CssAlignmentValue::Auto);
-    assert_eq!(value.i01_subset(), None);
+    assert_eq!(value.value().value(), CssAlignmentValue::Auto);
 
     let source = declaration("justify-items: legacy left");
     let CssKnownPropertyValueRef::JustifyItems(value) =
@@ -281,10 +277,9 @@ fn parsed_wrappers_expose_current_values_and_only_exact_legacy_projections() {
         panic!("justify-items wrapper")
     };
     assert_eq!(
-        value.current().value(),
+        value.value().value(),
         CssAlignmentValue::Legacy(Some(CssLegacyAlignment::Left))
     );
-    assert_eq!(value.i01_subset(), None);
 
     let source = declaration("justify-self: unsafe normal");
     let CssKnownPropertyValueRef::JustifySelf(value) =
@@ -293,10 +288,9 @@ fn parsed_wrappers_expose_current_values_and_only_exact_legacy_projections() {
         panic!("justify-self wrapper")
     };
     assert_eq!(
-        value.current().value(),
+        value.value().value(),
         normal(Some(CssOverflowPosition::Unsafe))
     );
-    assert_eq!(value.i01_subset(), None);
 }
 
 #[test]
@@ -309,17 +303,17 @@ fn parsed_shorthands_keep_authored_css_and_canonical_specified_pairs() {
     };
     assert_eq!(value.as_css(), "BASELINE");
     assert_eq!(
-        value.current().serialize_specified().unwrap(),
+        value.value().serialize_specified().unwrap(),
         "baseline start"
     );
-    let canonical = value.current().serialize_specified().unwrap();
+    let canonical = value.value().serialize_specified().unwrap();
     let reparsed = declaration(&format!("place-content:{canonical}"));
     let CssKnownPropertyValueRef::PlaceContent(reparsed) =
         reparsed.known().unwrap().property_value().unwrap()
     else {
         panic!("reparsed place-content")
     };
-    assert_eq!(reparsed.current(), value.current());
+    assert_eq!(reparsed.value(), value.value());
 
     let source = declaration("place-items: normal legacy");
     let CssKnownPropertyValueRef::PlaceItems(value) =
@@ -328,10 +322,9 @@ fn parsed_shorthands_keep_authored_css_and_canonical_specified_pairs() {
         panic!("place-items wrapper")
     };
     assert_eq!(
-        value.current().serialize_specified().unwrap(),
+        value.value().serialize_specified().unwrap(),
         "normal legacy"
     );
-    assert_eq!(value.i01_subset(), None);
 
     let source = declaration("place-self: auto right");
     let CssKnownPropertyValueRef::PlaceSelf(value) =
@@ -339,21 +332,21 @@ fn parsed_shorthands_keep_authored_css_and_canonical_specified_pairs() {
     else {
         panic!("place-self wrapper")
     };
-    assert_eq!(value.current().serialize_specified().unwrap(), "auto right");
-    assert_eq!(value.i01_subset(), None);
+    assert_eq!(value.value().serialize_specified().unwrap(), "auto right");
 
     let source = declaration("place-content: center end");
     let CssKnownPropertyValueRef::PlaceContent(value) =
         source.known().unwrap().property_value().unwrap()
     else {
-        panic!("legacy representable place-content")
+        panic!("place-content pair")
     };
     assert_eq!(
-        value.i01_subset(),
-        Some(&CssPlaceAlignment::content(
-            CssAlignment::Center,
-            CssAlignment::End
-        ))
+        value.value().align().value(),
+        position(None, CssAlignmentPosition::Center)
+    );
+    assert_eq!(
+        value.value().justify().value(),
+        position(None, CssAlignmentPosition::End)
     );
 }
 
@@ -390,11 +383,11 @@ fn place_items_component_boundary_keeps_legacy_on_justify_axis() {
             panic!("place-items: {authored}")
         };
         assert_eq!(
-            value.current().align().value(),
+            value.value().align().value(),
             position(None, CssAlignmentPosition::Center)
         );
-        assert_eq!(value.current().justify().value(), expected_justify);
-        assert_eq!(value.current().serialize_specified().unwrap(), canonical);
+        assert_eq!(value.value().justify().value(), expected_justify);
+        assert_eq!(value.value().serialize_specified().unwrap(), canonical);
     }
     let source = declaration("justify-items:center legacy");
     let CssKnownPropertyValueRef::JustifyItems(value) =
@@ -403,17 +396,17 @@ fn place_items_component_boundary_keeps_legacy_on_justify_axis() {
         panic!("standalone unordered legacy")
     };
     assert_eq!(
-        value.current().value(),
+        value.value().value(),
         CssAlignmentValue::Legacy(Some(CssLegacyAlignment::Center))
     );
     assert_eq!(
-        value.current().serialize_specified().unwrap(),
+        value.value().serialize_specified().unwrap(),
         "legacy center"
     );
 }
 
 #[test]
-fn first_baseline_keeps_its_authored_projection_despite_canonical_baseline() {
+fn first_baseline_keeps_its_authored_value_despite_canonical_baseline() {
     let source = declaration("align-content:first baseline");
     let CssKnownPropertyValueRef::AlignContent(value) =
         source.known().unwrap().property_value().unwrap()
@@ -421,11 +414,10 @@ fn first_baseline_keeps_its_authored_projection_despite_canonical_baseline() {
         panic!("first-baseline wrapper")
     };
     assert_eq!(
-        value.current().value(),
+        value.value().value(),
         CssAlignmentValue::Baseline(CssBaselinePosition::First)
     );
-    assert_eq!(value.i01_subset(), Some(&CssAlignment::FirstBaseline));
-    assert_eq!(value.current().serialize_specified().unwrap(), "baseline");
+    assert_eq!(value.value().serialize_specified().unwrap(), "baseline");
 }
 
 #[test]
@@ -438,21 +430,21 @@ fn adjacent_baseline_components_serialize_without_swapping_their_axes() {
         match parsed.known().unwrap().property_value().unwrap() {
             CssKnownPropertyValueRef::PlaceItems(value) => {
                 assert_eq!(
-                    value.current().align().value(),
+                    value.value().align().value(),
                     CssAlignmentValue::Baseline(CssBaselinePosition::Baseline)
                 );
                 assert_eq!(
-                    value.current().justify().value(),
+                    value.value().justify().value(),
                     CssAlignmentValue::Baseline(CssBaselinePosition::Last)
                 );
             }
             CssKnownPropertyValueRef::PlaceSelf(value) => {
                 assert_eq!(
-                    value.current().align().value(),
+                    value.value().align().value(),
                     CssAlignmentValue::Baseline(CssBaselinePosition::Baseline)
                 );
                 assert_eq!(
-                    value.current().justify().value(),
+                    value.value().justify().value(),
                     CssAlignmentValue::Baseline(CssBaselinePosition::Last)
                 );
             }
@@ -467,11 +459,11 @@ fn adjacent_baseline_components_serialize_without_swapping_their_axes() {
         panic!("place-items omitted second baseline")
     };
     assert_eq!(
-        value.current().align().value(),
+        value.value().align().value(),
         CssAlignmentValue::Baseline(CssBaselinePosition::Last)
     );
     assert_eq!(
-        value.current().justify().value(),
+        value.value().justify().value(),
         CssAlignmentValue::Baseline(CssBaselinePosition::Last)
     );
     let source = declaration("place-self:baseline last");
@@ -481,11 +473,11 @@ fn adjacent_baseline_components_serialize_without_swapping_their_axes() {
         panic!("place-self omitted second baseline")
     };
     assert_eq!(
-        value.current().align().value(),
+        value.value().align().value(),
         CssAlignmentValue::Baseline(CssBaselinePosition::Last)
     );
     assert_eq!(
-        value.current().justify().value(),
+        value.value().justify().value(),
         CssAlignmentValue::Baseline(CssBaselinePosition::Last)
     );
     let source = declaration("place-content:baseline last");
@@ -495,11 +487,11 @@ fn adjacent_baseline_components_serialize_without_swapping_their_axes() {
         panic!("place-content omitted justify baseline")
     };
     assert_eq!(
-        value.current().align().value(),
+        value.value().align().value(),
         CssAlignmentValue::Baseline(CssBaselinePosition::Last)
     );
     assert_eq!(
-        value.current().justify().value(),
+        value.value().justify().value(),
         position(None, CssAlignmentPosition::Start)
     );
 
@@ -523,11 +515,11 @@ fn adjacent_baseline_components_serialize_without_swapping_their_axes() {
             panic!("reparsed place-items baseline pair")
         };
         assert_eq!(
-            parsed.current().align().value(),
+            parsed.value().align().value(),
             CssAlignmentValue::Baseline(CssBaselinePosition::Baseline)
         );
         assert_eq!(
-            parsed.current().justify().value(),
+            parsed.value().justify().value(),
             CssAlignmentValue::Baseline(CssBaselinePosition::Last)
         );
 
@@ -550,11 +542,11 @@ fn adjacent_baseline_components_serialize_without_swapping_their_axes() {
             panic!("reparsed place-self baseline pair")
         };
         assert_eq!(
-            parsed.current().align().value(),
+            parsed.value().align().value(),
             CssAlignmentValue::Baseline(CssBaselinePosition::Baseline)
         );
         assert_eq!(
-            parsed.current().justify().value(),
+            parsed.value().justify().value(),
             CssAlignmentValue::Baseline(CssBaselinePosition::Last)
         );
     }

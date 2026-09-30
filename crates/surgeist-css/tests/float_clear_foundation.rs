@@ -31,28 +31,24 @@ fn checked(name: &str, value: &str) -> CssDeclaration {
     .unwrap_or_else(|error| panic!("checked {name}:{value}: {error:?}"))
 }
 
-fn authored_value<'a>(source: &'a CssDeclaration, name: &str) -> (&'a str, bool) {
+fn authored_value<'a>(source: &'a CssDeclaration, name: &str) -> &'a str {
     let known = source.known().expect("known property");
     assert_eq!(known.property(), grammar(name).target_property());
     match (name, known.property_value().unwrap()) {
-        ("float", CssKnownPropertyValueRef::Float(value)) => {
-            (value.as_css(), value.i01_subset().is_some())
-        }
-        ("clear", CssKnownPropertyValueRef::Clear(value)) => {
-            (value.as_css(), value.i01_subset().is_some())
-        }
+        ("float", CssKnownPropertyValueRef::Float(value)) => value.as_css(),
+        ("clear", CssKnownPropertyValueRef::Clear(value)) => value.as_css(),
         _ => panic!("{name} has its typed property wrapper"),
     }
 }
 
-fn accepted(name: &str, value: &str, original_i01: bool) {
+fn accepted(name: &str, value: &str) {
     for source in [declaration(name, value), checked(name, value)] {
         assert_eq!(source.importance(), CssImportance::Important);
         assert_eq!(
             source.value_components().serialize().unwrap().as_css(),
             value
         );
-        assert_eq!(authored_value(&source, name), (value, original_i01));
+        assert_eq!(authored_value(&source, name), value);
     }
 }
 
@@ -124,7 +120,7 @@ fn both_names_keep_baseline_ids_and_report_complete_logical1_extension() {
 fn physical_and_flow_relative_keywords_parse_without_losing_authored_spelling() {
     for name in NAMES {
         for value in ["none", "left", "right"] {
-            accepted(name, value, true);
+            accepted(name, value);
         }
         for value in [
             "inline-start",
@@ -134,10 +130,10 @@ fn physical_and_flow_relative_keywords_parse_without_losing_authored_spelling() 
             "inline\\2d start",
             "inline\\2d end",
         ] {
-            accepted(name, value, false);
+            accepted(name, value);
         }
     }
-    accepted("clear", "both", true);
+    accepted("clear", "both");
     for value in [
         "both",
         "start",
@@ -198,7 +194,7 @@ fn both_are_noninherited_terminals_with_none_initials_and_one_ordinary_contribut
                 assert!(item.source().same_occurrence(&source));
                 assert_eq!(item.source().importance(), CssImportance::Important);
                 assert!(item.replacement_components().is_none());
-                assert_eq!(authored_value(&source, name).0, keyword);
+                assert_eq!(authored_value(&source, name), keyword);
             }
             assert_eq!(
                 one_value(&declaration(name, keyword)),
@@ -353,7 +349,7 @@ fn normalization_preserves_order_and_authored_logical_keywords_after_recovery() 
             item.source().known().unwrap().property(),
             grammar(name).target_property()
         );
-        assert_eq!(authored_value(item.source(), name).0, value);
+        assert_eq!(authored_value(item.source(), name), value);
         assert!(matches!(
             item.expansion(),
             CssExpansion::Contributions(CssContributions::Longhands(_))

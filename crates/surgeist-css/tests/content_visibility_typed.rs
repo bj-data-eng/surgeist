@@ -55,8 +55,8 @@ fn intrinsic_visible_and_each_authored_keyword_have_exact_typed_terminal_values(
         else {
             panic!("content-visibility wrapper")
         };
-        assert_eq!(value.current(), &expected);
-        assert_eq!(value.i01_subset(), Some(&expected));
+        assert_eq!(value.value(), &expected);
+        assert_eq!(value.value(), &expected);
         assert_eq!(value.as_css(), authored);
 
         let item = terminal(&source);
@@ -96,7 +96,7 @@ fn programmatic_identifier_and_parsed_identifier_retain_distinct_origins() {
         else {
             panic!("typed current value")
         };
-        assert_eq!(value.current(), &CssContentVisibility::Auto);
+        assert_eq!(value.value(), &CssContentVisibility::Auto);
         let item = terminal(source);
         let CssLonghandValueRef::ContentVisibility(actual) = item.ordinary_value().unwrap().view()
         else {
@@ -164,12 +164,12 @@ fn canonical_keywords_obey_exact_node_and_byte_limits_without_mutating_authored_
         else {
             panic!("typed authored value")
         };
-        assert_eq!(wrapper.current(), &value);
+        assert_eq!(wrapper.value(), &value);
         assert_eq!(wrapper.as_css(), expected.to_uppercase());
-        assert_eq!(wrapper.current().serialize_specified().unwrap(), expected);
+        assert_eq!(wrapper.value().serialize_specified().unwrap(), expected);
         assert_eq!(
             wrapper
-                .current()
+                .value()
                 .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 0))
                 .unwrap_err()
                 .kind(),

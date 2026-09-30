@@ -32,10 +32,7 @@ fn all_direction_keywords_serialize_as_their_specified_identifiers() {
         else {
             panic!("typed direction: {keyword}")
         };
-        assert_eq!(value.current(), &direction);
-        assert_eq!(value.i01_subset(), Some(&direction));
-        let exact: Option<&CssFlexDirection> = value.exact_i01_projection();
-        assert_eq!(exact, Some(&direction));
+        assert_eq!(value.value(), &direction);
     }
 }
 
@@ -53,10 +50,7 @@ fn all_wrap_keywords_serialize_as_their_specified_identifiers() {
         else {
             panic!("typed wrap: {keyword}")
         };
-        assert_eq!(value.current(), &wrap);
-        assert_eq!(value.i01_subset(), Some(&wrap));
-        let exact: Option<&CssFlexWrap> = value.exact_i01_projection();
-        assert_eq!(exact, Some(&wrap));
+        assert_eq!(value.value(), &wrap);
     }
 }
 
@@ -132,7 +126,7 @@ fn parsed_flow_keeps_authored_spelling_and_serializes_omitted_initials() {
 }
 
 #[test]
-fn parsed_longhand_wrappers_keep_exact_authored_css_and_frozen_i01_values() {
+fn parsed_longhand_wrappers_keep_exact_authored_css_and_semantic_values() {
     let direction = declaration("flex-direction:  ROW-REVERSE  !important");
     let CssKnownPropertyValueRef::FlexDirection(direction) =
         direction.known().unwrap().property_value().unwrap()
@@ -140,8 +134,8 @@ fn parsed_longhand_wrappers_keep_exact_authored_css_and_frozen_i01_values() {
         panic!("direction wrapper")
     };
     assert_eq!(direction.as_css(), "ROW-REVERSE");
-    assert_eq!(direction.current(), &CssFlexDirection::RowReverse);
-    assert_eq!(direction.i01_subset(), Some(&CssFlexDirection::RowReverse));
+    assert_eq!(direction.value(), &CssFlexDirection::RowReverse);
+    assert_eq!(direction.value(), &CssFlexDirection::RowReverse);
 
     let wrap = declaration("flex-wrap:  WRAP-REVERSE  !important");
     let CssKnownPropertyValueRef::FlexWrap(wrap) = wrap.known().unwrap().property_value().unwrap()
@@ -149,8 +143,8 @@ fn parsed_longhand_wrappers_keep_exact_authored_css_and_frozen_i01_values() {
         panic!("wrap wrapper")
     };
     assert_eq!(wrap.as_css(), "WRAP-REVERSE");
-    assert_eq!(wrap.current(), &CssFlexWrap::WrapReverse);
-    assert_eq!(wrap.i01_subset(), Some(&CssFlexWrap::WrapReverse));
+    assert_eq!(wrap.value(), &CssFlexWrap::WrapReverse);
+    assert_eq!(wrap.value(), &CssFlexWrap::WrapReverse);
 }
 
 #[test]

@@ -16,6 +16,13 @@ pub(crate) trait CssParseReportTestExt<T> {
         F: FnOnce(Error) -> T;
 }
 
+/// Borrows a property's sole semantic payload through its schema-selected accessor.
+pub(crate) trait SemanticPropertyTestExt {
+    type Value;
+
+    fn semantic_value(&self) -> &Self::Value;
+}
+
 impl<T> CssParseReportTestExt<T> for CssParseReport<T> {
     fn is_ok(&self) -> bool {
         self.is_clean()
@@ -61,13 +68,17 @@ impl<T> CssParseReportTestExt<T> for CssParseReport<T> {
     }
 }
 macro_rules! define_test_property {
-    ($input:ident, $numeric:ident; $(
+    ($input:ident, $numeric:ident;
+        All, $all_canonical:literal, [$($all_alias:literal),*], $all_stable_id:literal,
+        $all_value:ty, $all_parser:ident, $all_dispatch:block $(, expansion = $all_kind:ident { $($all_metadata:tt)* })?;
+        $(
         $variant:ident, $canonical:literal, [$($alias:literal),*], $stable_id:literal,
-        $value:ty, $wrapper:ident, $representation:ident, $parser:ident, $dispatch:block
+        $value:ty, $wrapper:ident, $accessor:ident, $parser:ident, $dispatch:block
         $(, expansion = $expansion:ident { $($metadata:tt)* })?;
     )*) => {
         #[derive(Clone, Debug, Eq, Hash, PartialEq)]
         pub(crate) enum CssProperty {
+            All,
             $($variant,)*
             Custom(CssCustomPropertyName),
         }
@@ -75,10 +86,21 @@ macro_rules! define_test_property {
         impl From<CssKnownProperty> for CssProperty {
             fn from(value: CssKnownProperty) -> Self {
                 match value {
+                    CssKnownProperty::All => Self::All,
                     $(CssKnownProperty::$variant => Self::$variant,)*
                 }
             }
         }
+
+        $(
+            impl SemanticPropertyTestExt for crate::$wrapper {
+                type Value = $value;
+
+                fn semantic_value(&self) -> &Self::Value {
+                    self.$accessor()
+                }
+            }
+        )*
     };
 }
 
@@ -127,6 +149,11 @@ impl AcceptedDeclarationCase {
             declaration.known().and_then(|known| known.global()),
             Some(self.expected_global),
             "{} parsed to the wrong global value",
+            self.label,
+        );
+        assert!(
+            declaration.known().unwrap().property_value().is_none(),
+            "{} global value must have no ordinary property payload",
             self.label,
         );
         declaration

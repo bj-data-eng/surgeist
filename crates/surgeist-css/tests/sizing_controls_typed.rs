@@ -34,7 +34,7 @@ fn pair_construction_preserves_omission_and_width_height_order() {
     else {
         panic!("size")
     };
-    assert_eq!(value.current(), &pair);
+    assert_eq!(value.value(), &pair);
     assert_eq!(value.as_css(), "1.5px auto");
     assert_eq!(
         parsed("min-size", "1.5px auto").known().unwrap().property(),
@@ -60,7 +60,7 @@ fn pair_construction_preserves_omission_and_width_height_order() {
     else {
         panic!("max-size")
     };
-    assert_eq!(value.current(), &maximum);
+    assert_eq!(value.value(), &maximum);
     assert_eq!(maximum.width(), &CssMaxSizeValue::NONE);
     assert!(maximum.authored_height().is_some());
 }
@@ -191,11 +191,11 @@ fn exact_and_symbolic_values_share_a_pair_budget() {
     else {
         panic!("max-size")
     };
-    assert_eq!(parsed_pair.current(), &pair);
+    assert_eq!(parsed_pair.value(), &pair);
     let (CssBoxSize::CalcSize(direct), CssBoxSize::CalcSize(from_source)) = (
         pair.authored_height().unwrap().box_size().unwrap(),
         parsed_pair
-            .current()
+            .value()
             .authored_height()
             .unwrap()
             .box_size()
@@ -289,12 +289,12 @@ fn finite_controls_have_canonical_keyword_sequences_and_limits() {
             panic!("min-intrinsic-sizing")
         };
         assert_eq!(
-            *value.current(),
+            *value.value(),
             CssMinIntrinsicSizing::ZeroIfScrollAndExtrinsic
         );
         assert_eq!(value.as_css(), authored);
         assert_eq!(
-            value.current().serialize_specified().unwrap(),
+            value.value().serialize_specified().unwrap(),
             "zero-if-scroll zero-if-extrinsic"
         );
     }
@@ -308,7 +308,7 @@ fn pair_equality_ignores_numeric_origins_but_retains_structure() {
     else {
         panic!("size")
     };
-    assert_eq!(value.current(), &direct);
+    assert_eq!(value.value(), &direct);
     assert_ne!(
         direct,
         CssSizePair::new(programmatic_size("1.0", "px"), None)

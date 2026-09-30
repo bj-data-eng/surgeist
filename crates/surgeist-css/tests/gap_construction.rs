@@ -43,7 +43,7 @@ fn parsed_gap(value: &str) -> CssGapShorthand {
     else {
         panic!("gap wrapper")
     };
-    gap.current().clone()
+    gap.value().clone()
 }
 
 #[test]
@@ -132,13 +132,13 @@ fn parsed_and_checked_wrappers_expose_exact_current_models() {
             let model = source.known().unwrap().property_value().unwrap();
             let rendered = match model {
                 CssKnownPropertyValueRef::Gap(value) => {
-                    value.current().serialize_specified().unwrap()
+                    value.value().serialize_specified().unwrap()
                 }
                 CssKnownPropertyValueRef::RowGap(value) => {
-                    value.current().serialize_specified().unwrap()
+                    value.value().serialize_specified().unwrap()
                 }
                 CssKnownPropertyValueRef::ColumnGap(value) => {
-                    value.current().serialize_specified().unwrap()
+                    value.value().serialize_specified().unwrap()
                 }
                 _ => panic!("gap-family wrapper"),
             };

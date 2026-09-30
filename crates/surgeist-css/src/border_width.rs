@@ -2,10 +2,8 @@
 
 use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{
-    CssBorderStyle, CssBoxSideKind, CssCalcLength, CssColor, CssComponentValueRef, CssLength,
-    CssLengthPercentageCalculation, CssLengthUnit, CssSpecifiedNonNegativeLength,
+    CssBorderStyle, CssBoxSideKind, CssColor, CssSpecifiedNonNegativeLength,
     CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits, CssValueOrigin,
-    CssValueTokenRef,
 };
 
 type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
@@ -87,48 +85,6 @@ impl PartialEq for CssBorderWidth {
     }
 }
 impl Eq for CssBorderWidth {}
-
-pub(crate) fn legacy_width(value: &CssBorderWidth) -> Option<CssLength> {
-    match value {
-        CssBorderWidth::Thin => Some(CssLength::Thin),
-        CssBorderWidth::Medium => Some(CssLength::Medium),
-        CssBorderWidth::Thick => Some(CssLength::Thick),
-        CssBorderWidth::Length(length) => {
-            if let Some(calculation) = length.calculation() {
-                let legacy = CssLengthPercentageCalculation::from_expression(
-                    calculation.expression.as_ref().clone(),
-                );
-                return Some(CssLength::Calc(CssCalcLength::Typed(legacy)));
-            }
-            match length.literal_component()?.view() {
-                CssComponentValueRef::Token(CssValueTokenRef::Number(number)) => {
-                    (crate::exact_decimal::exact_legacy_value(number.representation())? == 0.0)
-                        .then_some(CssLength::Zero)
-                }
-                CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) => {
-                    CssLength::try_dimension(
-                        crate::exact_decimal::exact_legacy_value(number.representation())?,
-                        CssLengthUnit::from_css_unit(unit)?,
-                    )
-                }
-                _ => None,
-            }
-        }
-    }
-}
-
-pub(crate) fn legacy_shorthand(value: &CssBorderWidthShorthand) -> Option<crate::CssEdges> {
-    if value.kind() == CssBoxSideKind::Logical {
-        return None;
-    }
-    let [top, right, bottom, left] = value.assigned_values();
-    Some(crate::CssEdges::new(
-        legacy_width(top)?,
-        legacy_width(right)?,
-        legacy_width(bottom)?,
-        legacy_width(left)?,
-    ))
-}
 
 /// One or two authored widths for a flow-relative axis.
 ///

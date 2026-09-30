@@ -98,15 +98,6 @@ impl CssRatioOperand {
         }
     }
 
-    pub(crate) fn exact_positive_f32(&self) -> Option<f32> {
-        let CssComponentValueRef::Token(CssValueTokenRef::Number(number)) =
-            self.literal_component()?.view()
-        else {
-            unreachable!("checked ratio number")
-        };
-        crate::exact_decimal::exact_legacy_value(number.representation()).filter(|n| *n > 0.0)
-    }
-
     fn append_specified(
         &self,
         context: &mut SpecifiedSerializationContext,

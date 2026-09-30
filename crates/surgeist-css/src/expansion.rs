@@ -135,18 +135,21 @@ macro_rules! intrinsic_initial {
 // collector then emits complete enums and matches; macros never expand to
 // partial enum variants or match arms, and no second property registry exists.
 macro_rules! define_expansion_schema {
-    ($input:ident, $numeric:ident; $(
+    ($input:ident, $numeric:ident;
+        All, $all_canonical:literal, [$($all_alias:literal),*], $all_stable_id:literal,
+        $all_value:ty, $all_parser:ident, $all_dispatch:block, expansion = universal { $($all_metadata:tt)* };
+        $(
         $variant:ident, $canonical:literal, [$($alias:literal),*], $stable_id:literal,
-        $value:ty, $wrapper:ident, $representation:ident, $parser:ident, $dispatch:block
+        $value:ty, $wrapper:ident, $accessor:ident, $parser:ident, $dispatch:block
         $(, expansion = $kind:ident { $($metadata:tt)* })?;
     )*) => {
-        define_expansion_schema!(@collect [] [] [] [];
+        define_expansion_schema!(@collect [] [] [] []; All, universal { $($all_metadata)* };
             $($( $variant, $kind { $($metadata)* }; )?)*
         );
     };
     (@collect [$($longhands:tt)*] [$($shorthands:tt)*] [$($universal:tt)*] [$($unresolved:tt)*];
         $variant:ident, longhand {
-            wrapper: $wrapper_kind:ident, value: $value:ty,
+            value: $value:ty,
             accessor: $accessor:ident, inherited: $inherited:literal, initial_kind: $initial_kind:ident, initial: $initial:expr
         }; $($rest:tt)*
     ) => {
@@ -157,7 +160,7 @@ macro_rules! define_expansion_schema {
     };
     (@collect [$($longhands:tt)*] [$($shorthands:tt)*] [$($universal:tt)*] [$($unresolved:tt)*];
         $variant:ident, shorthand {
-            wrapper: $wrapper_kind:ident, accessor: $accessor:ident,
+            accessor: $accessor:ident,
             members: [$($member:ident => $projection:expr),+],
             reset_only: [$($reset:ident),*]
         }; $($rest:tt)*
@@ -180,7 +183,7 @@ macro_rules! define_expansion_schema {
         );
     };
     (@collect [$($longhands:tt)*] [$($shorthands:tt)*] [$($universal:tt)*] [$($unresolved:tt)*];
-        $variant:ident, unresolved { wrapper: $wrapper_kind:ident, reason: $reason:expr }; $($rest:tt)*
+        $variant:ident, unresolved { reason: $reason:expr }; $($rest:tt)*
     ) => {
         define_expansion_schema!(@collect
             [$($longhands)*] [$($shorthands)*] [$($universal)*]

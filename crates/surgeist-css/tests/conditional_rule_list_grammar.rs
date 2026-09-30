@@ -57,7 +57,7 @@ fn nested_page_retains_selector_typed_margin_and_importance() {
     let CssKnownPropertyValueRef::Margin(margin) = known.property_value().unwrap() else {
         panic!("typed page margin")
     };
-    for edge in margin.current().assigned_values() {
+    for edge in margin.value().assigned_values() {
         let CssMarginValue::LengthPercentage(value) = edge else {
             panic!("exact page margin length")
         };

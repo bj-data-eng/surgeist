@@ -306,7 +306,7 @@ pub(super) fn parse_glyph_orientation_vertical<'i, 't>(
                 crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Dimension {
                     number,
                     ..
-                }) => match crate::exact_decimal::exact_legacy_value(number.representation()) {
+                }) => match crate::exact_decimal::exact_binary32_value(number.representation()) {
                     Some(0.0) => Some(CssTextOrientation::Upright),
                     Some(90.0) => Some(CssTextOrientation::Sideways),
                     _ => None,

@@ -30,12 +30,12 @@ expansion boundary. It traverses every retained rule family, but returns an
 atomic typed failure for emitted declarations outside the implemented expansion
 coverage. Expansion of the remaining properties is still unfinished.
 
-Where exposed, `i01_subset()` names a frozen earlier representation retained for
-compatibility. The `font-family`, `font`, and `flow-tolerance` wrappers use their current typed
-accessors without that projection. A current property value can be valid and fully inspectable while a retained projection
-is `None`. Consumers should use current typed accessors for newly represented
-syntax. The projection is not a support or validity test. The [inspection guide](how-to.md#inspect-a-known-declaration)
-shows the distinction.
+Each ordinary property wrapper retains its authored declaration and one checked
+semantic value. Its semantic accessor exposes the owning domain directly;
+`as_css()` preserves the exact authored ordinary slice. The immutable I01
+fixtures record historical parser observations, which tests interpret through
+concrete semantic expectations. They do not define a production compatibility
+API. The `all` property remains global or substitution-dependent only.
 
 ## Support metadata describes a selected surface
 

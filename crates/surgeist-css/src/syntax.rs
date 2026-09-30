@@ -3895,7 +3895,7 @@ impl CssDeclaration {
 #[non_exhaustive]
 #[expect(
     clippy::large_enum_variant,
-    reason = "the stable declaration enum keeps values inline while typed properties retain current and I01 projections"
+    reason = "authored declaration variants retain their checked values inline"
 )]
 #[derive(Clone, Debug, PartialEq)]
 pub enum CssDeclarationBody {
@@ -4349,45 +4349,6 @@ pub enum CssOpacityValue {
     PercentageCalculation(CssPercentageCalculation),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CssFlexFactor {
-    value: CssNonNegativeNumber,
-}
-
-impl CssFlexFactor {
-    #[must_use]
-    pub fn try_new(value: f32) -> Option<Self> {
-        CssNonNegativeNumber::try_new(value).map(|value| Self { value })
-    }
-
-    #[must_use]
-    pub const fn value(self) -> f32 {
-        self.value.value()
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CssAspectRatio {
-    value: CssFiniteNumber,
-}
-
-impl CssAspectRatio {
-    #[must_use]
-    pub fn try_new(value: f32) -> Option<Self> {
-        if value > 0.0 {
-            let value = CssFiniteNumber::try_new(value)?;
-            Some(Self { value })
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub const fn value(self) -> f32 {
-        self.value.value()
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssAspectRatioValue {
@@ -4401,19 +4362,6 @@ pub enum CssAspectRatioValue {
 pub enum CssScrollbarWidth {
     Auto,
     Thin,
-    None,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssDisplay {
-    Block,
-    Flex,
-    Grid,
-    InlineBlock,
-    InlineGrid,
-    GridLanes,
-    InlineGridLanes,
     None,
 }
 
@@ -4636,130 +4584,6 @@ pub enum CssClear {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum CssAlignment {
-    Normal,
-    Start,
-    End,
-    SafeEnd,
-    FlexStart,
-    FlexEnd,
-    SafeFlexEnd,
-    Center,
-    SafeCenter,
-    Baseline,
-    FirstBaseline,
-    LastBaseline,
-    Stretch,
-    SpaceBetween,
-    SpaceAround,
-    SpaceEvenly,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssAlignItems {
-    Normal,
-    Start,
-    End,
-    SafeEnd,
-    FlexStart,
-    FlexEnd,
-    SafeFlexEnd,
-    Center,
-    SafeCenter,
-    Baseline,
-    FirstBaseline,
-    LastBaseline,
-    Stretch,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssPlaceAlignment {
-    Content(CssPlaceContentAlignment),
-    Items(CssPlaceItemsAlignment),
-}
-
-impl CssPlaceAlignment {
-    #[must_use]
-    pub const fn content(first: CssAlignment, second: CssAlignment) -> Self {
-        Self::Content(CssPlaceContentAlignment::new(first, second))
-    }
-
-    #[must_use]
-    pub const fn content_all(value: CssAlignment) -> Self {
-        Self::content(value, value)
-    }
-
-    #[must_use]
-    pub const fn items(first: CssAlignItems, second: CssAlignItems) -> Self {
-        Self::Items(CssPlaceItemsAlignment::new(first, second))
-    }
-
-    #[must_use]
-    pub const fn items_all(value: CssAlignItems) -> Self {
-        Self::items(value, value)
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct CssPlaceContentAlignment {
-    first: CssAlignment,
-    second: CssAlignment,
-}
-
-impl CssPlaceContentAlignment {
-    #[must_use]
-    pub const fn new(first: CssAlignment, second: CssAlignment) -> Self {
-        Self { first, second }
-    }
-
-    #[must_use]
-    pub const fn all(value: CssAlignment) -> Self {
-        Self::new(value, value)
-    }
-
-    #[must_use]
-    pub const fn first(self) -> CssAlignment {
-        self.first
-    }
-
-    #[must_use]
-    pub const fn second(self) -> CssAlignment {
-        self.second
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct CssPlaceItemsAlignment {
-    first: CssAlignItems,
-    second: CssAlignItems,
-}
-
-impl CssPlaceItemsAlignment {
-    #[must_use]
-    pub const fn new(first: CssAlignItems, second: CssAlignItems) -> Self {
-        Self { first, second }
-    }
-
-    #[must_use]
-    pub const fn all(value: CssAlignItems) -> Self {
-        Self::new(value, value)
-    }
-
-    #[must_use]
-    pub const fn first(self) -> CssAlignItems {
-        self.first
-    }
-
-    #[must_use]
-    pub const fn second(self) -> CssAlignItems {
-        self.second
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
 pub enum CssVisibility {
     Visible,
     Hidden,
@@ -4772,49 +4596,6 @@ pub enum CssContentVisibility {
     Visible,
     Hidden,
     Auto,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssContent {
-    Normal,
-    None,
-    Items(CssContentList),
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssContentList {
-    items: Vec<CssContentItem>,
-}
-
-impl CssContentList {
-    #[must_use]
-    pub fn try_new(items: Vec<CssContentItem>) -> Option<Self> {
-        if items.is_empty() {
-            None
-        } else {
-            Some(Self { items })
-        }
-    }
-
-    #[must_use]
-    pub fn items(&self) -> &[CssContentItem] {
-        &self.items
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssContentItem {
-    String(CssContentString),
-    Url(CssUrl),
-    Counter(CssCounterFunction),
-    Counters(CssCountersFunction),
-    Attr(CssAttributeName),
-    OpenQuote,
-    CloseQuote,
-    NoOpenQuote,
-    NoCloseQuote,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -4836,28 +4617,6 @@ impl CssContentString {
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.value
-    }
-}
-
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct CssCounterName {
-    name: String,
-}
-
-impl CssCounterName {
-    #[must_use]
-    pub fn try_new(name: impl Into<String>) -> Option<Self> {
-        let name = name.into();
-        if is_valid_counter_name(&name) {
-            Some(Self { name })
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.name
     }
 }
 
@@ -4888,10 +4647,6 @@ impl CssCounterStyleName {
     }
 }
 
-fn is_valid_counter_name(name: &str) -> bool {
-    is_css_ident(name) && !is_css_wide_keyword(name) && !name.eq_ignore_ascii_case("none")
-}
-
 fn is_valid_counter_style_name(name: &str) -> bool {
     is_css_ident(name)
         && !is_css_wide_keyword(name)
@@ -4915,208 +4670,11 @@ fn is_css_wide_keyword(value: &str) -> bool {
     )
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssCounterFunction {
-    name: CssCounterName,
-    style: Option<CssCounterStyle>,
-}
-
-impl CssCounterFunction {
-    #[must_use]
-    pub const fn new(name: CssCounterName, style: Option<CssCounterStyle>) -> Self {
-        Self { name, style }
-    }
-
-    #[must_use]
-    pub const fn name(&self) -> &CssCounterName {
-        &self.name
-    }
-
-    #[must_use]
-    pub const fn style(&self) -> Option<&CssCounterStyle> {
-        self.style.as_ref()
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssCountersFunction {
-    name: CssCounterName,
-    separator: CssContentString,
-    style: Option<CssCounterStyle>,
-}
-
-impl CssCountersFunction {
-    #[must_use]
-    pub const fn new(
-        name: CssCounterName,
-        separator: CssContentString,
-        style: Option<CssCounterStyle>,
-    ) -> Self {
-        Self {
-            name,
-            separator,
-            style,
-        }
-    }
-
-    #[must_use]
-    pub const fn name(&self) -> &CssCounterName {
-        &self.name
-    }
-
-    #[must_use]
-    pub const fn separator(&self) -> &CssContentString {
-        &self.separator
-    }
-
-    #[must_use]
-    pub const fn style(&self) -> Option<&CssCounterStyle> {
-        self.style.as_ref()
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssCounterStyle {
-    BuiltIn(CssBuiltInCounterStyle),
-    Named(CssCounterStyleName),
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssBuiltInCounterStyle {
-    Disc,
-    Circle,
-    Square,
-    Decimal,
-    DecimalLeadingZero,
-    LowerAlpha,
-    UpperAlpha,
-    LowerLatin,
-    UpperLatin,
-    LowerRoman,
-    UpperRoman,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssListStyleType {
-    None,
-    CounterStyle(CssCounterStyle),
-    String(CssContentString),
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssListStylePosition {
     Inside,
     Outside,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssListStyleImage {
-    None,
-    Url(CssUrl),
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssListStyle {
-    style_type: Option<CssListStyleType>,
-    position: Option<CssListStylePosition>,
-    image: Option<CssListStyleImage>,
-}
-
-impl CssListStyle {
-    #[must_use]
-    pub fn try_new(
-        style_type: Option<CssListStyleType>,
-        position: Option<CssListStylePosition>,
-        image: Option<CssListStyleImage>,
-    ) -> Option<Self> {
-        if style_type.is_none() && position.is_none() && image.is_none() {
-            None
-        } else {
-            Some(Self {
-                style_type,
-                position,
-                image,
-            })
-        }
-    }
-
-    #[must_use]
-    pub const fn style_type(&self) -> Option<&CssListStyleType> {
-        self.style_type.as_ref()
-    }
-
-    #[must_use]
-    pub const fn position(&self) -> Option<CssListStylePosition> {
-        self.position
-    }
-
-    #[must_use]
-    pub const fn image(&self) -> Option<&CssListStyleImage> {
-        self.image.as_ref()
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssCounterChanges {
-    None,
-    Changes(CssCounterChangeList),
-}
-
-impl CssCounterChanges {
-    #[must_use]
-    pub fn try_changes(changes: Vec<CssCounterChange>) -> Option<Self> {
-        CssCounterChangeList::try_new(changes).map(Self::Changes)
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssCounterChangeList {
-    changes: Vec<CssCounterChange>,
-}
-
-impl CssCounterChangeList {
-    #[must_use]
-    pub fn try_new(changes: Vec<CssCounterChange>) -> Option<Self> {
-        if changes.is_empty() {
-            None
-        } else {
-            Some(Self { changes })
-        }
-    }
-
-    #[must_use]
-    pub fn changes(&self) -> &[CssCounterChange] {
-        &self.changes
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssCounterChange {
-    name: CssCounterName,
-    value: Option<i32>,
-}
-
-impl CssCounterChange {
-    #[must_use]
-    pub const fn new(name: CssCounterName, value: Option<i32>) -> Self {
-        Self { name, value }
-    }
-
-    #[must_use]
-    pub const fn name(&self) -> &CssCounterName {
-        &self.name
-    }
-
-    #[must_use]
-    pub const fn value(&self) -> Option<i32> {
-        self.value
-    }
 }
 
 /// A checked authored `flow-tolerance`, before contextual used-value resolution.
@@ -5244,18 +4802,6 @@ pub use grid_placement::*;
 
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub enum CssFlex {
-    None,
-    Auto,
-    Components {
-        grow: CssFlexFactor,
-        shrink: Option<CssFlexFactor>,
-        basis: Option<CssLength>,
-    },
-}
-
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
 pub enum CssIntegerValue {
     Literal(crate::CssIntegerLiteral),
     Calculation(CssIntegerCalculation),
@@ -5266,21 +4812,6 @@ pub enum CssIntegerValue {
 pub enum CssZIndexValue {
     Auto,
     Integer(CssIntegerValue),
-}
-
-impl CssFlex {
-    #[must_use]
-    pub const fn components(
-        grow: CssFlexFactor,
-        shrink: Option<CssFlexFactor>,
-        basis: Option<CssLength>,
-    ) -> Self {
-        Self::Components {
-            grow,
-            shrink,
-            basis,
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -5791,33 +5322,6 @@ pub enum CssTableLayout {
     Fixed,
 }
 
-/// A checked pure-length `word-spacing` compatibility payload.
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssWordSpacingLength {
-    value: CssLength,
-}
-
-impl CssWordSpacingLength {
-    #[must_use]
-    pub fn try_new(value: CssLength) -> Option<Self> {
-        let value = crate::numeric::admit_pure_length(value)?;
-        is_absolute_length(&value).then_some(Self { value })
-    }
-
-    #[must_use]
-    pub const fn value(&self) -> &CssLength {
-        &self.value
-    }
-}
-
-/// The frozen pure-length `word-spacing` compatibility value.
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssWordSpacing {
-    Normal,
-    Length(CssWordSpacingLength),
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssWritingMode {
@@ -5918,18 +5422,6 @@ pub enum CssTextAlign {
     Center,
     Justify,
     MatchParent,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssTextAlignLast {
-    Auto,
-    Start,
-    End,
-    Left,
-    Right,
-    Center,
-    Justify,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -6366,42 +5858,6 @@ impl CssExplicitFont {
 pub enum CssFontValue {
     Explicit(CssExplicitFont),
     System(CssSystemFont),
-}
-
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-/// The frozen pure-length `letter-spacing` compatibility value.
-pub enum CssLetterSpacing {
-    Normal,
-    Length(CssLetterSpacingLength),
-}
-
-#[derive(Clone, Debug, PartialEq)]
-/// A checked pure-length `letter-spacing` compatibility payload.
-pub struct CssLetterSpacingLength {
-    length: CssLength,
-}
-
-impl CssLetterSpacingLength {
-    #[must_use]
-    pub fn try_new(length: CssLength) -> Option<Self> {
-        let length = crate::numeric::admit_pure_length(length)?;
-        if is_letter_spacing_length(&length) {
-            Some(Self::new(length))
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn new(length: CssLength) -> Self {
-        Self { length }
-    }
-
-    #[must_use]
-    pub const fn length(&self) -> &CssLength {
-        &self.length
-    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -6883,36 +6339,6 @@ impl CssLength {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssEdges {
-    pub top: CssLength,
-    pub right: CssLength,
-    pub bottom: CssLength,
-    pub left: CssLength,
-}
-
-impl CssEdges {
-    #[must_use]
-    pub fn all(value: CssLength) -> Self {
-        Self {
-            top: value.clone(),
-            right: value.clone(),
-            bottom: value.clone(),
-            left: value,
-        }
-    }
-
-    #[must_use]
-    pub const fn new(top: CssLength, right: CssLength, bottom: CssLength, left: CssLength) -> Self {
-        Self {
-            top,
-            right,
-            bottom,
-            left,
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssBorderStyle {
@@ -6926,41 +6352,6 @@ pub enum CssBorderStyle {
     Ridge,
     Inset,
     Outset,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct CssBorderStyles {
-    pub top: CssBorderStyle,
-    pub right: CssBorderStyle,
-    pub bottom: CssBorderStyle,
-    pub left: CssBorderStyle,
-}
-
-impl CssBorderStyles {
-    #[must_use]
-    pub const fn new(
-        top: CssBorderStyle,
-        right: CssBorderStyle,
-        bottom: CssBorderStyle,
-        left: CssBorderStyle,
-    ) -> Self {
-        Self {
-            top,
-            right,
-            bottom,
-            left,
-        }
-    }
-
-    #[must_use]
-    pub const fn all(value: CssBorderStyle) -> Self {
-        Self {
-            top: value,
-            right: value,
-            bottom: value,
-            left: value,
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -7198,10 +6589,6 @@ fn is_text_length(length: &CssLength) -> bool {
 
 fn is_vertical_align_length(length: &CssLength) -> bool {
     is_text_length(length)
-}
-
-fn is_letter_spacing_length(length: &CssLength) -> bool {
-    is_absolute_length(length)
 }
 
 fn is_absolute_length(length: &CssLength) -> bool {

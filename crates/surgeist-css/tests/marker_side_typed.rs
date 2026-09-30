@@ -21,7 +21,7 @@ fn current(declaration: &CssDeclaration) -> CssMarkerSide {
     else {
         panic!("marker-side current wrapper")
     };
-    *wrapper.current()
+    *wrapper.value()
 }
 
 #[test]

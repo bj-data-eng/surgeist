@@ -334,33 +334,6 @@ fn append_raw_keyword(
     context.append(output, keyword)
 }
 
-pub(crate) fn text_align_i01_projection(value: &CssTextAlignValue) -> Option<CssTextAlign> {
-    match value {
-        CssTextAlignValue::Alignment(CssTextAlignAllValue::Keyword(keyword)) => Some(*keyword),
-        CssTextAlignValue::Alignment(CssTextAlignAllValue::Character(_))
-        | CssTextAlignValue::JustifyAll => None,
-    }
-}
-
-pub(crate) fn text_align_last_i01_projection(
-    value: &CssTextAlignLastValue,
-) -> Option<crate::CssTextAlignLast> {
-    match value {
-        CssTextAlignLastValue::Auto => Some(crate::CssTextAlignLast::Auto),
-        CssTextAlignLastValue::Keyword(CssTextAlign::Start) => Some(crate::CssTextAlignLast::Start),
-        CssTextAlignLastValue::Keyword(CssTextAlign::End) => Some(crate::CssTextAlignLast::End),
-        CssTextAlignLastValue::Keyword(CssTextAlign::Left) => Some(crate::CssTextAlignLast::Left),
-        CssTextAlignLastValue::Keyword(CssTextAlign::Right) => Some(crate::CssTextAlignLast::Right),
-        CssTextAlignLastValue::Keyword(CssTextAlign::Center) => {
-            Some(crate::CssTextAlignLast::Center)
-        }
-        CssTextAlignLastValue::Keyword(CssTextAlign::Justify) => {
-            Some(crate::CssTextAlignLast::Justify)
-        }
-        CssTextAlignLastValue::Keyword(CssTextAlign::MatchParent) => None,
-    }
-}
-
 pub(crate) fn shorthand_all(value: &CssTextAlignValue) -> CssTextAlignAllValue {
     match value {
         CssTextAlignValue::Alignment(value) => value.clone(),

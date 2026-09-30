@@ -112,7 +112,7 @@ fn assert_keyword(declaration: &CssDeclaration, text: &str, expected: Expected) 
         expected,
     ) {
         (CssKnownPropertyValueRef::Direction(value), Expected::Direction(expected)) => {
-            assert_eq!(value.i01_subset(), Some(&expected));
+            assert_eq!(value.value(), &expected);
             value.as_css()
         }
         (CssKnownPropertyValueRef::UnicodeBidi(value), Expected::Bidi(expected)) => {
@@ -120,7 +120,7 @@ fn assert_keyword(declaration: &CssDeclaration, text: &str, expected: Expected) 
             value.as_css()
         }
         (CssKnownPropertyValueRef::WritingMode(value), Expected::Writing(expected)) => {
-            assert_eq!(value.i01_subset(), Some(&expected));
+            assert_eq!(value.value(), &expected);
             value.as_css()
         }
         (CssKnownPropertyValueRef::TextOrientation(value), Expected::Orientation(expected)) => {

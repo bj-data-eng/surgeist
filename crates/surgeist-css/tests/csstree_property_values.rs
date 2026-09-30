@@ -636,7 +636,7 @@ fn raw_property_corpus_obeys_selected_grammar_and_original_coordinates() {
                 let CssKnownPropertyValueRef::Width(value) = known.property_value().unwrap() else {
                     panic!("expected width: {id}");
                 };
-                let CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length)) = value.current()
+                let CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length)) = value.value()
                 else {
                     panic!("expected literal width: {id}")
                 };
@@ -717,7 +717,7 @@ fn raw_property_corpus_obeys_selected_grammar_and_original_coordinates() {
                 let CssKnownPropertyValueRef::Width(value) = known.property_value().unwrap() else {
                     panic!("expected width: {id}");
                 };
-                let CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length)) = value.current()
+                let CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length)) = value.value()
                 else {
                     panic!("expected retained typed calculation: {id}");
                 };

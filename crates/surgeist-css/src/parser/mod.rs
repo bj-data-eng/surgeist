@@ -76,28 +76,8 @@ use cssparser::{
     match_ignore_ascii_case,
 };
 
-use crate::border_color::*;
-use crate::border_radius::*;
-use crate::border_style::*;
-use crate::border_width::*;
-use crate::box_spacing::*;
-use crate::contain_intrinsic_size::{CssContainIntrinsicSize, CssContainIntrinsicSizeValue};
-use crate::font_controls::*;
-use crate::font_settings::*;
-use crate::font_variant::*;
-use crate::inset::{CssInsetPair, CssInsetShorthand, CssInsetValue};
 use crate::named_supports::CssSupportsConditionName;
-use crate::overflow_controls::{CssOverflowClipMargin, CssScrollBehavior, CssScrollbarGutter};
-use crate::text_alignment::{CssTextAlignAllValue, CssTextAlignLastValue, CssTextAlignValue};
-use crate::{
-    CssContainer, CssContainerNames, CssContainerType, CssFontPaletteDescriptorKind,
-    CssFontPaletteDescriptorValue, CssFontPaletteName, CssFontSize, CssFontStyle, CssFontWeight,
-    CssFontWidth, CssFrameSizing, CssGapShorthand, CssGapValue, CssLineHeight, CssMaxSizePair,
-    CssMaxSizeValue, CssMinIntrinsicSizing, CssOverflowValue, CssScrollMarginPair,
-    CssScrollMarginShorthand, CssScrollPaddingPair, CssScrollPaddingShorthand,
-    CssScrollPaddingValue, CssScrollSnapAlign, CssScrollSnapStop, CssScrollSnapType, CssSizePair,
-    CssSizeValue, CssSpecifiedLength,
-};
+use crate::{CssFontPaletteDescriptorKind, CssFontPaletteDescriptorValue, CssFontPaletteName};
 use alignment::*;
 use background::*;
 use border_color::*;
@@ -176,7 +156,6 @@ use crate::error::{
 use crate::properties::*;
 use crate::syntax::*;
 use crate::validation::parse_global_keyword;
-use crate::{CssFlexDirection, CssFlexFlow, CssFlexWrap};
 
 #[expect(
     dead_code,
@@ -418,11 +397,11 @@ pub(crate) const fn atomic_implementation_inventories()
 macro_rules! define_property_dispatch {
     ($input:ident, $numeric:ident;
         All, $all_canonical:literal, [$($all_alias:literal),*], $all_stable_id:literal,
-        $all_value:ty, $all_wrapper:ident, $all_representation:ident,
+        $all_value:ty,
         $all_parser:ident, $all_dispatch:block $(, expansion = $all_expansion:ident { $($all_metadata:tt)* })?;
         $(
         $variant:ident, $canonical:literal, [$($alias:literal),*], $stable_id:literal,
-        $value:ty, $wrapper:ident, $representation:ident, $parser:ident, $dispatch:block
+        $value:ty, $wrapper:ident, $accessor:ident, $parser:ident, $dispatch:block
         $(, expansion = $expansion:ident { $($metadata:tt)* })?;
     )*) => {
         fn parse_known_property_value<'i, 't>(
@@ -434,8 +413,8 @@ macro_rules! define_property_dispatch {
             match property {
                 crate::CssKnownProperty::All => {
                     let _authored_value_type = std::marker::PhantomData::<$all_value>;
-                    let _wrapper_type = std::marker::PhantomData::<$all_wrapper>;
-                    let _representation_type = stringify!($all_representation);
+
+
                     let keyword = $all_dispatch;
                     Ok(CssKnownDeclaration::from_global(CssKnownProperty::All, keyword))
                 }
@@ -450,7 +429,7 @@ macro_rules! define_property_dispatch {
                     ) -> std::result::Result<CssKnownDeclaration, ParseError<'i, Error>> {
                         let _ = $numeric;
                         let _authored_value_type = std::marker::PhantomData::<$value>;
-                        let _representation_type = stringify!($representation);
+
                         let value = $dispatch;
                         Ok(CssKnownDeclaration::from_value(
                             CssKnownDeclarationValue::$variant(CssDeclaredValue::Value(

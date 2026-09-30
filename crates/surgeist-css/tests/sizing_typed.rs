@@ -19,14 +19,14 @@ fn size(name: &str, text: &str) -> CssSizeValue {
         .property_value()
         .unwrap();
     match value {
-        CssKnownPropertyValueRef::Width(value) => value.current().clone(),
-        CssKnownPropertyValueRef::Height(value) => value.current().clone(),
-        CssKnownPropertyValueRef::InlineSize(value) => value.current().clone(),
-        CssKnownPropertyValueRef::BlockSize(value) => value.current().clone(),
-        CssKnownPropertyValueRef::MinWidth(value) => value.current().clone(),
-        CssKnownPropertyValueRef::MinHeight(value) => value.current().clone(),
-        CssKnownPropertyValueRef::MinInlineSize(value) => value.current().clone(),
-        CssKnownPropertyValueRef::MinBlockSize(value) => value.current().clone(),
+        CssKnownPropertyValueRef::Width(value) => value.value().clone(),
+        CssKnownPropertyValueRef::Height(value) => value.value().clone(),
+        CssKnownPropertyValueRef::InlineSize(value) => value.value().clone(),
+        CssKnownPropertyValueRef::BlockSize(value) => value.value().clone(),
+        CssKnownPropertyValueRef::MinWidth(value) => value.value().clone(),
+        CssKnownPropertyValueRef::MinHeight(value) => value.value().clone(),
+        CssKnownPropertyValueRef::MinInlineSize(value) => value.value().clone(),
+        CssKnownPropertyValueRef::MinBlockSize(value) => value.value().clone(),
         _ => panic!("preferred or minimum size"),
     }
 }
@@ -143,7 +143,7 @@ fn checked_maximum_reports_nested_auto_origin_after_programmatic_trivia() {
     else {
         panic!("parsed preferred size")
     };
-    let CssSizeValue::BoxSize(CssBoxSize::CalcSize(calc)) = value.current() else {
+    let CssSizeValue::BoxSize(CssBoxSize::CalcSize(calc)) = value.value() else {
         panic!("parsed nested calc-size")
     };
     let surgeist_css::CssCalcSizeBasisRef::Nested(child) = calc.as_calc_size().basis() else {
@@ -208,7 +208,7 @@ fn sizing_equality_preserves_structure_across_distinct_origins() {
         .unwrap(),
     ))
     .unwrap();
-    assert_eq!(parsed_max_value.current(), &checked_max);
+    assert_eq!(parsed_max_value.value(), &checked_max);
 
     let authored_fit = size("height", "fit-content(calc(1px + 2%))");
     let checked_fit = CssSizeValue::BoxSize(CssBoxSize::FitContentFunction(
@@ -306,7 +306,7 @@ fn coupled_declaration_equality_keeps_identity_importance_and_position_distinct(
     else {
         panic!("checked calc-size wrappers")
     };
-    assert_eq!(lower_value.current(), upper_value.current());
+    assert_eq!(lower_value.value(), upper_value.value());
     assert_ne!(lower.syntax()[0].body(), upper.syntax()[0].body());
     assert_ne!(
         CssKnownProperty::Width.stable_id(),

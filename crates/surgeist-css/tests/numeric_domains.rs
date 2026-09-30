@@ -1,12 +1,12 @@
 use surgeist_css::{
-    CssAnimationIterationNumber, CssAspectRatio, CssComponentValue, CssDelayLiteral,
-    CssDurationLiteral, CssErrorCode, CssFiniteNumber, CssFlexFactor, CssFlowTolerance,
-    CssFlowToleranceRef, CssFontObliqueAngle, CssFontSizeAdjust, CssFontWeightNumber,
-    CssGridRepeatInteger, CssKeyframePercent, CssKnownProperty, CssKnownPropertyValueRef,
-    CssLength, CssLengthDimension, CssLengthUnit, CssNonNegativeNumber, CssOpacityScalarKind,
-    CssOpacityValue, CssRatio, CssRecoveryAction, CssResolution, CssResolutionUnit, CssRule,
-    CssScaleValues, CssSpecifiedNonNegativeNumber, CssTimeUnit, CssTokenKind, ErrorKind,
-    parse_sheet, parse_style_attribute,
+    CssAnimationIterationNumber, CssComponentValue, CssDelayLiteral, CssDurationLiteral,
+    CssErrorCode, CssFiniteNumber, CssFlowTolerance, CssFlowToleranceRef, CssFontObliqueAngle,
+    CssFontSizeAdjust, CssFontWeightNumber, CssGridRepeatInteger, CssKeyframePercent,
+    CssKnownProperty, CssKnownPropertyValueRef, CssLength, CssLengthDimension, CssLengthUnit,
+    CssNonNegativeNumber, CssOpacityScalarKind, CssOpacityValue, CssRatio, CssRatioOperand,
+    CssRecoveryAction, CssResolution, CssResolutionUnit, CssRule, CssScaleValues,
+    CssSpecifiedNonNegativeNumber, CssTimeUnit, CssTokenKind, ErrorKind, parse_sheet,
+    parse_style_attribute,
 };
 
 #[test]
@@ -14,8 +14,6 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
     for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
         assert_eq!(CssFiniteNumber::try_new(value), None);
         assert_eq!(CssNonNegativeNumber::try_new(value), None);
-        assert_eq!(CssFlexFactor::try_new(value), None);
-        assert_eq!(CssAspectRatio::try_new(value), None);
         assert_eq!(CssRatio::try_new(value, 1.0), None);
         assert_eq!(CssRatio::try_new(1.0, value), None);
         assert_eq!(CssKeyframePercent::try_new(value), None);
@@ -30,6 +28,12 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
         );
         assert_eq!(CssDelayLiteral::try_new(value, CssTimeUnit::Seconds), None);
         assert_eq!(CssAnimationIterationNumber::try_new(value), None);
+    }
+
+    for invalid in ["NaN", "infinity", "-infinity"] {
+        let component = CssComponentValue::try_ident(invalid).unwrap();
+        assert!(CssSpecifiedNonNegativeNumber::try_from_component(component.clone()).is_err());
+        assert!(CssRatioOperand::try_from_component(component).is_err());
     }
 
     for invalid in ["-90.1deg", "90.1deg", "0"] {
@@ -68,7 +72,22 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
         .representation(),
         "1"
     );
-    assert_eq!(CssFlexFactor::try_new(f32::MAX).unwrap().value(), f32::MAX);
+    let factor = CssSpecifiedNonNegativeNumber::try_from_component(
+        CssComponentValue::try_number("340282346638528859811704183484516925440").unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        factor.serialize_specified().unwrap(),
+        "340282346638528859811704183484516925440"
+    );
+    for invalid in ["-1", "-0.00000000000000001"] {
+        assert!(
+            CssSpecifiedNonNegativeNumber::try_from_component(
+                CssComponentValue::try_number(invalid).unwrap()
+            )
+            .is_err()
+        );
+    }
     assert_eq!(
         CssRatio::try_new(0.0, f32::MAX)
             .unwrap()

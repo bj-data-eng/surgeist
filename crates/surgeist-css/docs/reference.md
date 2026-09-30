@@ -435,11 +435,7 @@ is a non-inherited longhand with `Auto` initial value.
 
 `serialize_specified()` canonically places `auto` first and emits both ratio
 components, with one cumulative input, projection, and output budget. It does
-not divide the components or resolve whether a zero ratio is useful. The frozen
-I01 projection remains available only for an ordinary, exactly representable,
-positive `f32` numerator with omitted denominator. Migration: the former
-`CssAspectRatioValue::Literal` and `Calculation` variants are replaced by
-`Auto`, `Ratio`, and `AutoRatio`. Callers should inspect ratio operands through
+not divide the components or resolve whether a zero ratio is useful. Inspect ratio operands through
 `numerator()`, `denominator()`, `literal_component()`, and `calculation()`.
 The effective source revisions for `aspect-ratio` and `box-sizing` now name
 their selected Sizing publications; historical provenance records and stable
@@ -539,7 +535,7 @@ to exclude direction and unicode-bidi.
 
 Each enum exposes `serialize_specified()` and its bounded variant, emitting
 canonical lowercase keywords with the shared one-input-node, one-projection-node
-and exact-byte budgets. Direction and WritingMode wrappers expose `current()`;
+and exact-byte budgets. Direction and WritingMode wrappers expose `value()`;
 UnicodeBidi keeps `bidi()`, and TextOrientation keeps `orientation()`. Authored
 wrapper text and parsed/programmatic component origins remain unchanged.
 The selected [Writing Modes4 definition](https://www.w3.org/TR/2019/CR-css-writing-modes-4-20190730/#block-flow)
@@ -582,8 +578,8 @@ The existing `None` and `All` variants retain their meaning.
 
 Visibility uses the existing `CssVisibility::{Visible, Hidden, Collapse}` values.
 It is inherited by default and its ordinary initial value is `Visible`.
-`CssVisibilityPropertyValue::current()` exposes that typed value while `as_css()`
-retains authored spelling and `i01_subset()` remains exact. Its intrinsic
+`CssVisibilityPropertyValue::value()` exposes that typed value while `as_css()`
+retains authored spelling. Its intrinsic
 expansion emits one longhand contribution; globals and unresolved substitutions
 keep their separate states. Expansion does not resolve inheritance or apply
 hidden/collapse rendering effects.
@@ -600,7 +596,7 @@ remain downstream.
 authored grammar: exactly `visible`, `auto`, or `hidden`. It is a non-inherited
 longhand with intrinsic initial `visible`. `CssContentVisibilityPropertyValue`
 retains authored spelling through `as_css()` and exposes the checked enum through
-`current()`; its existing `i01_subset()` is exact for these three values.
+`value()`.
 Ordinary declarations expand to one terminal contribution. CSS-wide keywords
 remain symbolic, and variable, environment, and attribute substitutions reenter
 the same whole-value grammar while retaining the original occurrence.
@@ -650,8 +646,7 @@ and produces one contribution. Generic CSS-wide and pending `var()` values use
 the same expansion and strict grammar-reentry boundary.
 
 `CssDisplayPropertyValue::value()` exposes the complete specified model;
-`as_css()` retains the authored spelling. The frozen `CssDisplay` view returned
-by `i01_subset()` remains available only for exactly representable values.
+`as_css()` retains the authored spelling.
 For example, `block flex` has the same specified value as `flex`, while
 `inline flex` stays distinct from legacy `inline-flex`. CSS Display3 §2.6
 requires that distinction at the specified stage even though computed values
@@ -821,8 +816,8 @@ is a name alias of the same property and accepts the same values; parsed
 declarations retain the original spelling and source coordinates. The selected
 support record cites the [14 August 2026 CSS Text 3 draft](https://www.w3.org/TR/2026/CRD-css-text-3-20260814/#propdef-overflow-wrap).
 
-`CssOverflowWrapPropertyValue::current()` exposes the exact checked keyword;
-`i01_subset()` retains its existing compatibility projection. Intrinsic
+`CssOverflowWrapPropertyValue::value()` exposes the exact checked keyword;
+Intrinsic
 expansion emits one `OverflowWrap` contribution, preserving importance and source
 occurrence. CSS-wide values remain symbolic, and substitution-dependent values
 reenter the same grammar after replacement. `CssOverflowWrap::serialize_specified`
@@ -861,7 +856,7 @@ preserve one- versus two-value specified form; they do not serialize an entire
 stylesheet or resolve used gaps in grid, flex, or multicolumn layout.
 
 Migration: `CssGapPropertyValue`, `CssRowGapPropertyValue`, and
-`CssColumnGapPropertyValue` now expose typed `current()` values. Replace former
+`CssColumnGapPropertyValue` now expose typed `value()` values. Replace former
 `CssLength` and `i01_subset()` consumers with `CssGapShorthand` for `gap` and
 `CssGapValue` for the longhands. The old lossy compatibility projection is
 removed in this coordinated API change.
@@ -947,12 +942,11 @@ invalidation; cross-crate composition remains root-owned.
 ## Authored property inspection
 
 The [how-to guide](how-to.md#inspect-a-known-declaration) shows property/value
-inspection, exact authored text, and the frozen `i01_subset()` compatibility
-projection on wrappers that retain it. `font-family` and `font` expose only their
-current typed values. `CssImportance` and `CssSupportStatus` are closed public enums;
+inspection and exact authored text. Each ordinary wrapper exposes its sole
+checked semantic value through one intentional accessor. `CssImportance` and `CssSupportStatus` are closed public enums;
 other public enums are non-exhaustive, so downstream matches require a wildcard.
-The [compatibility explanation](explanation.md#symbolic-values-and-compatibility)
-defines the I01 representation used by those projections.
+The [authored-value explanation](explanation.md#symbolic-values-and-compatibility)
+describes these symbolic boundaries.
 
 ## Finite numeric values, timing domains, and symbolic calculations
 
@@ -1488,12 +1482,11 @@ effective fallback is `right`. The checked `CssCharacterAlignment` retains the
 string component's origin and exposes both decoded text and the authored
 fallback. Its constructors reject empty and multiple-cluster strings.
 `CssTextAlignValue`, `CssTextAlignAllValue`, and `CssTextAlignLastValue` expose
-the three distinct current grammars and bounded canonical specified-value
-serialization. `CssTextAlignPropertyValue::current()` and
-`CssTextAlignLastPropertyValue::current()` provide these current values while
-their `i01_subset()` methods retain the frozen older enum projections; character
-alignment, `justify-all`, and last-line `match-parent` have no older projection.
-`text-align-all` has a current-only wrapper. Character search, font selection,
+the three distinct grammars and bounded canonical specified-value
+serialization. `CssTextAlignPropertyValue::value()` and
+`CssTextAlignLastPropertyValue::value()` provide these checked semantic values.
+`text-align-all` likewise exposes its checked value through `value()`.
+Character search, font selection,
 directional resolution, and line layout remain downstream concerns.
 
 The authored font surface includes checked four-ASCII-character OpenType tags,
@@ -1504,11 +1497,9 @@ September 7, 2026 Fonts 4 grammar. Other typography records retain their
 individual dated sources.
 
 `CssFontFamilyPropertyValue::families()` and `CssFontPropertyValue::font()` expose
-the current models, with exact authored text available through `as_css()`.
-These two wrappers no longer expose `i01_subset()`, and the obsolete `CssFont`
-payload has been removed; use `CssFontValue` and `CssExplicitFont`. Font weight,
-style, and size wrappers are also current-only; other font wrappers retain their
-separate compatibility projections where available.
+`CssFontFamilyList` and `CssFontValue`, with exact authored text available through
+`as_css()`. Each font wrapper retains one checked semantic value; explicit
+shorthand components belong to `CssExplicitFont`.
 
 The selected Fonts 4 `font-variant` family accepts ligatures, caps, alternates,
 numeric, East Asian, position, and emoji groups in either longhand declarations
@@ -1560,9 +1551,8 @@ number calculation, with its original parsed or programmatic origin;
 `try_from_component` and `try_from_calculation` check the literal bounds and
 numeric domain. Symbolic math remains unresolved. Its `literal_component()`,
 `calculation()`, `origin()` and bounded `serialize_specified()` methods replace
-the old integer `value()` projection. `CssFontWeightPropertyValue::current()`
-returns a borrowed `&CssFontWeight` and is current-only; its former
-`i01_subset()` projection is removed. Explicit `font` shorthand values also
+the old integer `value()` projection. `CssFontWeightPropertyValue::value()`
+returns a borrowed `&CssFontWeight`. Explicit `font` shorthand values also
 borrow their optional weight through `CssExplicitFont::weight()` and accept the
 same absolute and relative weight components, including fractions and number
 math. Intrinsic shorthand expansion now contributes seven settable terminals and
@@ -1591,7 +1581,7 @@ methods operate on checked angles without a floating-point degree projection.
 The old property variants such as `CssFontStyle::Italic` become
 `CssFontStyle::Keyword(CssFontStyleKeyword::Italic)`; the old descriptor variants
 become `CssFontFaceStyle::Keyword(...)` or `Oblique { range }`. The property
-wrapper's `current()` returns a borrowed `&CssFontStyle`, and
+wrapper's `value()` returns a borrowed `&CssFontStyle`, and
 `CssExplicitFont::style()` returns `Option<&CssFontStyle>`; the old property
 `i01_subset()` projection is removed. The inherited property initial is
 `normal`, and expansion preserves importance and source provenance. The
@@ -1618,8 +1608,7 @@ the shared scalar's own equality continues to include provenance.
 Huge positive exponents remain authored without expansion during admission,
 while bounded serialization can reject output that exceeds its byte budget.
 
-`CssFontSizePropertyValue::size()` continues to borrow `&CssFontSize` and is
-current-only; `i01_subset()` and the old I01 size projection are removed.
+`CssFontSizePropertyValue::size()` borrows `&CssFontSize`.
 `CssExplicitFont::size()` also continues to borrow. The shorthand accepts the
 same size grammar, including `xxx-large`, `math`, and typed size math, while
 preserving the following font-family boundary and optional slash line height.
@@ -1640,7 +1629,7 @@ bare checked calculation roots reenter literal admission, while actual math
 functions remain symbolic. Line-height equality ignores source origin
 while preserving authored structure, whereas the shared number scalar's own
 equality retains provenance. Both support bounded specified serialization.
-`CssLineHeightPropertyValue::line_height()` remains borrowed and current-only;
+`CssLineHeightPropertyValue::line_height()` borrows the checked line height;
 the historical `i01_subset()`, `CssLineHeightLengthPercentage`, and
 `CssLineHeight::Number(CssNonNegativeNumberValue)` payload are removed. Construct
 new numeric payloads with `CssSpecifiedNonNegativeNumber::try_from_component`
@@ -1917,7 +1906,7 @@ specified-value serializers cover these width values, without providing a
 complete font-face rule serializer. The `font` shorthand continues to accept
 only the Fonts 3 width keywords. The breaking public property migration replaces
 `CssKnownProperty::FontStretch` and `CssKnownPropertyValueRef::FontStretch` with
-their `FontWidth` variants; the wrapper's `current()` returns `CssFontWidth`.
+their `FontWidth` variants; the wrapper's `value()` returns `CssFontWidth`.
 `CssFontStretch` remains a type alias for the nine-keyword `CssFontWidthKeyword`.
 The descriptor migration replaces `CssFontFaceDescriptorKind::FontStretch` with
 `CssFontFaceDescriptorKind::FontWidth` and the ordinary
@@ -2276,10 +2265,8 @@ The generated body classifies a sole image as replacement, retains ordered
 content items, and permits a separate nonempty alternative of strings and
 counter functions. `CssCounterStyleValue` retains checked named styles or
 `symbols()` with string/image symbols; all predefined style names normalize to
-lowercase while custom names keep their case. The older `CssContent` and
-`CssCounterStyle` values remain exact conditional I01 projections through
-`CssContentPropertyValue::i01_subset()`; use `current()` for the complete
-authored grammar. A valid `attr()` keeps the whole declaration pending, as
+lowercase while custom names keep their case. Use
+`CssContentPropertyValue::value()` for the complete authored grammar. A valid `attr()` keeps the whole declaration pending, as
 described above.
 
 Specified serialization uses one cumulative input-node, projection-node, and
@@ -2298,8 +2285,8 @@ defines inherited `list-style-type`, `list-style-position`, and
 `list-style-image` with `disc`, `outside`, and `none` initials. The `list-style`
 shorthand resets omitted members and accepts type, position, and image in
 their selected grammar, including a checked `symbols()` counter style and
-Images 3 images. Each wrapper exposes `current()` for the complete authored
-value; `i01_subset()` retains only exactly representable legacy values.
+Images 3 images. Each wrapper exposes `value()` for the complete authored
+value.
 `CssListStyleValue` retains which components were authored. Its bounded
 specified serializer emits position, image, then type, omits only
 meaning-preserving initials, and inserts `outside` when a custom type named
@@ -2308,7 +2295,7 @@ initials still consume node budget. Marker construction, image loading, and
 painting remain downstream.
 
 [CSS Lists 3 §3.7](https://www.w3.org/TR/2020/WD-css-lists-3-20201117/#propdef-marker-side)
-defines inherited `marker-side` with initial `match-self`. Its current-only
+defines inherited `marker-side` with initial `match-self`. Its authored
 wrapper exposes the checked `CssMarkerSide` keyword; bounded specified
 serialization emits `match-self` or `match-parent`. Selecting element or parent
 directionality and marker placement remain downstream. `marker-side` is a separate
@@ -2319,7 +2306,7 @@ defines `counter-reset`, `counter-increment`, and `counter-set` as separate
 noninherited longhands with `none` initials. `CssCounterChangesValue` retains
 `none` or nonempty ordered checked entries, including duplicate names and
 whether each integer was authored. The three property wrappers expose
-`current()` and an exact conditional legacy `i01_subset()`. Names use the
+`value()`. Names use the
 Content 3 checked counter-name domain; integer tokens remain exact at any
 magnitude, and integer calculations retain their authored tree and origin.
 For canonical specified serialization, pass `CssCounterProperty` explicitly:
@@ -2334,14 +2321,9 @@ defines `word-spacing` and `letter-spacing` as inherited longhands with
 `CssTextSpacingAdjustment` retains exact numeric spelling, source origin, and
 symbolic math, and serializes under a bounded resource budget. Percentages
 inherit intact and resolve against used font size downstream. The historical
-pure-length `CssWordSpacing` and `CssLetterSpacing` values remain conditional
-I01 projections: percentage-bearing or inexact values have no projection.
-For example, authored `0.1em` remains exact in the current value but has no
-legacy binary32 projection; `0.25em` has one.
-`CssWordSpacingPropertyValue::spacing()` now borrows the shared current value;
-call `i01_subset()` for an exactly representable historical value.
-`CssLetterSpacingPropertyValue::current()` borrows the shared current value,
-while its existing `i01_subset()` remains available for pure lengths.
+pure-length spacing models have no remaining grammar owner.
+`CssWordSpacingPropertyValue::spacing()` and
+`CssLetterSpacingPropertyValue::value()` borrow the shared checked value.
 
 `glyph-orientation-vertical` is the selected Writing Modes legacy shorthand,
 not a name-equivalent schema alias. Its implemented compatibility subset admits
@@ -2515,8 +2497,8 @@ authored alignment vocabulary, so an item-only position cannot enter a content
 property by typed construction. The place values hold two independently
 checked property values. Canonical specified serialization emits both effective
 components with one resource budget; explicit `first baseline` serializes as
-`baseline` while the authored wrapper retains its original spelling and its
-conditional frozen I01 projection. For the ambiguous shorthand
+`baseline` while the authored wrapper retains its original spelling and checked
+alignment value. For the ambiguous shorthand
 `baseline last baseline`, parsing prefers bare `baseline` for align and
 `last baseline` for justify; a one-component shorthand `baseline last` still
 denotes last-baseline align with an omitted justify component. The grammars and
@@ -2538,7 +2520,7 @@ an omitted component taking its initial value and no reset-only members.
 `CssFlexFlow::new()` constructs the pair directly; all three values serialize
 specified keywords with bounded output, and `flex-flow` serializes both
 effective components in that order. The direction and wrap wrappers retain
-exact I01 projections. The twelve deprecated `-webkit-` property spellings in
+their checked keyword values. The twelve deprecated `-webkit-` property spellings in
 [Flexbox 1 normative Appendix B](https://www.w3.org/TR/2025/CRD-css-flexbox-1-20251014/#webkit-aliases)
 are name-equivalent aliases of their seven flex properties, four alignment
 properties, and `order`. They use each target's full authored grammar and
@@ -2576,8 +2558,8 @@ only: omitted factors are `1`, an omitted basis is specified unitless `0`,
 `none` expands to `0 0 auto`, and `auto` to `1 1 auto`. Its initial longhand
 values are `0`, `1`, and `auto`, respectively. Serialization of a component
 shorthand emits its full effective triple, so authored omission is not inferred
-from that output. The frozen I01 view is available only when its older numeric
-and basis types represent the value exactly. These contracts follow
+from that output. The wrapper directly retains the checked shorthand components.
+These contracts follow
 [Flexbox 1 §7](https://www.w3.org/TR/2025/CRD-css-flexbox-1-20251014/#flex-property),
 [Flexbox 1 §7.2.3](https://www.w3.org/TR/2025/CRD-css-flexbox-1-20251014/#flex-basis-property),
 and the selected Sizing 3/4 and Values 5 sizing productions.
@@ -3306,7 +3288,7 @@ variant. These grammars follow Sizing 3 (2026-09-04) §§3.1–3.2, the Sizing 4
 (2026-09-04) shared production and explicit definitions, and the required
 Values 5 (2024-11-11) §10 `calc-size()` grammar.
 
-The six physical wrappers now expose `current()` as `CssSizeValue` or
+The six physical wrappers now expose `value()` as `CssSizeValue` or
 `CssMaxSizeValue`; their former `i01_subset()` view of `CssLength` is removed.
 Call `literal_component()` for an exact ordinary token or `calculation()` for
 checked math within a `CssBoxSize::LengthPercentage`. The wrapper's `as_css()`
@@ -3360,8 +3342,7 @@ until valid replacement tokens reenter the grammar. The authored value and
 numbers, authored arity and mode. Their typed equality compares retained
 structure without diagnostic origins; wrappers retain original `as_css()`
 spelling. Physical `inset`, `top`, `right`, `bottom`, and `left` wrappers expose
-`current()` plus an optional frozen I01 projection. Only exactly representable
-legacy numeric values project; large or tiny exact values remain in `current()`.
+`value()` with the exact checked semantic value.
 `serialize_specified()` gives bounded canonical text, distinct from `as_css()`.
 
 ## Authored box spacing
@@ -3388,7 +3369,7 @@ The selected Logical 1 draft leaves their reset membership unresolved, so
 normalization does not silently assign a longhand set.
 
 The ten physical wrappers' former `i01_subset()` view of `CssLength` or
-`CssEdges` is removed. Use `current()` for `CssMarginValue`, `CssPaddingValue`,
+`CssEdges` is removed. Use `value()` for `CssMarginValue`, `CssPaddingValue`,
 `CssMarginShorthand`, or `CssPaddingShorthand`; inspect exact literals or
 calculations through their checked length-percentage values. `as_css()` retains
 the authored spelling, while `serialize_specified()` renders a bounded
@@ -3432,7 +3413,7 @@ their own identities.
 `CssSpecifiedNonNegativeLength` retains exact ordinary tokens and symbolic
 length math without narrowing through a floating-point value. The checked
 `CssContainIntrinsicSizeValue` and `CssContainIntrinsicSize` models expose the
-fallback, `auto` intent, and authored second component through `current()` on
+fallback, `auto` intent, and authored second component through `value()` on
 their property wrappers. `as_css()` retains original spelling;
 `serialize_specified()` gives bounded canonical output. Remembered sizes,
 containment state, writing-mode mapping, and used box dimensions belong to
@@ -3446,9 +3427,8 @@ define `float: none | left | right | inline-start | inline-end` and
 `clear: none | left | right | both | inline-start | inline-end`. Both are
 noninherited longhands with `none` initials. Their enum values serialize as
 canonical keywords under specified-value limits, and each expands to one typed
-contribution. The `float` and `clear` property wrappers expose `current()`;
-`i01_subset()` remains available for their older physical keywords and returns
-`None` for flow-relative keywords. `as_css()` retains the original spelling.
+contribution. The `float` and `clear` property wrappers expose `value()`;
+`as_css()` retains the original spelling.
 Mapping `inline-start` and `inline-end` to physical sides needs the containing
 block's writing mode and belongs downstream.
 
@@ -3464,10 +3444,8 @@ the legacy `overlay` keyword parses as `auto` while the property wrapper's
 `as_css()` retains its spelling.
 
 `CssOverflowValue` preserves the authored one- or two-keyword form and exposes
-`x()`, `authored_y()`, and `y()` through the shorthand wrapper's `current()`.
-The physical longhand wrappers also expose `current()`. Their `i01_subset()`
-views, and the shorthand's `CssOverflowI01PropertyValue` projection, remain
-available only when every authored keyword is one of the original four.
+`x()`, `authored_y()`, and `y()` through the shorthand wrapper's `value()`.
+The physical longhand wrappers also expose `value()`.
 The enum and shorthand have bounded canonical specified serialization.
 Cross-axis computed-value coupling and mapping flow-relative axes through the
 element's writing mode belong downstream.
@@ -3476,7 +3454,7 @@ element's writing mode belong downstream.
 
 The selected [Fragmentation 3 break definitions](https://www.w3.org/TR/2018/CR-css-break-3-20181204/#break-between)
 define `break-before`, `break-after`, and `break-inside` as noninherited
-longhands with `auto` initials. Their `current()` accessors expose finite typed
+longhands with `auto` initials. Their `value()` accessors expose finite typed
 keyword domains and bounded canonical serialization. The former canonical
 `page-break-before`, `page-break-after`, and `page-break-inside` spellings are
 now distinct [legacy shorthand grammars](https://www.w3.org/TR/2018/CR-css-break-3-20181204/#page-break-properties)
@@ -3492,7 +3470,7 @@ their support records with `feature_metadata(grammar.feature_id().as_str())`
 and their intrinsic metadata with `grammar.metadata()`. Code using the
 old `CssPageBreak*` types or `.page_break()` accessors should use the
 `CssBreakBetween`/`CssBreakInside` values returned by modern wrappers'
-`.current()` accessors. Fragmentation and flow-relative page mapping remain
+`.value()` accessors. Fragmentation and flow-relative page mapping remain
 downstream behavior.
 
 The [Fragmentation 3 line-minimum definitions](https://www.w3.org/TR/2018/CR-css-break-3-20181204/#widows-orphans)
@@ -3548,7 +3526,11 @@ The affected physical wrappers expose `value()` for exact checked border triples
 
 The selected [Backgrounds 3 line-style definitions](https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/#border-style) and [Logical 1 flow-relative styles](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#border-style) provide ten style keywords for four physical and four logical longhands. Their noninherited initial is `none`. `border-block-style` and `border-inline-style` retain one or two authored values, assigning start then end and repeating the first when the second is omitted. The four-side `border-style` retains one to four authored values and an optional leading `logical` switch. Its assignments are top/right/bottom/left in physical mode and block-start/inline-start/block-end/inline-end in logical mode; it does not map logical sides to physical sides.
 
-`CssBorderStylePropertyValue::current()` now returns `CssBorderStyleShorthand`, preserving authored arity and role mode. Code that previously used its expanded `CssBorderStyles` result can use `i01_subset()` for an exact physical compatibility view, or `current().assigned_values()` with `current().kind()` for the authored roles. The older `CssBorderStyles` and scalar `CssBorderStyle` remain available. Each scalar, pair, and shorthand has bounded specified serialization under one cumulative budget per value.
+`CssBorderStylePropertyValue::value()` returns `CssBorderStyleShorthand`,
+preserving authored arity and role mode. Inspect `assigned_values()` with `kind()`
+for the authored roles. `CssBorderStyle` is the checked scalar keyword domain.
+Each scalar, pair, and shorthand has bounded specified serialization under one
+cumulative budget per value.
 
 The selected [Logical 1 issue 3030](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#issue-3d880eb1) leaves the full physical/logical reset membership of `border-style` unresolved. Its authored grammar is accepted, but completed intrinsic expansion and metadata return `UnresolvedStandard` in both modes, for CSS-wide values, and after valid substitution reentry. Pending substitutions stay symbolic. Physical `border` and side-border shorthands still expand their style members and defined defaults, including `border`'s border-image resets. Writing-mode mapping, computed border-width zeroing, and painting remain downstream.
 
@@ -3560,4 +3542,4 @@ cover the four physical and four flow-relative corner longhands. Each accepts on
 
 The physical `border-radius` shorthand accepts one to four horizontal values and an optional slash followed by one to four vertical values. `CssBorderRadiusShorthand` retains the authored lists and supplies the four physical corners in top-left, top-right, bottom-right, bottom-left order. Without a slash, each contributed corner retains an omitted vertical radius; an explicit slash retains its authored vertical value. Intrinsic expansion has four physical longhand members and no reset-only members. Bounded specified serialization shares one resource budget across the aggregate and its authored children.
 
-Existing physical property wrappers expose the exact `current()` value and retain `i01_subset()` only when every component projects exactly into the older float-based `CssCornerRadius` or `CssBorderRadii` models. Flow-relative wrappers do not invent a physical corner mapping. Writing-mode and direction mapping, percentage basis, overlapping-radii reduction, geometry, and painting remain downstream.
+Physical property wrappers expose the exact checked `value()`. `CssCornerRadius` and `CssBorderRadii` remain owned only by the active basic-shape `inset()` round grammar until its length model is closed. Flow-relative wrappers do not invent a physical corner mapping. Writing-mode and direction mapping, percentage basis, overlapping-radii reduction, geometry, and painting remain downstream.

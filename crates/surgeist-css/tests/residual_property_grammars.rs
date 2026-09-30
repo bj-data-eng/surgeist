@@ -1,8 +1,9 @@
 use surgeist_css::{
     CssBorderCollapse, CssBoxEdgeKeyword, CssBreakBetween, CssBreakInside, CssCaptionSide, CssClip,
-    CssClipEdge, CssEmptyCells, CssErrorCode, CssGlobalKeyword, CssKnownDeclaredValueRef,
-    CssKnownProperty, CssKnownPropertyValueRef, CssLength, CssQuotes, CssRecoveryAction,
-    CssTableLayout, CssTextSpacingAdjustment, CssWordSpacing, ErrorKind, parse_style_attribute,
+    CssClipEdge, CssComponentValueRef, CssEmptyCells, CssErrorCode, CssGlobalKeyword,
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLength, CssQuotes,
+    CssRecoveryAction, CssTableLayout, CssTextSpacingAdjustment, CssValueTokenRef, ErrorKind,
+    parse_style_attribute,
 };
 
 #[test]
@@ -156,10 +157,10 @@ fn css2_residual_properties_retain_typed_values() {
             .unwrap();
         match value {
             CssKnownPropertyValueRef::BreakAfter(value) => {
-                assert_eq!(value.current(), &CssBreakBetween::Right);
+                assert_eq!(value.value(), &CssBreakBetween::Right);
             }
             CssKnownPropertyValueRef::BreakBefore(value) => {
-                assert_eq!(value.current(), &CssBreakBetween::Page);
+                assert_eq!(value.value(), &CssBreakBetween::Page);
             }
             _ => panic!("expected an outside page-break value"),
         }
@@ -173,7 +174,7 @@ fn css2_residual_properties_retain_typed_values() {
     else {
         panic!("expected page-break-inside");
     };
-    assert_eq!(page_break_inside.current(), &CssBreakInside::Avoid);
+    assert_eq!(page_break_inside.value(), &CssBreakInside::Avoid);
 
     let CssKnownPropertyValueRef::Quotes(quotes) = report.syntax()[9]
         .known()
@@ -216,11 +217,15 @@ fn css2_residual_properties_retain_typed_values() {
         word_spacing.spacing(),
         CssTextSpacingAdjustment::LengthPercentage(_)
     ));
-    assert!(matches!(
-        word_spacing.i01_subset(),
-        Some(CssWordSpacing::Length(length))
-            if matches!(length.value(), CssLength::Dimension(value) if value.value() == -0.25)
-    ));
+    let component = word_spacing
+        .spacing()
+        .length_percentage()
+        .unwrap()
+        .literal_component()
+        .unwrap();
+    assert!(
+        matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) if number.representation() == "-0.25" && unit == "em")
+    );
 }
 
 #[test]

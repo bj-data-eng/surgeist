@@ -22,7 +22,7 @@ fn parsed_clip_margin(value: &str) -> CssOverflowClipMargin {
     else {
         panic!("typed clip margin")
     };
-    value.current().clone()
+    value.value().clone()
 }
 
 #[test]
@@ -192,7 +192,7 @@ fn parsed_keyword_controls_expose_exact_typed_values_and_authored_spelling() {
         else {
             panic!("typed scroll behavior")
         };
-        assert_eq!(*value.current(), expected);
+        assert_eq!(*value.value(), expected);
         assert_eq!(value.as_css(), input);
     }
     for (input, expected) in [
@@ -210,7 +210,7 @@ fn parsed_keyword_controls_expose_exact_typed_values_and_authored_spelling() {
         else {
             panic!("typed scrollbar gutter")
         };
-        assert_eq!(*value.current(), expected);
+        assert_eq!(*value.value(), expected);
         assert_eq!(value.as_css(), input);
     }
     for (input, expected) in [
@@ -227,8 +227,8 @@ fn parsed_keyword_controls_expose_exact_typed_values_and_authored_spelling() {
         else {
             panic!("typed text overflow")
         };
-        assert_eq!(*value.current(), expected);
-        assert_eq!(value.i01_subset(), Some(&expected));
+        assert_eq!(*value.value(), expected);
+        assert_eq!(value.value(), &expected);
         assert_eq!(value.as_css(), input);
     }
 }

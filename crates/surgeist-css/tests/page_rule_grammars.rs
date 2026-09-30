@@ -70,7 +70,7 @@ fn page_margin_filter_keeps_exact_css2_literals_and_rejects_logical_or_math() {
     else {
         panic!("exact signed page margin")
     };
-    let CssMarginValue::LengthPercentage(left) = left.current() else {
+    let CssMarginValue::LengthPercentage(left) = left.value() else {
         panic!("signed length")
     };
     assert_eq!(left.literal_component().unwrap().origin(), left.origin());
@@ -120,7 +120,7 @@ fn page_margin_declarations_accept_only_the_css2_page_domain() {
     let surgeist_css::CssKnownPropertyValueRef::Margin(margin) = margin else {
         panic!("expected typed margin")
     };
-    let [top, right, bottom, left] = margin.current().assigned_values();
+    let [top, right, bottom, left] = margin.value().assigned_values();
     assert_eq!(top.serialize_specified().unwrap(), "-1px");
     assert_eq!(right.serialize_specified().unwrap(), "2%");
     assert!(matches!(bottom, CssMarginValue::Auto));

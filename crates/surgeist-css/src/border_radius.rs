@@ -2,9 +2,8 @@
 
 use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{
-    CssBorderRadii, CssCalcLength, CssComponentValueRef, CssCornerRadius, CssLength, CssLengthUnit,
     CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits, CssValueTokenRef,
+    CssSpecifiedValueSerializationLimits,
 };
 
 type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
@@ -234,43 +233,3 @@ impl PartialEq for CssBorderRadiusShorthand {
     }
 }
 impl Eq for CssBorderRadiusShorthand {}
-
-fn legacy_scalar(value: &CssSpecifiedNonNegativeLengthPercentage) -> Option<CssLength> {
-    if let Some(calculation) = value.calculation() {
-        return Some(CssLength::Calc(CssCalcLength::Typed(calculation.clone())));
-    }
-    match value.literal_component()?.view() {
-        CssComponentValueRef::Token(CssValueTokenRef::Number(number)) => {
-            (crate::exact_decimal::exact_legacy_value(number.representation())? == 0.0)
-                .then_some(CssLength::Zero)
-        }
-        CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) => {
-            CssLength::try_percent(crate::exact_decimal::exact_legacy_value(
-                number.representation(),
-            )?)
-        }
-        CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) => {
-            CssLength::try_dimension(
-                crate::exact_decimal::exact_legacy_value(number.representation())?,
-                CssLengthUnit::from_css_unit(unit)?,
-            )
-        }
-        _ => None,
-    }
-}
-
-pub(crate) fn legacy_corner(value: &CssCornerRadiusValue) -> Option<CssCornerRadius> {
-    Some(CssCornerRadius::new(
-        legacy_scalar(value.horizontal())?,
-        legacy_scalar(value.vertical())?,
-    ))
-}
-
-pub(crate) fn legacy_shorthand(value: &CssBorderRadiusShorthand) -> Option<CssBorderRadii> {
-    Some(CssBorderRadii::new(
-        legacy_corner(&value.top_left())?,
-        legacy_corner(&value.top_right())?,
-        legacy_corner(&value.bottom_right())?,
-        legacy_corner(&value.bottom_left())?,
-    ))
-}

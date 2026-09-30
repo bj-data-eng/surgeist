@@ -168,14 +168,14 @@ fn already_admitted_display_values_have_intrinsic_expansion() {
 }
 
 #[test]
-fn selected_grid_lanes_keywords_preserve_frozen_identity_and_authored_spelling() {
+fn selected_grid_lanes_keywords_preserve_identity_and_authored_spelling() {
     for (source, expected) in [
-        ("grid-lanes", CssDisplay::GridLanes),
-        ("GRID-LANES", CssDisplay::GridLanes),
-        (r"gr\69 d-lanes", CssDisplay::GridLanes),
-        ("inline-grid-lanes", CssDisplay::InlineGridLanes),
-        ("INLINE-GRID-LANES", CssDisplay::InlineGridLanes),
-        (r"inline-gr\69 d-lanes", CssDisplay::InlineGridLanes),
+        ("grid-lanes", CssDisplayValue::GridLanes),
+        ("GRID-LANES", CssDisplayValue::GridLanes),
+        (r"gr\69 d-lanes", CssDisplayValue::GridLanes),
+        ("inline-grid-lanes", CssDisplayValue::InlineGridLanes),
+        ("INLINE-GRID-LANES", CssDisplayValue::InlineGridLanes),
+        (r"inline-gr\69 d-lanes", CssDisplayValue::InlineGridLanes),
     ] {
         for (suffix, importance) in [
             ("", CssImportance::Normal),
@@ -189,7 +189,7 @@ fn selected_grid_lanes_keywords_preserve_frozen_identity_and_authored_spelling()
             else {
                 panic!("display value")
             };
-            assert_eq!(value.i01_subset(), Some(&expected));
+            assert_eq!(value.value(), &expected);
             assert_eq!(value.as_css(), source);
             assert_eq!(declaration.importance(), importance);
             assert!(matches!(
@@ -213,6 +213,6 @@ fn selected_grid_lanes_keywords_preserve_frozen_identity_and_authored_spelling()
         else {
             panic!("display value")
         };
-        assert_eq!(value.i01_subset(), Some(&expected));
+        assert_eq!(value.value(), &expected);
     }
 }

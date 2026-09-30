@@ -1,8 +1,7 @@
 //! Checked, symbolic values for the Lists 3 marker-style properties.
 
 use crate::{
-    CssContentString, CssCounterStyleValue, CssIdent, CssImageValue, CssListStyle,
-    CssListStyleImage, CssListStylePosition, CssListStyleType,
+    CssContentString, CssCounterStyleValue, CssIdent, CssImageValue, CssListStylePosition,
 };
 
 /// Symbolic marker-side selection for a list item.
@@ -70,37 +69,4 @@ impl CssListStyleValue {
     pub const fn image(&self) -> Option<&CssImageValue> {
         self.image.as_ref()
     }
-}
-
-#[must_use]
-pub(crate) fn type_i01(value: &CssListStyleTypeValue) -> Option<CssListStyleType> {
-    Some(match value {
-        CssListStyleTypeValue::None => CssListStyleType::None,
-        CssListStyleTypeValue::String(value) => CssListStyleType::String(value.clone()),
-        CssListStyleTypeValue::CounterStyle(value) => {
-            CssListStyleType::CounterStyle(crate::content_values::legacy_style(value)?)
-        }
-    })
-}
-
-#[must_use]
-pub(crate) fn image_i01(value: &CssImageValue) -> Option<CssListStyleImage> {
-    match value {
-        CssImageValue::None => Some(CssListStyleImage::None),
-        CssImageValue::Url(value) => Some(CssListStyleImage::Url(value.clone())),
-        CssImageValue::Gradient(_) => None,
-    }
-}
-
-#[must_use]
-pub(crate) fn shorthand_i01(value: &CssListStyleValue) -> Option<CssListStyle> {
-    let style_type = match value.style_type.as_ref() {
-        Some(value) => Some(type_i01(value)?),
-        None => None,
-    };
-    let image = match value.image.as_ref() {
-        Some(value) => Some(image_i01(value)?),
-        None => None,
-    };
-    CssListStyle::try_new(style_type, value.position, image)
 }

@@ -342,7 +342,6 @@ macro_rules! with_property_value_variants {
     ($callback:ident, $declaration:expr, $value:expr, $expected:expr) => {
         $callback! {
             $declaration, $value, $expected;
-            All,
             Display,
             BoxSizing,
             Position,

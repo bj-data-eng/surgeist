@@ -8,10 +8,10 @@
 mod font_face_support;
 
 use surgeist_css::{
-    CssClipPath, CssContent, CssContentItem, CssCursor, CssCursorKeyword, CssFilter,
+    CssClipPath, CssContentValue, CssContentValueItem, CssCursor, CssCursorKeyword, CssFilter,
     CssFilterFunction, CssFontFaceSource, CssFontFormatHint, CssFontTechHint, CssImageValue,
-    CssImportTarget, CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssListStyleImage,
-    CssRecoveryAction, CssRule, CssUrlModifier, parse_sheet, parse_style_attribute, validate_sheet,
+    CssImportTarget, CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssRecoveryAction,
+    CssRule, CssUrlModifier, parse_sheet, parse_style_attribute, validate_sheet,
     validate_style_attribute,
 };
 
@@ -30,19 +30,19 @@ fn assert_url_payload(value: CssKnownPropertyValueRef<'_>, expected: &str) {
             CssImageValue::Url(url) if url.as_str() == expected
         )),
         CssKnownPropertyValueRef::ListStyleImage(value) => assert!(matches!(
-            value.i01_subset(),
-            Some(CssListStyleImage::Url(url)) if url.as_str() == expected
+            value.value(),
+            CssImageValue::Url(url) if url.as_str() == expected
         )),
         CssKnownPropertyValueRef::Cursor(value) => assert!(matches!(
-            value.i01_subset(),
-            Some(CssCursor::Urls(urls))
+            value.value(),
+            CssCursor::Urls(urls)
                 if matches!(urls.urls().urls(), [url] if url.as_str() == expected)
                     && urls.fallback() == CssCursorKeyword::Auto
         )),
         CssKnownPropertyValueRef::Content(value) => assert!(matches!(
-            value.i01_subset(),
-            Some(CssContent::Items(items))
-                if matches!(items.items(), [CssContentItem::Url(url)] if url.as_str() == expected)
+            value.value(),
+            CssContentValue::Generated(items)
+                if matches!(items.items(), [CssContentValueItem::Image(image)] if matches!(image.value(), CssImageValue::Url(url) if url.as_str() == expected))
         )),
         CssKnownPropertyValueRef::Filter(value) => assert!(matches!(
             value.value(),
@@ -65,8 +65,8 @@ fn assert_url_payload(value: CssKnownPropertyValueRef<'_>, expected: &str) {
             Some(CssImageValue::Url(url)) if url.as_str() == expected
         )),
         CssKnownPropertyValueRef::ListStyle(value) => assert!(matches!(
-            value.i01_subset(),
-            Some(style) if matches!(style.image(), Some(CssListStyleImage::Url(url)) if url.as_str() == expected)
+            value.value().image(),
+            Some(CssImageValue::Url(url)) if url.as_str() == expected
         )),
         other => panic!("expected a typed URL consumer, got {other:?}"),
     }

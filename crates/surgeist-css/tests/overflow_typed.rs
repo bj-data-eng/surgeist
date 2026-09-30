@@ -141,21 +141,21 @@ fn parsed_aliases_and_wrappers_keep_semantics_separate_from_authored_spelling() 
             let value = source.known().unwrap().property_value().unwrap();
             match (name, value) {
                 ("overflow-x", CssKnownPropertyValueRef::OverflowX(value)) => {
-                    assert_eq!(*value.current(), CssOverflow::Auto);
-                    assert!(value.i01_subset().is_none());
+                    assert_eq!(*value.value(), CssOverflow::Auto);
+
                     assert_eq!(value.as_css(), text);
                 }
                 ("overflow-y", CssKnownPropertyValueRef::OverflowY(value)) => {
-                    assert_eq!(*value.current(), CssOverflow::Auto);
-                    assert!(value.i01_subset().is_none());
+                    assert_eq!(*value.value(), CssOverflow::Auto);
+
                     assert_eq!(value.as_css(), text);
                 }
                 ("overflow-block", CssKnownPropertyValueRef::OverflowBlock(value)) => {
-                    assert_eq!(*value.current(), CssOverflow::Auto);
+                    assert_eq!(*value.value(), CssOverflow::Auto);
                     assert_eq!(value.as_css(), text);
                 }
                 ("overflow-inline", CssKnownPropertyValueRef::OverflowInline(value)) => {
-                    assert_eq!(*value.current(), CssOverflow::Auto);
+                    assert_eq!(*value.value(), CssOverflow::Auto);
                     assert_eq!(value.as_css(), text);
                 }
                 other => panic!("matching overflow wrapper: {other:?}"),
@@ -184,31 +184,25 @@ fn parsed_aliases_and_wrappers_keep_semantics_separate_from_authored_spelling() 
         };
         assert_eq!(
             (
-                value.current().x(),
-                value.current().authored_y(),
-                value.current().y()
+                value.value().x(),
+                value.value().authored_y(),
+                value.value().y()
             ),
             (CssOverflow::Auto, None, CssOverflow::Auto)
         );
-        assert!(value.i01_subset().is_none());
+
         assert_eq!(value.as_css(), text);
-        assert_eq!(value.current().serialize_specified().unwrap(), "auto");
+        assert_eq!(value.value().serialize_specified().unwrap(), "auto");
     }
 }
 
 #[test]
-fn exact_axes_project_only_original_i01_values_and_reenter_to_auto() {
+fn exact_axes_retain_authored_arity_and_reenter_to_auto() {
     for (text, expected) in [
-        (
-            "clip",
-            CssOverflowI01PropertyValue::Single(CssOverflow::Clip),
-        ),
+        ("clip", CssOverflowValue::new(CssOverflow::Clip, None)),
         (
             "hidden scroll",
-            CssOverflowI01PropertyValue::Pair(CssOverflowAxes::new(
-                CssOverflow::Hidden,
-                CssOverflow::Scroll,
-            )),
+            CssOverflowValue::new(CssOverflow::Hidden, Some(CssOverflow::Scroll)),
         ),
     ] {
         let source = parsed("overflow", text);
@@ -217,7 +211,7 @@ fn exact_axes_project_only_original_i01_values_and_reenter_to_auto() {
         else {
             panic!("overflow shorthand wrapper")
         };
-        assert_eq!(value.i01_subset(), Some(&expected));
+        assert_eq!(value.value(), &expected);
     }
     let source = parsed("overflow", "visible overlay");
     let Some(CssKnownPropertyValueRef::Overflow(value)) = source.known().unwrap().property_value()
@@ -226,9 +220,9 @@ fn exact_axes_project_only_original_i01_values_and_reenter_to_auto() {
     };
     assert_eq!(
         (
-            value.current().x(),
-            value.current().authored_y(),
-            value.current().y()
+            value.value().x(),
+            value.value().authored_y(),
+            value.value().y()
         ),
         (
             CssOverflow::Visible,
@@ -236,7 +230,7 @@ fn exact_axes_project_only_original_i01_values_and_reenter_to_auto() {
             CssOverflow::Auto
         )
     );
-    assert!(value.i01_subset().is_none());
+
     let contribution_values = ordinary(&source);
     let [x, y] = contribution_values.as_slice() else {
         panic!("two axis contributions")

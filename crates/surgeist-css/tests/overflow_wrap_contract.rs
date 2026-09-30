@@ -32,7 +32,6 @@ fn exact_value(source: &CssDeclaration) -> CssOverflowWrap {
     else {
         panic!("typed overflow-wrap wrapper")
     };
-    assert_eq!(wrapper.i01_subset(), Some(wrapper.current()));
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
         expand_declaration(source).unwrap()
     else {
@@ -47,7 +46,7 @@ fn exact_value(source: &CssDeclaration) -> CssOverflowWrap {
     let CssLonghandValueRef::OverflowWrap(expanded) = item.ordinary_value().unwrap().view() else {
         panic!("typed longhand value")
     };
-    assert_eq!(expanded, wrapper.current());
+    assert_eq!(expanded, wrapper.value());
     *expanded
 }
 

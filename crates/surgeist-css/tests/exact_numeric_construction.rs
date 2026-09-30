@@ -221,7 +221,7 @@ fn textual_numeric_eof_recovery_retains_the_value_but_checked_construction_rejec
         panic!("expected width")
     };
     let surgeist_css::CssSizeValue::BoxSize(surgeist_css::CssBoxSize::LengthPercentage(length)) =
-        width.current()
+        width.value()
     else {
         panic!("expected exact recovered calculation")
     };

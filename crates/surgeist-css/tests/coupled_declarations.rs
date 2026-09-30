@@ -27,7 +27,7 @@ fn coupled_adjacent_properties_expose_distinct_typed_values() {
         panic!("expected typed width declaration");
     };
     let surgeist_css::CssSizeValue::BoxSize(surgeist_css::CssBoxSize::LengthPercentage(length)) =
-        value.current()
+        value.value()
     else {
         panic!("checked literal width")
     };
@@ -39,7 +39,7 @@ fn coupled_adjacent_properties_expose_distinct_typed_values() {
         surgeist_css::CssValueTokenRef::Dimension { number, unit }
     ) if number.representation() == "12" && unit.eq_ignore_ascii_case("px"))
     );
-    assert_eq!(value.current().serialize_specified().unwrap(), "12px");
+    assert_eq!(value.value().serialize_specified().unwrap(), "12px");
 
     let Some(CssKnownPropertyValueRef::Opacity(value)) =
         opacity.known().and_then(|known| known.property_value())

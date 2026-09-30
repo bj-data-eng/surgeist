@@ -1986,7 +1986,7 @@ impl Decimal {
 
 // Shared exact-fidelity proof for ordinary numeric consumers. The input must be
 // a checked CSS numeric representation, without a unit or percentage suffix.
-pub(crate) fn exact_legacy_value(text: &str) -> Option<f32> {
+pub(crate) fn exact_binary32_value(text: &str) -> Option<f32> {
     let decimal = Decimal::lexical(text)?;
     if decimal.len == 0 {
         return Some(0.0);
@@ -1997,7 +1997,7 @@ pub(crate) fn exact_legacy_value(text: &str) -> Option<f32> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ExactFactor, ExactRational, exact_legacy_value};
+    use super::{ExactFactor, ExactRational, exact_binary32_value};
     use crate::{
         CssSpecifiedValueSerializationErrorKind as ErrorKind,
         CssSpecifiedValueSerializationLimits as Limits,
@@ -2012,21 +2012,21 @@ mod tests {
             ("150", 150.0),
             ("000.50000e+0", 0.5),
         ] {
-            assert_eq!(exact_legacy_value(text), Some(expected));
+            assert_eq!(exact_binary32_value(text), Some(expected));
         }
         for text in [".1", "1e100", "-1e100", "1e-47", "-1e-47", "16777217"] {
-            assert_eq!(exact_legacy_value(text), None, "{text}");
+            assert_eq!(exact_binary32_value(text), None, "{text}");
         }
         assert_eq!(
-            exact_legacy_value("0.100000001490116119384765625"),
+            exact_binary32_value("0.100000001490116119384765625"),
             Some(0.1)
         );
         assert_eq!(
-            exact_legacy_value("340282346638528859811704183484516925440"),
+            exact_binary32_value("340282346638528859811704183484516925440"),
             Some(f32::MAX)
         );
         assert_eq!(
-            exact_legacy_value(
+            exact_binary32_value(
                 "0.00000000000000000000000000000000000000000000140129846432481707092372958328991613128026194187651577175706828388979108268586060148663818836212158203125"
             ),
             Some(f32::from_bits(1))
@@ -2372,19 +2372,19 @@ mod tests {
     #[test]
     fn redundant_digits_and_large_exponents_do_not_require_large_numeric_storage() {
         assert_eq!(
-            exact_legacy_value("-0e9999999999999999999999999999999999999999999"),
+            exact_binary32_value("-0e9999999999999999999999999999999999999999999"),
             Some(0.0)
         );
         assert_eq!(
-            exact_legacy_value("1e9999999999999999999999999999999999999999999"),
+            exact_binary32_value("1e9999999999999999999999999999999999999999999"),
             None
         );
         assert_eq!(
-            exact_legacy_value(&format!("0.5{}", "0".repeat(4096))),
+            exact_binary32_value(&format!("0.5{}", "0".repeat(4096))),
             Some(0.5)
         );
         assert_eq!(
-            exact_legacy_value(&format!("1{}e-4096", "0".repeat(4096))),
+            exact_binary32_value(&format!("1{}e-4096", "0".repeat(4096))),
             Some(1.0)
         );
     }

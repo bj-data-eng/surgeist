@@ -34,7 +34,7 @@ fn margin(declaration: &CssDeclaration) -> &CssMarginShorthand {
     else {
         panic!("expected a typed margin value");
     };
-    value.current()
+    value.value()
 }
 
 fn assert_edges(actual: &CssMarginShorthand, expected: [f32; 4]) {
@@ -289,7 +289,7 @@ fn parsed_declaration_coordinates() {
     };
     assert!(
         padding_value
-            .current()
+            .value()
             .assigned_values()
             .iter()
             .all(|value| { value.length_percentage().serialize_specified().unwrap() == "0" })

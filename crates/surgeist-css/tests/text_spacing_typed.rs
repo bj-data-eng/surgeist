@@ -106,8 +106,11 @@ fn checked_numeric_domain_is_signed_length_percentage_and_origin_is_retained() {
         Some(CssValueOrigin::Parsed(_))
     ));
     assert_eq!(programmatic, adjustment("-12.5%"));
-    assert!(CssWordSpacingLength::try_new(CssLength::try_percent(0.0).unwrap()).is_none());
-    assert!(CssLetterSpacingLength::try_new(CssLength::try_percent(0.0).unwrap()).is_none());
+    let zero_percent = adjustment("0%");
+    assert_eq!(zero_percent.serialize_specified().unwrap(), "0%");
+    assert!(
+        matches!(zero_percent.length_percentage().unwrap().literal_component().unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) if number.representation() == "0")
+    );
 }
 
 #[test]
@@ -125,42 +128,41 @@ fn exact_large_exponents_avoid_float_rounding() {
 }
 
 #[test]
-fn parsed_current_values_and_legacy_projection_remain_distinct() {
-    for (name, value, canonical, legacy) in [
-        ("word-spacing", "normal", "normal", true),
-        ("word-spacing", "2px", "2px", true),
-        ("word-spacing", "-0.25em", "-0.25em", true),
-        ("word-spacing", "0.1em", "0.1em", false),
-        ("word-spacing", "0%", "0%", false),
-        ("word-spacing", "10%", "10%", false),
-        ("word-spacing", "calc(1px + 2%)", "calc(2% + 1px)", false),
-        ("word-spacing", "calc(1px + 0%)", "calc(0% + 1px)", false),
-        ("word-spacing", "calc(1px - 2px)", "calc(-1px)", true),
-        ("letter-spacing", "normal", "normal", true),
-        ("letter-spacing", "2px", "2px", true),
-        ("letter-spacing", "-0.25em", "-0.25em", true),
-        ("letter-spacing", "0.1em", "0.1em", false),
-        ("letter-spacing", "0%", "0%", false),
-        ("letter-spacing", "-12.5%", "-12.5%", false),
-        ("letter-spacing", "calc(1px + 2%)", "calc(2% + 1px)", false),
-        ("letter-spacing", "calc(1px + 0%)", "calc(0% + 1px)", false),
-        ("letter-spacing", "calc(1px - 2px)", "calc(-1px)", true),
+fn parsed_values_preserve_exact_scalars_and_symbolic_math() {
+    for (name, value, canonical) in [
+        ("word-spacing", "normal", "normal"),
+        ("word-spacing", "2px", "2px"),
+        ("word-spacing", "-0.25em", "-0.25em"),
+        ("word-spacing", "0.1em", "0.1em"),
+        ("word-spacing", "0%", "0%"),
+        ("word-spacing", "10%", "10%"),
+        ("word-spacing", "calc(1px + 2%)", "calc(2% + 1px)"),
+        ("word-spacing", "calc(1px + 0%)", "calc(0% + 1px)"),
+        ("word-spacing", "calc(1px - 2px)", "calc(-1px)"),
+        ("letter-spacing", "normal", "normal"),
+        ("letter-spacing", "2px", "2px"),
+        ("letter-spacing", "-0.25em", "-0.25em"),
+        ("letter-spacing", "0.1em", "0.1em"),
+        ("letter-spacing", "0%", "0%"),
+        ("letter-spacing", "-12.5%", "-12.5%"),
+        ("letter-spacing", "calc(1px + 2%)", "calc(2% + 1px)"),
+        ("letter-spacing", "calc(1px + 0%)", "calc(0% + 1px)"),
+        ("letter-spacing", "calc(1px - 2px)", "calc(-1px)"),
     ] {
         let declaration = declared(name, value);
         let parsed = declaration.known().unwrap().property_value().unwrap();
-        let (current, has_legacy) = match parsed {
+        let current = match parsed {
             CssKnownPropertyValueRef::WordSpacing(wrapper) => {
                 assert_eq!(wrapper.as_css(), value);
-                (wrapper.spacing(), wrapper.i01_subset().is_some())
+                wrapper.spacing()
             }
             CssKnownPropertyValueRef::LetterSpacing(wrapper) => {
                 assert_eq!(wrapper.as_css(), value);
-                (wrapper.current(), wrapper.i01_subset().is_some())
+                wrapper.value()
             }
             _ => panic!("spacing property: {name}"),
         };
         assert_eq!(current.serialize_specified().unwrap(), canonical);
-        assert_eq!(has_legacy, legacy, "{name}: {value}");
         if value != "normal" {
             assert!(matches!(current.origin(), Some(CssValueOrigin::Parsed(_))));
         }

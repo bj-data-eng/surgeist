@@ -42,7 +42,7 @@ fn box_sizing_keywords_contribute_one_typed_terminal_with_source_identity() {
         else {
             panic!("box-sizing ordinary value")
         };
-        assert_eq!(authored.i01_subset(), Some(&expected));
+        assert_eq!(authored.value(), &expected);
         let CssExpansion::Contributions(CssContributions::Longhands(items)) =
             expand_declaration(&source).unwrap()
         else {
@@ -223,7 +223,7 @@ fn box_sizing_checked_construction_preserves_programmatic_origins_and_keyword_me
         else {
             panic!("constructed box-sizing")
         };
-        assert_eq!(authored.current(), &expected);
+        assert_eq!(authored.value(), &expected);
         let CssExpansion::Contributions(CssContributions::Longhands(items)) =
             expand_declaration(&source).unwrap()
         else {
@@ -253,9 +253,9 @@ fn box_sizing_specified_serialization_is_canonical_and_resource_bounded() {
         else {
             panic!("authored keyword")
         };
-        assert_eq!(authored.current(), &expected);
+        assert_eq!(authored.value(), &expected);
         assert_eq!(authored.as_css(), source_text);
-        assert_eq!(authored.current().serialize_specified().unwrap(), canonical);
+        assert_eq!(authored.value().serialize_specified().unwrap(), canonical);
         assert_eq!(expected.serialize_specified().unwrap(), canonical);
         for (limits, kind) in [
             (

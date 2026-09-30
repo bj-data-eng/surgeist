@@ -1,8 +1,6 @@
 //! Checked authored counter-changing values from CSS Lists 3.
 
-use crate::{
-    CssContentCounterName, CssCounterChange, CssCounterChanges, CssCounterName, CssIntegerValue,
-};
+use crate::{CssContentCounterName, CssIntegerValue};
 
 /// One named counter change with an optional authored integer operand.
 ///
@@ -68,24 +66,4 @@ pub enum CssCounterProperty {
     Reset,
     Increment,
     Set,
-}
-
-#[must_use]
-pub(crate) fn changes_i01(value: &CssCounterChangesValue) -> Option<CssCounterChanges> {
-    let Some(changes) = value.changes() else {
-        return Some(CssCounterChanges::None);
-    };
-    let mut old = Vec::with_capacity(changes.len());
-    for change in changes {
-        let name = CssCounterName::try_new(change.name().as_str())?;
-        let number = match change.value() {
-            None => None,
-            Some(CssIntegerValue::Literal(value)) => Some(crate::integer_value::exact_i32(
-                value.numeric().representation(),
-            )?),
-            Some(CssIntegerValue::Calculation(_)) => return None,
-        };
-        old.push(CssCounterChange::new(name, number));
-    }
-    CssCounterChanges::try_changes(old)
 }

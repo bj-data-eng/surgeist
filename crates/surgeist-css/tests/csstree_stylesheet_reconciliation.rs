@@ -35,7 +35,7 @@ fn declarations(actual: &CssDeclarationList) -> Value {
                         json!(["color", "red"])
                     }
                     Some(CssKnownPropertyValueRef::Width(value)) => {
-                        assert_eq!(value.current().serialize_specified().unwrap(), "10px");
+                        assert_eq!(value.value().serialize_specified().unwrap(), "10px");
                         json!(["width", "10px"])
                     }
                     other => panic!("unexpected retained declaration: {other:?}"),

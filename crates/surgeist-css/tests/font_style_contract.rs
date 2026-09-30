@@ -28,7 +28,7 @@ fn property(text: &str) -> CssFontStyle {
     else {
         panic!("font-style wrapper")
     };
-    value.current().clone()
+    value.value().clone()
 }
 
 fn checked(
@@ -221,7 +221,7 @@ fn recovered_math_requires_parser_admission_before_typed_transfer() {
     };
     let CssFontStyle::Oblique {
         angle: Some(admitted),
-    } = value.current()
+    } = value.value()
     else {
         panic!("retained oblique math")
     };
@@ -245,7 +245,7 @@ fn checked_values_and_pending_reentry_preserve_real_origins_and_importance() {
     else {
         panic!("style")
     };
-    let CssFontStyle::Oblique { angle: Some(value) } = value.current() else {
+    let CssFontStyle::Oblique { angle: Some(value) } = value.value() else {
         panic!("angle")
     };
     let CssValueOrigin::Parsed(origin) = value.origin() else {
@@ -268,7 +268,7 @@ fn checked_values_and_pending_reentry_preserve_real_origins_and_importance() {
     else {
         panic!("style")
     };
-    let CssFontStyle::Oblique { angle: Some(value) } = value.current() else {
+    let CssFontStyle::Oblique { angle: Some(value) } = value.value() else {
         panic!("angle")
     };
     assert_eq!(value.origin(), &CssValueOrigin::Programmatic);

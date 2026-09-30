@@ -173,19 +173,17 @@ fn four_side_styles_preserve_authored_arity_and_physical_or_logical_roles() {
 }
 
 #[test]
-fn parsed_style_current_retains_roles_and_physical_legacy_view() {
-    for (css, kind, authored, legacy) in [
+fn parsed_styles_retain_authored_roles_and_arity() {
+    for (css, kind, authored) in [
         (
             "border-style:solid dashed",
             CssBoxSideKind::Physical,
             vec![CssBorderStyle::Solid, CssBorderStyle::Dashed],
-            true,
         ),
         (
             "border-style:logical solid dashed",
             CssBoxSideKind::Logical,
             vec![CssBorderStyle::Solid, CssBorderStyle::Dashed],
-            false,
         ),
     ] {
         let report = parse_style_attribute(css);
@@ -198,20 +196,17 @@ fn parsed_style_current_retains_roles_and_physical_legacy_view() {
         else {
             panic!("typed border-style")
         };
-        assert_eq!(value.current().kind(), kind);
-        assert_eq!(value.current().authored_values(), authored);
-        assert_eq!(value.i01_subset().is_some(), legacy);
-        if legacy {
-            assert_eq!(
-                value.i01_subset(),
-                Some(&CssBorderStyles::new(
-                    CssBorderStyle::Solid,
-                    CssBorderStyle::Dashed,
-                    CssBorderStyle::Solid,
-                    CssBorderStyle::Dashed,
-                ))
-            );
-        }
+        assert_eq!(value.value().kind(), kind);
+        assert_eq!(value.value().authored_values(), authored);
+        assert_eq!(
+            value.value().assigned_values(),
+            [
+                &CssBorderStyle::Solid,
+                &CssBorderStyle::Dashed,
+                &CssBorderStyle::Solid,
+                &CssBorderStyle::Dashed
+            ]
+        );
     }
 
     let report = parse_style_attribute("border-block-style:dotted dashed");
@@ -225,7 +220,7 @@ fn parsed_style_current_retains_roles_and_physical_legacy_view() {
         panic!("typed border-block-style")
     };
     assert_eq!(
-        value.current(),
+        value.value(),
         &CssBorderStylePair::new(CssBorderStyle::Dotted, Some(CssBorderStyle::Dashed))
     );
 }

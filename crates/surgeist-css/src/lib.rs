@@ -120,7 +120,7 @@
 //!     CssKnownDeclaredValueRef::Property(property) => match property {
 //!         CssKnownPropertyValueRef::Width(width) => {
 //!             assert_eq!(width.as_css(), "calc(100% - 12px)");
-//!             let CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length)) = width.current() else {
+//!             let CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length)) = width.value() else {
 //!                 panic!("expected a length-percentage");
 //!             };
 //!             assert!(length.calculation().is_some());
@@ -135,26 +135,21 @@
 //! }
 //! ```
 //!
-//! Each property-schema row generates one private-field
-//! `Css<SchemaVariant>PropertyValue` wrapper. Its `as_css()` method returns the
-//! exact authored ordinary value, preserving interior spelling and trivia while
-//! excluding boundary trivia and the terminal importance annotation. For checked construction,
-//! this text comes from token-preserving serialization of the supplied components; their original
-//! or programmatic provenance remains available through [`CssDeclaration::value_components`].
-//! Wrappers with an `i01_subset()` method retain a compatibility view of the
-//! frozen representation. The `font-family`, `font`, and `flow-tolerance` wrappers expose only their
-//! current `families()`, `font()`, and `value()` models: generic families remain distinct
-//! from literal names, and decoded identifier boundaries are retained rather
-//! than projected into the obsolete joined-string payload.
+//! Each ordinary property-schema row generates one private-field
+//! `Css<SchemaVariant>PropertyValue` wrapper holding the authored declaration
+//! and its grammar-checked semantic value. `as_css()` returns the exact authored
+//! ordinary slice, excluding boundary trivia and terminal importance. Checked
+//! construction uses token-preserving serialization; original or programmatic
+//! provenance remains available through [`CssDeclaration::value_components`].
+//! Each wrapper has one semantic accessor: `value()` by default, or a domain name
+//! such as `images()`, `factor()`, `ratio()`, `families()`, or `font()`.
+//! The `all` property accepts only global or substitution-dependent values and
+//! has no ordinary wrapper.
 //!
-//! The `background-image` and `mask-image` wrappers expose their sole checked
-//! [`CssImageValueList`] through `images()`, preserving URL, `none`, and gradient
-//! branches in authored order.
-//!
-//! The generated [`CssOverflowPropertyValue`] exposes a checked [`CssOverflowValue`]
-//! through `current()`. Its `i01_subset()` retains the older
-//! [`CssOverflowI01PropertyValue`] `Single` and `Pair` shapes only when every
-//! authored keyword belongs to that compatibility subset.
+//! The `background-image` and `mask-image` wrappers expose [`CssImageValueList`]
+//! through `images()`, retaining URL, `none`, and gradient branches in order.
+//! [`CssOverflowPropertyValue::value`] exposes [`CssOverflowValue`], retaining
+//! the authored one- or two-axis form.
 //!
 //! [`CssImportance`] and [`CssSupportStatus`] are exactly the two closed public
 //! enums. All other public enums are non-exhaustive and downstream matches must

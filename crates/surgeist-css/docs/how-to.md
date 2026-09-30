@@ -81,7 +81,7 @@ match known.declared_value() {
     CssKnownDeclaredValueRef::Property(property) => match property {
         CssKnownPropertyValueRef::Width(width) => {
             assert_eq!(width.as_css(), "calc(100% - 12px)");
-            assert!(matches!(width.current(), CssSizeValue::BoxSize(
+            assert!(matches!(width.value(), CssSizeValue::BoxSize(
                 CssBoxSize::LengthPercentage(length)
             ) if length.calculation().is_some()));
         }
@@ -95,26 +95,20 @@ match known.declared_value() {
 }
 ```
 
-Each row in the [property schema](../src/properties.rs) has a generated
-`Css<SchemaVariant>PropertyValue` wrapper. `as_css()` returns the exact authored
-ordinary value, preserving its interior spelling and trivia while excluding
-boundary trivia and the terminal importance annotation. For checked construction,
-this text comes from token-preserving serialization of the supplied components;
-`value_components()` retains their original or programmatic provenance.
-Where available, `i01_subset()` exposes the compatibility payload only when
-the value belongs to the frozen I01 representation. The `font-family` and `font`
-wrappers instead expose only their current `families()` and `font()` accessors,
-which distinguish generic families from literal names and preserve decoded
-identifier boundaries. Their obsolete joined-string projections were removed.
+Each ordinary row in the [property schema](../src/properties.rs) has a generated
+`Css<SchemaVariant>PropertyValue` wrapper holding authored text and one checked
+semantic value. `as_css()` preserves interior spelling and trivia while excluding
+boundary trivia and terminal importance. Checked construction serializes supplied
+components without losing their provenance in `value_components()`.
 
-The `overflow` row illustrates the wrapper/payload distinction. The generated
-`CssOverflowPropertyValue` is the authored property wrapper, while
-`CssOverflowI01PropertyValue` is the renamed I01 payload containing the
-`Single` and `Pair` shapes.
+Use the wrapper's semantic accessor: `value()` by default, or its domain name
+such as `families()`, `font()`, `images()`, `factor()`, or `ratio()`. The `all`
+property has only global and substitution-dependent branches, so
+`property_value()` returns `None`.
 
-The [compatibility explanation](explanation.md#symbolic-values-and-compatibility)
-defines the I01 projection. This inspection model leaves parsing, recovery, and
-diagnostic behavior unchanged.
+The `overflow` wrapper exposes `CssOverflowValue` through `value()`. Inspect
+`x()`, `authored_y()`, and `y()` to distinguish the authored arity from its
+specified axis assignment.
 
 ## Require clean input
 

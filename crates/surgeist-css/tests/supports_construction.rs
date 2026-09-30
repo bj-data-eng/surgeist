@@ -66,7 +66,7 @@ fn programmatic_width_keeps_exact_spelling_and_has_no_source_coordinates() {
         panic!("typed width")
     };
     let surgeist_css::CssSizeValue::BoxSize(surgeist_css::CssBoxSize::LengthPercentage(length)) =
-        width.current()
+        width.value()
     else {
         panic!("typed literal width")
     };
@@ -78,7 +78,7 @@ fn programmatic_width_keeps_exact_spelling_and_has_no_source_coordinates() {
     assert_eq!(number.representation(), "+001.5");
     assert_eq!(unit, "PX");
     assert_eq!(width.as_css(), "+001.5PX");
-    assert_eq!(width.current().serialize_specified().unwrap(), "1.5px");
+    assert_eq!(width.value().serialize_specified().unwrap(), "1.5px");
     assert_eq!(declaration.serialize().unwrap().as_css(), "width:+001.5PX");
     let wrapped = CssComponentValue::try_block(CssBlockKind::Parenthesis, original).unwrap();
     let condition = CssSupportsCondition::try_from_components(
@@ -583,7 +583,7 @@ fn parsed_eof_recovery_keeps_the_known_numeric_view_that_checked_construction_re
         panic!("known width remains available")
     };
     let surgeist_css::CssSizeValue::BoxSize(surgeist_css::CssBoxSize::LengthPercentage(length)) =
-        width.current()
+        width.value()
     else {
         panic!("exact recovered calculation")
     };

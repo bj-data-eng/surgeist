@@ -29,7 +29,7 @@ fn property(text: &str) -> CssFontWeight {
     else {
         panic!("typed weight property")
     };
-    weight.current().clone()
+    weight.value().clone()
 }
 
 fn checked(
@@ -49,7 +49,7 @@ fn checked_weight(components: CssComponentValues) -> CssFontWeight {
     else {
         panic!("typed checked weight")
     };
-    weight.current().clone()
+    weight.value().clone()
 }
 
 #[test]

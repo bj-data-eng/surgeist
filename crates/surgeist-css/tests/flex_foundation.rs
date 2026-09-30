@@ -146,16 +146,20 @@ fn flex_factors_admit_nonnegative_numbers_and_symbolic_number_math() {
 }
 
 #[test]
-fn flex_factor_i01_projection_requires_an_exact_f32_literal() {
+fn flex_factors_preserve_exact_literals_at_every_magnitude() {
     for name in ["flex-grow", "flex-shrink"] {
-        for (value, legacy_expected) in [("1", true), ("16777217", false), ("1e-100", false)] {
-            let declaration = direct(name, value).unwrap();
-            let legacy = match declaration.known().unwrap().property_value().unwrap() {
-                CssKnownPropertyValueRef::FlexGrow(value) => value.i01_subset().is_some(),
-                CssKnownPropertyValueRef::FlexShrink(value) => value.i01_subset().is_some(),
-                _ => panic!("{name} wrapper"),
+        for text in ["1", "16777217", "1e-100"] {
+            let declaration = direct(name, text).unwrap();
+            let factor = match declaration.known().unwrap().property_value().unwrap() {
+                CssKnownPropertyValueRef::FlexGrow(value) => value.factor(),
+                CssKnownPropertyValueRef::FlexShrink(value) => value.factor(),
+                _ => panic!("factor wrapper"),
             };
-            assert_eq!(legacy, legacy_expected, "{name}:{value} I01 projection");
+            let component = factor.literal_component().expect("ordinary factor");
+            assert!(matches!(component.origin(), CssValueOrigin::Parsed(_)));
+            assert!(
+                matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.representation() == text)
+            );
         }
     }
 }
