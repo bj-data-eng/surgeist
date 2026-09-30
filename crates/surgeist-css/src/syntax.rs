@@ -4326,19 +4326,6 @@ pub enum CssOverflow {
     Auto,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct CssOverflowAxes {
-    pub x: CssOverflow,
-    pub y: CssOverflow,
-}
-
-impl CssOverflowAxes {
-    #[must_use]
-    pub const fn new(x: CssOverflow, y: CssOverflow) -> Self {
-        Self { x, y }
-    }
-}
-
 /// A checked positive literal or a calculation whose range remains authored and symbolic.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
