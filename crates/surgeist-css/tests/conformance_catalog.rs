@@ -5103,6 +5103,7 @@ fn drop_shadow_rejects_box_shadow_only_components() {
 #[test]
 fn clip_path_distinguishes_selected_and_deferred_shape_functions() {
     for value in [
+        "path('M 0 0 L 1 1')",
         "rect(0 1px 1px 0)",
         "xywh(0 0 1px 1px)",
         "inset(1px)",
@@ -5113,7 +5114,7 @@ fn clip_path_distinguishes_selected_and_deferred_shape_functions() {
         let report = parse_style_attribute(&format!("clip-path: {value}"));
         assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
     }
-    for value in ["path('M 0 0 L 1 1')", "shape(from 0 0, line to 1px 1px)"] {
+    for value in ["shape(from 0 0, line to 1px 1px)"] {
         assert!(
             !parse_style_attribute(&format!("clip-path: {value}")).is_clean(),
             "deferred {value}"
@@ -5133,6 +5134,7 @@ fn clip_path_distinguishes_selected_and_deferred_shape_functions() {
         "polygon()",
         "rect()",
         "xywh()",
+        "path()",
     ] {
         assert!(subset.contains(function), "supported {function}: {subset}");
     }
@@ -5159,13 +5161,13 @@ fn assert_shape_functions_partial(metadata: &CssFeatureMetadata) {
 
 fn assert_missing_shape_functions(metadata: &CssFeatureMetadata) {
     let remainder = metadata.unsupported_remainder().unwrap();
-    for function in ["path()", "shape()"] {
+    for function in ["shape()"] {
         assert!(
             remainder.contains(function),
             "missing {function}: {remainder}"
         );
     }
-    for function in ["rect()", "xywh()"] {
+    for function in ["rect()", "xywh()", "path()"] {
         assert!(
             !remainder.contains(function),
             "implemented {function}: {remainder}"
@@ -5278,6 +5280,7 @@ fn backdrop_filter_preserves_typed_authored_grammar_with_the_named_source() {
 #[test]
 fn clip_path_selected_subset_and_remainder_are_distinct() {
     for value in [
+        "path('M 0 0 L 1 1')",
         "rect(0 1px 1px 0)",
         "xywh(0 0 1px 1px)",
         "none",
@@ -5295,7 +5298,7 @@ fn clip_path_selected_subset_and_remainder_are_distinct() {
         let report = parse_style_attribute(&format!("clip-path: {value}"));
         assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
     }
-    for value in ["path('M 0 0 L 1 1')", "shape(from 0 0, line to 1px 1px)"] {
+    for value in ["shape(from 0 0, line to 1px 1px)"] {
         assert!(
             !parse_style_attribute(&format!("clip-path: {value}")).is_clean(),
             "unsupported {value}"
@@ -5987,4 +5990,18 @@ fn rectangular_shape_metadata_cites_complete_shapes_authored_grammar() {
         assert_eq!(metadata.recognized_unsupported_code(), None);
         assert!(metadata.baseline_alias_targets().is_empty());
     }
+}
+
+#[test]
+fn path_shape_metadata_cites_complete_authored_grammar_without_promoting_shape_commands() {
+    let metadata = feature_metadata("ext.value.basic-shape.path").expect("path metadata");
+    assert_eq!(metadata.kind(), CssFeatureKind::Value);
+    assert_eq!(metadata.spelling(), "path()");
+    assert_eq!(metadata.source().id().as_str(), "S-SHAPES1");
+    assert_eq!(metadata.production(), "#funcdef-basic-shape-path");
+    assert_eq!(metadata.status(), CssSupportStatus::Complete);
+    assert_eq!(metadata.supported_subset(), None);
+    assert_eq!(metadata.unsupported_remainder(), None);
+    assert_eq!(metadata.recognized_unsupported_code(), None);
+    assert!(metadata.baseline_alias_targets().is_empty());
 }

@@ -444,7 +444,7 @@ fn circle_symbolic_length_percentage_radius_remains_typed() {
 
 #[test]
 fn deferred_basic_shape_functions_remain_unrecognized() {
-    for value in ["path('M 0 0 L 1 1')", "shape(from 0 0, line to 1px 1px)"] {
+    for value in ["shape(from 0 0, line to 1px 1px)"] {
         assert_clip_path_rejected(value);
     }
 }
@@ -1490,4 +1490,13 @@ fn rectangular_basic_shape_functions_parse_through_the_existing_clip_path_front_
         let property = parsed_clip_path_property(value);
         assert_eq!(property.value().serialize_specified().unwrap(), value);
     }
+}
+
+#[test]
+fn path_shape_uses_the_existing_checked_clip_path_front_door() {
+    let property = parsed_clip_path_property("path('M 0 0 L 1 1')");
+    assert_eq!(
+        property.value().serialize_specified().unwrap(),
+        "path(\"M 0 0 L 1 1\")"
+    );
 }

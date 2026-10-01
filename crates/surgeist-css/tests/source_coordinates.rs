@@ -1272,3 +1272,44 @@ fn language_errors_preserve_non_bmp_and_eof_coordinates() {
         u32::try_from(eof_source.len() - 2).unwrap(),
     );
 }
+
+#[test]
+fn malformed_escaped_path_maps_decoded_failure_to_its_original_string_token() {
+    let prefix = "/*😀*/ ";
+    let unit = "clip-path:path('M\\30  0L1');";
+    let source = format!("{prefix}{unit}color:blue");
+    let report = parse_style_attribute(&source);
+    let [diagnostic] = report.diagnostics() else {
+        panic!("one invalid SVG path diagnostic")
+    };
+    let quote = source.find("'M").unwrap();
+    assert_position(
+        diagnostic.error().position(),
+        quote,
+        0,
+        source[..quote].encode_utf16().count() as u32,
+    );
+    assert_position(
+        diagnostic.span().start(),
+        prefix.len(),
+        0,
+        prefix.encode_utf16().count() as u32,
+    );
+    let end = prefix.len() + unit.len();
+    assert_position(
+        diagnostic.span().end(),
+        end,
+        0,
+        source[..end].encode_utf16().count() as u32,
+    );
+    assert_eq!(
+        diagnostic.error().code(),
+        CssErrorCode::InvalidPropertyValue
+    );
+    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
+    assert_eq!(report.syntax().len(), 1);
+    assert_eq!(
+        report.syntax()[0].known().unwrap().property(),
+        CssKnownProperty::Color
+    );
+}
