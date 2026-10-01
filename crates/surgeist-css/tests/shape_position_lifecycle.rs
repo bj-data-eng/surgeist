@@ -296,10 +296,26 @@ fn parsed_function_and_offset_origins_address_exact_non_bmp_source() {
     let start = source.find("ellipse").unwrap();
     assert_eq!(origin.source().as_str(), source);
     assert_eq!(origin.span().start().byte_offset().value(), start);
+    let opener_end = start + "ellipse(".len();
+    assert_eq!(origin.span().end().byte_offset().value(), opener_end);
     assert_eq!(
         origin.span().start().column().value() as usize,
         source[..start].encode_utf16().count()
     );
+    assert_eq!(
+        origin.span().end().column().value() as usize,
+        source[..opener_end].encode_utf16().count()
+    );
+    let CssValueOrigin::Parsed(closing) = function.closing_origin() else {
+        panic!("parsed shape closing delimiter")
+    };
+    let closing_start = source.find(")!important").unwrap();
+    assert_eq!(closing.span().start().byte_offset().value(), closing_start);
+    assert_eq!(
+        closing.span().end().byte_offset().value(),
+        closing_start + 1
+    );
+    assert_eq!(closing.source().as_str(), source);
     let offsets: Vec<_> = function
         .values()
         .items()
@@ -319,15 +335,39 @@ fn parsed_function_and_offset_origins_address_exact_non_bmp_source() {
         };
         let start = source.find(text).unwrap();
         assert_eq!(origin.span().start().byte_offset().value(), start);
-        assert_eq!(
-            origin.span().end().byte_offset().value(),
-            start + text.len()
-        );
+        // Raw component origin covers a token or a function opener; the
+        // function's closing delimiter has its own public origin.
+        let end = match offset.view() {
+            CssComponentValueRef::Function(function) => start + function.name().len() + 1,
+            _ => start + text.len(),
+        };
+        assert_eq!(origin.span().end().byte_offset().value(), end);
         assert_eq!(
             origin.span().start().column().value() as usize,
             source[..start].encode_utf16().count()
         );
+        assert_eq!(
+            origin.span().end().column().value() as usize,
+            source[..end].encode_utf16().count()
+        );
         assert_eq!(origin.source().as_str(), source);
+        if let CssComponentValueRef::Function(function) = offset.view() {
+            let CssValueOrigin::Parsed(closing) = function.closing_origin() else {
+                panic!("parsed offset closing delimiter")
+            };
+            let end = start + text.len();
+            assert_eq!(closing.span().start().byte_offset().value(), end - 1);
+            assert_eq!(closing.span().end().byte_offset().value(), end);
+            assert_eq!(closing.source().as_str(), source);
+            assert_eq!(
+                closing.span().start().column().value() as usize,
+                source[..end - 1].encode_utf16().count()
+            );
+            assert_eq!(
+                closing.span().end().column().value() as usize,
+                source[..end].encode_utf16().count()
+            );
+        }
     }
 }
 
