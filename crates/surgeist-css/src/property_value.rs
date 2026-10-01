@@ -81,10 +81,28 @@ impl fmt::Display for CssPropertyValueParseError {
 
 impl std::error::Error for CssPropertyValueParseError {}
 
+fn is_time_property(property: crate::CssKnownProperty) -> bool {
+    matches!(
+        property,
+        crate::CssKnownProperty::TransitionDuration
+            | crate::CssKnownProperty::TransitionDelay
+            | crate::CssKnownProperty::AnimationDuration
+            | crate::CssKnownProperty::AnimationDelay
+            | crate::CssKnownProperty::Transition
+            | crate::CssKnownProperty::Animation
+    )
+}
+
 fn requires_closed_components(property: crate::CssKnownProperty) -> bool {
     matches!(
         property,
         crate::CssKnownProperty::ClipPath
+            | crate::CssKnownProperty::TransitionDuration
+            | crate::CssKnownProperty::TransitionDelay
+            | crate::CssKnownProperty::AnimationDuration
+            | crate::CssKnownProperty::AnimationDelay
+            | crate::CssKnownProperty::Transition
+            | crate::CssKnownProperty::Animation
             | crate::CssKnownProperty::FontVariant
             | crate::CssKnownProperty::FontVariantLigatures
             | crate::CssKnownProperty::FontVariantCaps
@@ -102,7 +120,6 @@ fn requires_closed_components(property: crate::CssKnownProperty) -> bool {
 fn recovered_component_error(
     property: crate::CssKnownProperty,
     value: &CssComponentValues,
-    serialized: &CssSerializedValue,
 ) -> Option<CssPropertyValueParseError> {
     if !requires_closed_components(property) {
         return None;
@@ -110,11 +127,7 @@ fn recovered_component_error(
     let origin = value.first_implicit_origin()?;
     Some(CssPropertyValueParseError {
         detail: Box::new(PropertyValueParseErrorDetail {
-            kind: CssPropertyValueErrorKind::Grammar(
-                crate::error::implicit_eof(serialized.as_css())
-                    .kind()
-                    .clone(),
-            ),
+            kind: CssPropertyValueErrorKind::Grammar(crate::error::implicit_eof("").kind().clone()),
             origin: CssSerializedOrigin::End(Some(origin.clone())),
         }),
     })
@@ -148,11 +161,18 @@ pub(crate) fn checked_property_value_body(
     property: CssPropertyNameRef<'_>,
     value: &CssComponentValues,
 ) -> Result<crate::CssDeclarationBody, CssPropertyValueParseError> {
+    if let CssPropertyNameRef::Known(known) = property
+        && is_time_property(known)
+        && let Some(error) = recovered_component_error(known, value)
+    {
+        return Err(error);
+    }
     let serialized = value
         .serialize()
         .map_err(CssPropertyValueParseError::from_component)?;
     if let CssPropertyNameRef::Known(known) = property
-        && let Some(error) = recovered_component_error(known, value, &serialized)
+        && !is_time_property(known)
+        && let Some(error) = recovered_component_error(known, value)
     {
         return Err(error);
     }
@@ -181,10 +201,17 @@ pub(crate) fn checked_grammar_value_body(
     grammar: crate::CssPropertyGrammar,
     value: &CssComponentValues,
 ) -> Result<crate::CssDeclarationBody, CssPropertyValueParseError> {
+    if is_time_property(grammar.target_property())
+        && let Some(error) = recovered_component_error(grammar.target_property(), value)
+    {
+        return Err(error);
+    }
     let serialized = value
         .serialize()
         .map_err(CssPropertyValueParseError::from_component)?;
-    if let Some(error) = recovered_component_error(grammar.target_property(), value, &serialized) {
+    if !is_time_property(grammar.target_property())
+        && let Some(error) = recovered_component_error(grammar.target_property(), value)
+    {
         return Err(error);
     }
     crate::parser::parse_property_value_body_for_grammar(

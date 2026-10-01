@@ -9,11 +9,7 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
         assert_eq!(CssKeyframePercent::try_new(value), None);
 
         assert_eq!(CssResolution::try_new(value, CssResolutionUnit::Dppx), None);
-        assert_eq!(
-            CssDurationLiteral::try_new(value, CssTimeUnit::Seconds),
-            None
-        );
-        assert_eq!(CssDelayLiteral::try_new(value, CssTimeUnit::Seconds), None);
+        assert!(CssTimeLiteral::try_new(&value.to_string(), CssTimeUnit::Seconds).is_err());
     }
 
     for invalid in ["NaN", "infinity", "-infinity"] {
@@ -112,10 +108,11 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
         "1"
     );
     assert_eq!(
-        CssDurationLiteral::try_new(0.0, CssTimeUnit::Seconds)
+        CssTimeLiteral::try_new("0", CssTimeUnit::Seconds)
             .unwrap()
-            .value(),
-        0.0
+            .numeric()
+            .representation(),
+        "0"
     );
 
     let tolerance = CssFlowTolerance::length_percentage(
@@ -232,46 +229,42 @@ fn calculations_preserve_finite_decimal_spellings_beyond_float_storage() {
 }
 
 #[test]
-fn non_finite_time_parse_drops_only_its_declaration_with_exact_diagnostic() {
-    let invalid = "transition-duration: 1e999s;";
-    let source = format!("color: red; {invalid} width: 2px");
-    let report = parse_style_attribute(&source);
-
-    assert_eq!(report.syntax().len(), 2);
-    let [diagnostic] = report.diagnostics() else {
-        panic!("non-finite time must produce one diagnostic");
-    };
+fn exact_huge_time_parse_retains_authored_payload_and_siblings() {
+    let source = "color: red; transition-duration: 1e999s; width: 2px";
+    let report = parse_style_attribute(source);
+    assert!(report.is_clean(), "{:?}", report.diagnostics());
+    assert_eq!(report.syntax().len(), 3);
     assert_eq!(
-        diagnostic.error().code(),
-        CssErrorCode::InvalidPropertyValue
+        report.syntax()[0].known().unwrap().property(),
+        CssKnownProperty::Color
     );
-    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
     assert_eq!(
-        diagnostic.error().position().byte_offset().value(),
+        report.syntax()[2].known().unwrap().property(),
+        CssKnownProperty::Width
+    );
+    let CssKnownPropertyValueRef::TransitionDuration(wrapper) = report.syntax()[1]
+        .known()
+        .unwrap()
+        .property_value()
+        .unwrap()
+    else {
+        panic!("exact time duration");
+    };
+    let literal = wrapper.durations().values()[0].time().literal().unwrap();
+    assert_eq!(literal.numeric().representation(), "1e999");
+    assert_eq!(literal.unit(), CssTimeUnit::Seconds);
+    let CssValueOrigin::Parsed(origin) = literal.origin() else {
+        panic!("original parsed origin");
+    };
+    assert_eq!(origin.source().as_str(), source);
+    assert_eq!(
+        origin.span().start().byte_offset().value(),
         source.find("1e999s").unwrap()
     );
-    assert_eq!(diagnostic.error().position().line().value(), 0);
     assert_eq!(
-        diagnostic.error().position().column().value(),
-        source.find("1e999s").unwrap() as u32
+        origin.span().end().byte_offset().value(),
+        source.find("1e999s").unwrap() + 6
     );
-    assert_eq!(
-        diagnostic.span().start().byte_offset().value(),
-        source.find(invalid).unwrap()
-    );
-    assert_eq!(
-        diagnostic.span().end().byte_offset().value(),
-        source.find(invalid).unwrap() + invalid.len()
-    );
-    match diagnostic.error().kind() {
-        ErrorKind::InvalidPropertyValue(detail) => {
-            assert_eq!(detail.property(), CssKnownProperty::TransitionDuration);
-            let encountered = detail.encountered().expect("non-finite dimension token");
-            assert_eq!(encountered.kind(), CssTokenKind::Dimension);
-            assert_eq!(encountered.authored(), "1e999s");
-        }
-        _ => panic!("expected invalid property value"),
-    }
 }
 
 #[test]

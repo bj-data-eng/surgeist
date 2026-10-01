@@ -1,12 +1,12 @@
 use surgeist_css::{
     CssAnimationDirection, CssAnimationFillMode, CssAnimationIterationCount,
     CssAnimationIterationCountList, CssAnimationName, CssAnimationPlayState,
-    CssCalculationExpressionRef, CssCalculationType, CssDelay, CssDelayList, CssDelayLiteral,
-    CssDuration, CssDurationList, CssDurationLiteral, CssEasing, CssEasingKeyword, CssErrorCode,
-    CssKnownProperty, CssKnownPropertyValueRef, CssPositiveIntegerValue, CssRecoveryAction,
-    CssSourcePosition, CssStepPosition, CssTimeUnit, CssTokenKind, CssTransitionProperty,
-    ErrorKind, parse_style_attribute,
+    CssCalculationExpressionRef, CssCalculationType, CssDelayList, CssDuration, CssDurationList,
+    CssEasing, CssEasingKeyword, CssErrorCode, CssKnownProperty, CssKnownPropertyValueRef,
+    CssPositiveIntegerValue, CssRecoveryAction, CssSourcePosition, CssStepPosition, CssTimeUnit,
+    CssTokenKind, CssTransitionProperty, ErrorKind, parse_style_attribute,
 };
+use surgeist_css::{CssTimeLiteral, CssTimeValue};
 
 fn for_each_permutation(
     components: &mut [&'static str],
@@ -112,34 +112,40 @@ fn assert_invalid_timing_case(case: &InvalidTimingCase) {
 }
 
 #[test]
-fn duration_and_delay_literals_enforce_distinct_finite_sign_domains() {
-    let duration = CssDurationLiteral::try_new(1.5, CssTimeUnit::Seconds)
-        .expect("finite non-negative duration");
-    assert_eq!(duration.value(), 1.5);
+fn duration_and_delay_literals_enforce_distinct_exact_sign_domains() {
+    let duration =
+        CssTimeLiteral::try_new("1.5", CssTimeUnit::Seconds).expect("finite non-negative duration");
+    assert_eq!(duration.numeric().representation(), "1.5");
     assert_eq!(duration.unit(), CssTimeUnit::Seconds);
-    assert!(CssDurationLiteral::try_new(-0.25, CssTimeUnit::Seconds).is_none());
+    assert!(
+        CssDuration::try_new(CssTimeValue::from_literal(
+            CssTimeLiteral::try_new("-0.25", CssTimeUnit::Seconds).unwrap()
+        ))
+        .is_err()
+    );
 
     let delay =
-        CssDelayLiteral::try_new(-250.0, CssTimeUnit::Milliseconds).expect("finite signed delay");
-    assert_eq!(delay.value(), -250.0);
+        CssTimeLiteral::try_new("-250", CssTimeUnit::Milliseconds).expect("finite signed delay");
+    assert_eq!(delay.numeric().representation(), "-250");
     assert_eq!(delay.unit(), CssTimeUnit::Milliseconds);
 
     for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-        assert!(CssDurationLiteral::try_new(value, CssTimeUnit::Seconds).is_none());
-        assert!(CssDelayLiteral::try_new(value, CssTimeUnit::Seconds).is_none());
+        assert!(CssTimeLiteral::try_new(&value.to_string(), CssTimeUnit::Seconds).is_err());
     }
 
     assert!(CssDurationList::try_new(Vec::new()).is_none());
     assert!(CssDelayList::try_new(Vec::new()).is_none());
     assert_eq!(
-        CssDurationList::try_new(vec![CssDuration::Literal(duration)])
-            .expect("non-empty duration list")
-            .values()
-            .len(),
+        CssDurationList::try_new(vec![
+            CssDuration::try_new(CssTimeValue::from_literal(duration)).unwrap()
+        ])
+        .expect("non-empty duration list")
+        .values()
+        .len(),
         1,
     );
     assert_eq!(
-        CssDelayList::try_new(vec![CssDelay::Literal(delay)])
+        CssDelayList::try_new(vec![CssTimeValue::from_literal(delay)])
             .expect("non-empty delay list")
             .values()
             .len(),
@@ -191,12 +197,11 @@ fn timing_longhands_expose_exact_typed_values() {
     else {
         panic!("expected transition-duration wrapper");
     };
-    assert!(matches!(
-        value.durations().values()[0],
-        CssDuration::Literal(literal)
-            if literal.value() == 1.0 && literal.unit() == CssTimeUnit::Seconds
-    ));
-    let CssDuration::Calculation(calculation) = &value.durations().values()[1] else {
+    assert!(
+        matches!(value.durations().values()[0].time().literal(), Some(literal)
+            if literal.numeric().representation() == "1" && literal.unit() == CssTimeUnit::Seconds)
+    );
+    let Some(calculation) = value.durations().values()[1].time().calculation() else {
         panic!("expected duration calculation");
     };
     assert_eq!(calculation.result_type(), CssCalculationType::Time);
@@ -216,12 +221,9 @@ fn timing_longhands_expose_exact_typed_values() {
     else {
         panic!("expected transition-delay wrapper");
     };
-    assert!(matches!(
-        value.delays().values()[0],
-        CssDelay::Literal(literal)
-            if literal.value() == -1.0 && literal.unit() == CssTimeUnit::Seconds
-    ));
-    assert!(matches!(value.delays().values()[1], CssDelay::Literal(_)));
+    assert!(matches!(value.delays().values()[0].literal(), Some(literal)
+            if literal.numeric().representation() == "-1" && literal.unit() == CssTimeUnit::Seconds));
+    assert!((value.delays().values()[1].literal()).is_some());
 
     let CssKnownPropertyValueRef::AnimationDuration(value) = report.syntax()[2]
         .known()
@@ -232,10 +234,7 @@ fn timing_longhands_expose_exact_typed_values() {
         panic!("expected animation-duration wrapper");
     };
     assert_eq!(value.durations().values().len(), 2);
-    assert!(matches!(
-        value.durations().values()[1],
-        CssDuration::Calculation(_)
-    ));
+    assert!((value.durations().values()[1].time().calculation()).is_some());
 
     let CssKnownPropertyValueRef::AnimationDelay(value) = report.syntax()[3]
         .known()
@@ -245,14 +244,10 @@ fn timing_longhands_expose_exact_typed_values() {
     else {
         panic!("expected animation-delay wrapper");
     };
-    assert!(matches!(
-        value.delays().values()[0],
-        CssDelay::Calculation(_)
-    ));
-    assert!(matches!(
-        value.delays().values()[1],
-        CssDelay::Literal(literal) if literal.value() == -4.0
-    ));
+    assert!((value.delays().values()[0].calculation()).is_some());
+    assert!(
+        matches!(value.delays().values()[1].literal(), Some(literal) if literal.numeric().representation() == "-4")
+    );
 
     let CssKnownPropertyValueRef::AnimationIterationCount(value) = report.syntax()[4]
         .known()
@@ -293,27 +288,31 @@ fn ordinary_timing_inputs_retain_each_typed_component() {
     let CssKnownPropertyValueRef::TransitionDuration(duration) = values[0] else {
         panic!("transition duration");
     };
-    assert!(matches!(duration.durations().values(), [
-        CssDuration::Literal(first), CssDuration::Literal(second)
-    ] if first.value() == 1.0 && first.unit() == CssTimeUnit::Seconds
-        && second.value() == 2.0 && second.unit() == CssTimeUnit::Milliseconds));
+    assert!(
+        matches!({ let values = duration.durations().values(); if values.len() == 2 { (values[0].time().literal(),values[1].time().literal()) } else { (None,None) } }, (Some(first), Some(second)) if first.numeric().representation() == "1" && first.unit() == CssTimeUnit::Seconds
+        && second.numeric().representation() == "2" && second.unit() == CssTimeUnit::Milliseconds)
+    );
     let CssKnownPropertyValueRef::TransitionDelay(delay) = values[1] else {
         panic!("transition delay");
     };
-    assert!(matches!(delay.delays().values(), [CssDelay::Literal(value)]
-        if value.value() == 3.0 && value.unit() == CssTimeUnit::Seconds));
+    assert!(
+        matches!({ let values = delay.delays().values(); if values.len() == 1 { values[0].literal() } else { None } }, Some(value)
+        if value.numeric().representation() == "3" && value.unit() == CssTimeUnit::Seconds)
+    );
     let CssKnownPropertyValueRef::AnimationDuration(duration) = values[2] else {
         panic!("animation duration");
     };
     assert!(
-        matches!(duration.durations().values(), [CssDuration::Literal(value)]
-        if value.value() == 4.0 && value.unit() == CssTimeUnit::Milliseconds)
+        matches!({ let values = duration.durations().values(); if values.len() == 1 { values[0].time().literal() } else { None } }, Some(value)
+        if value.numeric().representation() == "4" && value.unit() == CssTimeUnit::Milliseconds)
     );
     let CssKnownPropertyValueRef::AnimationDelay(delay) = values[3] else {
         panic!("animation delay");
     };
-    assert!(matches!(delay.delays().values(), [CssDelay::Literal(value)]
-        if value.value() == 5.0 && value.unit() == CssTimeUnit::Seconds));
+    assert!(
+        matches!({ let values = delay.delays().values(); if values.len() == 1 { values[0].literal() } else { None } }, Some(value)
+        if value.numeric().representation() == "5" && value.unit() == CssTimeUnit::Seconds)
+    );
     let CssKnownPropertyValueRef::AnimationIterationCount(counts) = values[4] else {
         panic!("iteration counts");
     };
@@ -330,9 +329,11 @@ fn ordinary_timing_inputs_retain_each_typed_component() {
         matches!(transition.property(), Some(CssTransitionProperty::Custom(name)) if name.as_str() == "opacity")
     );
     assert!(
-        matches!(transition.duration(), Some(CssDuration::Literal(value)) if value.value() == 1.0)
+        matches!(transition.duration().and_then(|value| value.time().literal()), Some(value) if value.numeric().representation() == "1")
     );
-    assert!(matches!(transition.delay(), Some(CssDelay::Literal(value)) if value.value() == 2.0));
+    assert!(
+        matches!(transition.delay().and_then(|value| value.literal()), Some(value) if value.numeric().representation() == "2")
+    );
     assert!(matches!(
         transition.timing_function(),
         Some(CssEasing::Keyword(CssEasingKeyword::Ease))
@@ -347,9 +348,11 @@ fn ordinary_timing_inputs_retain_each_typed_component() {
         matches!(animation.name(), Some(CssAnimationName::Custom(name)) if name.as_str() == "fade")
     );
     assert!(
-        matches!(animation.duration(), Some(CssDuration::Literal(value)) if value.value() == 3.0)
+        matches!(animation.duration().and_then(|value| value.time().literal()), Some(value) if value.numeric().representation() == "3")
     );
-    assert!(matches!(animation.delay(), Some(CssDelay::Literal(value)) if value.value() == 4.0));
+    assert!(
+        matches!(animation.delay().and_then(|value| value.literal()), Some(value) if value.numeric().representation() == "4")
+    );
     assert!(matches!(
         animation.timing_function(),
         Some(CssEasing::Keyword(CssEasingKeyword::Linear))
@@ -383,26 +386,26 @@ fn transition_shorthand_assigns_first_time_to_duration_and_second_to_signed_dela
         transitions[0].property(),
         Some(CssTransitionProperty::Custom(property)) if property.as_str() == "opacity"
     ));
-    assert!(matches!(
-        transitions[0].duration(),
-        Some(CssDuration::Literal(_))
-    ));
-    assert!(matches!(
-        transitions[0].delay(),
-        Some(CssDelay::Literal(literal)) if literal.value() == -2.0
-    ));
+    assert!(
+        (transitions[0]
+            .duration()
+            .and_then(|value| value.time().literal()))
+        .is_some()
+    );
+    assert!(
+        matches!(transitions[0].delay().and_then(|value| value.literal()), Some(literal) if literal.numeric().representation() == "-2")
+    );
     assert!(matches!(
         transitions[0].timing_function(),
         Some(CssEasing::Keyword(CssEasingKeyword::Ease))
     ));
-    assert!(matches!(
-        transitions[1].duration(),
-        Some(CssDuration::Calculation(_))
-    ));
-    assert!(matches!(
-        transitions[1].delay(),
-        Some(CssDelay::Calculation(_))
-    ));
+    assert!(
+        (transitions[1]
+            .duration()
+            .and_then(|value| value.time().calculation()))
+        .is_some()
+    );
+    assert!((transitions[1].delay().and_then(|value| value.calculation())).is_some());
 }
 
 #[test]
@@ -423,11 +426,13 @@ fn animation_shorthand_exposes_all_eight_components() {
     assert!(
         matches!(animation.name(), Some(CssAnimationName::Custom(name)) if name.as_str() == "fade")
     );
-    assert!(matches!(
-        animation.duration(),
-        Some(CssDuration::Calculation(_))
-    ));
-    assert!(matches!(animation.delay(), Some(CssDelay::Calculation(_))));
+    assert!(
+        (animation
+            .duration()
+            .and_then(|value| value.time().calculation()))
+        .is_some()
+    );
+    assert!((animation.delay().and_then(|value| value.calculation())).is_some());
     assert!(matches!(
         animation.timing_function(),
         Some(CssEasing::Keyword(CssEasingKeyword::Ease))
@@ -523,11 +528,11 @@ fn every_transition_component_order_preserves_first_time_and_second_time_domains
             "{source}",
         );
         assert!(
-            matches!(transition.duration(), Some(CssDuration::Literal(literal)) if literal.value() == 1.0 && literal.unit() == CssTimeUnit::Seconds),
+            matches!(transition.duration().and_then(|value| value.time().literal()), Some(literal) if literal.numeric().representation() == "1" && literal.unit() == CssTimeUnit::Seconds),
             "{source}",
         );
         assert!(
-            matches!(transition.delay(), Some(CssDelay::Literal(literal)) if literal.value() == -2.0 && literal.unit() == CssTimeUnit::Milliseconds),
+            matches!(transition.delay().and_then(|value| value.literal()), Some(literal) if literal.numeric().representation() == "-2" && literal.unit() == CssTimeUnit::Milliseconds),
             "{source}",
         );
         assert!(
@@ -587,11 +592,11 @@ fn every_animation_component_order_preserves_all_eight_typed_domains() {
             "{source}",
         );
         assert!(
-            matches!(animation.duration(), Some(CssDuration::Literal(literal)) if literal.value() == 1.0 && literal.unit() == CssTimeUnit::Seconds),
+            matches!(animation.duration().and_then(|value| value.time().literal()), Some(literal) if literal.numeric().representation() == "1" && literal.unit() == CssTimeUnit::Seconds),
             "{source}",
         );
         assert!(
-            matches!(animation.delay(), Some(CssDelay::Literal(literal)) if literal.value() == -2.0 && literal.unit() == CssTimeUnit::Milliseconds),
+            matches!(animation.delay().and_then(|value| value.literal()), Some(literal) if literal.numeric().representation() == "-2" && literal.unit() == CssTimeUnit::Milliseconds),
             "{source}",
         );
         assert!(
@@ -690,20 +695,6 @@ fn every_invalid_timing_category_has_exact_public_diagnostics_and_strict_parity(
             encountered: None,
         },
         InvalidTimingCase {
-            source: "transition-duration: 1e999s; color: red",
-            property: CssKnownProperty::TransitionDuration,
-            position: 21,
-            span_end: 28,
-            encountered: Some((CssTokenKind::Dimension, "1e999s")),
-        },
-        InvalidTimingCase {
-            source: "transition-delay: -1e999s; color: red",
-            property: CssKnownProperty::TransitionDelay,
-            position: 18,
-            span_end: 26,
-            encountered: Some((CssTokenKind::Dimension, "-1e999s")),
-        },
-        InvalidTimingCase {
             source: "transition-duration: calc(1px + 2px); color: red",
             property: CssKnownProperty::TransitionDuration,
             position: 21,
@@ -784,11 +775,10 @@ fn repeated_timing_failures_and_depth_255_256_257_have_exact_recovery_behavior()
         else {
             panic!("depth {depth}: expected transition-duration wrapper");
         };
-        assert!(matches!(
-            duration.durations().values(),
-            [CssDuration::Calculation(calculation)]
-                if calculation.result_type() == CssCalculationType::Time
-        ));
+        assert!(
+            matches!({ let values = duration.durations().values(); if values.len() == 1 { values[0].time().calculation() } else { None } }, Some(calculation)
+                if calculation.result_type() == CssCalculationType::Time)
+        );
         assert_eq!(
             color.known().expect("known color sibling").property(),
             CssKnownProperty::Color,

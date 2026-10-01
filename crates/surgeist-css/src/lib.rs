@@ -563,52 +563,29 @@
 //!
 //! # Authored timing domains
 //!
-//! Duration literals are finite and non-negative; delay literals are finite and signed. A range
-//! constraint that belongs to a literal is enforced immediately, while a well-typed calculation
-//! remains representable for later computed-value processing. Property accessors expose
-//! those distinct domains directly. Checked [`CssTransition`] and [`CssAnimation`]
-//! constructors retain the same typed components as their property parsers.
+//! Time literals retain exact coefficients and authored units; duration literals are non-negative
+//! and delays are signed. Well-typed calculations remain authored for later range processing.
+//! Ordinary specified emission converts exactly to seconds. The emitter retains full precision;
+//! CSSOM's six-fractional-place number formatting and exact calculation projection remain unfinished.
 //!
 //! ```
 //! use surgeist_css::{
-//!     CssDelay, CssDuration, CssDurationLiteral, CssKnownPropertyValueRef,
+//!     CssDuration, CssTimeLiteral, CssTimeValue, CssKnownPropertyValueRef,
 //!     CssTimeUnit, parse_style_attribute,
 //! };
-//!
-//! assert!(CssDurationLiteral::try_new(-1.0, CssTimeUnit::Seconds).is_none());
-//!
-//! let report = parse_style_attribute(concat!(
-//!     "transition-duration: calc(-1s + 2s); ",
-//!     "transition-delay: -250ms",
-//! ));
+//! let negative = CssTimeValue::from_literal(CssTimeLiteral::try_new("-1", CssTimeUnit::Seconds).unwrap());
+//! assert!(CssDuration::try_new(negative).is_err());
+//! let report = parse_style_attribute("transition-duration: calc(-1s + 2s); transition-delay: -250ms");
 //! assert!(report.is_clean());
-//!
 //! let CssKnownPropertyValueRef::TransitionDuration(duration) = report.syntax()[0]
-//!     .known()
-//!     .expect("known duration")
-//!     .property_value()
-//!     .expect("ordinary duration")
-//! else {
-//!     panic!("expected transition-duration");
-//! };
-//! assert!(matches!(
-//!     duration.durations().values()[0],
-//!     CssDuration::Calculation(_)
-//! ));
-//!
+//!     .known().unwrap().property_value().unwrap() else { panic!("duration"); };
+//! assert!(duration.durations().values()[0].time().calculation().is_some());
 //! let CssKnownPropertyValueRef::TransitionDelay(delay) = report.syntax()[1]
-//!     .known()
-//!     .expect("known delay")
-//!     .property_value()
-//!     .expect("ordinary delay")
-//! else {
-//!     panic!("expected transition-delay");
-//! };
-//! assert!(matches!(
-//!     delay.delays().values()[0],
-//!     CssDelay::Literal(value) if value.value() == -250.0
-//! ));
-//!
+//!     .known().unwrap().property_value().unwrap() else { panic!("delay"); };
+//! let literal = delay.delays().values()[0].literal().unwrap();
+//! assert_eq!(literal.numeric().representation(), "-250");
+//! assert_eq!(literal.unit(), CssTimeUnit::Milliseconds);
+//! assert_eq!(literal.serialize_specified().unwrap(), "-0.25s");
 //! ```
 //!
 //! This crate owns authored timing syntax only; timeline evaluation and
@@ -1260,6 +1237,7 @@ mod sizing;
 mod sizing_controls;
 mod text_alignment;
 mod text_spacing;
+mod time;
 pub use alignment::{
     CssAlignContentValue, CssAlignItemsValue, CssAlignSelfValue, CssAlignmentPosition,
     CssAlignmentValue, CssBaselinePosition, CssJustifyContentValue, CssJustifyItemsValue,
@@ -1292,6 +1270,7 @@ pub use grid_template_areas::{
     CssGridTemplateAreaCell, CssGridTemplateAreaError, CssGridTemplateAreaName,
     CssGridTemplateAreaRow, CssGridTemplateAreaRows, CssGridTemplateAreas,
 };
+pub use time::{CssDuration, CssTimeLiteral, CssTimeValue};
 mod font_width;
 pub use font_width::{CssFontFaceWidth, CssFontWidth, CssFontWidthKeyword};
 mod font_controls;

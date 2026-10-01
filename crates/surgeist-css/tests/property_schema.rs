@@ -1008,9 +1008,7 @@ fn object_and_transform_origin_wrappers_keep_ordinary_global_and_substitution_br
 
 #[test]
 fn timing_wrappers_expose_exact_property_specific_accessors() {
-    use surgeist_css::{
-        CssAnimationIterationCount, CssDelay, CssDuration, CssTimeUnit, CssTransitionProperty,
-    };
+    use surgeist_css::{CssAnimationIterationCount, CssTimeUnit, CssTransitionProperty};
     let report = parse_style_attribute(concat!(
         "transition-duration: calc(1s + 2s); transition-delay: -1s; ",
         "animation-duration: calc(3ms * 2); animation-delay: -4ms; ",
@@ -1022,24 +1020,42 @@ fn timing_wrappers_expose_exact_property_specific_accessors() {
     for declaration in report.syntax().as_slice() {
         match declaration.known().unwrap().property_value().unwrap() {
             CssKnownPropertyValueRef::TransitionDuration(value) => {
-                assert!(matches!(
-                    value.durations().values(),
-                    [CssDuration::Calculation(_)]
-                ));
+                assert!(
+                    ({
+                        let values = value.durations().values();
+                        if values.len() == 1 {
+                            values[0].time().calculation()
+                        } else {
+                            None
+                        }
+                    })
+                    .is_some()
+                );
             }
             CssKnownPropertyValueRef::TransitionDelay(value) => {
-                assert!(matches!(value.delays().values(), [CssDelay::Literal(t)]
-                    if t.value() == -1.0 && t.unit() == CssTimeUnit::Seconds));
+                assert!(
+                    matches!({ let values = value.delays().values(); if values.len() == 1 { values[0].literal() } else { None } }, Some(t)
+                    if t.numeric().representation() == "-1" && t.unit() == CssTimeUnit::Seconds)
+                );
             }
             CssKnownPropertyValueRef::AnimationDuration(value) => {
-                assert!(matches!(
-                    value.durations().values(),
-                    [CssDuration::Calculation(_)]
-                ));
+                assert!(
+                    ({
+                        let values = value.durations().values();
+                        if values.len() == 1 {
+                            values[0].time().calculation()
+                        } else {
+                            None
+                        }
+                    })
+                    .is_some()
+                );
             }
             CssKnownPropertyValueRef::AnimationDelay(value) => {
-                assert!(matches!(value.delays().values(), [CssDelay::Literal(t)]
-                    if t.value() == -4.0 && t.unit() == CssTimeUnit::Milliseconds));
+                assert!(
+                    matches!({ let values = value.delays().values(); if values.len() == 1 { values[0].literal() } else { None } }, Some(t)
+                    if t.numeric().representation() == "-4" && t.unit() == CssTimeUnit::Milliseconds)
+                );
             }
             CssKnownPropertyValueRef::AnimationIterationCount(value) => {
                 assert!(matches!(
@@ -1055,18 +1071,22 @@ fn timing_wrappers_expose_exact_property_specific_accessors() {
                     matches!(item.property(), Some(CssTransitionProperty::Custom(name)) if name.as_str() == "opacity")
                 );
                 assert!(
-                    matches!(item.duration(), Some(CssDuration::Literal(t)) if t.value() == 1.0)
+                    matches!(item.duration().and_then(|value| value.time().literal()), Some(t) if t.numeric().representation() == "1")
                 );
-                assert!(matches!(item.delay(), Some(CssDelay::Literal(t)) if t.value() == -2.0));
+                assert!(
+                    matches!(item.delay().and_then(|value| value.literal()), Some(t) if t.numeric().representation() == "-2")
+                );
             }
             CssKnownPropertyValueRef::Animation(value) => {
                 let [item] = value.animations().values() else {
                     panic!("one animation");
                 };
                 assert!(
-                    matches!(item.duration(), Some(CssDuration::Literal(t)) if t.value() == 3.0)
+                    matches!(item.duration().and_then(|value| value.time().literal()), Some(t) if t.numeric().representation() == "3")
                 );
-                assert!(matches!(item.delay(), Some(CssDelay::Literal(t)) if t.value() == -4.0));
+                assert!(
+                    matches!(item.delay().and_then(|value| value.literal()), Some(t) if t.numeric().representation() == "-4")
+                );
                 assert!(
                     matches!(item.iteration_count(), Some(CssAnimationIterationCount::Number(n)) if n.serialize_specified().unwrap() == "2")
                 );

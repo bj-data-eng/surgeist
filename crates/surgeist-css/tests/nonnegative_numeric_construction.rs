@@ -798,7 +798,7 @@ fn iteration_longhand_and_shorthand_keep_shared_exact_counts_and_authored_omissi
             matches!(animation.name(), Some(CssAnimationName::Custom(name)) if name.as_str() == "fade")
         );
         assert!(
-            matches!(animation.duration(), Some(CssDuration::Literal(value)) if value.value() == 1.0 && value.unit() == CssTimeUnit::Seconds)
+            matches!(animation.duration().and_then(|value| value.time().literal()), Some(value) if value.numeric().representation() == "1" && value.unit() == CssTimeUnit::Seconds)
         );
         if supplied {
             assert!(

@@ -857,3 +857,128 @@ mod tests {
         assert!(!binary64_equals_decimal(f64::from_bits(1), 5, -324));
     }
 }
+
+impl crate::CssTimeLiteral {
+    pub(crate) fn append_specified(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> Result<()> {
+        context.charge_input(1)?;
+        context.charge_projection(1)?;
+        if context.output_suppressed() {
+            return Ok(());
+        }
+        let shift = match self.unit() {
+            crate::CssTimeUnit::Seconds => 0,
+            crate::CssTimeUnit::Milliseconds => -3,
+        };
+        let text = format_coefficient(
+            self.numeric().representation(),
+            shift,
+            "s",
+            context.remaining_bytes(),
+        )?;
+        context.append(output, &text)
+    }
+}
+impl crate::CssTimeValue {
+    pub(crate) fn append_specified(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> Result<()> {
+        if let Some(literal) = self.literal() {
+            return literal.append_specified(context, output);
+        }
+        crate::numeric::project_calculation_specified_into(
+            crate::numeric::SpecifiedCalculationRef::Time(
+                self.calculation().expect("checked time branch"),
+            ),
+            context,
+            output,
+        )?;
+        Ok(())
+    }
+}
+impl crate::CssDuration {
+    pub(crate) fn append_specified(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> Result<()> {
+        self.time().append_specified(context, output)
+    }
+}
+impl crate::CssTimeLiteral {
+    /// Emits canonical seconds with exact expanded decimal coefficients.
+    ///
+    /// This authored emitter retains full precision; CSSOM's six-fractional-place
+    /// number formatting remains unfinished. Calculation projection retains its
+    /// existing precision and range limitations.
+    pub fn serialize_specified(&self) -> Result<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+    /// Emits seconds using one cumulative input, projection and byte budget.
+    ///
+    /// Exact expanded output has no exponential fallback and can return ByteLimit.
+    /// Full precision is retained; CSSOM six-fractional-place formatting remains unfinished.
+    /// This operation does not certify recovered syntax as a clean report.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String> {
+        let mut context = SpecifiedSerializationContext::new(limits);
+        let mut output = String::new();
+        self.append_specified(&mut context, &mut output)?;
+        Ok(output)
+    }
+}
+impl crate::CssTimeValue {
+    /// Emits canonical seconds with exact expanded decimal coefficients.
+    ///
+    /// This authored emitter retains full precision; CSSOM's six-fractional-place
+    /// number formatting remains unfinished. Calculation projection retains its
+    /// existing precision and range limitations.
+    pub fn serialize_specified(&self) -> Result<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+    /// Emits seconds using one cumulative input, projection and byte budget.
+    ///
+    /// Exact expanded output has no exponential fallback and can return ByteLimit.
+    /// Full precision is retained; CSSOM six-fractional-place formatting remains unfinished.
+    /// This operation does not certify recovered syntax as a clean report.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String> {
+        let mut context = SpecifiedSerializationContext::new(limits);
+        let mut output = String::new();
+        self.append_specified(&mut context, &mut output)?;
+        Ok(output)
+    }
+}
+impl crate::CssDuration {
+    /// Emits canonical seconds with exact expanded decimal coefficients.
+    ///
+    /// This authored emitter retains full precision; CSSOM's six-fractional-place
+    /// number formatting remains unfinished. Calculation projection retains its
+    /// existing precision and range limitations.
+    pub fn serialize_specified(&self) -> Result<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+    /// Emits seconds using one cumulative input, projection and byte budget.
+    ///
+    /// Exact expanded output has no exponential fallback and can return ByteLimit.
+    /// Full precision is retained; CSSOM six-fractional-place formatting remains unfinished.
+    /// This operation does not certify recovered syntax as a clean report.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String> {
+        let mut context = SpecifiedSerializationContext::new(limits);
+        let mut output = String::new();
+        self.append_specified(&mut context, &mut output)?;
+        Ok(output)
+    }
+}

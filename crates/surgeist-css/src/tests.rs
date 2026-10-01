@@ -9104,10 +9104,14 @@ fn parses_transition_properties_and_preserves_comma_lists() {
             durations
         ),
         CssDurationList::try_new(vec![
-            CssDuration::Literal(
-                CssDurationLiteral::try_new(150.0, CssTimeUnit::Milliseconds).unwrap()
-            ),
-            CssDuration::Literal(CssDurationLiteral::try_new(2.0, CssTimeUnit::Seconds).unwrap()),
+            CssDuration::try_new(CssTimeValue::from_literal(
+                CssTimeLiteral::try_new("150", CssTimeUnit::Milliseconds).unwrap()
+            ))
+            .unwrap(),
+            CssDuration::try_new(CssTimeValue::from_literal(
+                CssTimeLiteral::try_new("2", CssTimeUnit::Seconds).unwrap()
+            ))
+            .unwrap(),
         ])
         .unwrap()
     );
@@ -9227,9 +9231,11 @@ fn background_effect_and_animation_constructors_reject_invalid_states() {
         CssAnimation::try_new(CssAnimationComponents::default()),
         None
     );
-    assert_eq!(
-        CssDurationLiteral::try_new(-1.0, CssTimeUnit::Seconds),
-        None
+    assert!(
+        CssDuration::try_new(CssTimeValue::from_literal(
+            CssTimeLiteral::try_new("-1", CssTimeUnit::Seconds).unwrap()
+        ))
+        .is_err()
     );
     assert!(
         CssSpecifiedNonNegativeNumber::try_from_component(

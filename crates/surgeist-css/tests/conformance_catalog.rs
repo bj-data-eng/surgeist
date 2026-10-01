@@ -1,3 +1,4 @@
+use surgeist_css::CssTimeLiteral;
 use surgeist_css::*;
 
 #[test]
@@ -2304,7 +2305,7 @@ fn c14_remaining_official_values_are_typed() {
         CssAngleCalculation::try_literal("-0.5", CssAngleUnit::Turns).expect("finite angle");
     let percentage = CssPercentageCalculation::try_literal(25.0).expect("finite percentage");
     let time =
-        CssTimeCalculation::try_literal(-250.0, CssTimeUnit::Milliseconds).expect("finite time");
+        CssTimeCalculation::try_literal("-250", CssTimeUnit::Milliseconds).expect("finite time");
     let frequency = CssFrequencyCalculation::try_literal(1.5, CssFrequencyUnit::Kilohertz)
         .expect("finite frequency");
     assert_eq!(angle.result_type(), CssCalculationType::Angle);
@@ -2312,7 +2313,9 @@ fn c14_remaining_official_values_are_typed() {
     assert_eq!(time.result_type(), CssCalculationType::Time);
     assert_eq!(frequency.result_type(), CssCalculationType::Frequency);
     assert!(CssAngleCalculation::try_literal("NaN", CssAngleUnit::Degrees).is_err());
-    assert!(CssTimeCalculation::try_literal(f32::INFINITY, CssTimeUnit::Seconds).is_none());
+    assert!(
+        CssTimeCalculation::try_literal(&f32::INFINITY.to_string(), CssTimeUnit::Seconds).is_err()
+    );
     assert!(
         CssFrequencyCalculation::try_literal(f32::NEG_INFINITY, CssFrequencyUnit::Hertz).is_none()
     );
@@ -2844,8 +2847,8 @@ fn official_angle_percentage_metadata_matches_checked_mixed_models() {
 #[test]
 fn official_time_metadata_matches_checked_time_behavior() {
     let value =
-        CssDelayLiteral::try_new(-250.0, CssTimeUnit::Milliseconds).expect("finite signed time");
-    assert_eq!(value.value(), -250.0);
+        CssTimeLiteral::try_new("-250", CssTimeUnit::Milliseconds).expect("finite signed time");
+    assert_eq!(value.numeric().representation(), "-250");
     assert_eq!(value.unit(), CssTimeUnit::Milliseconds);
     assert_c03_value_metadata(
         "official.value.time",
@@ -2859,7 +2862,7 @@ fn official_time_metadata_matches_checked_time_behavior() {
 
 #[test]
 fn official_time_percentage_metadata_matches_checked_mixed_models() {
-    let time = CssTimeCalculation::try_literal(-1.0, CssTimeUnit::Seconds).expect("finite time");
+    let time = CssTimeCalculation::try_literal("-1", CssTimeUnit::Seconds).expect("finite time");
     let percentage = CssPercentageCalculation::try_literal(50.0).expect("finite percentage");
     assert_eq!(time.result_type(), CssCalculationType::Time);
     assert_eq!(percentage.result_type(), CssCalculationType::Percentage);

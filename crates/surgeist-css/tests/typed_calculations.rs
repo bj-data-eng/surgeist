@@ -233,7 +233,7 @@ fn typed_calculation_roots_enforce_checked_literal_boundaries() {
         assert!(
             CssAngleCalculation::try_literal(&value.to_string(), CssAngleUnit::Degrees).is_err()
         );
-        assert!(CssTimeCalculation::try_literal(value, CssTimeUnit::Seconds).is_none());
+        assert!(CssTimeCalculation::try_literal(&value.to_string(), CssTimeUnit::Seconds).is_err());
         assert!(CssFrequencyCalculation::try_literal(value, CssFrequencyUnit::Hertz).is_none());
     }
 
@@ -265,7 +265,7 @@ fn typed_calculation_roots_enforce_checked_literal_boundaries() {
                 if inner.representation() == value.to_string() && inner.unit() == Some("turn")
         ));
 
-        let time = CssTimeCalculation::try_literal(value, CssTimeUnit::Milliseconds)
+        let time = CssTimeCalculation::try_literal(&value.to_string(), CssTimeUnit::Milliseconds)
             .expect("finite signed time leaf");
         assert_eq!(time.result_type(), CssCalculationType::Time);
         assert!(matches!(

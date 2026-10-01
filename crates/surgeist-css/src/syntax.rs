@@ -17,8 +17,8 @@ pub(crate) use crate::numeric::*;
 pub use crate::page_line_minimum::CssPageLineMinimum;
 use crate::{
     CssAngleLiteral, CssAngleOrZero, CssAngleValue, CssColorNumberLiteral,
-    CssColorPercentageLiteral, CssColorScalarError, CssFontSize, CssFontStyle, CssFontWeight,
-    CssFontWidthKeyword, CssLineHeight, CssValueOrigin,
+    CssColorPercentageLiteral, CssColorScalarError, CssDuration, CssFontSize, CssFontStyle,
+    CssFontWeight, CssFontWidthKeyword, CssLineHeight, CssTimeValue, CssValueOrigin,
 };
 use crate::{
     CssContainerScrollQuery, CssContainerStyleQuery, CssFontFeatureValuesRule,
@@ -8291,41 +8291,6 @@ pub enum CssTimeUnit {
     Milliseconds,
 }
 
-/// A finite non-negative authored duration literal.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CssDurationLiteral {
-    value: CssFiniteNumber,
-    unit: CssTimeUnit,
-}
-
-impl CssDurationLiteral {
-    #[must_use]
-    pub const fn try_new(value: f32, unit: CssTimeUnit) -> Option<Self> {
-        match CssFiniteNumber::try_new(value) {
-            Some(value) if value.value() >= 0.0 => Some(Self { value, unit }),
-            Some(_) | None => None,
-        }
-    }
-
-    #[must_use]
-    pub const fn value(self) -> f32 {
-        self.value.value()
-    }
-
-    #[must_use]
-    pub const fn unit(self) -> CssTimeUnit {
-        self.unit
-    }
-}
-
-/// An authored transition or animation duration.
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssDuration {
-    Literal(CssDurationLiteral),
-    Calculation(CssTimeCalculation),
-}
-
 /// A non-empty authored duration list.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssDurationList {
@@ -8333,13 +8298,22 @@ pub struct CssDurationList {
 }
 
 impl CssDurationList {
+    /// Rejects an empty list or retained recovery in any time child.
     #[must_use]
     pub fn try_new(values: Vec<CssDuration>) -> Option<Self> {
-        if values.is_empty() {
+        if values.is_empty()
+            || values
+                .iter()
+                .any(|value| value.time().first_implicit_origin().is_some())
+        {
             None
         } else {
             Some(Self { values })
         }
+    }
+
+    pub(crate) fn from_parser(values: Vec<CssDuration>) -> Self {
+        Self { values }
     }
 
     #[must_use]
@@ -8348,32 +8322,33 @@ impl CssDurationList {
     }
 }
 
-/// An authored signed transition or animation delay.
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssDelay {
-    Literal(CssDelayLiteral),
-    Calculation(CssTimeCalculation),
-}
-
 /// A non-empty authored delay list.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct CssDelayList {
-    values: Vec<CssDelay>,
+    values: Vec<CssTimeValue>,
 }
 
 impl CssDelayList {
+    /// Rejects an empty list or retained recovery in any time child.
     #[must_use]
-    pub fn try_new(values: Vec<CssDelay>) -> Option<Self> {
-        if values.is_empty() {
+    pub fn try_new(values: Vec<CssTimeValue>) -> Option<Self> {
+        if values.is_empty()
+            || values
+                .iter()
+                .any(|value| value.first_implicit_origin().is_some())
+        {
             None
         } else {
             Some(Self { values })
         }
     }
 
+    pub(crate) fn from_parser(values: Vec<CssTimeValue>) -> Self {
+        Self { values }
+    }
+
     #[must_use]
-    pub fn values(&self) -> &[CssDelay] {
+    pub fn values(&self) -> &[CssTimeValue] {
         &self.values
     }
 }
@@ -8778,20 +8753,38 @@ impl CssAnimationPlayStateList {
 }
 
 /// An authored transition with distinct duration and delay domains.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct CssTransition {
     property: Option<CssTransitionProperty>,
     duration: Option<CssDuration>,
-    delay: Option<CssDelay>,
+    delay: Option<CssTimeValue>,
     timing_function: Option<CssEasing>,
 }
 
 impl CssTransition {
+    /// Rejects an empty item or retained recovery in its duration or delay.
     #[must_use]
     pub fn try_new(
         property: Option<CssTransitionProperty>,
         duration: Option<CssDuration>,
-        delay: Option<CssDelay>,
+        delay: Option<CssTimeValue>,
+        timing_function: Option<CssEasing>,
+    ) -> Option<Self> {
+        if duration
+            .as_ref()
+            .is_some_and(|v| v.time().first_implicit_origin().is_some())
+            || delay
+                .as_ref()
+                .is_some_and(|v| v.first_implicit_origin().is_some())
+        {
+            return None;
+        }
+        Self::from_parser(property, duration, delay, timing_function)
+    }
+    pub(crate) fn from_parser(
+        property: Option<CssTransitionProperty>,
+        duration: Option<CssDuration>,
+        delay: Option<CssTimeValue>,
         timing_function: Option<CssEasing>,
     ) -> Option<Self> {
         if property.is_none() && duration.is_none() && delay.is_none() && timing_function.is_none()
@@ -8818,7 +8811,7 @@ impl CssTransition {
     }
 
     #[must_use]
-    pub const fn delay(&self) -> Option<&CssDelay> {
+    pub const fn delay(&self) -> Option<&CssTimeValue> {
         self.delay.as_ref()
     }
 
@@ -8835,13 +8828,25 @@ pub struct CssTransitionList {
 }
 
 impl CssTransitionList {
+    /// Rejects an empty list or retained recovery in any time child.
     #[must_use]
     pub fn try_new(values: Vec<CssTransition>) -> Option<Self> {
-        if values.is_empty() {
+        if values.is_empty()
+            || values.iter().any(|v| {
+                v.duration()
+                    .is_some_and(|d| d.time().first_implicit_origin().is_some())
+                    || v.delay()
+                        .is_some_and(|d| d.first_implicit_origin().is_some())
+            })
+        {
             None
         } else {
             Some(Self { values })
         }
+    }
+
+    pub(crate) fn from_parser(values: Vec<CssTransition>) -> Self {
+        Self { values }
     }
 
     #[must_use]
@@ -8851,11 +8856,11 @@ impl CssTransitionList {
 }
 
 /// An authored animation with distinct timing domains.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct CssAnimation {
     name: Option<CssAnimationName>,
     duration: Option<CssDuration>,
-    delay: Option<CssDelay>,
+    delay: Option<CssTimeValue>,
     timing_function: Option<CssEasing>,
     iteration_count: Option<CssAnimationIterationCount>,
     direction: Option<CssAnimationDirection>,
@@ -8864,11 +8869,11 @@ pub struct CssAnimation {
 }
 
 /// Checked input components for one authored animation.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default)]
 pub struct CssAnimationComponents {
     pub name: Option<CssAnimationName>,
     pub duration: Option<CssDuration>,
-    pub delay: Option<CssDelay>,
+    pub delay: Option<CssTimeValue>,
     pub timing_function: Option<CssEasing>,
     pub iteration_count: Option<CssAnimationIterationCount>,
     pub direction: Option<CssAnimationDirection>,
@@ -8877,8 +8882,23 @@ pub struct CssAnimationComponents {
 }
 
 impl CssAnimation {
+    /// Rejects an empty item or retained recovery in its duration or delay.
     #[must_use]
     pub fn try_new(components: CssAnimationComponents) -> Option<Self> {
+        if components
+            .duration
+            .as_ref()
+            .is_some_and(|v| v.time().first_implicit_origin().is_some())
+            || components
+                .delay
+                .as_ref()
+                .is_some_and(|v| v.first_implicit_origin().is_some())
+        {
+            return None;
+        }
+        Self::from_parser(components)
+    }
+    pub(crate) fn from_parser(components: CssAnimationComponents) -> Option<Self> {
         if components.name.is_none()
             && components.duration.is_none()
             && components.delay.is_none()
@@ -8914,7 +8934,7 @@ impl CssAnimation {
     }
 
     #[must_use]
-    pub const fn delay(&self) -> Option<&CssDelay> {
+    pub const fn delay(&self) -> Option<&CssTimeValue> {
         self.delay.as_ref()
     }
 
@@ -8951,13 +8971,25 @@ pub struct CssAnimationList {
 }
 
 impl CssAnimationList {
+    /// Rejects an empty list or retained recovery in any time child.
     #[must_use]
     pub fn try_new(values: Vec<CssAnimation>) -> Option<Self> {
-        if values.is_empty() {
+        if values.is_empty()
+            || values.iter().any(|v| {
+                v.duration()
+                    .is_some_and(|d| d.time().first_implicit_origin().is_some())
+                    || v.delay()
+                        .is_some_and(|d| d.first_implicit_origin().is_some())
+            })
+        {
             None
         } else {
             Some(Self { values })
         }
+    }
+
+    pub(crate) fn from_parser(values: Vec<CssAnimation>) -> Self {
+        Self { values }
     }
 
     #[must_use]
@@ -9012,25 +9044,57 @@ impl CssFrequencyLiteral {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CssDelayLiteral {
-    value: CssFiniteNumber,
-    unit: CssTimeUnit,
+impl PartialEq for CssDelayList {
+    fn eq(&self, other: &Self) -> bool {
+        self.values.len() == other.values.len()
+            && self
+                .values
+                .iter()
+                .zip(&other.values)
+                .all(|(a, b)| a.structural_eq(b))
+    }
 }
-
-impl CssDelayLiteral {
-    #[must_use]
-    pub fn try_new(value: f32, unit: CssTimeUnit) -> Option<Self> {
-        CssFiniteNumber::try_new(value).map(|value| Self { value, unit })
+impl PartialEq for CssTransition {
+    fn eq(&self, other: &Self) -> bool {
+        self.property == other.property
+            && self.duration == other.duration
+            && optional_numeric_eq(
+                self.delay.as_ref(),
+                other.delay.as_ref(),
+                CssTimeValue::structural_eq,
+            )
+            && self.timing_function == other.timing_function
     }
-
-    #[must_use]
-    pub const fn value(self) -> f32 {
-        self.value.value()
+}
+impl PartialEq for CssAnimation {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+            && self.duration == other.duration
+            && self.timing_function == other.timing_function
+            && self.iteration_count == other.iteration_count
+            && self.direction == other.direction
+            && self.fill_mode == other.fill_mode
+            && self.play_state == other.play_state
+            && optional_numeric_eq(
+                self.delay.as_ref(),
+                other.delay.as_ref(),
+                CssTimeValue::structural_eq,
+            )
     }
-
-    #[must_use]
-    pub const fn unit(self) -> CssTimeUnit {
-        self.unit
+}
+impl PartialEq for CssAnimationComponents {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+            && self.duration == other.duration
+            && self.timing_function == other.timing_function
+            && self.iteration_count == other.iteration_count
+            && self.direction == other.direction
+            && self.fill_mode == other.fill_mode
+            && self.play_state == other.play_state
+            && optional_numeric_eq(
+                self.delay.as_ref(),
+                other.delay.as_ref(),
+                CssTimeValue::structural_eq,
+            )
     }
 }

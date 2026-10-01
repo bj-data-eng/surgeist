@@ -1,11 +1,12 @@
 use surgeist_css::{
     CssAnimation, CssAnimationComponents, CssAnimationDirection, CssAnimationFillMode,
     CssAnimationIterationCount, CssAnimationList, CssAnimationName, CssAnimationPlayState,
-    CssCubicBezier, CssDelay, CssDelayLiteral, CssDuration, CssDurationLiteral, CssEasing,
-    CssEasingKeyword, CssIntegerLiteral, CssKnownPropertyValueRef, CssPositiveIntegerLiteral,
-    CssPositiveIntegerValue, CssStepPosition, CssSteps, CssTimeUnit, CssTransition,
-    CssTransitionList, CssTransitionProperty, parse_style_attribute,
+    CssCubicBezier, CssDuration, CssEasing, CssEasingKeyword, CssIntegerLiteral,
+    CssKnownPropertyValueRef, CssPositiveIntegerLiteral, CssPositiveIntegerValue, CssStepPosition,
+    CssSteps, CssTimeUnit, CssTransition, CssTransitionList, CssTransitionProperty,
+    parse_style_attribute,
 };
+use surgeist_css::{CssTimeLiteral, CssTimeValue};
 
 #[test]
 fn checked_aggregates_reject_empty_items_and_lists() {
@@ -17,10 +18,13 @@ fn checked_aggregates_reject_empty_items_and_lists() {
 
 #[test]
 fn checked_transition_preserves_distinct_time_domains_and_omissions() {
-    let duration =
-        CssDuration::Literal(CssDurationLiteral::try_new(1.0, CssTimeUnit::Seconds).unwrap());
-    let delay =
-        CssDelay::Literal(CssDelayLiteral::try_new(-250.0, CssTimeUnit::Milliseconds).unwrap());
+    let duration = CssDuration::try_new(CssTimeValue::from_literal(
+        CssTimeLiteral::try_new("1", CssTimeUnit::Seconds).unwrap(),
+    ))
+    .unwrap();
+    let delay = CssTimeValue::from_literal(
+        CssTimeLiteral::try_new("-250", CssTimeUnit::Milliseconds).unwrap(),
+    );
     let transition = CssTransition::try_new(
         Some(CssTransitionProperty::All),
         Some(duration),
@@ -33,11 +37,13 @@ fn checked_transition_preserves_distinct_time_domains_and_omissions() {
         Some(CssTransitionProperty::All)
     ));
     assert!(
-        matches!(transition.duration(), Some(CssDuration::Literal(value))
-        if value.value() == 1.0 && value.unit() == CssTimeUnit::Seconds)
+        matches!(transition.duration().and_then(|value| value.time().literal()), Some(value)
+        if value.numeric().representation() == "1" && value.unit() == CssTimeUnit::Seconds)
     );
-    assert!(matches!(transition.delay(), Some(CssDelay::Literal(value))
-        if value.value() == -250.0 && value.unit() == CssTimeUnit::Milliseconds));
+    assert!(
+        matches!(transition.delay().and_then(|value| value.literal()), Some(value)
+        if value.numeric().representation() == "-250" && value.unit() == CssTimeUnit::Milliseconds)
+    );
     assert!(transition.timing_function().is_none());
     assert_eq!(
         CssTransitionList::try_new(vec![transition])
@@ -52,11 +58,14 @@ fn checked_transition_preserves_distinct_time_domains_and_omissions() {
 fn checked_animation_preserves_eight_semantic_slots() {
     let animation = CssAnimation::try_new(CssAnimationComponents {
         name: Some(CssAnimationName::None),
-        duration: Some(CssDuration::Literal(
-            CssDurationLiteral::try_new(2.0, CssTimeUnit::Seconds).unwrap(),
-        )),
-        delay: Some(CssDelay::Literal(
-            CssDelayLiteral::try_new(-1.0, CssTimeUnit::Seconds).unwrap(),
+        duration: Some(
+            CssDuration::try_new(CssTimeValue::from_literal(
+                CssTimeLiteral::try_new("2", CssTimeUnit::Seconds).unwrap(),
+            ))
+            .unwrap(),
+        ),
+        delay: Some(CssTimeValue::from_literal(
+            CssTimeLiteral::try_new("-1", CssTimeUnit::Seconds).unwrap(),
         )),
         timing_function: Some(CssEasing::Keyword(CssEasingKeyword::EaseOut)),
         iteration_count: Some(CssAnimationIterationCount::Number(
@@ -72,9 +81,11 @@ fn checked_animation_preserves_eight_semantic_slots() {
     .unwrap();
     assert!(matches!(animation.name(), Some(CssAnimationName::None)));
     assert!(
-        matches!(animation.duration(), Some(CssDuration::Literal(value)) if value.value() == 2.0)
+        matches!(animation.duration().and_then(|value| value.time().literal()), Some(value) if value.numeric().representation() == "2")
     );
-    assert!(matches!(animation.delay(), Some(CssDelay::Literal(value)) if value.value() == -1.0));
+    assert!(
+        matches!(animation.delay().and_then(|value| value.literal()), Some(value) if value.numeric().representation() == "-1")
+    );
     assert!(matches!(
         animation.timing_function(),
         Some(CssEasing::Keyword(CssEasingKeyword::EaseOut))

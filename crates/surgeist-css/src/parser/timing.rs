@@ -1,9 +1,7 @@
 use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
-use super::values::{
-    CalculationRoot, next_is_comma, parse_custom_ident_from_str_at, parse_nonnegative_number,
-    parse_numeric_function,
-};
+use super::values::{next_is_comma, parse_custom_ident_from_str_at, parse_nonnegative_number};
+use crate::CssDuration;
 use crate::error::{CssFeatureId, Error, basic, unsupported_value, unsupported_value_at};
 use crate::syntax::*;
 use crate::validation::unsupported_keyword_reason;
@@ -33,8 +31,7 @@ pub(super) fn parse_duration_list<'i, 't>(
             ));
         }
     }
-    CssDurationList::try_new(values)
-        .ok_or_else(|| unsupported_value(input, None, "duration list is empty"))
+    Ok(CssDurationList::from_parser(values))
 }
 
 pub(super) fn parse_delay_list<'i, 't>(
@@ -55,82 +52,46 @@ pub(super) fn parse_delay_list<'i, 't>(
             ));
         }
     }
-    CssDelayList::try_new(values)
-        .ok_or_else(|| unsupported_value(input, None, "delay list is empty"))
+    Ok(CssDelayList::from_parser(values))
 }
 
 pub(super) fn parse_duration<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssDuration, ParseError<'i, Error>> {
-    let numeric_start = input.state();
     let location = input.current_source_location();
-    match input.next().map_err(basic)? {
-        Token::Dimension { value, unit, .. } if unit.eq_ignore_ascii_case("s") => {
-            CssDurationLiteral::try_new(*value, CssTimeUnit::Seconds)
-                .map(CssDuration::Literal)
-                .ok_or_else(|| {
-                    unsupported_value_at(
-                        location,
-                        None,
-                        "CSS duration must be finite and non-negative",
-                    )
-                })
-        }
-        Token::Dimension { value, unit, .. } if unit.eq_ignore_ascii_case("ms") => {
-            CssDurationLiteral::try_new(*value, CssTimeUnit::Milliseconds)
-                .map(CssDuration::Literal)
-                .ok_or_else(|| {
-                    unsupported_value_at(
-                        location,
-                        None,
-                        "CSS duration must be finite and non-negative",
-                    )
-                })
-        }
-        Token::Dimension { unit, .. } => Err(unsupported_value_at(
-            location,
-            None,
-            format!("unsupported duration unit `{unit}`"),
-        )),
-        Token::Function(name) if crate::numeric::is_math_function(name) => {
-            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Time)
-                .map(CssTimeCalculation::from_expression)
-                .map(CssDuration::Calculation)
-        }
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    }
+    let offset = input.position().byte_index();
+    let time = parse_delay(input, numeric)?;
+    crate::CssDuration::from_parser_value(time)
+        .map_err(|error| time_error(numeric, &error, location, offset))
 }
 
 pub(super) fn parse_delay<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssDelay, ParseError<'i, Error>> {
-    let numeric_start = input.state();
+) -> std::result::Result<crate::CssTimeValue, ParseError<'i, Error>> {
+    input.skip_whitespace();
     let location = input.current_source_location();
-    match input.next().map_err(basic)? {
-        Token::Dimension { value, unit, .. } if unit.eq_ignore_ascii_case("s") => {
-            CssDelayLiteral::try_new(*value, CssTimeUnit::Seconds)
-                .map(CssDelay::Literal)
-                .ok_or_else(|| unsupported_value_at(location, None, "CSS delay must be finite"))
-        }
-        Token::Dimension { value, unit, .. } if unit.eq_ignore_ascii_case("ms") => {
-            CssDelayLiteral::try_new(*value, CssTimeUnit::Milliseconds)
-                .map(CssDelay::Literal)
-                .ok_or_else(|| unsupported_value_at(location, None, "CSS delay must be finite"))
-        }
-        Token::Dimension { unit, .. } => Err(unsupported_value_at(
-            location,
-            None,
-            format!("unsupported delay unit `{unit}`"),
-        )),
-        Token::Function(name) if crate::numeric::is_math_function(name) => {
-            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Time)
-                .map(CssTimeCalculation::from_expression)
-                .map(CssDelay::Calculation)
-        }
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
+    let offset = input.position().byte_index();
+    let component = numeric
+        .collect(input)
+        .map_err(|error| time_error(numeric, &error, location, offset))?;
+    crate::CssTimeValue::from_parser_component(component, numeric)
+        .map_err(|error| time_error(numeric, &error, location, offset))
+}
+fn time_error<'i>(
+    numeric: &crate::numeric::NumericInputContext<'_>,
+    error: &crate::CssNumericConstructionError,
+    fallback: cssparser::SourceLocation,
+    offset: usize,
+) -> ParseError<'i, Error> {
+    let location = numeric.error_location(error, fallback, offset);
+    if let Some(component) = error.component_error()
+        && crate::error::is_component_resource_error(component)
+    {
+        return crate::error::invalid_component_value(location, component.clone());
     }
+    unsupported_value_at(location, None, "invalid authored time value")
 }
 
 pub(super) fn parse_easing_list<'i, 't>(
@@ -345,8 +306,7 @@ pub(super) fn parse_transition_value_list<'i, 't>(
             ));
         }
     }
-    CssTransitionList::try_new(items)
-        .ok_or_else(|| unsupported_value(input, None, "transition list is empty"))
+    Ok(CssTransitionList::from_parser(items))
 }
 
 pub(super) fn parse_single_transition_value<'i, 't>(
@@ -389,7 +349,7 @@ pub(super) fn parse_single_transition_value<'i, 't>(
             "unsupported transition component",
         ));
     }
-    CssTransition::try_new(property, duration, delay, timing_function)
+    CssTransition::from_parser(property, duration, delay, timing_function)
         .ok_or_else(|| unsupported_value(input, None, "transition item is empty"))
 }
 
@@ -599,8 +559,7 @@ pub(super) fn parse_animation_value_list<'i, 't>(
             ));
         }
     }
-    CssAnimationList::try_new(items)
-        .ok_or_else(|| unsupported_value(input, None, "animation list is empty"))
+    Ok(CssAnimationList::from_parser(items))
 }
 
 pub(super) fn parse_single_animation_value<'i, 't>(
@@ -674,7 +633,7 @@ pub(super) fn parse_single_animation_value<'i, 't>(
         ));
     }
 
-    CssAnimation::try_new(CssAnimationComponents {
+    CssAnimation::from_parser(CssAnimationComponents {
         name,
         duration,
         delay,

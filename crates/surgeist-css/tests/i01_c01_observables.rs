@@ -3834,8 +3834,7 @@ fn assert_known_property_value(
     use surgeist_css::{
         CssAnimationDirection as Direction, CssAnimationFillMode as Fill,
         CssAnimationIterationCount as Iteration, CssAnimationName as Name,
-        CssAnimationPlayState as Play, CssDelay, CssDuration, CssEasing,
-        CssEasingKeyword as Keyword, CssTimeUnit as Unit,
+        CssAnimationPlayState as Play, CssEasing, CssEasingKeyword as Keyword, CssTimeUnit as Unit,
         CssTransitionProperty as TransitionPropertyValue,
     };
     let timing_authored = match (property, value) {
@@ -3857,18 +3856,21 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::TransitionDuration,
             surgeist_css::CssKnownPropertyValueRef::TransitionDuration(value),
         ) => {
-            assert!(matches!(value.durations().values(),
-                [CssDuration::Literal(a), CssDuration::Literal(b)]
-                if a.value() == 150.0 && a.unit() == Unit::Milliseconds
-                    && b.value() == 2.0 && b.unit() == Unit::Seconds));
+            assert!(
+                matches!({ let values = value.durations().values(); if values.len() == 2 { (values[0].time().literal(),values[1].time().literal()) } else { (None,None) } }, (Some(a), Some(b))
+                if a.numeric().representation() == "150" && a.unit() == Unit::Milliseconds
+                    && b.numeric().representation() == "2" && b.unit() == Unit::Seconds)
+            );
             Some(value.as_css())
         }
         (
             surgeist_css::CssKnownProperty::TransitionDelay,
             surgeist_css::CssKnownPropertyValueRef::TransitionDelay(value),
         ) => {
-            assert!(matches!(value.delays().values(), [CssDelay::Literal(a)]
-                if a.value() == 20.0 && a.unit() == Unit::Milliseconds));
+            assert!(
+                matches!({ let values = value.delays().values(); if values.len() == 1 { values[0].literal() } else { None } }, Some(a)
+                if a.numeric().representation() == "20" && a.unit() == Unit::Milliseconds)
+            );
             Some(value.as_css())
         }
         (
@@ -3899,10 +3901,10 @@ fn assert_known_property_value(
                 matches!(first.property(), Some(TransitionPropertyValue::Custom(name)) if name.as_str() == "opacity")
             );
             assert!(
-                matches!(first.duration(), Some(CssDuration::Literal(t)) if t.value() == 150.0 && t.unit() == Unit::Milliseconds)
+                matches!(first.duration().and_then(|value| value.time().literal()), Some(t) if t.numeric().representation() == "150" && t.unit() == Unit::Milliseconds)
             );
             assert!(
-                matches!(first.delay(), Some(CssDelay::Literal(t)) if t.value() == 20.0 && t.unit() == Unit::Milliseconds)
+                matches!(first.delay().and_then(|value| value.literal()), Some(t) if t.numeric().representation() == "20" && t.unit() == Unit::Milliseconds)
             );
             assert!(matches!(
                 first.timing_function(),
@@ -3912,7 +3914,7 @@ fn assert_known_property_value(
                 matches!(second.property(), Some(TransitionPropertyValue::Custom(name)) if name.as_str() == "transform")
             );
             assert!(
-                matches!(second.duration(), Some(CssDuration::Literal(t)) if t.value() == 2.0 && t.unit() == Unit::Seconds)
+                matches!(second.duration().and_then(|value| value.time().literal()), Some(t) if t.numeric().representation() == "2" && t.unit() == Unit::Seconds)
             );
             assert!(second.delay().is_none());
             assert!(matches!(
@@ -3935,7 +3937,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownPropertyValueRef::AnimationDuration(value),
         ) => {
             assert!(
-                matches!(value.durations().values(), [CssDuration::Literal(t)] if t.value() == 1.0 && t.unit() == Unit::Seconds)
+                matches!({ let values = value.durations().values(); if values.len() == 1 { values[0].time().literal() } else { None } }, Some(t) if t.numeric().representation() == "1" && t.unit() == Unit::Seconds)
             );
             Some(value.as_css())
         }
@@ -3944,7 +3946,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownPropertyValueRef::AnimationDelay(value),
         ) => {
             assert!(
-                matches!(value.delays().values(), [CssDelay::Literal(t)] if t.value() == 200.0 && t.unit() == Unit::Milliseconds)
+                matches!({ let values = value.delays().values(); if values.len() == 1 { values[0].literal() } else { None } }, Some(t) if t.numeric().representation() == "200" && t.unit() == Unit::Milliseconds)
             );
             Some(value.as_css())
         }
@@ -3997,10 +3999,10 @@ fn assert_known_property_value(
             };
             assert!(matches!(item.name(), Some(Name::Custom(name)) if name.as_str() == "fade"));
             assert!(
-                matches!(item.duration(), Some(CssDuration::Literal(t)) if t.value() == 1.0 && t.unit() == Unit::Seconds)
+                matches!(item.duration().and_then(|value| value.time().literal()), Some(t) if t.numeric().representation() == "1" && t.unit() == Unit::Seconds)
             );
             assert!(
-                matches!(item.delay(), Some(CssDelay::Literal(t)) if t.value() == 200.0 && t.unit() == Unit::Milliseconds)
+                matches!(item.delay().and_then(|value| value.literal()), Some(t) if t.numeric().representation() == "200" && t.unit() == Unit::Milliseconds)
             );
             assert!(matches!(
                 item.timing_function(),

@@ -949,9 +949,6 @@ pub surgeist_css::CssDeclarationContextRef::KeyframeCustomProperty(&'a surgeist_
 pub surgeist_css::CssDeclarationContextRef::KnownProperty(surgeist_css::CssKnownProperty)
 #[non_exhaustive] pub enum surgeist_css::CssDefinedFalseMediaReason
 pub surgeist_css::CssDefinedFalseMediaReason::UnknownType
-#[non_exhaustive] pub enum surgeist_css::CssDelay
-pub surgeist_css::CssDelay::Calculation(surgeist_css::CssTimeCalculation)
-pub surgeist_css::CssDelay::Literal(surgeist_css::CssDelayLiteral)
 #[non_exhaustive] pub enum surgeist_css::CssDirection
 pub surgeist_css::CssDirection::Ltr
 pub surgeist_css::CssDirection::Rtl
@@ -1014,9 +1011,6 @@ pub surgeist_css::CssDisplayValue::OutsideInside::outside: surgeist_css::CssDisp
 impl surgeist_css::CssDisplayValue
 pub fn surgeist_css::CssDisplayValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssDisplayValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
-#[non_exhaustive] pub enum surgeist_css::CssDuration
-pub surgeist_css::CssDuration::Calculation(surgeist_css::CssTimeCalculation)
-pub surgeist_css::CssDuration::Literal(surgeist_css::CssDurationLiteral)
 #[non_exhaustive] pub enum surgeist_css::CssEasing
 pub surgeist_css::CssEasing::CubicBezier(surgeist_css::CssCubicBezier)
 pub surgeist_css::CssEasing::Keyword(surgeist_css::CssEasingKeyword)
@@ -4206,7 +4200,7 @@ pub fn surgeist_css::CssAngleValue::origin(&self) -> &surgeist_css::CssValueOrig
 pub fn surgeist_css::CssAngleValue::try_from_calculation(calculation: surgeist_css::CssAngleCalculation) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 pub struct surgeist_css::CssAnimation
 impl surgeist_css::CssAnimation
-pub const fn surgeist_css::CssAnimation::delay(&self) -> core::option::Option<&surgeist_css::CssDelay>
+pub const fn surgeist_css::CssAnimation::delay(&self) -> core::option::Option<&surgeist_css::CssTimeValue>
 pub const fn surgeist_css::CssAnimation::direction(&self) -> core::option::Option<surgeist_css::CssAnimationDirection>
 pub const fn surgeist_css::CssAnimation::duration(&self) -> core::option::Option<&surgeist_css::CssDuration>
 pub const fn surgeist_css::CssAnimation::fill_mode(&self) -> core::option::Option<surgeist_css::CssAnimationFillMode>
@@ -4215,8 +4209,10 @@ pub const fn surgeist_css::CssAnimation::name(&self) -> core::option::Option<&su
 pub const fn surgeist_css::CssAnimation::play_state(&self) -> core::option::Option<surgeist_css::CssAnimationPlayState>
 pub const fn surgeist_css::CssAnimation::timing_function(&self) -> core::option::Option<&surgeist_css::CssEasing>
 pub fn surgeist_css::CssAnimation::try_new(components: surgeist_css::CssAnimationComponents) -> core::option::Option<Self>
+impl core::cmp::PartialEq for surgeist_css::CssAnimation
+pub fn surgeist_css::CssAnimation::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssAnimationComponents
-pub surgeist_css::CssAnimationComponents::delay: core::option::Option<surgeist_css::CssDelay>
+pub surgeist_css::CssAnimationComponents::delay: core::option::Option<surgeist_css::CssTimeValue>
 pub surgeist_css::CssAnimationComponents::direction: core::option::Option<surgeist_css::CssAnimationDirection>
 pub surgeist_css::CssAnimationComponents::duration: core::option::Option<surgeist_css::CssDuration>
 pub surgeist_css::CssAnimationComponents::fill_mode: core::option::Option<surgeist_css::CssAnimationFillMode>
@@ -4224,6 +4220,8 @@ pub surgeist_css::CssAnimationComponents::iteration_count: core::option::Option<
 pub surgeist_css::CssAnimationComponents::name: core::option::Option<surgeist_css::CssAnimationName>
 pub surgeist_css::CssAnimationComponents::play_state: core::option::Option<surgeist_css::CssAnimationPlayState>
 pub surgeist_css::CssAnimationComponents::timing_function: core::option::Option<surgeist_css::CssEasing>
+impl core::cmp::PartialEq for surgeist_css::CssAnimationComponents
+pub fn surgeist_css::CssAnimationComponents::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssAnimationDelayPropertyValue
 impl surgeist_css::CssAnimationDelayPropertyValue
 pub fn surgeist_css::CssAnimationDelayPropertyValue::as_css(&self) -> &str
@@ -5714,13 +5712,10 @@ pub type surgeist_css::CssDeclarationList::Target = [surgeist_css::CssDeclaratio
 pub fn surgeist_css::CssDeclarationList::deref(&self) -> &Self::Target
 pub struct surgeist_css::CssDelayList
 impl surgeist_css::CssDelayList
-pub fn surgeist_css::CssDelayList::try_new(values: alloc::vec::Vec<surgeist_css::CssDelay>) -> core::option::Option<Self>
-pub fn surgeist_css::CssDelayList::values(&self) -> &[surgeist_css::CssDelay]
-pub struct surgeist_css::CssDelayLiteral
-impl surgeist_css::CssDelayLiteral
-pub fn surgeist_css::CssDelayLiteral::try_new(value: f32, unit: surgeist_css::CssTimeUnit) -> core::option::Option<Self>
-pub const fn surgeist_css::CssDelayLiteral::unit(self) -> surgeist_css::CssTimeUnit
-pub const fn surgeist_css::CssDelayLiteral::value(self) -> f32
+pub fn surgeist_css::CssDelayList::try_new(values: alloc::vec::Vec<surgeist_css::CssTimeValue>) -> core::option::Option<Self>
+pub fn surgeist_css::CssDelayList::values(&self) -> &[surgeist_css::CssTimeValue]
+impl core::cmp::PartialEq for surgeist_css::CssDelayList
+pub fn surgeist_css::CssDelayList::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssDescriptorCombinationError
 impl surgeist_css::CssDescriptorCombinationError
 pub const fn surgeist_css::CssDescriptorCombinationError::at_rule(&self) -> &surgeist_css::CssAtRuleName
@@ -5768,15 +5763,21 @@ pub fn surgeist_css::CssDropShadow::serialize_specified(&self) -> core::result::
 pub fn surgeist_css::CssDropShadow::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl core::cmp::PartialEq for surgeist_css::CssDropShadow
 pub fn surgeist_css::CssDropShadow::eq(&self, other: &Self) -> bool
+pub struct surgeist_css::CssDuration
+impl surgeist_css::CssDuration
+pub fn surgeist_css::CssDuration::origin(&self) -> &surgeist_css::CssValueOrigin
+pub const fn surgeist_css::CssDuration::time(&self) -> &surgeist_css::CssTimeValue
+pub fn surgeist_css::CssDuration::try_new(time: surgeist_css::CssTimeValue) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+impl surgeist_css::CssDuration
+pub fn surgeist_css::CssDuration::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssDuration::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl core::cmp::Eq for surgeist_css::CssDuration
+impl core::cmp::PartialEq for surgeist_css::CssDuration
+pub fn surgeist_css::CssDuration::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssDurationList
 impl surgeist_css::CssDurationList
 pub fn surgeist_css::CssDurationList::try_new(values: alloc::vec::Vec<surgeist_css::CssDuration>) -> core::option::Option<Self>
 pub fn surgeist_css::CssDurationList::values(&self) -> &[surgeist_css::CssDuration]
-pub struct surgeist_css::CssDurationLiteral
-impl surgeist_css::CssDurationLiteral
-pub const fn surgeist_css::CssDurationLiteral::try_new(value: f32, unit: surgeist_css::CssTimeUnit) -> core::option::Option<Self>
-pub const fn surgeist_css::CssDurationLiteral::unit(self) -> surgeist_css::CssTimeUnit
-pub const fn surgeist_css::CssDurationLiteral::value(self) -> f32
 pub struct surgeist_css::CssEasingList
 impl surgeist_css::CssEasingList
 pub fn surgeist_css::CssEasingList::try_new(values: alloc::vec::Vec<surgeist_css::CssEasing>) -> core::option::Option<Self>
@@ -8651,7 +8652,28 @@ pub fn surgeist_css::CssTimeCalculation::serialize(&self) -> core::result::Resul
 pub fn surgeist_css::CssTimeCalculation::try_from_components(values: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 pub fn surgeist_css::CssTimeCalculation::try_from_components_with_limits(values: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 impl surgeist_css::CssTimeCalculation
-pub fn surgeist_css::CssTimeCalculation::try_literal(value: f32, unit: surgeist_css::CssTimeUnit) -> core::option::Option<Self>
+pub fn surgeist_css::CssTimeCalculation::try_literal(number: &str, unit: surgeist_css::CssTimeUnit) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub struct surgeist_css::CssTimeLiteral
+impl surgeist_css::CssTimeLiteral
+pub const fn surgeist_css::CssTimeLiteral::component(&self) -> &surgeist_css::CssComponentValue
+pub fn surgeist_css::CssTimeLiteral::numeric(&self) -> surgeist_css::CssNumericTokenRef<'_>
+pub const fn surgeist_css::CssTimeLiteral::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssTimeLiteral::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssTimeLiteral::try_new(number: &str, unit: surgeist_css::CssTimeUnit) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+pub const fn surgeist_css::CssTimeLiteral::unit(&self) -> surgeist_css::CssTimeUnit
+impl surgeist_css::CssTimeLiteral
+pub fn surgeist_css::CssTimeLiteral::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTimeLiteral::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssTimeValue
+impl surgeist_css::CssTimeValue
+pub fn surgeist_css::CssTimeValue::calculation(&self) -> core::option::Option<&surgeist_css::CssTimeCalculation>
+pub fn surgeist_css::CssTimeValue::from_literal(literal: surgeist_css::CssTimeLiteral) -> Self
+pub fn surgeist_css::CssTimeValue::literal(&self) -> core::option::Option<&surgeist_css::CssTimeLiteral>
+pub fn surgeist_css::CssTimeValue::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssTimeValue::try_from_calculation(calculation: surgeist_css::CssTimeCalculation) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+impl surgeist_css::CssTimeValue
+pub fn surgeist_css::CssTimeValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTimeValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssTokenSummary
 impl surgeist_css::CssTokenSummary
 pub fn surgeist_css::CssTokenSummary::authored(&self) -> &str
@@ -8746,11 +8768,13 @@ impl core::cmp::PartialEq for surgeist_css::CssTransformTranslate3d
 pub fn surgeist_css::CssTransformTranslate3d::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssTransition
 impl surgeist_css::CssTransition
-pub const fn surgeist_css::CssTransition::delay(&self) -> core::option::Option<&surgeist_css::CssDelay>
+pub const fn surgeist_css::CssTransition::delay(&self) -> core::option::Option<&surgeist_css::CssTimeValue>
 pub const fn surgeist_css::CssTransition::duration(&self) -> core::option::Option<&surgeist_css::CssDuration>
 pub const fn surgeist_css::CssTransition::property(&self) -> core::option::Option<&surgeist_css::CssTransitionProperty>
 pub const fn surgeist_css::CssTransition::timing_function(&self) -> core::option::Option<&surgeist_css::CssEasing>
-pub fn surgeist_css::CssTransition::try_new(property: core::option::Option<surgeist_css::CssTransitionProperty>, duration: core::option::Option<surgeist_css::CssDuration>, delay: core::option::Option<surgeist_css::CssDelay>, timing_function: core::option::Option<surgeist_css::CssEasing>) -> core::option::Option<Self>
+pub fn surgeist_css::CssTransition::try_new(property: core::option::Option<surgeist_css::CssTransitionProperty>, duration: core::option::Option<surgeist_css::CssDuration>, delay: core::option::Option<surgeist_css::CssTimeValue>, timing_function: core::option::Option<surgeist_css::CssEasing>) -> core::option::Option<Self>
+impl core::cmp::PartialEq for surgeist_css::CssTransition
+pub fn surgeist_css::CssTransition::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssTransitionDelayPropertyValue
 impl surgeist_css::CssTransitionDelayPropertyValue
 pub fn surgeist_css::CssTransitionDelayPropertyValue::as_css(&self) -> &str

@@ -1043,21 +1043,26 @@ other public enums are non-exhaustive, so downstream matches require a wildcard.
 The [authored-value explanation](explanation.md#symbolic-values-and-compatibility)
 describes these symbolic boundaries.
 
-## Finite numeric values, timing domains, and symbolic calculations
+## Numeric values, exact timing domains, and symbolic calculations
 
-Current numeric models reject NaN and both infinities at checked construction
-boundaries. Duration literals are additionally non-negative, while delay
-literals are signed. Range checks that belong to the authored literal are
-immediate; a well-typed calculation remains symbolic when its eventual range
-belongs to computed-value processing.
+Ordinary time values retain their exact decimal coefficient, `s` or `ms` unit,
+and original component provenance. `CssTimeLiteral` owns one dimension;
+`CssTimeValue` holds that literal or a checked symbolic time calculation.
+`CssDuration` applies the nonnegative range to an ordinary literal, while delay
+values use signed `CssTimeValue` directly. Signed zero is valid, and bare number
+zero is not a time dimension. A well-typed calculation remains symbolic even
+when its eventual duration range belongs to computed-value processing.
 
 ```rust
 use surgeist_css::{
-    CssDelay, CssDuration, CssDurationLiteral, CssKnownPropertyValueRef,
-    CssTimeUnit, parse_style_attribute,
+    CssDuration, CssKnownPropertyValueRef, CssTimeLiteral, CssTimeUnit,
+    CssTimeValue, parse_style_attribute,
 };
 
-assert!(CssDurationLiteral::try_new(-1.0, CssTimeUnit::Seconds).is_none());
+let negative = CssTimeValue::from_literal(
+    CssTimeLiteral::try_new("-1", CssTimeUnit::Seconds).unwrap(),
+);
+assert!(CssDuration::try_new(negative).is_err());
 
 let report = parse_style_attribute(concat!(
     "transition-duration: calc(-1s + 2s); ",
@@ -1073,10 +1078,7 @@ let CssKnownPropertyValueRef::TransitionDuration(duration) = report.syntax()[0]
 else {
     panic!("expected transition-duration");
 };
-assert!(matches!(
-    duration.durations().values()[0],
-    CssDuration::Calculation(_)
-));
+assert!(duration.durations().values()[0].time().calculation().is_some());
 
 let CssKnownPropertyValueRef::TransitionDelay(delay) = report.syntax()[1]
     .known()
@@ -1086,21 +1088,47 @@ let CssKnownPropertyValueRef::TransitionDelay(delay) = report.syntax()[1]
 else {
     panic!("expected transition-delay");
 };
-assert!(matches!(
-    delay.delays().values()[0],
-    CssDelay::Literal(value) if value.value() == -250.0
-));
+let literal = delay.delays().values()[0].literal().unwrap();
+assert_eq!(literal.numeric().representation(), "-250");
+assert_eq!(literal.unit(), CssTimeUnit::Milliseconds);
+assert_eq!(literal.serialize_specified().unwrap(), "-0.25s");
 ```
 
-The timing accessors expose `CssDuration`, `CssDelay`,
-`CssAnimationIterationCount`, `CssEasing`, and typed calculation trees directly.
+Time literals, time values and durations provide `serialize_specified()` and
+`serialize_specified_with_limits()`. Ordinary output converts milliseconds
+exactly to seconds and normalizes signed zero to `0s`; the stored coefficient,
+unit and original components remain unchanged. Output expands decimal digits
+without scientific notation. Node or byte limits produce a typed error without
+returning partial CSS or mutating the value. Very large or small nonzero values
+remain valid authored values even when their expanded output exceeds a budget.
+
+This exact authored output is a partial CSSOM scalar serializer: it does not yet
+apply CSSOM's maximum of six fractional decimal places. For example,
+`CssTimeLiteral::try_new("0.0001", CssTimeUnit::Milliseconds)` emits
+`0.0000001s`, preserving more precision than that canonical formatting rule.
+Calculation emission uses the shared simplifier, whose floating point projection
+can still round, overflow or underflow; the original checked graph remains
+retained. Exact ordinary output does not establish exact calculation output.
+
 `CssTransition::try_new` and `CssAnimation::try_new` accept the same typed
-components as parsing. `CssAnimationComponents` is the animation constructor's
-input assembly.
-Empty aggregate items and empty lists are rejected. Calculation roots preserve
-authored units and expression shape;
-this crate does not resolve relative units, evaluate computed ranges, run
-animation timelines, or lower values into sibling Surgeist crates.
+components as their property parsers. `CssAnimationComponents` is the animation
+constructor's input assembly. Public construction rejects recovered time
+components, empty aggregate items and empty lists. Recovering parsing can retain
+implicitly closed math with diagnostics; clean validators reject those reports.
+Checked property construction rejects the first original implicit closure for
+all four time longhands and both timing shorthands, including pending envelopes.
+
+Raw time literals, values and calculation trees compare original token spelling
+and provenance. Duration wrappers, timing lists and transition/animation
+aggregates compare their time children without source coordinates while keeping
+lexical coefficients, units, branches, order and omissions distinct. Constructors
+and parsers retain absent shorthand fields; they do not insert initial values.
+Frequency and resolution convenience models still use finite numeric
+construction. Animation iteration counts and easing values use their own shared
+numeric models.
+This crate does not resolve relative units, evaluate computed ranges, run animation
+timelines, or lower values into sibling Surgeist crates. Whole timing aggregate
+specified writers and timing property expansion remain unfinished.
 
 ## Property-specific authored positions
 
