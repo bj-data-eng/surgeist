@@ -190,6 +190,7 @@ pub surgeist_css::CssBasicShape::Inset(alloc::boxed::Box<surgeist_css::CssInsetS
 pub surgeist_css::CssBasicShape::Path(surgeist_css::CssPathShape)
 pub surgeist_css::CssBasicShape::Polygon(surgeist_css::CssPolygonShape)
 pub surgeist_css::CssBasicShape::Rect(surgeist_css::CssRectShape)
+pub surgeist_css::CssBasicShape::Shape(surgeist_css::CssShapeFunction)
 pub surgeist_css::CssBasicShape::Xywh(surgeist_css::CssXywhShape)
 impl surgeist_css::CssBasicShape
 pub fn surgeist_css::CssBasicShape::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
@@ -3573,6 +3574,73 @@ pub surgeist_css::CssSerializedOrigin::Separator
 pub surgeist_css::CssSerializedOrigin::Separator::after: surgeist_css::CssValueOrigin
 pub surgeist_css::CssSerializedOrigin::Separator::before: surgeist_css::CssValueOrigin
 pub surgeist_css::CssSerializedOrigin::Token(surgeist_css::CssValueOrigin)
+#[non_exhaustive] pub enum surgeist_css::CssShapeAbsoluteControlPointRef<'a>
+pub surgeist_css::CssShapeAbsoluteControlPointRef::Coordinates
+pub surgeist_css::CssShapeAbsoluteControlPointRef::Coordinates::anchor: surgeist_css::CssShapeControlAnchor
+pub surgeist_css::CssShapeAbsoluteControlPointRef::Coordinates::offset: &'a surgeist_css::CssShapeCoordinatePair
+pub surgeist_css::CssShapeAbsoluteControlPointRef::Position(&'a surgeist_css::CssPosition)
+#[non_exhaustive] pub enum surgeist_css::CssShapeArcRadii
+pub surgeist_css::CssShapeArcRadii::One(surgeist_css::CssSpecifiedLengthPercentage)
+pub surgeist_css::CssShapeArcRadii::Two
+pub surgeist_css::CssShapeArcRadii::Two::horizontal: surgeist_css::CssSpecifiedLengthPercentage
+pub surgeist_css::CssShapeArcRadii::Two::vertical: surgeist_css::CssSpecifiedLengthPercentage
+impl core::cmp::PartialEq for surgeist_css::CssShapeArcRadii
+pub fn surgeist_css::CssShapeArcRadii::eq(&self, other: &Self) -> bool
+#[non_exhaustive] pub enum surgeist_css::CssShapeArcSize
+pub surgeist_css::CssShapeArcSize::Large
+pub surgeist_css::CssShapeArcSize::Small
+#[non_exhaustive] pub enum surgeist_css::CssShapeArcSweep
+pub surgeist_css::CssShapeArcSweep::Ccw
+pub surgeist_css::CssShapeArcSweep::Cw
+#[non_exhaustive] pub enum surgeist_css::CssShapeCommand
+pub surgeist_css::CssShapeCommand::Arc(surgeist_css::CssShapeArc)
+pub surgeist_css::CssShapeCommand::Close
+pub surgeist_css::CssShapeCommand::Curve(surgeist_css::CssShapeCurve)
+pub surgeist_css::CssShapeCommand::HorizontalLine(surgeist_css::CssShapeHorizontalLine)
+pub surgeist_css::CssShapeCommand::Line(surgeist_css::CssShapeEndpoint)
+pub surgeist_css::CssShapeCommand::Move(surgeist_css::CssShapeEndpoint)
+pub surgeist_css::CssShapeCommand::Smooth(surgeist_css::CssShapeSmooth)
+pub surgeist_css::CssShapeCommand::VerticalLine(surgeist_css::CssShapeVerticalLine)
+#[non_exhaustive] pub enum surgeist_css::CssShapeConstructionError
+pub surgeist_css::CssShapeConstructionError::EmptyCommands
+impl core::error::Error for surgeist_css::CssShapeConstructionError
+impl core::fmt::Display for surgeist_css::CssShapeConstructionError
+pub fn surgeist_css::CssShapeConstructionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+#[non_exhaustive] pub enum surgeist_css::CssShapeControlAnchor
+pub surgeist_css::CssShapeControlAnchor::End
+pub surgeist_css::CssShapeControlAnchor::Origin
+pub surgeist_css::CssShapeControlAnchor::Start
+#[non_exhaustive] pub enum surgeist_css::CssShapeCurveRef<'a>
+pub surgeist_css::CssShapeCurveRef::By
+pub surgeist_css::CssShapeCurveRef::By::end: &'a surgeist_css::CssShapeCoordinatePair
+pub surgeist_css::CssShapeCurveRef::By::first: &'a surgeist_css::CssShapeRelativeControlPoint
+pub surgeist_css::CssShapeCurveRef::By::second: core::option::Option<&'a surgeist_css::CssShapeRelativeControlPoint>
+pub surgeist_css::CssShapeCurveRef::To
+pub surgeist_css::CssShapeCurveRef::To::end: &'a surgeist_css::CssPosition
+pub surgeist_css::CssShapeCurveRef::To::first: &'a surgeist_css::CssShapeAbsoluteControlPoint
+pub surgeist_css::CssShapeCurveRef::To::second: core::option::Option<&'a surgeist_css::CssShapeAbsoluteControlPoint>
+#[non_exhaustive] pub enum surgeist_css::CssShapeEndpoint
+pub surgeist_css::CssShapeEndpoint::By(surgeist_css::CssShapeCoordinatePair)
+pub surgeist_css::CssShapeEndpoint::To(surgeist_css::CssPosition)
+#[non_exhaustive] pub enum surgeist_css::CssShapeHorizontalLine
+pub surgeist_css::CssShapeHorizontalLine::By(surgeist_css::CssSpecifiedLengthPercentage)
+pub surgeist_css::CssShapeHorizontalLine::ToKeyword(surgeist_css::CssHorizontalPositionKeyword)
+pub surgeist_css::CssShapeHorizontalLine::ToOffset(surgeist_css::CssSpecifiedLengthPercentage)
+impl core::cmp::PartialEq for surgeist_css::CssShapeHorizontalLine
+pub fn surgeist_css::CssShapeHorizontalLine::eq(&self, other: &Self) -> bool
+#[non_exhaustive] pub enum surgeist_css::CssShapeSmoothRef<'a>
+pub surgeist_css::CssShapeSmoothRef::By
+pub surgeist_css::CssShapeSmoothRef::By::control: core::option::Option<&'a surgeist_css::CssShapeRelativeControlPoint>
+pub surgeist_css::CssShapeSmoothRef::By::end: &'a surgeist_css::CssShapeCoordinatePair
+pub surgeist_css::CssShapeSmoothRef::To
+pub surgeist_css::CssShapeSmoothRef::To::control: core::option::Option<&'a surgeist_css::CssShapeAbsoluteControlPoint>
+pub surgeist_css::CssShapeSmoothRef::To::end: &'a surgeist_css::CssPosition
+#[non_exhaustive] pub enum surgeist_css::CssShapeVerticalLine
+pub surgeist_css::CssShapeVerticalLine::By(surgeist_css::CssSpecifiedLengthPercentage)
+pub surgeist_css::CssShapeVerticalLine::ToKeyword(surgeist_css::CssVerticalPositionKeyword)
+pub surgeist_css::CssShapeVerticalLine::ToOffset(surgeist_css::CssSpecifiedLengthPercentage)
+impl core::cmp::PartialEq for surgeist_css::CssShapeVerticalLine
+pub fn surgeist_css::CssShapeVerticalLine::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssSizeValue
 pub surgeist_css::CssSizeValue::Auto
 pub surgeist_css::CssSizeValue::BoxSize(surgeist_css::CssBoxSize)
@@ -8113,6 +8181,56 @@ pub fn surgeist_css::CssShadow::serialize_specified(&self) -> core::result::Resu
 pub fn surgeist_css::CssShadow::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl core::cmp::PartialEq for surgeist_css::CssShadow
 pub fn surgeist_css::CssShadow::eq(&self, other: &Self) -> bool
+pub struct surgeist_css::CssShapeAbsoluteControlPoint
+impl surgeist_css::CssShapeAbsoluteControlPoint
+pub fn surgeist_css::CssShapeAbsoluteControlPoint::from_coordinates(offset: surgeist_css::CssShapeCoordinatePair, anchor: core::option::Option<surgeist_css::CssShapeControlAnchor>) -> Self
+pub const fn surgeist_css::CssShapeAbsoluteControlPoint::from_position(position: surgeist_css::CssPosition) -> Self
+pub const fn surgeist_css::CssShapeAbsoluteControlPoint::view(&self) -> surgeist_css::CssShapeAbsoluteControlPointRef<'_>
+pub struct surgeist_css::CssShapeArc
+impl surgeist_css::CssShapeArc
+pub const fn surgeist_css::CssShapeArc::endpoint(&self) -> &surgeist_css::CssShapeEndpoint
+pub const fn surgeist_css::CssShapeArc::new(endpoint: surgeist_css::CssShapeEndpoint, radii: surgeist_css::CssShapeArcRadii, sweep: core::option::Option<surgeist_css::CssShapeArcSweep>, size: core::option::Option<surgeist_css::CssShapeArcSize>, rotation: core::option::Option<surgeist_css::CssAngleValue>) -> Self
+pub const fn surgeist_css::CssShapeArc::radii(&self) -> &surgeist_css::CssShapeArcRadii
+pub const fn surgeist_css::CssShapeArc::rotation(&self) -> core::option::Option<&surgeist_css::CssAngleValue>
+pub const fn surgeist_css::CssShapeArc::size(&self) -> core::option::Option<surgeist_css::CssShapeArcSize>
+pub const fn surgeist_css::CssShapeArc::sweep(&self) -> core::option::Option<surgeist_css::CssShapeArcSweep>
+impl core::cmp::PartialEq for surgeist_css::CssShapeArc
+pub fn surgeist_css::CssShapeArc::eq(&self, other: &Self) -> bool
+pub struct surgeist_css::CssShapeCommandList
+impl surgeist_css::CssShapeCommandList
+pub fn surgeist_css::CssShapeCommandList::commands(&self) -> &[surgeist_css::CssShapeCommand]
+pub fn surgeist_css::CssShapeCommandList::try_new(commands: alloc::vec::Vec<surgeist_css::CssShapeCommand>) -> core::result::Result<Self, surgeist_css::CssShapeConstructionError>
+pub struct surgeist_css::CssShapeCoordinatePair
+impl surgeist_css::CssShapeCoordinatePair
+pub const fn surgeist_css::CssShapeCoordinatePair::new(x: surgeist_css::CssSpecifiedLengthPercentage, y: surgeist_css::CssSpecifiedLengthPercentage) -> Self
+pub const fn surgeist_css::CssShapeCoordinatePair::x(&self) -> &surgeist_css::CssSpecifiedLengthPercentage
+pub const fn surgeist_css::CssShapeCoordinatePair::y(&self) -> &surgeist_css::CssSpecifiedLengthPercentage
+impl core::cmp::PartialEq for surgeist_css::CssShapeCoordinatePair
+pub fn surgeist_css::CssShapeCoordinatePair::eq(&self, other: &Self) -> bool
+pub struct surgeist_css::CssShapeCurve
+impl surgeist_css::CssShapeCurve
+pub const fn surgeist_css::CssShapeCurve::by(end: surgeist_css::CssShapeCoordinatePair, first: surgeist_css::CssShapeRelativeControlPoint, second: core::option::Option<surgeist_css::CssShapeRelativeControlPoint>) -> Self
+pub const fn surgeist_css::CssShapeCurve::to(end: surgeist_css::CssPosition, first: surgeist_css::CssShapeAbsoluteControlPoint, second: core::option::Option<surgeist_css::CssShapeAbsoluteControlPoint>) -> Self
+pub const fn surgeist_css::CssShapeCurve::view(&self) -> surgeist_css::CssShapeCurveRef<'_>
+pub struct surgeist_css::CssShapeFunction
+impl surgeist_css::CssShapeFunction
+pub const fn surgeist_css::CssShapeFunction::commands(&self) -> &surgeist_css::CssShapeCommandList
+pub const fn surgeist_css::CssShapeFunction::fill_rule(&self) -> core::option::Option<surgeist_css::CssFillRule>
+pub const fn surgeist_css::CssShapeFunction::new(fill_rule: core::option::Option<surgeist_css::CssFillRule>, start: surgeist_css::CssPosition, commands: surgeist_css::CssShapeCommandList) -> Self
+pub const fn surgeist_css::CssShapeFunction::start(&self) -> &surgeist_css::CssPosition
+impl surgeist_css::CssShapeFunction
+pub fn surgeist_css::CssShapeFunction::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssShapeFunction::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssShapeRelativeControlPoint
+impl surgeist_css::CssShapeRelativeControlPoint
+pub const fn surgeist_css::CssShapeRelativeControlPoint::anchor(&self) -> core::option::Option<surgeist_css::CssShapeControlAnchor>
+pub const fn surgeist_css::CssShapeRelativeControlPoint::new(offset: surgeist_css::CssShapeCoordinatePair, anchor: core::option::Option<surgeist_css::CssShapeControlAnchor>) -> Self
+pub const fn surgeist_css::CssShapeRelativeControlPoint::offset(&self) -> &surgeist_css::CssShapeCoordinatePair
+pub struct surgeist_css::CssShapeSmooth
+impl surgeist_css::CssShapeSmooth
+pub const fn surgeist_css::CssShapeSmooth::by(end: surgeist_css::CssShapeCoordinatePair, control: core::option::Option<surgeist_css::CssShapeRelativeControlPoint>) -> Self
+pub const fn surgeist_css::CssShapeSmooth::to(end: surgeist_css::CssPosition, control: core::option::Option<surgeist_css::CssShapeAbsoluteControlPoint>) -> Self
+pub const fn surgeist_css::CssShapeSmooth::view(&self) -> surgeist_css::CssShapeSmoothRef<'_>
 pub struct surgeist_css::CssSheet
 impl surgeist_css::CssSheet
 pub const fn surgeist_css::CssSheet::encoding(&self) -> core::option::Option<&surgeist_css::CssEncodingDeclaration>

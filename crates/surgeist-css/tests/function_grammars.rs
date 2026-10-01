@@ -443,10 +443,13 @@ fn circle_symbolic_length_percentage_radius_remains_typed() {
 }
 
 #[test]
-fn deferred_basic_shape_functions_remain_unrecognized() {
+fn shape_commands_parse_through_the_existing_clip_path_front_door() {
     {
         let value = "shape(from 0 0, line to 1px 1px)";
-        assert_clip_path_rejected(value);
+        let property = parsed_clip_path_property(value);
+        assert!(
+            matches!(property.value(), CssClipPath::BasicShape(shape) if matches!(shape.shape(), CssBasicShape::Shape(_)))
+        );
     }
 }
 

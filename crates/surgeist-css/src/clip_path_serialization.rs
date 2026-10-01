@@ -71,6 +71,7 @@ impl CssBasicShape {
     specified_shape_methods!();
     fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self {
+            Self::Shape(value) => value.append_specified(writer),
             Self::Inset(value) => value.append_specified(writer),
             Self::Circle(value) => value.append_specified(writer),
             Self::Ellipse(value) => value.append_specified(writer),

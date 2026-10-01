@@ -318,7 +318,6 @@ fn malformed_css_path_envelopes_recover_once_without_widening_other_shapes() {
         "path('M0 0') border-box fill-box",
         "path('M0 0') circle()",
         "none path('M0 0')",
-        "shape(from 0 0, line to 1px 1px)",
     ] {
         reject(value);
     }

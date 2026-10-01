@@ -1522,7 +1522,7 @@ are invalid. An omitted box remains distinct from explicit border-box because
 its contextual interpretation belongs to style and shape processing.
 
 The supported functions are `inset()`, `rect()`, `xywh()`, `circle()`, `ellipse()`,
-`polygon()` and `path()`.
+`polygon()`, `path()` and `shape()`.
 Inset retains one to four authored signed length-percentage offsets and optional
 checked border radii. Polygon retains optional fill rule, optional signed pure
 rounding length and a nonempty ordered point list. The fill rule must precede
@@ -1550,7 +1550,7 @@ pure-length rectangle grammar has its own model.
 
 `CssPathShape` composes an optional `CssFillRule` and checked `CssPathData`.
 The shared fill keyword is `Nonzero` or `Evenodd`; omission stays distinct from
-explicit nonzero in both polygon and path models. Path syntax accepts one quoted
+explicit nonzero in polygon, path and shape models. Path syntax accepts one quoted
 string, preceded by an optional fill keyword and comma. Without that keyword,
 the comma is absent.
 
@@ -1583,6 +1583,55 @@ the original CSS token's source coordinates. There is no path-specific construct
 byte or command-count cap. Component parsing and output retain their existing
 explicit limits.
 
+`CssShapeFunction` stores an optional fill rule, a starting `CssPosition` and a
+checked nonempty `CssShapeCommandList`. The ordered `CssShapeCommand` variants
+are Move, Line, HorizontalLine, VerticalLine, Curve, Smooth, Arc and Close.
+Absolute `to` endpoints use the full position grammar; relative `by` endpoints
+use two signed length-percentages. Horizontal and vertical lines accept only
+their corresponding axis keyword or one offset. Close-only and move-only lists
+are valid authored syntax.
+
+A comma is required between the start and first command and between commands.
+This follows the pinned
+[Shapes examples](https://www.w3.org/TR/2025/CRD-css-shapes-1-20250612/#shape-examples)
+and WebKit Shapes consumer at revision
+`73aa6c89e2cb77c46184a81aec944e4ab99d114d`; the
+[printed outer production](https://www.w3.org/TR/2025/CRD-css-shapes-1-20250612/#funcdef-basic-shape-shape)
+omits that first comma. The start and absolute endpoints retain full Values 5
+positions despite the explanatory prose's narrower coordinate-pair wording.
+
+`CssShapeCurve::to` and `CssShapeCurve::by` couple the endpoint with its absolute or relative
+controls. A curve has one required control and an optional second; a smooth
+command has zero or one. Absolute controls accept a full position, while an
+explicit start/end/origin anchor requires a numeric coordinate pair. Relative
+controls contain a pair and optional anchor. Omitted anchors remain stored as
+omissions: downstream geometry interprets absolute controls from Origin and
+relative controls from Start. Explicit anchors and control arities stay distinct.
+
+`CssShapeArc` requires an endpoint and one or two signed length-percentage radii.
+Optional sweep, size and strict angle remain omitted or explicit as authored.
+Parsing accepts the option groups in any order, once each; canonical output
+orders radii, sweep, size and rotation. A `rotate` keyword requires its angle,
+and bare number zero is invalid there. Negative or zero radii remain authored
+values; radius correction, reflection and path construction require geometry
+context.
+
+```rust
+use surgeist_css::{
+    CssPosition, CssRelativeAxisPosition, CssShapeCommand, CssShapeCommandList,
+    CssShapeFunction,
+};
+
+let start = CssPosition::try_from_relative_axes(
+    CssRelativeAxisPosition::Start, CssRelativeAxisPosition::End,
+).unwrap();
+let commands = CssShapeCommandList::try_new(vec![CssShapeCommand::Close]).unwrap();
+let shape = CssShapeFunction::new(None, start, commands);
+assert!(shape.fill_rule().is_none());
+assert_eq!(shape.commands().commands().len(), 1);
+assert_eq!(shape.serialize_specified().unwrap(), "shape(from start end, close)");
+```
+
 Ordinary CSS parsing can retain a missing string quote or function parenthesis
 with recovery diagnostics. Clean validation rejects that report. Checked
 `clip-path` construction and replacement reentry reject recovered components
@@ -1612,8 +1661,11 @@ discrepancy without inserting its effective defaults into authored storage.
 Circle and ellipse positions use the full `CssPosition`. Shapes imports the
 [Values 5 WD 2024-11-11 position definition](https://www.w3.org/TR/2024/WD-css-values-5-20241111/#position);
 physical, axis-relative, named-flow and relative-flow forms remain symbolic.
-Circle, ellipse, rect, xywh and path expose Complete authored support; basic-shape
-and clip-path remain Partial because `shape()` remains unsupported. The
+All eight basic-shape functions and clip-path expose Complete authored grammar
+support. This classification does not establish contextual geometry or exact
+mathematical projection: calculations retain their authored graph, while their
+canonical emission uses the existing numeric simplifier and its bounded
+precision and range. The
 [catalog](../specs/catalog.json) pins the required position definition and its
 serialization clauses, plus the SVG path grammar and parsing definitions.
 These imports select neither Values 5 nor SVG in full.
@@ -1698,6 +1750,11 @@ coordinates. Composition adds one aggregate and one leaf for an explicit box;
 path charges its decoded-string leaf and optional explicit fill keyword, costing
 two nodes standalone without fill and three with fill. Quoting and escaping
 charge the same cumulative byte budget.
+Shape charges its from keyword, starting position, command list, each command
+and its authored endpoint, controls and options through the same parent writer.
+`shape(from 0px 0px, close)` costs nine input and projection nodes and 26 output
+bytes standalone. Its clip-path composition adds one node; an explicit reference
+box adds one more. Individual scalar and math providers retain their own charges.
 `CssBasicShape` and the enclosing BasicShape enum branch delegate transparently.
 Standalone none and geometry boxes cost one node in each budget; URL delegates
 its existing provider. Omitted children add no synthetic defaults. Wrappers and
@@ -3211,7 +3268,7 @@ records for `dimension`, `angle`, `angle-percentage`, `time-percentage`,
 `Partial` to `Complete`.
 
 The preserved extension records `ext.value.relative-color`,
-`ext.value.color-mix`, `ext.value.grid-repeat`, `ext.value.basic-shape`,
+`ext.value.color-mix`, `ext.value.grid-repeat`,
 and `ext.supports.selector` remain `Partial`,
 with both subset and remainder metadata. The five `ext.media.range.*` records
 for width, height, resolution, color and monochrome are now `Complete`, covering

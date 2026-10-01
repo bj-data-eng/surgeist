@@ -181,6 +181,7 @@ pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
     CssFeatureId::new("ext.value.basic-shape.circle"),
     CssFeatureId::new("ext.value.basic-shape.ellipse"),
     CssFeatureId::new("ext.value.basic-shape.polygon"),
+    CssFeatureId::new("ext.value.basic-shape.shape"),
 ];
 
 pub(super) fn parse_transform<'i, 't>(
@@ -1005,7 +1006,7 @@ fn parse_clip_path_shape<'i, 't>(
     let normalized_name = name.to_ascii_lowercase();
     if !matches!(
         normalized_name.as_str(),
-        "inset" | "circle" | "ellipse" | "polygon" | "rect" | "xywh" | "path"
+        "inset" | "circle" | "ellipse" | "polygon" | "rect" | "xywh" | "path" | "shape"
     ) {
         return Err(unsupported_value(
             input,
@@ -1015,6 +1016,7 @@ fn parse_clip_path_shape<'i, 't>(
     }
     input.parse_nested_block(|input| {
         let shape = match normalized_name.as_str() {
+            "shape" => super::shapes::parse_shape(input, numeric).map(CssBasicShape::Shape),
             "inset" => parse_inset_shape(input, numeric)
                 .map(Box::new)
                 .map(CssBasicShape::Inset),

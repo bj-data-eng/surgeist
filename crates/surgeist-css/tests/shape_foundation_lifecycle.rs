@@ -865,3 +865,510 @@ fn close_fixture_obeys_atomic_cumulative_limits_without_mutating_values_or_origi
     assert_eq!(basic.serialize_specified().unwrap(), expected);
     assert_eq!(source, before);
 }
+
+// Functional evidence for APIs introduced with shape support. These constructor
+// tests have no preimplementation RED; their expected states and counts follow
+// the authored grammar and independently enumerated semantic visits.
+mod construction {
+    use super::*;
+    use std::error::Error;
+
+    fn lp(text: &str) -> CssSpecifiedLengthPercentage {
+        CssSpecifiedLengthPercentage::try_from_component(
+            CssComponentValue::try_token(text).unwrap(),
+        )
+        .unwrap()
+    }
+    fn pair() -> CssShapeCoordinatePair {
+        CssShapeCoordinatePair::new(lp("1px"), lp("2%"))
+    }
+    fn position() -> CssPosition {
+        CssPosition::from_cartesian(
+            CssCartesianPosition::try_new(
+                CssHorizontalPosition::Offset(lp("0px")),
+                CssVerticalPosition::Offset(lp("0px")),
+            )
+            .unwrap(),
+        )
+    }
+    fn angle(text: &str) -> CssAngleValue {
+        CssAngleValue::from_literal(
+            CssAngleLiteral::try_from_component(CssComponentValue::try_token(text).unwrap())
+                .unwrap(),
+        )
+    }
+    fn shape(commands: Vec<CssShapeCommand>) -> CssShapeFunction {
+        CssShapeFunction::new(
+            None,
+            position(),
+            CssShapeCommandList::try_new(commands).unwrap(),
+        )
+    }
+    fn absolute(anchor: Option<CssShapeControlAnchor>) -> CssShapeAbsoluteControlPoint {
+        CssShapeAbsoluteControlPoint::from_coordinates(pair(), anchor)
+    }
+    fn relative(anchor: Option<CssShapeControlAnchor>) -> CssShapeRelativeControlPoint {
+        CssShapeRelativeControlPoint::new(pair(), anchor)
+    }
+
+    #[test]
+    fn empty_list_returns_only_the_typed_construction_error() {
+        let error = CssShapeCommandList::try_new(vec![]).unwrap_err();
+        assert_eq!(error, CssShapeConstructionError::EmptyCommands);
+        assert!(error.source().is_none());
+        assert_eq!(
+            CssShapeCommandList::try_new(vec![CssShapeCommand::Close])
+                .unwrap()
+                .commands(),
+            &[CssShapeCommand::Close]
+        );
+    }
+    #[test]
+    fn every_command_variant_composes_checked_children_without_defaults() {
+        let commands = vec![
+            CssShapeCommand::Move(CssShapeEndpoint::To(position())),
+            CssShapeCommand::Line(CssShapeEndpoint::By(pair())),
+            CssShapeCommand::HorizontalLine(CssShapeHorizontalLine::ToKeyword(
+                CssHorizontalPositionKeyword::XStart,
+            )),
+            CssShapeCommand::VerticalLine(CssShapeVerticalLine::By(lp("-3px"))),
+            CssShapeCommand::Curve(CssShapeCurve::to(position(), absolute(None), None)),
+            CssShapeCommand::Smooth(CssShapeSmooth::by(pair(), None)),
+            CssShapeCommand::Arc(CssShapeArc::new(
+                CssShapeEndpoint::By(pair()),
+                CssShapeArcRadii::One(lp("-4px")),
+                None,
+                None,
+                None,
+            )),
+            CssShapeCommand::Close,
+        ];
+        let value = shape(commands.clone());
+        assert_eq!(value.commands().commands(), commands);
+        assert_eq!(value.fill_rule(), None);
+        assert_eq!(value.start(), &position());
+        assert_eq!(
+            value.serialize_specified().unwrap(),
+            "shape(from 0px 0px, move to 0px 0px, line by 1px 2%, hline to x-start, vline by -3px, curve to 0px 0px with 1px 2%, smooth by 1px 2%, arc by 1px 2% of -4px, close)"
+        );
+    }
+    #[test]
+    fn curve_views_keep_endpoint_and_control_affinities_coupled() {
+        let first = absolute(Some(CssShapeControlAnchor::Start));
+        let second = absolute(Some(CssShapeControlAnchor::End));
+        let value = CssShapeCurve::to(position(), first.clone(), Some(second.clone()));
+        let CssShapeCurveRef::To {
+            end,
+            first: a,
+            second: b,
+        } = value.view()
+        else {
+            panic!("absolute controls")
+        };
+        assert_eq!(end, &position());
+        assert_eq!(a, &first);
+        assert_eq!(b, Some(&second));
+        let first = relative(None);
+        let second = relative(Some(CssShapeControlAnchor::Origin));
+        let value = CssShapeCurve::by(pair(), first.clone(), Some(second.clone()));
+        let CssShapeCurveRef::By {
+            end,
+            first: a,
+            second: b,
+        } = value.view()
+        else {
+            panic!("relative controls")
+        };
+        assert_eq!(end, &pair());
+        assert_eq!(a, &first);
+        assert_eq!(b, Some(&second));
+        assert_eq!(a.anchor(), None);
+        assert_eq!(b.unwrap().anchor(), Some(CssShapeControlAnchor::Origin));
+    }
+    #[test]
+    fn smooth_views_distinguish_both_affinities_and_control_omission() {
+        let to = CssShapeSmooth::to(position(), None);
+        assert!(matches!(
+            to.view(),
+            CssShapeSmoothRef::To { control: None, .. }
+        ));
+        let by = CssShapeSmooth::by(pair(), None);
+        assert!(matches!(
+            by.view(),
+            CssShapeSmoothRef::By { control: None, .. }
+        ));
+        assert_ne!(to, CssShapeSmooth::to(position(), Some(absolute(None))));
+        assert_ne!(by, CssShapeSmooth::by(pair(), Some(relative(None))));
+        assert!(matches!(
+            CssShapeSmooth::to(position(), Some(absolute(None))).view(),
+            CssShapeSmoothRef::To {
+                control: Some(_),
+                ..
+            }
+        ));
+        assert!(matches!(
+            CssShapeSmooth::by(pair(), Some(relative(None))).view(),
+            CssShapeSmoothRef::By {
+                control: Some(_),
+                ..
+            }
+        ));
+    }
+    #[test]
+    fn absolute_numeric_pair_normalization_moves_original_scalar_origins() {
+        let values = parse_component_values("-1e-999px 2%").unwrap();
+        let scalars: Vec<_> = values
+            .items()
+            .iter()
+            .filter(|v| {
+                matches!(
+                    v.view(),
+                    CssComponentValueRef::Token(
+                        CssValueTokenRef::Dimension { .. } | CssValueTokenRef::Percentage(_)
+                    )
+                )
+            })
+            .cloned()
+            .collect();
+        let x = CssSpecifiedLengthPercentage::try_from_component(scalars[0].clone()).unwrap();
+        let y = CssSpecifiedLengthPercentage::try_from_component(scalars[1].clone()).unwrap();
+        let value = CssShapeAbsoluteControlPoint::from_coordinates(
+            CssShapeCoordinatePair::new(x.clone(), y.clone()),
+            None,
+        );
+        let CssShapeAbsoluteControlPointRef::Position(p) = value.view() else {
+            panic!("normalized position")
+        };
+        let CssPositionRef::Cartesian(p) = p.view() else {
+            panic!("Cartesian pair")
+        };
+        let CssHorizontalPosition::Offset(a) = p.horizontal() else {
+            panic!("x")
+        };
+        let CssVerticalPosition::Offset(b) = p.vertical() else {
+            panic!("y")
+        };
+        assert_eq!(a, &x);
+        assert_eq!(b, &y);
+        assert_eq!(a.origin(), scalars[0].origin());
+        assert_eq!(b.origin(), scalars[1].origin());
+        for anchor in [
+            CssShapeControlAnchor::Start,
+            CssShapeControlAnchor::End,
+            CssShapeControlAnchor::Origin,
+        ] {
+            let p = CssShapeAbsoluteControlPoint::from_coordinates(
+                CssShapeCoordinatePair::new(x.clone(), y.clone()),
+                Some(anchor),
+            );
+            let CssShapeAbsoluteControlPointRef::Coordinates { offset, anchor: a } = p.view()
+            else {
+                panic!("explicit pair")
+            };
+            assert_eq!(a, anchor);
+            assert_eq!(offset.x(), &x);
+            assert_eq!(offset.y(), &y);
+        }
+    }
+    #[test]
+    fn pair_equality_ignores_provenance_while_raw_scalars_retain_it() {
+        let components = parse_component_values("1px").unwrap();
+        let parsed =
+            CssSpecifiedLengthPercentage::try_from_component(components.items()[0].clone())
+                .unwrap();
+        let programmatic = lp("1px");
+        assert_ne!(parsed, programmatic);
+        let a = CssShapeCoordinatePair::new(parsed, lp("2%"));
+        let b = pair();
+        assert_eq!(a, b);
+        assert_ne!(a, CssShapeCoordinatePair::new(lp("2%"), lp("1px")));
+        assert_ne!(
+            CssShapeEndpoint::To(position()),
+            CssShapeEndpoint::By(CssShapeCoordinatePair::new(lp("0px"), lp("0px")))
+        );
+    }
+    #[test]
+    fn control_anchor_omissions_and_explicit_defaults_remain_distinct() {
+        assert_eq!(
+            absolute(None),
+            CssShapeAbsoluteControlPoint::from_position(CssPosition::from_cartesian(
+                CssCartesianPosition::try_new(
+                    CssHorizontalPosition::Offset(lp("1px")),
+                    CssVerticalPosition::Offset(lp("2%"))
+                )
+                .unwrap()
+            ))
+        );
+        assert_ne!(
+            absolute(None),
+            absolute(Some(CssShapeControlAnchor::Origin))
+        );
+        assert_ne!(relative(None), relative(Some(CssShapeControlAnchor::Start)));
+        assert_eq!(relative(None).offset(), &pair());
+    }
+    #[test]
+    fn arc_accessors_retain_radius_arity_and_each_optional_group() {
+        let omitted = CssShapeArc::new(
+            CssShapeEndpoint::By(pair()),
+            CssShapeArcRadii::One(lp("-3px")),
+            None,
+            None,
+            None,
+        );
+        assert_eq!(omitted.endpoint(), &CssShapeEndpoint::By(pair()));
+        assert!(matches!(omitted.radii(),CssShapeArcRadii::One(v) if v==&lp("-3px")));
+        assert_eq!(omitted.sweep(), None);
+        assert_eq!(omitted.size(), None);
+        assert_eq!(omitted.rotation(), None);
+        let explicit = CssShapeArc::new(
+            omitted.endpoint().clone(),
+            omitted.radii().clone(),
+            Some(CssShapeArcSweep::Ccw),
+            Some(CssShapeArcSize::Small),
+            Some(angle("0deg")),
+        );
+        assert_ne!(omitted, explicit);
+        assert_eq!(explicit.sweep(), Some(CssShapeArcSweep::Ccw));
+        assert_eq!(explicit.size(), Some(CssShapeArcSize::Small));
+        assert_eq!(explicit.rotation(), Some(&angle("0deg")));
+        let two = CssShapeArc::new(
+            omitted.endpoint().clone(),
+            CssShapeArcRadii::Two {
+                horizontal: lp("-3px"),
+                vertical: lp("-3px"),
+            },
+            None,
+            None,
+            None,
+        );
+        assert_ne!(omitted, two);
+    }
+    #[test]
+    fn rotation_accepts_exact_dimensions_without_zero_number_or_float_bounds() {
+        assert!(
+            CssAngleLiteral::try_from_component(CssComponentValue::try_number("0").unwrap())
+                .is_err()
+        );
+        for text in [
+            "-1e-999deg",
+            "1e400turn",
+            "1.00000000000000000001rad",
+            "-0grad",
+        ] {
+            let rotation = angle(text);
+            let arc = CssShapeArc::new(
+                CssShapeEndpoint::By(pair()),
+                CssShapeArcRadii::One(lp("0")),
+                None,
+                None,
+                Some(rotation.clone()),
+            );
+            assert_eq!(arc.rotation(), Some(&rotation));
+            assert_eq!(
+                arc.rotation().unwrap().literal().unwrap().component(),
+                rotation.literal().unwrap().component()
+            );
+        }
+    }
+    fn budget(value: &CssShapeFunction, expected: &str, nodes: usize) {
+        let before = value.clone();
+        assert_eq!(
+            value
+                .serialize_specified_with_limits(L::new(nodes, nodes, expected.len()))
+                .unwrap(),
+            expected
+        );
+        for (limits, kind) in [
+            (L::new(nodes - 1, nodes, expected.len()), K::InputNodeLimit),
+            (
+                L::new(nodes, nodes - 1, expected.len()),
+                K::ProjectionNodeLimit,
+            ),
+            (L::new(nodes, nodes, expected.len() - 1), K::ByteLimit),
+        ] {
+            assert_eq!(
+                value
+                    .serialize_specified_with_limits(limits)
+                    .unwrap_err()
+                    .kind(),
+                kind
+            );
+            assert_eq!(value, &before);
+        }
+    }
+    #[test]
+    fn literal_commands_controls_radii_and_options_accumulate_independent_counts() {
+        // Base visits: function/from/list + initial position/axes/scalars = 8.
+        // A relative line adds verb/affinity/pair/two scalars = 5; close adds 1.
+        budget(
+            &shape(vec![
+                CssShapeCommand::Line(CssShapeEndpoint::By(pair())),
+                CssShapeCommand::Close,
+            ]),
+            "shape(from 0px 0px, line by 1px 2%, close)",
+            14,
+        );
+        // Relative curve: verb/affinity/endpoint-pair(3)/with/control/pair(3)=10;
+        // its second anchored control adds control/pair(3)/anchor=5.
+        budget(
+            &shape(vec![CssShapeCommand::Curve(CssShapeCurve::by(
+                pair(),
+                relative(None),
+                Some(relative(Some(CssShapeControlAnchor::End))),
+            ))]),
+            "shape(from 0px 0px, curve by 1px 2% with 1px 2% / 1px 2% from end)",
+            23,
+        );
+        // Absolute curve adds verb/affinity/position(5)/with/control/position(5)=14;
+        // the explicit second numeric control adds control/pair(3)/anchor=5.
+        budget(
+            &shape(vec![CssShapeCommand::Curve(CssShapeCurve::to(
+                position(),
+                absolute(None),
+                Some(absolute(Some(CssShapeControlAnchor::Origin))),
+            ))]),
+            "shape(from 0px 0px, curve to 0px 0px with 1px 2% / 1px 2% from origin)",
+            27,
+        );
+        // Arc adds verb/affinity/pair(3)/of/two radii/sweep/size/rotate/angle=12.
+        budget(
+            &shape(vec![CssShapeCommand::Arc(CssShapeArc::new(
+                CssShapeEndpoint::By(pair()),
+                CssShapeArcRadii::Two {
+                    horizontal: lp("-3px"),
+                    vertical: lp("4%"),
+                },
+                Some(CssShapeArcSweep::Cw),
+                Some(CssShapeArcSize::Large),
+                Some(angle("5deg")),
+            ))]),
+            "shape(from 0px 0px, arc by 1px 2% of -3px 4% cw large rotate 5deg)",
+            20,
+        );
+    }
+    #[test]
+    fn ordinary_close_fill_and_clip_wrappers_share_the_declared_budget() {
+        let value = shape(vec![CssShapeCommand::Close]);
+        budget(&value, "shape(from 0px 0px, close)", 9);
+        let filled = CssShapeFunction::new(
+            Some(CssFillRule::Nonzero),
+            position(),
+            value.commands().clone(),
+        );
+        budget(&filled, "shape(nonzero from 0px 0px, close)", 10);
+        let basic = CssBasicShape::Shape(value);
+        let clip = CssClipPath::BasicShape(CssClipPathShape::new(
+            basic,
+            Some(CssBoxEdgeKeyword::BorderBox),
+        ));
+        assert_eq!(
+            clip.serialize_specified_with_limits(L::new(11, 11, 37))
+                .unwrap(),
+            "shape(from 0px 0px, close) border-box"
+        );
+        assert_eq!(
+            clip.serialize_specified_with_limits(L::new(10, 11, 37))
+                .unwrap_err()
+                .kind(),
+            K::InputNodeLimit
+        );
+    }
+
+    #[test]
+    fn axis_enums_keep_all_keywords_and_offset_affinities_distinct() {
+        for (keyword, text) in [
+            (CssHorizontalPositionKeyword::Left, "left"),
+            (CssHorizontalPositionKeyword::Center, "center"),
+            (CssHorizontalPositionKeyword::Right, "right"),
+            (CssHorizontalPositionKeyword::XStart, "x-start"),
+            (CssHorizontalPositionKeyword::XEnd, "x-end"),
+        ] {
+            let command = CssShapeHorizontalLine::ToKeyword(keyword);
+            assert!(matches!(&command,CssShapeHorizontalLine::ToKeyword(v) if *v==keyword));
+            assert_eq!(
+                shape(vec![CssShapeCommand::HorizontalLine(command)])
+                    .serialize_specified()
+                    .unwrap(),
+                format!("shape(from 0px 0px, hline to {text})")
+            );
+        }
+        for (keyword, text) in [
+            (CssVerticalPositionKeyword::Top, "top"),
+            (CssVerticalPositionKeyword::Center, "center"),
+            (CssVerticalPositionKeyword::Bottom, "bottom"),
+            (CssVerticalPositionKeyword::YStart, "y-start"),
+            (CssVerticalPositionKeyword::YEnd, "y-end"),
+        ] {
+            let command = CssShapeVerticalLine::ToKeyword(keyword);
+            assert!(matches!(&command,CssShapeVerticalLine::ToKeyword(v) if *v==keyword));
+            assert_eq!(
+                shape(vec![CssShapeCommand::VerticalLine(command)])
+                    .serialize_specified()
+                    .unwrap(),
+                format!("shape(from 0px 0px, vline to {text})")
+            );
+        }
+        assert_ne!(
+            CssShapeHorizontalLine::ToOffset(lp("-1px")),
+            CssShapeHorizontalLine::By(lp("-1px"))
+        );
+        assert_ne!(
+            CssShapeVerticalLine::ToOffset(lp("-1px")),
+            CssShapeVerticalLine::By(lp("-1px"))
+        );
+        let value = shape(vec![
+            CssShapeCommand::HorizontalLine(CssShapeHorizontalLine::ToOffset(lp("-1px"))),
+            CssShapeCommand::HorizontalLine(CssShapeHorizontalLine::By(lp("-1px"))),
+            CssShapeCommand::VerticalLine(CssShapeVerticalLine::ToOffset(lp("-1px"))),
+            CssShapeCommand::VerticalLine(CssShapeVerticalLine::By(lp("-1px"))),
+        ]);
+        budget(
+            &value,
+            "shape(from 0px 0px, hline to -1px, hline by -1px, vline to -1px, vline by -1px)",
+            20,
+        );
+    }
+    #[test]
+    fn sibling_command_math_arenas_share_budgets_and_keep_original_graphs() {
+        let components = parse_component_values("calc(1px + 2%)").unwrap();
+        let scalar = CssSpecifiedLengthPercentage::try_from_calculation(
+            CssLengthPercentageCalculation::try_from_components(components.clone()).unwrap(),
+        )
+        .unwrap();
+        let offsets = CssShapeCoordinatePair::new(scalar.clone(), scalar.clone());
+        let value = shape(vec![
+            CssShapeCommand::Line(CssShapeEndpoint::By(offsets.clone())),
+            CssShapeCommand::Smooth(CssShapeSmooth::by(offsets, None)),
+        ]);
+        let expected = "shape(from 0px 0px, line by calc(2% + 1px) calc(2% + 1px), smooth by calc(2% + 1px) calc(2% + 1px))";
+        // Eight initial visits; two commands each add verb/affinity/pair (3).
+        // Four independent mixed LP arenas add 4 input / 5 projection nodes each.
+        assert_eq!(
+            value
+                .serialize_specified_with_limits(L::new(30, 34, expected.len()))
+                .unwrap(),
+            expected
+        );
+        for (limits, kind) in [
+            (L::new(29, 34, expected.len()), K::InputNodeLimit),
+            (L::new(30, 33, expected.len()), K::ProjectionNodeLimit),
+            (L::new(30, 34, expected.len() - 1), K::ByteLimit),
+        ] {
+            assert_eq!(
+                value
+                    .serialize_specified_with_limits(limits)
+                    .unwrap_err()
+                    .kind(),
+                kind
+            );
+            let CssShapeCommand::Line(CssShapeEndpoint::By(pair)) = &value.commands().commands()[0]
+            else {
+                panic!("relative line")
+            };
+            assert_eq!(pair.x(), &scalar);
+            assert_eq!(pair.y(), &scalar);
+            assert_eq!(pair.x().calculation().unwrap().components(), &components);
+            assert_eq!(pair.x().origin(), scalar.origin());
+        }
+    }
+}

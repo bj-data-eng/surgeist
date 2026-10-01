@@ -302,7 +302,7 @@
 //! distinguishes an omitted pair. Polygon round is an optional signed pure length,
 //! following optional fill-rule; percentages and reversed modifiers are rejected.
 //!
-//! Clip-path, its composition, basic shapes and all seven function models provide
+//! Clip-path, its composition, basic shapes and all eight function models provide
 //! bounded specified serializers preserving optional omissions, shape offset/radius arities, units,
 //! exact magnitudes and symbolic math through shared cumulative child providers.
 //! Circle and ellipse positions retain the full imported Cartesian, named-flow, and
@@ -311,8 +311,11 @@
 //! retain optional round radii. [`CssPathShape`] composes optional [`CssFillRule`]
 //! with checked [`CssPathData`], preserving the decoded SVG spelling and string origin.
 //! Its complete SVG scanner admits move-only paths and rejects malformed suffixes
-//! without computing geometry. The function shape() remains unfinished authored
-//! grammar. Reference-box/default resolution, clipping and
+//! without computing geometry. [`CssShapeFunction`] retains a full starting position
+//! and a nonempty ordered [`CssShapeCommandList`]. Curves and smooth commands couple
+//! absolute or relative endpoints with correspondingly typed controls; arcs retain
+//! signed radii and optional sweep, size and strict angles. Specified output retains
+//! authored omissions and emits the required first comma. Reference-box/default resolution, clipping and
 //! painting belong to downstream owners.
 //!
 //! [`CssShadow`] requires blur before spread, and [`CssBoxShadowList`] is nonempty.
@@ -386,21 +389,22 @@
 //! image-orientation angles share exact `CssAngleLiteral` values and symbolic
 //! Angle-root calculations through the strict `CssAngleValue`. Transforms, filters,
 //! and gradient directions admit bare zero through `CssAngleOrZero`; image orientation
-//! requires an angle dimension or calculation. Raw scalars retain provenance while
+//! and shape rotation require an angle dimension or calculation. Raw scalars retain provenance while
 //! semantic aggregates compare structure independently of scalar origins.
 //! Easing values distinguish keywords,
 //! `cubic-bezier()`, and `steps()`. Box shadows and filter `drop-shadow()` have
 //! separate models, filter lists preserve URL/function order, and the selected
 //! basic-shape family exposes `inset()`, `circle()`, `ellipse()`, `polygon()`,
-//! `rect()`, `xywh()`, and `path()`, including polygon `round <length>` and optional
+//! `rect()`, `xywh()`, `path()`, and `shape()`, including polygon `round <length>` and optional
 //! rectangular round radii.
 //!
 //! These are authored syntax values. This crate does not multiply transform matrices,
 //! interpolate or evaluate easing, render shadows or filters, resolve URLs, compute
 //! shape geometry, perform layout or painting, or lower values into sibling crates.
-//! `shape()` remains outside the selected subset. `transition`, `animation`,
-//! and `clip-path` retain explicit Partial metadata boundaries; support for a typed
-//! function does not promote an aggregate or an unselected production.
+//! Basic shapes and `clip-path` expose complete authored grammar support; this does
+//! not establish contextual geometry or exact calculation projection. `transition`
+//! and `animation` retain explicit Partial metadata boundaries; support for a typed
+//! function does not promote an unselected production.
 //!
 //! Both filter properties are noninherited terminals with an intrinsic `none`
 //! initial. [`CssFilterHueRotate`] retains an omitted angle separately from its
@@ -1061,7 +1065,7 @@
 //! `calc()` from Partial to Complete.
 //!
 //! The preserved `ext.value.relative-color`, `ext.value.color-mix`,
-//! `ext.value.grid-repeat`, `ext.value.basic-shape`,
+//! `ext.value.grid-repeat`,
 //! `ext.descriptor.font-weight-range`, `ext.descriptor.font-style-oblique-range`,
 //! `ext.descriptor.font-stretch-range`, `ext.value.font-source-modern-hints`,
 //! `ext.property.font-weight-range`, `ext.supports.selector`,
@@ -1199,6 +1203,7 @@ mod imports;
 mod list_style_serialization;
 mod list_styles;
 mod quotes;
+mod shape_serialization;
 pub use imports::*;
 mod custom_media;
 pub use custom_media::*;

@@ -415,6 +415,7 @@ impl CssPathShape {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssBasicShape {
+    Shape(CssShapeFunction),
     Inset(Box<CssInsetShape>),
     Circle(CssCircleShape),
     Ellipse(CssEllipseShape),
@@ -458,5 +459,35 @@ impl CssClipPathShape {
     #[must_use]
     pub const fn reference_box(&self) -> Option<CssBoxEdgeKeyword> {
         self.reference_box
+    }
+}
+
+/// An authored shape function with full initial position and nonempty commands.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssShapeFunction {
+    fill_rule: Option<super::CssFillRule>,
+    start: CssPosition,
+    commands: super::CssShapeCommandList,
+}
+impl CssShapeFunction {
+    pub const fn new(
+        fill_rule: Option<super::CssFillRule>,
+        start: CssPosition,
+        commands: super::CssShapeCommandList,
+    ) -> Self {
+        Self {
+            fill_rule,
+            start,
+            commands,
+        }
+    }
+    pub const fn fill_rule(&self) -> Option<super::CssFillRule> {
+        self.fill_rule
+    }
+    pub const fn start(&self) -> &CssPosition {
+        &self.start
+    }
+    pub const fn commands(&self) -> &super::CssShapeCommandList {
+        &self.commands
     }
 }

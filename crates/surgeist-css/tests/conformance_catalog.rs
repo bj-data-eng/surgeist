@@ -1975,7 +1975,6 @@ fn c14_amended_ledger_public_metadata_is_reconciled() {
         "ext.value.relative-color",
         "ext.value.color-mix",
         "ext.value.grid-repeat",
-        "ext.value.basic-shape",
         "ext.supports.selector",
     ] {
         let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing `{id}` metadata"));
@@ -2414,11 +2413,6 @@ fn c14_retained_partial_extensions_have_direct_public_evidence() {
             "ext.value.grid-repeat",
             CssFeatureKind::Value,
             Input::Style("grid-template-columns: repeat(auto-fit, 10px)"),
-        ),
-        (
-            "ext.value.basic-shape",
-            CssFeatureKind::Value,
-            Input::Style("clip-path: circle(50% at center)"),
         ),
         (
             "ext.supports.selector",
@@ -5103,7 +5097,7 @@ fn drop_shadow_rejects_box_shadow_only_components() {
 }
 
 #[test]
-fn clip_path_distinguishes_selected_and_deferred_shape_functions() {
+fn all_basic_shape_functions_have_complete_authored_metadata() {
     for value in [
         "path('M 0 0 L 1 1')",
         "rect(0 1px 1px 0)",
@@ -5112,71 +5106,30 @@ fn clip_path_distinguishes_selected_and_deferred_shape_functions() {
         "circle(10px)",
         "ellipse(10px 20%)",
         "polygon(0 0, 100% 0)",
+        "shape(from 0 0, line to 1px 1px)",
     ] {
         let report = parse_style_attribute(&format!("clip-path: {value}"));
         assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
-    }
-    {
-        let value = "shape(from 0 0, line to 1px 1px)";
-        assert!(
-            !parse_style_attribute(&format!("clip-path: {value}")).is_clean(),
-            "deferred {value}"
-        );
     }
     let metadata = feature_metadata("ext.value.basic-shape").unwrap();
     assert_eq!(metadata.kind(), CssFeatureKind::Value);
     assert_eq!(metadata.spelling(), "<basic-shape>");
     assert_eq!(metadata.source().id().as_str(), "S-SHAPES1");
     assert_eq!(metadata.production(), "#typedef-basic-shape");
-    assert_shape_functions_partial(metadata);
-    let subset = metadata.supported_subset().unwrap();
-    for function in [
-        "inset()",
-        "circle()",
-        "ellipse()",
-        "polygon()",
-        "rect()",
-        "xywh()",
-        "path()",
-    ] {
-        assert!(subset.contains(function), "supported {function}: {subset}");
-    }
-    assert_missing_shape_functions(metadata);
+    assert_complete_shape_metadata(metadata);
+    assert_complete_function_metadata(
+        "ext.value.basic-shape.shape",
+        "shape()",
+        "S-SHAPES1",
+        "#funcdef-basic-shape-shape",
+    );
 }
-
-fn assert_shape_functions_partial(metadata: &CssFeatureMetadata) {
-    assert_eq!(metadata.status(), CssSupportStatus::Partial);
-    assert!(metadata.supported_subset().is_some());
-    let remainder = metadata
-        .unsupported_remainder()
-        .expect("missing shape functions");
-    assert!(
-        !remainder.to_ascii_lowercase().contains("logical"),
-        "{remainder}"
-    );
-    assert!(
-        !remainder.to_ascii_lowercase().contains("relative"),
-        "{remainder}"
-    );
+fn assert_complete_shape_metadata(metadata: &CssFeatureMetadata) {
+    assert_eq!(metadata.status(), CssSupportStatus::Complete);
+    assert_eq!(metadata.supported_subset(), None);
+    assert_eq!(metadata.unsupported_remainder(), None);
     assert_eq!(metadata.recognized_unsupported_code(), None);
     assert!(metadata.baseline_alias_targets().is_empty());
-}
-
-fn assert_missing_shape_functions(metadata: &CssFeatureMetadata) {
-    let remainder = metadata.unsupported_remainder().unwrap();
-    {
-        let function = "shape()";
-        assert!(
-            remainder.contains(function),
-            "missing {function}: {remainder}"
-        );
-    }
-    for function in ["rect()", "xywh()", "path()"] {
-        assert!(
-            !remainder.contains(function),
-            "implemented {function}: {remainder}"
-        );
-    }
 }
 
 #[test]
@@ -5282,7 +5235,7 @@ fn backdrop_filter_preserves_typed_authored_grammar_with_the_named_source() {
 }
 
 #[test]
-fn clip_path_selected_subset_and_remainder_are_distinct() {
+fn clip_path_complete_metadata_matches_all_authored_alternatives() {
     for value in [
         "path('M 0 0 L 1 1')",
         "rect(0 1px 1px 0)",
@@ -5296,34 +5249,19 @@ fn clip_path_selected_subset_and_remainder_are_distinct() {
         "border-box",
         "border-box circle(10px)",
         "ellipse() view-box",
+        "shape(from 0 0, line to 1px 1px)",
         "circle(at x-start y-end)",
         "ellipse(at block-start inline-end)",
     ] {
         let report = parse_style_attribute(&format!("clip-path: {value}"));
         assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
     }
-    {
-        let value = "shape(from 0 0, line to 1px 1px)";
-        assert!(
-            !parse_style_attribute(&format!("clip-path: {value}")).is_clean(),
-            "unsupported {value}"
-        );
-    }
     let metadata = feature_metadata("baseline.property.clip-path").expect("clip-path metadata");
     assert_eq!(metadata.kind(), CssFeatureKind::Property);
     assert_eq!(metadata.spelling(), "clip-path");
     assert_eq!(metadata.source().id().as_str(), "S-MASKING1");
     assert_eq!(metadata.production(), "#propdef-clip-path");
-    assert_shape_functions_partial(metadata);
-    assert_missing_shape_functions(metadata);
-    let subset = metadata.supported_subset().unwrap();
-    assert!(subset.contains("geometry"), "{subset}");
-    assert!(
-        !metadata
-            .unsupported_remainder()
-            .unwrap()
-            .contains("Reference-box combinations")
-    );
+    assert_complete_shape_metadata(metadata);
 }
 
 #[test]

@@ -640,6 +640,7 @@ pub(super) enum AngleParserContext {
     Filter,
     Gradient,
     ImageOrientation,
+    ShapeRotation,
 }
 impl AngleParserContext {
     fn label(self) -> &'static str {
@@ -648,6 +649,7 @@ impl AngleParserContext {
             Self::Filter => "filter",
             Self::Gradient => "gradient",
             Self::ImageOrientation => "image-orientation",
+            Self::ShapeRotation => "shape rotation",
         }
     }
 }

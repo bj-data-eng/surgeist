@@ -124,12 +124,24 @@ pub(super) fn parse_transform_origin<'i, 't>(
     Err(invalid_generic_position_atom(input, &states[invalid_index]))
 }
 
-// Full Values 5 grammar is selected only by Shapes' circle/ellipse consumer.
+// Shapes consumers select the full Values 5 position grammar.
 pub(super) fn parse_full_position<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssPosition, ParseError<'i, Error>> {
     let (atoms, states) = parse_position_atoms(input, numeric, PositionGrammar::Full)?;
+    build_full_position(&atoms)
+        .ok_or_else(|| invalid_generic_position_atom(input, &states[invalid_atom_index(&atoms)]))
+}
+
+/// Parses the entire position region, leaving caller-owned boundary keywords unconsumed.
+pub(super) fn parse_full_position_bounded<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+    boundaries: &[&str],
+) -> std::result::Result<CssPosition, ParseError<'i, Error>> {
+    let (atoms, states) =
+        parse_position_atoms_bounded(input, numeric, PositionGrammar::Full, boundaries)?;
     build_full_position(&atoms)
         .ok_or_else(|| invalid_generic_position_atom(input, &states[invalid_atom_index(&atoms)]))
 }
@@ -171,9 +183,23 @@ fn parse_position_atoms<'i, 't>(
     numeric: &crate::numeric::NumericInputContext<'_>,
     grammar: PositionGrammar,
 ) -> std::result::Result<(Vec<GenericPositionAtom>, Vec<ParserState>), ParseError<'i, Error>> {
+    parse_position_atoms_bounded(input, numeric, grammar, &[])
+}
+fn parse_position_atoms_bounded<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+    grammar: PositionGrammar,
+    boundaries: &[&str],
+) -> std::result::Result<(Vec<GenericPositionAtom>, Vec<ParserState>), ParseError<'i, Error>> {
     let mut atoms = Vec::new();
     let mut states = Vec::new();
-    while !input.is_exhausted() && !next_is_comma(input) && !next_is_delim(input, '/') {
+    while !input.is_exhausted()
+        && !next_is_comma(input)
+        && !next_is_delim(input, '/')
+        && !boundaries
+            .iter()
+            .any(|word| super::values::next_is_ident(input, word))
+    {
         states.push(input.state());
         atoms.push(parse_generic_position_atom(input, numeric, grammar)?);
         if atoms.len() > 4 {

@@ -77,12 +77,12 @@ fn legacy_alias_catalog_is_partial_with_a_truthful_unresolved_boundary() {
     assert!(alias.baseline_alias_targets().is_empty());
 
     // The ordinary Partial record remains a known valid-but-unimplemented case.
-    let ordinary = feature_metadata("ext.value.basic-shape").expect("Shapes 1 record");
+    let ordinary = feature_metadata("ext.value.grid-repeat").expect("Grid repeat record");
     assert_eq!(ordinary.status(), CssSupportStatus::Partial);
     assert!(ordinary.supported_subset().is_some());
     let remainder = ordinary.unsupported_remainder().expect("valid remainder");
-    assert!(remainder.contains("shape()"), "{remainder}");
-    assert!(remainder.to_ascii_lowercase().contains("unsupported"));
+    assert!(remainder.contains("Subgrid name-repeat"), "{remainder}");
+    assert!(remainder.to_ascii_lowercase().contains("unfinished"));
     assert!(!remainder.starts_with("Unresolved by the selected standard:"));
     assert_eq!(ordinary.recognized_unsupported_code(), None);
 }

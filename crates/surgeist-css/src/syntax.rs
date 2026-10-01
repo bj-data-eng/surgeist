@@ -8204,6 +8204,8 @@ pub enum CssRadialExtent {
 
 mod path_data;
 pub use path_data::{CssPathData, CssPathDataConstructionError, CssPathDataConstructionErrorKind};
+mod shape_commands;
+pub use shape_commands::*;
 mod shapes;
 pub use shapes::*;
 

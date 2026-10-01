@@ -2250,10 +2250,6 @@ const PROPERTY_REMAINDER: &str =
 const TIMING_SUBSET: &str = "The I01 shorthand components plus C03 duration, signed delay, iteration, and typed calculation syntax and C05 easing functions are supported.";
 const TIMING_REMAINDER: &str =
     "Other valid forms of the cited shorthand production remain unsupported.";
-const BASIC_SHAPE_SUBSET: &str = "Typed inset(), circle(), ellipse(), polygon(), path(), rect(), and xywh() functions are supported; circle and ellipse retain the full imported Cartesian, named-flow, and relative-flow position grammar.";
-const BASIC_SHAPE_REMAINDER: &str = "shape() remains unsupported.";
-const CLIP_PATH_SUBSET: &str = "none, URL, all seven geometry boxes, and typed inset(), circle(), ellipse(), polygon(), path(), rect(), and xywh() with optional reference boxes are supported; circle and ellipse retain the full imported position grammar.";
-const CLIP_PATH_REMAINDER: &str = "shape() remains unsupported.";
 const COLOR5_RELATIVE_SUBSET: &str = "Relative rgb()/rgba(), hsl()/hsla(), hwb(), lab(), lch(), oklab(), oklch(), predefined and custom-profile color(), and alpha() preserve authored channels and symbolic calculations.";
 const COLOR5_RELATIVE_REMAINDER: &str = "Unselected CSS Color 5 source-color functions remain unsupported; profile binding and color evaluation belong to downstream resolution.";
 const COLOR5_MIX_SUBSET: &str = "Authored color-mix() supports an optional interpolation method, ordered nonempty color lists, literal or calculated percentage weights before or after colors, and predefined, polar or symbolic custom spaces.";
@@ -2724,7 +2720,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 627] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 628] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -3763,14 +3759,19 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 627] = [
         I_FILTER1,
         "#funcdef-filter-drop-shadow",
     ),
-    CssFeatureMetadata::partial(
+    CssFeatureMetadata::complete(
         "ext.value.basic-shape",
         CssFeatureKind::Value,
         "<basic-shape>",
         S_SHAPES1,
         "#typedef-basic-shape",
-        BASIC_SHAPE_SUBSET,
-        BASIC_SHAPE_REMAINDER,
+    ),
+    CssFeatureMetadata::complete(
+        "ext.value.basic-shape.shape",
+        CssFeatureKind::Value,
+        "shape()",
+        S_SHAPES1,
+        "#funcdef-basic-shape-shape",
     ),
     CssFeatureMetadata::complete(
         "ext.value.basic-shape.inset",
@@ -5669,14 +5670,12 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 627] = [
         "#BackdropFilterProperty",
         &[],
     ),
-    CssFeatureMetadata::partial_property_with_boundary(
+    CssFeatureMetadata::complete_property(
         "baseline.property.clip-path",
         CssKnownProperty::ClipPath,
         "clip-path",
         "#propdef-clip-path",
         &[],
-        CLIP_PATH_SUBSET,
-        CLIP_PATH_REMAINDER,
     ),
     property_feature!(CssKnownProperty::Mask, "mask", "baseline.property.mask"),
     property_feature!(
