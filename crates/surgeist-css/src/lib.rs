@@ -1223,6 +1223,7 @@ mod column_sizing;
 mod contain_intrinsic_size;
 mod display;
 mod exact_decimal;
+mod frequency;
 mod gap;
 mod grid_template_areas;
 mod inset;
@@ -1232,6 +1233,7 @@ mod opacity_scalar;
 mod page_line_minimum;
 mod pending_serialization;
 mod position_serialization;
+mod resolution;
 mod scroll_snap;
 mod sizing;
 mod sizing_controls;
@@ -1265,11 +1267,13 @@ pub use display::{
     CssDisplayBox, CssDisplayInside, CssDisplayInternal, CssDisplayLegacy,
     CssDisplayListItemInside, CssDisplayOutside, CssDisplayValue,
 };
+pub use frequency::{CssFrequencyLiteral, CssFrequencyValue};
 pub use gap::{CssGapShorthand, CssGapValue};
 pub use grid_template_areas::{
     CssGridTemplateAreaCell, CssGridTemplateAreaError, CssGridTemplateAreaName,
     CssGridTemplateAreaRow, CssGridTemplateAreaRows, CssGridTemplateAreas,
 };
+pub use resolution::{CssResolutionLiteral, CssResolutionValue};
 pub use time::{CssDuration, CssTimeLiteral, CssTimeValue};
 mod font_width;
 pub use font_width::{CssFontFaceWidth, CssFontWidth, CssFontWidthKeyword};

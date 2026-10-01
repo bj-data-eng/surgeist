@@ -3180,33 +3180,6 @@ pub enum CssDisplayMode {
     PictureInPicture,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CssResolution {
-    value: CssFiniteNumber,
-    unit: CssResolutionUnit,
-}
-
-impl CssResolution {
-    #[must_use]
-    pub fn try_new(value: f32, unit: CssResolutionUnit) -> Option<Self> {
-        if value > 0.0 {
-            CssFiniteNumber::try_new(value).map(|value| Self { value, unit })
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub const fn value(self) -> CssFiniteNumber {
-        self.value
-    }
-
-    #[must_use]
-    pub const fn unit(self) -> CssResolutionUnit {
-        self.unit
-    }
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssResolutionUnit {
@@ -9019,29 +8992,6 @@ pub enum CssAngleUnit {
 pub enum CssFrequencyUnit {
     Hertz,
     Kilohertz,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CssFrequencyLiteral {
-    value: CssFiniteNumber,
-    unit: CssFrequencyUnit,
-}
-
-impl CssFrequencyLiteral {
-    #[must_use]
-    pub fn try_new(value: f32, unit: CssFrequencyUnit) -> Option<Self> {
-        CssFiniteNumber::try_new(value).map(|value| Self { value, unit })
-    }
-
-    #[must_use]
-    pub const fn value(self) -> f32 {
-        self.value.value()
-    }
-
-    #[must_use]
-    pub const fn unit(self) -> CssFrequencyUnit {
-        self.unit
-    }
 }
 
 impl PartialEq for CssDelayList {

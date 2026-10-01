@@ -982,3 +982,99 @@ impl crate::CssDuration {
         Ok(output)
     }
 }
+
+impl crate::CssFrequencyLiteral {
+    pub(crate) fn append_specified(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> Result<()> {
+        context.charge_input(1)?;
+        context.charge_projection(1)?;
+        if context.output_suppressed() {
+            return Ok(());
+        }
+        let text = format_coefficient(
+            self.numeric().representation(),
+            0,
+            crate::frequency::suffix(self.unit()),
+            context.remaining_bytes(),
+        )?;
+        context.append(output, &text)
+    }
+}
+impl crate::CssFrequencyValue {
+    pub(crate) fn append_specified(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> Result<()> {
+        if let Some(literal) = self.literal() {
+            return literal.append_specified(context, output);
+        }
+        crate::numeric::project_calculation_specified_into(
+            crate::numeric::SpecifiedCalculationRef::Frequency(
+                self.calculation().expect("checked frequency branch"),
+            ),
+            context,
+            output,
+        )?;
+        Ok(())
+    }
+}
+impl crate::CssFrequencyLiteral {
+    /// Emits ordinary frequencies with the selected lowercase hz or khz unit.
+    ///
+    /// This authored phase follows the selected primitive serialization policy;
+    /// CSSOM's specified/computed phase question remains open. Full ordinary
+    /// precision is retained, so CSSOM's six-fractional-place formatting remains
+    /// unfinished. This literal operation performs no calculation projection.
+    /// FrequencyValue math projection has separate precision and range limitations.
+    pub fn serialize_specified(&self) -> Result<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+    /// Emits with one cumulative input, projection and byte budget.
+    ///
+    /// Ordinary units are retained lowercased with exact expanded decimal output,
+    /// no scientific fallback. CSSOM's six-fractional-place number rule remains
+    /// unfinished, and its specified/computed frequency phase question stays open.
+    /// This literal operation performs no calculation projection; FrequencyValue
+    /// math has separate shared-projector precision and range limitations.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String> {
+        let mut context = SpecifiedSerializationContext::new(limits);
+        let mut output = String::new();
+        self.append_specified(&mut context, &mut output)?;
+        Ok(output)
+    }
+}
+impl crate::CssFrequencyValue {
+    /// Emits ordinary frequencies with the selected lowercase hz or khz unit.
+    ///
+    /// This authored phase follows the selected primitive serialization policy;
+    /// CSSOM's specified/computed phase question remains open. Full ordinary
+    /// precision is retained, so CSSOM's six-fractional-place formatting remains
+    /// unfinished. Actual math uses the existing simplified calculation projector
+    /// with its current precision and range limitations.
+    pub fn serialize_specified(&self) -> Result<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+    /// Emits with one cumulative input, projection and byte budget.
+    ///
+    /// Ordinary units are retained lowercased with exact expanded decimal output,
+    /// no scientific fallback. CSSOM's six-fractional-place number rule remains
+    /// unfinished, and its specified/computed frequency phase question stays open.
+    /// Actual math retains the existing simplifier's canonical units, precision
+    /// and range limitations.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String> {
+        let mut context = SpecifiedSerializationContext::new(limits);
+        let mut output = String::new();
+        self.append_specified(&mut context, &mut output)?;
+        Ok(output)
+    }
+}

@@ -2889,12 +2889,27 @@ impl CssTimeCalculation {
     }
 }
 impl CssFrequencyCalculation {
-    pub fn try_literal(value: f32, unit: crate::CssFrequencyUnit) -> Option<Self> {
-        let unit = match unit {
-            crate::CssFrequencyUnit::Hertz => "hz",
-            crate::CssFrequencyUnit::Kilohertz => "khz",
-        };
-        Self::try_from_components(programmatic_dimension(value, unit)?).ok()
+    /// Constructs an exact ordinary frequency root, retaining the selected unit.
+    pub fn try_literal(number: &str, unit: crate::CssFrequencyUnit) -> Result<Self> {
+        let literal = crate::CssFrequencyLiteral::try_new(number, unit)
+            .map_err(CssNumericConstructionError::component)?;
+        let values = CssComponentValues::try_new(vec![literal.component().clone()])
+            .map_err(CssNumericConstructionError::component)?;
+        Self::try_from_components(values)
+    }
+    pub(crate) fn literal_root_component(&self) -> Option<&CssComponentValue> {
+        match &self.expression.kind {
+            NodeKind::Value(component) => Some(component),
+            _ => None,
+        }
+    }
+}
+impl CssResolutionCalculation {
+    pub(crate) fn literal_root_component(&self) -> Option<&CssComponentValue> {
+        match &self.expression.kind {
+            NodeKind::Value(component) => Some(component),
+            _ => None,
+        }
     }
 }
 
@@ -3259,6 +3274,7 @@ pub(crate) enum SpecifiedCalculationRef<'a> {
     Percentage(&'a CssPercentageCalculation),
     Angle(&'a CssAngleCalculation),
     Time(&'a CssTimeCalculation),
+    Frequency(&'a CssFrequencyCalculation),
     Profile(&'a CssProfileColorCalculation),
 }
 
@@ -3275,6 +3291,7 @@ pub(crate) fn project_calculation_specified_into(
         SpecifiedCalculationRef::Percentage(value) => &value.expression,
         SpecifiedCalculationRef::Angle(value) => &value.expression,
         SpecifiedCalculationRef::Time(value) => &value.expression,
+        SpecifiedCalculationRef::Frequency(value) => &value.expression,
         SpecifiedCalculationRef::Profile(value) => &value.expression,
     };
     project_specified_into(expression, context, output)
@@ -3292,6 +3309,7 @@ pub(crate) fn capture_calculation_specified(
         SpecifiedCalculationRef::Percentage(value) => &value.expression,
         SpecifiedCalculationRef::Angle(value) => &value.expression,
         SpecifiedCalculationRef::Time(value) => &value.expression,
+        SpecifiedCalculationRef::Frequency(value) => &value.expression,
         SpecifiedCalculationRef::Profile(value) => &value.expression,
     };
     capture_specified(expression, context)
@@ -3310,6 +3328,7 @@ pub(crate) fn capture_calculation_specified_scaled(
         SpecifiedCalculationRef::Percentage(value) => &value.expression,
         SpecifiedCalculationRef::Angle(value) => &value.expression,
         SpecifiedCalculationRef::Time(value) => &value.expression,
+        SpecifiedCalculationRef::Frequency(value) => &value.expression,
         SpecifiedCalculationRef::Profile(value) => &value.expression,
     };
     capture_specified_scaled(expression, scale, context)

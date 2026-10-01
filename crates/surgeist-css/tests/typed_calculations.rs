@@ -234,7 +234,10 @@ fn typed_calculation_roots_enforce_checked_literal_boundaries() {
             CssAngleCalculation::try_literal(&value.to_string(), CssAngleUnit::Degrees).is_err()
         );
         assert!(CssTimeCalculation::try_literal(&value.to_string(), CssTimeUnit::Seconds).is_err());
-        assert!(CssFrequencyCalculation::try_literal(value, CssFrequencyUnit::Hertz).is_none());
+        assert!(
+            CssFrequencyCalculation::try_literal(&value.to_string(), CssFrequencyUnit::Hertz)
+                .is_err()
+        );
     }
 
     for value in [f32::MIN, -0.0, f32::MAX] {
@@ -274,8 +277,9 @@ fn typed_calculation_roots_enforce_checked_literal_boundaries() {
                 if inner.representation() == value.to_string() && inner.unit() == Some("ms")
         ));
 
-        let frequency = CssFrequencyCalculation::try_literal(value, CssFrequencyUnit::Kilohertz)
-            .expect("finite frequency leaf");
+        let frequency =
+            CssFrequencyCalculation::try_literal(&value.to_string(), CssFrequencyUnit::Kilohertz)
+                .expect("finite frequency leaf");
         assert_eq!(frequency.result_type(), CssCalculationType::Frequency);
         assert!(matches!(
             frequency.expression(),

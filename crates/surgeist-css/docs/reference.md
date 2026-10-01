@@ -1123,12 +1123,73 @@ and provenance. Duration wrappers, timing lists and transition/animation
 aggregates compare their time children without source coordinates while keeping
 lexical coefficients, units, branches, order and omissions distinct. Constructors
 and parsers retain absent shorthand fields; they do not insert initial values.
-Frequency and resolution convenience models still use finite numeric
-construction. Animation iteration counts and easing values use their own shared
-numeric models.
+Animation iteration counts and easing values use their own shared numeric models.
 This crate does not resolve relative units, evaluate computed ranges, run animation
 timelines, or lower values into sibling Surgeist crates. Whole timing aggregate
 specified writers and timing property expansion remain unfinished.
+
+### Exact frequency and ordinary resolution
+
+`CssFrequencyLiteral` and `CssResolutionLiteral` retain a checked dimension token
+with its exact coefficient, decoded unit and original provenance. Their
+`try_new` constructors accept a coefficient string and a unit enum;
+`try_from_component` accepts one checked dimension. Borrowed `numeric()`,
+`component()` and `origin()` views expose the retained input without converting
+it to a floating point value. Units are ASCII case-insensitive. Resolution's `x`
+alias selects `CssResolutionUnit::Dppx` while retaining the authored `x` token.
+
+Frequency accepts signed coefficients. Ordinary resolution accepts zero,
+including signed or exponent zero, and rejects exact negative nonzero values.
+Very small negative coefficients remain negative even if a floating point
+conversion would underflow. Neither domain admits a bare number zero, a
+percentage, an unrelated dimension or a NaN/infinity identifier as an ordinary
+literal.
+
+`CssFrequencyValue` and `CssResolutionValue` hold an ordinary literal or a
+checked calculation in their named domain. `from_literal` retains a checked
+literal; `try_from_calculation` rejects the first original implicit closure,
+then normalizes an ordinary dimension root. Actual math remains a calculation:
+`calc(-1dppx)` is symbolic, and its eventual range is not evaluated during
+admission. The signed `CssResolutionCalculation` root also continues to serve
+media-query syntax, whose negative operands and separate `infinite` keyword are
+valid authored inputs.
+
+```rust
+use surgeist_css::{
+    CssFrequencyLiteral, CssFrequencyUnit, CssResolutionLiteral, CssResolutionUnit,
+};
+
+let frequency = CssFrequencyLiteral::try_new("1.0000000000000001", CssFrequencyUnit::Kilohertz)
+    .unwrap();
+assert_eq!(frequency.numeric().representation(), "1.0000000000000001");
+assert_eq!(frequency.serialize_specified().unwrap(), "1.0000000000000001khz");
+
+let resolution = CssResolutionLiteral::try_new("-0e999", CssResolutionUnit::Dppx).unwrap();
+assert_eq!(resolution.numeric().representation(), "-0e999");
+assert!(CssResolutionLiteral::try_new("-1e-999", CssResolutionUnit::Dpi).is_err());
+```
+
+Frequency literals and values provide bounded `serialize_specified()` and
+`serialize_specified_with_limits()` helpers. Ordinary output retains the
+selected unit with a lowercase `hz` or `khz` suffix, expands exact decimal digits
+and emits signed zero as numeric zero. A value wrapper shares the same cumulative
+input-node, projection-node and byte budget; failures return a typed error with
+no partial CSS and leave the input unchanged. Raw equality preserves coefficient
+and unit spelling, ordinary versus math branches, and original provenance.
+
+This ordinary frequency output follows the selected WebKit behavior for
+specified values: `1kHz` emits `1khz`. The selected
+[CSSOM serialization clause](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serialize-a-css-component-value)
+leaves frequency's specified-versus-computed phase unresolved. The helper also retains more than
+six fractional places, for example `0.0000001Hz` emits `0.0000001hz`, so it does
+not yet implement complete CSSOM number formatting. Frequency math uses the
+existing shared simplifier with its floating point precision and range limits.
+
+Ordinary resolution has no specified serialization helper yet. Canonical output
+requires exact conversion to `dppx` and the CSSOM number-rounding policy;
+conversions such as `1dpi` to `1/96dppx` require a repeating-decimal policy.
+Media queries retain their existing authored lexical serialization rather than
+performing that conversion or evaluating their comparisons.
 
 ## Property-specific authored positions
 

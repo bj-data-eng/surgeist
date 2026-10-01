@@ -6341,12 +6341,28 @@ pub fn surgeist_css::CssFrequencyCalculation::serialize(&self) -> core::result::
 pub fn surgeist_css::CssFrequencyCalculation::try_from_components(values: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 pub fn surgeist_css::CssFrequencyCalculation::try_from_components_with_limits(values: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 impl surgeist_css::CssFrequencyCalculation
-pub fn surgeist_css::CssFrequencyCalculation::try_literal(value: f32, unit: surgeist_css::CssFrequencyUnit) -> core::option::Option<Self>
+pub fn surgeist_css::CssFrequencyCalculation::try_literal(number: &str, unit: surgeist_css::CssFrequencyUnit) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 pub struct surgeist_css::CssFrequencyLiteral
 impl surgeist_css::CssFrequencyLiteral
-pub fn surgeist_css::CssFrequencyLiteral::try_new(value: f32, unit: surgeist_css::CssFrequencyUnit) -> core::option::Option<Self>
-pub const fn surgeist_css::CssFrequencyLiteral::unit(self) -> surgeist_css::CssFrequencyUnit
-pub const fn surgeist_css::CssFrequencyLiteral::value(self) -> f32
+pub const fn surgeist_css::CssFrequencyLiteral::component(&self) -> &surgeist_css::CssComponentValue
+pub fn surgeist_css::CssFrequencyLiteral::numeric(&self) -> surgeist_css::CssNumericTokenRef<'_>
+pub const fn surgeist_css::CssFrequencyLiteral::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssFrequencyLiteral::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssFrequencyLiteral::try_new(number: &str, unit: surgeist_css::CssFrequencyUnit) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+pub const fn surgeist_css::CssFrequencyLiteral::unit(&self) -> surgeist_css::CssFrequencyUnit
+impl surgeist_css::CssFrequencyLiteral
+pub fn surgeist_css::CssFrequencyLiteral::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFrequencyLiteral::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssFrequencyValue
+impl surgeist_css::CssFrequencyValue
+pub fn surgeist_css::CssFrequencyValue::calculation(&self) -> core::option::Option<&surgeist_css::CssFrequencyCalculation>
+pub fn surgeist_css::CssFrequencyValue::from_literal(literal: surgeist_css::CssFrequencyLiteral) -> Self
+pub fn surgeist_css::CssFrequencyValue::literal(&self) -> core::option::Option<&surgeist_css::CssFrequencyLiteral>
+pub fn surgeist_css::CssFrequencyValue::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssFrequencyValue::try_from_calculation(calculation: surgeist_css::CssFrequencyCalculation) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+impl surgeist_css::CssFrequencyValue
+pub fn surgeist_css::CssFrequencyValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFrequencyValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssFunctionValue
 impl surgeist_css::CssFunctionValue
 pub const fn surgeist_css::CssFunctionValue::closing_origin(&self) -> &surgeist_css::CssValueOrigin
@@ -7894,11 +7910,6 @@ pub struct surgeist_css::CssResizePropertyValue
 impl surgeist_css::CssResizePropertyValue
 pub fn surgeist_css::CssResizePropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssResizePropertyValue::resize(&self) -> &surgeist_css::CssResize
-pub struct surgeist_css::CssResolution
-impl surgeist_css::CssResolution
-pub fn surgeist_css::CssResolution::try_new(value: f32, unit: surgeist_css::CssResolutionUnit) -> core::option::Option<Self>
-pub const fn surgeist_css::CssResolution::unit(self) -> surgeist_css::CssResolutionUnit
-pub const fn surgeist_css::CssResolution::value(self) -> surgeist_css::CssFiniteNumber
 pub struct surgeist_css::CssResolutionCalculation
 impl surgeist_css::CssResolutionCalculation
 pub fn surgeist_css::CssResolutionCalculation::components(&self) -> &surgeist_css::CssComponentValues
@@ -7910,6 +7921,21 @@ pub fn surgeist_css::CssResolutionCalculation::result_type(&self) -> surgeist_cs
 pub fn surgeist_css::CssResolutionCalculation::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
 pub fn surgeist_css::CssResolutionCalculation::try_from_components(values: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 pub fn surgeist_css::CssResolutionCalculation::try_from_components_with_limits(values: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub struct surgeist_css::CssResolutionLiteral
+impl surgeist_css::CssResolutionLiteral
+pub const fn surgeist_css::CssResolutionLiteral::component(&self) -> &surgeist_css::CssComponentValue
+pub fn surgeist_css::CssResolutionLiteral::numeric(&self) -> surgeist_css::CssNumericTokenRef<'_>
+pub const fn surgeist_css::CssResolutionLiteral::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssResolutionLiteral::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub fn surgeist_css::CssResolutionLiteral::try_new(number: &str, unit: surgeist_css::CssResolutionUnit) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub const fn surgeist_css::CssResolutionLiteral::unit(&self) -> surgeist_css::CssResolutionUnit
+pub struct surgeist_css::CssResolutionValue
+impl surgeist_css::CssResolutionValue
+pub fn surgeist_css::CssResolutionValue::calculation(&self) -> core::option::Option<&surgeist_css::CssResolutionCalculation>
+pub fn surgeist_css::CssResolutionValue::from_literal(literal: surgeist_css::CssResolutionLiteral) -> Self
+pub fn surgeist_css::CssResolutionValue::literal(&self) -> core::option::Option<&surgeist_css::CssResolutionLiteral>
+pub fn surgeist_css::CssResolutionValue::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssResolutionValue::try_from_calculation(calculation: surgeist_css::CssResolutionCalculation) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 pub struct surgeist_css::CssRgbColor
 impl surgeist_css::CssRgbColor
 pub const fn surgeist_css::CssRgbColor::alpha(&self) -> core::option::Option<&surgeist_css::CssColorComponent>

@@ -2306,7 +2306,7 @@ fn c14_remaining_official_values_are_typed() {
     let percentage = CssPercentageCalculation::try_literal(25.0).expect("finite percentage");
     let time =
         CssTimeCalculation::try_literal("-250", CssTimeUnit::Milliseconds).expect("finite time");
-    let frequency = CssFrequencyCalculation::try_literal(1.5, CssFrequencyUnit::Kilohertz)
+    let frequency = CssFrequencyCalculation::try_literal("1.5", CssFrequencyUnit::Kilohertz)
         .expect("finite frequency");
     assert_eq!(angle.result_type(), CssCalculationType::Angle);
     assert_eq!(percentage.result_type(), CssCalculationType::Percentage);
@@ -2316,9 +2316,7 @@ fn c14_remaining_official_values_are_typed() {
     assert!(
         CssTimeCalculation::try_literal(&f32::INFINITY.to_string(), CssTimeUnit::Seconds).is_err()
     );
-    assert!(
-        CssFrequencyCalculation::try_literal(f32::NEG_INFINITY, CssFrequencyUnit::Hertz).is_none()
-    );
+    assert!(CssFrequencyCalculation::try_literal("-inf", CssFrequencyUnit::Hertz).is_err());
 
     let parsed = parse_style_attribute(concat!(
         "width: calc((1cqw + 2%) * 3); ",
@@ -2878,7 +2876,7 @@ fn official_time_percentage_metadata_matches_checked_mixed_models() {
 
 #[test]
 fn official_frequency_metadata_matches_checked_frequency_behavior() {
-    let value = CssFrequencyCalculation::try_literal(440.0, CssFrequencyUnit::Hertz)
+    let value = CssFrequencyCalculation::try_literal("440", CssFrequencyUnit::Hertz)
         .expect("finite frequency");
     assert_eq!(value.result_type(), CssCalculationType::Frequency);
     assert_c03_value_metadata(
@@ -2893,7 +2891,7 @@ fn official_frequency_metadata_matches_checked_frequency_behavior() {
 
 #[test]
 fn official_frequency_percentage_metadata_matches_checked_mixed_models() {
-    let frequency = CssFrequencyCalculation::try_literal(1.5, CssFrequencyUnit::Kilohertz)
+    let frequency = CssFrequencyCalculation::try_literal("1.5", CssFrequencyUnit::Kilohertz)
         .expect("finite frequency");
     let percentage = CssPercentageCalculation::try_literal(75.0).expect("finite percentage");
     assert_eq!(frequency.result_type(), CssCalculationType::Frequency);
@@ -2910,8 +2908,9 @@ fn official_frequency_percentage_metadata_matches_checked_mixed_models() {
 
 #[test]
 fn official_resolution_metadata_matches_checked_resolution_behavior() {
-    let value = CssResolution::try_new(2.0, CssResolutionUnit::Dppx).expect("finite resolution");
-    assert_eq!(value.value().value(), 2.0);
+    let value =
+        CssResolutionLiteral::try_new("2", CssResolutionUnit::Dppx).expect("exact resolution");
+    assert_eq!(value.numeric().representation(), "2");
     assert_eq!(value.unit(), CssResolutionUnit::Dppx);
     assert_c03_value_metadata(
         "official.value.resolution",
