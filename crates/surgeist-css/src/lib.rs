@@ -168,8 +168,8 @@
 //!     CssCalculationType, CssCalculationValueRef,
 //! };
 //!
-//! let angle = CssAngleCalculation::try_literal(-0.5, CssAngleUnit::Turns)
-//!     .expect("finite authored angle");
+//! let angle = CssAngleCalculation::try_literal("-0.5", CssAngleUnit::Turns)
+//!     .expect("checked authored angle");
 //! assert_eq!(angle.result_type(), CssCalculationType::Angle);
 //! assert!(matches!(
 //!     angle.expression(),
@@ -383,8 +383,12 @@
 //! Ordinary cubic-bezier X coordinates are checked exactly against inclusive [0, 1];
 //! genuine calculations remain unresolved. The independent `scale` property retains
 //! its selected one-to-three literal-number subset. Transform, filter, gradient, and
-//! image-orientation angles share `CssAngleValue` with finite literal precision,
-//! unitless zero, and symbolic Angle-root calculations. Easing values distinguish keywords,
+//! image-orientation angles share exact `CssAngleLiteral` values and symbolic
+//! Angle-root calculations through the strict `CssAngleValue`. Transforms, filters,
+//! and gradient directions admit bare zero through `CssAngleOrZero`; image orientation
+//! requires an angle dimension or calculation. Raw scalars retain provenance while
+//! semantic aggregates compare structure independently of scalar origins.
+//! Easing values distinguish keywords,
 //! `cubic-bezier()`, and `steps()`. Box shadows and filter `drop-shadow()` have
 //! separate models, filter lists preserve URL/function order, and the selected
 //! basic-shape family exposes `inset()`, `circle()`, `ellipse()`, `polygon()`,
@@ -1221,6 +1225,7 @@ mod media_features;
 mod normalization;
 pub use media_features::*;
 mod alignment;
+mod angle;
 mod aspect_ratio;
 mod border_radius;
 mod border_spacing;
@@ -1256,6 +1261,7 @@ pub use alignment::{
     CssJustifySelfValue, CssLegacyAlignment, CssOverflowPosition, CssPlaceContentValue,
     CssPlaceItemsValue, CssPlaceSelfValue,
 };
+pub use angle::{CssAngleLiteral, CssAngleOrZero, CssAngleValue, CssZeroLiteral};
 pub use aspect_ratio::{CssRatioOperand, CssSpecifiedRatio};
 pub use border_color::{CssBorderColorPair, CssBorderColorShorthand, CssBorderColors};
 pub use border_radius::{CssBorderRadiusShorthand, CssCornerRadiusValue};
@@ -1267,8 +1273,7 @@ pub use box_spacing::{
 };
 pub use calc_size::{CssBoxCalcSize, CssCalcSize, CssCalcSizeBasisRef, CssIntrinsicSizeKeyword};
 pub use color_scalar::{
-    CssColorAngleLiteral, CssColorNumberLiteral, CssColorPercentageLiteral, CssColorScalarError,
-    CssColorScalarErrorKind,
+    CssColorNumberLiteral, CssColorPercentageLiteral, CssColorScalarError, CssColorScalarErrorKind,
 };
 pub use contain_intrinsic_size::{
     CssContainIntrinsicSize, CssContainIntrinsicSizeFallback, CssContainIntrinsicSizeValue,

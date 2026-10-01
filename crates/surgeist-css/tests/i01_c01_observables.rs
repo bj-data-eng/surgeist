@@ -2850,7 +2850,7 @@ fn assert_known_property_value(
                 "px"
             ));
             assert!(
-                matches!(angle, CssAngleValue::Literal(literal) if literal.value() == 45.0 && literal.unit() == CssAngleUnit::Degrees)
+                matches!(angle, CssAngleOrZero::Angle(value) if value.literal().is_some_and(|literal| literal.numeric().representation() == "45" && literal.unit() == CssAngleUnit::Degrees))
             );
             assert!(exact_number((scale.x()).literal_component(), "1.5"));
             assert!(scale.y().is_none());

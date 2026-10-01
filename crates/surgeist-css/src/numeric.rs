@@ -2850,16 +2850,25 @@ impl CssLengthPercentageCalculation {
     }
 }
 impl CssAngleCalculation {
-    pub fn try_literal(value: f32, unit: crate::CssAngleUnit) -> Option<Self> {
-        let unit = match unit {
-            crate::CssAngleUnit::Degrees => "deg",
-            crate::CssAngleUnit::Gradians => "grad",
-            crate::CssAngleUnit::Radians => "rad",
-            crate::CssAngleUnit::Turns => "turn",
-        };
-        Self::try_from_components(programmatic_dimension(value, unit)?).ok()
+    /// Constructs an exact ordinary dimension root with a canonical angle unit.
+    pub fn try_literal(number: &str, unit: crate::CssAngleUnit) -> Result<Self> {
+        let component = CssComponentValue::try_dimension(number, crate::angle::suffix(unit))
+            .map_err(CssNumericConstructionError::component)?;
+        let values = CssComponentValues::try_new(vec![component])
+            .map_err(CssNumericConstructionError::component)?;
+        Self::try_from_components(values)
+    }
+    pub(crate) fn literal_root_component(&self) -> Option<&CssComponentValue> {
+        match &self.expression.kind {
+            NodeKind::Value(component) => Some(component),
+            _ => None,
+        }
+    }
+    pub(crate) fn structural_eq(&self, other: &Self) -> bool {
+        self.expression.structural_eq(&other.expression)
     }
 }
+
 impl CssTimeCalculation {
     pub fn try_literal(value: f32, unit: crate::CssTimeUnit) -> Option<Self> {
         let unit = match unit {
@@ -3062,12 +3071,10 @@ fn construct_relative_color_expression(
             if result_domain == D::Hue =>
         {
             V::Angle(
-                crate::CssColorAngleLiteral::try_from_component(component.clone()).map_err(
-                    |error| {
-                        CssNumericConstructionError::component(error)
-                            .with_path(Some(vec![index].into_boxed_slice()))
-                    },
-                )?,
+                crate::CssAngleLiteral::try_from_component(component.clone()).map_err(|error| {
+                    CssNumericConstructionError::component(error)
+                        .with_path(Some(vec![index].into_boxed_slice()))
+                })?,
             )
         }
         CssComponentValueRef::Function(_) => {

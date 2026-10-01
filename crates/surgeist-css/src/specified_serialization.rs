@@ -215,46 +215,90 @@ pub(crate) fn serialize_keyword_sequence(
     Ok(output)
 }
 
+impl crate::CssAngleLiteral {
+    pub(crate) fn append_specified(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> Result<()> {
+        context.charge_input(1)?;
+        context.charge_projection(1)?;
+        if context.output_suppressed() {
+            return Ok(());
+        }
+        let text = format_coefficient(
+            self.numeric().representation(),
+            0,
+            crate::angle::suffix(self.unit()),
+            context.remaining_bytes(),
+        )?;
+        context.append(output, &text)
+    }
+}
+impl crate::CssZeroLiteral {
+    pub(crate) fn append_specified(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> Result<()> {
+        context.charge_input(1)?;
+        context.charge_projection(1)?;
+        context.append(output, "0")
+    }
+}
 impl crate::CssAngleValue {
-    /// Shared authored angle emission; outer syntax owns omission and aggregate charges.
+    pub(crate) fn append_specified(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> Result<()> {
+        if let Some(literal) = self.literal() {
+            return literal.append_specified(context, output);
+        }
+        crate::numeric::project_calculation_specified_into(
+            crate::numeric::SpecifiedCalculationRef::Angle(
+                self.calculation().expect("checked angle branch"),
+            ),
+            context,
+            output,
+        )
+        .map(|_| ())
+    }
+}
+impl crate::CssAngleOrZero {
     pub(crate) fn append_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
         output: &mut String,
     ) -> Result<()> {
         match self {
-            Self::Calculation(value) => {
-                crate::numeric::project_calculation_specified_into(
-                    crate::numeric::SpecifiedCalculationRef::Angle(value),
-                    context,
-                    output,
-                )?;
-                Ok(())
-            }
-            Self::Zero => {
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
-                context.append(output, "0")
-            }
-            Self::Literal(value) => {
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
-                if context.output_suppressed() {
-                    return Ok(());
-                }
-                context.append(output, &crate::syntax::format_css_number(value.value()))?;
-                context.append(
-                    output,
-                    match value.unit() {
-                        crate::CssAngleUnit::Degrees => "deg",
-                        crate::CssAngleUnit::Gradians => "grad",
-                        crate::CssAngleUnit::Radians => "rad",
-                        crate::CssAngleUnit::Turns => "turn",
-                    },
-                )
-            }
+            Self::Angle(value) => value.append_specified(context, output),
+            Self::Zero(value) => value.append_specified(context, output),
         }
     }
+}
+
+/// Formats an exact coefficient under a cumulative suffix budget.
+/// Suffix bytes belong to this operation's budget, not a later unchecked append.
+pub(crate) fn format_coefficient(
+    text: &str,
+    shift: i128,
+    suffix: &str,
+    limit: usize,
+) -> Result<String> {
+    let remaining = limit.checked_sub(suffix.len()).ok_or_else(|| {
+        crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSpecifiedValueSerializationErrorKind::ByteLimit,
+        )
+    })?;
+    let mut result = format_lexical_shift(text, shift, remaining)?;
+    result.try_reserve(suffix.len()).map_err(|_| {
+        crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
+        )
+    })?;
+    result.push_str(suffix);
+    Ok(result)
 }
 
 impl crate::CssOverflowWrap {

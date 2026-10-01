@@ -9042,7 +9042,7 @@ fn authored_transform_filter_and_basic_shape_values_preserve_family_context() {
     ));
     assert!(matches!(
         functions.functions()[1],
-        CssTransformFunction::Rotate(CssAngleValue::Literal(_))
+        CssTransformFunction::Rotate(CssAngleOrZero::Angle(ref value)) if value.literal().is_some()
     ));
 
     let CssFilter::Functions(functions) =

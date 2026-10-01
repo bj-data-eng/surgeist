@@ -579,7 +579,7 @@ fn blur_hue_rotate_and_drop_shadow_expose_distinct_typed_payloads() {
     assert!(matches!(
         functions.functions()[1],
         CssFilterFunction::HueRotate(ref hue)
-            if matches!(hue.authored_angle(), Some(CssAngleValue::Literal(value)) if value.value() == -0.25)
+            if matches!(hue.authored_angle(), Some(CssAngleOrZero::Angle(value)) if value.literal().is_some_and(|literal| literal.numeric().representation() == "-.25"))
     ));
     let CssFilterFunction::DropShadow(shadow) = &functions.functions()[2] else {
         panic!("expected typed drop-shadow");
@@ -1097,7 +1097,7 @@ fn every_selected_two_dimensional_transform_function_preserves_authored_order() 
     ));
     assert!(matches!(
         functions.functions()[3],
-        CssTransformFunction::Rotate(CssAngleValue::Calculation(_))
+        CssTransformFunction::Rotate(CssAngleOrZero::Angle(ref value)) if value.calculation().is_some()
     ));
 }
 
@@ -1182,10 +1182,12 @@ fn transform_three_dimensional_rotations_are_typed() {
         panic!("expected typed rotate3d");
     };
     assert!(exact_number((rotation.z()).literal_component(), "-1"));
-    assert!(matches!(rotation.angle(), CssAngleValue::Literal(value) if value.value() == 45.0));
+    assert!(
+        matches!(rotation.angle(), CssAngleOrZero::Angle(value) if value.literal().is_some_and(|literal| literal.numeric().representation() == "45"))
+    );
     assert!(matches!(
         functions.functions()[1],
-        CssTransformFunction::RotateZ(CssAngleValue::Calculation(_))
+        CssTransformFunction::RotateZ(CssAngleOrZero::Angle(ref value)) if value.calculation().is_some()
     ));
 }
 
@@ -1244,7 +1246,7 @@ fn transform_angles_reject_percentage_calculations_and_recover_siblings() {
     };
     assert!(matches!(
         functions.functions()[0],
-        CssTransformFunction::Rotate(CssAngleValue::Calculation(_))
+        CssTransformFunction::Rotate(CssAngleOrZero::Angle(ref value)) if value.calculation().is_some()
     ));
 }
 

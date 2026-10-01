@@ -236,7 +236,7 @@ fn border_image_source_distinguishes_none_url_and_image_values() {
 fn image_orientation_rendering_and_object_fit_retain_typed_keywords() {
     let report = parse_style_attribute(concat!(
         "image-orientation: from-image; ",
-        "image-orientation: 0; ",
+        "image-orientation: 0deg; ",
         "image-orientation: 0.25turn flip; ",
         "image-orientation: flip; ",
         "image-rendering: crisp-edges; ",
@@ -256,7 +256,12 @@ fn image_orientation_rendering_and_object_fit_retain_typed_keywords() {
 
     for (index, expected) in [
         (0, CssImageOrientation::FromImage),
-        (1, CssImageOrientation::Angle(CssAngleValue::Zero)),
+        (
+            1,
+            CssImageOrientation::Angle(CssAngleValue::from_literal(
+                CssAngleLiteral::try_new("0", CssAngleUnit::Degrees).unwrap(),
+            )),
+        ),
         (3, CssImageOrientation::Flip(None)),
     ] {
         let CssKnownPropertyValueRef::ImageOrientation(value) = values[index] else {
@@ -269,8 +274,8 @@ fn image_orientation_rendering_and_object_fit_retain_typed_keywords() {
     };
     assert!(matches!(
         flipped.orientation(),
-        CssImageOrientation::Flip(Some(CssAngleValue::Literal(angle)))
-            if angle.value() == 0.25 && angle.unit() == CssAngleUnit::Turns
+        CssImageOrientation::Flip(Some(value))
+            if value.literal().is_some_and(|angle| angle.numeric().representation() == "0.25" && angle.unit() == CssAngleUnit::Turns)
     ));
 
     assert!(matches!(
@@ -341,7 +346,7 @@ fn border_image_numeric_and_orientation_calculations_remain_symbolic() {
         CssKnownPropertyValueRef::ImageOrientation(value)
             if matches!(
                 value.orientation(),
-                CssImageOrientation::Flip(Some(CssAngleValue::Calculation(_)))
+                CssImageOrientation::Flip(Some(angle)) if angle.calculation().is_some()
             )
     ));
 }

@@ -705,7 +705,7 @@ fn parse_linear_gradient_direction<'i, 't>(
     {
         return parse_side_or_corner(input).map(CssLinearGradientDirection::SideOrCorner);
     }
-    super::values::parse_angle_value(input, numeric, super::values::AngleParserContext::Gradient)
+    super::values::parse_angle_or_zero(input, numeric, super::values::AngleParserContext::Gradient)
         .map(CssLinearGradientDirection::Angle)
 }
 

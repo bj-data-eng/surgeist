@@ -2,10 +2,10 @@
 
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::{
-    CssAngleUnit, CssAngleValue, CssColorStopList, CssColorStopListItem, CssGradient,
-    CssHorizontalGradientSide, CssHorizontalPosition, CssImage, CssImageValue, CssImageValueList,
-    CssLinearGradient, CssLinearGradientDirection, CssPhysicalPosition, CssRadialExtent,
-    CssRadialGradient, CssRadialShape, CssRadialSize, CssSpecifiedLengthPercentage,
+    CssAngleOrZero, CssColorStopList, CssColorStopListItem, CssGradient, CssHorizontalGradientSide,
+    CssHorizontalPosition, CssImage, CssImageValue, CssImageValueList, CssLinearGradient,
+    CssLinearGradientDirection, CssPhysicalPosition, CssRadialExtent, CssRadialGradient,
+    CssRadialShape, CssRadialSize, CssSpecifiedLengthPercentage,
     CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
     CssVerticalGradientSide, CssVerticalPosition,
 };
@@ -147,13 +147,10 @@ fn append_direction(
     charge(writer, 1)?;
     match direction {
         CssLinearGradientDirection::Angle(angle) => {
-            if let CssAngleValue::Literal(literal) = angle {
-                let omitted = matches!(
-                    (literal.unit(), literal.value()),
-                    (CssAngleUnit::Degrees, 180.0)
-                        | (CssAngleUnit::Gradians, 200.0)
-                        | (CssAngleUnit::Turns, 0.5)
-                );
+            if let CssAngleOrZero::Angle(value) = angle
+                && let Some(literal) = value.literal()
+            {
+                let omitted = literal.is_default_gradient_direction();
                 if omitted {
                     writer.without_output(|writer| {
                         angle.append_specified(&mut writer.context, &mut writer.css)

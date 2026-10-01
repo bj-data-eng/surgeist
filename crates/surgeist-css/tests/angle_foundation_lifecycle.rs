@@ -772,3 +772,286 @@ fn ordinary_gradient_outer_recovery_retains_its_complete_angle_calculation() {
         "linear-gradient(calc(30deg), red, blue)"
     );
 }
+
+// Functional evidence for the newly introduced checked owners.
+mod checked_construction {
+    use std::error::Error as _;
+    use surgeist_css::*;
+
+    fn component(text: &str) -> CssComponentValue {
+        let values = parse_component_values(text).unwrap();
+        let mut components = values.items().iter().filter(|value| {
+            !matches!(
+                value.view(),
+                CssComponentValueRef::Token(CssValueTokenRef::Whitespace(_))
+                    | CssComponentValueRef::Comment(_)
+            )
+        });
+        let value = components.next().expect("one component");
+        assert!(components.next().is_none());
+        value.clone()
+    }
+    fn hue(angle: CssAngleOrZero) -> CssFilterFunction {
+        CssFilterFunction::HueRotate(CssFilterHueRotate::new(angle))
+    }
+    fn literal(text: &str) -> CssAngleOrZero {
+        CssAngleOrZero::Angle(CssAngleValue::from_literal(
+            CssAngleLiteral::try_from_component(component(text)).unwrap(),
+        ))
+    }
+    fn budget(value: &CssFilterFunction, expected: &str) {
+        use CssSpecifiedValueSerializationErrorKind as K;
+        use CssSpecifiedValueSerializationLimits as L;
+        let before = value.clone();
+        assert_eq!(
+            value
+                .serialize_specified_with_limits(L::new(2, 2, expected.len()))
+                .unwrap(),
+            expected
+        );
+        for (limits, kind) in [
+            (L::new(1, 2, expected.len()), K::InputNodeLimit),
+            (L::new(2, 1, expected.len()), K::ProjectionNodeLimit),
+            (L::new(2, 2, expected.len() - 1), K::ByteLimit),
+        ] {
+            assert_eq!(
+                value
+                    .serialize_specified_with_limits(limits)
+                    .unwrap_err()
+                    .kind(),
+                kind
+            );
+            assert_eq!(value, &before);
+        }
+    }
+
+    #[test]
+    fn exact_literal_constructors_borrow_original_tokens_units_and_origins() {
+        for (text, coefficient, unit) in [
+            (
+                "+1.23000000000000000001DEG",
+                "+1.23000000000000000001",
+                CssAngleUnit::Degrees,
+            ),
+            (r"-.25t\75rn", "-.25", CssAngleUnit::Turns),
+            ("1e999grad", "1e999", CssAngleUnit::Gradians),
+            ("-1e-999rad", "-1e-999", CssAngleUnit::Radians),
+        ] {
+            let supplied = component(text);
+            let angle = CssAngleLiteral::try_from_component(supplied.clone()).unwrap();
+            assert_eq!(angle.numeric().representation(), coefficient);
+            assert_eq!(angle.unit(), unit);
+            assert_eq!(angle.component(), &supplied);
+            assert_eq!(angle.origin(), supplied.origin());
+            assert!(matches!(angle.origin(), CssValueOrigin::Parsed(_)));
+        }
+        for unit in [
+            CssAngleUnit::Degrees,
+            CssAngleUnit::Gradians,
+            CssAngleUnit::Radians,
+            CssAngleUnit::Turns,
+        ] {
+            let angle = CssAngleLiteral::try_new("+1.00000000000000000001e999", unit).unwrap();
+            assert_eq!(
+                angle.numeric().representation(),
+                "+1.00000000000000000001e999"
+            );
+            assert_eq!(angle.origin(), &CssValueOrigin::Programmatic);
+        }
+    }
+
+    #[test]
+    fn literal_and_zero_failures_report_the_supplied_component_origin() {
+        for text in ["0", "25%", "1px", "calc(1deg)", "auto"] {
+            let supplied = component(text);
+            let error = CssAngleLiteral::try_from_component(supplied.clone()).unwrap_err();
+            assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
+            assert_eq!(error.origin(), supplied.origin());
+        }
+        for text in ["1e-999", "-1e-999", "0deg", "0%", "calc(0)"] {
+            let supplied = component(text);
+            let error = CssZeroLiteral::try_from_component(supplied.clone()).unwrap_err();
+            assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
+            assert_eq!(error.origin(), supplied.origin());
+        }
+        for number in ["NaN", "infinity", "1 2", ""] {
+            assert!(CssAngleLiteral::try_new(number, CssAngleUnit::Degrees).is_err());
+            assert!(CssAngleCalculation::try_literal(number, CssAngleUnit::Degrees).is_err());
+        }
+    }
+
+    #[test]
+    fn exact_zero_keeps_signed_exponent_spelling_and_serializes_as_one_scalar() {
+        for text in [
+            "0",
+            "-0",
+            "+0.000e-999999999999999999999999999999",
+            "-000e999999999999999999999999999999",
+        ] {
+            let supplied = component(text);
+            let zero = CssZeroLiteral::try_from_component(supplied.clone()).unwrap();
+            assert_eq!(zero.numeric().representation(), text);
+            assert_eq!(zero.component(), &supplied);
+            assert_eq!(zero.origin(), supplied.origin());
+            let angle = CssAngleOrZero::Zero(zero);
+            assert_eq!(angle.origin(), supplied.origin());
+            budget(&hue(angle), "hue-rotate(0)");
+        }
+    }
+
+    #[test]
+    fn checked_calculation_transfer_normalizes_only_an_ordinary_dimension_root() {
+        let supplied = component("+1.23000000000000000001TURN");
+        let calculation = CssAngleCalculation::try_from_components(
+            CssComponentValues::try_new(vec![supplied.clone()]).unwrap(),
+        )
+        .unwrap();
+        let angle = CssAngleValue::try_from_calculation(calculation).unwrap();
+        assert!(angle.calculation().is_none());
+        assert_eq!(angle.literal().unwrap().component(), &supplied);
+        assert_eq!(angle.origin(), supplied.origin());
+        let ordinary = CssAngleCalculation::try_literal("1e999", CssAngleUnit::Radians).unwrap();
+        assert_eq!(ordinary.result_type(), CssCalculationType::Angle);
+        assert_eq!(
+            CssAngleValue::try_from_calculation(ordinary)
+                .unwrap()
+                .literal()
+                .unwrap()
+                .numeric()
+                .representation(),
+            "1e999"
+        );
+        for text in ["calc(180deg)", "calc(90deg + 90deg)", "min(180deg, 200deg)"] {
+            let calculation =
+                CssAngleCalculation::try_from_components(parse_component_values(text).unwrap())
+                    .unwrap();
+            let angle = CssAngleValue::try_from_calculation(calculation.clone()).unwrap();
+            assert!(angle.literal().is_none());
+            assert_eq!(angle.calculation(), Some(&calculation));
+            assert_eq!(angle.origin(), calculation.origin());
+        }
+    }
+
+    #[test]
+    fn transfer_rejects_recovered_math_at_the_original_implicit_closure() {
+        let source = "/*😀*/filter:hue-rotate(calc(25deg + 5deg";
+        let report = parse_style_attribute(source);
+        assert_eq!(report.syntax().len(), 1);
+        assert!(!report.is_clean());
+        let CssKnownPropertyValueRef::Filter(filter) = report.syntax()[0]
+            .known()
+            .unwrap()
+            .property_value()
+            .unwrap()
+        else {
+            panic!("filter")
+        };
+        let CssFilter::Functions(functions) = filter.value() else {
+            panic!("functions")
+        };
+        let [CssFilterFunction::HueRotate(hue)] = functions.functions() else {
+            panic!("hue")
+        };
+        let Some(CssAngleOrZero::Angle(angle)) = hue.authored_angle() else {
+            panic!("angle")
+        };
+        let calculation = angle.calculation().unwrap();
+        let [root] = calculation.components().items() else {
+            panic!("root")
+        };
+        let CssComponentValueRef::Function(function) = root.view() else {
+            panic!("math")
+        };
+        let error = CssAngleValue::try_from_calculation(calculation.clone()).unwrap_err();
+        assert_eq!(
+            error.kind(),
+            &CssNumericConstructionErrorKind::RecoveredComponent
+        );
+        assert_eq!(error.origin(), Some(function.closing_origin()));
+        assert!(error.path().is_none());
+        assert!(error.source().is_none());
+        let Some(CssValueOrigin::ImplicitClosure { opening, at }) = error.origin() else {
+            panic!("implicit")
+        };
+        assert_eq!(opening.source().as_str(), source);
+        assert_eq!(
+            opening.span().start().byte_offset().value(),
+            source.find("calc(").unwrap()
+        );
+        assert_eq!(at.span().start().byte_offset().value(), source.len());
+    }
+
+    #[test]
+    fn raw_owner_equality_preserves_provenance_while_aggregates_compare_structure() {
+        let first = literal("25deg");
+        let second = literal(" 25deg");
+        assert_ne!(first, second);
+        assert_eq!(hue(first.clone()), hue(second.clone()));
+        assert_eq!(
+            CssTransformFunction::Rotate(first.clone()),
+            CssTransformFunction::Rotate(second.clone())
+        );
+        assert_ne!(hue(first), hue(literal("25.0deg")));
+        let first = CssZeroLiteral::try_from_component(component("-0e999")).unwrap();
+        let second = CssZeroLiteral::try_from_component(component(" -0e999")).unwrap();
+        assert_ne!(first, second);
+        assert_eq!(
+            hue(CssAngleOrZero::Zero(first)),
+            hue(CssAngleOrZero::Zero(second))
+        );
+        assert_ne!(
+            hue(literal("0deg")),
+            hue(CssAngleOrZero::Zero(
+                CssZeroLiteral::try_from_component(component("0")).unwrap()
+            ))
+        );
+    }
+
+    #[test]
+    fn exact_literal_serialization_accounts_for_unit_bytes_and_cumulative_siblings() {
+        for (authored, expected) in [
+            (
+                "+1.23000000000000000001DEG",
+                "hue-rotate(1.23000000000000000001deg)",
+            ),
+            ("-.25turn", "hue-rotate(-0.25turn)"),
+            ("-0e999rad", "hue-rotate(0rad)"),
+            (
+                "1e40grad",
+                "hue-rotate(10000000000000000000000000000000000000000grad)",
+            ),
+        ] {
+            budget(&hue(literal(authored)), expected);
+        }
+        let list =
+            CssFilterFunctionList::try_new(vec![hue(literal(".5turn")), hue(literal("25grad"))])
+                .unwrap();
+        let expected = "hue-rotate(0.5turn) hue-rotate(25grad)";
+        use CssSpecifiedValueSerializationErrorKind as K;
+        use CssSpecifiedValueSerializationLimits as L;
+        assert_eq!(
+            list.serialize_specified_with_limits(L::new(5, 5, expected.len()))
+                .unwrap(),
+            expected
+        );
+        for (limits, kind) in [
+            (L::new(4, 5, expected.len()), K::InputNodeLimit),
+            (L::new(5, 4, expected.len()), K::ProjectionNodeLimit),
+            (L::new(5, 5, expected.len() - 1), K::ByteLimit),
+        ] {
+            assert_eq!(
+                list.serialize_specified_with_limits(limits)
+                    .unwrap_err()
+                    .kind(),
+                kind
+            );
+        }
+        let huge = hue(literal("1e999999999999999999999999999999deg"));
+        assert_eq!(
+            huge.serialize_specified_with_limits(L::new(2, 2, 64))
+                .unwrap_err()
+                .kind(),
+            K::ByteLimit
+        );
+    }
+}

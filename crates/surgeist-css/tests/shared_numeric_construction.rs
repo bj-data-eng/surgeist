@@ -441,8 +441,9 @@ fn three_dimensional_aggregates_compare_shared_structure_and_preserve_other_role
             == (CssTransformMatrix3d::new(std::array::from_fn(|_| ordinary.clone()))),
         "three_dimensional_aggregates_compare_shared_structure_and_preserve_other_roles: direct equality contract"
     );
-    let angle =
-        CssAngleValue::Literal(CssAngleLiteral::try_new(45.0, CssAngleUnit::Degrees).unwrap());
+    let angle = CssAngleOrZero::Angle(CssAngleValue::from_literal(
+        CssAngleLiteral::try_new("45", CssAngleUnit::Degrees).unwrap(),
+    ));
     let rotate = |axis| CssTransformRotate3d::new(axis, number("0"), number("-1"), angle.clone());
     assert!(
         (rotate(parsed.clone())) == (rotate(ordinary.clone())),
@@ -464,7 +465,10 @@ fn three_dimensional_aggregates_compare_shared_structure_and_preserve_other_role
                 ordinary.clone(),
                 number("0"),
                 number("-1"),
-                CssAngleValue::Zero
+                CssAngleOrZero::Zero(
+                    CssZeroLiteral::try_from_component(CssComponentValue::try_number("0").unwrap())
+                        .unwrap()
+                )
             )),
         "three_dimensional_aggregates_compare_shared_structure_and_preserve_other_roles: direct equality contract"
     );

@@ -2301,7 +2301,8 @@ fn c14_remaining_official_values_are_typed() {
     ));
     assert!(CssComponentValue::try_dimension("infinity", "px").is_err());
 
-    let angle = CssAngleCalculation::try_literal(-0.5, CssAngleUnit::Turns).expect("finite angle");
+    let angle =
+        CssAngleCalculation::try_literal("-0.5", CssAngleUnit::Turns).expect("finite angle");
     let percentage = CssPercentageCalculation::try_literal(25.0).expect("finite percentage");
     let time =
         CssTimeCalculation::try_literal(-250.0, CssTimeUnit::Milliseconds).expect("finite time");
@@ -2311,7 +2312,7 @@ fn c14_remaining_official_values_are_typed() {
     assert_eq!(percentage.result_type(), CssCalculationType::Percentage);
     assert_eq!(time.result_type(), CssCalculationType::Time);
     assert_eq!(frequency.result_type(), CssCalculationType::Frequency);
-    assert!(CssAngleCalculation::try_literal(f32::NAN, CssAngleUnit::Degrees).is_none());
+    assert!(CssAngleCalculation::try_literal("NaN", CssAngleUnit::Degrees).is_err());
     assert!(CssTimeCalculation::try_literal(f32::INFINITY, CssTimeUnit::Seconds).is_none());
     assert!(
         CssFrequencyCalculation::try_literal(f32::NEG_INFINITY, CssFrequencyUnit::Hertz).is_none()
@@ -2816,7 +2817,8 @@ fn official_length_percentage_metadata_matches_mixed_length_parser_behavior() {
 
 #[test]
 fn official_angle_metadata_matches_checked_angle_behavior() {
-    let value = CssAngleCalculation::try_literal(-0.5, CssAngleUnit::Turns).expect("finite angle");
+    let value =
+        CssAngleCalculation::try_literal("-0.5", CssAngleUnit::Turns).expect("finite angle");
     assert_eq!(value.result_type(), CssCalculationType::Angle);
     assert_c03_value_metadata(
         "official.value.angle",
@@ -2831,7 +2833,7 @@ fn official_angle_metadata_matches_checked_angle_behavior() {
 #[test]
 fn official_angle_percentage_metadata_matches_checked_mixed_models() {
     let angle =
-        CssAngleCalculation::try_literal(45.0, CssAngleUnit::Degrees).expect("finite angle");
+        CssAngleCalculation::try_literal("45", CssAngleUnit::Degrees).expect("finite angle");
     let percentage = CssPercentageCalculation::try_literal(25.0).expect("finite percentage");
     assert_eq!(angle.result_type(), CssCalculationType::Angle);
     assert_eq!(percentage.result_type(), CssCalculationType::Percentage);

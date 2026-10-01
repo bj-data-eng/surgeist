@@ -241,7 +241,7 @@ fn transform_equality_controls_keep_order_omission_branch_and_symbolic_structure
     );
     assert!(
         transform("transform: rotate(calc(45deg))")
-            != transform("  transform: rotate(calc(45deg))"),
-        "Numeric identity must retain distinct authored structures or provenance; inputs: transform(\"transform: rotate(calc(45deg))\") versus transform(\"  transform: rotate(calc(45deg))\")"
+            == transform("  transform: rotate(calc(45deg))"),
+        "Transform aggregate identity must ignore angle source locations while retaining authored structure"
     );
 }

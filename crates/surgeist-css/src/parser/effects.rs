@@ -9,7 +9,7 @@ use super::box_model::parse_drop_shadow;
 use super::position::{parse_full_position, parse_physical_position};
 use super::url::parse_url;
 use super::values::{
-    AngleParserContext, next_is_comma, next_is_delim, next_is_ident, parse_angle_value,
+    AngleParserContext, next_is_comma, next_is_delim, next_is_ident, parse_angle_or_zero,
     parse_nonnegative_number, parse_nonnegative_percentage, parse_specified_number,
     parse_specified_number_literal, parse_specified_percentage,
 };
@@ -288,7 +288,7 @@ fn parse_transform_function_value<'i, 't>(
         }
         CssTransformFunctionKind::Rotate => {
             CssTransformFunction::Rotate(parse_one(input, |input| {
-                parse_angle_value(input, numeric, AngleParserContext::Transform)
+                parse_angle_or_zero(input, numeric, AngleParserContext::Transform)
             })?)
         }
         CssTransformFunctionKind::Rotate3d => {
@@ -298,23 +298,23 @@ fn parse_transform_function_value<'i, 't>(
             input.expect_comma().map_err(basic)?;
             let z = parse_specified_number(input, numeric, "transform")?;
             input.expect_comma().map_err(basic)?;
-            let angle = parse_angle_value(input, numeric, AngleParserContext::Transform)?;
+            let angle = parse_angle_or_zero(input, numeric, AngleParserContext::Transform)?;
             input.expect_exhausted().map_err(basic)?;
             CssTransformFunction::Rotate3d(CssTransformRotate3d::new(x, y, z, angle))
         }
         CssTransformFunctionKind::RotateX => {
             CssTransformFunction::RotateX(parse_one(input, |input| {
-                parse_angle_value(input, numeric, AngleParserContext::Transform)
+                parse_angle_or_zero(input, numeric, AngleParserContext::Transform)
             })?)
         }
         CssTransformFunctionKind::RotateY => {
             CssTransformFunction::RotateY(parse_one(input, |input| {
-                parse_angle_value(input, numeric, AngleParserContext::Transform)
+                parse_angle_or_zero(input, numeric, AngleParserContext::Transform)
             })?)
         }
         CssTransformFunctionKind::RotateZ => {
             CssTransformFunction::RotateZ(parse_one(input, |input| {
-                parse_angle_value(input, numeric, AngleParserContext::Transform)
+                parse_angle_or_zero(input, numeric, AngleParserContext::Transform)
             })?)
         }
         CssTransformFunctionKind::Scale => {
@@ -355,18 +355,18 @@ fn parse_transform_function_value<'i, 't>(
         }
         CssTransformFunctionKind::Skew => {
             let (x, y) = parse_one_or_two(input, |input| {
-                parse_angle_value(input, numeric, AngleParserContext::Transform)
+                parse_angle_or_zero(input, numeric, AngleParserContext::Transform)
             })?;
             CssTransformFunction::Skew(CssTransformSkew::new(x, y))
         }
         CssTransformFunctionKind::SkewX => {
             CssTransformFunction::SkewX(parse_one(input, |input| {
-                parse_angle_value(input, numeric, AngleParserContext::Transform)
+                parse_angle_or_zero(input, numeric, AngleParserContext::Transform)
             })?)
         }
         CssTransformFunctionKind::SkewY => {
             CssTransformFunction::SkewY(parse_one(input, |input| {
-                parse_angle_value(input, numeric, AngleParserContext::Transform)
+                parse_angle_or_zero(input, numeric, AngleParserContext::Transform)
             })?)
         }
         CssTransformFunctionKind::Translate => {
@@ -906,7 +906,7 @@ fn parse_filter_function_value<'i, 't>(
             let angle = if input.is_exhausted() {
                 CssFilterHueRotate::omitted()
             } else {
-                CssFilterHueRotate::new(parse_angle_value(
+                CssFilterHueRotate::new(parse_angle_or_zero(
                     input,
                     numeric,
                     AngleParserContext::Filter,

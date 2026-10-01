@@ -66,7 +66,7 @@ fn checked_literal_wrappers_preserve_domains_units_and_origins() {
         ("1e100d\\65 g", CssAngleUnit::Degrees),
     ] {
         let supplied = component(text);
-        let value = CssColorAngleLiteral::try_from_component(supplied.clone()).unwrap();
+        let value = CssAngleLiteral::try_from_component(supplied.clone()).unwrap();
         assert_eq!(value.unit(), unit);
         assert_eq!(value.numeric().representation(), "1e100");
         assert_eq!(value.component(), &supplied);
@@ -94,7 +94,7 @@ fn wrong_literal_domains_report_the_original_invalid_token() {
     }
     for text in ["1", "1%", "1px"] {
         let supplied = component(text);
-        let error = CssColorAngleLiteral::try_from_component(supplied.clone()).unwrap_err();
+        let error = CssAngleLiteral::try_from_component(supplied.clone()).unwrap_err();
         assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
         assert_eq!(error.origin(), supplied.origin());
     }

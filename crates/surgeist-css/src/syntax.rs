@@ -16,8 +16,9 @@ pub(crate) use crate::media_features::*;
 pub(crate) use crate::numeric::*;
 pub use crate::page_line_minimum::CssPageLineMinimum;
 use crate::{
-    CssColorAngleLiteral, CssColorNumberLiteral, CssColorPercentageLiteral, CssColorScalarError,
-    CssFontSize, CssFontStyle, CssFontWeight, CssFontWidthKeyword, CssLineHeight, CssValueOrigin,
+    CssAngleLiteral, CssAngleOrZero, CssAngleValue, CssColorNumberLiteral,
+    CssColorPercentageLiteral, CssColorScalarError, CssFontSize, CssFontStyle, CssFontWeight,
+    CssFontWidthKeyword, CssLineHeight, CssValueOrigin,
 };
 use crate::{
     CssContainerScrollQuery, CssContainerStyleQuery, CssFontFeatureValuesRule,
@@ -6637,23 +6638,26 @@ impl CssBorderImage {
     }
 }
 
-/// An authored angle shared by transforms, filters, gradients, and image orientation.
-/// Retains unitless zero, the existing finite literal precision, and Angle-root math.
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssAngleValue {
-    Zero,
-    Literal(CssAngleLiteral),
-    Calculation(CssAngleCalculation),
-}
-
 /// The authored Images 3 `image-orientation` syntax.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssImageOrientation {
     FromImage,
     Angle(CssAngleValue),
     Flip(Option<CssAngleValue>),
+}
+
+impl PartialEq for CssImageOrientation {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::FromImage, Self::FromImage) => true,
+            (Self::Angle(left), Self::Angle(right)) => left.structural_eq(right),
+            (Self::Flip(left), Self::Flip(right)) => {
+                optional_numeric_eq(left.as_ref(), right.as_ref(), CssAngleValue::structural_eq)
+            }
+            _ => false,
+        }
+    }
 }
 
 /// The authored Images 3 `image-rendering` keyword.
@@ -6752,11 +6756,21 @@ impl CssSideOrCorner {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssLinearGradientDirection {
-    Angle(CssAngleValue),
+    Angle(CssAngleOrZero),
     SideOrCorner(CssSideOrCorner),
+}
+
+impl PartialEq for CssLinearGradientDirection {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Angle(left), Self::Angle(right)) => left.structural_eq(right),
+            (Self::SideOrCorner(left), Self::SideOrCorner(right)) => left == right,
+            _ => false,
+        }
+    }
 }
 
 /// One authored color stop in a gradient color-stop list.
@@ -7601,17 +7615,17 @@ pub struct CssTransformRotate3d {
     x: CssSpecifiedNumber,
     y: CssSpecifiedNumber,
     z: CssSpecifiedNumber,
-    angle: CssAngleValue,
+    angle: CssAngleOrZero,
 }
 
-numeric_fields_eq!(CssTransformRotate3d, [x, y, z], [], [angle]);
+numeric_fields_eq!(CssTransformRotate3d, [x, y, z, angle], [], []);
 
 impl CssTransformRotate3d {
     pub const fn new(
         x: CssSpecifiedNumber,
         y: CssSpecifiedNumber,
         z: CssSpecifiedNumber,
-        angle: CssAngleValue,
+        angle: CssAngleOrZero,
     ) -> Self {
         Self { x, y, z, angle }
     }
@@ -7632,7 +7646,7 @@ impl CssTransformRotate3d {
     }
 
     #[must_use]
-    pub const fn angle(&self) -> &CssAngleValue {
+    pub const fn angle(&self) -> &CssAngleOrZero {
         &self.angle
     }
 }
@@ -7693,24 +7707,26 @@ impl CssTransformScale3d {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct CssTransformSkew {
-    x: CssAngleValue,
-    y: Option<CssAngleValue>,
+    x: CssAngleOrZero,
+    y: Option<CssAngleOrZero>,
 }
 
+numeric_fields_eq!(CssTransformSkew, [x], [y], []);
+
 impl CssTransformSkew {
-    pub const fn new(x: CssAngleValue, y: Option<CssAngleValue>) -> Self {
+    pub const fn new(x: CssAngleOrZero, y: Option<CssAngleOrZero>) -> Self {
         Self { x, y }
     }
 
     #[must_use]
-    pub const fn x(&self) -> &CssAngleValue {
+    pub const fn x(&self) -> &CssAngleOrZero {
         &self.x
     }
 
     #[must_use]
-    pub const fn y(&self) -> Option<&CssAngleValue> {
+    pub const fn y(&self) -> Option<&CssAngleOrZero> {
         self.y.as_ref()
     }
 }
@@ -7781,19 +7797,19 @@ pub enum CssTransformFunction {
     Matrix(CssTransformMatrix),
     Matrix3d(Box<CssTransformMatrix3d>),
     Perspective(CssTransformPerspective),
-    Rotate(CssAngleValue),
+    Rotate(CssAngleOrZero),
     Rotate3d(CssTransformRotate3d),
-    RotateX(CssAngleValue),
-    RotateY(CssAngleValue),
-    RotateZ(CssAngleValue),
+    RotateX(CssAngleOrZero),
+    RotateY(CssAngleOrZero),
+    RotateZ(CssAngleOrZero),
     Scale(CssTransformScale),
     Scale3d(CssTransformScale3d),
     ScaleX(CssSpecifiedNumber),
     ScaleY(CssSpecifiedNumber),
     ScaleZ(CssTransformScaleComponent),
     Skew(CssTransformSkew),
-    SkewX(CssAngleValue),
-    SkewY(CssAngleValue),
+    SkewX(CssAngleOrZero),
+    SkewY(CssAngleOrZero),
     Translate(CssTransformTranslate),
     Translate3d(CssTransformTranslate3d),
     TranslateX(CssSpecifiedLengthPercentage),
@@ -7813,7 +7829,7 @@ impl PartialEq for CssTransformFunction {
             (Self::Rotate(left), Self::Rotate(right))
             | (Self::RotateX(left), Self::RotateX(right))
             | (Self::RotateY(left), Self::RotateY(right))
-            | (Self::RotateZ(left), Self::RotateZ(right)) => left == right,
+            | (Self::RotateZ(left), Self::RotateZ(right)) => left.structural_eq(right),
             (Self::Rotate3d(left), Self::Rotate3d(right)) => left == right,
             (Self::Scale(left), Self::Scale(right)) => left == right,
             (Self::Scale3d(left), Self::Scale3d(right)) => left == right,
@@ -7822,7 +7838,7 @@ impl PartialEq for CssTransformFunction {
             (Self::ScaleZ(left), Self::ScaleZ(right)) => left == right,
             (Self::Skew(left), Self::Skew(right)) => left == right,
             (Self::SkewX(left), Self::SkewX(right)) | (Self::SkewY(left), Self::SkewY(right)) => {
-                left == right
+                left.structural_eq(right)
             }
             (Self::Translate(left), Self::Translate(right)) => left == right,
             (Self::Translate3d(left), Self::Translate3d(right)) => left == right,
@@ -8044,16 +8060,18 @@ impl CssFilterBlur {
 ///
 /// [`Self::angle`] borrows the effective specified angle; [`Self::authored_angle`]
 /// borrows only an explicitly authored angle. Literal units, unitless zero, and
-/// calculation provenance keep the shared [`CssAngleValue`] contract.
-#[derive(Clone, Debug, PartialEq)]
+/// calculation provenance keep the shared [`CssAngleOrZero`] contract.
+#[derive(Clone, Debug)]
 pub struct CssFilterHueRotate {
-    angle: CssAngleValue,
+    angle: CssAngleOrZero,
     omitted: bool,
 }
 
+numeric_fields_eq!(CssFilterHueRotate, [angle], [], [omitted]);
+
 impl CssFilterHueRotate {
     /// Retains an explicitly authored checked angle without normalizing it.
-    pub const fn new(angle: CssAngleValue) -> Self {
+    pub const fn new(angle: CssAngleOrZero) -> Self {
         Self {
             angle,
             omitted: false,
@@ -8063,20 +8081,20 @@ impl CssFilterHueRotate {
     /// An omitted angle has the effective specified value 0deg.
     pub fn omitted() -> Self {
         Self {
-            angle: CssAngleValue::Literal(
-                CssAngleLiteral::try_new(0.0, CssAngleUnit::Degrees).expect("finite zero degrees"),
-            ),
+            angle: CssAngleOrZero::Angle(CssAngleValue::from_literal(
+                CssAngleLiteral::try_new("0", CssAngleUnit::Degrees).expect("checked zero degrees"),
+            )),
             omitted: true,
         }
     }
 
     /// Borrows the effective specified angle, including an omitted angle's 0deg.
-    pub const fn angle(&self) -> &CssAngleValue {
+    pub const fn angle(&self) -> &CssAngleOrZero {
         &self.angle
     }
 
     /// Borrows only an explicitly authored angle.
-    pub const fn authored_angle(&self) -> Option<&CssAngleValue> {
+    pub const fn authored_angle(&self) -> Option<&CssAngleOrZero> {
         if self.omitted {
             None
         } else {
@@ -8962,29 +8980,6 @@ pub enum CssAngleUnit {
     Turns,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CssAngleLiteral {
-    value: CssFiniteNumber,
-    unit: CssAngleUnit,
-}
-
-impl CssAngleLiteral {
-    #[must_use]
-    pub fn try_new(value: f32, unit: CssAngleUnit) -> Option<Self> {
-        CssFiniteNumber::try_new(value).map(|value| Self { value, unit })
-    }
-
-    #[must_use]
-    pub const fn value(self) -> f32 {
-        self.value.value()
-    }
-
-    #[must_use]
-    pub const fn unit(self) -> CssAngleUnit {
-        self.unit
-    }
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFrequencyUnit {
@@ -9035,13 +9030,5 @@ impl CssDelayLiteral {
     #[must_use]
     pub const fn unit(self) -> CssTimeUnit {
         self.unit
-    }
-}
-
-pub(crate) fn format_css_number(value: f32) -> String {
-    if value.fract() == 0.0 {
-        format!("{value:.0}")
-    } else {
-        value.to_string()
     }
 }

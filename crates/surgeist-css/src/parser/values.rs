@@ -1,4 +1,4 @@
-use cssparser::{ParseError, Parser, ToCss, Token};
+use cssparser::{ParseError, Parser, Token};
 
 use crate::error::{CssFeatureId, Error, basic, unsupported_value_at};
 use crate::syntax::*;
@@ -654,56 +654,61 @@ impl AngleParserContext {
 
 pub(super) fn parse_angle_value<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &NumericInputContext<'_>,
     context: AngleParserContext,
-) -> Result<CssAngleValue, ParseError<'i, Error>> {
-    let start = input.state();
+) -> Result<crate::CssAngleValue, ParseError<'i, Error>> {
+    let (component, location, offset) = collect_angle_component(input, numeric, context)?;
+    crate::CssAngleValue::from_parser_component(component, numeric)
+        .map_err(|error| angle_error(numeric, &error, location, offset, context))
+}
+
+pub(super) fn parse_angle_or_zero<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &NumericInputContext<'_>,
+    context: AngleParserContext,
+) -> Result<crate::CssAngleOrZero, ParseError<'i, Error>> {
+    let (component, location, offset) = collect_angle_component(input, numeric, context)?;
+    crate::CssAngleOrZero::from_parser_component(component, numeric)
+        .map_err(|error| angle_error(numeric, &error, location, offset, context))
+}
+
+fn collect_angle_component<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &NumericInputContext<'_>,
+    context: AngleParserContext,
+) -> Result<(crate::CssComponentValue, cssparser::SourceLocation, usize), ParseError<'i, Error>> {
+    input.skip_whitespace();
     let location = input.current_source_location();
-    match input.next().map_err(basic)? {
-        Token::Number { value, .. } if *value == 0.0 => Ok(CssAngleValue::Zero),
-        Token::Dimension { value, unit, .. } => {
-            let checked_unit = match unit.to_ascii_lowercase().as_str() {
-                "deg" => CssAngleUnit::Degrees,
-                "grad" => CssAngleUnit::Gradians,
-                "rad" => CssAngleUnit::Radians,
-                "turn" => CssAngleUnit::Turns,
-                _ => {
-                    return Err(unsupported_value_at(
-                        location,
-                        None,
-                        if matches!(context, AngleParserContext::Filter) {
-                            "hue-rotate() requires an angle".to_owned()
-                        } else {
-                            format!("unsupported {} angle unit `{unit}`", context.label())
-                        },
-                    ));
-                }
-            };
-            CssAngleLiteral::try_new(*value, checked_unit)
-                .map(CssAngleValue::Literal)
-                .ok_or_else(|| {
-                    unsupported_value_at(
-                        location,
-                        None,
-                        format!("{} angle must be finite", context.label()),
-                    )
-                })
-        }
-        Token::Function(name) if crate::numeric::is_math_function(name) => {
-            parse_numeric_function(input, &start, numeric, CalculationRoot::Angle)
-                .map(CssAngleCalculation::from_expression)
-                .map(CssAngleValue::Calculation)
-        }
-        token if matches!(context, AngleParserContext::ImageOrientation) => {
-            Err(unsupported_value_at(
-                location,
-                None,
-                format!(
-                    "unsupported image-orientation angle `{}`",
-                    token.to_css_string()
-                ),
-            ))
-        }
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
+    let offset = input.position().byte_index();
+    let component = numeric
+        .collect(input)
+        .map_err(|error| angle_error(numeric, &error, location, offset, context))?;
+    Ok((component, location, offset))
+}
+
+fn angle_error<'i>(
+    numeric: &NumericInputContext<'_>,
+    error: &crate::CssNumericConstructionError,
+    fallback: cssparser::SourceLocation,
+    offset: usize,
+    context: AngleParserContext,
+) -> ParseError<'i, Error> {
+    let mut location = numeric.error_location(error, fallback, offset);
+    // Map the exact recovered angle closure through the original component map;
+    // canonical output coordinates never become an authored source position.
+    if let Some(origin @ crate::CssValueOrigin::ImplicitClosure { .. }) = error.origin()
+        && let NumericInputContext::Components(_, serialized) = numeric
+        && let Some(segment) = serialized.segments().iter().find(|segment| matches!(segment.origin(), crate::CssSerializedOrigin::Token(candidate) if candidate == origin))
+    {
+        let mut input = cssparser::ParserInput::new(&serialized.as_css()[..segment.byte_range().start]);
+        let mut parser = cssparser::Parser::new(&mut input);
+        while parser.next_including_whitespace_and_comments().is_ok() {}
+        location = parser.current_source_location();
     }
+    if let Some(component) = error.component_error()
+        && crate::error::is_component_resource_error(component)
+    {
+        return crate::error::invalid_component_value(location, component.clone());
+    }
+    unsupported_value_at(location, None, format!("invalid {} angle", context.label()))
 }

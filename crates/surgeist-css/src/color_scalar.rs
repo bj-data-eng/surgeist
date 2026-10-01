@@ -1,6 +1,6 @@
 //! Exact ordinary color token domains.
 use crate::{
-    CssAngleUnit, CssColorComponent, CssColorHue, CssComponentValue, CssComponentValueError,
+    CssAngleLiteral, CssColorComponent, CssColorHue, CssComponentValue, CssComponentValueError,
     CssComponentValueErrorKind, CssComponentValueRef, CssNumericTokenRef, CssValueOrigin,
     CssValueTokenRef,
 };
@@ -57,51 +57,6 @@ literal!(
     "An exact ordinary color percentage token; its coefficient is unscaled."
 );
 
-/// An exact ordinary color angle token, without hue normalization.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssColorAngleLiteral {
-    component: Box<CssComponentValue>,
-    unit: CssAngleUnit,
-}
-impl CssColorAngleLiteral {
-    pub fn try_from_component(
-        component: CssComponentValue,
-    ) -> Result<Self, CssComponentValueError> {
-        let CssComponentValueRef::Token(CssValueTokenRef::Dimension { unit, .. }) =
-            component.view()
-        else {
-            return Err(invalid(&component));
-        };
-        let unit = match unit.to_ascii_lowercase().as_str() {
-            "deg" => CssAngleUnit::Degrees,
-            "grad" => CssAngleUnit::Gradians,
-            "rad" => CssAngleUnit::Radians,
-            "turn" => CssAngleUnit::Turns,
-            _ => return Err(invalid(&component)),
-        };
-        Ok(Self {
-            component: Box::new(component),
-            unit,
-        })
-    }
-    pub fn numeric(&self) -> CssNumericTokenRef<'_> {
-        let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, .. }) =
-            self.component.view()
-        else {
-            unreachable!("checked color angle")
-        };
-        number
-    }
-    pub const fn unit(&self) -> CssAngleUnit {
-        self.unit
-    }
-    pub const fn component(&self) -> &CssComponentValue {
-        &self.component
-    }
-    pub const fn origin(&self) -> &CssValueOrigin {
-        self.component.origin()
-    }
-}
 fn invalid(component: &CssComponentValue) -> CssComponentValueError {
     CssComponentValueError::new(
         CssComponentValueErrorKind::InvalidToken,
@@ -180,33 +135,14 @@ pub(crate) fn hue(value: CssComponentValue) -> Result<CssColorHue, CssComponentV
             CssColorNumberLiteral::try_from_component(value)?,
         ));
     }
-    Ok(CssColorHue::Angle(
-        CssColorAngleLiteral::try_from_component(value)?,
-    ))
-}
-
-/// Formats a checked color coefficient without imposing opacity's ratio scale.
-/// Suffix bytes belong to this operation's budget, not a later unchecked append.
-#[cfg_attr(not(test), allow(dead_code))] // Used by the subsequent shared color serializer.
-pub(crate) fn format_coefficient(
-    text: &str,
-    shift: i128,
-    suffix: &str,
-    limit: usize,
-) -> Result<String, crate::CssSpecifiedValueSerializationError> {
-    let remaining = limit.checked_sub(suffix.len()).ok_or_else(|| {
-        crate::CssSpecifiedValueSerializationError::new(
-            crate::CssSpecifiedValueSerializationErrorKind::ByteLimit,
-        )
-    })?;
-    let mut result = crate::specified_serialization::format_lexical_shift(text, shift, remaining)?;
-    result.push_str(suffix);
-    Ok(result)
+    Ok(CssColorHue::Angle(CssAngleLiteral::try_from_component(
+        value,
+    )?))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::specified_serialization::format_coefficient;
     #[test]
     fn exact_weight_range_uses_all_significant_digits() {
         for text in [

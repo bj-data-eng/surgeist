@@ -1,6 +1,6 @@
 use super::{
-    CssAngleCalculation, CssAuthoredDeclarationValue, CssCalculationExpression,
-    CssCalculationExpressionRef, CssCalculationType, CssColorAngleLiteral, CssColorNumberLiteral,
+    CssAngleCalculation, CssAngleLiteral, CssAuthoredDeclarationValue, CssCalculationExpression,
+    CssCalculationExpressionRef, CssCalculationType, CssColorNumberLiteral,
     CssColorPercentageLiteral, CssColorScalarError, CssNumberCalculation, CssPercentageCalculation,
 };
 
@@ -438,7 +438,7 @@ impl CssColorComponent {
 pub enum CssColorHue {
     None,
     Number(CssColorNumberLiteral),
-    Angle(CssColorAngleLiteral),
+    Angle(CssAngleLiteral),
     NumberCalculation(CssNumberCalculation),
     AngleCalculation(CssAngleCalculation),
 }
@@ -1042,7 +1042,7 @@ pub enum CssRelativeColorExpressionValue {
     None,
     Number(CssColorNumberLiteral),
     Percentage(CssColorPercentageLiteral),
-    Angle(CssColorAngleLiteral),
+    Angle(CssAngleLiteral),
     Channel(CssRelativeColorChannel),
     Calculation(CssRelativeColorCalculation),
 }

@@ -230,7 +230,9 @@ fn typed_calculation_roots_enforce_checked_literal_boundaries() {
         assert!(CssPercentageCalculation::try_literal(value).is_none());
         assert!(CssLengthCalculation::try_dimension(value, CssLengthUnit::Rem).is_none());
         assert!(CssLengthPercentageCalculation::try_percentage(value).is_none());
-        assert!(CssAngleCalculation::try_literal(value, CssAngleUnit::Degrees).is_none());
+        assert!(
+            CssAngleCalculation::try_literal(&value.to_string(), CssAngleUnit::Degrees).is_err()
+        );
         assert!(CssTimeCalculation::try_literal(value, CssTimeUnit::Seconds).is_none());
         assert!(CssFrequencyCalculation::try_literal(value, CssFrequencyUnit::Hertz).is_none());
     }
@@ -254,7 +256,7 @@ fn typed_calculation_roots_enforce_checked_literal_boundaries() {
                 if inner.representation() == value.to_string() && inner.unit() == Some("cqw")
         ));
 
-        let angle = CssAngleCalculation::try_literal(value, CssAngleUnit::Turns)
+        let angle = CssAngleCalculation::try_literal(&value.to_string(), CssAngleUnit::Turns)
             .expect("finite angle leaf");
         assert_eq!(angle.result_type(), CssCalculationType::Angle);
         assert!(matches!(

@@ -11,8 +11,16 @@ fn percentage(value: &str) -> CssSpecifiedPercentage {
     )
     .unwrap()
 }
-fn angle(value: f32) -> CssAngleValue {
-    CssAngleValue::Literal(CssAngleLiteral::try_new(value, CssAngleUnit::Degrees).unwrap())
+fn zero_angle() -> CssAngleOrZero {
+    CssAngleOrZero::Zero(
+        CssZeroLiteral::try_from_component(CssComponentValue::try_number("0").unwrap()).unwrap(),
+    )
+}
+
+fn angle(value: f32) -> CssAngleOrZero {
+    CssAngleOrZero::Angle(CssAngleValue::from_literal(
+        CssAngleLiteral::try_new(&value.to_string(), CssAngleUnit::Degrees).unwrap(),
+    ))
 }
 fn number_calculation(text: &str) -> CssNumberCalculation {
     CssNumberCalculation::try_from_components(parse_component_values(text).unwrap()).unwrap()
@@ -60,7 +68,7 @@ fn rotate3d_scale_and_skew_constructors_preserve_distinct_operands() {
     assert!(exact_number((rotate.y()).literal_component(), "0"));
     assert!(exact_number((rotate.z()).literal_component(), "-1"));
     assert!(
-        matches!(rotate.angle(), CssAngleValue::Literal(v) if v.value() == 45.0 && v.unit() == CssAngleUnit::Degrees)
+        matches!(rotate.angle(), CssAngleOrZero::Angle(v) if v.literal().is_some_and(|literal| literal.numeric().representation() == "45" && literal.unit() == CssAngleUnit::Degrees))
     );
 
     let one = CssTransformScale::new(number("2"), None);
@@ -94,12 +102,16 @@ fn rotate3d_scale_and_skew_constructors_preserve_distinct_operands() {
         matches!(scale3d.z(), CssTransformScaleComponent::Number(v) if exact_number(v.literal_component(), "2"))
     );
 
-    let one = CssTransformSkew::new(CssAngleValue::Zero, None);
-    assert!(matches!(one.x(), CssAngleValue::Zero));
+    let one = CssTransformSkew::new(zero_angle(), None);
+    assert!(matches!(one.x(), CssAngleOrZero::Zero(_)));
     assert!(one.y().is_none());
     let two = CssTransformSkew::new(angle(10.0), Some(angle(-20.0)));
-    assert!(matches!(two.x(), CssAngleValue::Literal(v) if v.value() == 10.0));
-    assert!(matches!(two.y(), Some(CssAngleValue::Literal(v)) if v.value() == -20.0));
+    assert!(
+        matches!(two.x(), CssAngleOrZero::Angle(v) if v.literal().is_some_and(|literal| literal.numeric().representation() == "10"))
+    );
+    assert!(
+        matches!(two.y(), Some(CssAngleOrZero::Angle(v)) if v.literal().is_some_and(|literal| literal.numeric().representation() == "-20"))
+    );
 }
 
 #[test]

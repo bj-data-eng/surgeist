@@ -1342,11 +1342,38 @@ scalar equality retains provenance. The independent `scale` property accepts
 one to three ordinary shared numbers and retains its literal-only subset.
 Transform evaluation remains downstream.
 
-`CssAngleValue` supplies unitless zero, `CssAngleLiteral`, or
-`CssAngleCalculation` to transforms, hue-rotate filters, linear-gradient
-directions, and image orientation. It preserves finite literal precision, the
-four angle units, symbolic math, and provenance-sensitive calculation equality.
-Each outer context retains its own grammar and omission rules.
+`CssAngleLiteral` retains an exact decimal dimension, its authored unit, and
+original component provenance. `CssAngleValue` holds a checked literal or symbolic
+`CssAngleCalculation`; it excludes bare number zero. Transforms, hue-rotate
+filters, and linear-gradient directions use `CssAngleOrZero`, whose zero branch
+holds a checked `CssZeroLiteral`. Image orientation uses the strict angle type.
+Tiny nonzero numbers never qualify as zero. Raw scalar equality retains
+provenance; semantic aggregates compare structure while ignoring scalar origins.
+Ordinary angle serialization preserves exact coefficients and units. Calculation
+serialization retains the existing simplified projection and its implementation
+precision; it does not promise exact arithmetic. Each context retains its grammar
+and omission rules.
+
+```rust
+use surgeist_css::{
+    CssAngleLiteral, CssAngleOrZero, CssAngleUnit, CssAngleValue,
+    CssComponentValue, CssFilterFunction, CssFilterHueRotate, CssZeroLiteral,
+};
+
+let literal = CssAngleLiteral::try_new("0.10000000000000000001", CssAngleUnit::Degrees)?;
+let angle = CssAngleValue::from_literal(literal);
+let rotation = CssFilterFunction::HueRotate(CssFilterHueRotate::new(
+    CssAngleOrZero::Angle(angle),
+));
+assert_eq!(rotation.serialize_specified()?, "hue-rotate(0.10000000000000000001deg)");
+
+let zero = CssZeroLiteral::try_from_component(CssComponentValue::try_number("-0e999")?)?;
+let rotation = CssFilterFunction::HueRotate(CssFilterHueRotate::new(
+    CssAngleOrZero::Zero(zero),
+));
+assert_eq!(rotation.serialize_specified()?, "hue-rotate(0)");
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
 
 Easing values distinguish keywords, `cubic-bezier()`, and `steps()`.
 `CssCubicBezierX` checks an ordinary exact number against inclusive [0, 1],
@@ -1701,8 +1728,8 @@ retains its ordered layers and the final layer's optional color. The filter
 wrappers expose the sole `CssFilter` function list through `value()`.
 
 Ordinary number, percentage, and angle components hold checked
-`CssColorNumberLiteral`, `CssColorPercentageLiteral`, and
-`CssColorAngleLiteral` values. Each keeps the exact finite decimal token and
+`CssColorNumberLiteral`, `CssColorPercentageLiteral`, and the shared
+`CssAngleLiteral` values. Each keeps the exact finite decimal token and
 origin, even when its magnitude overflows or underflows a binary32 cache. The
 angle also retains its authored unit. `CssColorComponent` has number,
 percentage, `none`, and typed calculation branches; `CssColorHue` has number,

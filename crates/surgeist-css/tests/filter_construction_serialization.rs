@@ -37,13 +37,24 @@ fn function(css: &str) -> CssFilterFunction {
     value.clone()
 }
 
-fn angle(value: f32, unit: CssAngleUnit) -> CssAngleValue {
-    CssAngleValue::Literal(CssAngleLiteral::try_new(value, unit).unwrap())
+fn zero_angle() -> CssAngleOrZero {
+    CssAngleOrZero::Zero(
+        CssZeroLiteral::try_from_component(CssComponentValue::try_number("0").unwrap()).unwrap(),
+    )
 }
 
-fn angle_math(css: &str) -> CssAngleValue {
-    CssAngleValue::Calculation(
-        CssAngleCalculation::try_from_components(parse_component_values(css).unwrap()).unwrap(),
+fn angle(value: f32, unit: CssAngleUnit) -> CssAngleOrZero {
+    CssAngleOrZero::Angle(CssAngleValue::from_literal(
+        CssAngleLiteral::try_new(&value.to_string(), unit).unwrap(),
+    ))
+}
+
+fn angle_math(css: &str) -> CssAngleOrZero {
+    CssAngleOrZero::Angle(
+        CssAngleValue::try_from_calculation(
+            CssAngleCalculation::try_from_components(parse_component_values(css).unwrap()).unwrap(),
+        )
+        .unwrap(),
     )
 }
 
@@ -117,9 +128,9 @@ fn hue_construction_keeps_omission_zero_units_and_origin_sensitive_math() {
     let omitted = CssFilterHueRotate::omitted();
     assert!(omitted.authored_angle().is_none());
     assert_eq!(omitted.angle(), &angle(0.0, CssAngleUnit::Degrees));
-    let zero = CssFilterHueRotate::new(CssAngleValue::Zero);
+    let zero = CssFilterHueRotate::new(zero_angle());
     let degrees = CssFilterHueRotate::new(angle(0.0, CssAngleUnit::Degrees));
-    assert_eq!(zero.authored_angle(), Some(&CssAngleValue::Zero));
+    assert_eq!(zero.authored_angle(), Some(&zero_angle()));
     assert_eq!(degrees.authored_angle(), Some(degrees.angle()));
     assert_ne!(omitted, zero);
     assert_ne!(omitted, degrees);
@@ -140,14 +151,16 @@ fn hue_construction_keeps_omission_zero_units_and_origin_sensitive_math() {
         );
     }
     for invalid in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-        assert!(CssAngleLiteral::try_new(invalid, CssAngleUnit::Degrees).is_none());
+        assert!(CssAngleLiteral::try_new(&invalid.to_string(), CssAngleUnit::Degrees).is_err());
     }
     let first = CssFilterHueRotate::new(angle_math("calc(30deg + 60deg)"));
     let second = CssFilterHueRotate::new(angle_math("  calc(30deg + 60deg)"));
-    assert_ne!(first, second);
-    let CssAngleValue::Calculation(math) = first.angle() else {
-        panic!("math")
+    assert_eq!(first, second);
+    assert_ne!(first.angle(), second.angle());
+    let CssAngleOrZero::Angle(angle) = first.angle() else {
+        panic!("angle")
     };
+    let math = angle.calculation().expect("math");
     let origin = math.origin().clone();
     let function = CssFilterFunction::HueRotate(first.clone());
     budget("hue-rotate(calc(90deg))", 5, 4, |limits| {
@@ -157,9 +170,10 @@ fn hue_construction_keeps_omission_zero_units_and_origin_sensitive_math() {
         panic!("hue")
     };
     assert_eq!(after, first);
-    let CssAngleValue::Calculation(math) = after.angle() else {
-        panic!("math")
+    let CssAngleOrZero::Angle(angle) = after.angle() else {
+        panic!("angle")
     };
+    let math = angle.calculation().expect("math");
     assert_eq!(math.origin(), &origin);
 }
 
@@ -562,7 +576,9 @@ fn repeated_pending_reentry_preserves_replacement_child_origins_after_failure() 
                     .is_err()
             );
             assert_eq!(filter, &before);
-            if let Some(CssAngleValue::Calculation(math)) = hue.authored_angle() {
+            if let Some(CssAngleOrZero::Angle(angle)) = hue.authored_angle()
+                && let Some(math) = angle.calculation()
+            {
                 let CssValueOrigin::Parsed(origin) = math.origin() else {
                     panic!("parsed angle")
                 };
