@@ -316,6 +316,7 @@ impl CssScrollPaddingPair {
             self.authored_end(),
             limits,
             |value, context| value.capture_specified(context),
+            padding_equal,
         )
     }
 }
@@ -358,8 +359,58 @@ impl CssScrollMarginPair {
             self.authored_end(),
             limits,
             |value, context| value.capture_specified(context),
+            margin_equal,
         )
     }
+}
+
+fn length_equal(
+    left: Option<&crate::CssComponentValue>,
+    right: Option<&crate::CssComponentValue>,
+    left_css: &str,
+    right_css: &str,
+) -> bool {
+    match (left, right) {
+        (Some(left), Some(right)) => {
+            crate::specified_numeric::ordinary_length_literal_equal(left, right)
+        }
+        _ => left_css == right_css,
+    }
+}
+
+fn padding_equal(
+    left: &CssScrollPaddingValue,
+    right: &CssScrollPaddingValue,
+    left_css: &str,
+    right_css: &str,
+) -> bool {
+    match (left, right) {
+        (CssScrollPaddingValue::Auto, CssScrollPaddingValue::Auto) => true,
+        (
+            CssScrollPaddingValue::LengthPercentage(left),
+            CssScrollPaddingValue::LengthPercentage(right),
+        ) => length_equal(
+            left.literal_component(),
+            right.literal_component(),
+            left_css,
+            right_css,
+        ),
+        _ => false,
+    }
+}
+
+fn margin_equal(
+    left: &CssSpecifiedLength,
+    right: &CssSpecifiedLength,
+    left_css: &str,
+    right_css: &str,
+) -> bool {
+    length_equal(
+        left.literal_component(),
+        right.literal_component(),
+        left_css,
+        right_css,
+    )
 }
 
 fn serialize_pair<T>(
@@ -367,13 +418,16 @@ fn serialize_pair<T>(
     end: Option<&T>,
     limits: CssSpecifiedValueSerializationLimits,
     capture: impl Fn(&T, &mut SpecifiedSerializationContext) -> SerializationResult<String>,
+    component_equal: impl Fn(&T, &T, &str, &str) -> bool,
 ) -> SerializationResult<String> {
     let mut context = SpecifiedSerializationContext::new(limits);
     let first = capture(start, &mut context)?;
     let second = end.map(|end| capture(end, &mut context)).transpose()?;
     let mut output = String::new();
     context.append(&mut output, &first)?;
-    if let Some(second) = second.filter(|second| *second != first) {
+    if let (Some(end), Some(second)) = (end, second)
+        && !component_equal(start, end, &first, &second)
+    {
         context.append(&mut output, " ")?;
         context.append(&mut output, &second)?;
     }
@@ -393,15 +447,18 @@ impl<T> ScrollFour<T> {
             .then_some(Self { kind, authored })
     }
 
-    fn role(&self, index: usize) -> &T {
-        let position = match (self.authored.len(), index) {
+    fn role_index(&self, index: usize) -> usize {
+        match (self.authored.len(), index) {
             (1, _) => 0,
             (2, 0 | 2) => 0,
             (2, 1 | 3) => 1,
             (3, 3) => 1,
             (_, index) => index,
-        };
-        &self.authored[position]
+        }
+    }
+
+    fn role(&self, index: usize) -> &T {
+        &self.authored[self.role_index(index)]
     }
 }
 
@@ -439,9 +496,12 @@ impl CssScrollPaddingShorthand {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        serialize_four(&self.0, limits, |value, context| {
-            value.capture_specified(context)
-        })
+        serialize_four(
+            &self.0,
+            limits,
+            |value, context| value.capture_specified(context),
+            padding_equal,
+        )
     }
 }
 
@@ -479,9 +539,12 @@ impl CssScrollMarginShorthand {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        serialize_four(&self.0, limits, |value, context| {
-            value.capture_specified(context)
-        })
+        serialize_four(
+            &self.0,
+            limits,
+            |value, context| value.capture_specified(context),
+            margin_equal,
+        )
     }
 }
 
@@ -489,6 +552,7 @@ fn serialize_four<T>(
     values: &ScrollFour<T>,
     limits: CssSpecifiedValueSerializationLimits,
     capture: impl Fn(&T, &mut SpecifiedSerializationContext) -> SerializationResult<String>,
+    component_equal: impl Fn(&T, &T, &str, &str) -> bool,
 ) -> SerializationResult<String> {
     let mut context = SpecifiedSerializationContext::new(limits);
     if values.kind == CssScrollSideKind::Logical {
@@ -500,22 +564,21 @@ fn serialize_four<T>(
         .iter()
         .map(|value| capture(value, &mut context))
         .collect::<SerializationResult<Vec<_>>>()?;
-    let role = |index: usize| -> &str {
-        let source_index = match (authored.len(), index) {
-            (1, _) => 0,
-            (2, 0 | 2) => 0,
-            (2, 1 | 3) => 1,
-            (3, 3) => 1,
-            (_, index) => index,
-        };
-        &authored[source_index]
+    let role = |index: usize| -> &str { &authored[values.role_index(index)] };
+    let equal = |left: usize, right: usize| {
+        component_equal(
+            values.role(left),
+            values.role(right),
+            role(left),
+            role(right),
+        )
     };
     let (first, second, third, fourth) = (role(0), role(1), role(2), role(3));
-    let selected: Vec<&str> = if first == second && first == third && first == fourth {
+    let selected: Vec<&str> = if equal(0, 1) && equal(0, 2) && equal(0, 3) {
         vec![first]
-    } else if first == third && second == fourth {
+    } else if equal(0, 2) && equal(1, 3) {
         vec![first, second]
-    } else if second == fourth {
+    } else if equal(1, 3) {
         vec![first, second, third]
     } else {
         vec![first, second, third, fourth]

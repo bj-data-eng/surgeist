@@ -658,6 +658,33 @@ defines that marker and its block-start, inline-start, block-end, inline-end
 ordering. These authored values remain symbolic until style and layout have
 writing-mode and scroll-container context.
 
+Pair and four-side compression compares ordinary values exactly before rounding
+emitted coefficients. Distinct values that round alike retain their positions;
+equivalent coefficient spellings can compress. In a length slot, exact unitless
+zero compares as `0px`, and the first selected component keeps its own emitted
+spelling. Other units and percentages remain distinct. Calculations retain their
+existing canonical projected-text comparison. Every authored child consumes its
+existing node budget, even when compression omits its text; the logical marker
+adds its own node charges and eight output bytes.
+
+```rust
+use surgeist_css::{CssKnownPropertyValueRef, parse_style_attribute};
+
+let report = parse_style_attribute(
+    "scroll-padding-inline: .12345641px .12345642px",
+);
+assert!(report.is_clean());
+let CssKnownPropertyValueRef::ScrollPaddingInline(value) = report.syntax()[0]
+    .known().expect("known scroll padding")
+    .property_value().expect("ordinary scroll padding")
+else { panic!("expected scroll-padding-inline") };
+assert_eq!(
+    value.value().serialize_specified()?,
+    "0.123456px 0.123456px",
+);
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
 The 19 terminal properties and four block/inline axis shorthands have intrinsic
 metadata and completed longhand contributions. The two four-side shorthands
 accept their full authored grammar, including CSS-wide keywords and pending

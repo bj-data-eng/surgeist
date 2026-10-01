@@ -5,7 +5,9 @@ use crate::{
     CssBorderImageRepeatKeyword, CssBorderImageSlice, CssBorderImageSliceComponent,
     CssBorderImageWidth, CssBorderImageWidthComponent, CssComponentValue, CssComponentValueRef,
     CssImageValue, CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
-    CssValueTokenRef, exact_decimal::LexicalDecimal,
+    CssValueTokenRef,
+    exact_decimal::LexicalDecimal,
+    specified_numeric::{ordinary_length_literal_equal, ordinary_literal_equal},
     specified_rule_serialization::SpecifiedRuleWriter,
 };
 
@@ -99,35 +101,6 @@ fn append_sides<T>(
     Ok(())
 }
 
-fn ordinary_component_equal(left: &CssComponentValue, right: &CssComponentValue) -> bool {
-    match (left.view(), right.view()) {
-        (
-            CssComponentValueRef::Token(CssValueTokenRef::Number(left)),
-            CssComponentValueRef::Token(CssValueTokenRef::Number(right)),
-        )
-        | (
-            CssComponentValueRef::Token(CssValueTokenRef::Percentage(left)),
-            CssComponentValueRef::Token(CssValueTokenRef::Percentage(right)),
-        ) => LexicalDecimal::new(left.representation())
-            .value_eq(&LexicalDecimal::new(right.representation())),
-        (
-            CssComponentValueRef::Token(CssValueTokenRef::Dimension {
-                number: left,
-                unit: left_unit,
-            }),
-            CssComponentValueRef::Token(CssValueTokenRef::Dimension {
-                number: right,
-                unit: right_unit,
-            }),
-        ) => {
-            left_unit.eq_ignore_ascii_case(right_unit)
-                && LexicalDecimal::new(left.representation())
-                    .value_eq(&LexicalDecimal::new(right.representation()))
-        }
-        _ => false,
-    }
-}
-
 fn numeric_equal(
     left: Option<&CssComponentValue>,
     right: Option<&CssComponentValue>,
@@ -135,7 +108,7 @@ fn numeric_equal(
     right_css: &str,
 ) -> bool {
     match (left, right) {
-        (Some(left), Some(right)) => ordinary_component_equal(left, right),
+        (Some(left), Some(right)) => ordinary_literal_equal(left, right),
         _ => left_css == right_css,
     }
 }
@@ -146,20 +119,10 @@ fn length_equal(
     left_css: &str,
     right_css: &str,
 ) -> bool {
-    let (Some(left), Some(right)) = (left, right) else {
-        return left_css == right_css;
-    };
-    if ordinary_component_equal(left, right) {
-        return true;
+    match (left, right) {
+        (Some(left), Some(right)) => ordinary_length_literal_equal(left, right),
+        _ => left_css == right_css,
     }
-    let zero_pixels = |value: &CssComponentValue| {
-        matches!(value.view(),
-            CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
-                if unit.eq_ignore_ascii_case("px")
-                    && LexicalDecimal::new(number.representation()).len == 0)
-    };
-    (unitless_length_zero(Some(left)) && zero_pixels(right))
-        || (unitless_length_zero(Some(right)) && zero_pixels(left))
 }
 
 fn slice_equal(
