@@ -200,7 +200,7 @@ fn filter_blur_retains_authored_omission_and_effective_zero_pixels() {
         "-1e-999",
         Some("px"),
     );
-    assert!(shadow.blur_radius().is_none());
+    assert!(shadow.standard_deviation().is_none());
     assert!(shadow.color().is_none());
 }
 

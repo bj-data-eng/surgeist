@@ -1316,12 +1316,50 @@ shared nonnegative Percentage equality retains its established origin-insensitiv
 policy, including font-width and font-face consumers. Branches, nonnumeric fields,
 order and omission remain part of aggregate identity.
 
-Box shadows
-and filter `drop-shadow()` use
-different models, so filter shadows cannot contain `inset` or spread. Filter
-lists preserve URL/function order and typed function-specific operands. The
+`CssShadow` retains two signed offsets, optional nonnegative `blur_radius()`,
+optional signed `spread_radius()`, optional color, and inset. Its checked
+constructor rejects spread without blur. `CssBoxShadowList::try_new` rejects
+an empty vector. `CssBoxShadow` distinguishes `None` from a nonempty list.
+The [Backgrounds 3 CRD 2024-03-11 §6.1](https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/#box-shadow)
+grammar permits whole color, length, and inset groups in any order; the two
+mandatory offsets and optional blur/spread must remain consecutive. A color or
+inset cannot interrupt those lengths. Box-shadow is a noninherited terminal with
+`CssBoxShadow::None` initial. Central expansion emits one ordinary or CSS-wide
+contribution, pending substitution retains its declaration, and strict reentry
+and normalization share the same grammar and occurrence provenance.
+
+`CssDropShadow` uses a separate model with two signed offsets, optional checked
+nonnegative `standard_deviation()`, and optional color. The
+[Filter Effects 1 WD 2018-12-18 §6.1](https://www.w3.org/TR/2018/WD-filter-effects-1-20181218/#funcdef-filter-drop-shadow)
+third length is the standard deviation of the blur, distinct from box-shadow's
+blur radius. Two or three lengths form one consecutive group; color can precede
+or follow the complete group. Both filter and backdrop-filter use this grammar.
+Drop shadows cannot contain inset or spread. Filter lists preserve URL/function
+order and typed function-specific operands. The
 selected basic-shape family exposes `inset()`, `circle()`, `ellipse()`, and
 `polygon()`, including polygon `round <length>`.
+
+All four shadow models provide `serialize_specified()` and
+`serialize_specified_with_limits(CssSpecifiedValueSerializationLimits)`.
+A bare shadow emits `[color] x y [blur [spread]] [inset]`; a list separates
+members with comma-space, `None` emits `none`, and a drop shadow emits the full
+`drop-shadow([color] x y [standard_deviation])` function. Authored omissions
+remain omitted; explicit zero and currentcolor remain present. Child providers
+preserve exact numeric magnitudes and canonical symbolic math/colors without
+contextual resolution or mutation of origins. Ordinary numbers use the numeric
+provider's canonical decimal output: exponents may expand and signed zero emits
+zero, while the input retains its authored spelling. Canonical math may reorder
+terms without changing the stored authored expression.
+
+Each shadow or drop shadow charges one aggregate input and projection node,
+and inset charges one extra keyword node in each budget. A list charges one
+aggregate plus every member; `CssBoxShadow::Shadows` delegates transparently.
+`None` charges one input and projection node. Every present child, including an
+explicit default, uses its existing numeric or color provider's charges.
+Wrappers and separators cost bytes only. One cumulative context owns the entire
+call: dropping a child math arena does not refund work. Limit failures use
+`CssSpecifiedValueSerializationError` and return no partial text or input
+mutation. These are shadow serializers, not complete filter-list serializers.
 
 `circle()` retains one nonnegative length-percentage radius, an omitted radius,
 radial extent keywords, and optional `at <position>`. Percentage and symbolic

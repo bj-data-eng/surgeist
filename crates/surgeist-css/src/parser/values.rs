@@ -224,11 +224,11 @@ pub(super) fn parse_shadow_length<'i, 't>(
 ) -> Result<crate::CssSpecifiedLength, ParseError<'i, Error>> {
     parse_length(input, numeric, "shadow offset")
 }
-pub(super) fn parse_shadow_blur_length<'i, 't>(
+pub(super) fn parse_shadow_nonnegative_length<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<crate::CssSpecifiedNonNegativeLength, ParseError<'i, Error>> {
-    parse_nonnegative_length(input, numeric, "shadow blur")
+    parse_nonnegative_length(input, numeric, "nonnegative shadow length")
 }
 
 use crate::numeric::NumericInputContext;

@@ -282,6 +282,9 @@ pub fn surgeist_css::CssBoxEdgeKeyword::from_keyword(keyword: &str) -> core::opt
 #[non_exhaustive] pub enum surgeist_css::CssBoxShadow
 pub surgeist_css::CssBoxShadow::None
 pub surgeist_css::CssBoxShadow::Shadows(surgeist_css::CssBoxShadowList)
+impl surgeist_css::CssBoxShadow
+pub fn surgeist_css::CssBoxShadow::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBoxShadow::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub enum surgeist_css::CssBoxSideKind
 pub surgeist_css::CssBoxSideKind::Logical
 pub surgeist_css::CssBoxSideKind::Physical
@@ -2560,6 +2563,7 @@ pub surgeist_css::CssLonghandValueRef::BorderTopRightRadius(&'a surgeist_css::Cs
 pub surgeist_css::CssLonghandValueRef::BorderTopStyle(&'a surgeist_css::CssBorderStyle)
 pub surgeist_css::CssLonghandValueRef::BorderTopWidth(&'a surgeist_css::CssBorderWidth)
 pub surgeist_css::CssLonghandValueRef::Bottom(&'a surgeist_css::CssInsetValue)
+pub surgeist_css::CssLonghandValueRef::BoxShadow(&'a surgeist_css::CssBoxShadow)
 pub surgeist_css::CssLonghandValueRef::BoxSizing(&'a surgeist_css::CssBoxSizing)
 pub surgeist_css::CssLonghandValueRef::BreakAfter(&'a surgeist_css::CssBreakBetween)
 pub surgeist_css::CssLonghandValueRef::BreakBefore(&'a surgeist_css::CssBreakBetween)
@@ -4668,6 +4672,9 @@ pub fn surgeist_css::CssBoxDecorationBreakPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssBoxDecorationBreakPropertyValue::value(&self) -> &surgeist_css::CssBoxDecorationBreak
 pub struct surgeist_css::CssBoxShadowList
 impl surgeist_css::CssBoxShadowList
+pub fn surgeist_css::CssBoxShadowList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBoxShadowList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssBoxShadowList
 pub fn surgeist_css::CssBoxShadowList::shadows(&self) -> &[surgeist_css::CssShadow]
 pub fn surgeist_css::CssBoxShadowList::try_new(shadows: alloc::vec::Vec<surgeist_css::CssShadow>) -> core::option::Option<Self>
 pub struct surgeist_css::CssBoxShadowPropertyValue
@@ -5583,11 +5590,14 @@ pub fn surgeist_css::CssDisplayPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssDisplayPropertyValue::value(&self) -> &surgeist_css::CssDisplayValue
 pub struct surgeist_css::CssDropShadow
 impl surgeist_css::CssDropShadow
-pub const fn surgeist_css::CssDropShadow::blur_radius(&self) -> core::option::Option<&surgeist_css::CssSpecifiedNonNegativeLength>
 pub fn surgeist_css::CssDropShadow::color(&self) -> core::option::Option<&surgeist_css::CssColor>
-pub fn surgeist_css::CssDropShadow::new(offset_x: surgeist_css::CssSpecifiedLength, offset_y: surgeist_css::CssSpecifiedLength, blur_radius: core::option::Option<surgeist_css::CssSpecifiedNonNegativeLength>, color: core::option::Option<surgeist_css::CssColor>) -> Self
+pub fn surgeist_css::CssDropShadow::new(offset_x: surgeist_css::CssSpecifiedLength, offset_y: surgeist_css::CssSpecifiedLength, standard_deviation: core::option::Option<surgeist_css::CssSpecifiedNonNegativeLength>, color: core::option::Option<surgeist_css::CssColor>) -> Self
 pub const fn surgeist_css::CssDropShadow::offset_x(&self) -> &surgeist_css::CssSpecifiedLength
 pub const fn surgeist_css::CssDropShadow::offset_y(&self) -> &surgeist_css::CssSpecifiedLength
+pub const fn surgeist_css::CssDropShadow::standard_deviation(&self) -> core::option::Option<&surgeist_css::CssSpecifiedNonNegativeLength>
+impl surgeist_css::CssDropShadow
+pub fn surgeist_css::CssDropShadow::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssDropShadow::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl core::cmp::PartialEq for surgeist_css::CssDropShadow
 pub fn surgeist_css::CssDropShadow::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssDurationList
@@ -7920,6 +7930,9 @@ pub const fn surgeist_css::CssShadow::offset_x(&self) -> &surgeist_css::CssSpeci
 pub const fn surgeist_css::CssShadow::offset_y(&self) -> &surgeist_css::CssSpecifiedLength
 pub const fn surgeist_css::CssShadow::spread_radius(&self) -> core::option::Option<&surgeist_css::CssSpecifiedLength>
 pub fn surgeist_css::CssShadow::try_new(inset: bool, offset_x: surgeist_css::CssSpecifiedLength, offset_y: surgeist_css::CssSpecifiedLength, blur_radius: core::option::Option<surgeist_css::CssSpecifiedNonNegativeLength>, spread_radius: core::option::Option<surgeist_css::CssSpecifiedLength>, color: core::option::Option<surgeist_css::CssColor>) -> core::option::Option<Self>
+impl surgeist_css::CssShadow
+pub fn surgeist_css::CssShadow::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssShadow::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl core::cmp::PartialEq for surgeist_css::CssShadow
 pub fn surgeist_css::CssShadow::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssSheet

@@ -21,6 +21,15 @@ ordered longhands from authored values or schema initials. Bounded specified
 serialization compresses all four stored edges, preserves numeric branches and
 symbolic calculations, and counts every child even when its initial is omitted.
 
+Checked `CssShadow` construction requires blur before spread; `CssBoxShadowList`
+is nonempty. Box shadows retain signed offsets and spread, optional nonnegative
+blur, optional color, and inset. `CssDropShadow` instead retains an optional
+nonnegative standard deviation and cannot contain inset or spread. Lengths form
+one contiguous grammar group. Box-shadow supplies a noninherited terminal
+contribution with `none` initial. Bounded specified serializers on all four
+shadow models preserve authored omissions, explicit zero and currentcolor,
+list order, exact numeric literals, and symbolic math and colors.
+
 ## Start
 
 ```rust

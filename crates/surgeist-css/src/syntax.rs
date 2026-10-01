@@ -6074,12 +6074,14 @@ pub enum CssBoxShadow {
     Shadows(CssBoxShadowList),
 }
 
+/// A nonempty ordered list of authored box shadows.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssBoxShadowList {
     shadows: Vec<CssShadow>,
 }
 
 impl CssBoxShadowList {
+    /// Rejects an empty list; retains the authored member order.
     pub fn try_new(shadows: Vec<CssShadow>) -> Option<Self> {
         if shadows.is_empty() {
             None
@@ -6094,6 +6096,7 @@ impl CssBoxShadowList {
     }
 }
 
+/// An authored box shadow with optional blur, spread, color, and inset.
 #[derive(Clone, Debug)]
 pub struct CssShadow {
     inset: bool,
@@ -6124,6 +6127,7 @@ impl PartialEq for CssShadow {
 }
 
 impl CssShadow {
+    /// Retains authored omissions and rejects a spread without a blur radius.
     pub fn try_new(
         inset: bool,
         offset_x: CssSpecifiedLength,
@@ -8300,28 +8304,34 @@ impl CssFilterBlur {
     }
 }
 
-/// A filter `drop-shadow()` value, distinct from a box shadow.
+/// An authored filter `drop-shadow()` with optional nonnegative standard deviation.
+/// Unlike a box shadow, it has no inset or spread component.
 #[derive(Clone, Debug)]
 pub struct CssDropShadow {
     offset_x: CssSpecifiedLength,
     offset_y: CssSpecifiedLength,
-    blur_radius: Option<CssSpecifiedNonNegativeLength>,
+    standard_deviation: Option<CssSpecifiedNonNegativeLength>,
     color: Option<Box<CssColor>>,
 }
-numeric_fields_eq!(CssDropShadow, [offset_x, offset_y], [blur_radius], [color]);
+numeric_fields_eq!(
+    CssDropShadow,
+    [offset_x, offset_y],
+    [standard_deviation],
+    [color]
+);
 
 impl CssDropShadow {
-    /// Retains two signed offsets, an optional checked blur, and optional color.
+    /// Retains two signed offsets, an optional checked standard deviation, and optional color.
     pub fn new(
         offset_x: CssSpecifiedLength,
         offset_y: CssSpecifiedLength,
-        blur_radius: Option<CssSpecifiedNonNegativeLength>,
+        standard_deviation: Option<CssSpecifiedNonNegativeLength>,
         color: Option<CssColor>,
     ) -> Self {
         Self {
             offset_x,
             offset_y,
-            blur_radius,
+            standard_deviation,
             color: color.map(Box::new),
         }
     }
@@ -8331,8 +8341,9 @@ impl CssDropShadow {
     pub const fn offset_y(&self) -> &CssSpecifiedLength {
         &self.offset_y
     }
-    pub const fn blur_radius(&self) -> Option<&CssSpecifiedNonNegativeLength> {
-        self.blur_radius.as_ref()
+    /// The authored Gaussian standard deviation; omission remains distinct from zero.
+    pub const fn standard_deviation(&self) -> Option<&CssSpecifiedNonNegativeLength> {
+        self.standard_deviation.as_ref()
     }
     pub fn color(&self) -> Option<&CssColor> {
         self.color.as_deref()

@@ -559,7 +559,7 @@ fn blur_hue_rotate_and_drop_shadow_expose_distinct_typed_payloads() {
         "-2",
         "px"
     ));
-    assert!(shadow.blur_radius().is_none());
+    assert!(shadow.standard_deviation().is_none());
     assert!(shadow.color().is_some());
 }
 

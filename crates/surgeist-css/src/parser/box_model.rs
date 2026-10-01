@@ -1,7 +1,7 @@
 use super::color::parse_color;
 use cssparser::{ParseError, Parser, match_ignore_ascii_case};
 
-use super::values::{parse_shadow_blur_length, parse_shadow_length};
+use super::values::{parse_shadow_length, parse_shadow_nonnegative_length};
 use crate::error::{CssFeatureId, Error, basic, unsupported_value};
 use crate::syntax::*;
 use crate::validation::unsupported_keyword_reason;
@@ -63,9 +63,7 @@ pub(super) fn parse_shadow<'i, 't>(
 ) -> Result<CssShadow, ParseError<'i, Error>> {
     let mut inset = false;
     let mut color = None;
-    let mut offsets = Vec::new();
-    let mut blur = None;
-    let mut spread = None;
+    let mut lengths = None;
     while !input.is_exhausted() {
         let state = input.state();
         if input.try_parse(Parser::expect_comma).is_ok() {
@@ -88,31 +86,37 @@ pub(super) fn parse_shadow<'i, 't>(
             }
             continue;
         }
-        if offsets.len() < 2 {
-            offsets.push(parse_shadow_length(input, numeric)?);
-        } else if blur.is_none() {
-            blur = Some(parse_shadow_blur_length(input, numeric)?);
-        } else if spread.is_none() {
-            spread = Some(parse_shadow_length(input, numeric)?);
-        } else {
+        if lengths.is_some() {
             return Err(unsupported_value(
                 input,
                 None,
                 "unsupported box-shadow component",
             ));
         }
+        // The && grammar reorders whole groups, never the lengths within one.
+        let x = parse_shadow_length(input, numeric)?;
+        let y = parse_shadow_length(input, numeric)?;
+        let blur = input
+            .try_parse(|input| parse_shadow_nonnegative_length(input, numeric))
+            .ok();
+        let spread = if blur.is_some() {
+            input
+                .try_parse(|input| parse_shadow_length(input, numeric))
+                .ok()
+        } else {
+            None
+        };
+        lengths = Some((x, y, blur, spread));
     }
-    let [x, y] = offsets.as_slice() else {
+    let Some((x, y, blur, spread)) = lengths else {
         return Err(unsupported_value(
             input,
             None,
             "box-shadow requires two offsets",
         ));
     };
-    Ok(
-        CssShadow::try_new(inset, x.clone(), y.clone(), blur, spread, color)
-            .expect("parser requires blur before spread"),
-    )
+    Ok(CssShadow::try_new(inset, x, y, blur, spread, color)
+        .expect("parser requires blur before spread"))
 }
 
 pub(super) fn parse_drop_shadow<'i, 't>(
@@ -120,8 +124,7 @@ pub(super) fn parse_drop_shadow<'i, 't>(
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<CssDropShadow, ParseError<'i, Error>> {
     let mut color = None;
-    let mut offsets = Vec::new();
-    let mut blur = None;
+    let mut lengths = None;
     while !input.is_exhausted() {
         if let Ok(parsed) = input.try_parse(|input| parse_color(input, numeric)) {
             if color.replace(parsed).is_some() {
@@ -133,24 +136,26 @@ pub(super) fn parse_drop_shadow<'i, 't>(
             }
             continue;
         }
-        if offsets.len() < 2 {
-            offsets.push(parse_shadow_length(input, numeric)?);
-        } else if blur.is_none() {
-            blur = Some(parse_shadow_blur_length(input, numeric)?);
-        } else {
+        if lengths.is_some() {
             return Err(unsupported_value(
                 input,
                 None,
                 "unsupported drop-shadow component",
             ));
         }
+        let x = parse_shadow_length(input, numeric)?;
+        let y = parse_shadow_length(input, numeric)?;
+        let standard_deviation = input
+            .try_parse(|input| parse_shadow_nonnegative_length(input, numeric))
+            .ok();
+        lengths = Some((x, y, standard_deviation));
     }
-    let [x, y] = offsets.as_slice() else {
+    let Some((x, y, standard_deviation)) = lengths else {
         return Err(unsupported_value(
             input,
             None,
             "drop-shadow requires two offsets",
         ));
     };
-    Ok(CssDropShadow::new(x.clone(), y.clone(), blur, color))
+    Ok(CssDropShadow::new(x, y, standard_deviation, color))
 }

@@ -289,6 +289,21 @@
 //! backdrop-filter wrappers return [`CssFilter`], box-shadow returns [`CssBoxShadow`], and
 //! clip-path exposes the sole [`CssClipPath`] through `value()`.
 //!
+//! [`CssShadow`] requires blur before spread, and [`CssBoxShadowList`] is nonempty.
+//! Box-shadow is a noninherited terminal with [`CssBoxShadow::None`] initial;
+//! ordinary, CSS-wide, and pending values use the shared expansion and normalization
+//! lifecycle. Length components form one contiguous group, while color and inset
+//! may precede or follow that group. [`CssDropShadow`] has signed offsets and an
+//! optional nonnegative `standard_deviation()`, with optional color on either side.
+//! Its third length is a standard deviation; box-shadow retains `blur_radius()`.
+//!
+//! `serialize_specified()` and `serialize_specified_with_limits()` on all four
+//! shadow models retain authored omissions and explicit zero/currentcolor. Box
+//! shadows emit color, offsets, blur, spread, then inset; lists use comma-space;
+//! drop shadows emit the full `drop-shadow()` function. Numeric and color children
+//! use their existing canonical providers with one cumulative resource budget.
+//! These operations preserve symbolic math/colors and diagnostic origins.
+//!
 //! ```
 //! use surgeist_css::{
 //!     CssBasicShape, CssClipPath, CssFilterFunction, CssFilter,
@@ -1150,6 +1165,7 @@ mod supports;
 pub use supports::CssSupportsConstructionError;
 mod media;
 mod named_supports_serialization;
+mod shadow_serialization;
 mod specified_rule_serialization;
 mod url_serialization;
 pub use media::*;

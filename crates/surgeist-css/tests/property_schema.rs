@@ -1525,7 +1525,7 @@ fn every_aggregate_color_consumer_retains_typed_color_mix() {
             "2",
             "px"
         ));
-        assert!(shadow.blur_radius().is_none());
+        assert!(shadow.standard_deviation().is_none());
     }
 }
 
