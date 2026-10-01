@@ -76,11 +76,15 @@ fn rect_retains_four_distinct_signed_edges_in_top_right_bottom_left_order() {
     for text in [
         "rect(1px 2% 3em 4px)",
         "rect(-1px -2% -3em -4px)",
-        "rect(-1e-999px 2% 0 4px)",
         "rect(10px 0 0 20px)",
     ] {
         accept(text, text);
     }
+    let tiny = format!("0.{}1px", "0".repeat(998));
+    accept(
+        "rect(-1e-999px 2% 0 4px)",
+        &format!("rect(-{tiny} 2% 0 4px)"),
+    );
 }
 
 #[test]
@@ -98,13 +102,14 @@ fn rect_retains_auto_independently_in_each_edge_without_inferred_defaults() {
 
 #[test]
 fn xywh_retains_signed_offsets_and_nonnegative_dimensions_in_grammar_order() {
-    for text in [
-        "xywh(-1px -2% 3em 4px)",
-        "xywh(-1e-999px -2% 0 0)",
+    accept("xywh(-1px -2% 3em 4px)", "xywh(-1px -2% 3em 4px)");
+    let one = format!("0.{}1px", "0".repeat(998));
+    let three = format!("0.{}3px", "0".repeat(998));
+    accept("xywh(-1e-999px -2% 0 0)", &format!("xywh(-{one} -2% 0 0)"));
+    accept(
         "xywh(1px 2% 3e-999px 4%)",
-    ] {
-        accept(text, text);
-    }
+        &format!("xywh(1px 2% {three} 4%)"),
+    );
 }
 
 #[test]
