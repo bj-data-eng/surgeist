@@ -186,6 +186,14 @@ that unavailable evidence is independently verified.
 
 ## Pause, resume, and finish
 
+If Codex reports an agent thread limit despite recently finished workers, send
+a no-op follow-up to a recently finished thread: ask it to run `true` and then
+stop immediately without resuming work. Leave active workers untouched. Retry
+the needed launch; if it still fails, try a few other recently finished threads.
+A completion reply does not prove Codex unloaded the thread. If capacity remains
+unavailable, record and report the limit in the current checkpoint instead of
+repeatedly retrying the same unchanged threads.
+
 On pause, stop or account for owned workers/processes using PISCT process
 handling, save the current checkpoint, and preserve unfinished source edits and
 inputs still needed. A clean temporary directory is not more important than
