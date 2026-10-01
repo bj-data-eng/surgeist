@@ -248,10 +248,11 @@ fn checked_owners() -> Vec<CheckedOwner> {
             lp(v)
                 .ok()
                 .and_then(|v| {
-                    CssPosition::try_new(
+                    CssPhysicalPosition::try_new(
                         CssHorizontalPosition::Offset(v),
                         CssVerticalPosition::Center,
                     )
+                    .ok()
                 })
                 .is_some()
         }),

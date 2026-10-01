@@ -8,13 +8,14 @@ fn generic_position_checks_edge_pairing_and_keeps_offset_origins() {
     use CssVerticalPosition as V;
 
     let ordinary =
-        CssPosition::try_new(H::Offset(signed_length_percentage("15%")), V::Bottom).unwrap();
+        CssPhysicalPosition::try_new(H::Offset(signed_length_percentage("15%")), V::Bottom)
+            .unwrap();
     assert!(
         matches!(ordinary.horizontal(), H::Offset(v) if exact_percentage(v.literal_component(), "15"))
     );
     assert!(matches!(ordinary.vertical(), V::Bottom));
 
-    let paired = CssPosition::try_new(
+    let paired = CssPhysicalPosition::try_new(
         H::RightOffset(signed_length_percentage("10px")),
         V::TopOffset(signed_length_percentage("20%")),
     )
@@ -26,24 +27,26 @@ fn generic_position_checks_edge_pairing_and_keeps_offset_origins() {
         matches!(paired.vertical(), V::TopOffset(v) if exact_percentage(v.literal_component(), "20"))
     );
     assert!(
-        CssPosition::try_new(H::LeftOffset(signed_length_percentage("10px")), V::Top).is_none()
+        CssPhysicalPosition::try_new(H::LeftOffset(signed_length_percentage("10px")), V::Top)
+            .is_err()
     );
     assert!(
-        CssPosition::try_new(H::Right, V::BottomOffset(signed_length_percentage("20px"))).is_none()
+        CssPhysicalPosition::try_new(H::Right, V::BottomOffset(signed_length_percentage("20px")))
+            .is_err()
     );
     assert!(
-        CssPosition::try_new(
+        CssPhysicalPosition::try_new(
             H::LeftOffset(signed_length_percentage("10px")),
             V::Offset(signed_length_percentage("20px"))
         )
-        .is_none()
+        .is_err()
     );
     assert!(
-        CssPosition::try_new(
+        CssPhysicalPosition::try_new(
             H::Offset(signed_length_percentage("10px")),
             V::BottomOffset(signed_length_percentage("20px"))
         )
-        .is_none()
+        .is_err()
     );
 }
 
@@ -52,7 +55,7 @@ fn generic_position_retains_symbolic_offsets_and_nonempty_list_order() {
     use CssHorizontalPosition as H;
     use CssVerticalPosition as V;
 
-    let symbolic = CssPosition::try_new(
+    let symbolic = CssPhysicalPosition::try_new(
         H::Offset(signed_length_percentage("calc(10px + 20%)")),
         V::Center,
     )
@@ -60,14 +63,14 @@ fn generic_position_retains_symbolic_offsets_and_nonempty_list_order() {
     assert!(
         matches!(symbolic.horizontal(), H::Offset(v) if v.calculation().is_some_and(|calc| calc.components().serialize().unwrap().as_css() == "calc(10px + 20%)"))
     );
-    let keyword = CssPosition::try_new(H::Left, V::Top).unwrap();
-    let list = CssPositionList::try_new(vec![symbolic, keyword]).unwrap();
+    let keyword = CssPhysicalPosition::try_new(H::Left, V::Top).unwrap();
+    let list = CssPhysicalPositionList::try_new(vec![symbolic, keyword]).unwrap();
     assert_eq!(list.positions().len(), 2);
     assert!(matches!(list.positions()[0].horizontal(), H::Offset(_)));
     assert!(matches!(list.positions()[0].vertical(), V::Center));
     assert!(matches!(list.positions()[1].horizontal(), H::Left));
     assert!(matches!(list.positions()[1].vertical(), V::Top));
-    assert!(CssPositionList::try_new(Vec::new()).is_none());
+    assert!(CssPhysicalPositionList::try_new(Vec::new()).is_none());
     assert!(
         CssSpecifiedLengthPercentage::try_from_component(
             CssComponentValue::try_ident("auto").unwrap()
@@ -139,7 +142,7 @@ fn transform_origin_checks_planar_grammar_and_keeps_optional_pure_length_z() {
     use CssHorizontalPosition as H;
     use CssVerticalPosition as V;
 
-    let planar = CssPosition::try_new(H::Center, V::Top).unwrap();
+    let planar = CssPhysicalPosition::try_new(H::Center, V::Top).unwrap();
     let no_z = CssTransformOrigin::try_new(planar.clone(), None).unwrap();
     assert!(matches!(no_z.horizontal(), H::Center));
     assert!(matches!(no_z.vertical(), V::Top));
@@ -159,7 +162,7 @@ fn transform_origin_checks_planar_grammar_and_keeps_optional_pure_length_z() {
 
     let pure_symbolic = signed_length("calc(2px + 3px)");
     let symbolic = CssTransformOrigin::try_new(
-        CssPosition::try_new(H::Left, V::Bottom).unwrap(),
+        CssPhysicalPosition::try_new(H::Left, V::Bottom).unwrap(),
         Some(pure_symbolic),
     )
     .unwrap();
@@ -172,7 +175,7 @@ fn transform_origin_checks_planar_grammar_and_keeps_optional_pure_length_z() {
             == "calc(2px + 3px)")
     );
 
-    let edge_pair = CssPosition::try_new(
+    let edge_pair = CssPhysicalPosition::try_new(
         H::LeftOffset(signed_length_percentage("1px")),
         V::TopOffset(signed_length_percentage("2px")),
     )
@@ -195,18 +198,24 @@ fn mask_and_shape_consumers_accept_the_generic_position_without_reinterpretation
     use CssHorizontalPosition as H;
     use CssVerticalPosition as V;
 
-    let position = CssPosition::try_new(H::Right, V::Bottom).unwrap();
+    let position = CssPhysicalPosition::try_new(H::Right, V::Bottom).unwrap();
     assert!(CssMaskLayer::try_new(None, None, None, None).is_none());
     let mask = CssMaskLayer::try_new(None, Some(position.clone()), None, None).unwrap();
     assert!(matches!(mask.position().unwrap().horizontal(), H::Right));
     assert!(matches!(mask.position().unwrap().vertical(), V::Bottom));
 
-    let circle = CssCircleShape::new(CssCircleRadius::Default, Some(position.clone()));
-    assert!(matches!(circle.position().unwrap().horizontal(), H::Right));
-    assert!(matches!(circle.position().unwrap().vertical(), V::Bottom));
-    let ellipse = CssEllipseShape::new(None, Some(position.clone()));
-    assert!(matches!(ellipse.position().unwrap().horizontal(), H::Right));
-    assert!(matches!(ellipse.position().unwrap().vertical(), V::Bottom));
+    let circle = CssCircleShape::new(CssCircleRadius::Default, Some(position.clone().into()));
+    let CssPositionRef::Cartesian(circle_position) = circle.position().unwrap().view() else {
+        panic!("Cartesian circle position")
+    };
+    assert!(matches!(circle_position.horizontal(), H::Right));
+    assert!(matches!(circle_position.vertical(), V::Bottom));
+    let ellipse = CssEllipseShape::new(None, Some(position.clone().into()));
+    let CssPositionRef::Cartesian(ellipse_position) = ellipse.position().unwrap().view() else {
+        panic!("Cartesian ellipse position")
+    };
+    assert!(matches!(ellipse_position.horizontal(), H::Right));
+    assert!(matches!(ellipse_position.vertical(), V::Bottom));
 
     let red = CssColor::from_named(CssNamedColor::try_new("red").unwrap());
     let blue = CssColor::from_named(CssNamedColor::try_new("blue").unwrap());

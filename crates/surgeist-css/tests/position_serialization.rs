@@ -7,7 +7,7 @@ use surgeist_css::{
     CssSpecifiedValueSerializationLimits as L, CssVerticalPosition as V, *,
 };
 
-fn parsed(input: &str) -> CssPosition {
+fn parsed(input: &str) -> CssPhysicalPosition {
     let report = parse_style_attribute(&format!("mask-position: {input}"));
     assert!(report.is_clean(), "{input}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::MaskPosition(value) = report.syntax()[0]
@@ -38,7 +38,7 @@ fn specified_axes_are_explicit_and_horizontal_first() {
 
 #[test]
 fn typed_axes_preserve_offset_origin_and_symbolic_values() {
-    let paired = CssPosition::try_new(
+    let paired = CssPhysicalPosition::try_new(
         H::RightOffset(signed_length_percentage("0px")),
         V::BottomOffset(signed_length_percentage("2%")),
     )
@@ -47,10 +47,11 @@ fn typed_axes_preserve_offset_origin_and_symbolic_values() {
     assert!(matches!(paired.vertical(), V::BottomOffset(_)));
     assert_eq!(paired.serialize_specified().unwrap(), "right 0px bottom 2%");
     assert!(
-        CssPosition::try_new(H::RightOffset(signed_length_percentage("0px")), V::Top).is_none()
+        CssPhysicalPosition::try_new(H::RightOffset(signed_length_percentage("0px")), V::Top)
+            .is_err()
     );
 
-    let signed = CssPosition::try_new(
+    let signed = CssPhysicalPosition::try_new(
         H::Offset(signed_length_percentage("-1px")),
         V::Offset(signed_length_percentage("-2%")),
     )
@@ -62,7 +63,7 @@ fn typed_axes_preserve_offset_origin_and_symbolic_values() {
     )
     .unwrap();
     let offset = CssSpecifiedLengthPercentage::try_from_calculation(calculation).unwrap();
-    let symbolic = CssPosition::try_new(H::Offset(offset), V::Center).unwrap();
+    let symbolic = CssPhysicalPosition::try_new(H::Offset(offset), V::Center).unwrap();
     assert_eq!(
         symbolic.serialize_specified().unwrap(),
         "calc(5% + 1px) center"
@@ -71,7 +72,7 @@ fn typed_axes_preserve_offset_origin_and_symbolic_values() {
 
 #[test]
 fn one_budget_covers_aggregate_axes_children_and_full_output() {
-    let keywords = CssPosition::try_new(H::Left, V::Top).unwrap();
+    let keywords = CssPhysicalPosition::try_new(H::Left, V::Top).unwrap();
     assert_eq!(
         keywords
             .serialize_specified_with_limits(L::new(3, 3, 8))
@@ -95,7 +96,7 @@ fn one_budget_covers_aggregate_axes_children_and_full_output() {
         );
     }
 
-    let offsets = CssPosition::try_new(
+    let offsets = CssPhysicalPosition::try_new(
         H::RightOffset(signed_length_percentage("1px")),
         V::BottomOffset(signed_length_percentage("2%")),
     )
@@ -125,8 +126,8 @@ fn one_budget_covers_aggregate_axes_children_and_full_output() {
 #[test]
 fn typed_math_projection_is_cumulative_across_both_axes() {
     let axis = || signed_length_percentage("calc(1px + 2em)");
-    let one = CssPosition::try_new(H::Offset(axis()), V::Center).unwrap();
-    let two = CssPosition::try_new(H::Offset(axis()), V::Offset(axis())).unwrap();
+    let one = CssPhysicalPosition::try_new(H::Offset(axis()), V::Center).unwrap();
+    let two = CssPhysicalPosition::try_new(H::Offset(axis()), V::Offset(axis())).unwrap();
     let one_css = one.serialize_specified().unwrap();
     let two_css = two.serialize_specified().unwrap();
     assert_eq!(one_css, "calc(2em + 1px) center");

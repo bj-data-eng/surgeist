@@ -214,6 +214,14 @@ pub fn surgeist_css::CssBlendMode::from_keyword(keyword: &str) -> core::option::
 pub surgeist_css::CssBlockKind::CurlyBracket
 pub surgeist_css::CssBlockKind::Parenthesis
 pub surgeist_css::CssBlockKind::SquareBracket
+#[non_exhaustive] pub enum surgeist_css::CssBlockPosition
+pub surgeist_css::CssBlockPosition::Center
+pub surgeist_css::CssBlockPosition::End
+pub surgeist_css::CssBlockPosition::EndOffset(surgeist_css::CssSpecifiedLengthPercentage)
+pub surgeist_css::CssBlockPosition::Start
+pub surgeist_css::CssBlockPosition::StartOffset(surgeist_css::CssSpecifiedLengthPercentage)
+impl core::cmp::PartialEq for surgeist_css::CssBlockPosition
+pub fn surgeist_css::CssBlockPosition::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssBorderCollapse
 pub surgeist_css::CssBorderCollapse::Collapse
 pub surgeist_css::CssBorderCollapse::Separate
@@ -1621,12 +1629,18 @@ pub surgeist_css::CssHorizontalPosition::LeftOffset(surgeist_css::CssSpecifiedLe
 pub surgeist_css::CssHorizontalPosition::Offset(surgeist_css::CssSpecifiedLengthPercentage)
 pub surgeist_css::CssHorizontalPosition::Right
 pub surgeist_css::CssHorizontalPosition::RightOffset(surgeist_css::CssSpecifiedLengthPercentage)
+pub surgeist_css::CssHorizontalPosition::XEnd
+pub surgeist_css::CssHorizontalPosition::XEndOffset(surgeist_css::CssSpecifiedLengthPercentage)
+pub surgeist_css::CssHorizontalPosition::XStart
+pub surgeist_css::CssHorizontalPosition::XStartOffset(surgeist_css::CssSpecifiedLengthPercentage)
 impl core::cmp::PartialEq for surgeist_css::CssHorizontalPosition
 pub fn surgeist_css::CssHorizontalPosition::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssHorizontalPositionKeyword
 pub surgeist_css::CssHorizontalPositionKeyword::Center
 pub surgeist_css::CssHorizontalPositionKeyword::Left
 pub surgeist_css::CssHorizontalPositionKeyword::Right
+pub surgeist_css::CssHorizontalPositionKeyword::XEnd
+pub surgeist_css::CssHorizontalPositionKeyword::XStart
 #[non_exhaustive] pub enum surgeist_css::CssHoverCapability
 pub surgeist_css::CssHoverCapability::Hover
 pub surgeist_css::CssHoverCapability::None
@@ -1704,6 +1718,14 @@ pub surgeist_css::CssImportance::Normal
 #[non_exhaustive] pub enum surgeist_css::CssInitialValueRef<'a>
 pub surgeist_css::CssInitialValueRef::UserAgent(surgeist_css::CssUserAgentInitial)
 pub surgeist_css::CssInitialValueRef::Value(&'a surgeist_css::CssLonghandValue)
+#[non_exhaustive] pub enum surgeist_css::CssInlinePosition
+pub surgeist_css::CssInlinePosition::Center
+pub surgeist_css::CssInlinePosition::End
+pub surgeist_css::CssInlinePosition::EndOffset(surgeist_css::CssSpecifiedLengthPercentage)
+pub surgeist_css::CssInlinePosition::Start
+pub surgeist_css::CssInlinePosition::StartOffset(surgeist_css::CssSpecifiedLengthPercentage)
+impl core::cmp::PartialEq for surgeist_css::CssInlinePosition
+pub fn surgeist_css::CssInlinePosition::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssInsetValue
 pub surgeist_css::CssInsetValue::Auto
 pub surgeist_css::CssInsetValue::LengthPercentage(surgeist_css::CssSpecifiedLengthPercentage)
@@ -3147,6 +3169,16 @@ pub surgeist_css::CssPointerEvents::None
 #[non_exhaustive] pub enum surgeist_css::CssPolygonFillRule
 pub surgeist_css::CssPolygonFillRule::Evenodd
 pub surgeist_css::CssPolygonFillRule::Nonzero
+#[non_exhaustive] pub enum surgeist_css::CssPositionConstructionError
+pub surgeist_css::CssPositionConstructionError::NonPhysicalKeyword
+pub surgeist_css::CssPositionConstructionError::UnpairedEdgeOffsets
+impl core::error::Error for surgeist_css::CssPositionConstructionError
+impl core::fmt::Display for surgeist_css::CssPositionConstructionError
+pub fn surgeist_css::CssPositionConstructionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+#[non_exhaustive] pub enum surgeist_css::CssPositionRef<'a>
+pub surgeist_css::CssPositionRef::Cartesian(&'a surgeist_css::CssCartesianPosition)
+pub surgeist_css::CssPositionRef::NamedFlow(&'a surgeist_css::CssNamedFlowPosition)
+pub surgeist_css::CssPositionRef::RelativeFlow(&'a surgeist_css::CssRelativeFlowPosition)
 #[non_exhaustive] pub enum surgeist_css::CssPositiveIntegerValue
 pub surgeist_css::CssPositiveIntegerValue::Calculation(surgeist_css::CssIntegerCalculation)
 pub surgeist_css::CssPositiveIntegerValue::Literal(surgeist_css::CssPositiveIntegerLiteral)
@@ -3298,6 +3330,14 @@ pub surgeist_css::CssReducedMotionPreference::Reduce
 #[non_exhaustive] pub enum surgeist_css::CssReducedTransparencyPreference
 pub surgeist_css::CssReducedTransparencyPreference::NoPreference
 pub surgeist_css::CssReducedTransparencyPreference::Reduce
+#[non_exhaustive] pub enum surgeist_css::CssRelativeAxisPosition
+pub surgeist_css::CssRelativeAxisPosition::Center
+pub surgeist_css::CssRelativeAxisPosition::End
+pub surgeist_css::CssRelativeAxisPosition::EndOffset(surgeist_css::CssSpecifiedLengthPercentage)
+pub surgeist_css::CssRelativeAxisPosition::Start
+pub surgeist_css::CssRelativeAxisPosition::StartOffset(surgeist_css::CssSpecifiedLengthPercentage)
+impl core::cmp::PartialEq for surgeist_css::CssRelativeAxisPosition
+pub fn surgeist_css::CssRelativeAxisPosition::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssRelativeColorChannel
 pub surgeist_css::CssRelativeColorChannel::A
 pub surgeist_css::CssRelativeColorChannel::Alpha
@@ -3945,12 +3985,18 @@ pub surgeist_css::CssVerticalPosition::Center
 pub surgeist_css::CssVerticalPosition::Offset(surgeist_css::CssSpecifiedLengthPercentage)
 pub surgeist_css::CssVerticalPosition::Top
 pub surgeist_css::CssVerticalPosition::TopOffset(surgeist_css::CssSpecifiedLengthPercentage)
+pub surgeist_css::CssVerticalPosition::YEnd
+pub surgeist_css::CssVerticalPosition::YEndOffset(surgeist_css::CssSpecifiedLengthPercentage)
+pub surgeist_css::CssVerticalPosition::YStart
+pub surgeist_css::CssVerticalPosition::YStartOffset(surgeist_css::CssSpecifiedLengthPercentage)
 impl core::cmp::PartialEq for surgeist_css::CssVerticalPosition
 pub fn surgeist_css::CssVerticalPosition::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssVerticalPositionKeyword
 pub surgeist_css::CssVerticalPositionKeyword::Bottom
 pub surgeist_css::CssVerticalPositionKeyword::Center
 pub surgeist_css::CssVerticalPositionKeyword::Top
+pub surgeist_css::CssVerticalPositionKeyword::YEnd
+pub surgeist_css::CssVerticalPositionKeyword::YStart
 #[non_exhaustive] pub enum surgeist_css::CssVisibility
 pub surgeist_css::CssVisibility::Collapse
 pub surgeist_css::CssVisibility::Hidden
@@ -4801,6 +4847,11 @@ pub struct surgeist_css::CssCaretColorPropertyValue
 impl surgeist_css::CssCaretColorPropertyValue
 pub fn surgeist_css::CssCaretColorPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssCaretColorPropertyValue::caret(&self) -> &surgeist_css::CssCaretColor
+pub struct surgeist_css::CssCartesianPosition
+impl surgeist_css::CssCartesianPosition
+pub const fn surgeist_css::CssCartesianPosition::horizontal(&self) -> &surgeist_css::CssHorizontalPosition
+pub fn surgeist_css::CssCartesianPosition::try_new(horizontal: surgeist_css::CssHorizontalPosition, vertical: surgeist_css::CssVerticalPosition) -> core::result::Result<Self, surgeist_css::CssPositionConstructionError>
+pub const fn surgeist_css::CssCartesianPosition::vertical(&self) -> &surgeist_css::CssVerticalPosition
 pub struct surgeist_css::CssCharacterAlignment
 impl surgeist_css::CssCharacterAlignment
 pub const fn surgeist_css::CssCharacterAlignment::authored_fallback(&self) -> core::option::Option<surgeist_css::CssTextAlignPosition>
@@ -6912,8 +6963,8 @@ pub fn surgeist_css::CssMaskImagePropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssMaskImagePropertyValue::images(&self) -> &surgeist_css::CssImageValueList
 pub struct surgeist_css::CssMaskLayer
 impl surgeist_css::CssMaskLayer
-pub const fn surgeist_css::CssMaskLayer::position(&self) -> core::option::Option<&surgeist_css::CssPosition>
-pub fn surgeist_css::CssMaskLayer::try_new(image: core::option::Option<surgeist_css::CssImageValue>, position: core::option::Option<surgeist_css::CssPosition>, size: core::option::Option<surgeist_css::CssBackgroundSize>, repeat: core::option::Option<surgeist_css::CssBackgroundRepeat>) -> core::option::Option<Self>
+pub const fn surgeist_css::CssMaskLayer::position(&self) -> core::option::Option<&surgeist_css::CssPhysicalPosition>
+pub fn surgeist_css::CssMaskLayer::try_new(image: core::option::Option<surgeist_css::CssImageValue>, position: core::option::Option<surgeist_css::CssPhysicalPosition>, size: core::option::Option<surgeist_css::CssBackgroundSize>, repeat: core::option::Option<surgeist_css::CssBackgroundRepeat>) -> core::option::Option<Self>
 pub struct surgeist_css::CssMaskList
 impl surgeist_css::CssMaskList
 pub fn surgeist_css::CssMaskList::layers(&self) -> &[surgeist_css::CssMaskLayer]
@@ -6921,7 +6972,7 @@ pub fn surgeist_css::CssMaskList::try_new(layers: alloc::vec::Vec<surgeist_css::
 pub struct surgeist_css::CssMaskPositionPropertyValue
 impl surgeist_css::CssMaskPositionPropertyValue
 pub fn surgeist_css::CssMaskPositionPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssMaskPositionPropertyValue::positions(&self) -> &surgeist_css::CssPositionList
+pub const fn surgeist_css::CssMaskPositionPropertyValue::positions(&self) -> &surgeist_css::CssPhysicalPositionList
 pub struct surgeist_css::CssMaskPropertyValue
 impl surgeist_css::CssMaskPropertyValue
 pub fn surgeist_css::CssMaskPropertyValue::as_css(&self) -> &str
@@ -7057,6 +7108,10 @@ pub struct surgeist_css::CssNamedColor
 impl surgeist_css::CssNamedColor
 pub fn surgeist_css::CssNamedColor::name(&self) -> &str
 pub fn surgeist_css::CssNamedColor::try_new(name: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub struct surgeist_css::CssNamedFlowPosition
+impl surgeist_css::CssNamedFlowPosition
+pub const fn surgeist_css::CssNamedFlowPosition::block(&self) -> &surgeist_css::CssBlockPosition
+pub const fn surgeist_css::CssNamedFlowPosition::inline(&self) -> &surgeist_css::CssInlinePosition
 pub struct surgeist_css::CssNamedString
 impl surgeist_css::CssNamedString
 pub const fn surgeist_css::CssNamedString::mode(&self) -> core::option::Option<surgeist_css::CssNamedStringMode>
@@ -7194,7 +7249,7 @@ pub const fn surgeist_css::CssObjectFitPropertyValue::fit(&self) -> &surgeist_cs
 pub struct surgeist_css::CssObjectPositionPropertyValue
 impl surgeist_css::CssObjectPositionPropertyValue
 pub fn surgeist_css::CssObjectPositionPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssObjectPositionPropertyValue::position(&self) -> &surgeist_css::CssPosition
+pub const fn surgeist_css::CssObjectPositionPropertyValue::position(&self) -> &surgeist_css::CssPhysicalPosition
 pub struct surgeist_css::CssOpacityPropertyValue
 impl surgeist_css::CssOpacityPropertyValue
 pub fn surgeist_css::CssOpacityPropertyValue::as_css(&self) -> &str
@@ -7428,6 +7483,23 @@ pub fn surgeist_css::CssPercentageCalculation::try_from_components(values: surge
 pub fn surgeist_css::CssPercentageCalculation::try_from_components_with_limits(values: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 impl surgeist_css::CssPercentageCalculation
 pub fn surgeist_css::CssPercentageCalculation::try_literal(value: f32) -> core::option::Option<Self>
+pub struct surgeist_css::CssPhysicalPosition
+impl surgeist_css::CssPhysicalPosition
+pub const fn surgeist_css::CssPhysicalPosition::horizontal(&self) -> &surgeist_css::CssHorizontalPosition
+pub fn surgeist_css::CssPhysicalPosition::try_new(horizontal: surgeist_css::CssHorizontalPosition, vertical: surgeist_css::CssVerticalPosition) -> core::result::Result<Self, surgeist_css::CssPositionConstructionError>
+pub const fn surgeist_css::CssPhysicalPosition::vertical(&self) -> &surgeist_css::CssVerticalPosition
+impl surgeist_css::CssPhysicalPosition
+pub fn surgeist_css::CssPhysicalPosition::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssPhysicalPosition::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl core::convert::From<surgeist_css::CssPhysicalPosition> for surgeist_css::CssPosition
+pub fn surgeist_css::CssPosition::from(position: surgeist_css::CssPhysicalPosition) -> Self
+pub struct surgeist_css::CssPhysicalPositionList
+impl surgeist_css::CssPhysicalPositionList
+pub fn surgeist_css::CssPhysicalPositionList::positions(&self) -> &[surgeist_css::CssPhysicalPosition]
+pub fn surgeist_css::CssPhysicalPositionList::try_new(positions: alloc::vec::Vec<surgeist_css::CssPhysicalPosition>) -> core::option::Option<Self>
+impl surgeist_css::CssPhysicalPositionList
+pub fn surgeist_css::CssPhysicalPositionList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssPhysicalPositionList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssPlaceContentPropertyValue
 impl surgeist_css::CssPlaceContentPropertyValue
 pub fn surgeist_css::CssPlaceContentPropertyValue::as_css(&self) -> &str
@@ -7492,16 +7564,15 @@ impl core::cmp::PartialEq for surgeist_css::CssPolygonShape
 pub fn surgeist_css::CssPolygonShape::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssPosition
 impl surgeist_css::CssPosition
-pub const fn surgeist_css::CssPosition::horizontal(&self) -> &surgeist_css::CssHorizontalPosition
-pub fn surgeist_css::CssPosition::try_new(horizontal: surgeist_css::CssHorizontalPosition, vertical: surgeist_css::CssVerticalPosition) -> core::option::Option<Self>
-pub const fn surgeist_css::CssPosition::vertical(&self) -> &surgeist_css::CssVerticalPosition
+pub const fn surgeist_css::CssPosition::from_cartesian(position: surgeist_css::CssCartesianPosition) -> Self
+pub fn surgeist_css::CssPosition::try_from_named_axes(block: surgeist_css::CssBlockPosition, inline: surgeist_css::CssInlinePosition) -> core::result::Result<Self, surgeist_css::CssPositionConstructionError>
+pub fn surgeist_css::CssPosition::try_from_relative_axes(block: surgeist_css::CssRelativeAxisPosition, inline: surgeist_css::CssRelativeAxisPosition) -> core::result::Result<Self, surgeist_css::CssPositionConstructionError>
+pub const fn surgeist_css::CssPosition::view(&self) -> surgeist_css::CssPositionRef<'_>
 impl surgeist_css::CssPosition
 pub fn surgeist_css::CssPosition::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssPosition::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
-pub struct surgeist_css::CssPositionList
-impl surgeist_css::CssPositionList
-pub fn surgeist_css::CssPositionList::positions(&self) -> &[surgeist_css::CssPosition]
-pub fn surgeist_css::CssPositionList::try_new(positions: alloc::vec::Vec<surgeist_css::CssPosition>) -> core::option::Option<Self>
+impl core::convert::From<surgeist_css::CssPhysicalPosition> for surgeist_css::CssPosition
+pub fn surgeist_css::CssPosition::from(position: surgeist_css::CssPhysicalPosition) -> Self
 pub struct surgeist_css::CssPositionPropertyValue
 impl surgeist_css::CssPositionPropertyValue
 pub fn surgeist_css::CssPositionPropertyValue::as_css(&self) -> &str
@@ -7620,12 +7691,12 @@ impl core::cmp::PartialEq for surgeist_css::CssRadialEllipseSize
 pub fn surgeist_css::CssRadialEllipseSize::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssRadialGradient
 impl surgeist_css::CssRadialGradient
-pub const fn surgeist_css::CssRadialGradient::position(&self) -> core::option::Option<&surgeist_css::CssPosition>
+pub const fn surgeist_css::CssRadialGradient::position(&self) -> core::option::Option<&surgeist_css::CssPhysicalPosition>
 pub const fn surgeist_css::CssRadialGradient::shape(&self) -> core::option::Option<surgeist_css::CssRadialShape>
 pub const fn surgeist_css::CssRadialGradient::size(&self) -> core::option::Option<&surgeist_css::CssRadialSize>
 pub const fn surgeist_css::CssRadialGradient::stops(&self) -> &surgeist_css::CssColorStopList
 impl surgeist_css::CssRadialGradient
-pub fn surgeist_css::CssRadialGradient::try_new(shape: core::option::Option<surgeist_css::CssRadialShape>, size: core::option::Option<surgeist_css::CssRadialSize>, position: core::option::Option<surgeist_css::CssPosition>, stops: surgeist_css::CssColorStopList) -> core::option::Option<Self>
+pub fn surgeist_css::CssRadialGradient::try_new(shape: core::option::Option<surgeist_css::CssRadialShape>, size: core::option::Option<surgeist_css::CssRadialSize>, position: core::option::Option<surgeist_css::CssPhysicalPosition>, stops: surgeist_css::CssColorStopList) -> core::option::Option<Self>
 pub struct surgeist_css::CssRangeFeature<T>
 impl<T> surgeist_css::CssRangeFeature<T>
 pub const fn surgeist_css::CssRangeFeature<T>::comparison(&self) -> core::option::Option<surgeist_css::CssQueryComparison>
@@ -7677,6 +7748,10 @@ pub fn surgeist_css::CssRelativeCustomColor::channels(&self) -> &[surgeist_css::
 pub const fn surgeist_css::CssRelativeCustomColor::profile(&self) -> &surgeist_css::CssColorProfileName
 pub const fn surgeist_css::CssRelativeCustomColor::source(&self) -> &surgeist_css::CssColor
 pub fn surgeist_css::CssRelativeCustomColor::try_new(source: surgeist_css::CssColor, profile: surgeist_css::CssColorProfileName, channels: alloc::vec::Vec<surgeist_css::CssProfileColorExpression>, alpha: core::option::Option<surgeist_css::CssProfileColorExpression>) -> core::result::Result<Self, surgeist_css::CssColorConstructionError>
+pub struct surgeist_css::CssRelativeFlowPosition
+impl surgeist_css::CssRelativeFlowPosition
+pub const fn surgeist_css::CssRelativeFlowPosition::block(&self) -> &surgeist_css::CssRelativeAxisPosition
+pub const fn surgeist_css::CssRelativeFlowPosition::inline(&self) -> &surgeist_css::CssRelativeAxisPosition
 pub struct surgeist_css::CssRelativeSelector
 impl surgeist_css::CssRelativeSelector
 pub const fn surgeist_css::CssRelativeSelector::combinator(&self) -> surgeist_css::CssSelectorCombinator
@@ -8435,7 +8510,7 @@ pub fn surgeist_css::CssTransformMatrix3d::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssTransformOrigin
 impl surgeist_css::CssTransformOrigin
 pub const fn surgeist_css::CssTransformOrigin::horizontal(&self) -> &surgeist_css::CssHorizontalPosition
-pub fn surgeist_css::CssTransformOrigin::try_new(position: surgeist_css::CssPosition, z: core::option::Option<surgeist_css::CssSpecifiedLength>) -> core::option::Option<Self>
+pub fn surgeist_css::CssTransformOrigin::try_new(position: surgeist_css::CssPhysicalPosition, z: core::option::Option<surgeist_css::CssSpecifiedLength>) -> core::option::Option<Self>
 pub const fn surgeist_css::CssTransformOrigin::vertical(&self) -> &surgeist_css::CssVerticalPosition
 pub const fn surgeist_css::CssTransformOrigin::z(&self) -> core::option::Option<&surgeist_css::CssSpecifiedLength>
 impl core::cmp::PartialEq for surgeist_css::CssTransformOrigin

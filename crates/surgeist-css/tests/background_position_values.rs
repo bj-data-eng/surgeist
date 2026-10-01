@@ -240,7 +240,7 @@ fn checked_list_serialization_retains_domain_distinctions_and_comma_order() {
         "right 10px top, left bottom -20%"
     );
     assert_eq!(three.serialize_specified().unwrap(), "right 10px top");
-    assert!(CssPosition::try_new(H::RightOffset(offset("10px")), V::Top).is_none());
+    assert!(CssPhysicalPosition::try_new(H::RightOffset(offset("10px")), V::Top).is_err());
     assert!(
         CssBackgroundPosition::try_new(H::RightOffset(offset("10px")), V::Offset(offset("2px")))
             .is_none()

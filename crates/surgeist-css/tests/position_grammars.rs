@@ -1,6 +1,6 @@
 use surgeist_css::*;
 
-fn object_position(value: &str) -> CssPosition {
+fn object_position(value: &str) -> CssPhysicalPosition {
     let source = format!("object-position: {value}");
     let report = parse_style_attribute(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
@@ -738,8 +738,11 @@ fn mask_shorthand_preserves_valid_image_position_size_and_repeat_components() {
         CssMaskLayer::try_new(
             Some(CssImageValue::Url(CssUrl::new("mask.png"))),
             Some(
-                CssPosition::try_new(CssHorizontalPosition::Center, CssVerticalPosition::Center)
-                    .expect("valid center position"),
+                CssPhysicalPosition::try_new(
+                    CssHorizontalPosition::Center,
+                    CssVerticalPosition::Center,
+                )
+                .expect("valid center position"),
             ),
             Some(CssBackgroundSize::Contain),
             Some(CssBackgroundRepeat::Axes {

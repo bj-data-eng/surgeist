@@ -4,8 +4,8 @@ use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::{
     CssAngleUnit, CssAngleValue, CssColorStopList, CssColorStopListItem, CssGradient,
     CssHorizontalGradientSide, CssHorizontalPosition, CssImage, CssImageValue, CssImageValueList,
-    CssLinearGradient, CssLinearGradientDirection, CssPosition, CssRadialExtent, CssRadialGradient,
-    CssRadialShape, CssRadialSize, CssSpecifiedLengthPercentage,
+    CssLinearGradient, CssLinearGradientDirection, CssPhysicalPosition, CssRadialExtent,
+    CssRadialGradient, CssRadialShape, CssRadialSize, CssSpecifiedLengthPercentage,
     CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
     CssVerticalGradientSide, CssVerticalPosition,
 };
@@ -273,7 +273,7 @@ fn radial_extent(extent: CssRadialExtent) -> &'static str {
     }
 }
 
-fn radial_center_offset_count(position: &CssPosition) -> usize {
+fn radial_center_offset_count(position: &CssPhysicalPosition) -> usize {
     usize::from(matches!(
         position.horizontal(),
         CssHorizontalPosition::Offset(_)
@@ -283,7 +283,7 @@ fn radial_center_offset_count(position: &CssPosition) -> usize {
     ))
 }
 
-fn radial_position_is_center(position: &CssPosition) -> bool {
+fn radial_position_is_center(position: &CssPhysicalPosition) -> bool {
     let horizontal = match position.horizontal() {
         CssHorizontalPosition::Center => true,
         CssHorizontalPosition::Offset(offset) => literal_percentage_is(offset, 5, 1),

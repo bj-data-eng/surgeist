@@ -6,7 +6,7 @@ use cssparser::{ParseError, Parser, ToCss, Token, match_ignore_ascii_case};
 
 use super::background::{parse_background_repeat, parse_background_size, parse_mask_image};
 use super::box_model::parse_drop_shadow;
-use super::position::parse_css_position;
+use super::position::{parse_full_position, parse_physical_position};
 use super::url::parse_url;
 use super::values::{
     AngleParserContext, next_is_comma, next_is_delim, next_is_ident, parse_angle_value,
@@ -546,7 +546,7 @@ fn parse_optional_shape_position<'i, 't>(
         return Ok(None);
     }
     input.expect_ident_matching("at")?;
-    parse_css_position(input, numeric).map(Some)
+    parse_full_position(input, numeric).map(Some)
 }
 
 fn parse_shape_length_percentage<'i, 't>(
@@ -1008,7 +1008,8 @@ pub(super) fn parse_mask_layer<'i, 't>(
             continue;
         }
         if position.is_none()
-            && let Ok(parsed_position) = input.try_parse(|input| parse_css_position(input, numeric))
+            && let Ok(parsed_position) =
+                input.try_parse(|input| parse_physical_position(input, numeric))
         {
             position = Some(parsed_position);
             if input.try_parse(|input| input.expect_delim('/')).is_ok() {

@@ -224,7 +224,9 @@ fn selected_basic_shapes_expose_typed_authored_components() {
         CssCircleRadius::LengthPercentage(value)
             if exact_dimension(value.literal_component(), "10", "px")
     ));
-    let position = circle.position().unwrap();
+    let CssPositionRef::Cartesian(position) = circle.position().unwrap().view() else {
+        panic!("Cartesian circle position")
+    };
     assert!(matches!(
         position.horizontal(),
         CssHorizontalPosition::RightOffset(_)

@@ -1113,10 +1113,10 @@ a named edge.
 
 The property grammars and accessors are deliberately distinct:
 
-- `CssObjectPositionPropertyValue::position()` exposes one generic `CssPosition`.
-- `CssMaskPositionPropertyValue::positions()` exposes a nonempty `CssPositionList`.
+- `CssObjectPositionPropertyValue::position()` exposes one `CssPhysicalPosition`.
+- `CssMaskPositionPropertyValue::positions()` exposes a nonempty `CssPhysicalPositionList`.
 - `CssMaskPropertyValue::value()` exposes typed mask shorthand layers; each
-  layer exposes its optional generic position through `CssMaskLayer::position()`.
+  layer exposes its optional physical position through `CssMaskLayer::position()`.
 - `CssBackgroundPositionPropertyValue::positions()` exposes a distinct
   nonempty layer list that additionally admits the background-only
   three-component form.
@@ -1190,14 +1190,85 @@ explicitly gives the conflicting `top 50px` example as one planar value plus
 Z. The source discrepancy remains tracked separately from the selected
 operational behavior.
 
-The position wrappers expose their checked semantic values directly. Generic
-`CssPosition::try_new` accepts paired edge offsets or no edge offsets;
+The position wrappers expose their checked semantic values directly.
+`CssPhysicalPosition::try_new` accepts paired edge offsets or no edge offsets
+and rejects axis-relative keywords;
 `CssBackgroundPosition::try_new` additionally accepts one edge offset with a
 keyword on the other axis, but not with a bare offset. The checked
 `CssTransformOrigin::try_new` excludes edge offsets and keeps optional pure-length
 Z. Position use
-inside gradients, transforms, filters, and basic shapes remains on its separate
+inside gradients, transforms, and basic shapes remains on its separate
 function grammar boundary.
+
+### Symbolic position families
+
+`CssPosition` represents the full authored
+[Values 5 position grammar](https://www.w3.org/TR/2024/WD-css-values-5-20241111/#position)
+imported by circle and ellipse. `view()` returns a borrowed `CssPositionRef`
+containing Cartesian, named-flow or relative-flow components. These families
+retain coordinate identity without choosing a writing mode or reference box.
+
+`CssCartesianPosition::try_new` checks horizontal and vertical components,
+including x-start/x-end and y-start/y-end. Physical and axis-relative keywords
+can mix within this family. Free length-percentages remain horizontal then
+vertical; edge-relative offsets require both axes. `CssPosition::from_cartesian`
+accepts that checked pair.
+
+`CssPosition::try_from_named_axes` accepts distinct `CssBlockPosition` and
+`CssInlinePosition` components. `try_from_relative_axes` accepts two
+`CssRelativeAxisPosition` components in block then inline order. Each family
+allows keyword/center pairs or two edge-offset components, with no center-offset
+branch. All-center construction produces the same Cartesian center/center value
+as parsed `center`. `CssPositionConstructionError` distinguishes unpaired edge
+offsets from nonphysical keywords supplied to a physical-only constructor.
+
+```rust
+use surgeist_css::{
+    CssBlockPosition, CssCircleRadius, CssCircleShape, CssHorizontalPosition,
+    CssInlinePosition, CssPhysicalPosition, CssPosition,
+    CssPositionConstructionError, CssPositionRef, CssVerticalPosition,
+};
+
+let position = CssPosition::try_from_named_axes(
+    CssBlockPosition::Start, CssInlinePosition::End,
+).unwrap();
+let CssPositionRef::NamedFlow(flow) = position.view() else {
+    panic!("named flow position");
+};
+assert_eq!(flow.block(), &CssBlockPosition::Start);
+assert_eq!(flow.inline(), &CssInlinePosition::End);
+let circle = CssCircleShape::new(CssCircleRadius::Default, Some(position));
+assert_eq!(circle.serialize_specified().unwrap(), "circle(at block-start inline-end)");
+assert_eq!(
+    CssPhysicalPosition::try_new(
+        CssHorizontalPosition::XStart, CssVerticalPosition::Bottom,
+    ).unwrap_err(),
+    CssPositionConstructionError::NonPhysicalKeyword,
+);
+```
+
+Parsing admits Cartesian and named-flow one-, two- and four-component forms;
+relative flow has two or four components. Named axis pairs can reorder, while
+unqualified relative pairs keep block/inline order. Bare `start` or `end`, mixed
+coordinate families, duplicate axes and generic three-component positions are
+invalid. Background's three-component form remains its own physical grammar.
+Older gradients, object and mask positions use the checked physical restriction
+in both parsing and Rust construction.
+
+Specified serialization emits Cartesian horizontal/vertical order and symbolic
+flow block/inline order, preserving keyword families and offsets. An implied
+center becomes explicit. The pinned draft's two-component serialization wording
+does not explain unresolved flow-axis order; this operational choice preserves
+meaning without guessing physical orientation. The source wording question
+remains separate from implemented authored grammar. Computed left/top offsets
+and writing-mode mapping belong downstream.
+
+Full and physical positions share the cumulative serializer: one position
+aggregate, two axis nodes and each authored numeric provider. Keyword pairs cost
+three input and projection nodes; paired literal offsets cost five. Checked
+wrappers and borrowed views add no nodes. Symbolic math uses the existing
+provider costs, and all children share the same UTF-8 byte budget. Typed limit
+failure returns no partial output or input/provenance mutation.
 
 ## Dedicated authored function grammars
 
@@ -1451,12 +1522,12 @@ Every lone explicit radius is invalid. The operational pair rule follows the
 same pinned WebKit Shapes consumer and resolves the imported radial-size context
 discrepancy without inserting its effective defaults into authored storage.
 
-Circle and ellipse positions retain the physical one-, two- and four-component
-subset of `CssPosition`. Shapes imports the
+Circle and ellipse positions use the full `CssPosition`. Shapes imports the
 [Values 5 WD 2024-11-11 position definition](https://www.w3.org/TR/2024/WD-css-values-5-20241111/#position);
-its logical and relative positions remain unfinished authored grammar. Circle,
-ellipse, basic-shape and clip-path support metadata expose this Partial boundary.
-`path()`, `shape()`, `rect()` and `xywh()` also remain unsupported. The
+physical, axis-relative, named-flow and relative-flow forms remain symbolic.
+Circle and ellipse expose Complete authored support; basic-shape and clip-path
+remain Partial because
+`path()`, `shape()`, `rect()` and `xywh()` remain unsupported. The
 [catalog](../specs/catalog.json) pins only the required position definition and
 its serialization clauses; it does not select Values 5 in full.
 
@@ -1466,7 +1537,7 @@ Canonical output uses lowercase function names, spaces and comma-space point
 separators. A shape precedes its optional reference-box keyword regardless of
 parsed order. Authored offset and radius arities, optional fields, explicit
 extents, explicit nonzero fill and round zero remain present or omitted as
-authored. Positions use the shared horizontal-then-vertical canonical form. Numeric and math
+authored. Positions use their family's canonical axis order. Numeric and math
 providers retain exact ordinary magnitudes, units and symbolic values; the
 original parsed components and their origins remain unchanged.
 
@@ -2780,7 +2851,7 @@ Programmatic gradients use `CssGradientColorStop::from_color`, checked
 `CssColorStopList::try_new`, and `CssLinearGradient::new` or
 `CssRadialGradient::try_new`. The radial constructor rejects incompatible
 explicit radius forms, permits omitted size and extents, and preserves authored
-omissions. `CssPosition::try_new` checks the generic
+omissions. `CssPhysicalPosition::try_new` checks the physical generic
 position grammar: explicit edge offsets occur on both axes or neither. These
 constructors retain authored symbolic values without resolving colors,
 percentages, URLs, or positions.
@@ -3680,13 +3751,14 @@ their normalized checked kinds. Property wrappers still retain original
 ## Authored positioning and insets
 
 The selected [Values 4 generic `<position>` serialization](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#position-serialization)
-is available on `CssPosition::serialize_specified()` and its limits variant.
+is available on `CssPhysicalPosition::serialize_specified()` and its limits variant.
 It writes the checked horizontal and vertical axes in that order: a parsed
 `top` becomes `center top`, while `bottom 2% right 1px` becomes
 `right 1px bottom 2%`. Paired edge offsets retain their edge keywords and
 symbolic lengths, percentages, and calculations. The operation shares one
 input, projection, and output budget across both axes; it does not resolve a
 percentage against a box or use the separate background three-component form.
+Full symbolic coordinate families are described in [Symbolic position families](#symbolic-position-families).
 
 The selected [Position 3 draft](https://www.w3.org/TR/2025/WD-css-position-3-20251007/#position-property)
 defines the five `position` keywords and the physical and flow-relative inset

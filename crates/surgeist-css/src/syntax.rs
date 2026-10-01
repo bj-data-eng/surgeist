@@ -6904,7 +6904,7 @@ impl PartialEq for CssRadialSize {
 pub struct CssRadialGradient {
     shape: Option<CssRadialShape>,
     size: Option<CssRadialSize>,
-    position: Option<CssPosition>,
+    position: Option<CssPhysicalPosition>,
     stops: CssColorStopList,
 }
 
@@ -6920,7 +6920,7 @@ impl CssRadialGradient {
     }
 
     #[must_use]
-    pub const fn position(&self) -> Option<&CssPosition> {
+    pub const fn position(&self) -> Option<&CssPhysicalPosition> {
         self.position.as_ref()
     }
 
@@ -6930,275 +6930,11 @@ impl CssRadialGradient {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssHorizontalPositionKeyword {
-    Left,
-    Center,
-    Right,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssVerticalPositionKeyword {
-    Top,
-    Center,
-    Bottom,
-}
-
-/// The exact authored horizontal axis of a generic CSS `<position>`.
-#[derive(Clone, Debug)]
-#[non_exhaustive]
-pub enum CssHorizontalPosition {
-    Left,
-    Center,
-    Right,
-    /// An offset from the horizontal start edge without an authored edge keyword.
-    Offset(CssSpecifiedLengthPercentage),
-    LeftOffset(CssSpecifiedLengthPercentage),
-    RightOffset(CssSpecifiedLengthPercentage),
-}
-
-impl PartialEq for CssHorizontalPosition {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Offset(left), Self::Offset(right))
-            | (Self::LeftOffset(left), Self::LeftOffset(right))
-            | (Self::RightOffset(left), Self::RightOffset(right)) => left.structural_eq(right),
-            (Self::Left, Self::Left)
-            | (Self::Center, Self::Center)
-            | (Self::Right, Self::Right) => true,
-            _ => false,
-        }
-    }
-}
-
-/// The exact authored vertical axis of a generic CSS `<position>`.
-#[derive(Clone, Debug)]
-#[non_exhaustive]
-pub enum CssVerticalPosition {
-    Top,
-    Center,
-    Bottom,
-    /// An offset from the vertical start edge without an authored edge keyword.
-    Offset(CssSpecifiedLengthPercentage),
-    TopOffset(CssSpecifiedLengthPercentage),
-    BottomOffset(CssSpecifiedLengthPercentage),
-}
-
-impl PartialEq for CssVerticalPosition {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Offset(left), Self::Offset(right))
-            | (Self::TopOffset(left), Self::TopOffset(right))
-            | (Self::BottomOffset(left), Self::BottomOffset(right)) => left.structural_eq(right),
-            (Self::Top, Self::Top)
-            | (Self::Center, Self::Center)
-            | (Self::Bottom, Self::Bottom) => true,
-            _ => false,
-        }
-    }
-}
-
-/// A checked authored generic CSS `<position>`.
-///
-/// Both axes are explicit in this model, including axes omitted and therefore centered by the
-/// grammar. Paired edge offsets are valid; a lone edge offset is not.
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssPosition {
-    horizontal: CssHorizontalPosition,
-    vertical: CssVerticalPosition,
-}
-
-impl CssPosition {
-    /// Constructs the generic position when both axes use edge offsets or neither does.
-    /// Background's separate three-component position grammar is not admitted here.
-    #[must_use]
-    pub fn try_new(
-        horizontal: CssHorizontalPosition,
-        vertical: CssVerticalPosition,
-    ) -> Option<Self> {
-        let horizontal_edge = matches!(
-            horizontal,
-            CssHorizontalPosition::LeftOffset(_) | CssHorizontalPosition::RightOffset(_)
-        );
-        let vertical_edge = matches!(
-            vertical,
-            CssVerticalPosition::TopOffset(_) | CssVerticalPosition::BottomOffset(_)
-        );
-        if horizontal_edge != vertical_edge {
-            return None;
-        }
-        Some(Self {
-            horizontal,
-            vertical,
-        })
-    }
-
-    /// Returns the authored horizontal position, including its offset origin.
-    #[must_use]
-    pub const fn horizontal(&self) -> &CssHorizontalPosition {
-        &self.horizontal
-    }
-
-    /// Returns the authored vertical position, including its offset origin.
-    #[must_use]
-    pub const fn vertical(&self) -> &CssVerticalPosition {
-        &self.vertical
-    }
-}
-
-/// A nonempty authored comma list of generic positions.
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssPositionList {
-    positions: Vec<CssPosition>,
-}
-
-impl CssPositionList {
-    /// Constructs a nonempty list of checked positions.
-    #[must_use]
-    pub fn try_new(positions: Vec<CssPosition>) -> Option<Self> {
-        (!positions.is_empty()).then_some(Self { positions })
-    }
-
-    /// Returns positions in authored order.
-    #[must_use]
-    pub fn positions(&self) -> &[CssPosition] {
-        &self.positions
-    }
-}
+mod position;
+pub use position::*;
 
 mod images;
 pub use images::CssImage;
-
-/// One checked authored layer of `background-position`.
-///
-/// This model is distinct from generic `<position>` because the background grammar admits its
-/// specified three-component form. Both axes remain symbolic and retain authored edge origins.
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssBackgroundPosition {
-    horizontal: CssHorizontalPosition,
-    vertical: CssVerticalPosition,
-}
-
-impl CssBackgroundPosition {
-    /// Constructs a representable background position, including the three-component form.
-    #[must_use]
-    pub fn try_new(
-        horizontal: CssHorizontalPosition,
-        vertical: CssVerticalPosition,
-    ) -> Option<Self> {
-        let horizontal_edge = matches!(
-            horizontal,
-            CssHorizontalPosition::LeftOffset(_) | CssHorizontalPosition::RightOffset(_)
-        );
-        let vertical_edge = matches!(
-            vertical,
-            CssVerticalPosition::TopOffset(_) | CssVerticalPosition::BottomOffset(_)
-        );
-        if horizontal_edge && matches!(vertical, CssVerticalPosition::Offset(_))
-            || vertical_edge && matches!(horizontal, CssHorizontalPosition::Offset(_))
-        {
-            return None;
-        }
-        Some(Self {
-            horizontal,
-            vertical,
-        })
-    }
-
-    /// Returns the authored horizontal position, including its offset origin.
-    #[must_use]
-    pub const fn horizontal(&self) -> &CssHorizontalPosition {
-        &self.horizontal
-    }
-
-    /// Returns the authored vertical position, including its offset origin.
-    #[must_use]
-    pub const fn vertical(&self) -> &CssVerticalPosition {
-        &self.vertical
-    }
-}
-
-/// A nonempty authored comma list of `background-position` layers.
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssBackgroundPositionList {
-    positions: Vec<CssBackgroundPosition>,
-}
-
-impl CssBackgroundPositionList {
-    /// Constructs a nonempty list from already validated background-position layers.
-    #[must_use]
-    pub fn try_new(positions: Vec<CssBackgroundPosition>) -> Option<Self> {
-        if positions.is_empty() {
-            None
-        } else {
-            Some(Self::new(positions))
-        }
-    }
-
-    #[must_use]
-    pub(crate) const fn new(positions: Vec<CssBackgroundPosition>) -> Self {
-        Self { positions }
-    }
-
-    /// Returns the authored layers in comma order.
-    #[must_use]
-    pub fn positions(&self) -> &[CssBackgroundPosition] {
-        &self.positions
-    }
-}
-
-/// A checked authored value of the `transform-origin` property.
-///
-/// Both 2D axes are explicit, and the optional z axis can contain only a checked authored length.
-/// Edge-relative offsets are excluded from this property's planar grammar.
-#[derive(Clone, Debug)]
-pub struct CssTransformOrigin {
-    horizontal: CssHorizontalPosition,
-    vertical: CssVerticalPosition,
-    z: Option<CssSpecifiedLength>,
-}
-numeric_fields_eq!(CssTransformOrigin, [], [z], [horizontal, vertical]);
-
-impl CssTransformOrigin {
-    /// Constructs a planar position with an optional authored Z length.
-    #[must_use]
-    pub fn try_new(position: CssPosition, z: Option<CssSpecifiedLength>) -> Option<Self> {
-        if matches!(
-            position.horizontal,
-            CssHorizontalPosition::LeftOffset(_) | CssHorizontalPosition::RightOffset(_)
-        ) || matches!(
-            position.vertical,
-            CssVerticalPosition::TopOffset(_) | CssVerticalPosition::BottomOffset(_)
-        ) {
-            return None;
-        }
-        Some(Self {
-            horizontal: position.horizontal,
-            vertical: position.vertical,
-            z,
-        })
-    }
-
-    /// Returns the authored horizontal position.
-    #[must_use]
-    pub const fn horizontal(&self) -> &CssHorizontalPosition {
-        &self.horizontal
-    }
-
-    /// Returns the authored vertical position.
-    #[must_use]
-    pub const fn vertical(&self) -> &CssVerticalPosition {
-        &self.vertical
-    }
-
-    /// Returns the optional authored z length.
-    #[must_use]
-    pub const fn z(&self) -> Option<&CssSpecifiedLength> {
-        self.z.as_ref()
-    }
-}
 
 /// The exact authored background box component count for one shorthand layer.
 ///
@@ -8755,7 +8491,7 @@ impl CssClipPathShape {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssMaskLayer {
     image: Option<CssImageValue>,
-    position: Option<CssPosition>,
+    position: Option<CssPhysicalPosition>,
     size: Option<CssBackgroundSize>,
     repeat: Option<CssBackgroundRepeat>,
 }
@@ -8766,7 +8502,7 @@ impl CssMaskLayer {
     #[must_use]
     pub fn try_new(
         image: Option<CssImageValue>,
-        position: Option<CssPosition>,
+        position: Option<CssPhysicalPosition>,
         size: Option<CssBackgroundSize>,
         repeat: Option<CssBackgroundRepeat>,
     ) -> Option<Self> {
@@ -8782,7 +8518,7 @@ impl CssMaskLayer {
     #[must_use]
     pub(crate) const fn new(
         image: Option<CssImageValue>,
-        position: Option<CssPosition>,
+        position: Option<CssPhysicalPosition>,
         size: Option<CssBackgroundSize>,
         repeat: Option<CssBackgroundRepeat>,
     ) -> Self {
@@ -8796,7 +8532,7 @@ impl CssMaskLayer {
 
     /// Returns the authored generic position, when present.
     #[must_use]
-    pub const fn position(&self) -> Option<&CssPosition> {
+    pub const fn position(&self) -> Option<&CssPhysicalPosition> {
         self.position.as_ref()
     }
 }

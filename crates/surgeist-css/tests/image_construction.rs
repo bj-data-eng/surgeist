@@ -245,7 +245,8 @@ fn radial_constructor_checks_shape_size_matrix_without_inventing_defaults() {
     )
     .unwrap();
     let position =
-        CssPosition::try_new(CssHorizontalPosition::Left, CssVerticalPosition::Top).unwrap();
+        CssPhysicalPosition::try_new(CssHorizontalPosition::Left, CssVerticalPosition::Top)
+            .unwrap();
     let constructed = CssRadialGradient::try_new(
         Some(CssRadialShape::Circle),
         Some(CssRadialSize::Circle(radius)),
@@ -262,21 +263,21 @@ fn radial_constructor_checks_shape_size_matrix_without_inventing_defaults() {
 #[test]
 fn generic_position_requires_edge_offsets_on_both_axes_or_neither() {
     assert!(
-        CssPosition::try_new(
+        CssPhysicalPosition::try_new(
             CssHorizontalPosition::LeftOffset(signed_length_percentage("10px")),
             CssVerticalPosition::Center,
         )
-        .is_none()
+        .is_err()
     );
     assert!(
-        CssPosition::try_new(
+        CssPhysicalPosition::try_new(
             CssHorizontalPosition::Center,
             CssVerticalPosition::BottomOffset(signed_length_percentage("20px")),
         )
-        .is_none()
+        .is_err()
     );
 
-    let paired = CssPosition::try_new(
+    let paired = CssPhysicalPosition::try_new(
         CssHorizontalPosition::RightOffset(signed_length_percentage("10px")),
         CssVerticalPosition::TopOffset(signed_length_percentage("20px")),
     )
@@ -289,21 +290,22 @@ fn generic_position_requires_edge_offsets_on_both_axes_or_neither() {
     );
 
     assert!(
-        CssPosition::try_new(CssHorizontalPosition::Left, CssVerticalPosition::Bottom).is_some()
+        CssPhysicalPosition::try_new(CssHorizontalPosition::Left, CssVerticalPosition::Bottom)
+            .is_ok()
     );
     assert!(
-        CssPosition::try_new(
+        CssPhysicalPosition::try_new(
             CssHorizontalPosition::Offset(signed_length_percentage("15px")),
             CssVerticalPosition::Center
         )
-        .is_some()
+        .is_ok()
     );
     assert!(
-        CssPosition::try_new(
+        CssPhysicalPosition::try_new(
             CssHorizontalPosition::Left,
             CssVerticalPosition::Offset(signed_length_percentage("25px"))
         )
-        .is_some()
+        .is_ok()
     );
 }
 

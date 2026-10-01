@@ -200,7 +200,7 @@
 //! ).is_err());
 //! ```
 //!
-//! [`CssPosition::try_new`] checks the generic position's cross-axis pairing of edge
+//! [`CssPhysicalPosition::try_new`] checks the generic position's cross-axis pairing of edge
 //! offsets. Its borrowed horizontal and vertical views make omitted centered axes and authored
 //! edge origins explicit. `object-position` and every
 //! `mask-position` layer use this exact generic grammar. `background-position` instead exposes a
@@ -276,9 +276,12 @@
 //!
 //! The position property wrappers expose only their checked semantic models.
 //! `background-position` retains its distinct three-component grammar, while
-//! `object-position`, `mask-position`, and mask shorthand use generic [`CssPosition`].
-//! Function-specific position grammars,
-//! cascade, substitution, contextual resolution, layout, painting, transforms, and cross-crate
+//! `object-position`, `mask-position`, and mask shorthand use physical [`CssPhysicalPosition`].
+//! Circle and ellipse instead use the full Values 5 [`CssPosition`] coordinate families.
+//! Its checked Cartesian, named-flow and relative-flow constructors retain symbolic axes;
+//! [`CssPosition::view`] exposes borrowed payloads. All-center values have one Cartesian form.
+//! Specified output orders Cartesian axes horizontally/vertically and flow axes by block/inline.
+//! Cascade, substitution, contextual resolution, layout, painting, transforms, and cross-crate
 //! lowering remain outside this surface.
 //!
 //! # Dedicated authored function grammars
@@ -302,8 +305,8 @@
 //! Clip-path, its composition, basic shapes and all four function models provide
 //! bounded specified serializers preserving optional omissions, shape offset/radius arities, units,
 //! exact magnitudes and symbolic math through shared cumulative child providers.
-//! Circle and ellipse positions retain the physical one/two/four-component subset;
-//! logical and relative positions and rect(), xywh(), path(), and shape() remain
+//! Circle and ellipse positions retain the full imported Cartesian, named-flow, and
+//! relative-flow grammar. The functions rect(), xywh(), path(), and shape() remain
 //! unfinished authored grammar. Reference-box/default resolution, clipping and
 //! painting belong to downstream owners.
 //!
@@ -385,8 +388,7 @@
 //! These are authored syntax values. This crate does not multiply transform matrices,
 //! interpolate or evaluate easing, render shadows or filters, resolve URLs, compute
 //! shape geometry, perform layout or painting, or lower values into sibling crates.
-//! `path()`, `shape()`, `rect()`, `xywh()`, and logical and relative positions
-//! remain outside the selected subset. `transition`, `animation`,
+//! `path()`, `shape()`, `rect()`, and `xywh()` remain outside the selected subset. `transition`, `animation`,
 //! and `clip-path` retain explicit Partial metadata boundaries; support for a typed
 //! function does not promote an aggregate or an unselected production.
 //!

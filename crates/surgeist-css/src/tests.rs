@@ -4787,11 +4787,11 @@ fn rejection_negative_numbers_and_public_constructor_invariants_matrix() {
     assert_eq!(CssGridGeneralTrackList::try_new(Vec::new()), None);
     let offset = signed_length_percentage("1px");
     assert!(
-        CssPosition::try_new(
+        CssPhysicalPosition::try_new(
             CssHorizontalPosition::LeftOffset(offset),
             CssVerticalPosition::Top
         )
-        .is_none()
+        .is_err()
     );
     assert_eq!(CssTransitionList::try_new(Vec::new()), None);
     assert_eq!(
@@ -8963,7 +8963,8 @@ fn parses_transform_effect_and_mask_properties_as_authored_syntax() {
     assert_eq!(
         declaration_value!(".panel { transform-origin: center top; }", TransformOrigin),
         CssTransformOrigin::try_new(
-            CssPosition::try_new(CssHorizontalPosition::Center, CssVerticalPosition::Top).unwrap(),
+            CssPhysicalPosition::try_new(CssHorizontalPosition::Center, CssVerticalPosition::Top)
+                .unwrap(),
             None,
         )
         .unwrap()
@@ -9183,19 +9184,19 @@ fn background_effect_and_animation_constructors_reject_invalid_states() {
     assert!(CssCursor::try_urls(Vec::new(), CssCursorKeyword::Pointer).is_none());
     let horizontal = signed_length_percentage("1px");
     assert!(
-        CssPosition::try_new(
+        CssPhysicalPosition::try_new(
             CssHorizontalPosition::LeftOffset(horizontal),
             CssVerticalPosition::Top
         )
-        .is_none()
+        .is_err()
     );
     let vertical = signed_length_percentage("5%");
     assert!(
-        CssPosition::try_new(
+        CssPhysicalPosition::try_new(
             CssHorizontalPosition::Left,
             CssVerticalPosition::BottomOffset(vertical)
         )
-        .is_none()
+        .is_err()
     );
     assert!(
         CssTranslateValues::try_new(

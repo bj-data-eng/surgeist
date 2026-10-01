@@ -459,7 +459,7 @@ fn checked_programmatic_owners_preserve_origins_and_composite_resource_limits() 
         "1e999",
         Some("px"),
     );
-    let position = CssPosition::try_new(
+    let position = CssPhysicalPosition::try_new(
         CssHorizontalPosition::Offset(length_percentage("1e-999px")),
         CssVerticalPosition::Offset(length_percentage("25%")),
     )
@@ -626,7 +626,7 @@ fn aggregate_equality_ignores_only_origins_and_retains_exact_structure() {
     );
 
     let position = value!("object-position:1px top", ObjectPosition, position);
-    let constructed = CssPosition::try_new(
+    let constructed = CssPhysicalPosition::try_new(
         CssHorizontalPosition::Offset(length_percentage("1px")),
         CssVerticalPosition::Top,
     )
@@ -634,7 +634,7 @@ fn aggregate_equality_ignores_only_origins_and_retains_exact_structure() {
     assert_eq!(position, constructed);
     assert_ne!(
         position,
-        CssPosition::try_new(
+        CssPhysicalPosition::try_new(
             CssHorizontalPosition::Offset(length_percentage("1.0px")),
             CssVerticalPosition::Top
         )
@@ -685,7 +685,7 @@ fn clip_and_transform_aggregate_equality_keeps_axes_and_omission() {
     assert_ne!(rect.top(), &CssClipEdge::Length(length("1.0px")));
 
     let planar = || {
-        CssPosition::try_new(
+        CssPhysicalPosition::try_new(
             CssHorizontalPosition::Offset(length_percentage("25%")),
             CssVerticalPosition::Top,
         )

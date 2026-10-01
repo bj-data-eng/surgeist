@@ -6,7 +6,7 @@ use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
 use super::border_style::parse_border_style;
 use super::position::{
-    next_starts_background_position, parse_background_position_prefix, parse_css_position,
+    next_starts_background_position, parse_background_position_prefix, parse_physical_position,
 };
 use super::url::parse_url;
 use super::values::{
@@ -850,7 +850,7 @@ fn next_starts_radial_prelude<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
 type RadialPrelude = (
     Option<CssRadialShape>,
     Option<CssRadialSize>,
-    Option<CssPosition>,
+    Option<CssPhysicalPosition>,
 );
 
 fn parse_radial_gradient_prelude<'i, 't>(
@@ -869,7 +869,7 @@ fn parse_radial_gradient_prelude<'i, 't>(
                 .try_parse(|input| input.expect_ident_matching("at"))
                 .is_ok()
         {
-            position = Some(parse_css_position(input, numeric)?);
+            position = Some(parse_physical_position(input, numeric)?);
             consumed = true;
             break;
         }
@@ -1470,13 +1470,13 @@ mod tests {
 
     use super::*;
 
-    fn parse_position(source: &str) -> CssPosition {
+    fn parse_position(source: &str) -> CssPhysicalPosition {
         let snapshot = crate::CssSourceSnapshot::new(source);
         let numeric = crate::numeric::NumericInputContext::parsed(&snapshot);
         let mut input = ParserInput::new(source);
         let mut parser = Parser::new(&mut input);
         parser
-            .parse_entirely(|input| parse_css_position(input, &numeric))
+            .parse_entirely(|input| parse_physical_position(input, &numeric))
             .expect("valid generic position")
     }
 

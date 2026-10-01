@@ -441,11 +441,13 @@ fn sibling_math_arenas_share_cumulative_input_projection_and_byte_limits() {
 
 #[test]
 fn shared_position_and_border_radius_standalone_costs_are_preserved() {
-    let position = CssPosition::try_new(
-        CssHorizontalPosition::RightOffset(lp("5%")),
-        CssVerticalPosition::BottomOffset(lp("2px")),
-    )
-    .unwrap();
+    let position = CssPosition::from_cartesian(
+        CssCartesianPosition::try_new(
+            CssHorizontalPosition::RightOffset(lp("5%")),
+            CssVerticalPosition::BottomOffset(lp("2px")),
+        )
+        .unwrap(),
+    );
     budget("right 5% bottom 2px", 5, 5, |limits| {
         position.serialize_specified_with_limits(limits)
     });

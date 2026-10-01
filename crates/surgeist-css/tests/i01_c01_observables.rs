@@ -4321,7 +4321,11 @@ fn assert_known_property_value(
                 panic!("captured percentage radius");
             };
             assert!(exact_percentage(radius.literal_component(), "50"));
-            let position = circle.position().expect("captured center position");
+            let surgeist_css::CssPositionRef::Cartesian(position) =
+                circle.position().expect("captured center position").view()
+            else {
+                panic!("captured Cartesian center")
+            };
             assert!(matches!(
                 position.horizontal(),
                 surgeist_css::CssHorizontalPosition::Center
@@ -4394,12 +4398,14 @@ fn assert_known_property_value(
             use surgeist_css::{
                 CssBackgroundRepeat, CssBackgroundRepeatStyle, CssBackgroundSize,
                 CssHorizontalPosition as Horizontal, CssImageValue, CssMaskLayer, CssMaskList,
-                CssPosition, CssUrl, CssVerticalPosition as Vertical,
+                CssPhysicalPosition, CssUrl, CssVerticalPosition as Vertical,
             };
             let expected = CssMaskList::try_new(vec![
                 CssMaskLayer::try_new(
                     Some(CssImageValue::Url(CssUrl::new("mask.png"))),
-                    Some(CssPosition::try_new(Horizontal::Center, Vertical::Center).unwrap()),
+                    Some(
+                        CssPhysicalPosition::try_new(Horizontal::Center, Vertical::Center).unwrap(),
+                    ),
                     Some(CssBackgroundSize::Contain),
                     Some(CssBackgroundRepeat::Axes {
                         x: CssBackgroundRepeatStyle::NoRepeat,

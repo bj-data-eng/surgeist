@@ -1014,7 +1014,7 @@
         "authored_owner": "css",
         "authored_requirements": [
           "Retain the physical, logical and relative one-, two- and four-component position alternatives, their axis ordering and checked specified values according to the imported grammar. Background three-component syntax is a separate production.",
-          "Apply context-independent position parsing and specified serialization without resolving writing modes, reference boxes or percentage bases. The existing physical position subset does not establish complete imported grammar; logical and relative positions remain ordinary unfinished authored support."
+          "Apply context-independent position parsing and specified serialization without resolving writing modes, reference boxes or percentage bases. Preserve Cartesian axis identity and named or relative flow keyword families; physical-only consumers retain their narrower selected grammar."
         ],
         "downstream_owners": [
           "style",
