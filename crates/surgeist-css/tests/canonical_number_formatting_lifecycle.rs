@@ -381,10 +381,7 @@ fn calculation_text_and_node_and_byte_budgets_keep_the_existing_contract() {
             .unwrap(),
     )
     .unwrap();
-    assert_eq!(
-        math.serialize_specified().unwrap(),
-        "calc(0.3333333333333333)"
-    );
+    assert_eq!(math.serialize_specified().unwrap(), "calc(0.333333)");
 }
 
 #[test]

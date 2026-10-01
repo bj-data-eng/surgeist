@@ -177,7 +177,7 @@ fn determinate_calculations_follow_specified_stage_not_computed_clamping() {
         ("calc(acos(1) / 1deg)", "calc(0)"),
         ("calc(atan(infinity) / 90deg)", "calc(1)"),
         ("calc(atan2(1,0) / 90deg)", "calc(1)"),
-        ("calc(1 / 3)", "calc(0.3333333333333333)"),
+        ("calc(1 / 3)", "calc(0.333333)"),
         ("calc(1 / (0 * -1))", "calc(-infinity)"),
         ("calc(0 / 0)", "calc(NaN)"),
         ("pow(NaN,0)", "calc(NaN)"),
@@ -497,9 +497,19 @@ fn arithmetic_precision_handles_lexical_overflow_underflow_and_stable_hypot() {
         ("calc(-1e999)", "calc(-infinity)"),
         ("calc(1 / -1e-999)", "calc(-infinity)"),
         ("calc(1 / -0e999)", "calc(infinity)"),
+        // Binary64 1e300 is 0x1.7e43c8800759cp+996. Subtracting or adding
+        // a remainder below 1e-300 cannot change it; emit its exact integer.
         (
             "round(1e300,1e-300)",
-            &format!("calc(1{})", "0".repeat(300)),
+            concat!(
+                "calc(",
+                "10000000000000000525047602552044202487044685811081591549158541155118",
+                "02457988908195786371375080447864043704443832883878176942523235360430",
+                "57564479218478670698284838720092657580373783023379478809005936895323",
+                "49707999450811190389676408800746527427801424945792587888200568428381",
+                "15669472196386865459400540160",
+                ")"
+            ),
         ),
     ] {
         assert_output(&opacity(input), expected);

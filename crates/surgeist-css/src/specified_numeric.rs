@@ -82,15 +82,16 @@ impl CssSpecifiedNonNegativeFlex {
         }
     }
 
-    /// Emits ordinary text rounded to six fractional places, nearest with ties
-    /// away from zero, preserving exact authored identity. Calculation text and
-    /// its unfinished number formatting/precision/range provider remain unchanged.
+    /// Emits ordinary and finite calculated numbers with at most six fractional
+    /// places, nearest with ties away from zero. Authored values remain unchanged;
+    /// calculation arithmetic, precision, range and symbolic behavior retain
+    /// their existing contracts.
     pub fn serialize_specified(&self) -> SerializationResult<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
 
-    /// Shares cumulative visits and budgets actual rounded ordinary text.
-    /// Failure leaves authored values unchanged; calculation behavior is retained.
+    /// Shares cumulative visits and budgets actual rounded text.
+    /// Failure leaves authored values unchanged; arithmetic and traversal costs are retained.
     pub fn serialize_specified_with_limits(
         &self,
         limits: CssSpecifiedValueSerializationLimits,
@@ -366,15 +367,16 @@ impl CssSpecifiedNumber {
         }
     }
 
-    /// Emits ordinary text rounded to six fractional places, nearest with ties
-    /// away from zero, preserving exact authored identity. Calculation text and
-    /// its unfinished number formatting/precision/range provider remain unchanged.
+    /// Emits ordinary and finite calculated numbers with at most six fractional
+    /// places, nearest with ties away from zero. Authored values remain unchanged;
+    /// calculation arithmetic, precision, range and symbolic behavior retain
+    /// their existing contracts.
     pub fn serialize_specified(&self) -> SerializationResult<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
 
-    /// Shares cumulative visits and budgets actual rounded ordinary text.
-    /// Failure leaves authored values unchanged; calculation behavior is retained.
+    /// Shares cumulative visits and budgets actual rounded text.
+    /// Failure leaves authored values unchanged; arithmetic and traversal costs are retained.
     pub fn serialize_specified_with_limits(
         &self,
         limits: CssSpecifiedValueSerializationLimits,
@@ -473,16 +475,17 @@ impl CssSpecifiedPercentage {
     }
 
     /// Serializes the specified percentage with default resource limits.
-    /// Emits ordinary text rounded to six fractional places, nearest with ties
-    /// away from zero, preserving exact authored identity. Calculation text and
-    /// its unfinished number formatting/precision/range provider remain unchanged.
+    /// Emits ordinary and finite calculated numbers with at most six fractional
+    /// places, nearest with ties away from zero. Authored values remain unchanged;
+    /// calculation arithmetic, precision, range and symbolic behavior retain
+    /// their existing contracts.
     pub fn serialize_specified(&self) -> SerializationResult<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
 
     /// Serializes atomically under the shared input, projection, and byte limits.
-    /// Shares cumulative visits and budgets actual rounded ordinary text.
-    /// Failure leaves authored values unchanged; calculation behavior is retained.
+    /// Shares cumulative visits and budgets actual rounded text.
+    /// Failure leaves authored values unchanged; arithmetic and traversal costs are retained.
     pub fn serialize_specified_with_limits(
         &self,
         limits: CssSpecifiedValueSerializationLimits,
@@ -589,16 +592,17 @@ impl CssSpecifiedNonNegativeNumber {
     }
 
     /// Serializes the specified number with default resource limits.
-    /// Emits ordinary text rounded to six fractional places, nearest with ties
-    /// away from zero, preserving exact authored identity. Calculation text and
-    /// its unfinished number formatting/precision/range provider remain unchanged.
+    /// Emits ordinary and finite calculated numbers with at most six fractional
+    /// places, nearest with ties away from zero. Authored values remain unchanged;
+    /// calculation arithmetic, precision, range and symbolic behavior retain
+    /// their existing contracts.
     pub fn serialize_specified(&self) -> SerializationResult<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
 
     /// Serializes the specified number atomically under explicit resource limits.
-    /// Shares cumulative visits and budgets actual rounded ordinary text.
-    /// Failure leaves authored values unchanged; calculation behavior is retained.
+    /// Shares cumulative visits and budgets actual rounded text.
+    /// Failure leaves authored values unchanged; arithmetic and traversal costs are retained.
     pub fn serialize_specified_with_limits(
         &self,
         limits: CssSpecifiedValueSerializationLimits,
@@ -713,16 +717,17 @@ impl CssSpecifiedLength {
     }
 
     /// Serializes the canonical specified length with default resource limits.
-    /// Emits ordinary text rounded to six fractional places, nearest with ties
-    /// away from zero, preserving exact authored identity. Calculation text and
-    /// its unfinished number formatting/precision/range provider remain unchanged.
+    /// Emits ordinary and finite calculated numbers with at most six fractional
+    /// places, nearest with ties away from zero. Authored values remain unchanged;
+    /// calculation arithmetic, precision, range and symbolic behavior retain
+    /// their existing contracts.
     pub fn serialize_specified(&self) -> SerializationResult<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
 
     /// Serializes the canonical specified length under explicit resource limits.
-    /// Shares cumulative visits and budgets actual rounded ordinary text.
-    /// Failure leaves authored values unchanged; calculation behavior is retained.
+    /// Shares cumulative visits and budgets actual rounded text.
+    /// Failure leaves authored values unchanged; arithmetic and traversal costs are retained.
     pub fn serialize_specified_with_limits(
         &self,
         limits: CssSpecifiedValueSerializationLimits,
@@ -812,16 +817,17 @@ impl CssSpecifiedNonNegativeLength {
     }
 
     /// Serializes the canonical specified length with default resource limits.
-    /// Emits ordinary text rounded to six fractional places, nearest with ties
-    /// away from zero, preserving exact authored identity. Calculation text and
-    /// its unfinished number formatting/precision/range provider remain unchanged.
+    /// Emits ordinary and finite calculated numbers with at most six fractional
+    /// places, nearest with ties away from zero. Authored values remain unchanged;
+    /// calculation arithmetic, precision, range and symbolic behavior retain
+    /// their existing contracts.
     pub fn serialize_specified(&self) -> SerializationResult<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
 
     /// Serializes the canonical specified length under explicit resource limits.
-    /// Shares cumulative visits and budgets actual rounded ordinary text.
-    /// Failure leaves authored values unchanged; calculation behavior is retained.
+    /// Shares cumulative visits and budgets actual rounded text.
+    /// Failure leaves authored values unchanged; arithmetic and traversal costs are retained.
     pub fn serialize_specified_with_limits(
         &self,
         limits: CssSpecifiedValueSerializationLimits,
@@ -926,16 +932,17 @@ impl CssSpecifiedLengthPercentage {
     }
 
     /// Serializes the canonical specified value with default resource limits.
-    /// Emits ordinary text rounded to six fractional places, nearest with ties
-    /// away from zero, preserving exact authored identity. Calculation text and
-    /// its unfinished number formatting/precision/range provider remain unchanged.
+    /// Emits ordinary and finite calculated numbers with at most six fractional
+    /// places, nearest with ties away from zero. Authored values remain unchanged;
+    /// calculation arithmetic, precision, range and symbolic behavior retain
+    /// their existing contracts.
     pub fn serialize_specified(&self) -> SerializationResult<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
 
     /// Serializes the canonical specified value under explicit resource limits.
-    /// Shares cumulative visits and budgets actual rounded ordinary text.
-    /// Failure leaves authored values unchanged; calculation behavior is retained.
+    /// Shares cumulative visits and budgets actual rounded text.
+    /// Failure leaves authored values unchanged; arithmetic and traversal costs are retained.
     pub fn serialize_specified_with_limits(
         &self,
         limits: CssSpecifiedValueSerializationLimits,
@@ -1040,16 +1047,17 @@ impl CssSpecifiedNonNegativeLengthPercentage {
     }
 
     /// Serializes the canonical specified value with default resource limits.
-    /// Emits ordinary text rounded to six fractional places, nearest with ties
-    /// away from zero, preserving exact authored identity. Calculation text and
-    /// its unfinished number formatting/precision/range provider remain unchanged.
+    /// Emits ordinary and finite calculated numbers with at most six fractional
+    /// places, nearest with ties away from zero. Authored values remain unchanged;
+    /// calculation arithmetic, precision, range and symbolic behavior retain
+    /// their existing contracts.
     pub fn serialize_specified(&self) -> SerializationResult<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
 
     /// Serializes the canonical specified value under explicit resource limits.
-    /// Shares cumulative visits and budgets actual rounded ordinary text.
-    /// Failure leaves authored values unchanged; calculation behavior is retained.
+    /// Shares cumulative visits and budgets actual rounded text.
+    /// Failure leaves authored values unchanged; arithmetic and traversal costs are retained.
     pub fn serialize_specified_with_limits(
         &self,
         limits: CssSpecifiedValueSerializationLimits,
@@ -1162,16 +1170,17 @@ impl CssSpecifiedNonNegativePercentage {
     }
 
     /// Serializes the canonical specified percentage with default limits.
-    /// Emits ordinary text rounded to six fractional places, nearest with ties
-    /// away from zero, preserving exact authored identity. Calculation text and
-    /// its unfinished number formatting/precision/range provider remain unchanged.
+    /// Emits ordinary and finite calculated numbers with at most six fractional
+    /// places, nearest with ties away from zero. Authored values remain unchanged;
+    /// calculation arithmetic, precision, range and symbolic behavior retain
+    /// their existing contracts.
     pub fn serialize_specified(&self) -> SerializationResult<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
 
     /// Serializes atomically under shared input, projection, and byte budgets.
-    /// Shares cumulative visits and budgets actual rounded ordinary text.
-    /// Failure leaves authored values unchanged; calculation behavior is retained.
+    /// Shares cumulative visits and budgets actual rounded text.
+    /// Failure leaves authored values unchanged; arithmetic and traversal costs are retained.
     pub fn serialize_specified_with_limits(
         &self,
         limits: CssSpecifiedValueSerializationLimits,

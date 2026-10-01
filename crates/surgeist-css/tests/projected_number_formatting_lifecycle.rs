@@ -125,7 +125,6 @@ fn neighboring_binary_values_straddle_dyadic_halfway() {
 #[test]
 fn shortest_decimal_halfway_is_below_halfway_in_the_actual_binary_value() {
     // 5e-7 = 4722366482869645 / 9444732965739290427392 < 1/2000000.
-    assert!(4722366482869645_u128 * 2_000_000 < 9444732965739290427392_u128);
     assert_number("calc(5e-7)", "calc(0)");
     assert_number("calc(-5e-7)", "calc(0)");
     assert_number("calc(5.000000000000001e-7)", "calc(0.000001)");

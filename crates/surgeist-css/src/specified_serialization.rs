@@ -472,8 +472,8 @@ impl CssOpacityValue {
     ///
     /// Ordinary input remains exact; emitted scalar text rounds to six fractional
     /// places, nearest with ties away from zero, after percentage conversion.
-    /// Calculation text retains the existing binary64 provider; its six-place
-    /// formatting and arithmetic precision/range remain unfinished.
+    /// Finite calculation text rounds the actual binary64 result with the same
+    /// six-place policy. Arithmetic precision and range remain unfinished.
     pub fn serialize_specified(&self) -> Result<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
@@ -948,12 +948,12 @@ impl crate::CssDuration {
     }
 }
 impl crate::CssTimeLiteral {
-    /// Emits canonical seconds, rounding ordinary text to six fractional places.
+    /// Emits canonical seconds with at most six fractional places.
     ///
     /// Conversion precedes rounding, nearest with ties away from zero. Original
     /// coefficients, units and origins remain exact. This literal operation does
-    /// no calculation projection. Value calculation text and its number formatting
-    /// and arithmetic precision/range remain unfinished.
+    /// no calculation projection. Calculation values share the six-place text
+    /// policy while retaining their arithmetic precision and range limitations.
     pub fn serialize_specified(&self) -> Result<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
@@ -974,12 +974,12 @@ impl crate::CssTimeLiteral {
     }
 }
 impl crate::CssTimeValue {
-    /// Emits canonical seconds, rounding ordinary text to six fractional places.
+    /// Emits canonical seconds with at most six fractional places.
     ///
     /// Conversion precedes rounding, nearest with ties away from zero. Original
-    /// coefficients, units and origins remain exact. Calculation branches retain
-    /// existing text; projected number formatting and math precision/range remain
-    /// unfinished. Literal emission performs no calculation projection.
+    /// coefficients, units and origins remain exact. Finite calculation text
+    /// rounds the projected binary64 value with the same policy; arithmetic
+    /// precision and range remain unfinished. Literals perform no math projection.
     pub fn serialize_specified(&self) -> Result<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
@@ -987,7 +987,8 @@ impl crate::CssTimeValue {
     ///
     /// Ordinary output rounds to six places without an exponential fallback.
     /// Bytes budget actual rounded text including the seconds suffix; original
-    /// input remains unchanged. Calculation text retains its unfinished provider.
+    /// input remains unchanged. Finite calculation text rounds the actual binary64
+    /// value; its arithmetic, traversal costs and symbolic behavior stay unchanged.
     /// This operation does not certify recovered syntax as a clean report.
     pub fn serialize_specified_with_limits(
         &self,
@@ -1000,12 +1001,12 @@ impl crate::CssTimeValue {
     }
 }
 impl crate::CssDuration {
-    /// Emits canonical seconds, rounding ordinary text to six fractional places.
+    /// Emits canonical seconds with at most six fractional places.
     ///
     /// Conversion precedes rounding, nearest with ties away from zero. Original
-    /// coefficients, units and origins remain exact. Calculation branches retain
-    /// existing text; projected number formatting and math precision/range remain
-    /// unfinished. Literal emission performs no calculation projection.
+    /// coefficients, units and origins remain exact. Finite calculation text
+    /// rounds the projected binary64 value with the same policy; arithmetic
+    /// precision and range remain unfinished. Literals perform no math projection.
     pub fn serialize_specified(&self) -> Result<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
@@ -1013,7 +1014,8 @@ impl crate::CssDuration {
     ///
     /// Ordinary output rounds to six places without an exponential fallback.
     /// Bytes budget actual rounded text including the seconds suffix; original
-    /// input remains unchanged. Calculation text retains its unfinished provider.
+    /// input remains unchanged. Finite calculation text rounds the actual binary64
+    /// value; its arithmetic, traversal costs and symbolic behavior stay unchanged.
     /// This operation does not certify recovered syntax as a clean report.
     pub fn serialize_specified_with_limits(
         &self,
@@ -1100,8 +1102,8 @@ impl crate::CssFrequencyValue {
     /// This authored phase follows the selected primitive serialization policy;
     /// CSSOM's specified/computed phase question remains open. Ordinary text
     /// rounds to six fractional places, nearest with ties away from zero; retained
-    /// coefficients stay exact. Actual math keeps the existing simplified projector
-    /// text; projected number formatting and arithmetic precision/range remain unfinished.
+    /// coefficients stay exact. Finite math text rounds the actual binary64 value
+    /// to six places; arithmetic precision and range remain unfinished.
     pub fn serialize_specified(&self) -> Result<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
@@ -1111,8 +1113,8 @@ impl crate::CssFrequencyValue {
     /// nearest with ties away from zero and no scientific fallback. Actual rounded
     /// text determines the byte budget; retained input stays exact. CSSOM's
     /// specified/computed frequency phase question stays open.
-    /// Actual math retains the existing simplifier's text and canonical units; its
-    /// six-place number formatting, arithmetic precision and range remain unfinished.
+    /// Actual math retains its canonical units and simplification. Finite number
+    /// text follows the six-place policy; arithmetic precision and range remain unfinished.
     pub fn serialize_specified_with_limits(
         &self,
         limits: CssSpecifiedValueSerializationLimits,

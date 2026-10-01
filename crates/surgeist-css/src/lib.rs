@@ -569,9 +569,16 @@
 //! CSSOM does not specify that direction. Original checked tokens, admission ranges, equality
 //! and diagnostic origins stay exact. Each ordinary scalar keeps one input and one projection
 //! visit; byte limits count its actual rounded text and unit within the cumulative writer.
-//! Calculation/color text and their existing arithmetic, rounding and scratch budgets remain
-//! unchanged. Canonical finite projected number formatting is still unfinished, separately
-//! from the shared calculation provider's precision/range limitations.
+//!
+//! # Calculated canonical number text
+//!
+//! Finite non-color calculation results use the same six-place fixed text policy, rounding
+//! the actual binary64 value after the existing projection. Symbols, units, arithmetic,
+//! signed-zero and exceptional-value behavior, and traversal costs stay unchanged. Border-image
+//! and scroll shorthands compare unrounded canonical components before selecting rounded text.
+//! Color calculations preserve their separate text and scratch policies. Integer calculation
+//! text follows the finite number policy without computed integer rounding; ordinary integer
+//! literals retain exact digits. Arithmetic precision and range remain unfinished.
 //!
 //! # Authored timing domains
 //!
@@ -579,8 +586,9 @@
 //! and delays are signed. Well-typed calculations remain authored for later range processing.
 //! Ordinary specified emission converts exactly to seconds before rounding text to at most six
 //! fractional places, nearest with ties away from zero under the selected frozen WebKit policy.
-//! Authored coefficients, units and origins remain exact. Calculation text keeps its existing
-//! provider; projected number formatting and exact calculation projection remain unfinished.
+//! Authored coefficients, units and origins remain exact. Finite calculation text rounds the
+//! existing projected binary64 result with the same policy. Exact calculation arithmetic and
+//! range processing remain unfinished.
 //!
 //! ```
 //! use surgeist_css::{

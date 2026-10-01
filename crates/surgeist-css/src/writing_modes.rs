@@ -100,7 +100,8 @@ impl CssTextOrientation {
 
 impl CssTextCombineUpright {
     /// Serializes the specified value, preserving omitted counts and deferring
-    /// computed integer rounding and range clamping.
+    /// computed integer rounding and range clamping. Finite calculated counts
+    /// use the shared six-place specified number text policy.
     pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }

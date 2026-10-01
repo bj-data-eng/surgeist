@@ -54,6 +54,7 @@ impl PartialEq for CssBoxSize {
 
 impl CssBoxSize {
     /// Serializes the retained specified value without resolving percentages or intrinsic sizes.
+    /// Finite calculation children use the shared six-place specified number text policy.
     pub fn serialize_specified(&self) -> SerializationResult<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }

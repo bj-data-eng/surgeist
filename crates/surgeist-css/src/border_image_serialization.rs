@@ -7,7 +7,7 @@ use crate::{
     CssImageValue, CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
     CssValueTokenRef,
     exact_decimal::LexicalDecimal,
-    specified_numeric::{ordinary_length_literal_equal, ordinary_literal_equal},
+    numeric::{CapturedNumericComponent, length_components_equal, numeric_components_equal},
     specified_rule_serialization::SpecifiedRuleWriter,
 };
 
@@ -57,9 +57,16 @@ macro_rules! capture_numeric {
         let writer = $writer;
         if writer.context.output_suppressed() {
             value.append_specified(&mut writer.context, &mut writer.css)?;
-            Ok(String::new())
+            Ok(CapturedNumericComponent::Plain(String::new()))
+        } else if let Some(calculation) = value.calculation() {
+            CapturedNumericComponent::capture_calculation(
+                &calculation.expression,
+                &mut writer.context,
+            )
         } else {
-            value.capture_specified(&mut writer.context)
+            value
+                .capture_specified(&mut writer.context)
+                .map(CapturedNumericComponent::Plain)
         }
     }};
 }
@@ -67,12 +74,12 @@ macro_rules! capture_numeric {
 fn append_sides<T>(
     values: &[T; 4],
     writer: &mut SpecifiedRuleWriter,
-    capture: impl Fn(&T, &mut SpecifiedRuleWriter) -> Result<String>,
-    component_equal: impl Fn(&T, &T, &str, &str) -> bool,
+    capture: impl Fn(&T, &mut SpecifiedRuleWriter) -> Result<CapturedNumericComponent>,
+    component_equal: impl Fn(&T, &T, &CapturedNumericComponent, &CapturedNumericComponent) -> bool,
 ) -> Result<()> {
     // Capture before group output, preserving every visit, scratch limit and
     // failure order. Ordinary compression compares exact component meaning;
-    // calculations retain the existing canonical captured-text comparison.
+    // calculations compare canonical syntax and unrounded finite components.
     let css = [
         capture(&values[0], writer)?,
         capture(&values[1], writer)?,
@@ -96,46 +103,22 @@ fn append_sides<T>(
         if index != 0 {
             writer.append(" ")?;
         }
-        writer.append(text)?;
+        writer.append(text.as_css())?;
     }
     Ok(())
-}
-
-fn numeric_equal(
-    left: Option<&CssComponentValue>,
-    right: Option<&CssComponentValue>,
-    left_css: &str,
-    right_css: &str,
-) -> bool {
-    match (left, right) {
-        (Some(left), Some(right)) => ordinary_literal_equal(left, right),
-        _ => left_css == right_css,
-    }
-}
-
-fn length_equal(
-    left: Option<&CssComponentValue>,
-    right: Option<&CssComponentValue>,
-    left_css: &str,
-    right_css: &str,
-) -> bool {
-    match (left, right) {
-        (Some(left), Some(right)) => ordinary_length_literal_equal(left, right),
-        _ => left_css == right_css,
-    }
 }
 
 fn slice_equal(
     left: &CssBorderImageSliceComponent,
     right: &CssBorderImageSliceComponent,
-    left_css: &str,
-    right_css: &str,
+    left_css: &CapturedNumericComponent,
+    right_css: &CapturedNumericComponent,
 ) -> bool {
     match (left, right) {
         (
             CssBorderImageSliceComponent::Number(left),
             CssBorderImageSliceComponent::Number(right),
-        ) => numeric_equal(
+        ) => numeric_components_equal(
             left.literal_component(),
             right.literal_component(),
             left_css,
@@ -144,7 +127,7 @@ fn slice_equal(
         (
             CssBorderImageSliceComponent::Percentage(left),
             CssBorderImageSliceComponent::Percentage(right),
-        ) => numeric_equal(
+        ) => numeric_components_equal(
             left.literal_component(),
             right.literal_component(),
             left_css,
@@ -157,15 +140,15 @@ fn slice_equal(
 fn width_equal(
     left: &CssBorderImageWidthComponent,
     right: &CssBorderImageWidthComponent,
-    left_css: &str,
-    right_css: &str,
+    left_css: &CapturedNumericComponent,
+    right_css: &CapturedNumericComponent,
 ) -> bool {
     match (left, right) {
         (CssBorderImageWidthComponent::Auto, CssBorderImageWidthComponent::Auto) => true,
         (
             CssBorderImageWidthComponent::Number(left),
             CssBorderImageWidthComponent::Number(right),
-        ) => numeric_equal(
+        ) => numeric_components_equal(
             left.literal_component(),
             right.literal_component(),
             left_css,
@@ -174,7 +157,7 @@ fn width_equal(
         (
             CssBorderImageWidthComponent::LengthPercentage(left),
             CssBorderImageWidthComponent::LengthPercentage(right),
-        ) => length_equal(
+        ) => length_components_equal(
             left.literal_component(),
             right.literal_component(),
             left_css,
@@ -187,14 +170,14 @@ fn width_equal(
 fn outset_equal(
     left: &CssBorderImageOutsetComponent,
     right: &CssBorderImageOutsetComponent,
-    left_css: &str,
-    right_css: &str,
+    left_css: &CapturedNumericComponent,
+    right_css: &CapturedNumericComponent,
 ) -> bool {
     match (left, right) {
         (
             CssBorderImageOutsetComponent::Number(left),
             CssBorderImageOutsetComponent::Number(right),
-        ) => numeric_equal(
+        ) => numeric_components_equal(
             left.literal_component(),
             right.literal_component(),
             left_css,
@@ -203,7 +186,7 @@ fn outset_equal(
         (
             CssBorderImageOutsetComponent::Length(left),
             CssBorderImageOutsetComponent::Length(right),
-        ) => length_equal(
+        ) => length_components_equal(
             left.literal_component(),
             right.literal_component(),
             left_css,
@@ -216,7 +199,7 @@ fn outset_equal(
 fn capture_slice(
     value: &CssBorderImageSliceComponent,
     writer: &mut SpecifiedRuleWriter,
-) -> Result<String> {
+) -> Result<CapturedNumericComponent> {
     charge(writer, 1)?;
     match value {
         CssBorderImageSliceComponent::Number(value) => capture_numeric!(value, writer),
@@ -233,7 +216,7 @@ fn unitless_length_zero(component: Option<&CssComponentValue>) -> bool {
 fn capture_width(
     value: &CssBorderImageWidthComponent,
     writer: &mut SpecifiedRuleWriter,
-) -> Result<String> {
+) -> Result<CapturedNumericComponent> {
     charge(writer, 1)?;
     match value {
         CssBorderImageWidthComponent::Auto => {
@@ -241,7 +224,7 @@ fn capture_width(
             if !writer.context.output_suppressed() {
                 writer.context.append_temporary(&mut css, "auto")?;
             }
-            Ok(css)
+            Ok(CapturedNumericComponent::Plain(css))
         }
         CssBorderImageWidthComponent::Number(value) => capture_numeric!(value, writer),
         CssBorderImageWidthComponent::LengthPercentage(value) => {
@@ -251,7 +234,10 @@ fn capture_width(
             {
                 // This slot also accepts numbers. Preserve its length branch on
                 // grammar reentry; the suffix belongs to the same numeric token.
-                writer.context.append_temporary(&mut css, "px")?;
+                let CapturedNumericComponent::Plain(text) = &mut css else {
+                    unreachable!("ordinary unitless zero has plain capture")
+                };
+                writer.context.append_temporary(text, "px")?;
             }
             Ok(css)
         }
@@ -261,7 +247,7 @@ fn capture_width(
 fn capture_outset(
     value: &CssBorderImageOutsetComponent,
     writer: &mut SpecifiedRuleWriter,
-) -> Result<String> {
+) -> Result<CapturedNumericComponent> {
     charge(writer, 1)?;
     match value {
         CssBorderImageOutsetComponent::Number(value) => capture_numeric!(value, writer),
@@ -270,7 +256,10 @@ fn capture_outset(
             if !writer.context.output_suppressed()
                 && unitless_length_zero(value.literal_component())
             {
-                writer.context.append_temporary(&mut css, "px")?;
+                let CapturedNumericComponent::Plain(text) = &mut css else {
+                    unreachable!("ordinary unitless zero has plain capture")
+                };
+                writer.context.append_temporary(text, "px")?;
             }
             Ok(css)
         }

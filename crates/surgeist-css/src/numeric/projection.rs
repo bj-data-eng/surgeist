@@ -433,8 +433,8 @@ pub(crate) fn project_calc_size_sum_into(
         NumericProjectionScale::Identity,
         context,
         output,
-        true,
-        false,
+        (true, false),
+        NumericEmission::CssComponent(None),
     )
 }
 
@@ -446,17 +446,60 @@ pub(crate) fn capture_specified(
     expression: &CssCalculationExpression,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<(String, NumericProjectionOutcome)> {
-    capture_specified_scaled(expression, NumericProjectionScale::Identity, context)
+    let mut output = String::new();
+    let outcome = project_specified_impl(
+        expression,
+        NumericProjectionScale::Identity,
+        context,
+        &mut output,
+        false,
+    )?;
+    Ok((output, outcome))
 }
 
-pub(crate) fn capture_specified_scaled(
+/// Color slots preserve their own finite text and scratch behavior.
+pub(crate) fn capture_color_specified_scaled(
     expression: &CssCalculationExpression,
     scale: NumericProjectionScale,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<(String, NumericProjectionOutcome)> {
     let mut output = String::new();
-    let outcome = project_specified_impl(expression, scale, context, &mut output, false)?;
+    let outcome = project_specified_impl_mode(
+        expression,
+        scale,
+        context,
+        &mut output,
+        (false, true),
+        NumericEmission::ColorCalculation,
+    )?;
     Ok((output, outcome))
+}
+
+/// Captures canonical components before lossy finite coefficient formatting.
+pub(crate) fn capture_specified_for_comparison(
+    expression: &CssCalculationExpression,
+    context: &mut SpecifiedSerializationContext,
+) -> Result<(NumericComparisonCapture, NumericProjectionOutcome)> {
+    let mut output = String::new();
+    let mut collector = FiniteCoefficientCollector {
+        spans: Vec::new(),
+        bound: context.remaining_bytes(),
+    };
+    let outcome = project_specified_impl_mode(
+        expression,
+        NumericProjectionScale::Identity,
+        context,
+        &mut output,
+        (false, true),
+        NumericEmission::CssComponent(Some(&mut collector)),
+    )?;
+    Ok((
+        NumericComparisonCapture {
+            css: output,
+            finite_coefficients: collector.spans,
+        },
+        outcome,
+    ))
 }
 
 fn project_specified_impl(
@@ -466,7 +509,14 @@ fn project_specified_impl(
     output: &mut String,
     charge_output: bool,
 ) -> Result<NumericProjectionOutcome> {
-    project_specified_impl_mode(expression, scale, context, output, charge_output, true)
+    project_specified_impl_mode(
+        expression,
+        scale,
+        context,
+        output,
+        (charge_output, true),
+        NumericEmission::CssComponent(None),
+    )
 }
 
 fn project_specified_impl_mode(
@@ -474,8 +524,8 @@ fn project_specified_impl_mode(
     scale: NumericProjectionScale,
     context: &mut SpecifiedSerializationContext,
     output: &mut String,
-    charge_output: bool,
-    outer_calc: bool,
+    (charge_output, outer_calc): (bool, bool),
+    mut emission: NumericEmission<'_>,
 ) -> Result<NumericProjectionOutcome> {
     let mut projection = Projection {
         arena: Vec::new(),
@@ -594,9 +644,9 @@ fn project_specified_impl_mode(
         scalar_value: projection.scalar(root).map(|value| value.value),
     };
     if outer_calc {
-        projection.serialize(root, output, charge_output)?;
+        projection.serialize(root, output, charge_output, &mut emission)?;
     } else {
-        projection.serialize_mode(root, output, charge_output, false)?;
+        projection.serialize_mode(root, output, charge_output, false, &mut emission)?;
     }
     Ok(outcome)
 }
@@ -691,11 +741,19 @@ enum Position {
 enum Output {
     Node(Id, Position),
     Text(String),
+    Scalar(Id, bool, bool),
+    FinitePrefix(&'static str, f64, usize),
 }
 
 impl Projection<'_> {
-    fn serialize(&mut self, root: Id, output: &mut String, charge_output: bool) -> Result<()> {
-        self.serialize_mode(root, output, charge_output, true)
+    fn serialize(
+        &mut self,
+        root: Id,
+        output: &mut String,
+        charge_output: bool,
+        emission: &mut NumericEmission<'_>,
+    ) -> Result<()> {
+        self.serialize_mode(root, output, charge_output, true, emission)
     }
 
     fn serialize_mode(
@@ -704,6 +762,7 @@ impl Projection<'_> {
         output: &mut String,
         charge_output: bool,
         outer_calc: bool,
+        emission: &mut NumericEmission<'_>,
     ) -> Result<()> {
         let mut work = Vec::new();
         if !outer_calc
@@ -721,21 +780,52 @@ impl Projection<'_> {
         while let Some(item) = work.pop() {
             let (id, position) = match item {
                 Output::Text(text) => {
-                    if charge_output {
-                        self.context.append(output, &text)?;
-                    } else {
-                        self.context.append_temporary(output, &text)?;
+                    append_piece(self.context, output, &text, charge_output, emission, &[])?;
+                    continue;
+                }
+                Output::Scalar(id, root, negate) => {
+                    if charge_output && self.context.output_suppressed() {
+                        continue;
                     }
+                    let limit = if charge_output {
+                        self.context.remaining_bytes()
+                    } else {
+                        self.context.remaining_bytes().saturating_sub(output.len())
+                    };
+                    let piece = emission.scalar_piece(
+                        self.scalar(id).expect("scalar emission"),
+                        root,
+                        negate,
+                        limit,
+                    )?;
+                    append_piece(
+                        self.context,
+                        output,
+                        &piece.css,
+                        charge_output,
+                        emission,
+                        &piece.spans[..piece.count],
+                    )?;
+                    continue;
+                }
+                Output::FinitePrefix(text, value, end) => {
+                    let spans = [FiniteCoefficientSpan {
+                        start: 0,
+                        end,
+                        bits: value.to_bits(),
+                    }];
+                    append_piece(self.context, output, text, charge_output, emission, &spans)?;
                     continue;
                 }
                 Output::Node(id, position) => (id, position),
             };
             let mut next = Vec::new();
             match &self.arena[id].kind {
-                Kind::Scalar(value) => next.push(Output::Text(scalar_text(
-                    value,
+                Kind::Scalar(_) => next.push(Output::Scalar(
+                    id,
                     matches!(position, Position::Root),
-                ))),
+                    false,
+                )),
                 Kind::Symbol(text) => next.push(Output::Text(text.clone())),
                 Kind::Function {
                     function,
@@ -797,9 +887,7 @@ impl Projection<'_> {
                             };
                             next.push(Output::Node(operand, Position::Operand));
                         } else if negative_scalar {
-                            let mut value = self.scalar(child).expect("negative scalar").clone();
-                            value.value = -value.value;
-                            next.push(Output::Text(scalar_text(&value, false)));
+                            next.push(Output::Scalar(child, false, true));
                         } else if inverse && index != 0 {
                             let Kind::Invert(operand) = self.arena[child].kind else {
                                 unreachable!()
@@ -818,14 +906,11 @@ impl Projection<'_> {
                     if parentheses {
                         next.push(Output::Text("(".into()));
                     }
-                    next.push(Output::Text(
-                        if matches!(self.arena[id].kind, Kind::Negate(_)) {
-                            "-1 * "
-                        } else {
-                            "1 / "
-                        }
-                        .into(),
-                    ));
+                    next.push(if matches!(self.arena[id].kind, Kind::Negate(_)) {
+                        Output::FinitePrefix("-1 * ", -1.0, 2)
+                    } else {
+                        Output::FinitePrefix("1 / ", 1.0, 1)
+                    });
                     next.push(Output::Node(*child, Position::Operand));
                     if parentheses {
                         next.push(Output::Text(")".into()));
@@ -847,20 +932,254 @@ impl Projection<'_> {
     }
 }
 
-fn scalar_text(scalar: &Scalar, root: bool) -> String {
+#[derive(Clone, Copy)]
+struct FiniteCoefficientSpan {
+    start: usize,
+    end: usize,
+    bits: u64,
+}
+
+pub(crate) struct NumericComparisonCapture {
+    css: String,
+    finite_coefficients: Vec<FiniteCoefficientSpan>,
+}
+impl NumericComparisonCapture {
+    pub(crate) fn as_css(&self) -> &str {
+        &self.css
+    }
+    pub(crate) fn same_projected_components(&self, other: &Self) -> bool {
+        if self.finite_coefficients.len() != other.finite_coefficients.len() {
+            return false;
+        }
+        let (mut left, mut right) = (0, 0);
+        for (a, b) in self
+            .finite_coefficients
+            .iter()
+            .zip(&other.finite_coefficients)
+        {
+            if self.css[left..a.start] != other.css[right..b.start] || a.bits != b.bits {
+                return false;
+            }
+            left = a.end;
+            right = b.end;
+        }
+        self.css[left..] == other.css[right..]
+    }
+}
+
+// Every span occupies at least one distinct byte of already bounded scratch
+// CSS. Thus count <= scratch length <= bound, including repeated tree IDs.
+// Only selected comparison captures construct this collector.
+struct FiniteCoefficientCollector {
+    spans: Vec<FiniteCoefficientSpan>,
+    bound: usize,
+}
+impl FiniteCoefficientCollector {
+    fn append(
+        &mut self,
+        offset: usize,
+        length: usize,
+        local: &[FiniteCoefficientSpan],
+    ) -> Result<()> {
+        for span in local {
+            let rebased = rebase_span(*span, offset, length)?;
+            debug_assert!(
+                self.spans
+                    .last()
+                    .is_none_or(|prior| prior.end <= rebased.start)
+            );
+            let needed = self
+                .spans
+                .len()
+                .checked_add(1)
+                .ok_or_else(|| Error::new(ErrorKind::CapacityOverflow))?;
+            if needed > self.spans.capacity() {
+                let target = span_capacity(self.spans.len(), needed, self.bound)?;
+                self.spans
+                    .try_reserve_exact(target - self.spans.len())
+                    .map_err(|_| Error::new(ErrorKind::CapacityOverflow))?;
+            }
+            self.spans.push(rebased);
+        }
+        Ok(())
+    }
+}
+fn span_capacity(len: usize, needed: usize, bound: usize) -> Result<usize> {
+    if needed > bound {
+        return Err(Error::new(ErrorKind::CapacityOverflow));
+    }
+    let target = len.checked_mul(2).unwrap_or(bound).min(bound).max(needed);
+    let bytes = target
+        .checked_mul(std::mem::size_of::<FiniteCoefficientSpan>())
+        .ok_or_else(|| Error::new(ErrorKind::CapacityOverflow))?;
+    if bytes > isize::MAX as usize {
+        return Err(Error::new(ErrorKind::CapacityOverflow));
+    }
+    Ok(target)
+}
+fn rebase_span(
+    span: FiniteCoefficientSpan,
+    offset: usize,
+    length: usize,
+) -> Result<FiniteCoefficientSpan> {
+    if span.start >= span.end || span.end > length {
+        return Err(Error::new(ErrorKind::CapacityOverflow));
+    }
+    Ok(FiniteCoefficientSpan {
+        start: offset
+            .checked_add(span.start)
+            .ok_or_else(|| Error::new(ErrorKind::CapacityOverflow))?,
+        end: offset
+            .checked_add(span.end)
+            .ok_or_else(|| Error::new(ErrorKind::CapacityOverflow))?,
+        bits: span.bits,
+    })
+}
+
+enum NumericEmission<'a> {
+    CssComponent(Option<&'a mut FiniteCoefficientCollector>),
+    ColorCalculation,
+}
+// Known scalar syntax contributes at most two coefficients (operand -0).
+// These local slots do not allocate and never infer coefficients from text.
+struct ScalarPiece {
+    css: String,
+    spans: [FiniteCoefficientSpan; 2],
+    count: usize,
+}
+impl NumericEmission<'_> {
+    fn scalar_piece(
+        &self,
+        scalar: &Scalar,
+        root: bool,
+        negate: bool,
+        limit: usize,
+    ) -> Result<ScalarPiece> {
+        let value = if negate { -scalar.value } else { scalar.value };
+        let mut spans = [FiniteCoefficientSpan {
+            start: 0,
+            end: 0,
+            bits: 0,
+        }; 2];
+        if matches!(self, Self::ColorCalculation) {
+            return Ok(ScalarPiece {
+                css: scalar_text(scalar, root, value),
+                spans,
+                count: 0,
+            });
+        }
+        let annotate = matches!(self, Self::CssComponent(Some(_)));
+        let unit = scalar.unit.name();
+        let (css, count) = if value.is_finite() {
+            if value == 0.0 && value.is_sign_negative() && !root {
+                let css = bounded_piece(&["(0", unit, " * -1)"], limit)?;
+                if annotate {
+                    spans[0] = FiniteCoefficientSpan {
+                        start: 1,
+                        end: 2,
+                        bits: 0.0_f64.to_bits(),
+                    };
+                    spans[1] = FiniteCoefficientSpan {
+                        start: 5 + unit.len(),
+                        end: 7 + unit.len(),
+                        bits: (-1.0_f64).to_bits(),
+                    };
+                }
+                (css, usize::from(annotate) * 2)
+            } else {
+                let value = if value == 0.0 { 0.0 } else { value };
+                let coefficient_limit = limit
+                    .checked_sub(unit.len())
+                    .ok_or_else(|| Error::new(ErrorKind::ByteLimit))?;
+                let mut css =
+                    crate::numeric_formatting::format_projected_number(value, coefficient_limit)?;
+                let end = css.len();
+                css.try_reserve(unit.len())
+                    .map_err(|_| Error::new(ErrorKind::CapacityOverflow))?;
+                css.push_str(unit);
+                spans[0] = FiniteCoefficientSpan {
+                    start: 0,
+                    end,
+                    bits: value.to_bits(),
+                };
+                (css, usize::from(annotate))
+            }
+        } else {
+            let keyword = if value.is_nan() {
+                "NaN"
+            } else if value.is_sign_negative() {
+                "-infinity"
+            } else {
+                "infinity"
+            };
+            if unit.is_empty() {
+                (bounded_piece(&[keyword], limit)?, 0)
+            } else {
+                let prefix = if root { "" } else { "(" };
+                let suffix = if root { "" } else { ")" };
+                let css = bounded_piece(&[prefix, keyword, " * 1", unit, suffix], limit)?;
+                let start = prefix.len() + keyword.len() + 3;
+                spans[0] = FiniteCoefficientSpan {
+                    start,
+                    end: start + 1,
+                    bits: 1.0_f64.to_bits(),
+                };
+                (css, usize::from(annotate))
+            }
+        };
+        Ok(ScalarPiece { css, spans, count })
+    }
+}
+fn bounded_piece(parts: &[&str], limit: usize) -> Result<String> {
+    let length = parts
+        .iter()
+        .try_fold(0_usize, |total, part| total.checked_add(part.len()))
+        .ok_or_else(|| Error::new(ErrorKind::CapacityOverflow))?;
+    if length > limit {
+        return Err(Error::new(ErrorKind::ByteLimit));
+    }
+    let mut css = String::new();
+    css.try_reserve(length)
+        .map_err(|_| Error::new(ErrorKind::CapacityOverflow))?;
+    for part in parts {
+        css.push_str(part);
+    }
+    Ok(css)
+}
+fn append_piece(
+    context: &mut SpecifiedSerializationContext,
+    output: &mut String,
+    text: &str,
+    charge_output: bool,
+    emission: &mut NumericEmission<'_>,
+    spans: &[FiniteCoefficientSpan],
+) -> Result<()> {
+    let offset = output.len();
+    if charge_output {
+        context.append(output, text)?;
+    } else {
+        context.append_temporary(output, text)?;
+    }
+    if let NumericEmission::CssComponent(Some(collector)) = emission {
+        collector.append(offset, text.len(), spans)?;
+    }
+    Ok(())
+}
+
+fn scalar_text(scalar: &Scalar, root: bool, value: f64) -> String {
     let unit = scalar.unit.name();
-    if scalar.value.is_finite() {
-        if scalar.value == 0.0 && scalar.value.is_sign_negative() && !root {
+    if value.is_finite() {
+        if value == 0.0 && value.is_sign_negative() && !root {
             return format!("(0{unit} * -1)");
         }
         return format!(
             "{}{unit}",
-            crate::specified_serialization::format_binary64(scalar.value)
+            crate::specified_serialization::format_binary64(value)
         );
     }
-    let keyword = if scalar.value.is_nan() {
+    let keyword = if value.is_nan() {
         "NaN"
-    } else if scalar.value.is_sign_negative() {
+    } else if value.is_sign_negative() {
         "-infinity"
     } else {
         "infinity"
@@ -1096,7 +1415,14 @@ mod tests {
             ErrorKind::ProjectionNodeLimit
         );
         let mut output = String::new();
-        projection.serialize(third, &mut output, true).unwrap();
+        projection
+            .serialize(
+                third,
+                &mut output,
+                true,
+                &mut NumericEmission::CssComponent(None),
+            )
+            .unwrap();
         assert_eq!(output, "calc(1)");
     }
 
@@ -1121,7 +1447,12 @@ mod tests {
                 CssNumericType::NUMBER,
             )?;
             let mut output = String::new();
-            projection.serialize(sign, &mut output, true)?;
+            projection.serialize(
+                sign,
+                &mut output,
+                true,
+                &mut NumericEmission::CssComponent(None),
+            )?;
             Ok(output)
         };
         assert_eq!(
@@ -1195,5 +1526,335 @@ mod tests {
             projected("calc(NaN * sign(1em - 1px) * 1%)"),
             "calc(NaN * 1%)"
         );
+    }
+}
+
+#[cfg(test)]
+mod comparison_capture_tests {
+    use super::*;
+    use crate::{CssLengthCalculation, CssNumberCalculation, parse_component_values};
+
+    fn expression(source: &str) -> Box<CssCalculationExpression> {
+        let components = parse_component_values(source).unwrap();
+        if let Ok(value) = CssNumberCalculation::try_from_components(components.clone()) {
+            value.expression
+        } else {
+            CssLengthCalculation::try_from_components(components)
+                .unwrap()
+                .expression
+        }
+    }
+    fn capture(source: &str) -> NumericComparisonCapture {
+        capture_specified_for_comparison(
+            &expression(source),
+            &mut SpecifiedSerializationContext::new(Limits::default()),
+        )
+        .unwrap()
+        .0
+    }
+
+    #[test]
+    fn comparison_retains_finite_meaning_before_rounded_text() {
+        for (left, right, equal) in [
+            ("calc(.12345641)", "calc(.12345642)", false),
+            ("calc(1 / 2)", "calc(.5)", true),
+            ("calc(0px)", "calc(.0000001px)", false),
+            ("calc(0px * -1)", "calc(0px)", true),
+            ("calc(.0000001em)", "calc(.0000001px)", false),
+            ("calc(1em + .12345641px)", "calc(.12345642px + 1em)", false),
+            ("calc(1em + 2px)", "calc(2.0px + 1.0em)", true),
+            ("calc(1em - .0000004px)", "calc(1em - .0000003px)", false),
+            ("calc(infinity * 1px)", "calc(1px / 0)", true),
+            ("calc(NaN * 1px)", "calc(0px / 0)", true),
+            ("calc(infinity * 1px)", "calc(-infinity * 1px)", false),
+        ] {
+            let a = capture(left);
+            let b = capture(right);
+            assert_eq!(a.same_projected_components(&b), equal, "{left} / {right}");
+            assert_eq!(b.same_projected_components(&a), equal);
+            for value in [&a, &b] {
+                let mut prior = 0;
+                for span in &value.finite_coefficients {
+                    assert!(
+                        prior <= span.start && span.start < span.end && span.end <= value.css.len()
+                    );
+                    assert!(
+                        value.css.is_char_boundary(span.start)
+                            && value.css.is_char_boundary(span.end)
+                    );
+                    assert!(f64::from_bits(span.bits).is_finite());
+                    prior = span.end;
+                }
+                assert!(value.finite_coefficients.len() <= value.css.len());
+            }
+        }
+        assert_eq!(
+            capture("calc(.12345641)").as_css(),
+            capture("calc(.12345642)").as_css()
+        );
+    }
+
+    #[test]
+    fn synthetic_coefficients_follow_canonical_structure_not_producer_history() {
+        for (source, expected_bits) in [
+            (
+                "calc(0px * -1 + 1em)",
+                vec![1.0_f64.to_bits(), 0.0_f64.to_bits(), (-1.0_f64).to_bits()],
+            ),
+            ("calc(infinity * 1px)", vec![1.0_f64.to_bits()]),
+            ("calc(0 * -1)", vec![0.0_f64.to_bits()]),
+        ] {
+            let value = capture(source);
+            assert_eq!(
+                value
+                    .finite_coefficients
+                    .iter()
+                    .map(|span| span.bits)
+                    .collect::<Vec<_>>(),
+                expected_bits
+            );
+        }
+        // Construct canonical nodes through the existing private projector to
+        // exercise standalone prefixes without changing parser admission.
+        let ty = CssNumericType::NUMBER;
+        let mut context = SpecifiedSerializationContext::new(Limits::default());
+        let mut projection = Projection {
+            arena: Vec::new(),
+            context: &mut context,
+        };
+        let symbol = projection.add(Kind::Symbol("symbol".into()), ty).unwrap();
+        for (kind, expected, bits) in [
+            (
+                Kind::Negate(symbol),
+                "calc(-1 * symbol)",
+                (-1.0_f64).to_bits(),
+            ),
+            (Kind::Invert(symbol), "calc(1 / symbol)", 1.0_f64.to_bits()),
+        ] {
+            let root = projection.add(kind, ty).unwrap();
+            let mut collector = FiniteCoefficientCollector {
+                spans: Vec::new(),
+                bound: expected.len(),
+            };
+            let mut css = String::new();
+            projection
+                .serialize(
+                    root,
+                    &mut css,
+                    false,
+                    &mut NumericEmission::CssComponent(Some(&mut collector)),
+                )
+                .unwrap();
+            assert_eq!(css, expected);
+            assert_eq!(collector.spans.len(), 1);
+            assert_eq!(collector.spans[0].bits, bits);
+        }
+        assert!(
+            capture("calc(0px * -1 + 1em)")
+                .same_projected_components(&capture("calc(1em + 0px * -1)"))
+        );
+    }
+
+    #[test]
+    fn literal_and_synthetic_factors_have_confluent_annotations() {
+        let ty = CssNumericType::NUMBER;
+        let mut context = SpecifiedSerializationContext::new(Limits::default());
+        let mut projection = Projection {
+            arena: Vec::new(),
+            context: &mut context,
+        };
+        let symbol = projection.add(Kind::Symbol("symbol".into()), ty).unwrap();
+        let negative = projection.add(Kind::Negate(symbol), ty).unwrap();
+        let inverse = projection.add(Kind::Invert(symbol), ty).unwrap();
+        let minus_one = projection.value(-1.0, Unit::Number, ty).unwrap();
+        let one = projection.value(1.0, Unit::Number, ty).unwrap();
+        let negative_product = projection
+            .add(Kind::Product(vec![minus_one, symbol]), ty)
+            .unwrap();
+        let inverse_product = projection
+            .add(Kind::Product(vec![one, inverse]), ty)
+            .unwrap();
+        let infinity = projection.value(f64::INFINITY, Unit::Number, ty).unwrap();
+        let length_ty = CssNumericType::dimension(CssNumericDimension::Length);
+        let px = projection
+            .value(1.0, Unit::Canonical("px"), length_ty)
+            .unwrap();
+        let dimensional = projection
+            .value(f64::INFINITY, Unit::Canonical("px"), length_ty)
+            .unwrap();
+        let dimensional_product = projection
+            .add(Kind::Product(vec![infinity, px]), length_ty)
+            .unwrap();
+        let mut render = |root| {
+            let mut css = String::new();
+            let mut collector = FiniteCoefficientCollector {
+                spans: Vec::new(),
+                bound: 100,
+            };
+            projection
+                .serialize(
+                    root,
+                    &mut css,
+                    false,
+                    &mut NumericEmission::CssComponent(Some(&mut collector)),
+                )
+                .unwrap();
+            NumericComparisonCapture {
+                css,
+                finite_coefficients: collector.spans,
+            }
+        };
+        for (a, b) in [
+            (negative, negative_product),
+            (inverse, inverse_product),
+            (dimensional, dimensional_product),
+        ] {
+            let left = render(a);
+            let right = render(b);
+            assert_eq!(left.as_css(), right.as_css());
+            assert!(left.same_projected_components(&right));
+        }
+    }
+
+    #[test]
+    fn selected_capture_matches_plain_text_outcome_and_cumulative_work() {
+        let value = expression("calc(1 / 3)");
+        let limits = Limits::new(4, 4, 14);
+        let mut plain_context = SpecifiedSerializationContext::new(limits);
+        let mut selected_context = SpecifiedSerializationContext::new(limits);
+        let (plain, a) = capture_specified(&value, &mut plain_context).unwrap();
+        let (selected, b) =
+            capture_specified_for_comparison(&value, &mut selected_context).unwrap();
+        assert_eq!(selected.as_css(), plain);
+        assert_eq!(
+            a.scalar_value.map(f64::to_bits),
+            b.scalar_value.map(f64::to_bits)
+        );
+        assert_eq!(a.context_dependent, b.context_dependent);
+        for context in [&mut plain_context, &mut selected_context] {
+            assert_eq!(context.remaining_bytes(), 14);
+            assert_eq!(
+                context.charge_input(1).unwrap_err().kind(),
+                ErrorKind::InputNodeLimit
+            );
+            assert_eq!(
+                context.charge_projection(1).unwrap_err().kind(),
+                ErrorKind::ProjectionNodeLimit
+            );
+            let mut output = String::new();
+            context.append(&mut output, "calc(0.333333)").unwrap();
+            assert_eq!(context.remaining_bytes(), 0);
+            assert_eq!(
+                context.append(&mut output, "x").unwrap_err().kind(),
+                ErrorKind::ByteLimit
+            );
+            assert_eq!(output, "calc(0.333333)");
+        }
+        let mut context = SpecifiedSerializationContext::new(Limits::new(4, 4, 14));
+        let mut output = String::new();
+        context.append(&mut output, "x").unwrap();
+        assert_eq!(
+            capture_specified_for_comparison(&value, &mut context)
+                .err()
+                .unwrap()
+                .kind(),
+            ErrorKind::ByteLimit
+        );
+        assert_eq!(output, "x");
+        assert_eq!(context.remaining_bytes(), 13);
+    }
+
+    #[test]
+    fn span_growth_and_rebasing_overflow_are_typed() {
+        assert_eq!(span_capacity(0, 1, 8).unwrap(), 1);
+        assert_eq!(span_capacity(4, 5, 6).unwrap(), 6);
+        assert_eq!(
+            span_capacity(0, 1, 0).unwrap_err().kind(),
+            ErrorKind::CapacityOverflow
+        );
+        assert_eq!(
+            span_capacity(usize::MAX / 2, usize::MAX, usize::MAX)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::CapacityOverflow
+        );
+        let span = FiniteCoefficientSpan {
+            start: 0,
+            end: 1,
+            bits: 1.0_f64.to_bits(),
+        };
+        assert_eq!(
+            rebase_span(span, usize::MAX, 1).err().unwrap().kind(),
+            ErrorKind::CapacityOverflow
+        );
+        assert_eq!(
+            rebase_span(span, 0, 0).err().unwrap().kind(),
+            ErrorKind::CapacityOverflow
+        );
+        assert_eq!(rebase_span(span, 3, 1).unwrap().end, 4);
+        let mut collector = FiniteCoefficientCollector {
+            spans: Vec::new(),
+            bound: 2,
+        };
+        collector.append(0, 1, &[span]).unwrap();
+        collector.append(1, 1, &[span]).unwrap();
+        assert_eq!(collector.spans.len(), 2);
+        assert_eq!(
+            collector.append(2, 1, &[span]).unwrap_err().kind(),
+            ErrorKind::CapacityOverflow
+        );
+    }
+
+    #[test]
+    fn semantic_color_capture_keeps_text_outcome_and_scratch_precedence() {
+        let value = expression("calc(1 / 128)");
+        let mut color_context = SpecifiedSerializationContext::new(Limits::new(4, 4, 15));
+        let (color, color_outcome) = capture_color_specified_scaled(
+            &value,
+            NumericProjectionScale::Identity,
+            &mut color_context,
+        )
+        .unwrap();
+        assert_eq!(color, "calc(0.0078125)");
+        assert_eq!(color_outcome.scalar_value, Some(1.0 / 128.0));
+        let mut generic_context = SpecifiedSerializationContext::new(Limits::new(4, 4, 14));
+        let (generic, generic_outcome) = capture_specified(&value, &mut generic_context).unwrap();
+        assert_eq!(generic, "calc(0.007813)");
+        assert_eq!(
+            generic_outcome.scalar_value.map(f64::to_bits),
+            color_outcome.scalar_value.map(f64::to_bits)
+        );
+        assert_eq!(color_context.remaining_bytes(), 15);
+        assert_eq!(
+            color_context.charge_input(1).unwrap_err().kind(),
+            ErrorKind::InputNodeLimit
+        );
+        assert_eq!(
+            color_context.charge_projection(1).unwrap_err().kind(),
+            ErrorKind::ProjectionNodeLimit
+        );
+        let mut short = SpecifiedSerializationContext::new(Limits::new(4, 4, 14));
+        assert_eq!(
+            capture_color_specified_scaled(&value, NumericProjectionScale::Identity, &mut short)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::ByteLimit
+        );
+        for emission in [
+            NumericEmission::ColorCalculation,
+            NumericEmission::CssComponent(None),
+        ] {
+            let scalar = Scalar {
+                value: 1.0 / 128.0,
+                unit: Unit::Number,
+            };
+            assert_eq!(
+                emission
+                    .scalar_piece(&scalar, true, false, 20)
+                    .unwrap()
+                    .count,
+                0
+            );
+        }
     }
 }

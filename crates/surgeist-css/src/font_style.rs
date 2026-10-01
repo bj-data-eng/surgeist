@@ -1,6 +1,7 @@
 //! Exact authored Fonts 4 style values, before matching or computed angle ranges.
 //! Ordinary emitted coefficients round to six fractional places (nearest, ties
-//! away from zero); retained coefficients/ranges stay exact and math text stays unchanged.
+//! away from zero); finite calculated text rounds the projected binary64 value with the
+//! same policy. Retained coefficients/ranges and calculation arithmetic stay unchanged.
 
 use crate::{
     CssAngleCalculation, CssAngleUnit, CssComponentValue, CssComponentValueRef,

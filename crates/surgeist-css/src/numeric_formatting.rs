@@ -1,8 +1,8 @@
-//! Canonical ordinary number text from checked exact authored coefficients.
+//! Canonical number text from exact authored coefficients or finite projected bits.
 //!
 //! CSSOM limits fractional text to six places. Its decimal tie direction is
 //! unspecified; the selected frozen WebKit FIXED policy rounds ties away from
-//! zero. This owner does not format calculation or color projection results.
+//! zero. Color calculation text retains its separate formatter.
 
 use crate::exact_decimal::LexicalDecimal;
 use crate::{
@@ -88,6 +88,80 @@ pub(crate) fn format_css_number(text: &str, shift: i128, limit: usize) -> Result
     emit(digits, len, exponent, value.negative, limit)
 }
 
+/// Rounds the actual finite binary value to millionths, without a float round
+/// or a shortest-decimal intermediate. Fixed stack storage covers every finite
+/// binary64 integer; only the final bounded text is allocated.
+pub(crate) fn format_projected_number(value: f64, limit: usize) -> Result<String> {
+    assert!(value.is_finite(), "checked finite projected scalar");
+    let bits = value.to_bits();
+    let negative = bits >> 63 != 0;
+    let encoded_exponent = ((bits >> 52) & 0x7ff) as i32;
+    let fraction = bits & ((1_u64 << 52) - 1);
+    let (significand, exponent) = if encoded_exponent == 0 {
+        (fraction, -1074)
+    } else {
+        ((1_u64 << 52) | fraction, encoded_exponent - 1075)
+    };
+    if significand == 0 {
+        return emit(std::iter::empty(), 0, 0, false, limit);
+    }
+    let mut digits = [0_u8; 309];
+    let mut len = 0;
+    let decimal_exponent;
+    if exponent < 0 {
+        let numerator = u128::from(significand) * 1_000_000;
+        let shift = exponent.unsigned_abs();
+        let mut rounded = if shift >= 128 {
+            0
+        } else {
+            let denominator = 1_u128 << shift;
+            numerator / denominator + u128::from(numerator % denominator >= denominator / 2)
+        };
+        if rounded == 0 {
+            return emit(std::iter::empty(), 0, 0, false, limit);
+        }
+        let mut trailing = 0;
+        while rounded % 10 == 0 {
+            trailing += 1;
+            rounded /= 10;
+        }
+        decimal_exponent = -6 + trailing;
+        while rounded != 0 {
+            digits[len] = (rounded % 10) as u8;
+            len += 1;
+            rounded /= 10;
+        }
+    } else {
+        let mut integer = significand;
+        while integer != 0 {
+            digits[len] = (integer % 10) as u8;
+            len += 1;
+            integer /= 10;
+        }
+        for _ in 0..exponent {
+            let mut carry = 0;
+            for digit in &mut digits[..len] {
+                let doubled = *digit * 2 + carry;
+                *digit = doubled % 10;
+                carry = doubled / 10;
+            }
+            if carry != 0 {
+                // (2^53-1)*2^971 has at most 309 decimal digits.
+                digits[len] = carry;
+                len += 1;
+            }
+        }
+        decimal_exponent = 0;
+    }
+    emit(
+        digits[..len].iter().rev().copied(),
+        len,
+        decimal_exponent,
+        negative,
+        limit,
+    )
+}
+
 /// Emits a normalized finite decimal whose fractional part is already rounded.
 /// Count the final representation before reserving any storage.
 fn emit(
@@ -156,6 +230,64 @@ fn emit(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn projected_dyadic_rounding_uses_bits_and_actual_output_budgets() {
+        for (value, expected) in [
+            (1.0 / 3.0, "0.333333"),
+            (-1.0 / 128.0, "-0.007813"),
+            (f64::from_bits(0x3f7fffffffffffff), "0.007812"),
+            (f64::from_bits(0x3f80000000000000), "0.007813"),
+            (f64::from_bits(0x3f80000000000001), "0.007813"),
+            (5e-7, "0"),
+            (5.000000000000001e-7, "0.000001"),
+            (-0.0000004, "0"),
+            (0.9999996, "1"),
+            (-0.9999996, "-1"),
+            (f64::from_bits(1), "0"),
+            (f64::MIN_POSITIVE, "0"),
+            (-0.0, "0"),
+            (f64::from_bits(0x43ab_c16d_674e_c801), "1000000000000000128"),
+        ] {
+            assert_eq!(
+                format_projected_number(value, expected.len()).unwrap(),
+                expected
+            );
+            assert_eq!(
+                format_projected_number(value, expected.len() - 1)
+                    .unwrap_err()
+                    .kind(),
+                ByteLimit
+            );
+        }
+        // The shortest spelling 5e-7 is above its actual binary approximation.
+        assert_eq!(format_css_number("5e-7", 0, 8).unwrap(), "0.000001");
+    }
+
+    #[test]
+    fn maximum_projected_integer_is_exact_and_preflighted() {
+        // (2^53 - 1) * 2^971, independently expanded integer oracle.
+        const INTEGER: &str = concat!(
+            "179769313486231570814527423731704356798070567525844996598917476803157260",
+            "780028538760589558632766878171540458953514382464234321326889464182768467",
+            "546703537516986049910576551282076245490090389328944075868508455133942304",
+            "583236903222948165808559332123348274797826204144723168738177180919299881",
+            "250404026184124858368"
+        );
+        assert_eq!(format_projected_number(f64::MAX, 309).unwrap(), INTEGER);
+        assert_eq!(
+            format_projected_number(-f64::MAX, 310).unwrap(),
+            format!("-{INTEGER}")
+        );
+        assert_eq!(
+            format_projected_number(f64::MAX, 308).unwrap_err().kind(),
+            ByteLimit
+        );
+        assert_eq!(
+            format_projected_number(-f64::MAX, 309).unwrap_err().kind(),
+            ByteLimit
+        );
+    }
 
     #[test]
     fn exponent_extremes_and_zero_do_not_require_expanded_intermediates() {

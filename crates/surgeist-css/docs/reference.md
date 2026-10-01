@@ -488,11 +488,55 @@ expanding their exponents. Very large output can still fail with a typed resourc
 error. Failure returns no partial public CSS and leaves the authored value
 unchanged; composed writers share one cumulative budget.
 
-Actual calculation branches retain the existing mathematical projector and its
-text, precision and resource behavior. For example, `calc(1 / 3)` still emits
-`calc(0.3333333333333333)`. Six-place formatting of finite projected numbers and
-exact mathematical evaluation remain unfinished. Color, integer and media-query
-writers retain their separate domain and lexical policies.
+### Calculated number output
+
+Finite numbers in non-color specified calculations use the same six-place,
+fixed-notation output policy. The mathematical projector evaluates
+context-independent parts with binary64 arithmetic, then rounds the actual
+finite binary value for text. `calc(1 / 3)` emits `calc(0.333333)`, and the exact
+dyadic halfway value `calc(-1 / 128)` emits `calc(-0.007813)`.
+
+An authored decimal and its binary approximation can fall on different sides of
+a rounding midpoint. Ordinary `5e-7` emits `0.000001`; `calc(5e-7)` emits `calc(0)`
+because its projected binary64 value is just below that decimal midpoint.
+Finite integral results emit all their actual integer digits, including digits
+that differ from a shorter decimal spelling which merely round-trips to the
+same binary64 value. The authored calculation and its source origin remain
+unchanged.
+
+```rust
+use surgeist_css::{
+    CssNumberCalculation, CssSpecifiedNumber, CssSpecifiedValueSerializationLimits,
+    parse_component_values,
+};
+
+let calculation = CssNumberCalculation::try_from_components(
+    parse_component_values("calc(1 / 3)")?,
+)?;
+let number = CssSpecifiedNumber::try_from_calculation(calculation.clone())?;
+assert_eq!(
+    number.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(4, 4, 14))?,
+    "calc(0.333333)",
+);
+assert_eq!(calculation.serialize()?.as_css(), "calc(1 / 3)");
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+Symbols, units, operator order, exceptional values and actual negative-zero
+arithmetic retain the projector's existing behavior. Border-image and scroll
+shorthands compare canonical projected components before rounding their text.
+Unequal finite coefficients remain separate even when they produce identical
+text; equal canonical component sequences can still compress. This comparison
+does not establish arbitrary algebraic equality or authored graph identity.
+
+Traversal costs stay unchanged, and byte limits count actual rounded output
+including wrappers and units. Captured children still obey their scratch bounds
+and retain their traversal costs even when shorthand output compresses.
+Calculated integer text uses this finite number policy without performing
+computed integer rounding; ordinary integer literals retain exact digits.
+Color calculations and media-query writers retain their separate text policies.
+Mathematical arithmetic precision and range remain unfinished; canonical text
+does not make binary64 evaluation exact or resolve symbolic dependencies.
 
 ## Authored preferred aspect ratios
 
@@ -1184,10 +1228,10 @@ unchanged. For example, `CssTimeLiteral::try_new("0.0001", CssTimeUnit::Millisec
 emits `0s` while retaining `0.0001ms`. Node or byte limits produce a typed error
 without partial CSS or input mutation.
 
-Calculation emission retains the shared simplifier's existing text and floating
-point precision, overflow and underflow limits; the original checked graph
-remains retained. Canonical formatting of finite calculated numbers and exact
-calculation evaluation remain unfinished.
+Calculation emission uses [calculated number output](#calculated-number-output)
+for finite components after the shared simplifier. Floating-point precision,
+overflow and underflow limits stay unchanged, and the original checked graph
+remains retained. Exact calculation evaluation remains unfinished.
 
 `CssTransition::try_new` and `CssAnimation::try_new` accept the same typed
 components as their property parsers. `CssAnimationComponents` is the animation
@@ -1262,9 +1306,10 @@ specified values: `1kHz` emits `1khz`. The selected
 [CSSOM serialization clause](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serialize-a-css-component-value)
 leaves frequency's specified-versus-computed phase unresolved. Ordinary output
 rounds to at most six fractional places; for example, `0.0000001Hz` emits `0hz`
-while retaining its exact authored coefficient. Frequency math keeps the shared
-simplifier's existing text and floating point precision and range limits;
-canonical formatting of its finite projected numbers remains unfinished.
+while retaining its exact authored coefficient. Frequency math uses
+[calculated number output](#calculated-number-output) for finite components
+after the shared simplifier, retaining its floating-point precision and range
+limits. This does not resolve the specified-versus-computed phase question.
 
 Ordinary resolution has no specified serialization helper yet. Canonical output
 requires exact conversion to `dppx` and the CSSOM number-rounding policy;
@@ -1521,10 +1566,11 @@ Tiny nonzero numbers never qualify as zero. Raw scalar equality retains
 provenance; semantic aggregates compare structure while ignoring scalar origins.
 Ordinary angle serialization retains the selected unit and applies
 [canonical number rounding](#canonical-ordinary-number-output) without changing
-the stored coefficient. Calculation serialization retains the existing simplified
-projection and its implementation precision; exact arithmetic and canonical
-formatting of finite projected numbers remain unfinished. Each context retains
-its grammar and omission rules.
+the stored coefficient. Calculation serialization uses
+[calculated number output](#calculated-number-output) after the existing
+simplified projection. Its arithmetic precision remains unchanged, and exact
+evaluation remains unfinished. Each context retains its grammar and omission
+rules.
 
 ```rust
 use surgeist_css::{
@@ -2084,18 +2130,20 @@ Ordinary scalars use their exact retained magnitude. Percentages divide by 100
 symbolically and serialize as numbers: `.1` becomes `0.1`, `25%` becomes `0.25`,
 and `150%` becomes `1.5`. Programmatic scalars retain the supplied checked
 decimal token just as parsed scalars do.
-Subnormal percentages keep their nonzero magnitude. Exponents that would
-exceed the output cap return a byte-limit error before expanding zeros.
+The retained percentage magnitude stays exact even when output rounds to zero.
+Exponents that would exceed the output cap return a byte-limit error before
+expanding zeros.
 
 Math projection uses binary64 arithmetic for context-independent operations,
 including CSS exceptional-value and signed-zero rules. Absolute compatible
 units normalize; font, viewport, container, and other contextual units remain
 symbolic. `calc(1 / 2)` becomes `calc(0.5)`, while `sign(1em - 1px)` retains its
 contextual expression. This specified stage does not clamp to the opacity
-range. Canonical finite math text uses shortest round-trip decimal digits,
-fixed notation, and decimal ties toward the greater number. Transcendental
-last bits may differ across platforms; bit-identical transcendental output is
-not promised. Authored component accessors and structural serialization remain
+range. Finite math text uses the [calculated number output](#calculated-number-output)
+policy: at most six fractional places in fixed notation, rounding the actual
+binary value to nearest with decimal ties away from zero. Transcendental last
+bits may differ across platforms; bit-identical transcendental output is not
+promised. Authored component accessors and structural serialization remain
 separate and preserve their contracts.
 
 The selected Values 4 section 10.13 has two localized serialization defects:

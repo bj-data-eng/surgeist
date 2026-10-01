@@ -160,7 +160,9 @@ impl CssIntegerValue {
     ///
     /// Ordinary literal magnitudes are exact. Calculation projection, including
     /// an explicitly constructed literal-only calculation root, uses the shared
-    /// binary64 math policy while retaining its exact authored expression.
+    /// binary64 math policy while retaining its exact authored expression. Finite
+    /// results emit at most six fractional places, nearest with ties away from
+    /// zero, and preserve all exact integer digits of the binary64 result.
     pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }

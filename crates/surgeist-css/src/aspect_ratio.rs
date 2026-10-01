@@ -1,7 +1,7 @@
 //! Authored preferred aspect ratios and exact ratio operands.
 //! Ordinary operands emit at most six fractional places, nearest with ties away
-//! from zero; exact identity and range checks remain unchanged. Math text retains
-//! its existing provider and unfinished canonical number formatting.
+//! from zero; exact identity and range checks remain unchanged. Finite calculated
+//! operands use the same text policy while retaining existing arithmetic and ranges.
 
 use crate::{
     CssComponentValue, CssComponentValueRef, CssNumberCalculation, CssNumericConstructionError,

@@ -9,7 +9,8 @@ use std::fmt;
 
 mod projection;
 pub(crate) use projection::{
-    NumericProjectionOutcome, NumericProjectionScale, capture_specified, capture_specified_scaled,
+    NumericComparisonCapture, NumericProjectionOutcome, NumericProjectionScale,
+    capture_color_specified_scaled, capture_specified, capture_specified_for_comparison,
     project_calc_size_sum_into, project_specified, project_specified_into,
 };
 
@@ -3270,12 +3271,9 @@ impl CssProfileColorCalculation {
 
 #[derive(Clone, Copy)]
 pub(crate) enum SpecifiedCalculationRef<'a> {
-    Number(&'a CssNumberCalculation),
-    Percentage(&'a CssPercentageCalculation),
     Angle(&'a CssAngleCalculation),
     Time(&'a CssTimeCalculation),
     Frequency(&'a CssFrequencyCalculation),
-    Profile(&'a CssProfileColorCalculation),
 }
 
 /// Streams a checked numeric child directly when the owning serializer has
@@ -3287,51 +3285,106 @@ pub(crate) fn project_calculation_specified_into(
     output: &mut String,
 ) -> std::result::Result<NumericProjectionOutcome, crate::CssSpecifiedValueSerializationError> {
     let expression = match calculation {
-        SpecifiedCalculationRef::Number(value) => &value.expression,
-        SpecifiedCalculationRef::Percentage(value) => &value.expression,
         SpecifiedCalculationRef::Angle(value) => &value.expression,
         SpecifiedCalculationRef::Time(value) => &value.expression,
         SpecifiedCalculationRef::Frequency(value) => &value.expression,
-        SpecifiedCalculationRef::Profile(value) => &value.expression,
     };
     project_specified_into(expression, context, output)
 }
 
-pub(crate) fn capture_calculation_specified(
-    calculation: SpecifiedCalculationRef<'_>,
+#[derive(Clone, Copy)]
+pub(crate) enum ColorCalculationRef<'a> {
+    Number(&'a CssNumberCalculation),
+    Percentage(&'a CssPercentageCalculation),
+    Angle(&'a CssAngleCalculation),
+    Profile(&'a CssProfileColorCalculation),
+}
+impl ColorCalculationRef<'_> {
+    fn expression(&self) -> &CssCalculationExpression {
+        match self {
+            Self::Number(value) => &value.expression,
+            Self::Percentage(value) => &value.expression,
+            Self::Angle(value) => &value.expression,
+            Self::Profile(value) => &value.expression,
+        }
+    }
+}
+pub(crate) fn capture_color_calculation(
+    calculation: ColorCalculationRef<'_>,
     context: &mut crate::specified_serialization::SpecifiedSerializationContext,
 ) -> std::result::Result<
     (String, NumericProjectionOutcome),
     crate::CssSpecifiedValueSerializationError,
 > {
-    let expression = match calculation {
-        SpecifiedCalculationRef::Number(value) => &value.expression,
-        SpecifiedCalculationRef::Percentage(value) => &value.expression,
-        SpecifiedCalculationRef::Angle(value) => &value.expression,
-        SpecifiedCalculationRef::Time(value) => &value.expression,
-        SpecifiedCalculationRef::Frequency(value) => &value.expression,
-        SpecifiedCalculationRef::Profile(value) => &value.expression,
-    };
-    capture_specified(expression, context)
+    capture_color_specified_scaled(
+        calculation.expression(),
+        NumericProjectionScale::Identity,
+        context,
+    )
 }
-
-pub(crate) fn capture_calculation_specified_scaled(
-    calculation: SpecifiedCalculationRef<'_>,
+pub(crate) fn capture_color_calculation_scaled(
+    calculation: ColorCalculationRef<'_>,
     scale: NumericProjectionScale,
     context: &mut crate::specified_serialization::SpecifiedSerializationContext,
 ) -> std::result::Result<
     (String, NumericProjectionOutcome),
     crate::CssSpecifiedValueSerializationError,
 > {
-    let expression = match calculation {
-        SpecifiedCalculationRef::Number(value) => &value.expression,
-        SpecifiedCalculationRef::Percentage(value) => &value.expression,
-        SpecifiedCalculationRef::Angle(value) => &value.expression,
-        SpecifiedCalculationRef::Time(value) => &value.expression,
-        SpecifiedCalculationRef::Frequency(value) => &value.expression,
-        SpecifiedCalculationRef::Profile(value) => &value.expression,
-    };
-    capture_specified_scaled(expression, scale, context)
+    capture_color_specified_scaled(calculation.expression(), scale, context)
+}
+
+/// Temporary owned text, with pre-rounding components only for selected math
+/// captures. This is serialization state, never stored authored equality.
+pub(crate) enum CapturedNumericComponent {
+    Plain(String),
+    Projected(NumericComparisonCapture),
+}
+impl CapturedNumericComponent {
+    pub(crate) fn as_css(&self) -> &str {
+        match self {
+            Self::Plain(css) => css,
+            Self::Projected(capture) => capture.as_css(),
+        }
+    }
+    pub(crate) fn capture_calculation(
+        expression: &CssCalculationExpression,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+    ) -> std::result::Result<Self, crate::CssSpecifiedValueSerializationError> {
+        capture_specified_for_comparison(expression, context)
+            .map(|(capture, _)| Self::Projected(capture))
+    }
+    fn same_math_or_text(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Projected(left), Self::Projected(right)) => {
+                left.same_projected_components(right)
+            }
+            _ => self.as_css() == other.as_css(),
+        }
+    }
+}
+pub(crate) fn numeric_components_equal(
+    left: Option<&CssComponentValue>,
+    right: Option<&CssComponentValue>,
+    left_capture: &CapturedNumericComponent,
+    right_capture: &CapturedNumericComponent,
+) -> bool {
+    match (left, right) {
+        (Some(left), Some(right)) => crate::specified_numeric::ordinary_literal_equal(left, right),
+        _ => left_capture.same_math_or_text(right_capture),
+    }
+}
+pub(crate) fn length_components_equal(
+    left: Option<&CssComponentValue>,
+    right: Option<&CssComponentValue>,
+    left_capture: &CapturedNumericComponent,
+    right_capture: &CapturedNumericComponent,
+) -> bool {
+    match (left, right) {
+        (Some(left), Some(right)) => {
+            crate::specified_numeric::ordinary_length_literal_equal(left, right)
+        }
+        _ => left_capture.same_math_or_text(right_capture),
+    }
 }
 
 #[cfg(test)]

@@ -670,8 +670,8 @@ fn component_projection_with_text(
                     }
                 }
             };
-            let (text, outcome) = crate::numeric::capture_calculation_specified_scaled(
-                crate::numeric::SpecifiedCalculationRef::Number(value),
+            let (text, outcome) = crate::numeric::capture_color_calculation_scaled(
+                crate::numeric::ColorCalculationRef::Number(value),
                 scale,
                 context,
             )?;
@@ -694,8 +694,8 @@ fn component_projection_with_text(
             } else {
                 crate::numeric::NumericProjectionScale::Identity
             };
-            let (text, outcome) = crate::numeric::capture_calculation_specified_scaled(
-                crate::numeric::SpecifiedCalculationRef::Percentage(value),
+            let (text, outcome) = crate::numeric::capture_color_calculation_scaled(
+                crate::numeric::ColorCalculationRef::Percentage(value),
                 scale,
                 context,
             )?;
@@ -743,15 +743,15 @@ fn serialize_alpha(
     }
     match value {
         CssColorComponent::NumberCalculation(calculation) => {
-            let (text, _) = crate::numeric::capture_calculation_specified(
-                crate::numeric::SpecifiedCalculationRef::Number(calculation),
+            let (text, _) = crate::numeric::capture_color_calculation(
+                crate::numeric::ColorCalculationRef::Number(calculation),
                 context,
             )?;
             Ok(Some(text))
         }
         CssColorComponent::PercentageCalculation(calculation) => {
-            let (text, _) = crate::numeric::capture_calculation_specified_scaled(
-                crate::numeric::SpecifiedCalculationRef::Percentage(calculation),
+            let (text, _) = crate::numeric::capture_color_calculation_scaled(
+                crate::numeric::ColorCalculationRef::Percentage(calculation),
                 crate::numeric::NumericProjectionScale::PercentageToNumber {
                     numerator: 1,
                     denominator: 100,
@@ -1462,8 +1462,8 @@ fn hue_projection(
             (text, Some(number), Some(exact), false, false, false)
         }
         H::NumberCalculation(value) => {
-            let (text, outcome) = crate::numeric::capture_calculation_specified(
-                crate::numeric::SpecifiedCalculationRef::Number(value),
+            let (text, outcome) = crate::numeric::capture_color_calculation(
+                crate::numeric::ColorCalculationRef::Number(value),
                 context,
             )?;
             (
@@ -1476,8 +1476,8 @@ fn hue_projection(
             )
         }
         H::AngleCalculation(value) => {
-            let (text, outcome) = crate::numeric::capture_calculation_specified(
-                crate::numeric::SpecifiedCalculationRef::Angle(value),
+            let (text, outcome) = crate::numeric::capture_color_calculation(
+                crate::numeric::ColorCalculationRef::Angle(value),
                 context,
             )?;
             (
@@ -1849,8 +1849,11 @@ fn serialize_relative_expression(
             } else {
                 crate::numeric::NumericProjectionScale::Identity
             };
-            let (text, _) =
-                crate::numeric::capture_specified_scaled(&value.data.expression, scale, context)?;
+            let (text, _) = crate::numeric::capture_color_specified_scaled(
+                &value.data.expression,
+                scale,
+                context,
+            )?;
             Ok(text)
         }
     }
@@ -1894,8 +1897,8 @@ fn serialize_profile_expression(
             } else {
                 crate::numeric::NumericProjectionScale::Identity
             };
-            let (text, _) = crate::numeric::capture_calculation_specified_scaled(
-                crate::numeric::SpecifiedCalculationRef::Profile(value),
+            let (text, _) = crate::numeric::capture_color_calculation_scaled(
+                crate::numeric::ColorCalculationRef::Profile(value),
                 scale,
                 context,
             )?;
@@ -1983,8 +1986,8 @@ fn mix_weight_texts(
                 }
                 Some(weight) => {
                     let calculation = weight.calculation().expect("checked weight variant");
-                    let (text, _) = crate::numeric::capture_calculation_specified(
-                        crate::numeric::SpecifiedCalculationRef::Percentage(calculation),
+                    let (text, _) = crate::numeric::capture_color_calculation(
+                        crate::numeric::ColorCalculationRef::Percentage(calculation),
                         context,
                     )?;
                     Some(text)
