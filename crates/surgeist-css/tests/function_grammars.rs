@@ -661,7 +661,6 @@ fn filter_lists_reject_empty_unknown_repeated_and_trailing_mutations() {
     for value in [
         "none blur(1px)",
         "blur(,)",
-        "hue-rotate()",
         "hue-rotate(1deg, 2deg)",
         "drop-shadow()",
         "drop-shadow(red red 1px 2px)",
@@ -671,6 +670,20 @@ fn filter_lists_reject_empty_unknown_repeated_and_trailing_mutations() {
     ] {
         assert_filter_rejected(value);
     }
+}
+
+// Filter Effects 1 WD 2018-12-18 §6.1 makes the angle optional.
+#[test]
+fn hue_rotate_accepts_an_omitted_argument_as_an_ordered_filter_function() {
+    let property = parsed_filter_property("hue-rotate()");
+    let CssFilter::Functions(functions) = property.value() else {
+        panic!("one authored filter function");
+    };
+    assert!(matches!(
+        functions.functions(),
+        [CssFilterFunction::HueRotate(_)]
+    ));
+    assert_eq!(property.as_css(), "hue-rotate()");
 }
 
 #[test]
