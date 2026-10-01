@@ -66,10 +66,11 @@ fn append_sides<T>(
     values: &[T; 4],
     writer: &mut SpecifiedRuleWriter,
     capture: impl Fn(&T, &mut SpecifiedRuleWriter) -> Result<String>,
+    component_equal: impl Fn(&T, &T, &str, &str) -> bool,
 ) -> Result<()> {
-    // Capture before group output: every distinct retained text must occur in
-    // the compressed result, so each scratch value fits remaining final space.
-    // Four captures retain all visits and their cumulative projection costs.
+    // Capture before group output, preserving every visit, scratch limit and
+    // failure order. Ordinary compression compares exact component meaning;
+    // calculations retain the existing canonical captured-text comparison.
     let css = [
         capture(&values[0], writer)?,
         capture(&values[1], writer)?,
@@ -78,7 +79,7 @@ fn append_sides<T>(
     ];
     let equal = |left: usize, right: usize| {
         std::mem::discriminant(&values[left]) == std::mem::discriminant(&values[right])
-            && css[left] == css[right]
+            && component_equal(&values[left], &values[right], &css[left], &css[right])
     };
     let count = if equal(0, 1) && equal(0, 2) && equal(0, 3) {
         1
@@ -96,6 +97,157 @@ fn append_sides<T>(
         writer.append(text)?;
     }
     Ok(())
+}
+
+fn ordinary_component_equal(left: &CssComponentValue, right: &CssComponentValue) -> bool {
+    match (left.view(), right.view()) {
+        (
+            CssComponentValueRef::Token(CssValueTokenRef::Number(left)),
+            CssComponentValueRef::Token(CssValueTokenRef::Number(right)),
+        )
+        | (
+            CssComponentValueRef::Token(CssValueTokenRef::Percentage(left)),
+            CssComponentValueRef::Token(CssValueTokenRef::Percentage(right)),
+        ) => LexicalDecimal::new(left.representation())
+            .value_eq(&LexicalDecimal::new(right.representation())),
+        (
+            CssComponentValueRef::Token(CssValueTokenRef::Dimension {
+                number: left,
+                unit: left_unit,
+            }),
+            CssComponentValueRef::Token(CssValueTokenRef::Dimension {
+                number: right,
+                unit: right_unit,
+            }),
+        ) => {
+            left_unit.eq_ignore_ascii_case(right_unit)
+                && LexicalDecimal::new(left.representation())
+                    .value_eq(&LexicalDecimal::new(right.representation()))
+        }
+        _ => false,
+    }
+}
+
+fn numeric_equal(
+    left: Option<&CssComponentValue>,
+    right: Option<&CssComponentValue>,
+    left_css: &str,
+    right_css: &str,
+) -> bool {
+    match (left, right) {
+        (Some(left), Some(right)) => ordinary_component_equal(left, right),
+        _ => left_css == right_css,
+    }
+}
+
+fn length_equal(
+    left: Option<&CssComponentValue>,
+    right: Option<&CssComponentValue>,
+    left_css: &str,
+    right_css: &str,
+) -> bool {
+    let (Some(left), Some(right)) = (left, right) else {
+        return left_css == right_css;
+    };
+    if ordinary_component_equal(left, right) {
+        return true;
+    }
+    let zero_pixels = |value: &CssComponentValue| {
+        matches!(value.view(),
+            CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
+                if unit.eq_ignore_ascii_case("px")
+                    && LexicalDecimal::new(number.representation()).len == 0)
+    };
+    (unitless_length_zero(Some(left)) && zero_pixels(right))
+        || (unitless_length_zero(Some(right)) && zero_pixels(left))
+}
+
+fn slice_equal(
+    left: &CssBorderImageSliceComponent,
+    right: &CssBorderImageSliceComponent,
+    left_css: &str,
+    right_css: &str,
+) -> bool {
+    match (left, right) {
+        (
+            CssBorderImageSliceComponent::Number(left),
+            CssBorderImageSliceComponent::Number(right),
+        ) => numeric_equal(
+            left.literal_component(),
+            right.literal_component(),
+            left_css,
+            right_css,
+        ),
+        (
+            CssBorderImageSliceComponent::Percentage(left),
+            CssBorderImageSliceComponent::Percentage(right),
+        ) => numeric_equal(
+            left.literal_component(),
+            right.literal_component(),
+            left_css,
+            right_css,
+        ),
+        _ => false,
+    }
+}
+
+fn width_equal(
+    left: &CssBorderImageWidthComponent,
+    right: &CssBorderImageWidthComponent,
+    left_css: &str,
+    right_css: &str,
+) -> bool {
+    match (left, right) {
+        (CssBorderImageWidthComponent::Auto, CssBorderImageWidthComponent::Auto) => true,
+        (
+            CssBorderImageWidthComponent::Number(left),
+            CssBorderImageWidthComponent::Number(right),
+        ) => numeric_equal(
+            left.literal_component(),
+            right.literal_component(),
+            left_css,
+            right_css,
+        ),
+        (
+            CssBorderImageWidthComponent::LengthPercentage(left),
+            CssBorderImageWidthComponent::LengthPercentage(right),
+        ) => length_equal(
+            left.literal_component(),
+            right.literal_component(),
+            left_css,
+            right_css,
+        ),
+        _ => false,
+    }
+}
+
+fn outset_equal(
+    left: &CssBorderImageOutsetComponent,
+    right: &CssBorderImageOutsetComponent,
+    left_css: &str,
+    right_css: &str,
+) -> bool {
+    match (left, right) {
+        (
+            CssBorderImageOutsetComponent::Number(left),
+            CssBorderImageOutsetComponent::Number(right),
+        ) => numeric_equal(
+            left.literal_component(),
+            right.literal_component(),
+            left_css,
+            right_css,
+        ),
+        (
+            CssBorderImageOutsetComponent::Length(left),
+            CssBorderImageOutsetComponent::Length(right),
+        ) => length_equal(
+            left.literal_component(),
+            right.literal_component(),
+            left_css,
+            right_css,
+        ),
+        _ => false,
+    }
 }
 
 fn capture_slice(
@@ -165,7 +317,7 @@ fn capture_outset(
 impl CssBorderImageSlice {
     fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         charge(writer, 1)?;
-        append_sides(self.values(), writer, capture_slice)?;
+        append_sides(self.values(), writer, capture_slice, slice_equal)?;
         if self.fill() {
             charge(writer, 1)?;
             writer.append(" fill")?;
@@ -177,14 +329,14 @@ impl CssBorderImageSlice {
 impl CssBorderImageWidth {
     fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         charge(writer, 1)?;
-        append_sides(self.values(), writer, capture_width)
+        append_sides(self.values(), writer, capture_width, width_equal)
     }
 }
 
 impl CssBorderImageOutset {
     fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         charge(writer, 1)?;
-        append_sides(self.values(), writer, capture_outset)
+        append_sides(self.values(), writer, capture_outset, outset_equal)
     }
 }
 

@@ -1553,7 +1553,37 @@ payloads with a separate `fill` flag. Width keeps `Auto`,
 `Number`. Each list expands one to four authored components using CSS edge
 rules; the shorthand retains coupled member requirements and omission. Intrinsic
 initials are programmatic `0` for outset, `100%` for slice and `1` for width.
-This model does not retain original edge arity or add whole-property serialization.
+The model retains four effective edges rather than original edge arity.
+`CssBorderImage` and its slice, width, outset, and repeat components provide
+`serialize_specified()` and `serialize_specified_with_limits()`.
+
+Following [CSSOM's component selection order](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serialize-a-css-value),
+slice, width, and outset select one to four edges by exact ordinary values before
+rounding their emitted coefficients. Equivalent spellings such as `+1.0` and
+`1e0` can compress; different values that happen to round alike retain their
+edges. Units and component branches remain distinct. A unitless length zero
+in width or outset emits `0px`, preserving its length branch. Calculations
+retain their existing canonical projected-text comparison and stored graph.
+Every effective edge consumes its existing node budget, including compressed
+edges; byte limits apply to the selected output.
+
+```rust
+use surgeist_css::{CssKnownPropertyValueRef, parse_style_attribute};
+
+let report = parse_style_attribute(
+    "border-image: .12345641 .12345642 .12345643 .12345644",
+);
+assert!(report.is_clean());
+let CssKnownPropertyValueRef::BorderImage(value) = report.syntax()[0]
+    .known().expect("known border image")
+    .property_value().expect("ordinary border image")
+else { panic!("expected border-image") };
+assert_eq!(
+    value.border_image().serialize_specified()?,
+    "0.123456 0.123456 0.123456 0.123456",
+);
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
 
 These scalar aggregates compare exact numeric structure while ignoring numeric
 origins. Direct shared nonnegative Number equality retains provenance; direct
@@ -1588,10 +1618,11 @@ A bare shadow emits `[color] x y [blur [spread]] [inset]`; a list separates
 members with comma-space, `None` emits `none`, and a drop shadow emits the full
 `drop-shadow([color] x y [standard_deviation])` function. Authored omissions
 remain omitted; explicit zero and currentcolor remain present. Child providers
-preserve exact numeric magnitudes and canonical symbolic math/colors without
-contextual resolution or mutation of origins. Ordinary numbers use the numeric
-provider's canonical decimal output: exponents may expand and signed zero emits
-zero, while the input retains its authored spelling. Canonical math may reorder
+retain exact authored numeric values and origins without contextual resolution.
+Ordinary coefficients use the numeric provider's six-place canonical decimal
+output: exponents may expand and rounded zero emits zero, while the input
+retains its authored spelling. Symbolic math and colors use their existing
+canonical providers. Canonical math may reorder
 terms without changing the stored authored expression.
 
 Each shadow or drop shadow charges one aggregate input and projection node,

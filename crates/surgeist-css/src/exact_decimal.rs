@@ -68,6 +68,52 @@ impl<'a> LexicalDecimal<'a> {
             .filter(|c| *c != b'.')
             .map(|c| c - b'0')
     }
+    /// Compares checked decimal values without expanding their exponents or
+    /// rounding their coefficients. Original syntax and provenance stay intact.
+    pub(crate) fn value_eq(&self, other: &Self) -> bool {
+        if self.len == 0 || other.len == 0 {
+            return self.len == other.len;
+        }
+        if self.negative != other.negative
+            || self.len != other.len
+            || !self.digits().eq(other.digits())
+        {
+            return false;
+        }
+        if let (Some(left), Some(right)) = (self.exponent, other.exponent) {
+            return left == right;
+        }
+
+        // At least one raw exponent is near or outside i128's range. The
+        // source-length adjustments cannot move it across zero, so opposite
+        // raw signs cannot give equal normalized exponents in this fallback.
+        if self.exponent_negative != other.exponent_negative {
+            return false;
+        }
+        let mut delta = other.exponent_adjustment - self.exponent_adjustment;
+        if self.exponent_negative {
+            delta = -delta;
+        }
+        // Check E_left - E_right - delta == 0 one borrowed decimal place at a
+        // time. Adjustments and carry are bounded by retained input lengths;
+        // exponent strings themselves need no integer or buffer allocation.
+        let mut carry = -delta;
+        let mut left = self.exponent_digits.bytes().rev();
+        let mut right = other.exponent_digits.bytes().rev();
+        loop {
+            let (left, right) = (left.next(), right.next());
+            if left.is_none() && right.is_none() {
+                return carry == 0;
+            }
+            let digit = i128::from(left.map_or(0, |byte| byte - b'0'))
+                - i128::from(right.map_or(0, |byte| byte - b'0'))
+                + carry;
+            if digit.rem_euclid(10) != 0 {
+                return false;
+            }
+            carry = digit.div_euclid(10);
+        }
+    }
     pub(crate) fn in_percentage_range(&self) -> bool {
         if self.len == 0 {
             return true;
@@ -1997,12 +2043,139 @@ pub(crate) fn exact_binary32_value(text: &str) -> Option<f32> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ExactFactor, ExactRational, exact_binary32_value};
+    use super::{ExactFactor, ExactRational, LexicalDecimal, exact_binary32_value};
     use crate::{
         CssSpecifiedValueSerializationErrorKind as ErrorKind,
         CssSpecifiedValueSerializationLimits as Limits,
         specified_serialization::SpecifiedSerializationContext,
     };
+
+    #[test]
+    fn borrowed_decimal_equality_compares_exact_values_before_output_rounding() {
+        for (left, right) in [
+            ("+1.0", "1e0"),
+            ("01", "1"),
+            ("12.00", "1.2e1"),
+            ("-0.001200", "-12e-4"),
+            ("+000.000", "-0e999999999999999999999999999999999999999999"),
+            ("0e-999999999999999999999999999999999999999999", "-0"),
+        ] {
+            assert!(
+                LexicalDecimal::new(left).value_eq(&LexicalDecimal::new(right)),
+                "{left} == {right}"
+            );
+            assert!(
+                LexicalDecimal::new(right).value_eq(&LexicalDecimal::new(left)),
+                "{right} == {left}"
+            );
+        }
+        for (left, right) in [
+            (".12345641", ".12345642"),
+            ("1e-999", "2e-999"),
+            ("1e-999", "0"),
+            ("1", "-1"),
+            ("12", "21"),
+            ("1", "1e1"),
+        ] {
+            assert!(
+                !LexicalDecimal::new(left).value_eq(&LexicalDecimal::new(right)),
+                "{left} != {right}"
+            );
+            assert!(
+                !LexicalDecimal::new(right).value_eq(&LexicalDecimal::new(left)),
+                "{right} != {left}"
+            );
+        }
+    }
+
+    #[test]
+    fn borrowed_decimal_equality_handles_unbounded_exponent_carry_and_borrow() {
+        for (left, right) in [
+            (
+                "10e9999999999999999999999999999999999999999",
+                "1e10000000000000000000000000000000000000000",
+            ),
+            (
+                "0.1e10000000000000000000000000000000000000001",
+                "1e10000000000000000000000000000000000000000",
+            ),
+            (
+                "10e-10000000000000000000000000000000000000000",
+                "1e-9999999999999999999999999999999999999999",
+            ),
+            (
+                "0.1e-9999999999999999999999999999999999999999",
+                "1e-10000000000000000000000000000000000000000",
+            ),
+            (
+                "-10e-10000000000000000000000000000000000000000",
+                "-1e-9999999999999999999999999999999999999999",
+            ),
+            (
+                "1e+00010000000000000000000000000000000000000000",
+                "1e10000000000000000000000000000000000000000",
+            ),
+        ] {
+            assert!(
+                LexicalDecimal::new(left).value_eq(&LexicalDecimal::new(right)),
+                "{left} == {right}"
+            );
+            assert!(
+                LexicalDecimal::new(right).value_eq(&LexicalDecimal::new(left)),
+                "{right} == {left}"
+            );
+        }
+        for (left, right) in [
+            (
+                "1e10000000000000000000000000000000000000000",
+                "1e10000000000000000000000000000000000000001",
+            ),
+            (
+                "1e-10000000000000000000000000000000000000000",
+                "1e-10000000000000000000000000000000000000001",
+            ),
+            (
+                "1e10000000000000000000000000000000000000000",
+                "1e-10000000000000000000000000000000000000000",
+            ),
+            (
+                "10e9999999999999999999999999999999999999999",
+                "1e10000000000000000000000000000000000000001",
+            ),
+        ] {
+            assert!(
+                !LexicalDecimal::new(left).value_eq(&LexicalDecimal::new(right)),
+                "{left} != {right}"
+            );
+            assert!(
+                !LexicalDecimal::new(right).value_eq(&LexicalDecimal::new(left)),
+                "{right} != {left}"
+            );
+        }
+    }
+
+    #[test]
+    fn borrowed_decimal_equality_normalizes_across_both_i128_boundaries() {
+        for (left, right, exponent) in [
+            (
+                "10e170141183460469231731687303715884105726",
+                "0.1e170141183460469231731687303715884105728",
+                i128::MAX,
+            ),
+            (
+                "0.1e-170141183460469231731687303715884105727",
+                "10e-170141183460469231731687303715884105729",
+                i128::MIN,
+            ),
+        ] {
+            let left = LexicalDecimal::new(left);
+            let right = LexicalDecimal::new(right);
+            assert_eq!(left.exponent, Some(exponent));
+            assert_eq!(right.exponent, None);
+            assert!(left.value_eq(&right));
+            assert!(right.value_eq(&left));
+        }
+    }
 
     #[test]
     fn equality_uses_exact_decimal_value_instead_of_rounded_candidate() {

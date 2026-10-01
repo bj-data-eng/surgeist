@@ -527,3 +527,72 @@ fn rounded_near_initial_values_are_retained_in_shorthand() {
         assert_eq!(value, before);
     }
 }
+
+#[test]
+fn ordinary_length_compression_folds_unit_case_without_converting_units() {
+    for (authored, expected, bytes) in [
+        (
+            [
+                ".12345641PX",
+                ".12345641pX",
+                ".123456410px",
+                "12345641e-8px",
+            ],
+            "0.123456px",
+            10,
+        ),
+        (["1in", "96px", "1in", "96px"], "1in 96px", 8),
+        (["0PX", "0em", "+0px", "-0em"], "0px 0em", 7),
+    ] {
+        let components: Vec<_> = authored
+            .iter()
+            .map(|text| CssComponentValue::try_token(text).unwrap())
+            .collect();
+        let width = CssBorderImageWidth::try_new(
+            components
+                .iter()
+                .cloned()
+                .map(|component| {
+                    CssBorderImageWidthComponent::LengthPercentage(
+                        CssSpecifiedNonNegativeLengthPercentage::try_from_component(component)
+                            .unwrap(),
+                    )
+                })
+                .collect(),
+        )
+        .unwrap();
+        let outset = CssBorderImageOutset::try_new(
+            components
+                .into_iter()
+                .map(|component| {
+                    CssBorderImageOutsetComponent::Length(
+                        CssSpecifiedNonNegativeLength::try_from_component(component).unwrap(),
+                    )
+                })
+                .collect(),
+        )
+        .unwrap();
+        for value in [Group::Width(width), Group::Outset(outset)] {
+            let before = value.clone();
+            assert_eq!(value.serialize(Limits::new(9, 9, bytes)).unwrap(), expected);
+            for (limits, kind) in [
+                (Limits::new(8, 9, bytes), Kind::InputNodeLimit),
+                (Limits::new(9, 8, bytes), Kind::ProjectionNodeLimit),
+                (Limits::new(9, 9, bytes - 1), Kind::ByteLimit),
+            ] {
+                assert_eq!(value.serialize(limits).unwrap_err().kind(), kind);
+                assert_eq!(value, before);
+            }
+            for (component, authored) in value.literals().iter().zip(authored) {
+                assert_eq!(raw(component), authored);
+                assert_eq!(component.origin(), &CssValueOrigin::Programmatic);
+                let CssComponentValueRef::Token(CssValueTokenRef::Dimension { unit, .. }) =
+                    component.view()
+                else {
+                    panic!("length token")
+                };
+                assert!(authored.ends_with(unit));
+            }
+        }
+    }
+}
