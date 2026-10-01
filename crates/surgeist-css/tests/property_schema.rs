@@ -1549,7 +1549,7 @@ fn clip_path_wrapper_separates_authored_global_and_substitution_values() {
     };
     assert!(matches!(
         inset.value(),
-        CssClipPath::BasicShape(CssBasicShape::Inset(_))
+        CssClipPath::BasicShape(shape) if matches!(shape.shape(), CssBasicShape::Inset(_))
     ));
 
     let CssKnownPropertyValueRef::ClipPath(circle) = report.syntax()[1]
@@ -1560,7 +1560,10 @@ fn clip_path_wrapper_separates_authored_global_and_substitution_values() {
     else {
         panic!("expected circle clip-path wrapper");
     };
-    let CssClipPath::BasicShape(CssBasicShape::Circle(shape)) = circle.value() else {
+    let CssClipPath::BasicShape(clip_shape) = circle.value() else {
+        panic!("typed percentage circle");
+    };
+    let CssBasicShape::Circle(shape) = clip_shape.shape() else {
         panic!("typed percentage circle");
     };
     assert!(

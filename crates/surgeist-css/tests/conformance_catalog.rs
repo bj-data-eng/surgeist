@@ -5140,12 +5140,18 @@ fn assert_shape_position_partial(metadata: &CssFeatureMetadata) {
     let subset = metadata
         .supported_subset()
         .expect("physical position subset");
-    assert!(subset.contains("physical"), "{subset}");
+    assert!(subset.to_ascii_lowercase().contains("physical"), "{subset}");
     let remainder = metadata
         .unsupported_remainder()
         .expect("logical position remainder");
-    assert!(remainder.contains("logical"), "{remainder}");
-    assert!(remainder.contains("position"), "{remainder}");
+    assert!(
+        remainder.to_ascii_lowercase().contains("logical"),
+        "{remainder}"
+    );
+    assert!(
+        remainder.to_ascii_lowercase().contains("position"),
+        "{remainder}"
+    );
     assert_eq!(metadata.recognized_unsupported_code(), None);
     assert!(metadata.baseline_alias_targets().is_empty());
 }
@@ -5182,6 +5188,7 @@ fn every_selected_basic_shape_has_typed_public_components() {
         let CssClipPath::BasicShape(shape) = value.value() else {
             panic!("expected current {expected} shape");
         };
+        let shape = shape.shape();
         assert!(
             matches!(
                 (expected, shape),

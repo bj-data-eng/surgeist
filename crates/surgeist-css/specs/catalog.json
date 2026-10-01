@@ -262,6 +262,17 @@
         "bytes": 198225,
         "latest_published_url": "https://www.w3.org/TR/css-box-4/",
         "source_resolution": "Selected Overflow 3 section 3.2 imports Box 4 section 2.3 <visual-box> for overflow-clip-margin. Selected Position 3 section 3.2 directly refers to Box 4 section 3.2 four-side margin assignment, which establishes top/right/bottom/left repetition for inset. Only these two definitions are imported; Box 4 is not selected in full."
+      },
+      {
+        "id": "css-values-5-position-definition",
+        "kind": "w3c-dated-publication",
+        "date": "2024-11-11",
+        "url": "https://www.w3.org/TR/2024/WD-css-values-5-20241111/",
+        "sha256": "af984ef26b3954143b0f270253e3373f06b5255a5ac00aad919a4cb1b334a8ad",
+        "bytes": 661889,
+        "latest_published_url": "https://www.w3.org/TR/css-values-5/",
+        "publication_history_url": "https://www.w3.org/standards/history/css-values-5/",
+        "source_resolution": "The selected Shapes 1 publication directly imports Values 5 position grammar. Reuse the already pinned latest published Values 5 edition before the cutoff, importing only section 4.2 position parsing and serialization. This does not select Values 5 in full or broaden other position consumers to a newer grammar."
       }
     ],
     "definitions": [
@@ -983,6 +994,35 @@
         ],
         "downstream_owners": ["style", "layout"],
         "downstream_requirements": "Computed positioned offsets, writing-mode mapping, and used-value layout remain downstream. This narrow import does not select CSS Box 4 in full."
+      },
+      {
+        "id": "basic-shape-position",
+        "source_id": "css-values-5-position-definition",
+        "sections": [
+          {
+            "anchor": "position",
+            "url": "https://www.w3.org/TR/2024/WD-css-values-5-20241111/#position"
+          }
+        ],
+        "required_by": [
+          {
+            "module_id": "css-shapes-1",
+            "section_url": "https://www.w3.org/TR/2025/CRD-css-shapes-1-20250612/#supported-basic-shapes",
+            "requirement": "The basic-shape circle and ellipse productions directly import the position definition from Values 5."
+          }
+        ],
+        "authored_owner": "css",
+        "authored_requirements": [
+          "Retain the physical, logical and relative one-, two- and four-component position alternatives, their axis ordering and checked specified values according to the imported grammar. Background three-component syntax is a separate production.",
+          "Apply context-independent position parsing and specified serialization without resolving writing modes, reference boxes or percentage bases. The existing physical position subset does not establish complete imported grammar; logical and relative positions remain ordinary unfinished authored support."
+        ],
+        "downstream_owners": [
+          "style",
+          "layout",
+          "shape",
+          "render"
+        ],
+        "downstream_requirements": "Writing-mode mapping, reference-box selection, percentage resolution and used clipping geometry require downstream context. Those contextual requirements do not defer CSS-owned logical and relative authored grammar. Other Values 5 functions and position consumers remain outside this narrow import."
       }
     ]
   },

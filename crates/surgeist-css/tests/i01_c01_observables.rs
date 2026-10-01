@@ -4311,9 +4311,10 @@ fn assert_known_property_value(
             surgeist_css::CssKnownPropertyValueRef::ClipPath(value),
         ) => {
             assert_eq!(authored.value, "circle(50% at center)");
-            let surgeist_css::CssClipPath::BasicShape(surgeist_css::CssBasicShape::Circle(circle)) =
-                value.value()
-            else {
+            let surgeist_css::CssClipPath::BasicShape(clip_shape) = value.value() else {
+                panic!("captured typed circle");
+            };
+            let surgeist_css::CssBasicShape::Circle(circle) = clip_shape.shape() else {
                 panic!("captured typed circle");
             };
             let surgeist_css::CssCircleRadius::LengthPercentage(radius) = circle.radius() else {

@@ -220,12 +220,22 @@ fn checked_owners() -> Vec<CheckedOwner> {
         }),
         ("ellipse horizontal", |v| {
             nonnegative_lp(v)
-                .map(|v| CssEllipseRadii::new(v, zero_nonnegative_lp()))
+                .map(|v| {
+                    CssEllipseRadii::new(
+                        CssEllipseRadius::LengthPercentage(v),
+                        CssEllipseRadius::LengthPercentage(zero_nonnegative_lp()),
+                    )
+                })
                 .is_ok()
         }),
         ("ellipse vertical", |v| {
             nonnegative_lp(v)
-                .map(|v| CssEllipseRadii::new(zero_nonnegative_lp(), v))
+                .map(|v| {
+                    CssEllipseRadii::new(
+                        CssEllipseRadius::LengthPercentage(zero_nonnegative_lp()),
+                        CssEllipseRadius::LengthPercentage(v),
+                    )
+                })
                 .is_ok()
         }),
         ("translate values", |v| {

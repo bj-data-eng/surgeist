@@ -1247,8 +1247,9 @@ let CssKnownPropertyValueRef::ClipPath(clip) = report.syntax()[2]
 else { panic!("expected clip-path") };
 assert!(matches!(
     clip.value(),
-    CssClipPath::BasicShape(CssBasicShape::Polygon(polygon))
-        if polygon.round().is_some()
+    CssClipPath::BasicShape(shape)
+        if matches!(shape.shape(), CssBasicShape::Polygon(polygon)
+            if polygon.round().is_some())
 ));
 ```
 
@@ -1335,9 +1336,7 @@ third length is the standard deviation of the blur, distinct from box-shadow's
 blur radius. Two or three lengths form one consecutive group; color can precede
 or follow the complete group. Both filter and backdrop-filter use this grammar.
 Drop shadows cannot contain inset or spread. Filter lists preserve URL/function
-order and typed function-specific operands. The
-selected basic-shape family exposes `inset()`, `circle()`, `ellipse()`, and
-`polygon()`, including polygon `round <length>`.
+order and typed function-specific operands.
 
 All four shadow models provide `serialize_specified()` and
 `serialize_specified_with_limits(CssSpecifiedValueSerializationLimits)`.
@@ -1407,6 +1406,31 @@ let functions = CssFilterFunctionList::try_new(vec![CssFilterFunction::HueRotate
 assert_eq!(CssFilter::Functions(functions).serialize_specified().unwrap(), "hue-rotate()");
 ```
 
+### Authored clipping shapes
+
+The authored `clip-path` grammar follows
+[Masking 1 CRD 2021-08-05 §5.1](https://www.w3.org/TR/2021/CRD-css-masking-1-20210805/#the-clip-path)
+and the selected
+[Shapes 1 CRD 2025-06-12 functions](https://www.w3.org/TR/2025/CRD-css-shapes-1-20250612/#supported-basic-shapes).
+
+`CssClipPath` distinguishes `None`, `Url`, a standalone `GeometryBox`, and
+`BasicShape(CssClipPathShape)`. The checked composition stores one `CssBasicShape`
+and an optional reference box. `shape()` borrows the shape; `reference_box()`
+returns the optional box keyword. `CssBoxEdgeKeyword` supplies content-box,
+padding-box, border-box,
+margin-box, fill-box, stroke-box and view-box. Parsed shape/box pairs accept either
+order, while duplicate boxes, multiple shapes and combinations with none or URL
+are invalid. An omitted box remains distinct from explicit border-box because
+its contextual interpretation belongs to style and shape processing.
+
+The supported functions are `inset()`, `circle()`, `ellipse()` and `polygon()`.
+Inset retains one to four authored signed length-percentage offsets and optional
+checked border radii. Polygon retains optional fill rule, optional signed pure
+rounding length and a nonempty ordered point list. The fill rule must precede
+`round <length>` when both appear; percentages are not rounding lengths. Negative
+specified rounding lengths remain authored values. Used rounding geometry and
+its clamp require downstream shape context.
+
 `circle()` retains one nonnegative length-percentage radius, an omitted radius,
 radial extent keywords, and optional `at <position>`. Percentage and symbolic
 length-percentage radii are checked authored values; two radii are invalid.
@@ -1419,14 +1443,75 @@ imported [Images 3 production](https://www.w3.org/TR/2023/CRD-css-images-3-20231
 does not itself provide a single percentage branch. The source discrepancy
 remains tracked separately from this authored parser behavior.
 
+`CssEllipseShape` stores an optional `CssEllipseRadii` pair. `radii()` returns
+`None` only when the radii were omitted. Each horizontal or vertical
+`CssEllipseRadius` independently contains a checked nonnegative length-percentage
+or `CssRadialExtent`; numeric/extent mixtures and different extents are valid.
+Every lone explicit radius is invalid. The operational pair rule follows the
+same pinned WebKit Shapes consumer and resolves the imported radial-size context
+discrepancy without inserting its effective defaults into authored storage.
+
+Circle and ellipse positions retain the physical one-, two- and four-component
+subset of `CssPosition`. Shapes imports the
+[Values 5 WD 2024-11-11 position definition](https://www.w3.org/TR/2024/WD-css-values-5-20241111/#position);
+its logical and relative positions remain unfinished authored grammar. Circle,
+ellipse, basic-shape and clip-path support metadata expose this Partial boundary.
+`path()`, `shape()`, `rect()` and `xywh()` also remain unsupported. The
+[catalog](../specs/catalog.json) pins only the required position definition and
+its serialization clauses; it does not select Values 5 in full.
+
+`CssClipPath`, `CssClipPathShape`, `CssBasicShape` and each supported shape struct
+provide `serialize_specified()` and `serialize_specified_with_limits(...)`.
+Canonical output uses lowercase function names, spaces and comma-space point
+separators. A shape precedes its optional reference-box keyword regardless of
+parsed order. Authored offset and radius arities, optional fields, explicit
+extents, explicit nonzero fill and round zero remain present or omitted as
+authored. Positions use the shared horizontal-then-vertical canonical form. Numeric and math
+providers retain exact ordinary magnitudes, units and symbolic values; the
+original parsed components and their origins remain unchanged.
+
+```rust
+use surgeist_css::{
+    CssBasicShape, CssBoxEdgeKeyword, CssCircleRadius, CssCircleShape,
+    CssClipPath, CssClipPathShape, CssSpecifiedValueSerializationLimits,
+};
+
+let circle = CssCircleShape::new(CssCircleRadius::Default, None);
+let shape = CssClipPathShape::new(
+    CssBasicShape::Circle(circle), Some(CssBoxEdgeKeyword::BorderBox),
+);
+assert_eq!(shape.reference_box(), Some(CssBoxEdgeKeyword::BorderBox));
+let clip = CssClipPath::BasicShape(shape);
+let expected = "circle() border-box";
+let limits = CssSpecifiedValueSerializationLimits::new(3, 3, expected.len());
+assert_eq!(clip.serialize_specified_with_limits(limits).unwrap(), expected);
+```
+
+Each shape function charges one input and projection aggregate. Inset additionally
+charges an offset-list aggregate plus authored scalar providers; round radii use
+the existing border-radius aggregate and its authored scalar providers. Circle
+charges its explicit radius provider or extent leaf and optional existing
+position provider. Ellipse adds a pair aggregate only for explicit radii and
+charges its two independent components. Polygon adds optional fill and round
+providers, one point-list aggregate, and each point aggregate with its two
+coordinates. Composition adds one aggregate and one leaf for an explicit box;
+`CssBasicShape` and the enclosing BasicShape enum branch delegate transparently.
+Standalone none and geometry boxes cost one node in each budget; URL delegates
+its existing provider. Omitted children add no synthetic defaults. Wrappers and
+separators cost bytes only.
+
+All siblings share one cumulative input, projection and UTF-8 byte budget,
+including numeric math arenas, positions and border radii. Limit failure returns
+`CssSpecifiedValueSerializationError`, no partial CSS and no input or provenance
+mutation. `clip-path` is a noninherited terminal with intrinsic `None` initial;
+central expansion, pending substitution reentry and normalization retain
+importance, order, source occurrence and replacement provenance.
+
 These are authored syntax values. This crate does not multiply transform
 matrices, interpolate or evaluate easing, render shadows or filters, resolve
 URLs, compute shape geometry, perform layout or painting, or lower values into
-sibling crates. `path()`, `shape()`, `rect()`, `xywh()`, and clip-path
-reference-box combinations remain outside the selected shape subset.
-`transition`, `animation`, and `clip-path` retain
-their explicit Partial catalog boundaries; support for one typed function does
-not promote an aggregate or an unselected production.
+sibling crates. `transition` and `animation` retain their own explicit Partial
+catalog boundaries.
 
 ## Authored colors
 

@@ -289,6 +289,24 @@
 //! backdrop-filter wrappers return [`CssFilter`], box-shadow returns [`CssBoxShadow`], and
 //! clip-path exposes the sole [`CssClipPath`] through `value()`.
 //!
+//! Clip-path is a noninherited terminal with [`CssClipPath::None`] initial and the
+//! shared ordinary, CSS-wide, pending-reentry and normalization lifecycle. It accepts
+//! all seven [`CssBoxEdgeKeyword`] alternatives alone or with one shape in either
+//! authored order. [`CssClipPathShape`] retains optional reference-box omission;
+//! its serializer emits shape before box without resolving their geometry.
+//! [`CssEllipseRadii`] contains two independent [`CssEllipseRadius`] components,
+//! each an extent or a nonnegative length-percentage. [`CssEllipseShape::radii`]
+//! distinguishes an omitted pair. Polygon round is an optional signed pure length,
+//! following optional fill-rule; percentages and reversed modifiers are rejected.
+//!
+//! Clip-path, its composition, basic shapes and all four function models provide
+//! bounded specified serializers preserving optional omissions, shape offset/radius arities, units,
+//! exact magnitudes and symbolic math through shared cumulative child providers.
+//! Circle and ellipse positions retain the physical one/two/four-component subset;
+//! logical and relative positions and rect(), xywh(), path(), and shape() remain
+//! unfinished authored grammar. Reference-box/default resolution, clipping and
+//! painting belong to downstream owners.
+//!
 //! [`CssShadow`] requires blur before spread, and [`CssBoxShadowList`] is nonempty.
 //! Box-shadow is a noninherited terminal with [`CssBoxShadow::None`] initial;
 //! ordinary, CSS-wide, and pending values use the shared expansion and normalization
@@ -344,8 +362,8 @@
 //! else { panic!("expected clip-path") };
 //! assert!(matches!(
 //!     clip.value(),
-//!     CssClipPath::BasicShape(CssBasicShape::Polygon(polygon))
-//!         if polygon.round().is_some()
+//!     CssClipPath::BasicShape(shape)
+//!         if matches!(shape.shape(), CssBasicShape::Polygon(polygon) if polygon.round().is_some())
 //! ));
 //! ```
 //!
@@ -367,7 +385,7 @@
 //! These are authored syntax values. This crate does not multiply transform matrices,
 //! interpolate or evaluate easing, render shadows or filters, resolve URLs, compute
 //! shape geometry, perform layout or painting, or lower values into sibling crates.
-//! `path()`, `shape()`, `rect()`, `xywh()`, and clip-path reference-box combinations
+//! `path()`, `shape()`, `rect()`, `xywh()`, and logical and relative positions
 //! remain outside the selected subset. `transition`, `animation`,
 //! and `clip-path` retain explicit Partial metadata boundaries; support for a typed
 //! function does not promote an aggregate or an unselected production.
@@ -1149,6 +1167,7 @@ mod background_layer_serialization;
 mod background_serialization;
 mod border_color;
 mod border_image_serialization;
+mod clip_path_serialization;
 mod component_values;
 mod conformance;
 mod content_serialization;

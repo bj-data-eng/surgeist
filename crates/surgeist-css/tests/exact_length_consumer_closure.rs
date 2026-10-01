@@ -317,8 +317,10 @@ fn transform_z_is_pure_length_and_translate_arity_is_retained() {
 #[test]
 fn basic_shape_round_retains_radii_arity_vertical_omission_and_assignment() {
     let source = "clip-path:inset(-1e-999px 25% 2px round 1px 2% 3px)";
-    let CssClipPath::BasicShape(CssBasicShape::Inset(inset)) = value!(source, ClipPath, value)
-    else {
+    let CssClipPath::BasicShape(clip_shape) = value!(source, ClipPath, value) else {
+        panic!("inset shape")
+    };
+    let CssBasicShape::Inset(inset) = clip_shape.shape() else {
         panic!("inset shape")
     };
     assert_eq!(inset.offsets().values().len(), 3);
@@ -369,11 +371,14 @@ fn basic_shape_round_retains_radii_arity_vertical_omission_and_assignment() {
         Some("%"),
     );
 
-    let CssClipPath::BasicShape(CssBasicShape::Inset(inset)) = value!(
+    let CssClipPath::BasicShape(clip_shape) = value!(
         "clip-path:inset(0 round 1px 2px / 3% 4% 5%)",
         ClipPath,
         value
     ) else {
+        panic!("slash radius shape")
+    };
+    let CssBasicShape::Inset(inset) = clip_shape.shape() else {
         panic!("slash radius shape")
     };
     let round = inset.round().unwrap();
@@ -771,21 +776,26 @@ fn filter_and_shape_aggregate_equality_keeps_omission_and_authored_arity() {
     let circle = value!("clip-path:circle(25%)", ClipPath, value);
     assert_eq!(
         circle,
-        CssClipPath::BasicShape(CssBasicShape::Circle(CssCircleShape::new(
-            CssCircleRadius::LengthPercentage(nonnegative_length_percentage("25%")),
+        CssClipPath::BasicShape(CssClipPathShape::new(
+            CssBasicShape::Circle(CssCircleShape::new(
+                CssCircleRadius::LengthPercentage(nonnegative_length_percentage("25%")),
+                None
+            )),
             None
-        )))
+        ))
     );
     assert_ne!(
         circle,
-        CssClipPath::BasicShape(CssBasicShape::Circle(CssCircleShape::new(
-            CssCircleRadius::Default,
+        CssClipPath::BasicShape(CssClipPathShape::new(
+            CssBasicShape::Circle(CssCircleShape::new(CssCircleRadius::Default, None)),
             None
-        )))
+        ))
     );
-    let CssClipPath::BasicShape(CssBasicShape::Inset(inset)) =
-        value!("clip-path:inset(1px 2%)", ClipPath, value)
+    let CssClipPath::BasicShape(clip_shape) = value!("clip-path:inset(1px 2%)", ClipPath, value)
     else {
+        panic!("inset shape")
+    };
+    let CssBasicShape::Inset(inset) = clip_shape.shape() else {
         panic!("inset shape")
     };
     assert_eq!(
@@ -803,9 +813,12 @@ fn filter_and_shape_aggregate_equality_keeps_omission_and_authored_arity() {
         ])
         .unwrap()
     );
-    let CssClipPath::BasicShape(CssBasicShape::Polygon(polygon)) =
+    let CssClipPath::BasicShape(clip_shape) =
         value!("clip-path:polygon(1px 2%, 3px 4%, 5px 6%)", ClipPath, value)
     else {
+        panic!("polygon")
+    };
+    let CssBasicShape::Polygon(polygon) = clip_shape.shape() else {
         panic!("polygon")
     };
     assert_eq!(polygon.points().points().len(), 3);

@@ -187,6 +187,9 @@ pub surgeist_css::CssBasicShape::Circle(surgeist_css::CssCircleShape)
 pub surgeist_css::CssBasicShape::Ellipse(surgeist_css::CssEllipseShape)
 pub surgeist_css::CssBasicShape::Inset(alloc::boxed::Box<surgeist_css::CssInsetShape>)
 pub surgeist_css::CssBasicShape::Polygon(surgeist_css::CssPolygonShape)
+impl surgeist_css::CssBasicShape
+pub fn surgeist_css::CssBasicShape::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBasicShape::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssBlendMode
 pub surgeist_css::CssBlendMode::Color
 pub surgeist_css::CssBlendMode::ColorBurn
@@ -431,9 +434,13 @@ pub fn surgeist_css::CssClipEdge::serialize_specified_with_limits(&self, limits:
 impl core::cmp::PartialEq for surgeist_css::CssClipEdge
 pub fn surgeist_css::CssClipEdge::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssClipPath
-pub surgeist_css::CssClipPath::BasicShape(surgeist_css::CssBasicShape)
+pub surgeist_css::CssClipPath::BasicShape(surgeist_css::CssClipPathShape)
+pub surgeist_css::CssClipPath::GeometryBox(surgeist_css::CssBoxEdgeKeyword)
 pub surgeist_css::CssClipPath::None
 pub surgeist_css::CssClipPath::Url(surgeist_css::CssUrl)
+impl surgeist_css::CssClipPath
+pub fn surgeist_css::CssClipPath::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssClipPath::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssColorComponent
 pub surgeist_css::CssColorComponent::None
 pub surgeist_css::CssColorComponent::Number(surgeist_css::CssColorNumberLiteral)
@@ -1010,9 +1017,10 @@ pub surgeist_css::CssEasingKeyword::Linear
 pub surgeist_css::CssEasingKeyword::StepEnd
 pub surgeist_css::CssEasingKeyword::StepStart
 #[non_exhaustive] pub enum surgeist_css::CssEllipseRadius
-pub surgeist_css::CssEllipseRadius::Default
 pub surgeist_css::CssEllipseRadius::Extent(surgeist_css::CssRadialExtent)
-pub surgeist_css::CssEllipseRadius::Radii(surgeist_css::CssEllipseRadii)
+pub surgeist_css::CssEllipseRadius::LengthPercentage(surgeist_css::CssSpecifiedNonNegativeLengthPercentage)
+impl core::cmp::PartialEq for surgeist_css::CssEllipseRadius
+pub fn surgeist_css::CssEllipseRadius::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssEmptyCells
 pub surgeist_css::CssEmptyCells::Hide
 pub surgeist_css::CssEmptyCells::Show
@@ -2578,6 +2586,7 @@ pub surgeist_css::CssLonghandValueRef::BreakInside(&'a surgeist_css::CssBreakIns
 pub surgeist_css::CssLonghandValueRef::CaptionSide(&'a surgeist_css::CssCaptionSide)
 pub surgeist_css::CssLonghandValueRef::Clear(&'a surgeist_css::CssClear)
 pub surgeist_css::CssLonghandValueRef::Clip(&'a surgeist_css::CssClip)
+pub surgeist_css::CssLonghandValueRef::ClipPath(&'a surgeist_css::CssClipPath)
 pub surgeist_css::CssLonghandValueRef::Color(&'a surgeist_css::CssColor)
 pub surgeist_css::CssLonghandValueRef::ColumnCount(&'a surgeist_css::CssColumnCount)
 pub surgeist_css::CssLonghandValueRef::ColumnFill(&'a surgeist_css::CssColumnFill)
@@ -4814,6 +4823,9 @@ impl surgeist_css::CssCircleShape
 pub const fn surgeist_css::CssCircleShape::new(radius: surgeist_css::CssCircleRadius, position: core::option::Option<surgeist_css::CssPosition>) -> Self
 pub const fn surgeist_css::CssCircleShape::position(&self) -> core::option::Option<&surgeist_css::CssPosition>
 pub const fn surgeist_css::CssCircleShape::radius(&self) -> &surgeist_css::CssCircleRadius
+impl surgeist_css::CssCircleShape
+pub fn surgeist_css::CssCircleShape::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssCircleShape::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssClearPropertyValue
 impl surgeist_css::CssClearPropertyValue
 pub fn surgeist_css::CssClearPropertyValue::as_css(&self) -> &str
@@ -4822,6 +4834,14 @@ pub struct surgeist_css::CssClipPathPropertyValue
 impl surgeist_css::CssClipPathPropertyValue
 pub fn surgeist_css::CssClipPathPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssClipPathPropertyValue::value(&self) -> &surgeist_css::CssClipPath
+pub struct surgeist_css::CssClipPathShape
+impl surgeist_css::CssClipPathShape
+pub const fn surgeist_css::CssClipPathShape::new(shape: surgeist_css::CssBasicShape, reference_box: core::option::Option<surgeist_css::CssBoxEdgeKeyword>) -> Self
+pub const fn surgeist_css::CssClipPathShape::reference_box(&self) -> core::option::Option<surgeist_css::CssBoxEdgeKeyword>
+pub const fn surgeist_css::CssClipPathShape::shape(&self) -> &surgeist_css::CssBasicShape
+impl surgeist_css::CssClipPathShape
+pub fn surgeist_css::CssClipPathShape::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssClipPathShape::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssClipPropertyValue
 impl surgeist_css::CssClipPropertyValue
 pub fn surgeist_css::CssClipPropertyValue::as_css(&self) -> &str
@@ -5623,16 +5643,17 @@ pub fn surgeist_css::CssEasingList::try_new(values: alloc::vec::Vec<surgeist_css
 pub fn surgeist_css::CssEasingList::values(&self) -> &[surgeist_css::CssEasing]
 pub struct surgeist_css::CssEllipseRadii
 impl surgeist_css::CssEllipseRadii
-pub const fn surgeist_css::CssEllipseRadii::horizontal(&self) -> &surgeist_css::CssSpecifiedNonNegativeLengthPercentage
-pub const fn surgeist_css::CssEllipseRadii::new(horizontal: surgeist_css::CssSpecifiedNonNegativeLengthPercentage, vertical: surgeist_css::CssSpecifiedNonNegativeLengthPercentage) -> Self
-pub const fn surgeist_css::CssEllipseRadii::vertical(&self) -> &surgeist_css::CssSpecifiedNonNegativeLengthPercentage
-impl core::cmp::PartialEq for surgeist_css::CssEllipseRadii
-pub fn surgeist_css::CssEllipseRadii::eq(&self, other: &Self) -> bool
+pub const fn surgeist_css::CssEllipseRadii::horizontal(&self) -> &surgeist_css::CssEllipseRadius
+pub const fn surgeist_css::CssEllipseRadii::new(horizontal: surgeist_css::CssEllipseRadius, vertical: surgeist_css::CssEllipseRadius) -> Self
+pub const fn surgeist_css::CssEllipseRadii::vertical(&self) -> &surgeist_css::CssEllipseRadius
 pub struct surgeist_css::CssEllipseShape
 impl surgeist_css::CssEllipseShape
-pub const fn surgeist_css::CssEllipseShape::new(radius: surgeist_css::CssEllipseRadius, position: core::option::Option<surgeist_css::CssPosition>) -> Self
+pub const fn surgeist_css::CssEllipseShape::new(radii: core::option::Option<surgeist_css::CssEllipseRadii>, position: core::option::Option<surgeist_css::CssPosition>) -> Self
 pub const fn surgeist_css::CssEllipseShape::position(&self) -> core::option::Option<&surgeist_css::CssPosition>
-pub const fn surgeist_css::CssEllipseShape::radius(&self) -> &surgeist_css::CssEllipseRadius
+pub const fn surgeist_css::CssEllipseShape::radii(&self) -> core::option::Option<&surgeist_css::CssEllipseRadii>
+impl surgeist_css::CssEllipseShape
+pub fn surgeist_css::CssEllipseShape::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssEllipseShape::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssEmptyCellsPropertyValue
 impl surgeist_css::CssEmptyCellsPropertyValue
 pub fn surgeist_css::CssEmptyCellsPropertyValue::as_css(&self) -> &str
@@ -6550,6 +6571,9 @@ impl surgeist_css::CssInsetShape
 pub const fn surgeist_css::CssInsetShape::new(offsets: surgeist_css::CssInsetShapeOffsets, round: core::option::Option<surgeist_css::CssBorderRadiusShorthand>) -> Self
 pub const fn surgeist_css::CssInsetShape::offsets(&self) -> &surgeist_css::CssInsetShapeOffsets
 pub const fn surgeist_css::CssInsetShape::round(&self) -> core::option::Option<&surgeist_css::CssBorderRadiusShorthand>
+impl surgeist_css::CssInsetShape
+pub fn surgeist_css::CssInsetShape::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssInsetShape::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssInsetShapeOffsets
 impl surgeist_css::CssInsetShapeOffsets
 pub fn surgeist_css::CssInsetShapeOffsets::try_new(values: alloc::vec::Vec<surgeist_css::CssSpecifiedLengthPercentage>) -> core::option::Option<Self>
@@ -7458,9 +7482,12 @@ pub fn surgeist_css::CssPolygonPointList::try_new(points: alloc::vec::Vec<surgei
 pub struct surgeist_css::CssPolygonShape
 impl surgeist_css::CssPolygonShape
 pub const fn surgeist_css::CssPolygonShape::fill_rule(&self) -> core::option::Option<surgeist_css::CssPolygonFillRule>
-pub const fn surgeist_css::CssPolygonShape::new(fill_rule: core::option::Option<surgeist_css::CssPolygonFillRule>, round: core::option::Option<surgeist_css::CssSpecifiedNonNegativeLength>, points: surgeist_css::CssPolygonPointList) -> Self
+pub const fn surgeist_css::CssPolygonShape::new(fill_rule: core::option::Option<surgeist_css::CssPolygonFillRule>, round: core::option::Option<surgeist_css::CssSpecifiedLength>, points: surgeist_css::CssPolygonPointList) -> Self
 pub const fn surgeist_css::CssPolygonShape::points(&self) -> &surgeist_css::CssPolygonPointList
-pub const fn surgeist_css::CssPolygonShape::round(&self) -> core::option::Option<&surgeist_css::CssSpecifiedNonNegativeLength>
+pub const fn surgeist_css::CssPolygonShape::round(&self) -> core::option::Option<&surgeist_css::CssSpecifiedLength>
+impl surgeist_css::CssPolygonShape
+pub fn surgeist_css::CssPolygonShape::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssPolygonShape::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl core::cmp::PartialEq for surgeist_css::CssPolygonShape
 pub fn surgeist_css::CssPolygonShape::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssPosition

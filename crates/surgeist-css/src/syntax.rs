@@ -8470,40 +8470,47 @@ impl PartialEq for CssCircleRadius {
     }
 }
 
-/// A checked pair of non-negative authored ellipse radii.
-#[derive(Clone, Debug)]
+/// A checked ordered pair of independently authored ellipse radius components.
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssEllipseRadii {
-    horizontal: CssSpecifiedNonNegativeLengthPercentage,
-    vertical: CssSpecifiedNonNegativeLengthPercentage,
+    horizontal: CssEllipseRadius,
+    vertical: CssEllipseRadius,
 }
-numeric_fields_eq!(CssEllipseRadii, [horizontal, vertical], [], []);
 
 impl CssEllipseRadii {
     /// Composes two independently checked nonnegative radii in horizontal/vertical order.
-    pub const fn new(
-        horizontal: CssSpecifiedNonNegativeLengthPercentage,
-        vertical: CssSpecifiedNonNegativeLengthPercentage,
-    ) -> Self {
+    pub const fn new(horizontal: CssEllipseRadius, vertical: CssEllipseRadius) -> Self {
         Self {
             horizontal,
             vertical,
         }
     }
-    pub const fn horizontal(&self) -> &CssSpecifiedNonNegativeLengthPercentage {
+    pub const fn horizontal(&self) -> &CssEllipseRadius {
         &self.horizontal
     }
-    pub const fn vertical(&self) -> &CssSpecifiedNonNegativeLengthPercentage {
+    pub const fn vertical(&self) -> &CssEllipseRadius {
         &self.vertical
     }
 }
 
-/// The authored radius branch of an `ellipse()` value.
-#[derive(Clone, Debug, PartialEq)]
+/// One independently authored nonnegative radius or radial extent of an ellipse.
+#[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssEllipseRadius {
-    Default,
     Extent(CssRadialExtent),
-    Radii(CssEllipseRadii),
+    LengthPercentage(CssSpecifiedNonNegativeLengthPercentage),
+}
+
+impl PartialEq for CssEllipseRadius {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Extent(left), Self::Extent(right)) => left == right,
+            (Self::LengthPercentage(left), Self::LengthPercentage(right)) => {
+                left.structural_eq(right)
+            }
+            _ => false,
+        }
+    }
 }
 
 /// An authored `circle()` value.
@@ -8530,22 +8537,24 @@ impl CssCircleShape {
     }
 }
 
-/// An authored `ellipse()` value.
+/// An authored `ellipse()` with an omitted or complete ordered radius pair.
+/// Omission does not insert an effective extent or position default.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssEllipseShape {
-    radius: CssEllipseRadius,
+    radii: Option<CssEllipseRadii>,
     position: Option<CssPosition>,
 }
 
 impl CssEllipseShape {
     #[must_use]
-    pub const fn new(radius: CssEllipseRadius, position: Option<CssPosition>) -> Self {
-        Self { radius, position }
+    pub const fn new(radii: Option<CssEllipseRadii>, position: Option<CssPosition>) -> Self {
+        Self { radii, position }
     }
 
     #[must_use]
-    pub const fn radius(&self) -> &CssEllipseRadius {
-        &self.radius
+    /// Borrows the authored pair, preserving omission separately from explicit extents.
+    pub const fn radii(&self) -> Option<&CssEllipseRadii> {
+        self.radii.as_ref()
     }
 
     #[must_use]
@@ -8661,7 +8670,7 @@ impl CssPolygonPointList {
 #[derive(Clone, Debug)]
 pub struct CssPolygonShape {
     fill_rule: Option<CssPolygonFillRule>,
-    round: Option<CssSpecifiedNonNegativeLength>,
+    round: Option<CssSpecifiedLength>,
     points: CssPolygonPointList,
 }
 numeric_fields_eq!(CssPolygonShape, [], [round], [fill_rule, points]);
@@ -8670,7 +8679,7 @@ impl CssPolygonShape {
     #[must_use]
     pub const fn new(
         fill_rule: Option<CssPolygonFillRule>,
-        round: Option<CssSpecifiedNonNegativeLength>,
+        round: Option<CssSpecifiedLength>,
         points: CssPolygonPointList,
     ) -> Self {
         Self {
@@ -8686,7 +8695,7 @@ impl CssPolygonShape {
     }
 
     #[must_use]
-    pub const fn round(&self) -> Option<&CssSpecifiedNonNegativeLength> {
+    pub const fn round(&self) -> Option<&CssSpecifiedLength> {
         self.round.as_ref()
     }
 
@@ -8712,7 +8721,35 @@ pub enum CssBasicShape {
 pub enum CssClipPath {
     None,
     Url(CssUrl),
-    BasicShape(CssBasicShape),
+    GeometryBox(CssBoxEdgeKeyword),
+    BasicShape(CssClipPathShape),
+}
+
+/// An authored shape with an optional explicit clipping reference box.
+/// Box omission stays distinct from explicit border-box and requires downstream context.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssClipPathShape {
+    shape: CssBasicShape,
+    reference_box: Option<CssBoxEdgeKeyword>,
+}
+
+impl CssClipPathShape {
+    /// Composes checked inputs without inferring a default reference box.
+    #[must_use]
+    pub const fn new(shape: CssBasicShape, reference_box: Option<CssBoxEdgeKeyword>) -> Self {
+        Self {
+            shape,
+            reference_box,
+        }
+    }
+    #[must_use]
+    pub const fn shape(&self) -> &CssBasicShape {
+        &self.shape
+    }
+    #[must_use]
+    pub const fn reference_box(&self) -> Option<CssBoxEdgeKeyword> {
+        self.reference_box
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

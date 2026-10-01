@@ -8990,9 +8990,12 @@ fn parses_transform_effect_and_mask_properties_as_authored_syntax() {
         declaration_value!(".panel { backdrop-filter: none; }", BackdropFilter),
         CssFilter::None
     );
-    let CssClipPath::BasicShape(CssBasicShape::Circle(circle)) =
+    let CssClipPath::BasicShape(clip_shape) =
         declaration_value!(".panel { clip-path: circle(50% at center); }", ClipPath)
     else {
+        panic!("typed percentage circle");
+    };
+    let CssBasicShape::Circle(circle) = clip_shape.shape() else {
         panic!("typed percentage circle");
     };
     assert!(
@@ -9051,9 +9054,12 @@ fn authored_transform_filter_and_basic_shape_values_preserve_family_context() {
     };
     assert!(matches!(amount, CssFilterAmount::Percentage(_)));
 
-    let CssClipPath::BasicShape(CssBasicShape::Circle(circle)) =
+    let CssClipPath::BasicShape(clip_shape) =
         declaration_value!(".panel { clip-path: circle(50% at center); }", ClipPath)
     else {
+        panic!("expected basic shape clip-path");
+    };
+    let CssBasicShape::Circle(circle) = clip_shape.shape() else {
         panic!("expected basic shape clip-path");
     };
     assert!(

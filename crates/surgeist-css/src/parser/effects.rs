@@ -513,24 +513,29 @@ fn parse_ellipse_shape<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssEllipseShape, ParseError<'i, Error>> {
-    let radius = if input.is_exhausted() || next_is_ident(input, "at") {
-        CssEllipseRadius::Default
-    } else if let Ok(extent) = input.try_parse(parse_radial_extent) {
-        CssEllipseRadius::Extent(extent)
+    let radii = if input.is_exhausted() || next_is_ident(input, "at") {
+        None
     } else {
-        let horizontal = parse_non_negative_shape_length_percentage(
-            input,
-            numeric,
-            "ellipse horizontal radius",
-        )?;
-        let vertical =
-            parse_non_negative_shape_length_percentage(input, numeric, "ellipse vertical radius")?;
-        CssEllipseRadius::Radii(CssEllipseRadii::new(horizontal, vertical))
+        let horizontal = parse_ellipse_radius(input, numeric)?;
+        let vertical = parse_ellipse_radius(input, numeric)?;
+        Some(CssEllipseRadii::new(horizontal, vertical))
     };
     Ok(CssEllipseShape::new(
-        radius,
+        radii,
         parse_optional_shape_position(input, numeric)?,
     ))
+}
+
+fn parse_ellipse_radius<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Result<CssEllipseRadius, ParseError<'i, Error>> {
+    if let Ok(extent) = input.try_parse(parse_radial_extent) {
+        Ok(CssEllipseRadius::Extent(extent))
+    } else {
+        parse_non_negative_shape_length_percentage(input, numeric, "ellipse radius")
+            .map(CssEllipseRadius::LengthPercentage)
+    }
 }
 
 fn parse_optional_shape_position<'i, 't>(
@@ -639,22 +644,13 @@ fn parse_polygon_shape<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssPolygonShape, ParseError<'i, Error>> {
-    let mut fill_rule = None;
-    let mut round = None;
-    loop {
-        if fill_rule.is_none()
-            && let Ok(value) = input.try_parse(parse_polygon_fill_rule)
-        {
-            fill_rule = Some(value);
-            continue;
-        }
-        if round.is_none() && next_is_ident(input, "round") {
-            input.expect_ident_matching("round")?;
-            round = Some(parse_nonnegative_length(input, numeric, "polygon round")?);
-            continue;
-        }
-        break;
-    }
+    let fill_rule = input.try_parse(parse_polygon_fill_rule).ok();
+    let round = if next_is_ident(input, "round") {
+        input.expect_ident_matching("round")?;
+        Some(parse_length(input, numeric, "polygon round")?)
+    } else {
+        None
+    };
 
     if fill_rule.is_some() || round.is_some() {
         input.expect_comma()?;
@@ -888,6 +884,41 @@ pub(super) fn parse_clip_path<'i, 't>(
     if let Ok(url) = input.try_parse(|input| parse_url(input, numeric)) {
         return Ok(CssClipPath::Url(url));
     }
+    let mut reference_box = input.try_parse(parse_geometry_box).ok();
+    if input.is_exhausted() {
+        return reference_box
+            .map(CssClipPath::GeometryBox)
+            .ok_or_else(|| unsupported_value(input, None, "missing clip-path shape or box"));
+    }
+    let shape = parse_clip_path_shape(input, numeric)?;
+    if reference_box.is_none() && !input.is_exhausted() {
+        reference_box = Some(parse_geometry_box(input)?);
+    }
+    input.expect_exhausted().map_err(basic)?;
+    Ok(CssClipPath::BasicShape(CssClipPathShape::new(
+        shape,
+        reference_box,
+    )))
+}
+
+fn parse_geometry_box<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> Result<CssBoxEdgeKeyword, ParseError<'i, Error>> {
+    let location = input.current_source_location();
+    let ident = input.expect_ident_cloned().map_err(basic)?;
+    CssBoxEdgeKeyword::from_keyword(ident.as_ref()).ok_or_else(|| {
+        unsupported_value_at(
+            location,
+            None,
+            unsupported_keyword_reason("clip-path geometry box", ident.as_ref()),
+        )
+    })
+}
+
+fn parse_clip_path_shape<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Result<CssBasicShape, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let name = match input.next().map_err(basic)? {
         Token::Function(name) => name.clone(),
@@ -925,7 +956,7 @@ pub(super) fn parse_clip_path<'i, 't>(
                 "basic-shape function has trailing arguments",
             ));
         }
-        Ok(CssClipPath::BasicShape(shape))
+        Ok(shape)
     })
 }
 

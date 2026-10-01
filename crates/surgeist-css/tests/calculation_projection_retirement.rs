@@ -18,7 +18,7 @@ fn parsed_shape(shape: &str) -> CssBasicShape {
     let CssClipPath::BasicShape(shape) = value.value() else {
         panic!("typed basic shape: {shape}");
     };
-    shape.clone()
+    shape.shape().clone()
 }
 
 #[test]
@@ -47,8 +47,8 @@ fn calculated_ellipse_keeps_typed_shape() {
         panic!("ellipse");
     };
     assert!(
-        matches!(ellipse.radius(), surgeist_css::CssEllipseRadius::Radii(radii)
-        if radii.horizontal().calculation().is_some())
+        matches!(ellipse.radii().unwrap().horizontal(), CssEllipseRadius::LengthPercentage(radius)
+        if radius.calculation().is_some())
     );
 }
 

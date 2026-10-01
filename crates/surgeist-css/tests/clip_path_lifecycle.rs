@@ -263,13 +263,16 @@ fn clip_path_is_noninherited_with_an_intrinsic_none_initial() {
     let CssInitialValueRef::Value(initial_value) = initial.view() else {
         panic!("intrinsic ordinary initial")
     };
+    assert!(matches!(
+        initial_value.view(),
+        CssLonghandValueRef::ClipPath(CssClipPath::None)
+    ));
     let none = declaration("none", CssImportance::Normal);
     assert_eq!(clip_value(&none), &CssClipPath::None);
     let values = terminals(&none);
     let [value] = values.items() else {
         panic!("one none terminal")
     };
-    // No not-yet-existing borrowed variant is needed to compare the proven None.
     assert_eq!(initial_value, value.ordinary_value().unwrap());
 }
 
@@ -284,7 +287,18 @@ fn parsed_and_checked_ordinary_values_expand_with_their_occurrence_and_importanc
             "ellipse() fill-box",
         ] {
             let parsed = declaration(text, importance);
-            let components = parse_component_values(text).unwrap();
+            let components = if matches!(text, "none" | "border-box") {
+                CssComponentValues::try_new(vec![CssComponentValue::try_token(text).unwrap()])
+                    .unwrap()
+            } else {
+                parse_component_values(text).unwrap()
+            };
+            if matches!(text, "none" | "border-box") {
+                assert_eq!(
+                    components.items()[0].origin(),
+                    &CssValueOrigin::Programmatic
+                );
+            }
             let checked = parse_property_value(
                 CssPropertyNameRef::Known(CssKnownProperty::ClipPath),
                 components.clone(),
@@ -308,6 +322,11 @@ fn parsed_and_checked_ordinary_values_expand_with_their_occurrence_and_importanc
                     value.ordinary_value().unwrap().property().known_property(),
                     CssKnownProperty::ClipPath
                 );
+                let CssLonghandValueRef::ClipPath(actual) = value.ordinary_value().unwrap().view()
+                else {
+                    panic!("typed clip-path terminal")
+                };
+                assert_eq!(actual, clip_value(source));
                 assert!(value.source().same_occurrence(source));
                 assert_eq!(value.source().importance(), importance);
                 assert_eq!(value.source().value_components(), source.value_components());
@@ -406,10 +425,13 @@ fn substitution_reentry_rejects_invalid_or_residual_values_and_remains_reusable(
                         CssContributionValueRef::Global(CssGlobalKeyword::Inherit)
                     );
                 } else {
-                    assert!(matches!(
-                        value.value(),
-                        CssContributionValueRef::Ordinary(_)
-                    ));
+                    let CssLonghandValueRef::ClipPath(actual) =
+                        value.ordinary_value().unwrap().view()
+                    else {
+                        panic!("typed replacement")
+                    };
+                    let expected = declaration(valid, CssImportance::Normal);
+                    assert_eq!(actual, clip_value(&expected));
                 }
             }
         }

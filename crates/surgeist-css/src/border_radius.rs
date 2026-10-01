@@ -1,5 +1,6 @@
 //! Exact authored corner radii before box geometry resolution.
 
+use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{
     CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedValueSerializationError,
@@ -193,26 +194,31 @@ impl CssBorderRadiusShorthand {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String> {
-        serialize(limits, |context, output| {
-            context.charge_input(1)?;
-            context.charge_projection(1)?;
-            for (index, value) in self.horizontal.iter().enumerate() {
+        let mut writer = SpecifiedRuleWriter::new(limits);
+        self.append_specified(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    /// Shares the owning shape's cumulative budget without changing authored radii.
+    pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        writer.context.charge_input(1)?;
+        writer.context.charge_projection(1)?;
+        for (index, value) in self.horizontal.iter().enumerate() {
+            if index > 0 {
+                writer.append(" ")?;
+            }
+            append_scalar(value, &mut writer.context, &mut writer.css)?;
+        }
+        if let Some(vertical) = &self.authored_vertical {
+            writer.append(" / ")?;
+            for (index, value) in vertical.iter().enumerate() {
                 if index > 0 {
-                    context.append(output, " ")?;
+                    writer.append(" ")?;
                 }
-                append_scalar(value, context, output)?;
+                append_scalar(value, &mut writer.context, &mut writer.css)?;
             }
-            if let Some(vertical) = &self.authored_vertical {
-                context.append(output, " / ")?;
-                for (index, value) in vertical.iter().enumerate() {
-                    if index > 0 {
-                        context.append(output, " ")?;
-                    }
-                    append_scalar(value, context, output)?;
-                }
-            }
-            Ok(())
-        })
+        }
+        Ok(())
     }
 }
 

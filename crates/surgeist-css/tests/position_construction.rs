@@ -204,7 +204,7 @@ fn mask_and_shape_consumers_accept_the_generic_position_without_reinterpretation
     let circle = CssCircleShape::new(CssCircleRadius::Default, Some(position.clone()));
     assert!(matches!(circle.position().unwrap().horizontal(), H::Right));
     assert!(matches!(circle.position().unwrap().vertical(), V::Bottom));
-    let ellipse = CssEllipseShape::new(CssEllipseRadius::Default, Some(position.clone()));
+    let ellipse = CssEllipseShape::new(None, Some(position.clone()));
     assert!(matches!(ellipse.position().unwrap().horizontal(), H::Right));
     assert!(matches!(ellipse.position().unwrap().vertical(), V::Bottom));
 
