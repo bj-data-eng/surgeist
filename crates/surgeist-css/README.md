@@ -30,6 +30,15 @@ contribution with `none` initial. Bounded specified serializers on all four
 shadow models preserve authored omissions, explicit zero and currentcolor,
 list order, exact numeric literals, and symbolic math and colors.
 
+`CssFilter` retains `none` or an ordered nonempty function/URL list. Both `filter`
+and the named `backdrop-filter` exception are noninherited terminals with `none`
+initials. `CssFilterHueRotate` preserves an omitted angle separately from its
+effective `0deg`, unitless zero, and explicit angles. Bounded specified serializers
+on the value, list, and function compose shared numeric, color, URL and shadow
+providers under one cumulative budget without clamping amounts or resolving
+symbolic values. The backdrop source selects only the named authored property,
+not the complete Filter Effects 2 module or its execution behavior.
+
 ## Start
 
 ```rust

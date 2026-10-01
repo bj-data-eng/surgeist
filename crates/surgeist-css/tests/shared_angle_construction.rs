@@ -81,7 +81,7 @@ fn parsed_context_angles(text: &str) -> Vec<CssAngleValue> {
                     let [CssFilterFunction::HueRotate(angle)] = functions.functions() else {
                         panic!("one hue rotation")
                     };
-                    angle.clone()
+                    angle.angle().clone()
                 }
                 CssKnownPropertyValueRef::BackdropFilter(wrapper) => {
                     let CssFilter::Functions(functions) = wrapper.value() else {
@@ -90,7 +90,7 @@ fn parsed_context_angles(text: &str) -> Vec<CssAngleValue> {
                     let [CssFilterFunction::HueRotate(angle)] = functions.functions() else {
                         panic!("one backdrop hue rotation")
                     };
-                    angle.clone()
+                    angle.angle().clone()
                 }
                 CssKnownPropertyValueRef::ImageOrientation(wrapper) => {
                     let CssImageOrientation::Flip(Some(angle)) = wrapper.orientation() else {
@@ -232,7 +232,7 @@ fn shared_angle_constructs_transform_axis_and_skew_roles_without_omission_loss()
 fn shared_angle_constructs_filter_gradient_and_orientation_outer_contexts() {
     let shared = angle(-0.25, CssAngleUnit::Turns);
     assert!(
-        matches!(CssFilterFunction::HueRotate(shared.clone()), CssFilterFunction::HueRotate(CssAngleValue::Literal(value)) if value.value() == -0.25 && value.unit() == CssAngleUnit::Turns)
+        matches!(CssFilterFunction::HueRotate(CssFilterHueRotate::new(shared.clone())), CssFilterFunction::HueRotate(value) if matches!(value.angle(), CssAngleValue::Literal(angle) if angle.value() == -0.25 && angle.unit() == CssAngleUnit::Turns))
     );
     let linear = gradient(shared.clone());
     let CssGradient::Linear(linear) = linear else {
@@ -285,8 +285,8 @@ fn shared_angle_math_keeps_root_origin_and_existing_origin_sensitive_equality() 
         "shared_angle_math_keeps_root_origin_and_existing_origin_sensitive_equality: direct equality contract"
     );
     assert!(
-        (CssFilterFunction::HueRotate(first.clone()))
-            != (CssFilterFunction::HueRotate(second.clone())),
+        (CssFilterFunction::HueRotate(CssFilterHueRotate::new(first.clone())))
+            != (CssFilterFunction::HueRotate(CssFilterHueRotate::new(second.clone()))),
         "shared_angle_math_keeps_root_origin_and_existing_origin_sensitive_equality: direct equality contract"
     );
     assert!(

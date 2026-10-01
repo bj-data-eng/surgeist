@@ -1069,6 +1069,9 @@ pub surgeist_css::CssFeatureKind::Value
 #[non_exhaustive] pub enum surgeist_css::CssFilter
 pub surgeist_css::CssFilter::Functions(surgeist_css::CssFilterFunctionList)
 pub surgeist_css::CssFilter::None
+impl surgeist_css::CssFilter
+pub fn surgeist_css::CssFilter::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFilter::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssFilterAmount
 pub surgeist_css::CssFilterAmount::Default
 pub surgeist_css::CssFilterAmount::Number(surgeist_css::CssSpecifiedNonNegativeNumber)
@@ -1081,12 +1084,15 @@ pub surgeist_css::CssFilterFunction::Brightness(surgeist_css::CssFilterAmount)
 pub surgeist_css::CssFilterFunction::Contrast(surgeist_css::CssFilterAmount)
 pub surgeist_css::CssFilterFunction::DropShadow(surgeist_css::CssDropShadow)
 pub surgeist_css::CssFilterFunction::Grayscale(surgeist_css::CssFilterAmount)
-pub surgeist_css::CssFilterFunction::HueRotate(surgeist_css::CssAngleValue)
+pub surgeist_css::CssFilterFunction::HueRotate(surgeist_css::CssFilterHueRotate)
 pub surgeist_css::CssFilterFunction::Invert(surgeist_css::CssFilterAmount)
 pub surgeist_css::CssFilterFunction::Opacity(surgeist_css::CssFilterAmount)
 pub surgeist_css::CssFilterFunction::Saturate(surgeist_css::CssFilterAmount)
 pub surgeist_css::CssFilterFunction::Sepia(surgeist_css::CssFilterAmount)
 pub surgeist_css::CssFilterFunction::Url(surgeist_css::CssUrl)
+impl surgeist_css::CssFilterFunction
+pub fn surgeist_css::CssFilterFunction::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFilterFunction::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssFlexBasisRef<'a>
 pub surgeist_css::CssFlexBasisRef::CalcSize(&'a surgeist_css::CssCalcSize)
 pub surgeist_css::CssFlexBasisRef::Content
@@ -2514,6 +2520,7 @@ pub surgeist_css::CssLonghandValueRef::AlignContent(&'a surgeist_css::CssAlignCo
 pub surgeist_css::CssLonghandValueRef::AlignItems(&'a surgeist_css::CssAlignItemsValue)
 pub surgeist_css::CssLonghandValueRef::AlignSelf(&'a surgeist_css::CssAlignSelfValue)
 pub surgeist_css::CssLonghandValueRef::AspectRatio(&'a surgeist_css::CssAspectRatioValue)
+pub surgeist_css::CssLonghandValueRef::BackdropFilter(&'a surgeist_css::CssFilter)
 pub surgeist_css::CssLonghandValueRef::BackgroundAttachment(&'a surgeist_css::CssBackgroundAttachmentList)
 pub surgeist_css::CssLonghandValueRef::BackgroundClip(&'a surgeist_css::CssBackgroundBoxList)
 pub surgeist_css::CssLonghandValueRef::BackgroundColor(&'a surgeist_css::CssColor)
@@ -2594,6 +2601,7 @@ pub surgeist_css::CssLonghandValueRef::CounterSet(&'a surgeist_css::CssCounterCh
 pub surgeist_css::CssLonghandValueRef::Direction(&'a surgeist_css::CssDirection)
 pub surgeist_css::CssLonghandValueRef::Display(&'a surgeist_css::CssDisplayValue)
 pub surgeist_css::CssLonghandValueRef::EmptyCells(&'a surgeist_css::CssEmptyCells)
+pub surgeist_css::CssLonghandValueRef::Filter(&'a surgeist_css::CssFilter)
 pub surgeist_css::CssLonghandValueRef::FlexBasis(&'a surgeist_css::CssFlexBasisValue)
 pub surgeist_css::CssLonghandValueRef::FlexDirection(&'a surgeist_css::CssFlexDirection)
 pub surgeist_css::CssLonghandValueRef::FlexGrow(&'a surgeist_css::CssSpecifiedNonNegativeNumber)
@@ -5695,6 +5703,15 @@ pub struct surgeist_css::CssFilterFunctionList
 impl surgeist_css::CssFilterFunctionList
 pub fn surgeist_css::CssFilterFunctionList::functions(&self) -> &[surgeist_css::CssFilterFunction]
 pub fn surgeist_css::CssFilterFunctionList::try_new(functions: alloc::vec::Vec<surgeist_css::CssFilterFunction>) -> core::option::Option<Self>
+impl surgeist_css::CssFilterFunctionList
+pub fn surgeist_css::CssFilterFunctionList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFilterFunctionList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssFilterHueRotate
+impl surgeist_css::CssFilterHueRotate
+pub const fn surgeist_css::CssFilterHueRotate::angle(&self) -> &surgeist_css::CssAngleValue
+pub const fn surgeist_css::CssFilterHueRotate::authored_angle(&self) -> core::option::Option<&surgeist_css::CssAngleValue>
+pub const fn surgeist_css::CssFilterHueRotate::new(angle: surgeist_css::CssAngleValue) -> Self
+pub fn surgeist_css::CssFilterHueRotate::omitted() -> Self
 pub struct surgeist_css::CssFilterPropertyValue
 impl surgeist_css::CssFilterPropertyValue
 pub fn surgeist_css::CssFilterPropertyValue::as_css(&self) -> &str

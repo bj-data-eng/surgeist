@@ -215,6 +215,48 @@ pub(crate) fn serialize_keyword_sequence(
     Ok(output)
 }
 
+impl crate::CssAngleValue {
+    /// Shared authored angle emission; outer syntax owns omission and aggregate charges.
+    pub(crate) fn append_specified(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> Result<()> {
+        match self {
+            Self::Calculation(value) => {
+                crate::numeric::project_calculation_specified_into(
+                    crate::numeric::SpecifiedCalculationRef::Angle(value),
+                    context,
+                    output,
+                )?;
+                Ok(())
+            }
+            Self::Zero => {
+                context.charge_input(1)?;
+                context.charge_projection(1)?;
+                context.append(output, "0")
+            }
+            Self::Literal(value) => {
+                context.charge_input(1)?;
+                context.charge_projection(1)?;
+                if context.output_suppressed() {
+                    return Ok(());
+                }
+                context.append(output, &crate::syntax::format_css_number(value.value()))?;
+                context.append(
+                    output,
+                    match value.unit() {
+                        crate::CssAngleUnit::Degrees => "deg",
+                        crate::CssAngleUnit::Gradians => "grad",
+                        crate::CssAngleUnit::Radians => "rad",
+                        crate::CssAngleUnit::Turns => "turn",
+                    },
+                )
+            }
+        }
+    }
+}
+
 impl crate::CssOverflowWrap {
     /// Serializes the specified overflow wrapping keyword before layout resolution.
     pub fn serialize_specified(&self) -> Result<String> {

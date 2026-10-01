@@ -8304,6 +8304,51 @@ impl CssFilterBlur {
     }
 }
 
+/// A specified hue rotation, retaining omission separately from its 0deg default.
+///
+/// [`Self::angle`] borrows the effective specified angle; [`Self::authored_angle`]
+/// borrows only an explicitly authored angle. Literal units, unitless zero, and
+/// calculation provenance keep the shared [`CssAngleValue`] contract.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssFilterHueRotate {
+    angle: CssAngleValue,
+    omitted: bool,
+}
+
+impl CssFilterHueRotate {
+    /// Retains an explicitly authored checked angle without normalizing it.
+    pub const fn new(angle: CssAngleValue) -> Self {
+        Self {
+            angle,
+            omitted: false,
+        }
+    }
+
+    /// An omitted angle has the effective specified value 0deg.
+    pub fn omitted() -> Self {
+        Self {
+            angle: CssAngleValue::Literal(
+                CssAngleLiteral::try_new(0.0, CssAngleUnit::Degrees).expect("finite zero degrees"),
+            ),
+            omitted: true,
+        }
+    }
+
+    /// Borrows the effective specified angle, including an omitted angle's 0deg.
+    pub const fn angle(&self) -> &CssAngleValue {
+        &self.angle
+    }
+
+    /// Borrows only an explicitly authored angle.
+    pub const fn authored_angle(&self) -> Option<&CssAngleValue> {
+        if self.omitted {
+            None
+        } else {
+            Some(&self.angle)
+        }
+    }
+}
+
 /// An authored filter `drop-shadow()` with optional nonnegative standard deviation.
 /// Unlike a box shadow, it has no inset or spread component.
 #[derive(Clone, Debug)]
@@ -8359,7 +8404,7 @@ pub enum CssFilterFunction {
     Contrast(CssFilterAmount),
     DropShadow(CssDropShadow),
     Grayscale(CssFilterAmount),
-    HueRotate(CssAngleValue),
+    HueRotate(CssFilterHueRotate),
     Invert(CssFilterAmount),
     Opacity(CssFilterAmount),
     Saturate(CssFilterAmount),

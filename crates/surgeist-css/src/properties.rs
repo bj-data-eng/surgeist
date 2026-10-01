@@ -338,8 +338,8 @@ macro_rules! property_schema {
             Translate, "translate", [], "baseline.property.translate", crate::CssTranslate, CssTranslatePropertyValue, value, parse_translate, { parse_translate($input, $numeric)? };
             Rotate, "rotate", [], "baseline.property.rotate", crate::CssRotate, CssRotatePropertyValue, value, parse_rotate, { parse_rotate($input)? };
             Scale, "scale", [], "baseline.property.scale", crate::CssScale, CssScalePropertyValue, value, parse_scale, { parse_scale($input, $numeric)? };
-            Filter, "filter", [], "baseline.property.filter", crate::CssFilter, CssFilterPropertyValue, value, parse_filter, { parse_filter($input, $numeric)? };
-            BackdropFilter, "backdrop-filter", [], "baseline.property.backdrop-filter", crate::CssFilter, CssBackdropFilterPropertyValue, value, parse_filter, { parse_filter($input, $numeric)? };
+            Filter, "filter", [], "baseline.property.filter", crate::CssFilter, CssFilterPropertyValue, value, parse_filter, { parse_filter($input, $numeric)? }, expansion = longhand { value: CssFilter, accessor: value, inherited: false, initial_kind: value, initial: CssFilter::None };
+            BackdropFilter, "backdrop-filter", [], "baseline.property.backdrop-filter", crate::CssFilter, CssBackdropFilterPropertyValue, value, parse_filter, { parse_filter($input, $numeric)? }, expansion = longhand { value: CssFilter, accessor: value, inherited: false, initial_kind: value, initial: CssFilter::None };
             ClipPath, "clip-path", [], "baseline.property.clip-path", crate::CssClipPath, CssClipPathPropertyValue, value, parse_clip_path, { parse_clip_path($input, $numeric)? };
             BackgroundBlendMode, "background-blend-mode", [], "official.property.background-blend-mode", crate::CssBlendModeList, CssBackgroundBlendModePropertyValue, modes, parse_blend_mode_list, { parse_blend_mode_list($input)? };
             Isolation, "isolation", [], "official.property.isolation", crate::CssIsolation, CssIsolationPropertyValue, isolation, parse_isolation, { parse_isolation($input)? };

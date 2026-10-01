@@ -2675,18 +2675,44 @@
         ]
       },
       "authored_scope": "named-property-exception",
+      "property_source": {
+        "id": "X-BACKDROP-FILTER",
+        "url": "https://raw.githubusercontent.com/w3c/csswg-drafts/034f50a78495b619478342d71117cd7ca7e76de7/filter-effects-2/Overview.bs",
+        "revision": "034f50a78495b619478342d71117cd7ca7e76de7",
+        "sha256": "4e5ad82b5130dcc048913e30637e3962a6184b6eab19aca6e707fa8970ea1aa6",
+        "bytes": 24288,
+        "committer_timestamp": "2026-01-23T18:50:21Z",
+        "kind": "immutable-editor-draft-source",
+        "section": "#BackdropFilterProperty",
+        "status": "Exploring Editor's Draft, drafted for discussion without Working Group consensus; no dated Filter Effects 2 publication is selected."
+      },
       "properties": [
         "backdrop-filter"
       ],
-      "grammar_basis": "The pinned parse_filter and parse_filter_function grammar and the BackdropFilter property branch. Common specified-value primitives and substitution handling follow the selected CSS foundation. This exception does not select the complete Filter Effects 2 module.",
+      "grammar_basis": "The repository snapshot remains immutable historical grammar evidence. The named backdrop-filter property's value grammar, none initial and noninheritance follow property_source section 2. Its imported filter-value-list and function grammar/defaults resolve to the already selected Filter Effects 1 WD 2018-12-18 sections 5 and 6.1; canonical order and specified serialization follow that selected Level 1 sections 5 and 6.3. Common specified-value primitives and substitution handling follow the selected CSS foundation. This exception does not select the complete Filter Effects 2 module.",
       "downstream_owners": [
         "style",
         "render"
       ],
-      "scope_note": "The former X-FILTER2-BASE identifier referred to an abbreviated historical repository revision. This catalog pins its imported grammar to a full root-repository commit and exact file content. No dated Filter Effects 2 publication is claimed."
+      "scope_note": "The former X-FILTER2-BASE identifier referred to an abbreviated historical repository revision. The full repository snapshot and all three file hashes remain historical evidence. X-BACKDROP-FILTER identifies only the named authored property definition in the immutable draft, with its moving Level 1 dependency explicitly reconciled below. The raw draft has no canonical-order row; no such row is attributed to it. Backdrop root, clipping, compositing, rendering, security and animation execution remain downstream; the complete Filter Effects 2 module is not selected."
     }
   ],
   "source_reconciliations": [
+    {
+      "id": "backdrop-filter-named-property-source",
+      "source": "https://raw.githubusercontent.com/w3c/csswg-drafts/034f50a78495b619478342d71117cd7ca7e76de7/filter-effects-2/Overview.bs",
+      "source_sha256": "4e5ad82b5130dcc048913e30637e3962a6184b6eab19aca6e707fa8970ea1aa6",
+      "controlling_sections": [
+        "#BackdropFilterProperty",
+        "https://www.w3.org/TR/2018/WD-filter-effects-1-20181218/#FilterProperty",
+        "https://www.w3.org/TR/2018/WD-filter-effects-1-20181218/#supported-filter-functions",
+        "https://www.w3.org/TR/2018/WD-filter-effects-1-20181218/#serialization-of-filter-functions"
+      ],
+      "dependency_source_sha256": "b73408da406802d4aa405c8ab1c0591732ff1403bae74f7267d53dc74b0dfb3d",
+      "conflict": "The immutable exploring draft imports filter-value-list through a moving Level 1 editor-draft reference. The historical repository exception cannot independently establish intrinsic initial or inheritance facts and rejected an omitted hue argument that selected Level 1 section 6.1 explicitly permits. The raw draft contains no canonical-order row.",
+      "decision": "Use only the immutable draft's named backdrop-filter definition: none | filter-value-list, initial none and inherited no. Resolve the imported grammar and omitted defaults through the already selected Filter Effects 1 WD 2018-12-18 sections 5 and 6.1, and use its sections 5 and 6.3 for canonical specified serialization. Preserve the original repository snapshot and hashes as historical evidence, without freezing its grammar defect or selecting all of Level 2.",
+      "justification": "The accepted plan permits importing required normative definitions without recursively expanding module selection. The draft property facts and the selected Level 1 grammar agree; the reconciliation pins the dependency instead of following its moving editor link. Defined authored grammar is distinct from draft execution algorithms and computed-value default insertion."
+    },
     {
       "id": "css-text-4-character-alignment-grammar",
       "source": "https://www.w3.org/TR/2026/WD-css-text-4-20260814/#text-align-property",

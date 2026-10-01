@@ -1,6 +1,5 @@
 //! Bounded specified serialization for checked Images 3 values.
 
-use crate::numeric::{SpecifiedCalculationRef, project_calculation_specified_into};
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::{
     CssAngleUnit, CssAngleValue, CssColorStopList, CssColorStopListItem, CssGradient,
@@ -149,33 +148,22 @@ fn append_direction(
     match direction {
         CssLinearGradientDirection::Angle(angle) => {
             if let CssAngleValue::Literal(literal) = angle {
-                charge(writer, 1)?;
                 let omitted = matches!(
                     (literal.unit(), literal.value()),
                     (CssAngleUnit::Degrees, 180.0)
                         | (CssAngleUnit::Gradians, 200.0)
                         | (CssAngleUnit::Turns, 0.5)
                 );
-                if !omitted {
-                    writer.append(&crate::syntax::format_css_number(literal.value()))?;
-                    writer.append(angle_unit(literal.unit()))?;
+                if omitted {
+                    writer.without_output(|writer| {
+                        angle.append_specified(&mut writer.context, &mut writer.css)
+                    })?;
+                } else {
+                    angle.append_specified(&mut writer.context, &mut writer.css)?;
                 }
                 Ok(!omitted)
             } else {
-                match angle {
-                    CssAngleValue::Zero => {
-                        charge(writer, 1)?;
-                        writer.append("0")?;
-                    }
-                    CssAngleValue::Calculation(calculation) => {
-                        project_calculation_specified_into(
-                            SpecifiedCalculationRef::Angle(calculation),
-                            &mut writer.context,
-                            &mut writer.css,
-                        )?;
-                    }
-                    CssAngleValue::Literal(_) => unreachable!(),
-                }
+                angle.append_specified(&mut writer.context, &mut writer.css)?;
                 Ok(true)
             }
         }
@@ -208,15 +196,6 @@ fn append_direction(
             }
             Ok(!omitted)
         }
-    }
-}
-
-fn angle_unit(unit: CssAngleUnit) -> &'static str {
-    match unit {
-        CssAngleUnit::Degrees => "deg",
-        CssAngleUnit::Gradians => "grad",
-        CssAngleUnit::Radians => "rad",
-        CssAngleUnit::Turns => "turn",
     }
 }
 

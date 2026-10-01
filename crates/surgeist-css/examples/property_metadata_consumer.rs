@@ -101,6 +101,8 @@ const LONGHANDS: &[P] = &[
     P::BackgroundAttachment,
     P::BackgroundColor,
     P::BoxShadow,
+    P::Filter,
+    P::BackdropFilter,
     P::MaskImage,
     P::Content,
     P::CounterReset,
@@ -940,6 +942,9 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
             assert_eq!(*v, CssSpecifiedLength::zero())
         }
         CssLonghandValueRef::BoxShadow(v) => assert_eq!(*v, CssBoxShadow::None),
+        CssLonghandValueRef::Filter(v) | CssLonghandValueRef::BackdropFilter(v) => {
+            assert_eq!(*v, CssFilter::None)
+        }
         CssLonghandValueRef::Opacity(v) => {
             assert!(
                 matches!(v, CssOpacityValue::Scalar(value) if value.numeric().representation() == "1")
@@ -955,7 +960,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 259);
+    assert_eq!(expected.len(), 261);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {

@@ -1188,11 +1188,13 @@ profile_source!(
     "https://www.w3.org/TR/2012/WD-fullscreen-20120703/"
 );
 
-const X_FILTER2_BASE: CssSpecificationSource = CssSpecificationSource::from_repository(
-    "X-FILTER2-BASE",
+profile_source!(
+    X_BACKDROP_FILTER,
+    "X-BACKDROP-FILTER",
     "Filter Effects",
-    "2 baseline subset",
-    "bc5394f:src/parser/effects.rs",
+    "2 named property exception",
+    CssSpecificationTier::SurgeistExtension,
+    "https://raw.githubusercontent.com/w3c/csswg-drafts/034f50a78495b619478342d71117cd7ca7e76de7/filter-effects-2/Overview.bs"
 );
 const X_DISPLAY_MODE_BASE: CssSpecificationSource = CssSpecificationSource::from_repository(
     "X-DISPLAY-MODE-BASE",
@@ -1304,7 +1306,7 @@ static SPECIFICATION_SOURCES: &[CssSpecificationSource] = &[
     X_UI4,
     X_CONTENT3,
     X_FULLSCREEN,
-    X_FILTER2_BASE,
+    X_BACKDROP_FILTER,
     X_DISPLAY_MODE_BASE,
     X_GRID_TOLERANCE_BASE,
     X_GRID3_20260121,
@@ -2251,8 +2253,6 @@ const TIMING_REMAINDER: &str =
 const BASIC_SHAPE_SUBSET: &str =
     "Typed inset(), circle(), ellipse(), and polygon() functions are supported.";
 const BASIC_SHAPE_REMAINDER: &str = "path(), shape(), rect(), and xywh() remain unsupported.";
-const BACKDROP_FILTER_SUBSET: &str = "The exact I01 filter-function-list subset preserved at bc5394f:src/parser/effects.rs is supported with typed current values.";
-const BACKDROP_FILTER_REMAINDER: &str = "Every Filter Effects 2 behavior absent from that preserved baseline subset remains unsupported.";
 const CLIP_PATH_SUBSET: &str =
     "none, URL, and typed inset(), circle(), ellipse(), and polygon() functions are supported.";
 const CLIP_PATH_REMAINDER: &str =
@@ -2580,7 +2580,7 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
             I_TRANSFORMS2
         }
         CssKnownProperty::Filter => I_FILTER1,
-        CssKnownProperty::BackdropFilter => X_FILTER2_BASE,
+        CssKnownProperty::BackdropFilter => X_BACKDROP_FILTER,
         CssKnownProperty::Clip
         | CssKnownProperty::ClipPath
         | CssKnownProperty::Mask
@@ -5644,14 +5644,12 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 624] = [
         "#propdef-filter",
         &[],
     ),
-    CssFeatureMetadata::partial_property_with_boundary(
+    CssFeatureMetadata::complete_property(
         "baseline.property.backdrop-filter",
         CssKnownProperty::BackdropFilter,
         "backdrop-filter",
-        "#propdef-backdrop-filter",
+        "#BackdropFilterProperty",
         &[],
-        BACKDROP_FILTER_SUBSET,
-        BACKDROP_FILTER_REMAINDER,
     ),
     CssFeatureMetadata::partial_property_with_boundary(
         "baseline.property.clip-path",

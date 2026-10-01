@@ -46,6 +46,8 @@ fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
                 "{} Logical 1 production",
                 vector.id
             );
+        } else if vector.canonical_name == "backdrop-filter" {
+            assert_eq!(feature.production(), "#BackdropFilterProperty");
         } else {
             assert!(
                 feature.production().contains("#propdef-"),
@@ -180,7 +182,7 @@ fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
         ("user-select", "X-UI4"),
         ("translate", "I-TRANSFORMS2"),
         ("filter", "I-FILTER1"),
-        ("backdrop-filter", "X-FILTER2-BASE"),
+        ("backdrop-filter", "X-BACKDROP-FILTER"),
         ("mask", "S-MASKING1"),
         ("transition", "I-TRANSITIONS1"),
         ("animation", "I-ANIMATIONS1"),

@@ -69,8 +69,6 @@ const TIMING_REMAINDER: &str =
 const BASIC_SHAPE_SUBSET: &str =
     "Typed inset(), circle(), ellipse(), and polygon() functions are supported.";
 const BASIC_SHAPE_REMAINDER: &str = "path(), shape(), rect(), and xywh() remain unsupported.";
-const BACKDROP_FILTER_SUBSET: &str = "The exact I01 filter-function-list subset preserved at bc5394f:src/parser/effects.rs is supported with typed current values.";
-const BACKDROP_FILTER_REMAINDER: &str = "Every Filter Effects 2 behavior absent from that preserved baseline subset remains unsupported.";
 const CLIP_PATH_SUBSET: &str =
     "none, URL, and typed inset(), circle(), ellipse(), and polygon() functions are supported.";
 const CLIP_PATH_REMAINDER: &str =
@@ -4180,15 +4178,17 @@ fn source_registry_lookups_are_exact_and_preserve_provenance_xor() {
     );
     assert_eq!(url.repository_provenance(), None);
 
-    let filter = specification_source("X-FILTER2-BASE").expect("filter baseline source");
+    let filter = specification_source("X-BACKDROP-FILTER").expect("named backdrop source");
     assert_eq!(filter.module(), "Filter Effects");
-    assert_eq!(filter.level(), "2 baseline subset");
+    assert_eq!(filter.level(), "2 named property exception");
     assert_eq!(filter.tier(), CssSpecificationTier::SurgeistExtension);
-    assert_eq!(filter.url(), None);
     assert_eq!(
-        filter.repository_provenance(),
-        Some("bc5394f:src/parser/effects.rs")
+        filter.url(),
+        Some(
+            "https://raw.githubusercontent.com/w3c/csswg-drafts/034f50a78495b619478342d71117cd7ca7e76de7/filter-effects-2/Overview.bs"
+        )
     );
+    assert_eq!(filter.repository_provenance(), None);
 
     for source in specification_sources() {
         assert_ne!(
@@ -5228,7 +5228,7 @@ fn every_selected_basic_shape_has_typed_public_components() {
 }
 
 #[test]
-fn backdrop_filter_preserves_exact_typed_baseline_subset() {
+fn backdrop_filter_preserves_typed_authored_grammar_with_the_named_source() {
     let report = parse_style_attribute("backdrop-filter: blur(2px) opacity(50%)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::BackdropFilter(value) = report.syntax()[0]
@@ -5251,14 +5251,11 @@ fn backdrop_filter_preserves_exact_typed_baseline_subset() {
         feature_metadata("baseline.property.backdrop-filter").expect("backdrop-filter metadata");
     assert_eq!(metadata.kind(), CssFeatureKind::Property);
     assert_eq!(metadata.spelling(), "backdrop-filter");
-    assert_eq!(metadata.source().id().as_str(), "X-FILTER2-BASE");
-    assert_eq!(metadata.production(), "#propdef-backdrop-filter");
-    assert_eq!(metadata.status(), CssSupportStatus::Partial);
-    assert_eq!(metadata.supported_subset(), Some(BACKDROP_FILTER_SUBSET));
-    assert_eq!(
-        metadata.unsupported_remainder(),
-        Some(BACKDROP_FILTER_REMAINDER)
-    );
+    assert_eq!(metadata.source().id().as_str(), "X-BACKDROP-FILTER");
+    assert_eq!(metadata.production(), "#BackdropFilterProperty");
+    assert_eq!(metadata.status(), CssSupportStatus::Complete);
+    assert_eq!(metadata.supported_subset(), None);
+    assert_eq!(metadata.unsupported_remainder(), None);
     assert!(metadata.baseline_alias_targets().is_empty());
 }
 

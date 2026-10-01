@@ -1359,7 +1359,53 @@ explicit default, uses its existing numeric or color provider's charges.
 Wrappers and separators cost bytes only. One cumulative context owns the entire
 call: dropping a child math arena does not refund work. Limit failures use
 `CssSpecifiedValueSerializationError` and return no partial text or input
-mutation. These are shadow serializers, not complete filter-list serializers.
+mutation.
+
+`CssFilterHueRotate::new(angle)` retains an explicit shared angle.
+`CssFilterHueRotate::omitted()` stores an effective `0deg`; `angle()` borrows that
+effective value and `authored_angle()` returns `None` only for omission. Omission,
+unitless zero and explicit `0deg` are distinct. Its equality preserves the shared
+angle's provenance-sensitive calculation equality. `CssFilterBlur` exposes the
+parallel `length()` and `authored_length()` contract, with effective omitted `0px`.
+
+`CssFilter`, `CssFilterFunctionList` and `CssFilterFunction` provide
+`serialize_specified()` and `serialize_specified_with_limits(...)`. Lists retain
+their authored order and separate complete functions with one space; `None`
+emits `none`. Omitted blur, hue and amount arguments emit empty parentheses;
+explicit defaults remain present. Drop shadows reuse their complete function
+serializer and URL branches retain their function identity, target and modifiers.
+Ordinary angle literals retain their finite precision and units; calculations
+reuse the shared numeric projection, including its existing unit projection.
+Serialization introduces no filter-specific clamping or angle normalization.
+
+One list aggregate plus every function and authored child share a cumulative
+input, projection and UTF-8 byte budget. Non-drop functions charge one aggregate;
+URL and drop branches delegate their existing aggregate providers transparently.
+Stored effective defaults are not authored children and incur no synthetic child
+charge. Literal angles and unitless zero charge one input and projection node;
+calculations delegate their existing visited-input and allocated-projection costs.
+Wrappers and separators cost bytes. Failure returns no partial CSS or mutation.
+
+Both filter properties are noninherited terminals with intrinsic `CssFilter::None`
+initials. Central expansion, pending reentry and normalization retain occurrence,
+importance and replacement provenance. The selected
+[Filter Effects 1 WD 2018-12-18](https://www.w3.org/TR/2018/WD-filter-effects-1-20181218/)
+sections 5, 6.1 and 6.3 own shared grammar, omitted defaults and specified ordering.
+`X-BACKDROP-FILTER` imports only the named property from the
+[immutable exploring draft](https://raw.githubusercontent.com/w3c/csswg-drafts/034f50a78495b619478342d71117cd7ca7e76de7/filter-effects-2/Overview.bs),
+whose moving Level 1 dependency is resolved to that selected publication.
+The raw draft has no canonical-order row and does not have Working Group consensus.
+This source refinement preserves the historical repository snapshot as evidence;
+it selects no full Level 2 module, rendering or backdrop-root algorithm.
+
+```rust
+use surgeist_css::{CssFilter, CssFilterFunction, CssFilterFunctionList, CssFilterHueRotate};
+
+let hue = CssFilterHueRotate::omitted();
+assert!(hue.authored_angle().is_none());
+let functions = CssFilterFunctionList::try_new(vec![CssFilterFunction::HueRotate(hue)]).unwrap();
+assert_eq!(CssFilter::Functions(functions).serialize_specified().unwrap(), "hue-rotate()");
+```
 
 `circle()` retains one nonnegative length-percentage radius, an omitted radius,
 radial extent keywords, and optional `at <position>`. Percentage and symbolic
@@ -1378,7 +1424,7 @@ matrices, interpolate or evaluate easing, render shadows or filters, resolve
 URLs, compute shape geometry, perform layout or painting, or lower values into
 sibling crates. `path()`, `shape()`, `rect()`, `xywh()`, and clip-path
 reference-box combinations remain outside the selected shape subset.
-`transition`, `animation`, `backdrop-filter`, and `clip-path` therefore retain
+`transition`, `animation`, and `clip-path` retain
 their explicit Partial catalog boundaries; support for one typed function does
 not promote an aggregate or an unselected production.
 

@@ -89,7 +89,7 @@ impl CssBoxShadow {
 impl CssDropShadow {
     specified_shadow_methods!();
 
-    fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+    pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         charge_aggregate(writer)?;
         writer.append("drop-shadow(")?;
         if let Some(color) = self.color() {

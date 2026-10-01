@@ -829,7 +829,15 @@ fn parse_filter_function_value<'i, 't>(
         }
         "grayscale" => parse_filter_amount(input, numeric).map(CssFilterFunction::Grayscale),
         "hue-rotate" => {
-            let angle = parse_angle_value(input, numeric, AngleParserContext::Filter)?;
+            let angle = if input.is_exhausted() {
+                CssFilterHueRotate::omitted()
+            } else {
+                CssFilterHueRotate::new(parse_angle_value(
+                    input,
+                    numeric,
+                    AngleParserContext::Filter,
+                )?)
+            };
             input.expect_exhausted().map_err(basic)?;
             Ok(CssFilterFunction::HueRotate(angle))
         }

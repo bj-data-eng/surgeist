@@ -368,9 +368,29 @@
 //! interpolate or evaluate easing, render shadows or filters, resolve URLs, compute
 //! shape geometry, perform layout or painting, or lower values into sibling crates.
 //! `path()`, `shape()`, `rect()`, `xywh()`, and clip-path reference-box combinations
-//! remain outside the selected subset. `transition`, `animation`, `backdrop-filter`,
+//! remain outside the selected subset. `transition`, `animation`,
 //! and `clip-path` retain explicit Partial metadata boundaries; support for a typed
 //! function does not promote an aggregate or an unselected production.
+//!
+//! Both filter properties are noninherited terminals with an intrinsic `none`
+//! initial. [`CssFilterHueRotate`] retains an omitted angle separately from its
+//! effective `0deg`; [`CssFilterBlur`] likewise retains omission and effective `0px`.
+//! [`CssFilter`], [`CssFilterFunctionList`] and [`CssFilterFunction`] serialize
+//! specified values under one cumulative resource budget. They retain authored
+//! order, omitted arguments, explicit defaults, exact checked amounts and symbolic
+//! children. Ordinary angle literals keep their finite precision and units;
+//! calculations reuse the existing shared projection without filter-specific
+//! normalization or clamping. The backdrop source selects only the named property
+//! in an immutable exploring draft, with its Level 1 dependency pinned to the
+//! selected 2018 publication. It does not select the complete Level 2 module.
+//!
+//! ```
+//! use surgeist_css::{CssFilter, CssFilterFunction, CssFilterFunctionList, CssFilterHueRotate};
+//! let functions = CssFilterFunctionList::try_new(vec![
+//!     CssFilterFunction::HueRotate(CssFilterHueRotate::omitted()),
+//! ]).unwrap();
+//! assert_eq!(CssFilter::Functions(functions).serialize_specified().unwrap(), "hue-rotate()");
+//! ```
 //!
 //! # Authored colors
 //!
@@ -1137,6 +1157,7 @@ mod counter_changes;
 mod counter_changes_serialization;
 mod error;
 mod expansion;
+mod filter_serialization;
 mod font_feature_values;
 mod font_palette_serialization;
 mod font_palette_values;

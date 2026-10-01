@@ -543,8 +543,8 @@ fn blur_hue_rotate_and_drop_shadow_expose_distinct_typed_payloads() {
     ));
     assert!(matches!(
         functions.functions()[1],
-        CssFilterFunction::HueRotate(CssAngleValue::Literal(value))
-            if value.value() == -0.25
+        CssFilterFunction::HueRotate(ref hue)
+            if matches!(hue.authored_angle(), Some(CssAngleValue::Literal(value)) if value.value() == -0.25)
     ));
     let CssFilterFunction::DropShadow(shadow) = &functions.functions()[2] else {
         panic!("expected typed drop-shadow");
