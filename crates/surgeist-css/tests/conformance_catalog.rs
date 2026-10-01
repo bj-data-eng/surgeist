@@ -5127,7 +5127,7 @@ fn clip_path_distinguishes_selected_and_deferred_shape_functions() {
     assert_eq!(metadata.spelling(), "<basic-shape>");
     assert_eq!(metadata.source().id().as_str(), "S-SHAPES1");
     assert_eq!(metadata.production(), "#typedef-basic-shape");
-    assert_shape_position_partial(metadata);
+    assert_shape_functions_partial(metadata);
     let subset = metadata.supported_subset().unwrap();
     for function in ["inset()", "circle()", "ellipse()", "polygon()"] {
         assert!(subset.contains(function), "supported {function}: {subset}");
@@ -5135,21 +5135,18 @@ fn clip_path_distinguishes_selected_and_deferred_shape_functions() {
     assert_missing_shape_functions(metadata);
 }
 
-fn assert_shape_position_partial(metadata: &CssFeatureMetadata) {
+fn assert_shape_functions_partial(metadata: &CssFeatureMetadata) {
     assert_eq!(metadata.status(), CssSupportStatus::Partial);
-    let subset = metadata
-        .supported_subset()
-        .expect("physical position subset");
-    assert!(subset.to_ascii_lowercase().contains("physical"), "{subset}");
+    assert!(metadata.supported_subset().is_some());
     let remainder = metadata
         .unsupported_remainder()
-        .expect("logical position remainder");
+        .expect("missing shape functions");
     assert!(
-        remainder.to_ascii_lowercase().contains("logical"),
+        !remainder.to_ascii_lowercase().contains("logical"),
         "{remainder}"
     );
     assert!(
-        remainder.to_ascii_lowercase().contains("position"),
+        !remainder.to_ascii_lowercase().contains("relative"),
         "{remainder}"
     );
     assert_eq!(metadata.recognized_unsupported_code(), None);
@@ -5218,7 +5215,7 @@ fn every_selected_basic_shape_has_typed_public_components() {
 }
 
 #[test]
-fn circle_and_ellipse_metadata_expose_the_physical_subset_and_logical_position_gap() {
+fn circle_and_ellipse_metadata_cover_the_full_imported_position_grammar() {
     for (name, production) in [
         ("circle", "#funcdef-basic-shape-circle"),
         ("ellipse", "#funcdef-basic-shape-ellipse"),
@@ -5228,7 +5225,11 @@ fn circle_and_ellipse_metadata_expose_the_physical_subset_and_logical_position_g
         assert_eq!(metadata.spelling(), format!("{name}()"));
         assert_eq!(metadata.source().id().as_str(), "S-SHAPES1");
         assert_eq!(metadata.production(), production);
-        assert_shape_position_partial(metadata);
+        assert_eq!(metadata.status(), CssSupportStatus::Complete);
+        assert_eq!(metadata.supported_subset(), None);
+        assert_eq!(metadata.unsupported_remainder(), None);
+        assert_eq!(metadata.recognized_unsupported_code(), None);
+        assert!(metadata.baseline_alias_targets().is_empty());
     }
 }
 
@@ -5276,13 +5277,13 @@ fn clip_path_selected_subset_and_remainder_are_distinct() {
         "border-box",
         "border-box circle(10px)",
         "ellipse() view-box",
+        "circle(at x-start y-end)",
+        "ellipse(at block-start inline-end)",
     ] {
         let report = parse_style_attribute(&format!("clip-path: {value}"));
         assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
     }
     for value in [
-        "circle(at x-start y-end)",
-        "ellipse(at block-start inline-end)",
         "path('M 0 0 L 1 1')",
         "shape(from 0 0, line to 1px 1px)",
         "rect(0 1px 1px 0)",
@@ -5298,7 +5299,7 @@ fn clip_path_selected_subset_and_remainder_are_distinct() {
     assert_eq!(metadata.spelling(), "clip-path");
     assert_eq!(metadata.source().id().as_str(), "S-MASKING1");
     assert_eq!(metadata.production(), "#propdef-clip-path");
-    assert_shape_position_partial(metadata);
+    assert_shape_functions_partial(metadata);
     assert_missing_shape_functions(metadata);
     let subset = metadata.supported_subset().unwrap();
     assert!(subset.contains("geometry"), "{subset}");
