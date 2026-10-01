@@ -118,11 +118,25 @@ fn exact_large_exponents_avoid_float_rounding() {
     for (authored, canonical) in [
         ("1e999px", format!("1{}px", "0".repeat(999))),
         ("-1e999%", format!("-1{}%", "0".repeat(999))),
-        ("1e-999px", format!("0.{}1px", "0".repeat(998))),
+        ("1e-999px", "0px".to_owned()),
     ] {
-        assert_eq!(
-            adjustment(authored).serialize_specified().unwrap(),
-            canonical
+        let value = adjustment(authored);
+        assert_eq!(value.serialize_specified().unwrap(), canonical);
+        let component = value
+            .length_percentage()
+            .unwrap()
+            .literal_component()
+            .unwrap();
+        assert!(
+            matches!(
+                component.view(),
+                CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
+                    if number.representation() == authored.trim_end_matches("px") && unit == "px"
+            ) || matches!(
+                component.view(),
+                CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))
+                    if number.representation() == authored.trim_end_matches('%')
+            )
         );
     }
 }

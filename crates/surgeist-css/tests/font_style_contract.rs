@@ -132,17 +132,14 @@ fn exact_lexical_bounds_and_radian_precision_retain_original_components() {
     };
     assert_eq!(number.representation(), "1.5707963267948966");
     assert_eq!(unit, "rad");
-    assert_eq!(rad.serialize_specified().unwrap(), "1.5707963267948966rad");
+    assert_eq!(rad.serialize_specified().unwrap(), "1.570796rad");
     let same_binary64 = angle("1.5707963267948965rad");
     assert_eq!(
         "1.5707963267948965".parse::<f64>().unwrap(),
         "1.5707963267948966".parse::<f64>().unwrap(),
     );
     assert_ne!(rad, same_binary64);
-    assert_eq!(
-        same_binary64.serialize_specified().unwrap(),
-        "1.5707963267948965rad"
-    );
+    assert_eq!(same_binary64.serialize_specified().unwrap(), "1.570796rad");
     let long = angle("0.0000000000000000000000000000000000000001turn");
     let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) =
         long.literal_component().unwrap().view()

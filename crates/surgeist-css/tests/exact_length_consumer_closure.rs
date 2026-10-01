@@ -909,14 +909,22 @@ fn gradient_serialization_omits_only_exact_zero_hundred_and_center_values() {
     );
     assert_eq!(
         images.images()[0].serialize_specified().unwrap(),
-        format!(
-            "linear-gradient(red 0.{}1px, blue 100.000001%)",
-            "0".repeat(998)
-        )
+        "linear-gradient(red 0px, blue 100.000001%)"
     );
     assert_eq!(
         images.images()[1].serialize_specified().unwrap(),
         "radial-gradient(at 50.000001% 50%, red, blue)"
+    );
+    let CssImageValue::Gradient(CssGradient::Linear(linear)) = &images.images()[0] else {
+        panic!("linear gradient")
+    };
+    let CssColorStopListItem::Stop(red) = &linear.stops().items()[0] else {
+        panic!("first stop")
+    };
+    literal(
+        red.position().unwrap().literal_component().unwrap(),
+        "1e-999",
+        Some("px"),
     );
     let defaults = value!(
         "background-image:linear-gradient(red -0px, blue 100%), radial-gradient(at 50% 50%, red, blue)",

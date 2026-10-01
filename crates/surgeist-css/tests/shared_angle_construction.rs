@@ -359,11 +359,18 @@ fn gradient_serializer_omits_only_existing_literal_default_directions() {
         gradient(zero_angle()).serialize_specified().unwrap(),
         "linear-gradient(0, red, blue)"
     );
+    let radians = angle(std::f32::consts::PI, CssAngleUnit::Radians);
+    let CssAngleOrZero::Angle(value) = &radians else {
+        panic!("angle direction")
+    };
     assert_eq!(
-        gradient(angle(std::f32::consts::PI, CssAngleUnit::Radians))
-            .serialize_specified()
-            .unwrap(),
-        "linear-gradient(3.1415927rad, red, blue)"
+        value.literal().unwrap().numeric().representation(),
+        "3.1415927"
+    );
+    assert_eq!(value.literal().unwrap().unit(), CssAngleUnit::Radians);
+    assert_eq!(
+        gradient(radians).serialize_specified().unwrap(),
+        "linear-gradient(3.141593rad, red, blue)"
     );
     assert_eq!(
         gradient(angle_math("calc(180deg)"))

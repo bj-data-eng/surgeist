@@ -441,6 +441,59 @@ this aggregate policy to symbolic AST branches follows the checked owner model;
 the retired raw math equality also compared origins. Equality does not evaluate
 or normalize mathematically equivalent spellings.
 
+## Canonical ordinary number output
+
+Specified-value writers round ordinary numbers to at most six fractional decimal
+places, as required by the selected
+[CSSOM component serialization rule](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serialize-a-css-component-value).
+They use nearest rounding with halfway values rounded away from zero, trim
+redundant fractional zeros and the decimal point, and emit fixed notation with
+no scientific exponent. Exact or rounded zero emits `0`, without a minus sign.
+CSSOM does not specify the decimal halfway direction; the selected policy follows
+WebKit's fixed CSS number formatter.
+
+Rounding applies after the owning writer's exact unit shift: milliseconds become
+seconds, and opacity percentages become numbers. Other ordinary writers retain
+their selected units. The shared policy covers number, percentage, length, flex
+breadth, angle, time, frequency, opacity, font weight, oblique angles and ratio
+operands, including their composed values. Each ratio operand rounds independently; serialization does not
+divide or simplify a ratio.
+
+The retained value remains exact. Construction and range checks use the original
+coefficient, so a tiny negative value cannot enter a nonnegative domain by
+rounding to zero, and a tiny nonzero number cannot enter a unitless-zero grammar.
+Source origins, units and equality also retain their authored meaning.
+`CssComponentValues::serialize()` preserves numeric token spelling; ordinary
+specified serialization deliberately produces rounded text.
+
+```rust
+use surgeist_css::{
+    CssComponentValue, CssSpecifiedNumber, CssSpecifiedValueSerializationLimits,
+};
+
+let component = CssComponentValue::try_number("0.9999996")?;
+let number = CssSpecifiedNumber::try_from_component(component.clone())?;
+assert_eq!(
+    number.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 1))?,
+    "1",
+);
+assert_eq!(number.literal_component(), Some(&component));
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+Ordinary scalars still cost one input and one projection node. Byte limits apply
+to the actual rounded output and its suffix: a carry that shortens a coefficient
+can fit a smaller budget. Extremely small ordinary values can emit zero without
+expanding their exponents. Very large output can still fail with a typed resource
+error. Failure returns no partial public CSS and leaves the authored value
+unchanged; composed writers share one cumulative budget.
+
+Actual calculation branches retain the existing mathematical projector and its
+text, precision and resource behavior. For example, `calc(1 / 3)` still emits
+`calc(0.3333333333333333)`. Six-place formatting of finite projected numbers and
+exact mathematical evaluation remain unfinished. Color, integer and media-query
+writers retain their separate domain and lexical policies.
+
 ## Authored preferred aspect ratios
 
 The selected [CSS Sizing 4 (2026-09-04)](https://www.w3.org/TR/2026/WD-css-sizing-4-20260904/#aspect-ratio)
@@ -479,8 +532,9 @@ operands, later subtraction and typed calculations remain valid and symbolic;
 no computed range evaluation occurs at this boundary.
 
 `serialize_specified()` emits canonical specified CSS: `normal` and `infinite`
-stay keywords, exact signed literal magnitudes retain their meaning, and supported
-math uses the shared length-percentage projection. For example, `+02.500EM`
+stay keywords, ordinary numbers use
+[canonical rounding](#canonical-ordinary-number-output), and supported math uses
+the shared length-percentage projection. For example, `+02.500EM`
 becomes `2.5em`, `calc(2px + 3px)` becomes `calc(5px)`, and `calc(-2px - 3%)`
 becomes `calc(-3% - 2px)`. Relative units and percentage bases remain unresolved.
 Determinate math retains a `calc()` wrapper under the shared numeric specified
@@ -1096,19 +1150,17 @@ assert_eq!(literal.serialize_specified().unwrap(), "-0.25s");
 
 Time literals, time values and durations provide `serialize_specified()` and
 `serialize_specified_with_limits()`. Ordinary output converts milliseconds
-exactly to seconds and normalizes signed zero to `0s`; the stored coefficient,
-unit and original components remain unchanged. Output expands decimal digits
-without scientific notation. Node or byte limits produce a typed error without
-returning partial CSS or mutating the value. Very large or small nonzero values
-remain valid authored values even when their expanded output exceeds a budget.
+exactly to seconds before applying
+[canonical number rounding](#canonical-ordinary-number-output). Signed or rounded
+zero emits `0s`; the stored coefficient, unit and original components remain
+unchanged. For example, `CssTimeLiteral::try_new("0.0001", CssTimeUnit::Milliseconds)`
+emits `0s` while retaining `0.0001ms`. Node or byte limits produce a typed error
+without partial CSS or input mutation.
 
-This exact authored output is a partial CSSOM scalar serializer: it does not yet
-apply CSSOM's maximum of six fractional decimal places. For example,
-`CssTimeLiteral::try_new("0.0001", CssTimeUnit::Milliseconds)` emits
-`0.0000001s`, preserving more precision than that canonical formatting rule.
-Calculation emission uses the shared simplifier, whose floating point projection
-can still round, overflow or underflow; the original checked graph remains
-retained. Exact ordinary output does not establish exact calculation output.
+Calculation emission retains the shared simplifier's existing text and floating
+point precision, overflow and underflow limits; the original checked graph
+remains retained. Canonical formatting of finite calculated numbers and exact
+calculation evaluation remain unfinished.
 
 `CssTransition::try_new` and `CssAnimation::try_new` accept the same typed
 components as their property parsers. `CssAnimationComponents` is the animation
@@ -1162,7 +1214,7 @@ use surgeist_css::{
 let frequency = CssFrequencyLiteral::try_new("1.0000000000000001", CssFrequencyUnit::Kilohertz)
     .unwrap();
 assert_eq!(frequency.numeric().representation(), "1.0000000000000001");
-assert_eq!(frequency.serialize_specified().unwrap(), "1.0000000000000001khz");
+assert_eq!(frequency.serialize_specified().unwrap(), "1khz");
 
 let resolution = CssResolutionLiteral::try_new("-0e999", CssResolutionUnit::Dppx).unwrap();
 assert_eq!(resolution.numeric().representation(), "-0e999");
@@ -1171,8 +1223,9 @@ assert!(CssResolutionLiteral::try_new("-1e-999", CssResolutionUnit::Dpi).is_err(
 
 Frequency literals and values provide bounded `serialize_specified()` and
 `serialize_specified_with_limits()` helpers. Ordinary output retains the
-selected unit with a lowercase `hz` or `khz` suffix, expands exact decimal digits
-and emits signed zero as numeric zero. A value wrapper shares the same cumulative
+selected unit with a lowercase `hz` or `khz` suffix and applies
+[canonical number rounding](#canonical-ordinary-number-output). Signed or rounded
+zero emits numeric zero. A value wrapper shares the same cumulative
 input-node, projection-node and byte budget; failures return a typed error with
 no partial CSS and leave the input unchanged. Raw equality preserves coefficient
 and unit spelling, ordinary versus math branches, and original provenance.
@@ -1180,10 +1233,11 @@ and unit spelling, ordinary versus math branches, and original provenance.
 This ordinary frequency output follows the selected WebKit behavior for
 specified values: `1kHz` emits `1khz`. The selected
 [CSSOM serialization clause](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serialize-a-css-component-value)
-leaves frequency's specified-versus-computed phase unresolved. The helper also retains more than
-six fractional places, for example `0.0000001Hz` emits `0.0000001hz`, so it does
-not yet implement complete CSSOM number formatting. Frequency math uses the
-existing shared simplifier with its floating point precision and range limits.
+leaves frequency's specified-versus-computed phase unresolved. Ordinary output
+rounds to at most six fractional places; for example, `0.0000001Hz` emits `0hz`
+while retaining its exact authored coefficient. Frequency math keeps the shared
+simplifier's existing text and floating point precision and range limits;
+canonical formatting of its finite projected numbers remains unfinished.
 
 Ordinary resolution has no specified serialization helper yet. Canonical output
 requires exact conversion to `dppx` and the CSSOM number-rounding policy;
@@ -1438,10 +1492,12 @@ filters, and linear-gradient directions use `CssAngleOrZero`, whose zero branch
 holds a checked `CssZeroLiteral`. Image orientation uses the strict angle type.
 Tiny nonzero numbers never qualify as zero. Raw scalar equality retains
 provenance; semantic aggregates compare structure while ignoring scalar origins.
-Ordinary angle serialization preserves exact coefficients and units. Calculation
-serialization retains the existing simplified projection and its implementation
-precision; it does not promise exact arithmetic. Each context retains its grammar
-and omission rules.
+Ordinary angle serialization retains the selected unit and applies
+[canonical number rounding](#canonical-ordinary-number-output) without changing
+the stored coefficient. Calculation serialization retains the existing simplified
+projection and its implementation precision; exact arithmetic and canonical
+formatting of finite projected numbers remain unfinished. Each context retains
+its grammar and omission rules.
 
 ```rust
 use surgeist_css::{
@@ -1450,11 +1506,12 @@ use surgeist_css::{
 };
 
 let literal = CssAngleLiteral::try_new("0.10000000000000000001", CssAngleUnit::Degrees)?;
+assert_eq!(literal.numeric().representation(), "0.10000000000000000001");
 let angle = CssAngleValue::from_literal(literal);
 let rotation = CssFilterFunction::HueRotate(CssFilterHueRotate::new(
     CssAngleOrZero::Angle(angle),
 ));
-assert_eq!(rotation.serialize_specified()?, "hue-rotate(0.10000000000000000001deg)");
+assert_eq!(rotation.serialize_specified()?, "hue-rotate(0.1deg)");
 
 let zero = CssZeroLiteral::try_from_component(CssComponentValue::try_number("-0e999")?)?;
 let rotation = CssFilterFunction::HueRotate(CssFilterHueRotate::new(

@@ -216,9 +216,7 @@ fn malformed_ratio_drops_only_its_declaration() {
 #[test]
 fn specified_serialization_keeps_both_components_and_canonical_auto_order() {
     let huge = format!("1{}", "0".repeat(999));
-    let tiny = format!("0.{}1", "0".repeat(998));
     let huge_expected = format!("{huge} / 1");
-    let tiny_expected = format!("{tiny} / 1");
     for (authored, expected) in [
         ("auto", "auto"),
         ("16", "16 / 1"),
@@ -228,7 +226,7 @@ fn specified_serialization_keeps_both_components_and_canonical_auto_order() {
         ("1/0", "1 / 0"),
         ("auto 1.5", "auto 1.5 / 1"),
         ("1e999", huge_expected.as_str()),
-        ("1e-999", tiny_expected.as_str()),
+        ("1e-999", "0 / 1"),
         ("0.1", "0.1 / 1"),
         ("16777217", "16777217 / 1"),
         ("calc(-1)", "calc(-1) / 1"),

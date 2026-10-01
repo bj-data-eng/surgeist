@@ -98,14 +98,8 @@ fn shared_checked_payload_accepts_all_length_categories_and_exact_nonnegative_va
     let expected = format!("1{}px", "0".repeat(999));
     assert_eq!(huge.serialize_specified().unwrap(), expected);
     assert_eq!(property("1e999px"), CssFontSize::LengthPercentage(huge));
-    assert_eq!(
-        scalar("1e-999px").serialize_specified().unwrap(),
-        format!("0.{}1px", "0".repeat(998))
-    );
-    assert_eq!(
-        scalar("1e-999%").serialize_specified().unwrap(),
-        format!("0.{}1%", "0".repeat(998))
-    );
+    assert_eq!(scalar("1e-999px").serialize_specified().unwrap(), "0px");
+    assert_eq!(scalar("1e-999%").serialize_specified().unwrap(), "0%");
     let component = scalar("1e-999px");
     let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) =
         component.literal_component().unwrap().view()
@@ -114,6 +108,12 @@ fn shared_checked_payload_accepts_all_length_categories_and_exact_nonnegative_va
     };
     assert_eq!(number.representation(), "1e-999");
     assert_eq!(unit, "px");
+    let percentage = scalar("1e-999%");
+    assert!(matches!(
+        percentage.literal_component().unwrap().view(),
+        CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))
+            if number.representation() == "1e-999"
+    ));
 }
 
 #[test]

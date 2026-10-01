@@ -62,11 +62,22 @@ fn linear_default_direction_and_endpoint_positions_follow_images3_example() {
             "linear-gradient(red, blue)"
         );
     }
+    let radians = only("linear-gradient(3.1415927rad, red, blue)");
+    let CssImageValue::Gradient(CssGradient::Linear(linear)) = &radians else {
+        panic!("linear gradient")
+    };
+    let Some(CssLinearGradientDirection::Angle(CssAngleOrZero::Angle(angle))) = linear.direction()
+    else {
+        panic!("angle direction")
+    };
     assert_eq!(
-        only("linear-gradient(3.1415927rad, red, blue)")
-            .serialize_specified()
-            .unwrap(),
-        "linear-gradient(3.1415927rad, red, blue)"
+        angle.literal().unwrap().numeric().representation(),
+        "3.1415927"
+    );
+    assert_eq!(angle.literal().unwrap().unit(), CssAngleUnit::Radians);
+    assert_eq!(
+        radians.serialize_specified().unwrap(),
+        "linear-gradient(3.141593rad, red, blue)"
     );
     assert_eq!(
         only("linear-gradient(to right top, red 10%, 30%, blue 100%)")

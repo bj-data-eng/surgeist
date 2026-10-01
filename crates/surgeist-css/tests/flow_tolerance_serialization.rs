@@ -6,9 +6,11 @@
 //! This new serializer API has no executable preimplementation RED boundary.
 
 use surgeist_css::{
-    CssFlowTolerance, CssKnownPropertyValueRef, CssLengthPercentageCalculation,
-    CssSpecifiedLengthPercentage, CssSpecifiedValueSerializationErrorKind as ErrorKind,
-    CssSpecifiedValueSerializationLimits as Limits, parse_component_values, parse_style_attribute,
+    CssComponentValueRef, CssFlowTolerance, CssFlowToleranceRef, CssKnownPropertyValueRef,
+    CssLengthPercentageCalculation, CssSpecifiedLengthPercentage,
+    CssSpecifiedValueSerializationErrorKind as ErrorKind,
+    CssSpecifiedValueSerializationLimits as Limits, CssValueTokenRef, parse_component_values,
+    parse_style_attribute,
 };
 
 fn constructed(text: &str) -> CssFlowTolerance {
@@ -90,9 +92,24 @@ fn parsed_and_constructed_tolerance_emit_independent_canonical_values() {
 fn extreme_signed_literals_preserve_exact_magnitudes_and_output_limits() {
     for (input, expected) in [
         ("-1e999px", format!("-1{}px", "0".repeat(999))),
-        ("-1e-999%", format!("-0.{}1%", "0".repeat(998))),
+        ("-1e-999%", "0%".to_owned()),
     ] {
         for value in [parsed(input), constructed(input)] {
+            let CssFlowToleranceRef::LengthPercentage(scalar) = value.as_ref() else {
+                panic!("numeric tolerance")
+            };
+            let expected_coefficient = input.trim_end_matches("px").trim_end_matches('%');
+            assert!(
+                matches!(
+                    scalar.literal_component().unwrap().view(),
+                    CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
+                        if number.representation() == expected_coefficient && unit == "px"
+                ) || matches!(
+                    scalar.literal_component().unwrap().view(),
+                    CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))
+                        if number.representation() == expected_coefficient
+                )
+            );
             assert_eq!(value.serialize_specified().unwrap(), expected);
             assert_eq!(
                 value

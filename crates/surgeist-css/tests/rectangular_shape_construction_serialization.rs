@@ -344,8 +344,7 @@ fn four_math_children_and_rounding_share_one_cumulative_provider_budget() {
 }
 
 #[test]
-fn exact_large_and_tiny_magnitudes_and_symbolic_negative_sizes_are_preserved() {
-    let tiny = format!("0.{}1px", "0".repeat(998));
+fn exact_magnitudes_retain_identity_while_ordinary_text_rounds_and_math_is_preserved() {
     let rect = CssRectShape::new(
         edge("-1e-999px"),
         edge("123456789012345678901234567890px"),
@@ -355,7 +354,7 @@ fn exact_large_and_tiny_magnitudes_and_symbolic_negative_sizes_are_preserved() {
     );
     assert_eq!(
         rect.serialize_specified().unwrap(),
-        format!("rect(-{tiny} 123456789012345678901234567890px 150% 0)")
+        "rect(0px 123456789012345678901234567890px 150% 0)"
     );
     let xywh = CssXywhShape::new(
         lp("-1e-999px"),
@@ -364,9 +363,27 @@ fn exact_large_and_tiny_magnitudes_and_symbolic_negative_sizes_are_preserved() {
         nn("123456789012345678901234567890px"),
         None,
     );
+    let before = xywh.clone();
     assert_eq!(
         xywh.serialize_specified().unwrap(),
-        format!("xywh(-{tiny} 150% {tiny} 123456789012345678901234567890px)")
+        "xywh(0px 150% 0px 123456789012345678901234567890px)"
+    );
+    assert_eq!(xywh, before);
+    assert_eq!(
+        CssComponentValues::try_new(vec![xywh.x().literal_component().unwrap().clone()])
+            .unwrap()
+            .serialize()
+            .unwrap()
+            .as_css(),
+        "-1e-999px",
+    );
+    assert_eq!(
+        CssComponentValues::try_new(vec![xywh.width().literal_component().unwrap().clone()])
+            .unwrap()
+            .serialize()
+            .unwrap()
+            .as_css(),
+        "1e-999px",
     );
     assert_eq!(
         parsed("xywh(0 0 calc(1px - 2px) calc(-1%))")

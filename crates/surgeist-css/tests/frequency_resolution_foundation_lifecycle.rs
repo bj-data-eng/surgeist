@@ -687,7 +687,7 @@ mod construction {
     }
 
     #[test]
-    fn frequency_ordinary_output_preserves_selected_units_and_full_exact_precision() {
+    fn frequency_ordinary_output_rounds_six_places_and_preserves_selected_units() {
         for (source, expected) in [
             ("1kHz", "1khz"),
             ("1000Hz", "1000hz"),
@@ -696,9 +696,9 @@ mod construction {
             ("+1.2300Hz", "1.23hz"),
             ("-0e999Hz", "0hz"),
             ("-0.000kHz", "0khz"),
-            ("1.1234567890123456789Hz", "1.1234567890123456789hz"),
-            ("0.0000001Hz", "0.0000001hz"),
-            ("1e-8Hz", "0.00000001hz"),
+            ("1.1234567890123456789Hz", "1.123457hz"),
+            ("0.0000001Hz", "0hz"),
+            ("1e-8Hz", "0hz"),
         ] {
             let literal = CssFrequencyLiteral::try_from_component(token(source)).unwrap();
             let original = literal.clone();
@@ -723,7 +723,7 @@ mod construction {
         for (number, unit, expected) in [
             ("1", CssFrequencyUnit::Kilohertz, "1khz".to_owned()),
             ("-0e999", CssFrequencyUnit::Hertz, "0hz".to_owned()),
-            ("1e-8", CssFrequencyUnit::Hertz, "0.00000001hz".to_owned()),
+            ("1e-8", CssFrequencyUnit::Hertz, "0hz".to_owned()),
             (
                 "1e40",
                 CssFrequencyUnit::Kilohertz,

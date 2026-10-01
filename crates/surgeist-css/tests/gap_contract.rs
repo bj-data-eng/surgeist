@@ -93,11 +93,21 @@ fn typed_longhands_preserve_normal_and_exact_nonnegative_numeric_values() {
             ("0", "0"),
             ("2px", "2px"),
             ("3.25%", "3.25%"),
-            ("1.0000000000000000000001px", "1.0000000000000000000001px"),
+            ("1.0000000000000000000001px", "1px"),
             ("999999999999999999999999px", "999999999999999999999999px"),
         ] {
             let direct = CssGapValue::LengthPercentage(scalar(text));
             assert_eq!(direct.serialize_specified().unwrap(), canonical, "{text}");
+            if text == "1.0000000000000000000001px" {
+                let CssGapValue::LengthPercentage(scalar) = &direct else {
+                    panic!("numeric gap")
+                };
+                assert!(matches!(
+                    scalar.literal_component().unwrap().view(),
+                    CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
+                        if number.representation() == "1.0000000000000000000001" && unit == "px"
+                ));
+            }
             for source in [parsed(name, text), checked(name, text)] {
                 let actual = extract(&source);
                 assert_eq!(actual, direct, "{name}:{text}");

@@ -1,11 +1,11 @@
 #![forbid(unsafe_code)]
 
 use surgeist_css::{
-    CssBoxSideKind, CssComponentValue, CssLengthPercentageCalculation, CssMarginPair,
-    CssMarginShorthand, CssMarginValue, CssPaddingPair, CssPaddingShorthand, CssPaddingValue,
-    CssSpecifiedLengthPercentage, CssSpecifiedNonNegativeLengthPercentage,
+    CssBoxSideKind, CssComponentValue, CssComponentValueRef, CssLengthPercentageCalculation,
+    CssMarginPair, CssMarginShorthand, CssMarginValue, CssPaddingPair, CssPaddingShorthand,
+    CssPaddingValue, CssSpecifiedLengthPercentage, CssSpecifiedNonNegativeLengthPercentage,
     CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits, CssValueOrigin,
-    parse_component_values,
+    CssValueTokenRef, parse_component_values,
 };
 
 fn component(text: &str) -> CssComponentValue {
@@ -81,8 +81,15 @@ fn signed_length_percentage_keeps_exact_extremes_and_literal_domain() {
     let huge = margin("-1e999px").serialize_specified().unwrap();
     assert_eq!(huge.len(), 1003); // Minus, 1 followed by 999 zeroes, px.
     assert!(huge.starts_with("-1") && huge.ends_with("px"));
-    let tiny = margin("-1e-999%").serialize_specified().unwrap();
-    assert!(tiny.starts_with("-0.") && tiny.ends_with("1%"));
+    let tiny = margin("-1e-999%");
+    let before = tiny.clone();
+    assert_eq!(tiny.serialize_specified().unwrap(), "0%");
+    assert!(matches!(
+        tiny.length_percentage().unwrap().literal_component().unwrap().view(),
+        CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))
+            if number.representation() == "-1e-999"
+    ));
+    assert_eq!(tiny, before);
     assert!(CssSpecifiedLengthPercentage::try_from_component(component("1")).is_err());
     assert!(CssSpecifiedLengthPercentage::try_from_component(component("1fr")).is_err());
     assert!(

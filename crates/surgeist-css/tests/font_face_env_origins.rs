@@ -4,10 +4,10 @@
 
 use surgeist_css::{
     CssAuthoredFontFaceDescriptorValue as Authored, CssComponentValue, CssComponentValueErrorKind,
-    CssComponentValueLimits, CssComponentValues, CssFontFaceDescriptorKind as Kind,
-    CssFontFaceDescriptorValue as Ordinary, CssFontFaceValueErrorKind, CssFontFaceWidth,
-    CssFontWidth, CssSerializedOrigin, CssValueOrigin, parse_component_values,
-    parse_font_face_descriptor_value,
+    CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
+    CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Ordinary,
+    CssFontFaceValueErrorKind, CssFontFaceWidth, CssFontWidth, CssSerializedOrigin, CssValueOrigin,
+    CssValueTokenRef, parse_component_values, parse_font_face_descriptor_value,
 };
 
 fn pending(kind: Kind) -> surgeist_css::CssPendingFontFaceDescriptorValue {
@@ -88,10 +88,12 @@ fn mixed_width_replacement_keeps_exact_numeric_origin_and_pending_components_kee
         panic!("percentage retains original parsed token")
     };
     assert_eq!(origin.source().as_str(), "62.500000000000000000001% ");
-    assert_eq!(
-        start.serialize_specified().unwrap(),
-        "62.500000000000000000001%"
-    );
+    assert!(matches!(
+        start.literal_component().unwrap().view(),
+        CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))
+            if number.representation() == "62.500000000000000000001"
+    ));
+    assert_eq!(start.serialize_specified().unwrap(), "62.5%");
 
     let mut mixed = parse_component_values("env(selection) ")
         .unwrap()
@@ -127,10 +129,12 @@ fn mixed_width_replacement_keeps_exact_numeric_origin_and_pending_components_kee
         panic!("programmatic percentage")
     };
     assert_eq!(start.origin(), &CssValueOrigin::Programmatic);
-    assert_eq!(
-        start.serialize_specified().unwrap(),
-        "62.500000000000000000001%"
-    );
+    assert!(matches!(
+        start.literal_component().unwrap().view(),
+        CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))
+            if number.representation() == "62.500000000000000000001"
+    ));
+    assert_eq!(start.serialize_specified().unwrap(), "62.5%");
 
     let invalid =
         CssComponentValues::try_new(vec![CssComponentValue::try_ident("bad").unwrap()]).unwrap();

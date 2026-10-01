@@ -1,11 +1,15 @@
 //! Exact authored Fonts 4 style values, before matching or computed angle ranges.
+//! Ordinary emitted coefficients round to six fractional places (nearest, ties
+//! away from zero); retained coefficients/ranges stay exact and math text stays unchanged.
 
-use crate::specified_serialization::{SpecifiedSerializationContext, format_lexical_shift};
 use crate::{
     CssAngleCalculation, CssAngleUnit, CssComponentValue, CssComponentValueRef,
     CssNumericConstructionError, CssNumericConstructionErrorKind,
     CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,
     CssSpecifiedValueSerializationLimits, CssValueOrigin, CssValueTokenRef,
+};
+use crate::{
+    numeric_formatting::format_css_number, specified_serialization::SpecifiedSerializationContext,
 };
 
 type ConstructionResult<T> = Result<T, CssNumericConstructionError>;
@@ -194,8 +198,7 @@ impl CssFontObliqueAngle {
                             CssSpecifiedValueSerializationErrorKind::ByteLimit,
                         )
                     })?;
-                let coefficient =
-                    format_lexical_shift(number.representation(), 0, coefficient_limit)?;
+                let coefficient = format_css_number(number.representation(), 0, coefficient_limit)?;
                 context.append(output, &coefficient)?;
                 context.append(output, suffix)
             }

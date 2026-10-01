@@ -157,10 +157,7 @@ fn raw_and_sheet_parsing_preserve_numeric_origin_and_descriptor_name_position() 
             expected
         );
     }
-    assert_eq!(
-        start.serialize_specified().unwrap(),
-        "62.500000000000000000001%"
-    );
+    assert_eq!(start.serialize_specified().unwrap(), "62.5%");
     assert_eq!(end.serialize_specified().unwrap(), "75%");
     assert_ne!(
         start,

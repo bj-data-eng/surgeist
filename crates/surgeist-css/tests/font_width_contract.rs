@@ -85,7 +85,7 @@ fn percentage_constructor_preserves_exact_literals_and_rejects_invalid_roots() {
     for (text, canonical) in [
         ("0%", "0%"),
         ("-0%", "0%"),
-        ("62.500000000000000000001%", "62.500000000000000000001%"),
+        ("62.500000000000000000001%", "62.5%"),
         ("999999999999999999999999%", "999999999999999999999999%"),
     ] {
         let direct = CssFontWidth::Percentage(scalar(text));
@@ -177,11 +177,13 @@ fn parsed_percentages_keep_source_origin_and_symbolic_math_unresolved() {
         scalar("62.500000000000000000001%").origin(),
         CssValueOrigin::Parsed(_)
     ));
-    assert_eq!(
-        parsed.serialize_specified().unwrap(),
-        "62.500000000000000000001%"
-    );
+    assert_eq!(parsed.serialize_specified().unwrap(), "62.5%");
 
+    assert!(matches!(
+        parsed.literal_component().unwrap().view(),
+        CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))
+            if number.representation() == "62.500000000000000000001"
+    ));
     for text in ["calc(25% + 50%)", "calc(25% - 50%)"] {
         let calculation =
             CssPercentageCalculation::try_from_components(parse_component_values(text).unwrap())

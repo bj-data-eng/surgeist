@@ -1,10 +1,13 @@
 //! Authored preferred aspect ratios and exact ratio operands.
+//! Ordinary operands emit at most six fractional places, nearest with ties away
+//! from zero; exact identity and range checks remain unchanged. Math text retains
+//! its existing provider and unfinished canonical number formatting.
 
 use crate::{
     CssComponentValue, CssComponentValueRef, CssNumberCalculation, CssNumericConstructionError,
     CssNumericConstructionErrorKind, CssSpecifiedValueSerializationError,
     CssSpecifiedValueSerializationLimits, CssValueOrigin, CssValueTokenRef,
-    specified_serialization::{SpecifiedSerializationContext, format_lexical_shift},
+    numeric_formatting::format_css_number, specified_serialization::SpecifiedSerializationContext,
 };
 
 /// One checked, nonnegative ratio number or deferred number-valued math root.
@@ -113,7 +116,7 @@ impl CssRatioOperand {
                     unreachable!("checked ratio number")
                 };
                 let text =
-                    format_lexical_shift(number.representation(), 0, context.remaining_bytes())?;
+                    format_css_number(number.representation(), 0, context.remaining_bytes())?;
                 context.append(output, &text)
             }
             RatioOperandValue::Calculation(calculation) => {

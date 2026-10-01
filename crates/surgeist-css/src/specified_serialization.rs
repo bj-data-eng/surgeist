@@ -1,5 +1,6 @@
 //! Bounded, context-independent specified-value text.
 
+use crate::numeric_formatting::format_css_number;
 use crate::{
     CssBorderCollapse, CssBoxSizing, CssCaptionSide, CssEmptyCells, CssOpacityScalarKind,
     CssOpacityValue, CssTableLayout,
@@ -278,7 +279,7 @@ impl crate::CssAngleOrZero {
     }
 }
 
-/// Formats an exact coefficient under a cumulative suffix budget.
+/// Formats a checked ordinary coefficient with six fractional places at most.
 /// Suffix bytes belong to this operation's budget, not a later unchecked append.
 pub(crate) fn format_coefficient(
     text: &str,
@@ -291,7 +292,7 @@ pub(crate) fn format_coefficient(
             crate::CssSpecifiedValueSerializationErrorKind::ByteLimit,
         )
     })?;
-    let mut result = format_lexical_shift(text, shift, remaining)?;
+    let mut result = format_css_number(text, shift, remaining)?;
     result.try_reserve(suffix.len()).map_err(|_| {
         crate::CssSpecifiedValueSerializationError::new(
             crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
@@ -469,8 +470,10 @@ impl crate::CssFlowTolerance {
 impl CssOpacityValue {
     /// Produces canonical specified opacity, without computed-value clamping.
     ///
-    /// Ordinary scalar magnitudes are exact; context-independent math uses
-    /// binary64 arithmetic. Expressions requiring external context stay symbolic.
+    /// Ordinary input remains exact; emitted scalar text rounds to six fractional
+    /// places, nearest with ties away from zero, after percentage conversion.
+    /// Calculation text retains the existing binary64 provider; its six-place
+    /// formatting and arithmetic precision/range remain unfinished.
     pub fn serialize_specified(&self) -> Result<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
@@ -513,13 +516,56 @@ impl CssOpacityValue {
 }
 
 fn format_lexical(text: &str, percentage: bool, limit: usize) -> Result<String> {
-    format_lexical_shift(text, if percentage { -2 } else { 0 }, limit)
+    format_css_number(text, if percentage { -2 } else { 0 }, limit)
 }
 
 #[cfg(test)]
 mod composed_value_tests {
     use super::*;
     use crate::{CssColor, CssIntegerCalculation, CssIntegerValue};
+
+    #[test]
+    fn ordinary_siblings_use_rounded_bytes_in_one_context_without_partial_child_text() {
+        let first = crate::CssSpecifiedNonNegativeNumber::try_from_component(
+            crate::CssComponentValue::try_number(".12345649").unwrap(),
+        )
+        .unwrap();
+        let second = crate::CssSpecifiedNonNegativeNumber::try_from_component(
+            crate::CssComponentValue::try_number(".9999996").unwrap(),
+        )
+        .unwrap();
+        let expected = "0.123456 1";
+        let before = (first.clone(), second.clone());
+        for (limits, failure) in [
+            (CssSpecifiedValueSerializationLimits::new(2, 2, 10), None),
+            (
+                CssSpecifiedValueSerializationLimits::new(1, 2, 10),
+                Some(Kind::InputNodeLimit),
+            ),
+            (
+                CssSpecifiedValueSerializationLimits::new(2, 1, 10),
+                Some(Kind::ProjectionNodeLimit),
+            ),
+            (
+                CssSpecifiedValueSerializationLimits::new(2, 2, 9),
+                Some(Kind::ByteLimit),
+            ),
+        ] {
+            let mut context = SpecifiedSerializationContext::new(limits);
+            let mut output = String::new();
+            first.append_specified(&mut context, &mut output).unwrap();
+            context.append(&mut output, " ").unwrap();
+            let result = second.append_specified(&mut context, &mut output);
+            if let Some(kind) = failure {
+                assert_eq!(result.unwrap_err().kind(), kind);
+                assert_eq!(output, "0.123456 ");
+            } else {
+                result.unwrap();
+                assert_eq!(output, expected);
+            }
+            assert_eq!((&first, &second), (&before.0, &before.1));
+        }
+    }
 
     #[test]
     fn flow_tolerance_keywords_and_math_share_monotonic_resources() {
@@ -645,15 +691,6 @@ mod composed_value_tests {
         );
         assert_eq!(css, "transparent");
     }
-}
-
-pub(crate) fn format_lexical_shift(text: &str, shift: i128, limit: usize) -> Result<String> {
-    let value = crate::exact_decimal::LexicalDecimal::new(text);
-    let exponent = value
-        .exponent
-        .and_then(|e| e.checked_add(shift))
-        .ok_or_else(|| CssSpecifiedValueSerializationError::new(Kind::ByteLimit))?;
-    format_digits(value.digits(), value.len, exponent, value.negative, limit)
 }
 
 pub(crate) fn format_digits(
@@ -911,18 +948,20 @@ impl crate::CssDuration {
     }
 }
 impl crate::CssTimeLiteral {
-    /// Emits canonical seconds with exact expanded decimal coefficients.
+    /// Emits canonical seconds, rounding ordinary text to six fractional places.
     ///
-    /// This authored emitter retains full precision; CSSOM's six-fractional-place
-    /// number formatting remains unfinished. Calculation projection retains its
-    /// existing precision and range limitations.
+    /// Conversion precedes rounding, nearest with ties away from zero. Original
+    /// coefficients, units and origins remain exact. This literal operation does
+    /// no calculation projection. Value calculation text and its number formatting
+    /// and arithmetic precision/range remain unfinished.
     pub fn serialize_specified(&self) -> Result<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
     /// Emits seconds using one cumulative input, projection and byte budget.
     ///
-    /// Exact expanded output has no exponential fallback and can return ByteLimit.
-    /// Full precision is retained; CSSOM six-fractional-place formatting remains unfinished.
+    /// Ordinary output rounds to six places without an exponential fallback.
+    /// Bytes budget actual rounded text including the seconds suffix; original
+    /// input remains unchanged. This literal operation does no math projection.
     /// This operation does not certify recovered syntax as a clean report.
     pub fn serialize_specified_with_limits(
         &self,
@@ -935,18 +974,20 @@ impl crate::CssTimeLiteral {
     }
 }
 impl crate::CssTimeValue {
-    /// Emits canonical seconds with exact expanded decimal coefficients.
+    /// Emits canonical seconds, rounding ordinary text to six fractional places.
     ///
-    /// This authored emitter retains full precision; CSSOM's six-fractional-place
-    /// number formatting remains unfinished. Calculation projection retains its
-    /// existing precision and range limitations.
+    /// Conversion precedes rounding, nearest with ties away from zero. Original
+    /// coefficients, units and origins remain exact. Calculation branches retain
+    /// existing text; projected number formatting and math precision/range remain
+    /// unfinished. Literal emission performs no calculation projection.
     pub fn serialize_specified(&self) -> Result<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
     /// Emits seconds using one cumulative input, projection and byte budget.
     ///
-    /// Exact expanded output has no exponential fallback and can return ByteLimit.
-    /// Full precision is retained; CSSOM six-fractional-place formatting remains unfinished.
+    /// Ordinary output rounds to six places without an exponential fallback.
+    /// Bytes budget actual rounded text including the seconds suffix; original
+    /// input remains unchanged. Calculation text retains its unfinished provider.
     /// This operation does not certify recovered syntax as a clean report.
     pub fn serialize_specified_with_limits(
         &self,
@@ -959,18 +1000,20 @@ impl crate::CssTimeValue {
     }
 }
 impl crate::CssDuration {
-    /// Emits canonical seconds with exact expanded decimal coefficients.
+    /// Emits canonical seconds, rounding ordinary text to six fractional places.
     ///
-    /// This authored emitter retains full precision; CSSOM's six-fractional-place
-    /// number formatting remains unfinished. Calculation projection retains its
-    /// existing precision and range limitations.
+    /// Conversion precedes rounding, nearest with ties away from zero. Original
+    /// coefficients, units and origins remain exact. Calculation branches retain
+    /// existing text; projected number formatting and math precision/range remain
+    /// unfinished. Literal emission performs no calculation projection.
     pub fn serialize_specified(&self) -> Result<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
     /// Emits seconds using one cumulative input, projection and byte budget.
     ///
-    /// Exact expanded output has no exponential fallback and can return ByteLimit.
-    /// Full precision is retained; CSSOM six-fractional-place formatting remains unfinished.
+    /// Ordinary output rounds to six places without an exponential fallback.
+    /// Bytes budget actual rounded text including the seconds suffix; original
+    /// input remains unchanged. Calculation text retains its unfinished provider.
     /// This operation does not certify recovered syntax as a clean report.
     pub fn serialize_specified_with_limits(
         &self,
@@ -1026,18 +1069,19 @@ impl crate::CssFrequencyLiteral {
     /// Emits ordinary frequencies with the selected lowercase hz or khz unit.
     ///
     /// This authored phase follows the selected primitive serialization policy;
-    /// CSSOM's specified/computed phase question remains open. Full ordinary
-    /// precision is retained, so CSSOM's six-fractional-place formatting remains
-    /// unfinished. This literal operation performs no calculation projection.
+    /// CSSOM's specified/computed phase question remains open. Ordinary text
+    /// rounds to six fractional places, nearest with ties away from zero; retained
+    /// coefficients stay exact. This literal operation performs no calculation projection.
     /// FrequencyValue math projection has separate precision and range limitations.
     pub fn serialize_specified(&self) -> Result<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
     /// Emits with one cumulative input, projection and byte budget.
     ///
-    /// Ordinary units are retained lowercased with exact expanded decimal output,
-    /// no scientific fallback. CSSOM's six-fractional-place number rule remains
-    /// unfinished, and its specified/computed frequency phase question stays open.
+    /// Ordinary units are retained lowercased with at most six fractional places,
+    /// nearest with ties away from zero and no scientific fallback. Actual rounded
+    /// text determines the byte budget; retained input stays exact. CSSOM's
+    /// specified/computed frequency phase question stays open.
     /// This literal operation performs no calculation projection; FrequencyValue
     /// math has separate shared-projector precision and range limitations.
     pub fn serialize_specified_with_limits(
@@ -1054,20 +1098,21 @@ impl crate::CssFrequencyValue {
     /// Emits ordinary frequencies with the selected lowercase hz or khz unit.
     ///
     /// This authored phase follows the selected primitive serialization policy;
-    /// CSSOM's specified/computed phase question remains open. Full ordinary
-    /// precision is retained, so CSSOM's six-fractional-place formatting remains
-    /// unfinished. Actual math uses the existing simplified calculation projector
-    /// with its current precision and range limitations.
+    /// CSSOM's specified/computed phase question remains open. Ordinary text
+    /// rounds to six fractional places, nearest with ties away from zero; retained
+    /// coefficients stay exact. Actual math keeps the existing simplified projector
+    /// text; projected number formatting and arithmetic precision/range remain unfinished.
     pub fn serialize_specified(&self) -> Result<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
     /// Emits with one cumulative input, projection and byte budget.
     ///
-    /// Ordinary units are retained lowercased with exact expanded decimal output,
-    /// no scientific fallback. CSSOM's six-fractional-place number rule remains
-    /// unfinished, and its specified/computed frequency phase question stays open.
-    /// Actual math retains the existing simplifier's canonical units, precision
-    /// and range limitations.
+    /// Ordinary units are retained lowercased with at most six fractional places,
+    /// nearest with ties away from zero and no scientific fallback. Actual rounded
+    /// text determines the byte budget; retained input stays exact. CSSOM's
+    /// specified/computed frequency phase question stays open.
+    /// Actual math retains the existing simplifier's text and canonical units; its
+    /// six-place number formatting, arithmetic precision and range remain unfinished.
     pub fn serialize_specified_with_limits(
         &self,
         limits: CssSpecifiedValueSerializationLimits,

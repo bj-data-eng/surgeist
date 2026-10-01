@@ -6,7 +6,7 @@ use crate::{
     CssNumericConstructionError, CssNumericConstructionErrorKind, CssPercentageCalculation,
     CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,
     CssSpecifiedValueSerializationLimits, CssValueOrigin, CssValueTokenRef,
-    specified_serialization::{SpecifiedSerializationContext, format_lexical_shift},
+    numeric_formatting::format_css_number, specified_serialization::SpecifiedSerializationContext,
 };
 
 type ConstructionResult<T> = Result<T, CssNumericConstructionError>;
@@ -82,10 +82,15 @@ impl CssSpecifiedNonNegativeFlex {
         }
     }
 
+    /// Emits ordinary text rounded to six fractional places, nearest with ties
+    /// away from zero, preserving exact authored identity. Calculation text and
+    /// its unfinished number formatting/precision/range provider remain unchanged.
     pub fn serialize_specified(&self) -> SerializationResult<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
 
+    /// Shares cumulative visits and budgets actual rounded ordinary text.
+    /// Failure leaves authored values unchanged; calculation behavior is retained.
     pub fn serialize_specified_with_limits(
         &self,
         limits: CssSpecifiedValueSerializationLimits,
@@ -115,7 +120,7 @@ impl CssSpecifiedNonNegativeFlex {
                         CssSpecifiedValueSerializationErrorKind::ByteLimit,
                     )
                 })?;
-                let mut output = format_lexical_shift(number.representation(), 0, limit)?;
+                let mut output = format_css_number(number.representation(), 0, limit)?;
                 context.append_temporary(&mut output, "fr")?;
                 Ok(output)
             }
@@ -230,7 +235,7 @@ pub(crate) fn capture_literal(
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             )
         })?;
-    let mut output = format_lexical_shift(number.representation(), 0, coefficient_limit)?;
+    let mut output = format_css_number(number.representation(), 0, coefficient_limit)?;
     context.append_temporary(&mut output, suffix)?;
     Ok(output)
 }
@@ -306,10 +311,15 @@ impl CssSpecifiedNumber {
         }
     }
 
+    /// Emits ordinary text rounded to six fractional places, nearest with ties
+    /// away from zero, preserving exact authored identity. Calculation text and
+    /// its unfinished number formatting/precision/range provider remain unchanged.
     pub fn serialize_specified(&self) -> SerializationResult<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
 
+    /// Shares cumulative visits and budgets actual rounded ordinary text.
+    /// Failure leaves authored values unchanged; calculation behavior is retained.
     pub fn serialize_specified_with_limits(
         &self,
         limits: CssSpecifiedValueSerializationLimits,
@@ -408,11 +418,16 @@ impl CssSpecifiedPercentage {
     }
 
     /// Serializes the specified percentage with default resource limits.
+    /// Emits ordinary text rounded to six fractional places, nearest with ties
+    /// away from zero, preserving exact authored identity. Calculation text and
+    /// its unfinished number formatting/precision/range provider remain unchanged.
     pub fn serialize_specified(&self) -> SerializationResult<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
 
     /// Serializes atomically under the shared input, projection, and byte limits.
+    /// Shares cumulative visits and budgets actual rounded ordinary text.
+    /// Failure leaves authored values unchanged; calculation behavior is retained.
     pub fn serialize_specified_with_limits(
         &self,
         limits: CssSpecifiedValueSerializationLimits,
@@ -519,11 +534,16 @@ impl CssSpecifiedNonNegativeNumber {
     }
 
     /// Serializes the specified number with default resource limits.
+    /// Emits ordinary text rounded to six fractional places, nearest with ties
+    /// away from zero, preserving exact authored identity. Calculation text and
+    /// its unfinished number formatting/precision/range provider remain unchanged.
     pub fn serialize_specified(&self) -> SerializationResult<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
 
     /// Serializes the specified number atomically under explicit resource limits.
+    /// Shares cumulative visits and budgets actual rounded ordinary text.
+    /// Failure leaves authored values unchanged; calculation behavior is retained.
     pub fn serialize_specified_with_limits(
         &self,
         limits: CssSpecifiedValueSerializationLimits,
@@ -638,11 +658,16 @@ impl CssSpecifiedLength {
     }
 
     /// Serializes the canonical specified length with default resource limits.
+    /// Emits ordinary text rounded to six fractional places, nearest with ties
+    /// away from zero, preserving exact authored identity. Calculation text and
+    /// its unfinished number formatting/precision/range provider remain unchanged.
     pub fn serialize_specified(&self) -> SerializationResult<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
 
     /// Serializes the canonical specified length under explicit resource limits.
+    /// Shares cumulative visits and budgets actual rounded ordinary text.
+    /// Failure leaves authored values unchanged; calculation behavior is retained.
     pub fn serialize_specified_with_limits(
         &self,
         limits: CssSpecifiedValueSerializationLimits,
@@ -732,11 +757,16 @@ impl CssSpecifiedNonNegativeLength {
     }
 
     /// Serializes the canonical specified length with default resource limits.
+    /// Emits ordinary text rounded to six fractional places, nearest with ties
+    /// away from zero, preserving exact authored identity. Calculation text and
+    /// its unfinished number formatting/precision/range provider remain unchanged.
     pub fn serialize_specified(&self) -> SerializationResult<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
 
     /// Serializes the canonical specified length under explicit resource limits.
+    /// Shares cumulative visits and budgets actual rounded ordinary text.
+    /// Failure leaves authored values unchanged; calculation behavior is retained.
     pub fn serialize_specified_with_limits(
         &self,
         limits: CssSpecifiedValueSerializationLimits,
@@ -841,11 +871,16 @@ impl CssSpecifiedLengthPercentage {
     }
 
     /// Serializes the canonical specified value with default resource limits.
+    /// Emits ordinary text rounded to six fractional places, nearest with ties
+    /// away from zero, preserving exact authored identity. Calculation text and
+    /// its unfinished number formatting/precision/range provider remain unchanged.
     pub fn serialize_specified(&self) -> SerializationResult<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
 
     /// Serializes the canonical specified value under explicit resource limits.
+    /// Shares cumulative visits and budgets actual rounded ordinary text.
+    /// Failure leaves authored values unchanged; calculation behavior is retained.
     pub fn serialize_specified_with_limits(
         &self,
         limits: CssSpecifiedValueSerializationLimits,
@@ -950,11 +985,16 @@ impl CssSpecifiedNonNegativeLengthPercentage {
     }
 
     /// Serializes the canonical specified value with default resource limits.
+    /// Emits ordinary text rounded to six fractional places, nearest with ties
+    /// away from zero, preserving exact authored identity. Calculation text and
+    /// its unfinished number formatting/precision/range provider remain unchanged.
     pub fn serialize_specified(&self) -> SerializationResult<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
 
     /// Serializes the canonical specified value under explicit resource limits.
+    /// Shares cumulative visits and budgets actual rounded ordinary text.
+    /// Failure leaves authored values unchanged; calculation behavior is retained.
     pub fn serialize_specified_with_limits(
         &self,
         limits: CssSpecifiedValueSerializationLimits,
@@ -1067,11 +1107,16 @@ impl CssSpecifiedNonNegativePercentage {
     }
 
     /// Serializes the canonical specified percentage with default limits.
+    /// Emits ordinary text rounded to six fractional places, nearest with ties
+    /// away from zero, preserving exact authored identity. Calculation text and
+    /// its unfinished number formatting/precision/range provider remain unchanged.
     pub fn serialize_specified(&self) -> SerializationResult<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
 
     /// Serializes atomically under shared input, projection, and byte budgets.
+    /// Shares cumulative visits and budgets actual rounded ordinary text.
+    /// Failure leaves authored values unchanged; calculation behavior is retained.
     pub fn serialize_specified_with_limits(
         &self,
         limits: CssSpecifiedValueSerializationLimits,

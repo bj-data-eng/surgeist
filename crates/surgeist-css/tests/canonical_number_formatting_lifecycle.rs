@@ -426,3 +426,255 @@ fn integer_color_and_signed_media_keep_their_distinct_public_text_contracts() {
     );
     assert_eq!(query, &before);
 }
+
+// Canonical ordinary output through composed specified-value writers.
+mod composed_ordinary_values {
+    use super::*;
+    use CssSpecifiedValueSerializationErrorKind as K;
+    use CssSpecifiedValueSerializationLimits as L;
+
+    fn declaration(property: CssKnownProperty, authored: &str) -> CssDeclaration {
+        let report = parse_style_attribute(&format!(
+            "{}:{authored}!important",
+            property.canonical_name()
+        ));
+        assert!(report.is_clean(), "{authored}: {:?}", report.diagnostics());
+        let parsed = report.syntax()[0].clone();
+        let components = parse_component_values(authored).unwrap();
+        let checked = parse_property_value(
+            CssPropertyNameRef::Known(property),
+            components.clone(),
+            CssImportance::Important,
+        )
+        .unwrap();
+        assert_eq!(checked.value_components(), &components);
+        assert_eq!(checked.importance(), CssImportance::Important);
+        assert_eq!(components.serialize().unwrap().as_css(), authored);
+        assert_eq!(specified(&parsed), specified(&checked));
+        checked
+    }
+
+    fn specified(source: &CssDeclaration) -> String {
+        match source.known().unwrap().property_value().unwrap() {
+            CssKnownPropertyValueRef::ClipPath(v) => v.value().serialize_specified().unwrap(),
+            CssKnownPropertyValueRef::BackgroundPosition(v) => {
+                v.positions().serialize_specified().unwrap()
+            }
+            CssKnownPropertyValueRef::BackgroundImage(v) => {
+                v.images().serialize_specified().unwrap()
+            }
+            CssKnownPropertyValueRef::Filter(v) => v.value().serialize_specified().unwrap(),
+            CssKnownPropertyValueRef::GridTemplateColumns(v) => {
+                v.value().serialize_specified().unwrap()
+            }
+            CssKnownPropertyValueRef::FontStyle(v) => v.value().serialize_specified().unwrap(),
+            CssKnownPropertyValueRef::FontWeight(v) => v.value().serialize_specified().unwrap(),
+            CssKnownPropertyValueRef::AspectRatio(v) => v.ratio().serialize_specified().unwrap(),
+            _ => panic!("fixture has an existing specified emitter"),
+        }
+    }
+
+    #[test]
+    fn composed_frontdoors_round_children_and_preserve_raw_reentry() {
+        for (property, authored, expected) in [
+            (
+                CssKnownProperty::BackgroundPosition,
+                "right 0.12345649px bottom 0.1234565%",
+                "right 0.123456px bottom 0.123457%",
+            ),
+            (
+                CssKnownProperty::ClipPath,
+                "circle(at 0.12345649px 0.1234565%)",
+                "circle(at 0.123456px 0.123457%)",
+            ),
+            (
+                CssKnownProperty::ClipPath,
+                "shape(from 0.12345649px 0.12345649%, curve by 0.9999996px -0.0000004% with 0.1234565px 0.12345649% / -0.1234565px 1e-9%, arc by 2px 3px of 0.9999996px -0.1234565% rotate 0.1234565deg)",
+                "shape(from 0.123456px 0.123456%, curve by 1px 0% with 0.123457px 0.123456% / -0.123457px 0%, arc by 2px 3px of 1px -0.123457% rotate 0.123457deg)",
+            ),
+            (
+                CssKnownProperty::ClipPath,
+                "xywh(0.12345649px -0.1234565px 0.9999996px 1e-9%)",
+                "xywh(0.123456px -0.123457px 1px 0%)",
+            ),
+            (
+                CssKnownProperty::BackgroundImage,
+                "linear-gradient(180.0000004deg, red 0.12345649%, blue 0.1234565%)",
+                "linear-gradient(180deg, red 0.123456%, blue 0.123457%)",
+            ),
+            (
+                CssKnownProperty::Filter,
+                "hue-rotate(0.1234565deg) opacity(0.12345649) blur(0.9999996px)",
+                "hue-rotate(0.123457deg) opacity(0.123456) blur(1px)",
+            ),
+            (
+                CssKnownProperty::GridTemplateColumns,
+                "0.12345649fr minmax(0.9999996px,0.1234565%)",
+                "0.123456fr minmax(1px, 0.123457%)",
+            ),
+            (CssKnownProperty::FontWeight, "725.1234565", "725.123457"),
+            (
+                CssKnownProperty::FontStyle,
+                "oblique 14.1234565deg",
+                "oblique 14.123457deg",
+            ),
+            (
+                CssKnownProperty::AspectRatio,
+                "auto .12345649 / .1234565",
+                "auto 0.123456 / 0.123457",
+            ),
+        ] {
+            let source = declaration(property, authored);
+            let before = source.clone();
+            assert_eq!(specified(&source), expected, "{authored}");
+            assert_eq!(source, before);
+        }
+    }
+
+    #[test]
+    fn exact_gradient_default_omission_does_not_use_rounded_text() {
+        let near = declaration(
+            CssKnownProperty::BackgroundImage,
+            "linear-gradient(180.0000004deg, red, blue)",
+        );
+        let exact = declaration(
+            CssKnownProperty::BackgroundImage,
+            "linear-gradient(180deg, red, blue)",
+        );
+        assert_eq!(specified(&near), "linear-gradient(180deg, red, blue)");
+        assert_eq!(specified(&exact), "linear-gradient(red, blue)");
+        assert_ne!(near.value_components(), exact.value_components());
+    }
+
+    #[test]
+    fn ratio_and_filter_count_existing_child_visits_and_actual_rounded_bytes() {
+        let ratio = CssSpecifiedRatio::new(
+            CssRatioOperand::try_from_component(component(".12345649")).unwrap(),
+            Some(CssRatioOperand::try_from_component(component(".1234565")).unwrap()),
+        );
+        let expected = "0.123456 / 0.123457";
+        // No aggregate visit: the existing pair writer visits two scalars.
+        assert_eq!(
+            ratio
+                .serialize_specified_with_limits(L::new(2, 2, expected.len()))
+                .unwrap(),
+            expected
+        );
+        for (limits, kind) in [
+            (L::new(1, 2, expected.len()), K::InputNodeLimit),
+            (L::new(2, 1, expected.len()), K::ProjectionNodeLimit),
+            (L::new(2, 2, expected.len() - 1), K::ByteLimit),
+        ] {
+            let before = ratio.clone();
+            assert_eq!(
+                ratio
+                    .serialize_specified_with_limits(limits)
+                    .unwrap_err()
+                    .kind(),
+                kind
+            );
+            assert_eq!(ratio, before);
+        }
+        let source = declaration(
+            CssKnownProperty::Filter,
+            "hue-rotate(0.1234565deg) blur(0.9999996px)",
+        );
+        let CssKnownPropertyValueRef::Filter(value) =
+            source.known().unwrap().property_value().unwrap()
+        else {
+            panic!("filter")
+        };
+        let filter = value.value();
+        let expected = "hue-rotate(0.123457deg) blur(1px)";
+        // One list, two function wrappers, two ordinary scalars = five visits.
+        assert_eq!(
+            filter
+                .serialize_specified_with_limits(L::new(5, 5, expected.len()))
+                .unwrap(),
+            expected
+        );
+        for (limits, kind) in [
+            (L::new(4, 5, expected.len()), K::InputNodeLimit),
+            (L::new(5, 4, expected.len()), K::ProjectionNodeLimit),
+            (L::new(5, 5, expected.len() - 1), K::ByteLimit),
+        ] {
+            let before = filter.clone();
+            assert_eq!(
+                filter
+                    .serialize_specified_with_limits(limits)
+                    .unwrap_err()
+                    .kind(),
+                kind
+            );
+            assert_eq!(filter, &before);
+        }
+    }
+
+    #[test]
+    fn timing_and_easing_preserve_list_identity_while_existing_children_round() {
+        let report = parse_style_attribute(
+            "transition-duration:0.0001ms,1.1234565s;transition-delay:-0.0001ms;transition-timing-function:cubic-bezier(.12345649,-.1234565,.9999996,.1234565)",
+        );
+        assert!(report.is_clean());
+        let declarations = report.syntax();
+        let before = declarations.clone();
+        let CssKnownPropertyValueRef::TransitionDuration(value) =
+            declarations[0].known().unwrap().property_value().unwrap()
+        else {
+            panic!("duration")
+        };
+        let values = value.durations();
+        assert_eq!(values.values()[0].serialize_specified().unwrap(), "0s");
+        assert_eq!(
+            values.values()[1].serialize_specified().unwrap(),
+            "1.123457s"
+        );
+        assert_eq!(
+            values.values()[0]
+                .time()
+                .literal()
+                .unwrap()
+                .numeric()
+                .representation(),
+            "0.0001"
+        );
+        assert_eq!(
+            CssDurationList::try_new(values.values().to_vec()).unwrap(),
+            *values
+        );
+        let CssKnownPropertyValueRef::TransitionDelay(value) =
+            declarations[1].known().unwrap().property_value().unwrap()
+        else {
+            panic!("delay")
+        };
+        assert_eq!(
+            value.delays().values()[0].serialize_specified().unwrap(),
+            "0s"
+        );
+        assert_eq!(
+            CssDelayList::try_new(value.delays().values().to_vec()).unwrap(),
+            *value.delays()
+        );
+        let CssKnownPropertyValueRef::TransitionTimingFunction(value) =
+            declarations[2].known().unwrap().property_value().unwrap()
+        else {
+            panic!("easing")
+        };
+        let CssEasing::CubicBezier(bezier) = &value.timing_functions().values()[0] else {
+            panic!("bezier")
+        };
+        for (number, expected) in [
+            (bezier.x1().value(), "0.123456"),
+            (bezier.y1(), "-0.123457"),
+            (bezier.x2().value(), "1"),
+            (bezier.y2(), "0.123457"),
+        ] {
+            assert_eq!(number.serialize_specified().unwrap(), expected);
+        }
+        assert_eq!(
+            CssEasingList::try_new(value.timing_functions().values().to_vec()).unwrap(),
+            *value.timing_functions()
+        );
+        assert_eq!(declarations, &before);
+    }
+}

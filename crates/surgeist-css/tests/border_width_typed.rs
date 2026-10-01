@@ -52,10 +52,15 @@ fn checked_widths_preserve_exact_literals_and_origin_blind_structure() {
         length("1e100", "px").serialize_specified().unwrap(),
         format!("1{}px", "0".repeat(100))
     );
-    assert_eq!(
-        length("1e-100", "px").serialize_specified().unwrap(),
-        format!("0.{}1px", "0".repeat(99))
-    );
+    let tiny = length("1e-100", "px");
+    let before = tiny.clone();
+    assert_eq!(tiny.serialize_specified().unwrap(), "0px");
+    assert!(matches!(
+        tiny.length().unwrap().literal_component().unwrap().view(),
+        CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
+            if number.representation() == "1e-100" && unit == "px"
+    ));
+    assert_eq!(tiny, before);
     assert!(
         CssSpecifiedNonNegativeLength::try_from_component(
             CssComponentValue::try_dimension("-1e-100", "px").unwrap()

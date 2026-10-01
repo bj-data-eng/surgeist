@@ -953,19 +953,19 @@ mod construction {
     }
 
     #[test]
-    fn exact_ordinary_emission_converts_units_without_losing_original_precision() {
+    fn ordinary_emission_rounds_after_unit_conversion_and_preserves_raw_precision() {
         for (number, unit, expected) in [
             ("1000", CssTimeUnit::Milliseconds, "1s"),
             ("1", CssTimeUnit::Milliseconds, "0.001s"),
             (
                 "1.234567890123456789",
                 CssTimeUnit::Milliseconds,
-                "0.001234567890123456789s",
+                "0.001235s",
             ),
             ("-250", CssTimeUnit::Milliseconds, "-0.25s"),
-            ("0.0001", CssTimeUnit::Milliseconds, "0.0000001s"),
+            ("0.0001", CssTimeUnit::Milliseconds, "0s"),
             ("1e20", CssTimeUnit::Milliseconds, "100000000000000000s"),
-            ("1e-12", CssTimeUnit::Milliseconds, "0.000000000000001s"),
+            ("1e-12", CssTimeUnit::Milliseconds, "0s"),
         ] {
             let value = literal(number, unit);
             let before = value.clone();
@@ -980,7 +980,7 @@ mod construction {
                 expected
             );
         }
-        // Explicit full-precision authored behavior; CSSOM's six fractional places remain unfinished.
+        // CSSOM rounds emitted ordinary text; exact authored zero spelling remains retained.
         for unit in [CssTimeUnit::Seconds, CssTimeUnit::Milliseconds] {
             for number in ["-0", "+0e999", "-0e-999"] {
                 let value = literal(number, unit);
@@ -1092,20 +1092,24 @@ mod construction {
     #[test]
     fn large_decimal_expansion_fails_atomically_without_a_scientific_fallback() {
         let limits = CssSpecifiedValueSerializationLimits::new(1, 1, 32);
-        for number in [
-            "1e999",
-            "1e-999",
-            "1e999999999999999999999999999999999999999999",
+        for (number, tiny) in [
+            ("1e999", false),
+            ("1e-999", true),
+            ("1e999999999999999999999999999999999999999999", false),
         ] {
             let value = literal(number, CssTimeUnit::Milliseconds);
             let before = value.clone();
-            assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
-            );
+            if tiny {
+                assert_eq!(value.serialize_specified_with_limits(limits).unwrap(), "0s");
+            } else {
+                assert_eq!(
+                    value
+                        .serialize_specified_with_limits(limits)
+                        .unwrap_err()
+                        .kind(),
+                    CssSpecifiedValueSerializationErrorKind::ByteLimit
+                );
+            }
             assert_eq!(value, before);
             assert_eq!(value.numeric().representation(), number);
         }

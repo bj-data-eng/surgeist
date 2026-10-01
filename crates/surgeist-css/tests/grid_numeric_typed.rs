@@ -2,16 +2,16 @@
 
 use surgeist_css::{
     CssCalculationExpressionRef, CssCalculationType, CssCalculationValueRef, CssComponentValue,
-    CssFlexCalculation, CssGridAutoRepeat, CssGridAutoRepeatKind, CssGridAutoTrackComponent,
-    CssGridAutoTrackList, CssGridFixedRepeatComponent, CssGridFixedRepeatContent, CssGridFixedSize,
-    CssGridGeneralTrackComponent, CssGridGeneralTrackList, CssGridIntegerTrackRepeat,
-    CssGridLineNames, CssGridTrackBreadth, CssGridTrackList, CssGridTrackRepeatComponent,
-    CssGridTrackRepeatContent, CssGridTrackSize, CssGridTrackSizeList, CssKnownPropertyValueRef,
-    CssLengthPercentageCalculation, CssNumericConstructionErrorKind, CssNumericDimension,
-    CssPositiveIntegerLiteral, CssSpecifiedNonNegativeFlex,
-    CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedValueSerializationErrorKind,
-    CssSpecifiedValueSerializationLimits, CssValueOrigin, parse_component_values,
-    parse_style_attribute,
+    CssComponentValueRef, CssFlexCalculation, CssGridAutoRepeat, CssGridAutoRepeatKind,
+    CssGridAutoTrackComponent, CssGridAutoTrackList, CssGridFixedRepeatComponent,
+    CssGridFixedRepeatContent, CssGridFixedSize, CssGridGeneralTrackComponent,
+    CssGridGeneralTrackList, CssGridIntegerTrackRepeat, CssGridLineNames, CssGridTrackBreadth,
+    CssGridTrackList, CssGridTrackRepeatComponent, CssGridTrackRepeatContent, CssGridTrackSize,
+    CssGridTrackSizeList, CssKnownPropertyValueRef, CssLengthPercentageCalculation,
+    CssNumericConstructionErrorKind, CssNumericDimension, CssPositiveIntegerLiteral,
+    CssSpecifiedNonNegativeFlex, CssSpecifiedNonNegativeLengthPercentage,
+    CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits, CssValueOrigin,
+    CssValueTokenRef, parse_component_values, parse_style_attribute,
 };
 
 fn flex(text: &str) -> CssSpecifiedNonNegativeFlex {
@@ -32,19 +32,20 @@ fn canonical_large(unit: &str) -> String {
     format!("1{}{unit}", "0".repeat(50))
 }
 
-fn canonical_tiny(unit: &str) -> String {
-    format!("0.{}1{unit}", "0".repeat(49))
-}
-
 #[test]
 fn exact_flex_scalar_has_checked_programmatic_origin() {
     for text in ["1e50", "1e-50"] {
         let scalar = flex(text);
         assert!(matches!(scalar.origin(), CssValueOrigin::Programmatic));
+        assert!(matches!(
+            scalar.literal_component().unwrap().view(),
+            CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
+                if number.representation() == text && unit == "fr"
+        ));
         let canonical = if text == "1e50" {
             canonical_large("fr")
         } else {
-            canonical_tiny("fr")
+            "0fr".to_owned()
         };
         assert_eq!(scalar.serialize_specified().unwrap(), canonical);
         let breadth = CssGridTrackBreadth::from_flex(scalar);
@@ -165,16 +166,15 @@ fn length_percentage_math_retains_its_percentage_child_and_hint() {
 fn checked_track_sizes_reject_flexible_minima_and_preserve_exact_lengths() {
     let flex = CssGridTrackBreadth::from_flex(flex("1"));
     let short_length = CssGridTrackBreadth::from_length_percentage(length("1e-50"));
-    assert_eq!(
-        short_length.serialize_specified().unwrap(),
-        canonical_tiny("px")
-    );
+    assert!(matches!(
+        short_length.length_percentage().unwrap().literal_component().unwrap().view(),
+        CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
+            if number.representation() == "1e-50" && unit == "px"
+    ));
+    assert_eq!(short_length.serialize_specified().unwrap(), "0px");
     assert!(CssGridTrackSize::try_minmax(flex.clone(), short_length.clone()).is_none());
     let size = CssGridTrackSize::try_minmax(short_length, flex).unwrap();
-    assert_eq!(
-        size.serialize_specified().unwrap(),
-        format!("minmax({}, 1fr)", canonical_tiny("px"))
-    );
+    assert_eq!(size.serialize_specified().unwrap(), "minmax(0px, 1fr)");
     assert!(CssGridFixedSize::try_new(size).is_some());
     let fit = CssGridTrackSize::from_fit_content(length("1e50"));
     assert_eq!(
@@ -291,13 +291,14 @@ fn parsed_track_graph_serializes_with_one_cumulative_budget() {
         panic!("typed implicit track list");
     };
     let list = wrapper.value();
+    assert!(matches!(
+        list.sizes()[1].fit_content().unwrap().literal_component().unwrap().view(),
+        CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
+            if number.representation() == "1e-50" && unit == "px"
+    ));
     assert_eq!(
         list.serialize_specified().unwrap(),
-        format!(
-            "{} fit-content({})",
-            canonical_large("fr"),
-            canonical_tiny("px")
-        )
+        format!("{} fit-content(0px)", canonical_large("fr"))
     );
     assert_eq!(
         list.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(

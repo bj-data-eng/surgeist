@@ -256,17 +256,19 @@ fn every_arc_option_permutation_serializes_in_the_complete_grammar_order() {
 }
 
 #[test]
-fn literal_coefficients_keep_exact_signed_precision_and_angle_units() {
+fn literal_coefficients_retain_raw_precision_and_units_while_output_rounds() {
     for unit in ["deg", "grad", "rad", "turn"] {
-        accept_command(&format!(
-            "arc to 1px 2% of -3px rotate -0.12345678901234567890123456789{unit}"
-        ));
+        accept(
+            &format!(
+                "shape(from 0px 0px, arc to 1px 2% of -3px rotate -0.12345678901234567890123456789{unit})"
+            ),
+            &format!("shape(from 0px 0px, arc to 1px 2% of -3px rotate -0.123457{unit})"),
+        );
     }
-    let tiny = format!("0.{}1", "0".repeat(998));
     let huge = format!("1{}", "0".repeat(400));
     accept(
         "shape(from -1e-999px 2%, arc by -3px 4% of -1e400px rotate -1e-999deg)",
-        &format!("shape(from -{tiny}px 2%, arc by -3px 4% of -{huge}px rotate -{tiny}deg)"),
+        &format!("shape(from 0px 2%, arc by -3px 4% of -{huge}px rotate 0deg)"),
     );
     accept(
         "shape(from +1px -0px, arc to 2px 3% of +4px rotate +0deg)",

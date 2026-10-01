@@ -337,17 +337,38 @@ fn parsed_and_programmatic_literals_retain_units_exact_magnitudes_and_origins() 
     ] {
         assert_eq!(shape(css).serialize_specified().unwrap(), expected);
     }
-    // Exact canonical decimal expansion of 10^-999 retains its magnitude.
-    let tiny = format!("0.{}1px", "0".repeat(998));
-    for (css, expected) in [
-        ("circle(1e-999px)", format!("circle({tiny})")),
+    for (css, expected, coefficient) in [
+        ("circle(1e-999px)", "circle(0px)", "1e-999"),
         (
             "polygon(round -1e-999px, 0 0)",
-            format!("polygon(round -{tiny}, 0 0)"),
+            "polygon(round 0px, 0 0)",
+            "-1e-999",
         ),
-        ("inset(-1e-999px)", format!("inset(-{tiny})")),
+        ("inset(-1e-999px)", "inset(0px)", "-1e-999"),
     ] {
-        assert_eq!(shape(css).serialize_specified().unwrap(), expected);
+        let value = shape(css);
+        let before = value.clone();
+        assert_eq!(value.serialize_specified().unwrap(), expected);
+        let component = match &value {
+            CssBasicShape::Circle(circle) => {
+                let CssCircleRadius::LengthPercentage(radius) = circle.radius() else {
+                    panic!("numeric circle radius")
+                };
+                radius.literal_component().unwrap()
+            }
+            CssBasicShape::Polygon(polygon) => {
+                polygon.round().unwrap().literal_component().unwrap()
+            }
+            CssBasicShape::Inset(inset) => inset.offsets().values()[0].literal_component().unwrap(),
+            _ => panic!("numeric shape"),
+        };
+        assert!(matches!(
+            component.view(),
+            CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
+                if number.representation() == coefficient && unit == "px"
+        ));
+        assert!(matches!(component.origin(), CssValueOrigin::Parsed(_)));
+        assert_eq!(value, before);
     }
     let parsed = shape("ellipse(10px closest-side)");
     let CssBasicShape::Ellipse(ellipse) = &parsed else {

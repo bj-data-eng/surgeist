@@ -561,12 +561,26 @@
 //! matching, fallback, shaping, cascade, substitution, computed values, and
 //! live CSSOM behavior belong to their downstream owners.
 //!
+//! # Ordinary canonical number text
+//!
+//! Shared ordinary number, percentage and dimension serializers emit shortest base-ten text
+//! with at most six fractional places, no exponent, and no negative rounded zero. Exact unit
+//! conversion precedes rounding. The selected decimal halfway policy rounds away from zero;
+//! CSSOM does not specify that direction. Original checked tokens, admission ranges, equality
+//! and diagnostic origins stay exact. Each ordinary scalar keeps one input and one projection
+//! visit; byte limits count its actual rounded text and unit within the cumulative writer.
+//! Calculation/color text and their existing arithmetic, rounding and scratch budgets remain
+//! unchanged. Canonical finite projected number formatting is still unfinished, separately
+//! from the shared calculation provider's precision/range limitations.
+//!
 //! # Authored timing domains
 //!
 //! Time literals retain exact coefficients and authored units; duration literals are non-negative
 //! and delays are signed. Well-typed calculations remain authored for later range processing.
-//! Ordinary specified emission converts exactly to seconds. The emitter retains full precision;
-//! CSSOM's six-fractional-place number formatting and exact calculation projection remain unfinished.
+//! Ordinary specified emission converts exactly to seconds before rounding text to at most six
+//! fractional places, nearest with ties away from zero under the selected frozen WebKit policy.
+//! Authored coefficients, units and origins remain exact. Calculation text keeps its existing
+//! provider; projected number formatting and exact calculation projection remain unfinished.
 //!
 //! ```
 //! use surgeist_css::{
@@ -1229,6 +1243,7 @@ mod grid_template_areas;
 mod inset;
 mod integer_value;
 mod numeric;
+mod numeric_formatting;
 mod opacity_scalar;
 mod page_line_minimum;
 mod pending_serialization;

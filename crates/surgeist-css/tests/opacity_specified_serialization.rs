@@ -41,7 +41,7 @@ fn assert_output(value: &CssOpacityValue, expected: &str) {
 }
 
 #[test]
-fn authored_decimal_scalars_format_exactly_without_clamping() {
+fn authored_decimal_scalars_round_to_six_places_without_clamping() {
     for (input, output) in [
         (".1", "0.1"),
         ("1%", "0.01"),
@@ -67,13 +67,13 @@ fn authored_decimal_scalars_format_exactly_without_clamping() {
         };
         assert_output(&opacity(&format!("{percent}%")), &expected);
     }
-    assert_output(&opacity("1e-47"), &format!("0.{}1", "0".repeat(46)));
-    assert_output(&opacity("1e-47%"), &format!("0.{}1", "0".repeat(48)));
+    assert_output(&opacity("1e-47"), "0");
+    assert_output(&opacity("1e-47%"), "0");
     assert_output(&opacity("1e100%"), &format!("1{}", "0".repeat(98)));
 }
 
 #[test]
-fn constructed_decimal_scalars_serialize_without_approximation() {
+fn constructed_decimal_scalars_round_text_and_retain_exact_components() {
     for (input, expected) in [
         (
             "340282346638528859811704183484516925440",
@@ -83,8 +83,8 @@ fn constructed_decimal_scalars_serialize_without_approximation() {
             "340282346638528859811704183484516925440%",
             "3402823466385288598117041834845169254.4",
         ),
-        ("0.3333333432674407958984375", "0.3333333432674407958984375"),
-        ("0.33333334", "0.33333334"),
+        ("0.3333333432674407958984375", "0.333333"),
+        ("0.33333334", "0.333333"),
         ("-0", "0"),
         ("-0%", "0"),
     ] {
@@ -132,7 +132,6 @@ fn scalar_limits_are_independent_atomic_and_precede_exponent_expansion() {
     );
     for text in [
         "1e999999999999999999999999999999999999999999999999999999",
-        "1e-999999999999999999999999999999999999999999999999999999",
         "1e1000000000%",
     ] {
         let value = opacity(text);
@@ -143,6 +142,10 @@ fn scalar_limits_are_independent_atomic_and_precede_exponent_expansion() {
         );
         assert_eq!(value, before);
     }
+    let tiny = opacity("1e-999999999999999999999999999999999999999999999999999999");
+    let before = tiny.clone();
+    assert_output(&tiny, "0");
+    assert_eq!(tiny, before);
 }
 
 #[test]
@@ -187,7 +190,7 @@ fn determinate_calculations_follow_specified_stage_not_computed_clamping() {
 }
 
 #[test]
-fn percentage_subnormals_keep_exact_magnitude_across_former_underflow_boundary() {
+fn percentage_subnormals_round_to_zero_while_retaining_exact_components() {
     // 5^149 is an independent exact-integer oracle for n * 2^-149 / 100.
     let power = "140129846432481707092372958328991613128026194187651577175706828388979108268586060148663818836212158203125";
     for n in [2u32, 3, 49, 50, 51, 99, 100, 101] {
@@ -203,18 +206,17 @@ fn percentage_subnormals_keep_exact_magnitude_across_former_underflow_boundary()
             carry /= 10;
         }
         let coefficient: String = digits.into_iter().rev().collect();
-        let expected = format!("0.{}{coefficient}", "0".repeat(151 - coefficient.len()))
-            .trim_end_matches('0')
-            .to_owned();
         let input = format!("{coefficient}e-149%");
-        for (input, expected) in [
-            (input.clone(), expected.clone()),
-            (format!("-{input}"), format!("-{expected}")),
-        ] {
+        // These exact dyadic magnitudes are below half a micro-unit.
+        for input in [input.clone(), format!("-{input}")] {
             let scalar =
                 CssOpacityScalar::try_from_component(CssComponentValue::try_token(&input).unwrap())
                     .unwrap();
-            assert_output(&CssOpacityValue::Scalar(scalar), &expected);
+            assert_eq!(
+                scalar.numeric().representation(),
+                input.trim_end_matches('%')
+            );
+            assert_output(&CssOpacityValue::Scalar(scalar), "0");
         }
     }
 }
