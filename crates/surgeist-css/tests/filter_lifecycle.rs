@@ -167,7 +167,7 @@ fn invalid_filter_values_recover_to_the_sibling_with_utf16_provenance() {
             let position = diagnostic.error().position();
             let byte = position.byte_offset().value();
             assert!(
-                byte >= prefix.len() + property.len() + 1 && byte < prefix.len() + unit.len(),
+                byte > prefix.len() + property.len() && byte < prefix.len() + unit.len(),
                 "responsible value position: {source}: {position:?}"
             );
             assert_eq!(position.line().value(), 0);
