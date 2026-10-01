@@ -258,7 +258,7 @@ fn shared_angle_constructs_filter_gradient_and_orientation_outer_contexts() {
 }
 
 #[test]
-fn shared_angle_math_keeps_root_origin_and_existing_origin_sensitive_equality() {
+fn shared_angle_math_retains_raw_provenance_and_semantic_aggregate_equality() {
     let first = angle_math("calc(25deg + 5deg)");
     let second = angle_math("  calc(25deg + 5deg)");
     let CssAngleValue::Calculation(value) = &first else {
@@ -266,37 +266,37 @@ fn shared_angle_math_keeps_root_origin_and_existing_origin_sensitive_equality() 
     };
     assert!(
         (value.result_type()) == (CssCalculationType::Angle),
-        "shared_angle_math_keeps_root_origin_and_existing_origin_sensitive_equality: direct equality contract"
+        "shared_angle_math_retains_raw_provenance_and_semantic_aggregate_equality: direct equality contract"
     );
     let CssValueOrigin::Parsed(origin) = value.origin() else {
         panic!("parsed calculation origin")
     };
     assert!(
         (origin.source().as_str()) == ("calc(25deg + 5deg)"),
-        "shared_angle_math_keeps_root_origin_and_existing_origin_sensitive_equality: direct equality contract"
+        "shared_angle_math_retains_raw_provenance_and_semantic_aggregate_equality: direct equality contract"
     );
     assert!(
         (first) != (second),
-        "shared_angle_math_keeps_root_origin_and_existing_origin_sensitive_equality: direct equality contract"
+        "shared_angle_math_retains_raw_provenance_and_semantic_aggregate_equality: direct equality contract"
     );
     assert!(
         (CssTransformFunction::Rotate(first.clone()))
-            != (CssTransformFunction::Rotate(second.clone())),
-        "shared_angle_math_keeps_root_origin_and_existing_origin_sensitive_equality: direct equality contract"
+            == (CssTransformFunction::Rotate(second.clone())),
+        "shared_angle_math_retains_raw_provenance_and_semantic_aggregate_equality: direct equality contract"
     );
     assert!(
         (CssFilterFunction::HueRotate(CssFilterHueRotate::new(first.clone())))
-            != (CssFilterFunction::HueRotate(CssFilterHueRotate::new(second.clone()))),
-        "shared_angle_math_keeps_root_origin_and_existing_origin_sensitive_equality: direct equality contract"
+            == (CssFilterFunction::HueRotate(CssFilterHueRotate::new(second.clone()))),
+        "shared_angle_math_retains_raw_provenance_and_semantic_aggregate_equality: direct equality contract"
     );
     assert!(
         (CssLinearGradientDirection::Angle(first.clone()))
-            != (CssLinearGradientDirection::Angle(second.clone())),
-        "shared_angle_math_keeps_root_origin_and_existing_origin_sensitive_equality: direct equality contract"
+            == (CssLinearGradientDirection::Angle(second.clone())),
+        "shared_angle_math_retains_raw_provenance_and_semantic_aggregate_equality: direct equality contract"
     );
     assert!(
-        (CssImageOrientation::Angle(first)) != (CssImageOrientation::Angle(second)),
-        "shared_angle_math_keeps_root_origin_and_existing_origin_sensitive_equality: direct equality contract"
+        (CssImageOrientation::Angle(first)) == (CssImageOrientation::Angle(second)),
+        "shared_angle_math_retains_raw_provenance_and_semantic_aggregate_equality: direct equality contract"
     );
     assert!(
         CssAngleCalculation::try_from_components(parse_component_values("calc(1px)").unwrap())
