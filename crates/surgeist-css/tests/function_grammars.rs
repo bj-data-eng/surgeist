@@ -602,80 +602,34 @@ fn box_shadow_accepts_component_orders_and_rejects_invalid_components() {
     }
 }
 
+// Backgrounds 3 §6.1 and Filter Effects 1 §6.1 require a contiguous
+// length group; unordered color placement does not split that group.
 #[test]
-fn box_shadow_accepts_interleaved_color_between_offsets() {
+fn box_shadow_rejects_interleaved_color_between_offsets() {
     let source = "box-shadow: 1px red 2px; color: blue";
     let report = parse_style_attribute(source);
-    assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let CssKnownPropertyValueRef::BoxShadow(value) = report.syntax()[0]
-        .known()
-        .expect("known box-shadow declaration")
-        .property_value()
-        .expect("ordinary box-shadow value")
-    else {
-        panic!("expected box-shadow");
-    };
-    let CssBoxShadow::Shadows(shadows) = value.value() else {
-        panic!("expected shadow list");
-    };
-    let [shadow] = shadows.shadows() else {
-        panic!("expected one shadow");
-    };
-    assert!(exact_dimension(
-        shadow.offset_x().literal_component(),
-        "1",
-        "px"
-    ));
-    assert!(exact_dimension(
-        shadow.offset_y().literal_component(),
-        "2",
-        "px"
-    ));
-    let color = shadow.color().expect("red interleaved color");
-    assert_eq!(color.named().unwrap().name(), "red");
-
+    assert!(!report.is_clean(), "interrupted length group was accepted");
+    assert_eq!(report.syntax().len(), 1);
     assert_eq!(
-        surgeist_css::validate_style_attribute(source),
-        Ok(report.syntax().clone())
+        report.syntax()[0].known().unwrap().property(),
+        CssKnownProperty::Color
     );
+    assert_eq!(report.diagnostics().len(), 1);
+    assert!(validate_style_attribute(source).is_err());
 }
 
 #[test]
-fn drop_shadow_accepts_interleaved_color_between_offsets() {
+fn drop_shadow_rejects_interleaved_color_between_offsets() {
     let source = "filter: drop-shadow(1px red 2px); color: blue";
     let report = parse_style_attribute(source);
-    assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let CssKnownPropertyValueRef::Filter(value) = report.syntax()[0]
-        .known()
-        .expect("known filter declaration")
-        .property_value()
-        .expect("ordinary filter value")
-    else {
-        panic!("expected filter");
-    };
-    let CssFilter::Functions(functions) = value.value() else {
-        panic!("expected current filter function list");
-    };
-    let [CssFilterFunction::DropShadow(shadow)] = functions.functions() else {
-        panic!("expected one typed drop-shadow");
-    };
-    assert!(exact_dimension(
-        shadow.offset_x().literal_component(),
-        "1",
-        "px"
-    ));
-    assert!(exact_dimension(
-        shadow.offset_y().literal_component(),
-        "2",
-        "px"
-    ));
-    let color = shadow.color().expect("red interleaved color");
-    assert_eq!(color.named().unwrap().name(), "red");
-
+    assert!(!report.is_clean(), "interrupted length group was accepted");
+    assert_eq!(report.syntax().len(), 1);
     assert_eq!(
-        surgeist_css::validate_style_attribute(source),
-        Ok(report.syntax().clone())
+        report.syntax()[0].known().unwrap().property(),
+        CssKnownProperty::Color
     );
+    assert_eq!(report.diagnostics().len(), 1);
+    assert!(validate_style_attribute(source).is_err());
 }
 
 #[test]
