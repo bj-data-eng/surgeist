@@ -1067,7 +1067,7 @@ fn filter_domain_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span()
 
 #[test]
 fn basic_shape_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
-    let source = "--😀: 1; clip-path: polygon(round -1px, 0 0); color: red";
+    let source = "--😀: 1; clip-path: polygon(round 10%, 0 0); color: red";
     let report = parse_style_attribute(source);
     assert_eq!(report.syntax().len(), 2);
     let [diagnostic] = report.diagnostics() else {
@@ -1078,7 +1078,7 @@ fn basic_shape_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
         CssErrorCode::InvalidPropertyValue
     );
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let responsible = source.find("-1px").unwrap();
+    let responsible = source.find("10%").unwrap();
     let declaration_start = source.find("clip-path").unwrap();
     let declaration_end = declaration_start + source[declaration_start..].find(';').unwrap() + 1;
     assert_position(
@@ -1104,8 +1104,8 @@ fn basic_shape_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
     };
     assert_eq!(detail.property(), CssKnownProperty::ClipPath);
     let encountered = detail.encountered().expect("responsible polygon radius");
-    assert_eq!(encountered.kind(), CssTokenKind::Dimension);
-    assert_eq!(encountered.authored(), "-1px");
+    assert_eq!(encountered.kind(), CssTokenKind::Percentage);
+    assert_eq!(encountered.authored(), "10%");
 
     {
         let failure = surgeist_css::validate_style_attribute(source)

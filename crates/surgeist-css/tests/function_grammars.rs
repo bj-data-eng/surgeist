@@ -162,7 +162,7 @@ fn basic_shape_radius_arity_and_separator_mutations_are_rejected() {
         "inset(1px round 2px / 3px / 4px)",
         "polygon(, 0 0, 100% 0)",
         "polygon(evenodd 0 0, 100% 0)",
-        "polygon(round -1px, 0 0)",
+        "polygon(round 1px nonzero, 0 0)",
         "polygon(round 10%, 0 0)",
         "polygon(0 0, 100%)",
     ] {
@@ -197,11 +197,7 @@ fn every_radial_extent_keyword_has_a_typed_branch() {
         };
         assert!(matches!(circle.radius(), CssCircleRadius::Extent(value) if *value == expected));
 
-        let ellipse = parsed_clip_path_property(&format!("ellipse({keyword})"));
-        let CssClipPath::BasicShape(CssBasicShape::Ellipse(ellipse)) = ellipse.value() else {
-            panic!("expected typed ellipse");
-        };
-        assert!(matches!(ellipse.radius(), CssEllipseRadius::Extent(value) if *value == expected));
+        assert_clip_path_rejected(&format!("ellipse({keyword})"));
     }
 }
 
@@ -308,9 +304,9 @@ fn omitted_shape_branches_are_explicit() {
     assert!(polygon.round().is_none());
     assert_eq!(polygon.points().points().len(), 1);
 
-    let polygon = parsed_clip_path_property("polygon(round 1px nonzero, -1px -2%)");
+    let polygon = parsed_clip_path_property("polygon(nonzero round -1px, -1px -2%)");
     let CssClipPath::BasicShape(CssBasicShape::Polygon(polygon)) = polygon.value() else {
-        panic!("expected round-first polygon prefix");
+        panic!("expected ordered polygon prefix with signed rounding");
     };
     assert_eq!(polygon.fill_rule(), Some(CssPolygonFillRule::Nonzero));
     assert!(polygon.round().is_some());
