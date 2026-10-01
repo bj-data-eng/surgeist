@@ -5103,6 +5103,8 @@ fn drop_shadow_rejects_box_shadow_only_components() {
 #[test]
 fn clip_path_distinguishes_selected_and_deferred_shape_functions() {
     for value in [
+        "rect(0 1px 1px 0)",
+        "xywh(0 0 1px 1px)",
         "inset(1px)",
         "circle(10px)",
         "ellipse(10px 20%)",
@@ -5111,12 +5113,7 @@ fn clip_path_distinguishes_selected_and_deferred_shape_functions() {
         let report = parse_style_attribute(&format!("clip-path: {value}"));
         assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
     }
-    for value in [
-        "path('M 0 0 L 1 1')",
-        "shape(from 0 0, line to 1px 1px)",
-        "rect(0 1px 1px 0)",
-        "xywh(0 0 1px 1px)",
-    ] {
+    for value in ["path('M 0 0 L 1 1')", "shape(from 0 0, line to 1px 1px)"] {
         assert!(
             !parse_style_attribute(&format!("clip-path: {value}")).is_clean(),
             "deferred {value}"
@@ -5129,7 +5126,14 @@ fn clip_path_distinguishes_selected_and_deferred_shape_functions() {
     assert_eq!(metadata.production(), "#typedef-basic-shape");
     assert_shape_functions_partial(metadata);
     let subset = metadata.supported_subset().unwrap();
-    for function in ["inset()", "circle()", "ellipse()", "polygon()"] {
+    for function in [
+        "inset()",
+        "circle()",
+        "ellipse()",
+        "polygon()",
+        "rect()",
+        "xywh()",
+    ] {
         assert!(subset.contains(function), "supported {function}: {subset}");
     }
     assert_missing_shape_functions(metadata);
@@ -5155,10 +5159,16 @@ fn assert_shape_functions_partial(metadata: &CssFeatureMetadata) {
 
 fn assert_missing_shape_functions(metadata: &CssFeatureMetadata) {
     let remainder = metadata.unsupported_remainder().unwrap();
-    for function in ["path()", "shape()", "rect()", "xywh()"] {
+    for function in ["path()", "shape()"] {
         assert!(
             remainder.contains(function),
             "missing {function}: {remainder}"
+        );
+    }
+    for function in ["rect()", "xywh()"] {
+        assert!(
+            !remainder.contains(function),
+            "implemented {function}: {remainder}"
         );
     }
 }
@@ -5268,6 +5278,8 @@ fn backdrop_filter_preserves_typed_authored_grammar_with_the_named_source() {
 #[test]
 fn clip_path_selected_subset_and_remainder_are_distinct() {
     for value in [
+        "rect(0 1px 1px 0)",
+        "xywh(0 0 1px 1px)",
         "none",
         "url(\"shapes.svg#clip\")",
         "inset(1px)",
@@ -5283,12 +5295,7 @@ fn clip_path_selected_subset_and_remainder_are_distinct() {
         let report = parse_style_attribute(&format!("clip-path: {value}"));
         assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
     }
-    for value in [
-        "path('M 0 0 L 1 1')",
-        "shape(from 0 0, line to 1px 1px)",
-        "rect(0 1px 1px 0)",
-        "xywh(0 0 1px 1px)",
-    ] {
+    for value in ["path('M 0 0 L 1 1')", "shape(from 0 0, line to 1px 1px)"] {
         assert!(
             !parse_style_attribute(&format!("clip-path: {value}")).is_clean(),
             "unsupported {value}"
@@ -5960,4 +5967,24 @@ fn exact_percentage(
     representation: &str,
 ) -> bool {
     matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Percentage(number))) if number.representation() == representation)
+}
+
+#[test]
+fn rectangular_shape_metadata_cites_complete_shapes_authored_grammar() {
+    for (name, production) in [
+        ("rect", "#funcdef-basic-shape-rect"),
+        ("xywh", "#funcdef-basic-shape-xywh"),
+    ] {
+        let metadata =
+            feature_metadata(&format!("ext.value.basic-shape.{name}")).expect("rectangle metadata");
+        assert_eq!(metadata.kind(), CssFeatureKind::Value);
+        assert_eq!(metadata.spelling(), format!("{name}()"));
+        assert_eq!(metadata.source().id().as_str(), "S-SHAPES1");
+        assert_eq!(metadata.production(), production);
+        assert_eq!(metadata.status(), CssSupportStatus::Complete);
+        assert_eq!(metadata.supported_subset(), None);
+        assert_eq!(metadata.unsupported_remainder(), None);
+        assert_eq!(metadata.recognized_unsupported_code(), None);
+        assert!(metadata.baseline_alias_targets().is_empty());
+    }
 }

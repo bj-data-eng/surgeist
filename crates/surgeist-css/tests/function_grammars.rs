@@ -444,12 +444,7 @@ fn circle_symbolic_length_percentage_radius_remains_typed() {
 
 #[test]
 fn deferred_basic_shape_functions_remain_unrecognized() {
-    for value in [
-        "path('M 0 0 L 1 1')",
-        "shape(from 0 0, line to 1px 1px)",
-        "rect(0 1px 1px 0)",
-        "xywh(0 0 1px 1px)",
-    ] {
+    for value in ["path('M 0 0 L 1 1')", "shape(from 0 0, line to 1px 1px)"] {
         assert_clip_path_rejected(value);
     }
 }
@@ -1487,4 +1482,12 @@ fn checked_number(representation: &str) -> surgeist_css::CssSpecifiedNumber {
         surgeist_css::CssComponentValue::try_number(representation).unwrap(),
     )
     .unwrap()
+}
+
+#[test]
+fn rectangular_basic_shape_functions_parse_through_the_existing_clip_path_front_door() {
+    for value in ["rect(0 1px 1px 0)", "xywh(0 0 1px 1px)"] {
+        let property = parsed_clip_path_property(value);
+        assert_eq!(property.value().serialize_specified().unwrap(), value);
+    }
 }
