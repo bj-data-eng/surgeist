@@ -446,13 +446,24 @@ pub(crate) fn capture_specified(
     expression: &CssCalculationExpression,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<(String, NumericProjectionOutcome)> {
+    capture_specified_scaled(expression, NumericProjectionScale::Identity, context)
+}
+
+/// Captures generic specified coefficients with the owning slot's dimensional
+/// scale, keeping arithmetic and cumulative work in the shared projector.
+pub(crate) fn capture_specified_scaled(
+    expression: &CssCalculationExpression,
+    scale: NumericProjectionScale,
+    context: &mut SpecifiedSerializationContext,
+) -> Result<(String, NumericProjectionOutcome)> {
     let mut output = String::new();
-    let outcome = project_specified_impl(
+    let outcome = project_specified_impl_mode(
         expression,
-        NumericProjectionScale::Identity,
+        scale,
         context,
         &mut output,
-        false,
+        (false, true),
+        NumericEmission::CssComponent(None),
     )?;
     Ok((output, outcome))
 }
@@ -1856,5 +1867,234 @@ mod comparison_capture_tests {
                 0
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod scaled_capture_tests {
+    use super::*;
+    use crate::{CssNumberCalculation, CssPercentageCalculation, parse_component_values};
+
+    fn number(source: &str) -> CssNumberCalculation {
+        CssNumberCalculation::try_from_components(parse_component_values(source).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn scaled_percentage_rounds_text_without_rounding_the_scalar() {
+        let value = CssPercentageCalculation::try_from_components(
+            parse_component_values("calc(.78125%)").unwrap(),
+        )
+        .unwrap();
+        let before = value.clone();
+        // A calc group and percentage leaf visit two input nodes. Projection
+        // allocates the leaf, dimensional factor, inverse, and resolved product.
+        let mut context = SpecifiedSerializationContext::new(Limits::new(2, 4, 14));
+        let (text, outcome) = capture_specified_scaled(
+            &value.expression,
+            NumericProjectionScale::PercentageToNumber {
+                numerator: 1,
+                denominator: 100,
+            },
+            &mut context,
+        )
+        .unwrap();
+        assert_eq!(text, "calc(0.007813)");
+        assert_eq!(
+            outcome.scalar_value.unwrap().to_bits(),
+            (1.0_f64 / 128.0).to_bits()
+        );
+        assert!(!outcome.context_dependent);
+        assert_eq!(context.remaining_bytes(), 14);
+        assert_eq!(
+            context.charge_input(1).unwrap_err().kind(),
+            ErrorKind::InputNodeLimit
+        );
+        assert_eq!(
+            context.charge_projection(1).unwrap_err().kind(),
+            ErrorKind::ProjectionNodeLimit
+        );
+        assert_eq!(value, before);
+    }
+
+    #[test]
+    fn scaled_number_uses_actual_binary_coefficient_and_preserves_authored_graph() {
+        for (source, scale, expected, scalar) in [
+            (
+                "calc(1 / 256)",
+                NumericProjectionScale::Number {
+                    numerator: 2,
+                    denominator: 1,
+                },
+                "calc(0.007813)",
+                1.0_f64 / 128.0,
+            ),
+            (
+                "calc(5e-7)",
+                NumericProjectionScale::Identity,
+                "calc(0)",
+                5e-7_f64,
+            ),
+            (
+                "calc(-1 / 128)",
+                NumericProjectionScale::Identity,
+                "calc(-0.007813)",
+                -1.0_f64 / 128.0,
+            ),
+        ] {
+            let value = number(source);
+            let before = value.clone();
+            let (text, outcome) = capture_specified_scaled(
+                &value.expression,
+                scale,
+                &mut SpecifiedSerializationContext::new(Limits::default()),
+            )
+            .unwrap();
+            assert_eq!(text, expected);
+            assert_eq!(outcome.scalar_value.unwrap().to_bits(), scalar.to_bits());
+            assert!(!outcome.context_dependent);
+            assert_eq!(value, before);
+        }
+    }
+
+    #[test]
+    fn identity_and_color_captures_preserve_traversal_but_select_coefficient_text() {
+        let value = number("calc(1 / 128)");
+        // The calc group, product, and two leaves are four inputs. The
+        // projected leaves, scalar inverse, and folded product are four nodes.
+        for color in [false, true] {
+            let mut context = SpecifiedSerializationContext::new(Limits::new(4, 4, 15));
+            let (text, outcome) = if color {
+                capture_color_specified_scaled(
+                    &value.expression,
+                    NumericProjectionScale::Identity,
+                    &mut context,
+                )
+            } else {
+                capture_specified(&value.expression, &mut context)
+            }
+            .unwrap();
+            assert_eq!(
+                text,
+                if color {
+                    "calc(0.0078125)"
+                } else {
+                    "calc(0.007813)"
+                }
+            );
+            assert_eq!(
+                outcome.scalar_value.unwrap().to_bits(),
+                (1.0_f64 / 128.0).to_bits()
+            );
+            assert_eq!(
+                context.charge_input(1).unwrap_err().kind(),
+                ErrorKind::InputNodeLimit
+            );
+            assert_eq!(
+                context.charge_projection(1).unwrap_err().kind(),
+                ErrorKind::ProjectionNodeLimit
+            );
+        }
+    }
+
+    #[test]
+    fn scaled_capture_bounds_scratch_and_charges_accepted_text_once() {
+        let value = number("calc(1 / 256)");
+        let scale = NumericProjectionScale::Number {
+            numerator: 2,
+            denominator: 1,
+        };
+        // Scaling adds a factor and folded product to the four-node projection.
+        let mut context = SpecifiedSerializationContext::new(Limits::new(4, 6, 14));
+        let (text, _) = capture_specified_scaled(&value.expression, scale, &mut context).unwrap();
+        assert_eq!(text, "calc(0.007813)");
+        assert_eq!(context.remaining_bytes(), 14);
+        let mut output = String::new();
+        context.append(&mut output, &text).unwrap();
+        assert_eq!(context.remaining_bytes(), 0);
+        assert_eq!(
+            context.append(&mut output, "!").unwrap_err().kind(),
+            ErrorKind::ByteLimit
+        );
+        assert_eq!(output, text);
+        let before = value.clone();
+        let mut short = SpecifiedSerializationContext::new(Limits::new(4, 6, 13));
+        assert_eq!(
+            capture_specified_scaled(&value.expression, scale, &mut short)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::ByteLimit
+        );
+        assert_eq!(short.remaining_bytes(), 13);
+        assert_eq!(value, before);
+    }
+
+    #[test]
+    fn scaled_sibling_captures_keep_input_and_projection_work_cumulative() {
+        let value = number("calc(1 / 256)");
+        let before = value.clone();
+        let scale = NumericProjectionScale::Number {
+            numerator: 2,
+            denominator: 1,
+        };
+        for (limits, expected) in [
+            (Limits::new(4, 100, 14), ErrorKind::InputNodeLimit),
+            (Limits::new(100, 6, 14), ErrorKind::ProjectionNodeLimit),
+        ] {
+            let mut context = SpecifiedSerializationContext::new(limits);
+            assert_eq!(
+                capture_specified_scaled(&value.expression, scale, &mut context)
+                    .unwrap()
+                    .0,
+                "calc(0.007813)"
+            );
+            assert_eq!(
+                capture_specified_scaled(&value.expression, scale, &mut context)
+                    .unwrap_err()
+                    .kind(),
+                expected
+            );
+            assert_eq!(context.remaining_bytes(), 14);
+            assert_eq!(value, before);
+        }
+    }
+
+    #[test]
+    fn scaled_capture_retains_nonfinite_signed_zero_and_contextual_operands() {
+        for (source, expected, scalar) in [
+            ("calc(infinity)", "calc(infinity)", f64::INFINITY),
+            ("calc(-infinity)", "calc(-infinity)", f64::NEG_INFINITY),
+            ("calc(0 * -1)", "calc(0)", -0.0_f64),
+        ] {
+            let (text, outcome) = capture_specified_scaled(
+                &number(source).expression,
+                NumericProjectionScale::Identity,
+                &mut SpecifiedSerializationContext::new(Limits::default()),
+            )
+            .unwrap();
+            assert_eq!(text, expected);
+            assert_eq!(outcome.scalar_value.unwrap().to_bits(), scalar.to_bits());
+            assert!(!outcome.context_dependent);
+        }
+        let (text, outcome) = capture_specified_scaled(
+            &number("calc(NaN)").expression,
+            NumericProjectionScale::Identity,
+            &mut SpecifiedSerializationContext::new(Limits::default()),
+        )
+        .unwrap();
+        assert_eq!(text, "calc(NaN)");
+        assert!(outcome.scalar_value.unwrap().is_nan());
+        assert!(!outcome.context_dependent);
+        let value = number("calc(1em / 1px)");
+        let before = value.clone();
+        let (text, outcome) = capture_specified_scaled(
+            &value.expression,
+            NumericProjectionScale::Identity,
+            &mut SpecifiedSerializationContext::new(Limits::default()),
+        )
+        .unwrap();
+        assert_eq!(text, "calc(1em / 1px)");
+        assert!(outcome.context_dependent);
+        assert_eq!(outcome.scalar_value, None);
+        assert_eq!(value, before);
     }
 }

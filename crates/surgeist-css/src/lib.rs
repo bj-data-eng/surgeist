@@ -572,12 +572,15 @@
 //!
 //! # Calculated canonical number text
 //!
-//! Finite non-color calculation results use the same six-place fixed text policy, rounding
-//! the actual binary64 value after the existing projection. Symbols, units, arithmetic,
-//! signed-zero and exceptional-value behavior, and traversal costs stay unchanged. Border-image
+//! Finite non-color and declared relative-color calculation coefficients use the same six-place
+//! fixed text policy, rounding the actual binary64 value after the existing projection.
+//! Symbols, units, arithmetic, signed-zero and exceptional-value behavior, and traversal costs
+//! stay unchanged. Border-image
 //! and scroll shorthands compare unrounded canonical components before selecting rounded text.
-//! Color calculations preserve their separate text and scratch policies. Integer calculation
-//! text follows the finite number policy without computed integer rounding; ordinary integer
+//! Relative calculations use this policy wherever embedded, including nested origins and mixes.
+//! Ordinary standalone and ordinary-origin color calculations keep their separate text and
+//! scratch policies. Integer calculation text follows the finite number policy without
+//! computed integer rounding; ordinary integer
 //! literals retain exact digits. Arithmetic precision and range remain unfinished.
 //!
 //! # Authored timing domains

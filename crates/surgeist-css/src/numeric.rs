@@ -11,7 +11,8 @@ mod projection;
 pub(crate) use projection::{
     NumericComparisonCapture, NumericProjectionOutcome, NumericProjectionScale,
     capture_color_specified_scaled, capture_specified, capture_specified_for_comparison,
-    project_calc_size_sum_into, project_specified, project_specified_into,
+    capture_specified_scaled, project_calc_size_sum_into, project_specified,
+    project_specified_into,
 };
 
 /// Explicit provenance for an existing parser cursor; never ambient parser state.
@@ -3267,6 +3268,16 @@ impl CssProfileColorCalculation {
     pub fn result_type(&self) -> CssCalculationType {
         self.expression.result_type()
     }
+    pub(crate) fn capture_specified(
+        &self,
+        scale: NumericProjectionScale,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+    ) -> std::result::Result<
+        (String, NumericProjectionOutcome),
+        crate::CssSpecifiedValueSerializationError,
+    > {
+        capture_specified_scaled(&self.expression, scale, context)
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -3297,7 +3308,6 @@ pub(crate) enum ColorCalculationRef<'a> {
     Number(&'a CssNumberCalculation),
     Percentage(&'a CssPercentageCalculation),
     Angle(&'a CssAngleCalculation),
-    Profile(&'a CssProfileColorCalculation),
 }
 impl ColorCalculationRef<'_> {
     fn expression(&self) -> &CssCalculationExpression {
@@ -3305,7 +3315,6 @@ impl ColorCalculationRef<'_> {
             Self::Number(value) => &value.expression,
             Self::Percentage(value) => &value.expression,
             Self::Angle(value) => &value.expression,
-            Self::Profile(value) => &value.expression,
         }
     }
 }

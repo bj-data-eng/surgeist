@@ -490,9 +490,9 @@ unchanged; composed writers share one cumulative budget.
 
 ### Calculated number output
 
-Finite numbers in non-color specified calculations use the same six-place,
-fixed-notation output policy. The mathematical projector evaluates
-context-independent parts with binary64 arithmetic, then rounds the actual
+Finite numbers in non-color specified calculations and declared relative-color
+calculations use the same six-place, fixed-notation output policy. The mathematical
+projector evaluates context-independent parts with binary64 arithmetic, then rounds the actual
 finite binary value for text. `calc(1 / 3)` emits `calc(0.333333)`, and the exact
 dyadic halfway value `calc(-1 / 128)` emits `calc(-0.007813)`.
 
@@ -534,7 +534,9 @@ including wrappers and units. Captured children still obey their scratch bounds
 and retain their traversal costs even when shorthand output compresses.
 Calculated integer text uses this finite number policy without performing
 computed integer rounding; ordinary integer literals retain exact digits.
-Color calculations and media-query writers retain their separate text policies.
+Relative calculated coefficients use this policy wherever embedded, including
+nested origins and mix components. Ordinary standalone and ordinary-origin
+color calculations, and media-query writers, retain their separate text policies.
 Mathematical arithmetic precision and range remain unfinished; canonical text
 does not make binary64 evaluation exact or resolve symbolic dependencies.
 
@@ -2081,6 +2083,14 @@ result slot and reports typed numeric errors with component path and origin.
 the function; mismatched expressions are rejected. The source and expressions
 remain symbolic, including optional alpha. `CssAlphaColor::try_new` similarly
 distinguishes omitted alpha, `none`, and an `alpha` channel expression.
+Finite coefficients in relative calculations use the shared six-place policy
+after the existing mathematical projection. This includes custom-profile
+calculations and calculated `alpha(from …)` overrides, even when nested inside
+another origin or mix. References remain symbolic, percentage scaling stays
+within the numeric projector, and authored expressions and origins remain
+unchanged. Ordinary color calculations used as origins keep their separate text
+and scratch policy. Direct relative literals and origin-number formatting,
+calculated relative-alpha clamping, and mathematical precision remain unfinished.
 `light-dark()`, `contrast-color()`, and `device-cmyk()` are not yet supported.
 
 Custom-profile `color(--Profile ...)` preserves a nonempty variable channel

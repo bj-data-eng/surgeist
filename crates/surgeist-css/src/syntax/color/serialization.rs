@@ -1849,11 +1849,8 @@ fn serialize_relative_expression(
             } else {
                 crate::numeric::NumericProjectionScale::Identity
             };
-            let (text, _) = crate::numeric::capture_color_specified_scaled(
-                &value.data.expression,
-                scale,
-                context,
-            )?;
+            let (text, _) =
+                crate::numeric::capture_specified_scaled(&value.data.expression, scale, context)?;
             Ok(text)
         }
     }
@@ -1897,11 +1894,7 @@ fn serialize_profile_expression(
             } else {
                 crate::numeric::NumericProjectionScale::Identity
             };
-            let (text, _) = crate::numeric::capture_color_calculation_scaled(
-                crate::numeric::ColorCalculationRef::Profile(value),
-                scale,
-                context,
-            )?;
+            let (text, _) = value.capture_specified(scale, context)?;
             Ok(text)
         }
     }

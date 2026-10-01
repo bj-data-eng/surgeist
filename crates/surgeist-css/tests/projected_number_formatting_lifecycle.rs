@@ -6,7 +6,8 @@
 //! dtoa.cpp:130–146 calls ToFixedUncapped(d, 6); double-conversion.h:327–335
 //! defines FIXED ties away from zero. Expected numbers below come from exact
 //! integer/rational binary64 values, never the formatter's shortest spelling.
-//! Color captures preserve their separately owned text and scratch contracts.
+//! Ordinary color captures preserve their separately owned text and scratch
+//! contracts; declared relative calculations use generic coefficient text.
 
 use surgeist_css::*;
 
@@ -827,7 +828,7 @@ fn existing_timing_children_round_without_inventing_an_aggregate_writer() {
 }
 
 #[test]
-fn color_calculated_alpha_preserves_exact_dyadic_text_and_unclamped_values() {
+fn calculated_alpha_uses_slot_text_policies_and_keeps_unclamped_values() {
     for (source, expected) in [
         (
             "rgb(1 2 3 / calc(1 / 128))",
@@ -840,7 +841,7 @@ fn color_calculated_alpha_preserves_exact_dyadic_text_and_unclamped_values() {
         ("rgb(1 2 3 / calc(2))", "rgba(1, 2, 3, calc(2))"),
         (
             "alpha(from red / calc(0.78125%))",
-            "alpha(from red / calc(0.0078125))",
+            "alpha(from red / calc(0.007813))",
         ),
     ] {
         let value = color(source);
@@ -868,7 +869,7 @@ fn color_calculated_alpha_preserves_exact_dyadic_text_and_unclamped_values() {
 }
 
 #[test]
-fn color_channel_origin_relative_profile_and_mix_captures_keep_their_text() {
+fn color_calculation_text_follows_its_declared_slot() {
     for (source, expected) in [
         (
             "color(srgb calc(1 / 128) 0 0)",
@@ -892,11 +893,11 @@ fn color_channel_origin_relative_profile_and_mix_captures_keep_their_text() {
         ),
         (
             "rgb(from red calc(r + 0.0078125) g b)",
-            "rgb(from red calc(0.0078125 + r) g b)",
+            "rgb(from red calc(0.007813 + r) g b)",
         ),
         (
             "color(from red --P calc(Cyan + 0.0078125) Magenta)",
-            "color(from red --P calc(0.0078125 + Cyan) Magenta)",
+            "color(from red --P calc(0.007813 + Cyan) Magenta)",
         ),
         (
             "color-mix(in srgb, red calc(0.78125%), blue)",
