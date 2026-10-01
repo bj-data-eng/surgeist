@@ -3,8 +3,9 @@
 use crate::{
     CssBasicShape, CssCircleRadius, CssCircleShape, CssClipPath, CssClipPathShape,
     CssEllipseRadius, CssEllipseShape, CssInsetShape, CssPolygonFillRule, CssPolygonShape,
-    CssPosition, CssRadialExtent, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits, specified_rule_serialization::SpecifiedRuleWriter,
+    CssPosition, CssRadialExtent, CssRectShape, CssRectShapeEdge,
+    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits, CssXywhShape,
+    specified_rule_serialization::SpecifiedRuleWriter,
 };
 
 type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
@@ -74,6 +75,8 @@ impl CssBasicShape {
             Self::Circle(value) => value.append_specified(writer),
             Self::Ellipse(value) => value.append_specified(writer),
             Self::Polygon(value) => value.append_specified(writer),
+            Self::Rect(value) => value.append_specified(writer),
+            Self::Xywh(value) => value.append_specified(writer),
         }
     }
 }
@@ -204,4 +207,63 @@ impl CssPolygonShape {
         }
         writer.append(")")
     }
+}
+
+impl CssRectShape {
+    specified_shape_methods!();
+    fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        charge_node(writer)?;
+        writer.append("rect(")?;
+        for (index, edge) in [self.top(), self.right(), self.bottom(), self.left()]
+            .into_iter()
+            .enumerate()
+        {
+            if index != 0 {
+                writer.append(" ")?;
+            }
+            match edge {
+                CssRectShapeEdge::Auto => {
+                    charge_node(writer)?;
+                    writer.append("auto")?;
+                }
+                CssRectShapeEdge::LengthPercentage(value) => {
+                    value.append_specified(&mut writer.context, &mut writer.css)?
+                }
+            }
+        }
+        append_rectangle_round(self.round(), writer)?;
+        writer.append(")")
+    }
+}
+
+impl CssXywhShape {
+    specified_shape_methods!();
+    fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        charge_node(writer)?;
+        writer.append("xywh(")?;
+        self.x()
+            .append_specified(&mut writer.context, &mut writer.css)?;
+        writer.append(" ")?;
+        self.y()
+            .append_specified(&mut writer.context, &mut writer.css)?;
+        writer.append(" ")?;
+        self.width()
+            .append_specified(&mut writer.context, &mut writer.css)?;
+        writer.append(" ")?;
+        self.height()
+            .append_specified(&mut writer.context, &mut writer.css)?;
+        append_rectangle_round(self.round(), writer)?;
+        writer.append(")")
+    }
+}
+
+fn append_rectangle_round(
+    round: Option<&crate::CssBorderRadiusShorthand>,
+    writer: &mut SpecifiedRuleWriter,
+) -> Result<()> {
+    if let Some(round) = round {
+        writer.append(" round ")?;
+        round.append_specified(writer)?;
+    }
+    Ok(())
 }

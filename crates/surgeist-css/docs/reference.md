@@ -1494,13 +1494,32 @@ order, while duplicate boxes, multiple shapes and combinations with none or URL
 are invalid. An omitted box remains distinct from explicit border-box because
 its contextual interpretation belongs to style and shape processing.
 
-The supported functions are `inset()`, `circle()`, `ellipse()` and `polygon()`.
+The supported functions are `inset()`, `rect()`, `xywh()`, `circle()`, `ellipse()`
+and `polygon()`.
 Inset retains one to four authored signed length-percentage offsets and optional
 checked border radii. Polygon retains optional fill rule, optional signed pure
 rounding length and a nonempty ordered point list. The fill rule must precede
 `round <length>` when both appear; percentages are not rounding lengths. Negative
 specified rounding lengths remain authored values. Used rounding geometry and
 its clamp require downstream shape context.
+
+`CssRectShape` stores four independent `CssRectShapeEdge` values in
+top/right/bottom/left order. Each is `Auto` or a checked signed
+length-percentage. Its constructor composes those edges and optional
+`CssBorderRadiusShorthand`; `top()`, `right()`, `bottom()`, `left()` and `round()`
+borrow the authored components. `CssXywhShape` instead stores signed x/y offsets
+and checked nonnegative width/height, exposed by the corresponding named getters.
+Both preserve absent rounding separately from explicit `round 0`, including
+horizontal and vertical radius arities and slash omission.
+
+Parsing requires exactly four coordinates, with optional `round` radii after
+them. Adjacent distinguishable percentage tokens and comment-only separators
+are valid. Commas, nonzero unitless coordinates, `auto` in `xywh()`, and negative
+ordinary width/height are invalid. Mathematical components remain symbolic.
+Authored rectangles retain their function identity and exact components:
+auto substitution, crossed-edge correction, percentage resolution and conversion
+to computed `inset()` require downstream context. The deprecated `clip` property's
+pure-length rectangle grammar has its own model.
 
 `circle()` retains one nonnegative length-percentage radius, an omitted radius,
 radial extent keywords, and optional `at <position>`. Percentage and symbolic
@@ -1525,9 +1544,8 @@ discrepancy without inserting its effective defaults into authored storage.
 Circle and ellipse positions use the full `CssPosition`. Shapes imports the
 [Values 5 WD 2024-11-11 position definition](https://www.w3.org/TR/2024/WD-css-values-5-20241111/#position);
 physical, axis-relative, named-flow and relative-flow forms remain symbolic.
-Circle and ellipse expose Complete authored support; basic-shape and clip-path
-remain Partial because
-`path()`, `shape()`, `rect()` and `xywh()` remain unsupported. The
+Circle, ellipse, rect and xywh expose Complete authored support; basic-shape and
+clip-path remain Partial because `path()` and `shape()` remain unsupported. The
 [catalog](../specs/catalog.json) pins only the required position definition and
 its serialization clauses; it does not select Values 5 in full.
 
@@ -1558,9 +1576,37 @@ let limits = CssSpecifiedValueSerializationLimits::new(3, 3, expected.len());
 assert_eq!(clip.serialize_specified_with_limits(limits).unwrap(), expected);
 ```
 
+```rust
+use surgeist_css::{
+    CssComponentValue, CssRectShape, CssRectShapeEdge,
+    CssSpecifiedLengthPercentage, CssSpecifiedValueSerializationLimits,
+};
+
+fn edge(css: &str) -> CssRectShapeEdge {
+    let value = CssSpecifiedLengthPercentage::try_from_component(
+        CssComponentValue::try_token(css).unwrap(),
+    ).unwrap();
+    CssRectShapeEdge::LengthPercentage(value)
+}
+
+let rect = CssRectShape::new(
+    CssRectShapeEdge::Auto, edge("1px"), edge("2%"), edge("0"), None,
+);
+assert_eq!(rect.top(), &CssRectShapeEdge::Auto);
+assert!(rect.round().is_none());
+let expected = "rect(auto 1px 2% 0)";
+let limits = CssSpecifiedValueSerializationLimits::new(5, 5, expected.len());
+assert_eq!(rect.serialize_specified_with_limits(limits).unwrap(), expected);
+```
+
 Each shape function charges one input and projection aggregate. Inset additionally
 charges an offset-list aggregate plus authored scalar providers; round radii use
-the existing border-radius aggregate and its authored scalar providers. Circle
+the existing border-radius aggregate and its authored scalar providers. Rect and
+xywh charge their four scalar providers; an auto edge costs one keyword leaf.
+There is no additional coordinate-list aggregate. Their literal four-component
+forms cost five input and projection nodes standalone, six in a clip-path
+composition, and seven with an explicit reference box. Optional round radii
+delegate to the same existing border-radius provider. Circle
 charges its explicit radius provider or extent leaf and optional existing
 position provider. Ellipse adds a pair aggregate only for explicit radii and
 charges its two independent components. Polygon adds optional fill and round

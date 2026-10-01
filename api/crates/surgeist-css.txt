@@ -187,6 +187,8 @@ pub surgeist_css::CssBasicShape::Circle(surgeist_css::CssCircleShape)
 pub surgeist_css::CssBasicShape::Ellipse(surgeist_css::CssEllipseShape)
 pub surgeist_css::CssBasicShape::Inset(alloc::boxed::Box<surgeist_css::CssInsetShape>)
 pub surgeist_css::CssBasicShape::Polygon(surgeist_css::CssPolygonShape)
+pub surgeist_css::CssBasicShape::Rect(surgeist_css::CssRectShape)
+pub surgeist_css::CssBasicShape::Xywh(surgeist_css::CssXywhShape)
 impl surgeist_css::CssBasicShape
 pub fn surgeist_css::CssBasicShape::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssBasicShape::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
@@ -3324,6 +3326,11 @@ pub surgeist_css::CssRecoveryAction::RejectInput
 pub surgeist_css::CssRecoveryAction::ReplaceMediaQueryWithNever
 pub surgeist_css::CssRecoveryAction::RetainWithImplicitClosure
 pub surgeist_css::CssRecoveryAction::StopAtNestingLimit
+#[non_exhaustive] pub enum surgeist_css::CssRectShapeEdge
+pub surgeist_css::CssRectShapeEdge::Auto
+pub surgeist_css::CssRectShapeEdge::LengthPercentage(surgeist_css::CssSpecifiedLengthPercentage)
+impl core::cmp::PartialEq for surgeist_css::CssRectShapeEdge
+pub fn surgeist_css::CssRectShapeEdge::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssReducedMotionPreference
 pub surgeist_css::CssReducedMotionPreference::NoPreference
 pub surgeist_css::CssReducedMotionPreference::Reduce
@@ -7718,6 +7725,17 @@ impl surgeist_css::CssRecoveryDiagnostic
 pub const fn surgeist_css::CssRecoveryDiagnostic::action(&self) -> surgeist_css::CssRecoveryAction
 pub const fn surgeist_css::CssRecoveryDiagnostic::error(&self) -> &surgeist_css::Error
 pub const fn surgeist_css::CssRecoveryDiagnostic::span(&self) -> surgeist_css::CssSourceSpan
+pub struct surgeist_css::CssRectShape
+impl surgeist_css::CssRectShape
+pub const fn surgeist_css::CssRectShape::bottom(&self) -> &surgeist_css::CssRectShapeEdge
+pub const fn surgeist_css::CssRectShape::left(&self) -> &surgeist_css::CssRectShapeEdge
+pub const fn surgeist_css::CssRectShape::new(top: surgeist_css::CssRectShapeEdge, right: surgeist_css::CssRectShapeEdge, bottom: surgeist_css::CssRectShapeEdge, left: surgeist_css::CssRectShapeEdge, round: core::option::Option<surgeist_css::CssBorderRadiusShorthand>) -> Self
+pub const fn surgeist_css::CssRectShape::right(&self) -> &surgeist_css::CssRectShapeEdge
+pub const fn surgeist_css::CssRectShape::round(&self) -> core::option::Option<&surgeist_css::CssBorderRadiusShorthand>
+pub const fn surgeist_css::CssRectShape::top(&self) -> &surgeist_css::CssRectShapeEdge
+impl surgeist_css::CssRectShape
+pub fn surgeist_css::CssRectShape::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssRectShape::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssRelativeColor
 impl surgeist_css::CssRelativeColor
 pub const fn surgeist_css::CssRelativeColor::alpha(&self) -> core::option::Option<&surgeist_css::CssRelativeColorExpression>
@@ -8762,6 +8780,19 @@ pub struct surgeist_css::CssWritingModePropertyValue
 impl surgeist_css::CssWritingModePropertyValue
 pub fn surgeist_css::CssWritingModePropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssWritingModePropertyValue::value(&self) -> &surgeist_css::CssWritingMode
+pub struct surgeist_css::CssXywhShape
+impl surgeist_css::CssXywhShape
+pub const fn surgeist_css::CssXywhShape::height(&self) -> &surgeist_css::CssSpecifiedNonNegativeLengthPercentage
+pub const fn surgeist_css::CssXywhShape::new(x: surgeist_css::CssSpecifiedLengthPercentage, y: surgeist_css::CssSpecifiedLengthPercentage, width: surgeist_css::CssSpecifiedNonNegativeLengthPercentage, height: surgeist_css::CssSpecifiedNonNegativeLengthPercentage, round: core::option::Option<surgeist_css::CssBorderRadiusShorthand>) -> Self
+pub const fn surgeist_css::CssXywhShape::round(&self) -> core::option::Option<&surgeist_css::CssBorderRadiusShorthand>
+pub const fn surgeist_css::CssXywhShape::width(&self) -> &surgeist_css::CssSpecifiedNonNegativeLengthPercentage
+pub const fn surgeist_css::CssXywhShape::x(&self) -> &surgeist_css::CssSpecifiedLengthPercentage
+pub const fn surgeist_css::CssXywhShape::y(&self) -> &surgeist_css::CssSpecifiedLengthPercentage
+impl surgeist_css::CssXywhShape
+pub fn surgeist_css::CssXywhShape::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssXywhShape::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl core::cmp::PartialEq for surgeist_css::CssXywhShape
+pub fn surgeist_css::CssXywhShape::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssZIndexPropertyValue
 impl surgeist_css::CssZIndexPropertyValue
 pub fn surgeist_css::CssZIndexPropertyValue::as_css(&self) -> &str

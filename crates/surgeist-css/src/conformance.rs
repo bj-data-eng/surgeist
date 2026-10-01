@@ -2250,10 +2250,10 @@ const PROPERTY_REMAINDER: &str =
 const TIMING_SUBSET: &str = "The I01 shorthand components plus C03 duration, signed delay, iteration, and typed calculation syntax and C05 easing functions are supported.";
 const TIMING_REMAINDER: &str =
     "Other valid forms of the cited shorthand production remain unsupported.";
-const BASIC_SHAPE_SUBSET: &str = "Typed inset(), circle(), ellipse(), and polygon() functions are supported; circle and ellipse retain the full imported Cartesian, named-flow, and relative-flow position grammar.";
-const BASIC_SHAPE_REMAINDER: &str = "path(), shape(), rect(), and xywh() remain unsupported.";
-const CLIP_PATH_SUBSET: &str = "none, URL, all seven geometry boxes, and typed inset(), circle(), ellipse(), and polygon() with optional reference boxes support the full imported position grammar.";
-const CLIP_PATH_REMAINDER: &str = "path(), shape(), rect(), and xywh() remain unsupported.";
+const BASIC_SHAPE_SUBSET: &str = "Typed inset(), circle(), ellipse(), polygon(), rect(), and xywh() functions are supported; circle and ellipse retain the full imported Cartesian, named-flow, and relative-flow position grammar.";
+const BASIC_SHAPE_REMAINDER: &str = "path() and shape() remain unsupported.";
+const CLIP_PATH_SUBSET: &str = "none, URL, all seven geometry boxes, and typed inset(), circle(), ellipse(), polygon(), rect(), and xywh() with optional reference boxes are supported; circle and ellipse retain the full imported position grammar.";
+const CLIP_PATH_REMAINDER: &str = "path() and shape() remain unsupported.";
 const COLOR5_RELATIVE_SUBSET: &str = "Relative rgb()/rgba(), hsl()/hsla(), hwb(), lab(), lch(), oklab(), oklch(), predefined and custom-profile color(), and alpha() preserve authored channels and symbolic calculations.";
 const COLOR5_RELATIVE_REMAINDER: &str = "Unselected CSS Color 5 source-color functions remain unsupported; profile binding and color evaluation belong to downstream resolution.";
 const COLOR5_MIX_SUBSET: &str = "Authored color-mix() supports an optional interpolation method, ordered nonempty color lists, literal or calculated percentage weights before or after colors, and predefined, polar or symbolic custom spaces.";
@@ -2724,7 +2724,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 624] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 626] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -3799,6 +3799,20 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 624] = [
         "polygon()",
         S_SHAPES1,
         "#funcdef-basic-shape-polygon",
+    ),
+    CssFeatureMetadata::complete(
+        "ext.value.basic-shape.rect",
+        CssFeatureKind::Value,
+        "rect()",
+        S_SHAPES1,
+        "#funcdef-basic-shape-rect",
+    ),
+    CssFeatureMetadata::complete(
+        "ext.value.basic-shape.xywh",
+        CssFeatureKind::Value,
+        "xywh()",
+        S_SHAPES1,
+        "#funcdef-basic-shape-xywh",
     ),
     CssFeatureMetadata::complete(
         "official.value.calc",

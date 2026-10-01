@@ -595,6 +595,66 @@ fn parse_inset_shape<'i, 't>(
     Ok(CssInsetShape::new(offsets, round))
 }
 
+fn parse_rect_shape<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Result<CssRectShape, ParseError<'i, Error>> {
+    let top = parse_rect_shape_edge(input, numeric)?;
+    let right = parse_rect_shape_edge(input, numeric)?;
+    let bottom = parse_rect_shape_edge(input, numeric)?;
+    let left = parse_rect_shape_edge(input, numeric)?;
+    Ok(CssRectShape::new(
+        top,
+        right,
+        bottom,
+        left,
+        parse_optional_rectangle_round(input, numeric)?,
+    ))
+}
+
+fn parse_rect_shape_edge<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Result<CssRectShapeEdge, ParseError<'i, Error>> {
+    if input
+        .try_parse(|input| input.expect_ident_matching("auto"))
+        .is_ok()
+    {
+        Ok(CssRectShapeEdge::Auto)
+    } else {
+        parse_shape_length_percentage(input, numeric, "rect edge")
+            .map(CssRectShapeEdge::LengthPercentage)
+    }
+}
+
+fn parse_xywh_shape<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Result<CssXywhShape, ParseError<'i, Error>> {
+    let x = parse_shape_length_percentage(input, numeric, "xywh x")?;
+    let y = parse_shape_length_percentage(input, numeric, "xywh y")?;
+    let width = parse_non_negative_shape_length_percentage(input, numeric, "xywh width")?;
+    let height = parse_non_negative_shape_length_percentage(input, numeric, "xywh height")?;
+    Ok(CssXywhShape::new(
+        x,
+        y,
+        width,
+        height,
+        parse_optional_rectangle_round(input, numeric)?,
+    ))
+}
+
+fn parse_optional_rectangle_round<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Result<Option<crate::CssBorderRadiusShorthand>, ParseError<'i, Error>> {
+    if input.is_exhausted() {
+        return Ok(None);
+    }
+    input.expect_ident_matching("round")?;
+    parse_shape_radii(input, numeric).map(Some)
+}
+
 fn parse_shape_radii<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
@@ -927,7 +987,7 @@ fn parse_clip_path_shape<'i, 't>(
     let normalized_name = name.to_ascii_lowercase();
     if !matches!(
         normalized_name.as_str(),
-        "inset" | "circle" | "ellipse" | "polygon"
+        "inset" | "circle" | "ellipse" | "polygon" | "rect" | "xywh"
     ) {
         return Err(unsupported_value(
             input,
@@ -943,6 +1003,8 @@ fn parse_clip_path_shape<'i, 't>(
             "circle" => parse_circle_shape(input, numeric).map(CssBasicShape::Circle),
             "ellipse" => parse_ellipse_shape(input, numeric).map(CssBasicShape::Ellipse),
             "polygon" => parse_polygon_shape(input, numeric).map(CssBasicShape::Polygon),
+            "rect" => parse_rect_shape(input, numeric).map(CssBasicShape::Rect),
+            "xywh" => parse_xywh_shape(input, numeric).map(CssBasicShape::Xywh),
             _ => Err(unsupported_value(
                 input,
                 None,
