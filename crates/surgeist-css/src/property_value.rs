@@ -81,10 +81,11 @@ impl fmt::Display for CssPropertyValueParseError {
 
 impl std::error::Error for CssPropertyValueParseError {}
 
-fn requires_closed_font_components(property: crate::CssKnownProperty) -> bool {
+fn requires_closed_components(property: crate::CssKnownProperty) -> bool {
     matches!(
         property,
-        crate::CssKnownProperty::FontVariant
+        crate::CssKnownProperty::ClipPath
+            | crate::CssKnownProperty::FontVariant
             | crate::CssKnownProperty::FontVariantLigatures
             | crate::CssKnownProperty::FontVariantCaps
             | crate::CssKnownProperty::FontVariantAlternates
@@ -98,19 +99,25 @@ fn requires_closed_font_components(property: crate::CssKnownProperty) -> bool {
     )
 }
 
-fn recovered_font_component_error(
+fn recovered_component_error(
     property: crate::CssKnownProperty,
     value: &CssComponentValues,
     serialized: &CssSerializedValue,
 ) -> Option<CssPropertyValueParseError> {
-    (requires_closed_font_components(property) && value.first_implicit_origin().is_some()).then(
-        || {
-            CssPropertyValueParseError::from_grammar(
-                crate::error::implicit_eof(serialized.as_css()),
-                serialized,
-            )
-        },
-    )
+    if !requires_closed_components(property) {
+        return None;
+    }
+    let origin = value.first_implicit_origin()?;
+    Some(CssPropertyValueParseError {
+        detail: Box::new(PropertyValueParseErrorDetail {
+            kind: CssPropertyValueErrorKind::Grammar(
+                crate::error::implicit_eof(serialized.as_css())
+                    .kind()
+                    .clone(),
+            ),
+            origin: CssSerializedOrigin::End(Some(origin.clone())),
+        }),
+    })
 }
 
 /// Checks one property's owned components and constructs an authored declaration occurrence.
@@ -145,7 +152,7 @@ pub(crate) fn checked_property_value_body(
         .serialize()
         .map_err(CssPropertyValueParseError::from_component)?;
     if let CssPropertyNameRef::Known(known) = property
-        && let Some(error) = recovered_font_component_error(known, value, &serialized)
+        && let Some(error) = recovered_component_error(known, value, &serialized)
     {
         return Err(error);
     }
@@ -177,9 +184,7 @@ pub(crate) fn checked_grammar_value_body(
     let serialized = value
         .serialize()
         .map_err(CssPropertyValueParseError::from_component)?;
-    if let Some(error) =
-        recovered_font_component_error(grammar.target_property(), value, &serialized)
-    {
+    if let Some(error) = recovered_component_error(grammar.target_property(), value, &serialized) {
         return Err(error);
     }
     crate::parser::parse_property_value_body_for_grammar(

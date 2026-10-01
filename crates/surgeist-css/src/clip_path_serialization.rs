@@ -2,7 +2,7 @@
 
 use crate::{
     CssBasicShape, CssCircleRadius, CssCircleShape, CssClipPath, CssClipPathShape,
-    CssEllipseRadius, CssEllipseShape, CssInsetShape, CssPolygonFillRule, CssPolygonShape,
+    CssEllipseRadius, CssEllipseShape, CssFillRule, CssInsetShape, CssPathShape, CssPolygonShape,
     CssPosition, CssRadialExtent, CssRectShape, CssRectShapeEdge,
     CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits, CssXywhShape,
     specified_rule_serialization::SpecifiedRuleWriter,
@@ -75,6 +75,7 @@ impl CssBasicShape {
             Self::Circle(value) => value.append_specified(writer),
             Self::Ellipse(value) => value.append_specified(writer),
             Self::Polygon(value) => value.append_specified(writer),
+            Self::Path(value) => value.append_specified(writer),
             Self::Rect(value) => value.append_specified(writer),
             Self::Xywh(value) => value.append_specified(writer),
         }
@@ -177,8 +178,8 @@ impl CssPolygonShape {
         if let Some(fill) = self.fill_rule() {
             charge_node(writer)?;
             writer.append(match fill {
-                CssPolygonFillRule::Nonzero => "nonzero",
-                CssPolygonFillRule::Evenodd => "evenodd",
+                CssFillRule::Nonzero => "nonzero",
+                CssFillRule::Evenodd => "evenodd",
             })?;
         }
         if let Some(round) = self.round() {
@@ -205,6 +206,25 @@ impl CssPolygonShape {
                 .y()
                 .append_specified(&mut writer.context, &mut writer.css)?;
         }
+        writer.append(")")
+    }
+}
+
+impl CssPathShape {
+    specified_shape_methods!();
+    fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        charge_node(writer)?;
+        writer.append("path(")?;
+        if let Some(fill) = self.fill_rule() {
+            charge_node(writer)?;
+            writer.append(match fill {
+                CssFillRule::Nonzero => "nonzero",
+                CssFillRule::Evenodd => "evenodd",
+            })?;
+            writer.append(", ")?;
+        }
+        charge_node(writer)?;
+        writer.append_string(self.data().as_str())?;
         writer.append(")")
     }
 }

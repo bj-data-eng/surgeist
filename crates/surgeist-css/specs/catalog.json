@@ -101,6 +101,24 @@
     "scope": "Only the listed required definitions are imported. These source documents are not additional fully selected modules and do not change expected_counts or modules.",
     "sources": [
       {
+        "id": "svg11-path-parsing-interpretation",
+        "kind": "w3c-dated-publication",
+        "date": "2011-08-16",
+        "url": "https://www.w3.org/TR/2011/REC-SVG11-20110816/implnote.html",
+        "sha256": "8c6edf7d7d52aa3d8c11f38276d090105f2504fd557edc2f5d4348e58d58e3e5",
+        "bytes": 34617,
+        "source_resolution": "Shapes 1 CRD 2025-06-12 explicitly imports SVG 1.1 Second Edition path grammar and parsing rules. Import only the path definitions below, without selecting SVG in full or upgrading to SVG 2."
+      },
+      {
+        "id": "svg11-path-data-grammar",
+        "kind": "w3c-dated-publication",
+        "date": "2011-08-16",
+        "url": "https://www.w3.org/TR/2011/REC-SVG11-20110816/paths.html",
+        "sha256": "bd8e7b9789962497a6b2ca2b8012a4f824905a89b40beaa3b29cc9eabf5d6fc7",
+        "bytes": 180140,
+        "source_resolution": "Shapes 1 CRD 2025-06-12 explicitly imports SVG 1.1 Second Edition path grammar and parsing rules. Import only the path definitions below, without selecting SVG in full or upgrading to SVG 2."
+      },
+      {
         "id": "css-scoping-1-host-definitions",
         "kind": "w3c-dated-publication",
         "date": "2014-04-03",
@@ -276,6 +294,88 @@
       }
     ],
     "definitions": [
+      {
+        "id": "svg11-path-parsing-interpretation",
+        "source_id": "svg11-path-parsing-interpretation",
+        "sections": [
+          {
+            "anchor": "PathElementImplementationNotes",
+            "url": "https://www.w3.org/TR/2011/REC-SVG11-20110816/implnote.html#PathElementImplementationNotes"
+          },
+          {
+            "anchor": "ArcOutOfRangeParameters",
+            "url": "https://www.w3.org/TR/2011/REC-SVG11-20110816/implnote.html#ArcOutOfRangeParameters"
+          }
+        ],
+        "required_by": [
+          {
+            "module_id": "css-shapes-1",
+            "section_url": "https://www.w3.org/TR/2025/CRD-css-shapes-1-20250612/#funcdef-basic-shape-path",
+            "requirement": "The path() string must satisfy SVG 1.1 path grammar and parsing rules. Fill grammar is shared with selected Shapes/Masking nonzero/evenodd; SVG painting execution is not imported."
+          }
+        ],
+        "authored_owner": "css",
+        "authored_requirements": [
+          "Admit signed and zero arc radii under the adopted Appendix F.6.2 interpretation, preserving spelling without numeric correction. Keep lexical flags single ASCII 0/1; Appendix F.5/F.6.2 interpretation questions remain separately recorded."
+        ],
+        "downstream_owners": [
+          "shape",
+          "layout",
+          "render"
+        ],
+        "downstream_requirements": "Geometry, arc radius correction, zero-radius conversion, drawing-prefix recovery and SVG painting execution remain downstream; no full SVG profile is selected."
+      },
+      {
+        "id": "svg11-path-data-grammar",
+        "source_id": "svg11-path-data-grammar",
+        "sections": [
+          {
+            "anchor": "PathDataBNF",
+            "url": "https://www.w3.org/TR/2011/REC-SVG11-20110816/paths.html#PathDataBNF"
+          },
+          {
+            "anchor": "PathDataMovetoCommands",
+            "url": "https://www.w3.org/TR/2011/REC-SVG11-20110816/paths.html#PathDataMovetoCommands"
+          },
+          {
+            "anchor": "PathDataClosePathCommand",
+            "url": "https://www.w3.org/TR/2011/REC-SVG11-20110816/paths.html#PathDataClosePathCommand"
+          },
+          {
+            "anchor": "PathDataLinetoCommands",
+            "url": "https://www.w3.org/TR/2011/REC-SVG11-20110816/paths.html#PathDataLinetoCommands"
+          },
+          {
+            "anchor": "PathDataCubicBezierCommands",
+            "url": "https://www.w3.org/TR/2011/REC-SVG11-20110816/paths.html#PathDataCubicBezierCommands"
+          },
+          {
+            "anchor": "PathDataQuadraticBezierCommands",
+            "url": "https://www.w3.org/TR/2011/REC-SVG11-20110816/paths.html#PathDataQuadraticBezierCommands"
+          },
+          {
+            "anchor": "PathDataEllipticalArcCommands",
+            "url": "https://www.w3.org/TR/2011/REC-SVG11-20110816/paths.html#PathDataEllipticalArcCommands"
+          }
+        ],
+        "required_by": [
+          {
+            "module_id": "css-shapes-1",
+            "section_url": "https://www.w3.org/TR/2025/CRD-css-shapes-1-20250612/#funcdef-basic-shape-path",
+            "requirement": "The path() string must satisfy SVG 1.1 path grammar and parsing rules. Fill grammar is shared with selected Shapes/Masking nonzero/evenodd; SVG painting execution is not imported."
+          }
+        ],
+        "authored_owner": "css",
+        "authored_requirements": [
+          "Validate the complete nonempty decoded path with SVG whitespace, maximal numbers, all command arities and single ASCII 0/1 flags; malformed suffixes reject the entire CSS value."
+        ],
+        "downstream_owners": [
+          "shape",
+          "layout",
+          "render"
+        ],
+        "downstream_requirements": "Geometry, arc radius correction, zero-radius conversion, drawing-prefix recovery and SVG painting execution remain downstream; no full SVG profile is selected."
+      },
       {
         "id": "text-align-single-extended-grapheme-cluster",
         "source_id": "uax29-revision-47-extended-grapheme-clusters",

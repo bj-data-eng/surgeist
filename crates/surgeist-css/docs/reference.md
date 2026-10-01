@@ -1494,8 +1494,8 @@ order, while duplicate boxes, multiple shapes and combinations with none or URL
 are invalid. An omitted box remains distinct from explicit border-box because
 its contextual interpretation belongs to style and shape processing.
 
-The supported functions are `inset()`, `rect()`, `xywh()`, `circle()`, `ellipse()`
-and `polygon()`.
+The supported functions are `inset()`, `rect()`, `xywh()`, `circle()`, `ellipse()`,
+`polygon()` and `path()`.
 Inset retains one to four authored signed length-percentage offsets and optional
 checked border radii. Polygon retains optional fill rule, optional signed pure
 rounding length and a nonempty ordered point list. The fill rule must precede
@@ -1521,6 +1521,47 @@ auto substitution, crossed-edge correction, percentage resolution and conversion
 to computed `inset()` require downstream context. The deprecated `clip` property's
 pure-length rectangle grammar has its own model.
 
+`CssPathShape` composes an optional `CssFillRule` and checked `CssPathData`.
+The shared fill keyword is `Nonzero` or `Evenodd`; omission stays distinct from
+explicit nonzero in both polygon and path models. Path syntax accepts one quoted
+string, preceded by an optional fill keyword and comma. Without that keyword,
+the comma is absent.
+
+`CssPathData::try_new` checks decoded SVG text and gives it programmatic origin.
+`try_from_component` requires one complete quoted-string component and retains
+its original token origin. `as_str()` borrows the decoded text; `origin()` borrows
+its provenance. Equality compares decoded bytes independently of provenance:
+CSS escapes and quote styles can produce equal data, while different SVG number
+spellings, command cases and separators remain distinct.
+
+The complete nonempty string must follow the imported
+[SVG 1.1 path-data grammar](https://www.w3.org/TR/2011/REC-SVG11-20110816/paths.html#PathDataBNF).
+All command families, repeated groups, subpaths and maximal decimal/exponent
+spellings are checked without float conversion. Move-only paths and degenerate
+segments are valid. Empty or SVG-whitespace-only data, incomplete groups,
+malformed suffixes, invalid separators and non-ASCII numeric syntax are invalid.
+SVG whitespace is space, tab, carriage return and line feed.
+
+Signed and zero arc radii remain authored values under the
+[Appendix F.6.2 interpretation](https://www.w3.org/TR/2011/REC-SVG11-20110816/implnote.html#ArcOutOfRangeParameters),
+corroborated by the pinned WebKit SVG path consumer. Arc flags remain single ASCII
+`0` or `1`, following the BNF and that consumer. These choices resolve differing
+requirements within the pinned SVG publication without taking absolute radii,
+converting arcs or importing drawing-prefix recovery. Geometry remains downstream.
+
+`CssPathDataConstructionError` distinguishes `ExpectedString`, `RecoveredInput`,
+`EmptyPath` and `InvalidPathData`. Grammar failures report a decoded-byte offset,
+including decoded length for an incomplete suffix; that offset is separate from
+the original CSS token's source coordinates. There is no path-specific constructor
+byte or command-count cap. Component parsing and output retain their existing
+explicit limits.
+
+Ordinary CSS parsing can retain a missing string quote or function parenthesis
+with recovery diagnostics. Clean validation rejects that report. Checked
+`clip-path` construction and replacement reentry reject recovered components
+before reserialization can conceal the missing delimiter; the same rule applies
+to every clip-path alternative.
+
 `circle()` retains one nonnegative length-percentage radius, an omitted radius,
 radial extent keywords, and optional `at <position>`. Percentage and symbolic
 length-percentage radii are checked authored values; two radii are invalid.
@@ -1544,10 +1585,11 @@ discrepancy without inserting its effective defaults into authored storage.
 Circle and ellipse positions use the full `CssPosition`. Shapes imports the
 [Values 5 WD 2024-11-11 position definition](https://www.w3.org/TR/2024/WD-css-values-5-20241111/#position);
 physical, axis-relative, named-flow and relative-flow forms remain symbolic.
-Circle, ellipse, rect and xywh expose Complete authored support; basic-shape and
-clip-path remain Partial because `path()` and `shape()` remain unsupported. The
-[catalog](../specs/catalog.json) pins only the required position definition and
-its serialization clauses; it does not select Values 5 in full.
+Circle, ellipse, rect, xywh and path expose Complete authored support; basic-shape
+and clip-path remain Partial because `shape()` remains unsupported. The
+[catalog](../specs/catalog.json) pins the required position definition and its
+serialization clauses, plus the SVG path grammar and parsing definitions.
+These imports select neither Values 5 nor SVG in full.
 
 `CssClipPath`, `CssClipPathShape`, `CssBasicShape` and each supported shape struct
 provide `serialize_specified()` and `serialize_specified_with_limits(...)`.
@@ -1558,6 +1600,8 @@ extents, explicit nonzero fill and round zero remain present or omitted as
 authored. Positions use their family's canonical axis order. Numeric and math
 providers retain exact ordinary magnitudes, units and symbolic values; the
 original parsed components and their origins remain unchanged.
+Path output uses a canonical double-quoted CSS string with required escaping,
+preserving the internal decoded SVG text, whitespace and numeric spelling.
 
 ```rust
 use surgeist_css::{
@@ -1599,6 +1643,18 @@ let limits = CssSpecifiedValueSerializationLimits::new(5, 5, expected.len());
 assert_eq!(rect.serialize_specified_with_limits(limits).unwrap(), expected);
 ```
 
+```rust
+use surgeist_css::{CssPathData, CssPathShape, CssSpecifiedValueSerializationLimits};
+
+let data = CssPathData::try_new("M0 0L1 2").unwrap();
+let path = CssPathShape::new(None, data);
+assert!(path.fill_rule().is_none());
+assert_eq!(path.data().as_str(), "M0 0L1 2");
+let expected = "path(\"M0 0L1 2\")";
+let limits = CssSpecifiedValueSerializationLimits::new(2, 2, expected.len());
+assert_eq!(path.serialize_specified_with_limits(limits).unwrap(), expected);
+```
+
 Each shape function charges one input and projection aggregate. Inset additionally
 charges an offset-list aggregate plus authored scalar providers; round radii use
 the existing border-radius aggregate and its authored scalar providers. Rect and
@@ -1612,6 +1668,9 @@ position provider. Ellipse adds a pair aggregate only for explicit radii and
 charges its two independent components. Polygon adds optional fill and round
 providers, one point-list aggregate, and each point aggregate with its two
 coordinates. Composition adds one aggregate and one leaf for an explicit box;
+path charges its decoded-string leaf and optional explicit fill keyword, costing
+two nodes standalone without fill and three with fill. Quoting and escaping
+charge the same cumulative byte budget.
 `CssBasicShape` and the enclosing BasicShape enum branch delegate transparently.
 Standalone none and geometry boxes cost one node in each budget; URL delegates
 its existing provider. Omitted children add no synthetic defaults. Wrappers and

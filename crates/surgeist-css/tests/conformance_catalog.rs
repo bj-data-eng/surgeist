@@ -5114,7 +5114,8 @@ fn clip_path_distinguishes_selected_and_deferred_shape_functions() {
         let report = parse_style_attribute(&format!("clip-path: {value}"));
         assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
     }
-    for value in ["shape(from 0 0, line to 1px 1px)"] {
+    {
+        let value = "shape(from 0 0, line to 1px 1px)";
         assert!(
             !parse_style_attribute(&format!("clip-path: {value}")).is_clean(),
             "deferred {value}"
@@ -5161,7 +5162,8 @@ fn assert_shape_functions_partial(metadata: &CssFeatureMetadata) {
 
 fn assert_missing_shape_functions(metadata: &CssFeatureMetadata) {
     let remainder = metadata.unsupported_remainder().unwrap();
-    for function in ["shape()"] {
+    {
+        let function = "shape()";
         assert!(
             remainder.contains(function),
             "missing {function}: {remainder}"
@@ -5298,7 +5300,8 @@ fn clip_path_selected_subset_and_remainder_are_distinct() {
         let report = parse_style_attribute(&format!("clip-path: {value}"));
         assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
     }
-    for value in ["shape(from 0 0, line to 1px 1px)"] {
+    {
+        let value = "shape(from 0 0, line to 1px 1px)";
         assert!(
             !parse_style_attribute(&format!("clip-path: {value}")).is_clean(),
             "unsupported {value}"

@@ -186,6 +186,7 @@ pub surgeist_css::CssBaselinePosition::Last
 pub surgeist_css::CssBasicShape::Circle(surgeist_css::CssCircleShape)
 pub surgeist_css::CssBasicShape::Ellipse(surgeist_css::CssEllipseShape)
 pub surgeist_css::CssBasicShape::Inset(alloc::boxed::Box<surgeist_css::CssInsetShape>)
+pub surgeist_css::CssBasicShape::Path(surgeist_css::CssPathShape)
 pub surgeist_css::CssBasicShape::Polygon(surgeist_css::CssPolygonShape)
 pub surgeist_css::CssBasicShape::Rect(surgeist_css::CssRectShape)
 pub surgeist_css::CssBasicShape::Xywh(surgeist_css::CssXywhShape)
@@ -1084,6 +1085,9 @@ pub surgeist_css::CssFeatureKind::PropertyAlias
 pub surgeist_css::CssFeatureKind::Rule
 pub surgeist_css::CssFeatureKind::Selector
 pub surgeist_css::CssFeatureKind::Value
+#[non_exhaustive] pub enum surgeist_css::CssFillRule
+pub surgeist_css::CssFillRule::Evenodd
+pub surgeist_css::CssFillRule::Nonzero
 #[non_exhaustive] pub enum surgeist_css::CssFilter
 pub surgeist_css::CssFilter::Functions(surgeist_css::CssFilterFunctionList)
 pub surgeist_css::CssFilter::None
@@ -3161,6 +3165,11 @@ pub fn surgeist_css::CssOverflowWrap::serialize_specified_with_limits(&self, lim
 pub surgeist_css::CssPageSelector::First
 pub surgeist_css::CssPageSelector::Left
 pub surgeist_css::CssPageSelector::Right
+#[non_exhaustive] pub enum surgeist_css::CssPathDataConstructionErrorKind
+pub surgeist_css::CssPathDataConstructionErrorKind::EmptyPath
+pub surgeist_css::CssPathDataConstructionErrorKind::ExpectedString
+pub surgeist_css::CssPathDataConstructionErrorKind::InvalidPathData
+pub surgeist_css::CssPathDataConstructionErrorKind::RecoveredInput
 #[non_exhaustive] pub enum surgeist_css::CssPointerCapability
 pub surgeist_css::CssPointerCapability::Coarse
 pub surgeist_css::CssPointerCapability::Fine
@@ -3168,9 +3177,6 @@ pub surgeist_css::CssPointerCapability::None
 #[non_exhaustive] pub enum surgeist_css::CssPointerEvents
 pub surgeist_css::CssPointerEvents::Auto
 pub surgeist_css::CssPointerEvents::None
-#[non_exhaustive] pub enum surgeist_css::CssPolygonFillRule
-pub surgeist_css::CssPolygonFillRule::Evenodd
-pub surgeist_css::CssPolygonFillRule::Nonzero
 #[non_exhaustive] pub enum surgeist_css::CssPositionConstructionError
 pub surgeist_css::CssPositionConstructionError::NonPhysicalKeyword
 pub surgeist_css::CssPositionConstructionError::UnpairedEdgeOffsets
@@ -7466,6 +7472,31 @@ impl surgeist_css::CssPartNameList
 pub fn surgeist_css::CssPartNameList::names(&self) -> &[surgeist_css::CssPartName]
 pub fn surgeist_css::CssPartNameList::to_css_string(&self) -> alloc::string::String
 pub fn surgeist_css::CssPartNameList::try_new(names: alloc::vec::Vec<surgeist_css::CssPartName>) -> core::option::Option<Self>
+pub struct surgeist_css::CssPathData
+impl surgeist_css::CssPathData
+pub fn surgeist_css::CssPathData::as_str(&self) -> &str
+pub const fn surgeist_css::CssPathData::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssPathData::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssPathDataConstructionError>
+pub fn surgeist_css::CssPathData::try_new(decoded: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, surgeist_css::CssPathDataConstructionError>
+impl core::cmp::Eq for surgeist_css::CssPathData
+impl core::cmp::PartialEq for surgeist_css::CssPathData
+pub fn surgeist_css::CssPathData::eq(&self, other: &Self) -> bool
+pub struct surgeist_css::CssPathDataConstructionError
+impl surgeist_css::CssPathDataConstructionError
+pub const fn surgeist_css::CssPathDataConstructionError::decoded_byte_offset(&self) -> core::option::Option<usize>
+pub const fn surgeist_css::CssPathDataConstructionError::kind(&self) -> surgeist_css::CssPathDataConstructionErrorKind
+pub const fn surgeist_css::CssPathDataConstructionError::origin(&self) -> &surgeist_css::CssValueOrigin
+impl core::error::Error for surgeist_css::CssPathDataConstructionError
+impl core::fmt::Display for surgeist_css::CssPathDataConstructionError
+pub fn surgeist_css::CssPathDataConstructionError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_css::CssPathShape
+impl surgeist_css::CssPathShape
+pub const fn surgeist_css::CssPathShape::data(&self) -> &surgeist_css::CssPathData
+pub const fn surgeist_css::CssPathShape::fill_rule(&self) -> core::option::Option<surgeist_css::CssFillRule>
+pub const fn surgeist_css::CssPathShape::new(fill_rule: core::option::Option<surgeist_css::CssFillRule>, data: surgeist_css::CssPathData) -> Self
+impl surgeist_css::CssPathShape
+pub fn surgeist_css::CssPathShape::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssPathShape::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssPendingFontFaceDescriptorValue
 impl surgeist_css::CssPendingFontFaceDescriptorValue
 pub const fn surgeist_css::CssPendingFontFaceDescriptorValue::components(&self) -> &surgeist_css::CssComponentValues
@@ -7560,8 +7591,8 @@ pub fn surgeist_css::CssPolygonPointList::points(&self) -> &[surgeist_css::CssPo
 pub fn surgeist_css::CssPolygonPointList::try_new(points: alloc::vec::Vec<surgeist_css::CssPolygonPoint>) -> core::option::Option<Self>
 pub struct surgeist_css::CssPolygonShape
 impl surgeist_css::CssPolygonShape
-pub const fn surgeist_css::CssPolygonShape::fill_rule(&self) -> core::option::Option<surgeist_css::CssPolygonFillRule>
-pub const fn surgeist_css::CssPolygonShape::new(fill_rule: core::option::Option<surgeist_css::CssPolygonFillRule>, round: core::option::Option<surgeist_css::CssSpecifiedLength>, points: surgeist_css::CssPolygonPointList) -> Self
+pub const fn surgeist_css::CssPolygonShape::fill_rule(&self) -> core::option::Option<surgeist_css::CssFillRule>
+pub const fn surgeist_css::CssPolygonShape::new(fill_rule: core::option::Option<surgeist_css::CssFillRule>, round: core::option::Option<surgeist_css::CssSpecifiedLength>, points: surgeist_css::CssPolygonPointList) -> Self
 pub const fn surgeist_css::CssPolygonShape::points(&self) -> &surgeist_css::CssPolygonPointList
 pub const fn surgeist_css::CssPolygonShape::round(&self) -> core::option::Option<&surgeist_css::CssSpecifiedLength>
 impl surgeist_css::CssPolygonShape

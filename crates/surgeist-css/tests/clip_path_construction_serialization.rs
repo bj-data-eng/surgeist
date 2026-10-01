@@ -204,11 +204,11 @@ fn checked_shapes_retain_signed_rounding_offsets_point_lists_and_radius_arity() 
     let points = CssPolygonPointList::try_new(vec![point.clone()]).unwrap();
     let signed = length("-1px");
     let polygon = CssPolygonShape::new(
-        Some(CssPolygonFillRule::Nonzero),
+        Some(CssFillRule::Nonzero),
         Some(signed.clone()),
         points.clone(),
     );
-    assert_eq!(polygon.fill_rule(), Some(CssPolygonFillRule::Nonzero));
+    assert_eq!(polygon.fill_rule(), Some(CssFillRule::Nonzero));
     assert_eq!(polygon.round(), Some(&signed));
     assert_eq!(polygon.points().points(), &[point]);
     assert_ne!(

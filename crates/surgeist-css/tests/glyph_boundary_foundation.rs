@@ -81,7 +81,7 @@ fn legacy_alias_catalog_is_partial_with_a_truthful_unresolved_boundary() {
     assert_eq!(ordinary.status(), CssSupportStatus::Partial);
     assert!(ordinary.supported_subset().is_some());
     let remainder = ordinary.unsupported_remainder().expect("valid remainder");
-    assert!(remainder.contains("path()"), "{remainder}");
+    assert!(remainder.contains("shape()"), "{remainder}");
     assert!(remainder.to_ascii_lowercase().contains("unsupported"));
     assert!(!remainder.starts_with("Unresolved by the selected standard:"));
     assert_eq!(ordinary.recognized_unsupported_code(), None);

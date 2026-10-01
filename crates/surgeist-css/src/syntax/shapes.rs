@@ -177,10 +177,10 @@ impl CssInsetShape {
     }
 }
 
-/// The optional authored fill rule of `polygon()`.
+/// The optional authored fill rule shared by basic shapes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum CssPolygonFillRule {
+pub enum CssFillRule {
     Nonzero,
     Evenodd,
 }
@@ -227,7 +227,7 @@ impl CssPolygonPointList {
 /// An authored `polygon()` value.
 #[derive(Clone, Debug)]
 pub struct CssPolygonShape {
-    fill_rule: Option<CssPolygonFillRule>,
+    fill_rule: Option<CssFillRule>,
     round: Option<CssSpecifiedLength>,
     points: CssPolygonPointList,
 }
@@ -236,7 +236,7 @@ numeric_fields_eq!(CssPolygonShape, [], [round], [fill_rule, points]);
 impl CssPolygonShape {
     #[must_use]
     pub const fn new(
-        fill_rule: Option<CssPolygonFillRule>,
+        fill_rule: Option<CssFillRule>,
         round: Option<CssSpecifiedLength>,
         points: CssPolygonPointList,
     ) -> Self {
@@ -248,7 +248,7 @@ impl CssPolygonShape {
     }
 
     #[must_use]
-    pub const fn fill_rule(&self) -> Option<CssPolygonFillRule> {
+    pub const fn fill_rule(&self) -> Option<CssFillRule> {
         self.fill_rule
     }
 
@@ -384,6 +384,33 @@ impl CssXywhShape {
     }
 }
 
+/// An authored `path()` with checked decoded SVG data and optional fill.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssPathShape {
+    fill_rule: Option<CssFillRule>,
+    data: super::CssPathData,
+}
+
+impl CssPathShape {
+    /// Composes checked path data without inserting a contextual fill default.
+    #[must_use]
+    pub const fn new(fill_rule: Option<CssFillRule>, data: super::CssPathData) -> Self {
+        Self { fill_rule, data }
+    }
+
+    /// Returns the authored fill rule, preserving omission.
+    #[must_use]
+    pub const fn fill_rule(&self) -> Option<CssFillRule> {
+        self.fill_rule
+    }
+
+    /// Returns the checked decoded SVG data.
+    #[must_use]
+    pub const fn data(&self) -> &super::CssPathData {
+        &self.data
+    }
+}
+
 /// A selected authored basic-shape function.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
@@ -392,6 +419,7 @@ pub enum CssBasicShape {
     Circle(CssCircleShape),
     Ellipse(CssEllipseShape),
     Polygon(CssPolygonShape),
+    Path(CssPathShape),
     Rect(CssRectShape),
     Xywh(CssXywhShape),
 }

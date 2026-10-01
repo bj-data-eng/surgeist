@@ -704,7 +704,7 @@ fn parse_polygon_shape<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssPolygonShape, ParseError<'i, Error>> {
-    let fill_rule = input.try_parse(parse_polygon_fill_rule).ok();
+    let fill_rule = input.try_parse(parse_fill_rule).ok();
     let round = if next_is_ident(input, "round") {
         input.expect_ident_matching("round")?;
         Some(parse_length(input, numeric, "polygon round")?)
@@ -737,13 +737,31 @@ fn parse_polygon_shape<'i, 't>(
     Ok(CssPolygonShape::new(fill_rule, round, points))
 }
 
-fn parse_polygon_fill_rule<'i, 't>(
+fn parse_path_shape<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssPolygonFillRule, ParseError<'i, Error>> {
+    context: &crate::numeric::NumericInputContext<'_>,
+) -> Result<CssPathShape, ParseError<'i, Error>> {
+    let fill_rule = input.try_parse(parse_fill_rule).ok();
+    if fill_rule.is_some() {
+        input.expect_comma().map_err(basic)?;
+    }
+    input.skip_whitespace();
+    let location = input.current_source_location();
+    let component = context
+        .collect(input)
+        .map_err(|_| unsupported_value_at(location, None, "path() requires one string"))?;
+    let data = CssPathData::from_parser_component(component, context)
+        .map_err(|error| unsupported_value_at(location, None, error.to_string()))?;
+    Ok(CssPathShape::new(fill_rule, data))
+}
+
+fn parse_fill_rule<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> std::result::Result<CssFillRule, ParseError<'i, Error>> {
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
-        "nonzero" => Ok(CssPolygonFillRule::Nonzero),
-        "evenodd" => Ok(CssPolygonFillRule::Evenodd),
+        "nonzero" => Ok(CssFillRule::Nonzero),
+        "evenodd" => Ok(CssFillRule::Evenodd),
         _ => Err(unsupported_value(
             input,
             None,
@@ -987,7 +1005,7 @@ fn parse_clip_path_shape<'i, 't>(
     let normalized_name = name.to_ascii_lowercase();
     if !matches!(
         normalized_name.as_str(),
-        "inset" | "circle" | "ellipse" | "polygon" | "rect" | "xywh"
+        "inset" | "circle" | "ellipse" | "polygon" | "rect" | "xywh" | "path"
     ) {
         return Err(unsupported_value(
             input,
@@ -1003,6 +1021,7 @@ fn parse_clip_path_shape<'i, 't>(
             "circle" => parse_circle_shape(input, numeric).map(CssBasicShape::Circle),
             "ellipse" => parse_ellipse_shape(input, numeric).map(CssBasicShape::Ellipse),
             "polygon" => parse_polygon_shape(input, numeric).map(CssBasicShape::Polygon),
+            "path" => parse_path_shape(input, numeric).map(CssBasicShape::Path),
             "rect" => parse_rect_shape(input, numeric).map(CssBasicShape::Rect),
             "xywh" => parse_xywh_shape(input, numeric).map(CssBasicShape::Xywh),
             _ => Err(unsupported_value(

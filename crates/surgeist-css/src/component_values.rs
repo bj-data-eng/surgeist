@@ -724,6 +724,19 @@ impl CssComponentValue {
         }
     }
 
+    // Token recovery is deliberately owned here rather than inferred from its view.
+    pub(crate) fn implicit_termination_origin(&self) -> Option<&CssValueOrigin> {
+        let origin = match &self.data {
+            ComponentData::Token(token) => token.implicit_end.as_ref().map(|end| &end.origin),
+            ComponentData::Comment { implicit_end, .. } => {
+                implicit_end.as_ref().map(|end| &end.origin)
+            }
+            ComponentData::Function(function) => Some(&function.closing.origin),
+            ComponentData::Block(block) => Some(&block.closing.origin),
+        };
+        origin.filter(|origin| matches!(origin, CssValueOrigin::ImplicitClosure { .. }))
+    }
+
     /// Constructs exactly one complete non-structural token from CSS spelling.
     ///
     /// This is programmatic input: it cannot create a parsed-source origin.
@@ -1046,16 +1059,7 @@ impl CssComponentValues {
     pub(crate) fn first_implicit_origin(&self) -> Option<&CssValueOrigin> {
         let mut pending: Vec<_> = self.items.iter().rev().collect();
         while let Some(component) = pending.pop() {
-            let implicit = match &component.data {
-                ComponentData::Token(token) => {
-                    token.implicit_end.as_ref().map(|lexeme| &lexeme.origin)
-                }
-                ComponentData::Comment { implicit_end, .. } => {
-                    implicit_end.as_ref().map(|lexeme| &lexeme.origin)
-                }
-                ComponentData::Function(function) => Some(&function.closing.origin),
-                ComponentData::Block(block) => Some(&block.closing.origin),
-            };
+            let implicit = component.implicit_termination_origin();
             if let Some(origin @ CssValueOrigin::ImplicitClosure { .. }) = implicit {
                 return Some(origin);
             }

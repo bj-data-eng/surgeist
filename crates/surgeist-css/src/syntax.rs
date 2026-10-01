@@ -8184,6 +8184,8 @@ pub enum CssRadialExtent {
     FarthestCorner,
 }
 
+mod path_data;
+pub use path_data::{CssPathData, CssPathDataConstructionError, CssPathDataConstructionErrorKind};
 mod shapes;
 pub use shapes::*;
 

@@ -302,14 +302,17 @@
 //! distinguishes an omitted pair. Polygon round is an optional signed pure length,
 //! following optional fill-rule; percentages and reversed modifiers are rejected.
 //!
-//! Clip-path, its composition, basic shapes and all six function models provide
+//! Clip-path, its composition, basic shapes and all seven function models provide
 //! bounded specified serializers preserving optional omissions, shape offset/radius arities, units,
 //! exact magnitudes and symbolic math through shared cumulative child providers.
 //! Circle and ellipse positions retain the full imported Cartesian, named-flow, and
 //! relative-flow grammar. [`CssRectShape`] retains four signed edges or `auto`;
 //! [`CssXywhShape`] retains signed offsets and nonnegative width and height. Both
-//! retain optional round radii. The functions path() and shape() remain unfinished
-//! authored grammar. Reference-box/default resolution, clipping and
+//! retain optional round radii. [`CssPathShape`] composes optional [`CssFillRule`]
+//! with checked [`CssPathData`], preserving the decoded SVG spelling and string origin.
+//! Its complete SVG scanner admits move-only paths and rejects malformed suffixes
+//! without computing geometry. The function shape() remains unfinished authored
+//! grammar. Reference-box/default resolution, clipping and
 //! painting belong to downstream owners.
 //!
 //! [`CssShadow`] requires blur before spread, and [`CssBoxShadowList`] is nonempty.
@@ -385,13 +388,13 @@
 //! `cubic-bezier()`, and `steps()`. Box shadows and filter `drop-shadow()` have
 //! separate models, filter lists preserve URL/function order, and the selected
 //! basic-shape family exposes `inset()`, `circle()`, `ellipse()`, `polygon()`,
-//! `rect()`, and `xywh()`, including polygon `round <length>` and optional
+//! `rect()`, `xywh()`, and `path()`, including polygon `round <length>` and optional
 //! rectangular round radii.
 //!
 //! These are authored syntax values. This crate does not multiply transform matrices,
 //! interpolate or evaluate easing, render shadows or filters, resolve URLs, compute
 //! shape geometry, perform layout or painting, or lower values into sibling crates.
-//! `path()` and `shape()` remain outside the selected subset. `transition`, `animation`,
+//! `shape()` remains outside the selected subset. `transition`, `animation`,
 //! and `clip-path` retain explicit Partial metadata boundaries; support for a typed
 //! function does not promote an aggregate or an unselected production.
 //!

@@ -281,7 +281,7 @@ fn selected_basic_shapes_expose_typed_authored_components() {
     let CssBasicShape::Polygon(polygon) = clip_shape.shape() else {
         panic!("expected typed polygon");
     };
-    assert_eq!(polygon.fill_rule(), Some(CssPolygonFillRule::Evenodd));
+    assert_eq!(polygon.fill_rule(), Some(CssFillRule::Evenodd));
     assert!(polygon.round().is_some_and(|value| exact_dimension(
         value.literal_component(),
         "2",
@@ -346,7 +346,7 @@ fn omitted_shape_branches_are_explicit() {
     let CssBasicShape::Polygon(polygon) = clip_shape.shape() else {
         panic!("expected ordered polygon prefix with signed rounding");
     };
-    assert_eq!(polygon.fill_rule(), Some(CssPolygonFillRule::Nonzero));
+    assert_eq!(polygon.fill_rule(), Some(CssFillRule::Nonzero));
     assert!(polygon.round().is_some());
 }
 
@@ -444,7 +444,8 @@ fn circle_symbolic_length_percentage_radius_remains_typed() {
 
 #[test]
 fn deferred_basic_shape_functions_remain_unrecognized() {
-    for value in ["shape(from 0 0, line to 1px 1px)"] {
+    {
+        let value = "shape(from 0 0, line to 1px 1px)";
         assert_clip_path_rejected(value);
     }
 }
