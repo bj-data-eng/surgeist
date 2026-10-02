@@ -112,6 +112,12 @@ fn schedule_authored<'a>(
             work.push(Work::Color(value.light(), Mode::Standalone));
             work.push(Work::Text("light-dark("));
         }
+        R::ContrastColor(value) => {
+            reserve_work(work, 3)?;
+            work.push(Work::Text(")"));
+            work.push(Work::Color(value.color(), Mode::Standalone));
+            work.push(Work::Text("contrast-color("));
+        }
     }
     Ok(())
 }

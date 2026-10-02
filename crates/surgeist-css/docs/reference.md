@@ -2270,7 +2270,30 @@ evidence supports the phase choice, without establishing identical percentage
 text, custom-profile support or browser results. Profile binding, origin
 evaluation and computed-value clamping belong downstream. Mathematical precision
 and range remain unfinished.
-`contrast-color()` and `device-cmyk()` are not yet supported.
+`device-cmyk()` is not yet supported.
+
+The selected September 8 Color 5 `contrast-color(<color>)` production retains
+exactly one symbolic input. `CssContrastColor::try_new` checks one wrapper plus
+the complete input graph against the 256-level ceiling; `color()` borrows the
+input. `CssColor::from_contrast_color` and `contrast_color_value()` expose the
+checked payload. Absolute eligibility reports contextual `ContrastColor`,
+including beneath relative, alpha and mix ancestors. Parsing requires complete
+argument exhaustion and preserves typed resource failures and provenance.
+Expansion, normalization and strict substitution reentry retain the symbolic
+input, importance and occurrence identity. Style later evaluates the input and
+chooses white or black using its contrast policy.
+
+Specified output wraps the complete ordinary Standalone input in
+`contrast-color(` and `)`, regardless of an enclosing Origin or Mix role.
+Nested relative/alpha and mix values keep their own child roles. The iterative
+serializer shares the enclosing input, projection and byte budgets without
+mutating the authored graph. This operational interpretation follows frozen
+WebKit's `CSSContrastColor.cpp:59–64` (blob
+`73ebca675535a5cadc14ada0deb796a3394e3c12`), which independently serializes the
+stored color. Color 5 §11 supplies no dedicated Contrast child-role algorithm;
+this does not claim a normative conflict or browser execution equivalence.
+`interop.value.contrast-color` records the complete authored production at
+`#funcdef-contrast-color` under `I-COLOR5-20260908`.
 
 Color 5's selected September 8 edition admits `light-dark()` with exactly two
 colors or exactly two image/`none` branches. Mixed pairs are rejected.

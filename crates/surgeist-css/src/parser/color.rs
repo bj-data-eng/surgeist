@@ -54,6 +54,28 @@ fn parse_selected_authored_color<'i, 't>(
     let start = input.position().byte_index();
     let token = input.next().map_err(basic)?.clone();
     match token {
+        Token::Function(name) if name.eq_ignore_ascii_case("contrast-color") => input
+            .parse_nested_block(|input| {
+                let color = parse_color(input, numeric)?;
+                input.expect_exhausted().map_err(basic)?;
+                CssContrastColor::try_new(color)
+                    .map(CssColor::from_contrast_color)
+                    .map_err(|error| {
+                        let kind = match error {
+                            CssColorConstructionError::CapacityOverflow => {
+                                crate::CssComponentValueErrorKind::CapacityOverflow
+                            }
+                            _ => crate::CssComponentValueErrorKind::NestingLimit,
+                        };
+                        crate::error::invalid_component_value(
+                            location,
+                            crate::CssComponentValueError::new(
+                                kind,
+                                numeric.origin_at(start).expect("color function origin"),
+                            ),
+                        )
+                    })
+            }),
         Token::Function(name) if name.eq_ignore_ascii_case("light-dark") => input
             .parse_nested_block(|input| {
                 let light = parse_color(input, numeric)?;

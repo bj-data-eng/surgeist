@@ -5014,10 +5014,12 @@ pub fn surgeist_css::CssColor::absolute_eligibility(&self) -> surgeist_css::CssA
 impl surgeist_css::CssColor
 pub const fn surgeist_css::CssColor::alpha_value(&self) -> core::option::Option<&surgeist_css::CssAlphaColor>
 pub const fn surgeist_css::CssColor::color_mix_value(&self) -> core::option::Option<&surgeist_css::CssColorMix>
+pub const fn surgeist_css::CssColor::contrast_color_value(&self) -> core::option::Option<&surgeist_css::CssContrastColor>
 pub const fn surgeist_css::CssColor::current_color() -> Self
 pub const fn surgeist_css::CssColor::custom_value(&self) -> core::option::Option<&surgeist_css::CssCustomColor>
 pub const fn surgeist_css::CssColor::from_alpha(value: surgeist_css::CssAlphaColor) -> Self
 pub const fn surgeist_css::CssColor::from_color_mix(value: surgeist_css::CssColorMix) -> Self
+pub fn surgeist_css::CssColor::from_contrast_color(value: surgeist_css::CssContrastColor) -> Self
 pub const fn surgeist_css::CssColor::from_custom(value: surgeist_css::CssCustomColor) -> Self
 pub const fn surgeist_css::CssColor::from_hex(value: surgeist_css::CssHexColor) -> Self
 pub const fn surgeist_css::CssColor::from_hsl(value: surgeist_css::CssHslColor) -> Self
@@ -5513,6 +5515,10 @@ pub struct surgeist_css::CssContentVisibilityPropertyValue
 impl surgeist_css::CssContentVisibilityPropertyValue
 pub fn surgeist_css::CssContentVisibilityPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssContentVisibilityPropertyValue::value(&self) -> &surgeist_css::CssContentVisibility
+pub struct surgeist_css::CssContrastColor
+impl surgeist_css::CssContrastColor
+pub const fn surgeist_css::CssContrastColor::color(&self) -> &surgeist_css::CssColor
+pub fn surgeist_css::CssContrastColor::try_new(color: surgeist_css::CssColor) -> core::result::Result<Self, surgeist_css::CssColorConstructionError>
 pub struct surgeist_css::CssCornerRadiusValue
 impl surgeist_css::CssCornerRadiusValue
 pub fn surgeist_css::CssCornerRadiusValue::authored_vertical(&self) -> core::option::Option<&surgeist_css::CssSpecifiedNonNegativeLengthPercentage>

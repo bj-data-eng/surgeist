@@ -2729,7 +2729,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 630] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 631] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -3329,6 +3329,13 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 630] = [
         "light-dark() image",
         I_COLOR5_20260908,
         "#typedef-light-dark-image",
+    ),
+    CssFeatureMetadata::complete(
+        "interop.value.contrast-color",
+        CssFeatureKind::Value,
+        "contrast-color()",
+        I_COLOR5_20260908,
+        "#funcdef-contrast-color",
     ),
     // The selected Grid3 production adds two standalone display alternatives;
     // it does not extend Display3's syntactic <display-inside> production.

@@ -246,7 +246,7 @@ fn property_contexts_reject_the_other_form_and_keep_unfinished_color_guards() {
         "mask-image:light-dark(red, blue)",
         "border-image-source:light-dark(red, blue)",
         "list-style-image:light-dark(red, blue)",
-        "color:contrast-color(red)",
+        "color:contrast-color(red, blue)",
         "color:device-cmyk(0 0 0 1)",
     ] {
         let report = parse_style_attribute(&format!("{source};opacity:.5"));

@@ -153,6 +153,10 @@
 //! Color pairs remain contextual; image pairs may contain two `none` branches.
 //! Specified serialization shares the enclosing resource budget and preserves both
 //! branches. Downstream style owns used-scheme selection and resource resolution.
+//! [`CssContrastColor::try_new`] retains one checked symbolic color input, enforcing
+//! the complete composed depth ceiling. Its input uses ordinary Standalone specified
+//! serialization under the enclosing budget. Downstream style evaluates contrast
+//! and chooses white or black; authored CSS retains the input unchanged.
 //! [`CssOverflowPropertyValue::value`] exposes [`CssOverflowValue`], retaining
 //! the authored one- or two-axis form.
 //!

@@ -19,8 +19,11 @@ enforce complete child depth, and specified output retains authored `none` and
 uses ordinary Standalone color children. The [reference](../docs/reference.md)
 records the pinned source and frozen WebKit evidence for that child-role
 interpretation. Existing June Color 5 feature records retain their earlier
-bounded provenance. Contrast-color, device-CMYK and downstream computation
-remain separate unfinished work.
+bounded provenance. The same September source defines the complete authored
+`contrast-color(<color>)` feature: it preserves one checked symbolic input,
+uses Standalone child serialization and shares the enclosing resource budget.
+Downstream style owns contrast evaluation and white/black selection.
+Device-CMYK and downstream computation remain unfinished work.
 
 | Selection | Entries |
 | --- | ---: |

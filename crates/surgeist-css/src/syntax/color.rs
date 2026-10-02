@@ -34,6 +34,30 @@ enum CssColorRepresentation {
     Relative(Box<CssRelativeColor>),
     ColorMix(CssColorMix),
     LightDark(Box<CssLightDarkColor>),
+    ContrastColor(Box<CssContrastColor>),
+}
+
+/// A checked symbolic input awaiting downstream contrast-policy evaluation.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssContrastColor {
+    color: CssColor,
+    nesting_depth: u32,
+}
+
+impl CssContrastColor {
+    /// Checks one wrapper plus the complete input subtree against the structural ceiling.
+    pub fn try_new(color: CssColor) -> Result<Self, CssColorConstructionError> {
+        let nesting_depth = composed_color_depth(authored_color_depth(&color)?)?;
+        Ok(Self {
+            color,
+            nesting_depth,
+        })
+    }
+
+    /// Borrows the complete authored input without evaluating contrast.
+    pub const fn color(&self) -> &CssColor {
+        &self.color
+    }
 }
 
 /// Two checked authored colors awaiting downstream used-scheme selection.
@@ -72,6 +96,21 @@ impl CssLightDarkColor {
 }
 
 impl CssColor {
+    /// Retains a checked symbolic input without choosing white or black.
+    pub fn from_contrast_color(value: CssContrastColor) -> Self {
+        Self {
+            representation: CssColorRepresentation::ContrastColor(Box::new(value)),
+        }
+    }
+
+    /// Borrows the checked payload, when this is a contrast color.
+    pub const fn contrast_color_value(&self) -> Option<&CssContrastColor> {
+        match &self.representation {
+            CssColorRepresentation::ContrastColor(value) => Some(value),
+            _ => None,
+        }
+    }
+
     /// Retains a checked pair without selecting a scheme or resolving its colors.
     pub fn from_light_dark(value: CssLightDarkColor) -> Self {
         Self {
@@ -365,6 +404,7 @@ impl CssColor {
             CssColorRepresentation::Relative(_) => "relative",
             CssColorRepresentation::ColorMix(_) => "color-mix",
             CssColorRepresentation::LightDark(_) => "light-dark",
+            CssColorRepresentation::ContrastColor(_) => "contrast-color",
         }
     }
 }
@@ -986,6 +1026,7 @@ impl CssColor {
         while let Some(color) = pending.pop() {
             match &color.representation {
                 R::LightDark(_) => return E::Contextual(X::LightDark),
+                R::ContrastColor(_) => return E::Contextual(X::ContrastColor),
                 R::CurrentColor => return E::Contextual(X::CurrentColor),
                 R::System(_) => return E::Contextual(X::SystemColor),
                 R::Custom(_) => profile = true,
@@ -1592,6 +1633,7 @@ fn authored_color_depth(mut color: &CssColor) -> Result<u32, ColorGraphDepthErro
             // Every mix constructor caches the complete checked subtree depth.
             R::ColorMix(v) => v.nesting_depth,
             R::LightDark(v) => v.nesting_depth,
+            R::ContrastColor(v) => v.nesting_depth,
             R::Custom(v) => v.nesting_depth,
             R::RelativeCustom(v) => v.nesting_depth,
             R::Alpha(v) => v.nesting_depth,
