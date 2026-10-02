@@ -3065,6 +3065,13 @@ pub surgeist_css::CssMinIntrinsicSizing::ZeroIfScrollAndExtrinsic
 impl surgeist_css::CssMinIntrinsicSizing
 pub fn surgeist_css::CssMinIntrinsicSizing::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssMinIntrinsicSizing::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssNaiveColorConversionError
+pub surgeist_css::CssNaiveColorConversionError::NonFiniteInput
+pub surgeist_css::CssNaiveColorConversionError::NonFiniteInput::component: usize
+pub surgeist_css::CssNaiveColorConversionError::UnrepresentableResult
+impl core::error::Error for surgeist_css::CssNaiveColorConversionError
+impl core::fmt::Display for surgeist_css::CssNaiveColorConversionError
+pub fn surgeist_css::CssNaiveColorConversionError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_css::CssNamedStringMode
 pub surgeist_css::CssNamedStringMode::First
 pub surgeist_css::CssNamedStringMode::FirstExcept
@@ -9128,6 +9135,8 @@ pub const fn surgeist_css::conformance_exclusions() -> &'static [surgeist_css::C
 pub fn surgeist_css::expand_declaration(source: &surgeist_css::CssDeclaration) -> core::result::Result<surgeist_css::CssExpansion, surgeist_css::CssExpansionError>
 pub fn surgeist_css::feature_catalog() -> &'static [surgeist_css::CssFeatureMetadata]
 pub fn surgeist_css::feature_metadata(id: &str) -> core::option::Option<&'static surgeist_css::CssFeatureMetadata>
+pub fn surgeist_css::naively_convert_cmyk_to_srgba(cmyka: [f64; 5]) -> core::result::Result<[f64; 4], surgeist_css::CssNaiveColorConversionError>
+pub fn surgeist_css::naively_convert_srgba_to_cmyk(rgba: [f64; 4]) -> core::result::Result<[f64; 5], surgeist_css::CssNaiveColorConversionError>
 pub fn surgeist_css::normalize_report(report: &surgeist_css::CssParseReport<surgeist_css::CssSheet>) -> core::result::Result<surgeist_css::CssNormalizedReport, surgeist_css::CssNormalizationError>
 pub fn surgeist_css::normalize_report_with_limits(report: &surgeist_css::CssParseReport<surgeist_css::CssSheet>, limits: surgeist_css::CssNormalizationLimits) -> core::result::Result<surgeist_css::CssNormalizedReport, surgeist_css::CssNormalizationError>
 pub fn surgeist_css::normalize_sheet(sheet: &surgeist_css::CssSheet) -> core::result::Result<surgeist_css::CssNormalizedSheet, surgeist_css::CssNormalizationError>

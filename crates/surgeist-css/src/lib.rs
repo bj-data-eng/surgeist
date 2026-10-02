@@ -163,7 +163,11 @@
 //! the device-dependent input. Declared Standalone/Mix output scales direct
 //! percentages to numbers; Origin preserves their domains and explicit alpha.
 //! Calculations remain symbolic, and every child shares the enclosing depth and
-//! serialization limits. Device/profile conversion and computed output belong later.
+//! serialization limits. The independent concrete-sample helpers
+//! [`naively_convert_cmyk_to_srgba`] and [`naively_convert_srgba_to_cmyk`] implement
+//! the uncalibrated Color 5 numerical fallback with finite `f64` coordinates.
+//! They preserve alpha bits and do not resolve authored colors or device profiles.
+//! Contextual conversion and computed output belong later.
 //! [`CssOverflowPropertyValue::value`] exposes [`CssOverflowValue`], retaining
 //! the authored one- or two-axis form.
 //!
@@ -1311,6 +1315,7 @@ mod gap;
 mod grid_template_areas;
 mod inset;
 mod integer_value;
+mod naive_color_conversion;
 mod numeric;
 mod numeric_formatting;
 mod opacity_scalar;
@@ -1472,6 +1477,9 @@ pub use font_feature_values::*;
 pub use font_palette_values::*;
 pub use font_variant::*;
 pub use list_styles::{CssListStyleTypeValue, CssListStyleValue, CssMarkerSide};
+pub use naive_color_conversion::{
+    CssNaiveColorConversionError, naively_convert_cmyk_to_srgba, naively_convert_srgba_to_cmyk,
+};
 pub use normalization::{
     CssNormalizationError, CssNormalizationErrorKind, CssNormalizationLimits,
     CssNormalizationResource, CssNormalizedDeclaration, CssNormalizedItem, CssNormalizedReport,

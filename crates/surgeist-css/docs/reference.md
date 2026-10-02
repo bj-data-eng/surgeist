@@ -2303,8 +2303,43 @@ profile binding, resource loading, computed ink clamping or computed CSSOM outpu
 occurs. Color 5 §6 and §10.3 retain their unresolved computed-representation
 conflict; §11.5 concerns computed serialization. The frozen WebKit source at
 `73aa6c89e2cb77c46184a81aec944e4ab99d114d` supplies no authored device-CMYK
-implementation resolving that conflict. Naive conversion, contextual execution
-and computed serialization remain separate unfinished work.
+implementation resolving that conflict. Contextual execution and computed
+serialization remain separate unfinished work.
+
+### Naive numerical CMYK conversion
+
+`naively_convert_cmyk_to_srgba([c, m, y, k, a])` and
+`naively_convert_srgba_to_cmyk([r, g, b, a])` implement the two pure numerical
+fallback formulas in
+[Color 5 WD 2026-09-08 §6.1](https://www.w3.org/TR/2026/WD-css-color-5-20260908/#cmyk-rgb).
+Their `f64` arrays contain concrete normalized coordinates; RGB channels are
+sRGB-encoded, rather than 0–255 or linear-light channels. These APIs are
+independent from the authored `CssColor` and `CssDeviceCmykColor` models.
+
+Every input, including alpha, must be finite. Extended coordinates and alpha
+outside `[0, 1]` are accepted without a range clamp. Alpha is copied bit-for-bit,
+including negative zero. `CssNaiveColorConversionError::NonFiniteInput` identifies
+the first invalid array index before arithmetic; `UnrepresentableResult` reports
+a required result that overflows finite `f64` arithmetic. No source coordinates
+are fabricated for numerical inputs.
+
+The forward formula evaluates each channel as
+`max(0, (1 - ink) * (1 - black))`. Opposite factor signs saturate to zero before
+multiplication can overflow; a positive product overflow returns an error.
+This zero saturation belongs to the specified formula. The inverse uses the
+original maximum RGB channel `v`: black is `1 - v`, and inks are zero for
+`v == 0`, otherwise `1 - channel / v`. There is no epsilon cutoff or shortcut
+based on rounded black. Unequal subnormal RGB channels can retain different
+ink ratios even when black rounds to one.
+
+Ordinary `f64` rounding applies. The inverse chooses a canonical naive ink
+decomposition, so original CMYK inks cannot generally be reconstructed. Tiny
+RGB values can lose their magnitude when black rounds to one; exact near-black
+round trips are not promised. These formulas provide uncalibrated numerical
+fallbacks without promising calibrated equivalence. They do not resolve missing
+or symbolic authored values, select a profile or fallback policy, load ICC
+resources, clamp computed ink or opacity, perform gamut mapping, or provide
+computed CSSOM output. Those contextual operations remain downstream.
 
 ### Authored color profiles
 
