@@ -8,6 +8,19 @@ use crate::{
 use std::fmt;
 
 /// The custom case-sensitive name or reserved device profile identity.
+///
+/// External matches require a wildcard under the crate's public enum policy:
+///
+/// ```compile_fail,E0004
+/// use surgeist_css::CssColorProfileRuleName;
+///
+/// fn classify(name: CssColorProfileRuleName) -> usize {
+///     match name {
+///         CssColorProfileRuleName::Custom(_) => 0,
+///         CssColorProfileRuleName::DeviceCmyk => 1,
+///     }
+/// }
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CssColorProfileRuleName {
     Custom(CssColorProfileName),
@@ -15,6 +28,21 @@ pub enum CssColorProfileRuleName {
 }
 
 /// The four authored intents. The default is the specified initial, not an occurrence.
+///
+/// External matches require a wildcard under the crate's public enum policy:
+///
+/// ```compile_fail,E0004
+/// use surgeist_css::CssColorProfileRenderingIntent;
+///
+/// fn classify(intent: CssColorProfileRenderingIntent) -> usize {
+///     match intent {
+///         CssColorProfileRenderingIntent::RelativeColorimetric => 0,
+///         CssColorProfileRenderingIntent::AbsoluteColorimetric => 1,
+///         CssColorProfileRenderingIntent::Perceptual => 2,
+///         CssColorProfileRenderingIntent::Saturation => 3,
+///     }
+/// }
+/// ```
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum CssColorProfileRenderingIntent {
     #[default]
