@@ -2166,17 +2166,21 @@ and rounded to six places before text emission. Calculated alpha remains explici
 and unclamped, uses the [calculated number policy](#calculated-number-output)
 after its selected scale, and retains its calculation provenance.
 
-Standalone absolute Lab/LCH lightness clamps to 0..100, and Oklab/Oklch lightness
-clamps to 0..1 after exact percentage conversion, following
+Direct Lab/LCH lightness clamps to 0..100 in standalone colors and ordinary
+`color-mix()` arguments. Oklab/Oklch lightness clamps to 0..1 after exact
+percentage conversion, following
 [Color 4's Lab/LCH bounds](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#specifying-lab-lch)
 and [Oklab/Oklch bounds](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#specifying-oklab-oklch).
 Direct LCH/Oklch chroma has a zero minimum and no upper bound. The signed a/b
 axes remain unbounded, and in-range literals retain exact decimal text.
 For example, `lab(125% -20% 30%)` emits `lab(100 -25 37.5)`, and
 `oklch(-.2 -20% 30)` emits `oklch(0 0 30)`. These direct bounds also apply when
-properties compose standalone colors. Calculations retain their wrappers and
-required capture costs; Origin and relative channels remain unclamped.
-Lab-family mix-child bounds remain unfinished.
+properties compose standalone colors and to ordinary `color-mix()` arguments,
+including nested mixes and a mix used as an origin color. This follows
+[Color 5's individual argument serialization](https://www.w3.org/TR/2026/WD-css-color-5-20260908/#serial-color-mix).
+For example, `color-mix(lab(125 calc(0) 0), blue)` emits
+`color-mix(lab(100 calc(0) 0), blue)`. Calculations retain their wrappers and
+required capture costs; genuine Origin and relative channels remain unclamped.
 
 The serializer selects clipped direct endpoints from borrowed exact lexical
 metadata before allocating a rational coefficient or expanding decimal text.

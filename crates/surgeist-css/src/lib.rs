@@ -603,14 +603,16 @@
 //! with NaN becoming zero and dimensional infinities remaining valid calculations.
 //! Numeric hue normalizes modulo 360 before conversion or named-form rounding.
 //! Ordinary mix children follow the same rule, with cumulative limits on the actual text.
-//! Standalone Lab/LCH direct lightness clamps to 0..100, while Oklab/Oklch lightness
+//! Direct Lab/LCH lightness in standalone colors and ordinary mix arguments clamps
+//! to 0..100, while Oklab/Oklch lightness
 //! clamps to 0..1 after exact percentage conversion. Direct LCH/Oklch chroma has a zero
 //! minimum and no upper bound; the signed a/b axes remain unbounded. In-range literals
 //! keep exact decimal text. A clipped direct endpoint is selected from borrowed lexical
 //! metadata before rational allocation or unnecessary decimal expansion, including
 //! finite authored exponents beyond i128. Each selected direct slot adds one logical
 //! projection visit. Calculations retain their wrappers and capture costs; origin and
-//! relative channels remain unclamped. Lab-family mix-child bounds remain unfinished.
+//! relative channels remain unclamped. These direct bounds apply to ordinary mix
+//! arguments, including nested mixes and a mix used as an origin color.
 //! Unbounded and in-range values still obey typed output and work limits.
 //! Integer calculation text follows the finite number policy without
 //! computed integer rounding; ordinary integer

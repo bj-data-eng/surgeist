@@ -484,19 +484,19 @@ text_case!(
     "rgb(255, 0, 0)"
 );
 text_case!(
-    mix_direct_child_policy_is_unchanged,
+    mix_direct_child_lightness_clips_to_parsed_domain,
     "color-mix(lab(125 0 0), blue)",
-    "color-mix(lab(125 0 0), blue)"
+    "color-mix(lab(100 0 0), blue)"
 );
 text_case!(
-    mix_calculated_child_policy_is_unchanged,
+    mix_direct_lightness_clips_beside_calculated_axis,
     "color-mix(lab(125 calc(0) 0), blue)",
-    "color-mix(lab(125 calc(0) 0), blue)"
+    "color-mix(lab(100 calc(0) 0), blue)"
 );
 text_case!(
-    origin_mix_child_policy_is_unchanged,
+    origin_mix_preserves_individual_child_parsed_bounds,
     "alpha(from color-mix(lab(125 0 0), blue))",
-    "alpha(from color-mix(lab(125 0 0), blue))"
+    "alpha(from color-mix(lab(100 0 0), blue))"
 );
 
 fn assert_limited(value: &CssColor, limits: Limits, expected: &str) {

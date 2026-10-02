@@ -703,8 +703,8 @@ enum LabComponentRange {
     Chroma,
 }
 
-/// Parsed-domain bounds apply only to standalone direct L/C literals. Other
-/// roles and calculation trees keep their existing projection and scratch.
+/// Parsed-domain bounds apply to standalone and ordinary Mix direct L/C
+/// literals. Origin roles and calculation trees retain their projection and scratch.
 fn lab_component_projection(
     value: &CssColorComponent,
     percentage_factor: Factor,
@@ -713,7 +713,7 @@ fn lab_component_projection(
     context: &mut SpecifiedSerializationContext,
 ) -> Result<ProjectedScalar> {
     let origin = mode == Mode::Origin;
-    if mode != Mode::Standalone {
+    if !matches!(mode, Mode::Standalone | Mode::Mix) {
         return declared_component_projection(
             value,
             Factor::ONE,
