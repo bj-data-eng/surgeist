@@ -234,7 +234,7 @@ text_case!(
     "alpha(from rgb(1 2 3 / calc(0.007813)))"
 );
 text_case!(
-    ordinary_mix_weight_retains_unrounded_coefficient,
+    ordinary_mix_weight_retains_calculation_and_percentage,
     "color-mix(in srgb, red calc(.78125%), blue)",
     "color-mix(in srgb, red calc(0.78125%), blue)"
 );

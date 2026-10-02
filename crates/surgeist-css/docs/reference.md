@@ -491,9 +491,10 @@ unchanged; composed writers share one cumulative budget.
 ### Calculated number output
 
 Finite numbers in non-color specified calculations, declared relative-color
-calculations and ordinary colors embedded as origins use the same six-place,
-fixed-notation output policy. Ordinary non-alpha color component and hue
-calculations also use this policy when their projected result remains
+calculations, ordinary colors embedded as origins, retained calculated alpha
+and calculated mix weights use the same six-place, fixed-notation output policy.
+Ordinary non-alpha color component and hue calculations also use this policy
+when their projected result remains
 context-dependent, including components inside `color-mix()`. The mathematical
 projector evaluates context-independent parts with binary64 arithmetic, then rounds the actual
 finite binary value for text. `calc(1 / 3)` emits `calc(0.333333)`, and the exact
@@ -551,10 +552,22 @@ symbolic under the existing projector; fully resolved absolute-unit ratios and
 NaN simplification retain their existing outcomes. Percentage scaling and angle
 conversion precede coefficient formatting.
 
-Fully numeric standalone color calculations, standalone alpha calculations,
-mix weights and media-query writers retain their separate text policies.
-Standalone numeric color captures retain their scratch costs even when their
-text is discarded during conversion. Contextual captures count the rounded text
+Calculated alpha remains explicit and unclamped, including when rounding produces
+zero or unity. Number alpha keeps its scale; percentage alpha divides by 100
+before formatting. Thus `color(--P 0 / calc(.78125%))` emits
+`color(--P 0 / calc(0.007813))`. Origin alpha preserves its authored dimension
+instead of applying this standalone percentage conversion.
+
+Calculated mix weights keep `%` and their `calc()` wrapper. A calculated weight
+remains unknown for omitted-share and equal-weight decisions, even when it
+serializes as `calc(50%)`; serialization does not fill an omitted sibling weight
+or normalize authored shares. These rules apply to nested mixes and to ordinary
+colors inside a mix used as an origin.
+
+Fully numeric standalone non-alpha color calculations and media-query writers
+retain their separate text policies. Numeric non-alpha color captures retain
+their scratch costs even when their text is discarded during conversion.
+Retained alpha, weight and contextual component captures count rounded text
 against their scratch bounds, using the same cumulative traversal budget.
 Mathematical arithmetic precision and range remain unfinished; canonical text
 does not make binary64 evaluation exact or resolve symbolic dependencies.
@@ -583,10 +596,10 @@ and calculation branches retain their own serialization rules; direct
 percentage conversion does not rewrite `calc(30%)`.
 
 These rules also apply when relative colors occur inside another origin or
-`color-mix()`. Standalone color precision, hue normalization, fully numeric
-standalone color calculations, standalone alpha and mix weights keep their
-separate policies.
-Context-dependent non-alpha calculations use the
+`color-mix()`. Standalone color precision, direct alpha, hue normalization and
+fully numeric standalone non-alpha color calculations keep their separate
+policies. Retained calculated alpha, calculated mix weights and context-dependent
+non-alpha calculations use the
 [calculated number policy](#calculated-number-output).
 Composed colors share cumulative resource limits; byte limits count rounded
 text, and failure returns no partial string or changes to the authored graph.
@@ -2113,8 +2126,9 @@ HSL/HWB and exact scalar conversions. It does not bind profiles, evaluate
 relative channels or a mix, or gamut-map a color.
 Origin colors nested in relative and `alpha()` forms retain unclamped authored
 component domains with modern punctuation. Ordinary direct alpha is clamped
-and rounded to six places before text emission; alpha calculations retain
-their calculation provenance.
+and rounded to six places before text emission. Calculated alpha remains explicit
+and unclamped, uses the [calculated number policy](#calculated-number-output)
+after its selected scale, and retains its calculation provenance.
 
 `border-color` accepts one to four colors and an optional leading `logical`
 marker. Its `CssBorderColorShorthand` retains authored arity and role mode;

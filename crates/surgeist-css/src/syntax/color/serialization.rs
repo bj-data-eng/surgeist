@@ -655,8 +655,11 @@ fn declared_component_projection(
             _ => None,
         };
         if let Some(calculation) = calculation {
-            let (text, outcome) =
-                crate::numeric::capture_origin_color_calculation(calculation, context)?;
+            let (text, outcome) = crate::numeric::capture_retained_color_calculation(
+                calculation,
+                crate::numeric::NumericProjectionScale::Identity,
+                context,
+            )?;
             return Ok(ProjectedScalar {
                 text,
                 number: outcome.scalar_value.map(ScaledNumber::from_binary64),
@@ -851,14 +854,15 @@ fn serialize_alpha(
     }
     match value {
         CssColorComponent::NumberCalculation(calculation) => {
-            let (text, _) = crate::numeric::capture_color_calculation(
+            let (text, _) = crate::numeric::capture_retained_color_calculation(
                 crate::numeric::ColorCalculationRef::Number(calculation),
+                crate::numeric::NumericProjectionScale::Identity,
                 context,
             )?;
             Ok(Some(text))
         }
         CssColorComponent::PercentageCalculation(calculation) => {
-            let (text, _) = crate::numeric::capture_color_calculation_scaled(
+            let (text, _) = crate::numeric::capture_retained_color_calculation(
                 crate::numeric::ColorCalculationRef::Percentage(calculation),
                 crate::numeric::NumericProjectionScale::PercentageToNumber {
                     numerator: 1,
@@ -1610,7 +1614,11 @@ fn hue_projection(
         H::NumberCalculation(value) => {
             let calculation = crate::numeric::ColorCalculationRef::Number(value);
             let (text, outcome) = if origin {
-                crate::numeric::capture_origin_color_calculation(calculation, context)?
+                crate::numeric::capture_retained_color_calculation(
+                    calculation,
+                    crate::numeric::NumericProjectionScale::Identity,
+                    context,
+                )?
             } else {
                 crate::numeric::capture_color_component_calculation(
                     calculation,
@@ -1630,7 +1638,11 @@ fn hue_projection(
         H::AngleCalculation(value) => {
             let calculation = crate::numeric::ColorCalculationRef::Angle(value);
             let (text, outcome) = if origin {
-                crate::numeric::capture_origin_color_calculation(calculation, context)?
+                crate::numeric::capture_retained_color_calculation(
+                    calculation,
+                    crate::numeric::NumericProjectionScale::Identity,
+                    context,
+                )?
             } else {
                 crate::numeric::capture_color_component_calculation(
                     calculation,
@@ -2166,8 +2178,9 @@ fn mix_weight_texts(
                 }
                 Some(weight) => {
                     let calculation = weight.calculation().expect("checked weight variant");
-                    let (text, _) = crate::numeric::capture_color_calculation(
+                    let (text, _) = crate::numeric::capture_retained_color_calculation(
                         crate::numeric::ColorCalculationRef::Percentage(calculation),
+                        crate::numeric::NumericProjectionScale::Identity,
                         context,
                     )?;
                     Some(text)

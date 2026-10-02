@@ -468,8 +468,9 @@ pub(crate) fn capture_specified_scaled(
     Ok((output, outcome))
 }
 
-/// Color slots preserve their own finite text and scratch behavior.
-pub(crate) fn capture_color_specified_scaled(
+/// Private numeric-emission control preserves finite text and scratch behavior.
+#[cfg(test)]
+pub(super) fn capture_color_specified_scaled(
     expression: &CssCalculationExpression,
     scale: NumericProjectionScale,
     context: &mut SpecifiedSerializationContext,

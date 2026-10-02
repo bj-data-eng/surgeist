@@ -582,8 +582,14 @@
 //! unclamped alpha. Ordinary non-alpha component and hue calculations use this policy when
 //! their projected result remains context-dependent, including inside mixes. The existing
 //! projection result selects formatting after percentage scaling and angle conversion.
-//! Fully numeric standalone color calculations, standalone alpha and mix weights keep their
-//! separate text and scratch policies; contextual captures count rounded scratch text.
+//! Retained calculated alpha and mix weights also use the shared coefficient policy.
+//! Calculated alpha stays explicit and unclamped; standalone percentage alpha divides by 100
+//! before formatting, while origin alpha preserves its dimension. Calculated weights keep
+//! percentages and their calculation wrapper, preventing omitted sibling shares from being
+//! filled even when they emit `calc(50%)`. These rules apply to nested mixes and ordinary
+//! colors inside a mix used as an origin. Fully numeric standalone non-alpha color
+//! calculations keep their separate text and scratch policies. Retained alpha, weight and
+//! contextual component captures count rounded scratch text within the cumulative budget.
 //! Integer calculation text follows the finite number policy without
 //! computed integer rounding; ordinary integer
 //! literals retain exact digits. Arithmetic precision and range remain unfinished.

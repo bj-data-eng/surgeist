@@ -382,12 +382,12 @@ text_case!(hwb_resolved_control, "hwb(calc(0) 0% 0%)", "rgb(255, 0, 0)");
 text_case!(
     standalone_alpha_control,
     "color(--P 0 / calc(1 / 128))",
-    "color(--P 0 / calc(0.0078125))"
+    "color(--P 0 / calc(0.007813))"
 );
 text_case!(
     contextual_alpha_control,
     "color(--P 0 / calc(.0078125 * 1em / 1px))",
-    "color(--P 0 / calc(0.0078125 * 1em / 1px))"
+    "color(--P 0 / calc(0.007813 * 1em / 1px))"
 );
 text_case!(
     weight_control,
