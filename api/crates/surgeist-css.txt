@@ -5087,6 +5087,7 @@ pub const fn surgeist_css::CssColor::hsl_value(&self) -> core::option::Option<&s
 pub const fn surgeist_css::CssColor::hwb_value(&self) -> core::option::Option<&surgeist_css::CssHwbColor>
 pub const fn surgeist_css::CssColor::is_current_color(&self) -> bool
 pub const fn surgeist_css::CssColor::is_transparent(&self) -> bool
+pub const fn surgeist_css::CssColor::keyword_srgba8(&self) -> core::option::Option<[u8; 4]>
 pub const fn surgeist_css::CssColor::kind_name(&self) -> &'static str
 pub const fn surgeist_css::CssColor::lab_value(&self) -> core::option::Option<&surgeist_css::CssLabColor>
 pub const fn surgeist_css::CssColor::lch_value(&self) -> core::option::Option<&surgeist_css::CssLchColor>

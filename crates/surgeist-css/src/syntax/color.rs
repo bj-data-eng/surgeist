@@ -254,6 +254,40 @@ impl CssColor {
         }
     }
 
+    /// Returns the fixed keyword's encoded sRGB bytes in straight-alpha R, G, B, A order.
+    ///
+    /// The 148 opaque named colors from Color 4 CRD 2026-09-08 §6.1 return
+    /// their specified RGB bytes with alpha 255. The distinct `transparent`
+    /// branch returns transparent black `[0, 0, 0, 0]`, following §6.3.
+    /// The declared keyword and alias identity remain unchanged.
+    ///
+    /// `None` means this authored branch is outside the fixed keyword projection,
+    /// not that it is invalid or unresolvable. Hex colors and color functions
+    /// return `None`, as do `currentcolor`, system colors, and contextual or
+    /// compound colors. This does not evaluate authored expressions, select
+    /// palettes or profiles, perform gamut mapping, or serialize computed CSS.
+    ///
+    /// ```
+    /// use surgeist_css::{CssColor, CssHexColor, CssNamedColor};
+    /// let cyan = CssColor::from_named(CssNamedColor::try_new("CyAn").unwrap());
+    /// assert_eq!(cyan.keyword_srgba8(), Some([0, 255, 255, 255]));
+    /// assert_eq!(cyan.named().unwrap().name(), "cyan");
+    /// assert_eq!(CssColor::transparent().keyword_srgba8(), Some([0, 0, 0, 0]));
+    /// let hex = CssColor::from_hex(CssHexColor::try_new("00ffff").unwrap());
+    /// assert_eq!(hex.keyword_srgba8(), None);
+    /// ```
+    #[must_use]
+    pub const fn keyword_srgba8(&self) -> Option<[u8; 4]> {
+        match &self.representation {
+            CssColorRepresentation::Named(value) => {
+                let [red, green, blue] = value.rgb;
+                Some([red, green, blue, 255])
+            }
+            CssColorRepresentation::Transparent => Some([0, 0, 0, 0]),
+            _ => None,
+        }
+    }
+
     pub const fn from_hex(value: CssHexColor) -> Self {
         Self {
             representation: CssColorRepresentation::Hex(value),
@@ -495,17 +529,23 @@ impl CssHexColor {
     }
 }
 
+/// A checked opaque named color retaining its canonical lowercase keyword.
+///
+/// Aliases with the same fixed sRGB value retain distinct names and identity.
+/// The separate [`CssColor::transparent`] branch represents transparent black.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssNamedColor {
     name: String,
+    rgb: [u8; 3],
 }
 
 impl CssNamedColor {
     pub fn try_new(name: impl Into<String>) -> Option<Self> {
         let name = name.into();
-        cssparser::color::parse_named_color(&name).ok()?;
+        let (red, green, blue) = cssparser::color::parse_named_color(&name).ok()?;
         Some(Self {
             name: name.to_ascii_lowercase(),
+            rgb: [red, green, blue],
         })
     }
 

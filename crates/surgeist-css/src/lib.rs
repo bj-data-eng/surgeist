@@ -460,6 +460,9 @@
 //! percentages, and angles retain exact lexical coefficients and origins;
 //! calculations remain symbolic. Color-bearing property wrappers expose this
 //! graph through `value()` or an aggregate `color()` accessor.
+//! [`CssColor::keyword_srgba8`] exposes the intrinsic encoded sRGB bytes of
+//! opaque named colors and transparent black, preserving their keyword identity.
+//! It returns `None` for representations outside this fixed keyword projection.
 //!
 //! ```
 //! use surgeist_css::{CssKnownPropertyValueRef, CssSystemColor, parse_style_attribute};

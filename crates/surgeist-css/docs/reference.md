@@ -2147,6 +2147,21 @@ computed-value phase.
 family has a public checked `try_new`; `CssColor::from_*` composes checked
 payloads. `CssColor::current_color()` and `transparent()` construct the two
 keyword branches. The parser uses the same checked payload constraints.
+
+`CssColor::keyword_srgba8()` exposes the intrinsic meaning of the 148 opaque
+named colors from [Color 4 §6.1](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#named-colors)
+and [transparent black](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#transparent-color).
+It returns encoded sRGB bytes in `[red, green, blue, alpha]` order, with straight
+alpha: opaque named colors have alpha 255, and `transparent` gives `[0, 0, 0, 0]`.
+The checked named-color constructor captures the fixed channels alongside the
+lowercase name. Aliases retain distinct authored names and specified text even
+when their channels agree.
+
+Other representations return `None`, including hexadecimal and function colors
+whose numerical meaning may also be fixed. Absence means outside this keyword
+projection, not invalid or unresolvable. The method preserves the graph and
+does not select a host palette, bind a profile, or evaluate contextual colors.
+
 `CssColor::to_specified_css()` and `to_specified_css_with_limits()` emit one
 canonical specified string under cumulative input-node, projection-node, and
 UTF-8 byte limits. Failure is atomic and leaves the graph and origins intact.
