@@ -2662,16 +2662,30 @@ after it. Literal `CssColorMixPercentage` uses one exact checked percentage
 in the inclusive 0..100 range; a `CssColorMixWeight` calculation retains a
 symbolic percentage math root. `CssColorMixComponent::new` takes a color and
 optional weight; `CssColorMix::try_new` checks the list and composed depth.
-Hue interpolation belongs only to polar spaces. Custom interpolation profile
-names keep their case-sensitive decoded identity. Parsing does not distribute
+`CssColorInterpolationMethod::try_new(space, hue)` checks predefined methods:
+an explicit hue strategy requires HSL, HWB, LCH or Oklch. Rectangular spaces
+accept an omitted hue; rejected combinations return
+`CssColorInterpolationMethodConstructionError::HueRequiresPolarSpace`.
+`CssColorInterpolation::from_predefined(method)` wraps a checked method.
+The method's `space()` and `hue()` preserve authored identity, including omitted
+hue versus explicit `Shorter`. `effective_hue()` supplies the
+[Color 4 baseline](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#hue-interpolation):
+omitted polar hue means `Shorter`, explicit polar hue keeps its strategy, and
+rectangular spaces have no hue method. Hosts own any override of that baseline;
+this accessor does not execute interpolation.
+
+Custom interpolation profile names keep their case-sensitive decoded identity.
+Parsing does not distribute
 weights, resolve profiles, or evaluate colors. Specified serialization fills
 known omitted weights exactly before selected six-place rounding, keeps unknown
 calculation omissions, and omits equal effective shares with default Oklab.
 It omits explicit `shorter hue` from canonical Mix text while preserving the
 authored method; other hue interpolation methods remain explicit.
 
-This crate does not perform general color-space conversion, relative-channel evaluation,
-gamut mapping, contrast selection, or rendering.
+The [intrinsic numerical APIs](#pure-rectangular-color-space-conversion) cover
+predefined rectangular spaces and Lab/Oklab, alongside the HSL/HWB and
+Lab-family conversions described above. Relative-channel evaluation, gamut
+mapping, contrast selection and rendering remain downstream.
 
 ## Authored opacity and specified serialization
 

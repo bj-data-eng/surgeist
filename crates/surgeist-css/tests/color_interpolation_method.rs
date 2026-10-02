@@ -4,7 +4,8 @@
 //! §13.5 supplies the shorter baseline. Color5 WD 2026-09-08 §9.1 adds custom
 //! dashed identifiers, whose profile binding remains contextual. Color5 §11.1
 //! supplies canonical mix serialization. This suite establishes GREEN behavior,
-//! not a preimplementation RED for a replacement checked-method API.
+//! not a preimplementation RED. Replacement checked-method API tests establish
+//! new API behavior without executable preimplementation RED.
 
 use surgeist_css::*;
 
@@ -60,6 +61,85 @@ const HUES: [(CssHueInterpolationMethod, &str); 4] = [
     (CssHueInterpolationMethod::Increasing, "increasing"),
     (CssHueInterpolationMethod::Decreasing, "decreasing"),
 ];
+
+const OMITTED_POLAR: CssColorInterpolationMethod =
+    match CssColorInterpolationMethod::try_new(CssColorInterpolationSpace::Hsl, None) {
+        Ok(value) => value,
+        Err(_) => panic!("polar omitted hue is valid"),
+    };
+const EXPLICIT_POLAR: CssColorInterpolationMethod = match CssColorInterpolationMethod::try_new(
+    CssColorInterpolationSpace::Hsl,
+    Some(CssHueInterpolationMethod::Shorter),
+) {
+    Ok(value) => value,
+    Err(_) => panic!("polar shorter hue is valid"),
+};
+const REJECTED_RECTANGULAR: Result<
+    CssColorInterpolationMethod,
+    CssColorInterpolationMethodConstructionError,
+> = CssColorInterpolationMethod::try_new(
+    CssColorInterpolationSpace::Lab,
+    Some(CssHueInterpolationMethod::Longer),
+);
+const CONST_WRAPPER: CssColorInterpolation = CssColorInterpolation::from_predefined(OMITTED_POLAR);
+const CONST_DEFAULT_HUE: Option<CssHueInterpolationMethod> = OMITTED_POLAR.effective_hue();
+const CONST_SPACE: CssColorInterpolationSpace = OMITTED_POLAR.space();
+const CONST_AUTHORED_HUE: Option<CssHueInterpolationMethod> = OMITTED_POLAR.hue();
+
+#[test]
+fn const_checked_methods_preserve_authored_omission_and_supply_the_baseline_default() {
+    assert_eq!(CONST_SPACE, CssColorInterpolationSpace::Hsl);
+    assert_eq!(CONST_AUTHORED_HUE, None);
+    assert_eq!(CONST_DEFAULT_HUE, Some(CssHueInterpolationMethod::Shorter));
+    assert_eq!(CONST_WRAPPER.predefined(), Some(OMITTED_POLAR));
+    assert_ne!(OMITTED_POLAR, EXPLICIT_POLAR);
+    assert_eq!(
+        EXPLICIT_POLAR.hue(),
+        Some(CssHueInterpolationMethod::Shorter)
+    );
+    assert_eq!(
+        EXPLICIT_POLAR.effective_hue(),
+        OMITTED_POLAR.effective_hue()
+    );
+    assert_eq!(
+        REJECTED_RECTANGULAR,
+        Err(CssColorInterpolationMethodConstructionError::HueRequiresPolarSpace)
+    );
+    for (space, _) in POLAR {
+        let omitted = CssColorInterpolationMethod::try_new(space, None).unwrap();
+        let explicit =
+            CssColorInterpolationMethod::try_new(space, Some(CssHueInterpolationMethod::Shorter))
+                .unwrap();
+        assert_ne!(omitted, explicit);
+        assert_eq!(omitted.effective_hue(), explicit.effective_hue());
+    }
+}
+
+#[test]
+fn rejected_hue_construction_has_a_typed_error_and_display_contract() {
+    let error = CssColorInterpolationMethod::try_new(
+        CssColorInterpolationSpace::Lab,
+        Some(CssHueInterpolationMethod::Longer),
+    )
+    .unwrap_err();
+    assert_eq!(
+        error,
+        CssColorInterpolationMethodConstructionError::HueRequiresPolarSpace
+    );
+    assert_eq!(
+        error.to_string(),
+        "hue interpolation requires a polar color space"
+    );
+    let public_error: &dyn std::error::Error = &error;
+    assert!(public_error.source().is_none());
+    // Downstream matches include a wildcard because construction errors can grow.
+    match error {
+        CssColorInterpolationMethodConstructionError::HueRequiresPolarSpace => {
+            assert_eq!(public_error.to_string(), error.to_string());
+        }
+        _ => panic!("unexpected interpolation construction error"),
+    }
+}
 
 fn color(declaration: &CssDeclaration) -> &CssColor {
     let CssKnownPropertyValueRef::Color(value) =
@@ -156,10 +236,11 @@ fn rejected_with_recovery(value: &str, rectangular_hue: Option<(&str, &str)>) {
 #[test]
 fn rectangular_methods_without_hue_are_accepted_by_the_checked_wrapper() {
     for (space, _) in RECTANGULAR {
-        let method = CssColorInterpolationMethod::new(space, None);
-        let interpolation = CssColorInterpolation::try_predefined(method).unwrap();
+        let method = CssColorInterpolationMethod::try_new(space, None).unwrap();
+        let interpolation = CssColorInterpolation::from_predefined(method);
         assert_eq!(method.space(), space);
         assert_eq!(method.hue(), None);
+        assert_eq!(method.effective_hue(), None);
         assert_eq!(interpolation.predefined(), Some(method));
         assert!(interpolation.custom_profile().is_none());
     }
@@ -169,11 +250,10 @@ fn rectangular_methods_without_hue_are_accepted_by_the_checked_wrapper() {
 fn every_explicit_hue_strategy_is_rejected_for_every_rectangular_space() {
     for (space, keyword) in RECTANGULAR {
         for (hue, strategy) in HUES {
-            let method = CssColorInterpolationMethod::new(space, Some(hue));
-            // The existing bare method is unchecked; only the wrapper rejects.
-            assert_eq!(method.space(), space);
-            assert_eq!(method.hue(), Some(hue));
-            assert!(CssColorInterpolation::try_predefined(method).is_none());
+            assert_eq!(
+                CssColorInterpolationMethod::try_new(space, Some(hue)),
+                Err(CssColorInterpolationMethodConstructionError::HueRequiresPolarSpace)
+            );
             rejected_with_recovery(
                 &format!("color-mix(in {keyword} {strategy} hue, red, blue)"),
                 Some((keyword, strategy)),
@@ -192,10 +272,14 @@ fn polar_methods_preserve_omitted_and_all_explicit_hue_strategies() {
             Some(CssHueInterpolationMethod::Increasing),
             Some(CssHueInterpolationMethod::Decreasing),
         ] {
-            let method = CssColorInterpolationMethod::new(space, hue);
-            let interpolation = CssColorInterpolation::try_predefined(method).unwrap();
+            let method = CssColorInterpolationMethod::try_new(space, hue).unwrap();
+            let interpolation = CssColorInterpolation::from_predefined(method);
             assert_eq!(method.space(), space);
             assert_eq!(method.hue(), hue);
+            assert_eq!(
+                method.effective_hue(),
+                Some(hue.unwrap_or(CssHueInterpolationMethod::Shorter))
+            );
             assert_eq!(interpolation.predefined(), Some(method));
             let suffix = match hue {
                 None => String::new(),

@@ -1600,11 +1600,10 @@ enum ColorInterpolation {
     Custom(CssColorProfileName),
 }
 impl CssColorInterpolation {
-    pub fn try_predefined(method: CssColorInterpolationMethod) -> Option<Self> {
-        if method.hue().is_some() && !method.space().is_polar() {
-            return None;
-        }
-        Some(Self(ColorInterpolation::Predefined(method)))
+    /// Wraps an intrinsically checked predefined interpolation method.
+    #[must_use]
+    pub const fn from_predefined(method: CssColorInterpolationMethod) -> Self {
+        Self(ColorInterpolation::Predefined(method))
     }
     #[must_use]
     pub fn custom(name: CssColorProfileName) -> Self {
@@ -1895,6 +1894,16 @@ pub enum CssPredefinedColorSpace {
     XyzD65,
 }
 
+/// A checked authored predefined interpolation method.
+/// Explicit hue strategies are valid only for polar color spaces.
+///
+/// ```compile_fail
+/// use surgeist_css::{CssColorInterpolationMethod, CssColorInterpolationSpace};
+/// let unchecked = CssColorInterpolationMethod {
+///     space: CssColorInterpolationSpace::Hsl,
+///     hue: None,
+/// };
+/// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CssColorInterpolationMethod {
     space: CssColorInterpolationSpace,
@@ -1902,12 +1911,15 @@ pub struct CssColorInterpolationMethod {
 }
 
 impl CssColorInterpolationMethod {
-    #[must_use]
-    pub const fn new(
+    /// Checks the polar-only hue grammar without resolving or interpolating colors.
+    pub const fn try_new(
         space: CssColorInterpolationSpace,
         hue: Option<CssHueInterpolationMethod>,
-    ) -> Self {
-        Self { space, hue }
+    ) -> Result<Self, CssColorInterpolationMethodConstructionError> {
+        if hue.is_some() && !space.is_polar() {
+            return Err(CssColorInterpolationMethodConstructionError::HueRequiresPolarSpace);
+        }
+        Ok(Self { space, hue })
     }
 
     #[must_use]
@@ -1919,7 +1931,50 @@ impl CssColorInterpolationMethod {
     pub const fn hue(&self) -> Option<CssHueInterpolationMethod> {
         self.hue
     }
+
+    /// Returns the Color4 baseline hue strategy when the host supplies no override.
+    /// An omitted polar strategy uses `Shorter`; rectangular spaces have no hue
+    /// strategy. The authored omission remains available through [`Self::hue`].
+    /// This does not select a host's policy or execute color interpolation.
+    #[must_use]
+    pub const fn effective_hue(&self) -> Option<CssHueInterpolationMethod> {
+        if self.space.is_polar() {
+            match self.hue {
+                Some(hue) => Some(hue),
+                None => Some(CssHueInterpolationMethod::Shorter),
+            }
+        } else {
+            None
+        }
+    }
 }
+
+/// A rejected authored predefined interpolation-method combination.
+///
+/// ```compile_fail
+/// use surgeist_css::CssColorInterpolationMethodConstructionError;
+/// fn exhaustive(error: CssColorInterpolationMethodConstructionError) {
+///     match error {
+///         CssColorInterpolationMethodConstructionError::HueRequiresPolarSpace => (),
+///     }
+/// }
+/// ```
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssColorInterpolationMethodConstructionError {
+    /// An explicit hue strategy requires a polar interpolation color space.
+    HueRequiresPolarSpace,
+}
+
+impl std::fmt::Display for CssColorInterpolationMethodConstructionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::HueRequiresPolarSpace => "hue interpolation requires a polar color space",
+        })
+    }
+}
+
+impl std::error::Error for CssColorInterpolationMethodConstructionError {}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]

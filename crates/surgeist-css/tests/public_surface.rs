@@ -1,11 +1,11 @@
 use surgeist_css::{
     CssAnimationDirection, CssAuthoredFontFeature, CssAuthoredFontFeatureList,
     CssAuthoredFontFeatureSettings, CssAuthoredFontFeatureValue, CssCalculationSumOperator,
-    CssColorComponent, CssColorInterpolation, CssColorInterpolationMethod,
-    CssColorInterpolationSpace, CssColorMixPercentage, CssColorSyntax, CssComponentValue,
-    CssCounterStyleRange, CssCounterStyleSpeakAs, CssCounterSymbol, CssDefinedFalseMediaReason,
-    CssErrorCode, CssExclusionReason, CssFeatureKind, CssFontFamilyNameKind, CssFontFeatureIndex,
-    CssFontSize, CssFontSizeAdjust, CssFontSynthesis, CssFontSynthesisValues, CssFontVariantCaps,
+    CssColorComponent, CssColorInterpolationMethod, CssColorInterpolationSpace,
+    CssColorMixPercentage, CssColorSyntax, CssComponentValue, CssCounterStyleRange,
+    CssCounterStyleSpeakAs, CssCounterSymbol, CssDefinedFalseMediaReason, CssErrorCode,
+    CssExclusionReason, CssFeatureKind, CssFontFamilyNameKind, CssFontFeatureIndex, CssFontSize,
+    CssFontSizeAdjust, CssFontSynthesis, CssFontSynthesisValues, CssFontVariantCaps,
     CssFontVariantEastAsianValues, CssFontVariantLigatureState, CssFontVariantLigatureValues,
     CssFontVariantNumericFigure, CssFontVariantNumericValues, CssFontVariantPosition,
     CssFontVariantValues, CssGenericFontFamily, CssGridAutoFlowAxis, CssHueInterpolationMethod,
@@ -492,11 +492,11 @@ fn public_color_mix_construction_rejects_hue_in_a_rectangular_space() {
     };
     let color_mix = value.value().color_mix_value().unwrap();
     assert_eq!(color_mix.components().len(), 2);
-    let invalid = CssColorInterpolation::try_predefined(CssColorInterpolationMethod::new(
+    let invalid = CssColorInterpolationMethod::try_new(
         CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::Srgb),
         Some(CssHueInterpolationMethod::Longer),
-    ));
-    assert!(invalid.is_none());
+    );
+    assert!(invalid.is_err());
 
     assert_eq!(
         CssColorMixPercentage::try_from_component(CssComponentValue::try_token("0%").unwrap())

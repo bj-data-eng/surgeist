@@ -924,8 +924,9 @@ fn parse_authored_color_mix_interpolation_method<'i, 't>(
     let space = parse_color_mix_interpolation_space(input)?;
     let hue_location = input.current_source_location();
     let hue = input.try_parse(parse_color_mix_hue_interpolation).ok();
-    CssColorInterpolation::try_predefined(CssColorInterpolationMethod::new(space, hue))
-        .ok_or_else(|| invalid_color(hue_location, Some("hue interpolation")))
+    let method = CssColorInterpolationMethod::try_new(space, hue)
+        .map_err(|_| invalid_color(hue_location, Some("hue interpolation")))?;
+    Ok(CssColorInterpolation::from_predefined(method))
 }
 
 fn parse_authored_color_mix_component<'i, 't>(

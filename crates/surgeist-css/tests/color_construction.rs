@@ -443,11 +443,13 @@ fn mix_constructor_retains_order_weights_and_symbolic_calculation() {
         .unwrap(),
     )
     .unwrap();
-    let interpolation = CssColorInterpolation::try_predefined(CssColorInterpolationMethod::new(
-        CssColorInterpolationSpace::Lch,
-        Some(CssHueInterpolationMethod::Longer),
-    ))
-    .unwrap();
+    let interpolation = CssColorInterpolation::from_predefined(
+        CssColorInterpolationMethod::try_new(
+            CssColorInterpolationSpace::Lch,
+            Some(CssHueInterpolationMethod::Longer),
+        )
+        .unwrap(),
+    );
     let mix = CssColorMix::try_new(
         Some(interpolation),
         vec![
@@ -489,11 +491,11 @@ fn mix_constructor_retains_order_weights_and_symbolic_calculation() {
         CssColorMixConstructionError::EmptyComponents
     );
     assert!(
-        CssColorInterpolation::try_predefined(CssColorInterpolationMethod::new(
+        CssColorInterpolationMethod::try_new(
             CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::Srgb),
             Some(CssHueInterpolationMethod::Longer),
-        ))
-        .is_none()
+        )
+        .is_err()
     );
     for text in ["-0.0000000000000000000001%", "100.0000000000000000000001%"] {
         let error = CssColorMixPercentage::try_from_component(token(text)).unwrap_err();

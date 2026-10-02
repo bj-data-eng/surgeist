@@ -476,6 +476,11 @@ pub surgeist_css::CssColorHue::AngleCalculation(surgeist_css::CssAngleCalculatio
 pub surgeist_css::CssColorHue::None
 pub surgeist_css::CssColorHue::Number(surgeist_css::CssColorNumberLiteral)
 pub surgeist_css::CssColorHue::NumberCalculation(surgeist_css::CssNumberCalculation)
+#[non_exhaustive] pub enum surgeist_css::CssColorInterpolationMethodConstructionError
+pub surgeist_css::CssColorInterpolationMethodConstructionError::HueRequiresPolarSpace
+impl core::error::Error for surgeist_css::CssColorInterpolationMethodConstructionError
+impl core::fmt::Display for surgeist_css::CssColorInterpolationMethodConstructionError
+pub fn surgeist_css::CssColorInterpolationMethodConstructionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_css::CssColorInterpolationSpace
 pub surgeist_css::CssColorInterpolationSpace::Hsl
 pub surgeist_css::CssColorInterpolationSpace::Hwb
@@ -5144,13 +5149,14 @@ pub struct surgeist_css::CssColorInterpolation(_)
 impl surgeist_css::CssColorInterpolation
 pub fn surgeist_css::CssColorInterpolation::custom(name: surgeist_css::CssColorProfileName) -> Self
 pub fn surgeist_css::CssColorInterpolation::custom_profile(&self) -> core::option::Option<&surgeist_css::CssColorProfileName>
+pub const fn surgeist_css::CssColorInterpolation::from_predefined(method: surgeist_css::CssColorInterpolationMethod) -> Self
 pub fn surgeist_css::CssColorInterpolation::predefined(&self) -> core::option::Option<surgeist_css::CssColorInterpolationMethod>
-pub fn surgeist_css::CssColorInterpolation::try_predefined(method: surgeist_css::CssColorInterpolationMethod) -> core::option::Option<Self>
 pub struct surgeist_css::CssColorInterpolationMethod
 impl surgeist_css::CssColorInterpolationMethod
+pub const fn surgeist_css::CssColorInterpolationMethod::effective_hue(&self) -> core::option::Option<surgeist_css::CssHueInterpolationMethod>
 pub const fn surgeist_css::CssColorInterpolationMethod::hue(&self) -> core::option::Option<surgeist_css::CssHueInterpolationMethod>
-pub const fn surgeist_css::CssColorInterpolationMethod::new(space: surgeist_css::CssColorInterpolationSpace, hue: core::option::Option<surgeist_css::CssHueInterpolationMethod>) -> Self
 pub const fn surgeist_css::CssColorInterpolationMethod::space(&self) -> surgeist_css::CssColorInterpolationSpace
+pub const fn surgeist_css::CssColorInterpolationMethod::try_new(space: surgeist_css::CssColorInterpolationSpace, hue: core::option::Option<surgeist_css::CssHueInterpolationMethod>) -> core::result::Result<Self, surgeist_css::CssColorInterpolationMethodConstructionError>
 pub struct surgeist_css::CssColorMix
 impl surgeist_css::CssColorMix
 pub fn surgeist_css::CssColorMix::components(&self) -> &[surgeist_css::CssColorMixComponent]

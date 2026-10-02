@@ -22,13 +22,9 @@ fn parsed(source: &str) -> CssColor {
 fn constructed(space: CssColorInterpolationSpace, hue: CssHueInterpolationMethod) -> CssColor {
     CssColor::from_color_mix(
         CssColorMix::try_new(
-            Some(
-                CssColorInterpolation::try_predefined(CssColorInterpolationMethod::new(
-                    space,
-                    Some(hue),
-                ))
-                .unwrap(),
-            ),
+            Some(CssColorInterpolation::from_predefined(
+                CssColorInterpolationMethod::try_new(space, Some(hue)).unwrap(),
+            )),
             ["red", "blue"]
                 .into_iter()
                 .map(|name| {

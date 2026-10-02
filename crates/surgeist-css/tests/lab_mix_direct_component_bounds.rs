@@ -1131,11 +1131,13 @@ fn checked_family_mix(
         CssPercentageCalculation::try_from_components(components("calc(70%)")).unwrap(),
     )
     .unwrap();
-    let interpolation = CssColorInterpolation::try_predefined(CssColorInterpolationMethod::new(
-        CssColorInterpolationSpace::Lch,
-        Some(CssHueInterpolationMethod::Longer),
-    ))
-    .unwrap();
+    let interpolation = CssColorInterpolation::from_predefined(
+        CssColorInterpolationMethod::try_new(
+            CssColorInterpolationSpace::Lch,
+            Some(CssHueInterpolationMethod::Longer),
+        )
+        .unwrap(),
+    );
     let blue = CssColor::from_named(CssNamedColor::try_new("blue").unwrap());
     let mix = CssColorMix::try_new(
         Some(interpolation.clone()),

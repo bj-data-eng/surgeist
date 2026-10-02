@@ -224,9 +224,10 @@ fn checked_list_and_interpolation_constructors_enforce_their_domains() {
         CssColorInterpolationSpace::Lab,
         CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::Srgb),
     ] {
-        let invalid =
-            CssColorInterpolationMethod::new(space, Some(CssHueInterpolationMethod::Longer));
-        assert!(CssColorInterpolation::try_predefined(invalid).is_none());
+        assert_eq!(
+            CssColorInterpolationMethod::try_new(space, Some(CssHueInterpolationMethod::Longer)),
+            Err(CssColorInterpolationMethodConstructionError::HueRequiresPolarSpace)
+        );
     }
     for space in [
         CssColorInterpolationSpace::Hsl,
@@ -235,8 +236,9 @@ fn checked_list_and_interpolation_constructors_enforce_their_domains() {
         CssColorInterpolationSpace::Oklch,
     ] {
         let method =
-            CssColorInterpolationMethod::new(space, Some(CssHueInterpolationMethod::Longer));
-        let interpolation = CssColorInterpolation::try_predefined(method).unwrap();
+            CssColorInterpolationMethod::try_new(space, Some(CssHueInterpolationMethod::Longer))
+                .unwrap();
+        let interpolation = CssColorInterpolation::from_predefined(method);
         assert_eq!(interpolation.predefined(), Some(method));
         assert!(interpolation.custom_profile().is_none());
     }
