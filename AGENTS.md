@@ -19,42 +19,12 @@ and ownership boundaries, and configured command inventory. Crate-local
 `AGENTS.md` files supplement this guide with domain facts and focused checks;
 they do not establish separate repository ownership or delivery workflows.
 
-PISCT skills supply reusable coordination and engineering guidance. Apply
-`$pisct:invariants` to engineering work, including its absolute unsafe prohibition
-to all Surgeist-owned Rust. There is no exception for executable `unsafe` in
-Surgeist-owned code. Higher-priority user and system instructions still apply.
-
-## Delegation Policy
-
-Use GPT-6.1 Sol (`gpt-6.1-sol`) for all roles, including coordination,
-architecture, implementation, testing, exploration, and review. Give delegated
-assignments explicit scope, contracts, acceptance criteria, and verification
-requirements through PISCT coordination. Workers must report conflicting
-requirements or unexpected boundary changes before expanding their assignments.
-
-Select effort for each delegated assignment from its reasoning demands, not
-its role alone. Explicitly set `reasoning_effort` on every subagent launch;
-choose a context mode that permits overrides and supply the necessary context.
-Use these starting points, then reassess if conflicting requirements, unexpected
-complexity, or verification findings warrant more effort:
-
-| Effort | Typical assignment |
-| --- | --- |
-| `low` | Mechanical edits, repetitive refactors with fully specified transformations, and routine check execution |
-| `medium` | Well-scoped implementation, repository exploration, and focused reviews with clear contracts and acceptance criteria |
-| `high` | Ambiguous requirements, complex correctness reasoning, cross-crate tradeoffs, and final integration review |
-| `xhigh` | Especially difficult architectural decisions or unusually complex composed behavior |
-
-Do not assign blanket effort levels by role. Clear scope, source evidence,
-acceptance criteria, and independent review remain required at every effort
-level where applicable.
+Apply `$pisct:invariants` to engineering work and `$pisct:rust-modeling` to Rust
+model/API decisions. Higher-priority user and system instructions still apply.
 
 The coordinator owns shared ledger updates, staging, commits, integration, and
-publication within the user's authorized scope. Final independent integration
-review uses a fresh reviewer uninvolved in authoring the implementation. Passing
-tests alone do not establish acceptance; review requirements and source evidence.
-PISCT owns delegation mechanics and engineering checks; `surgeist-admin` owns
-administrative storage and retention. This policy grants no additional authority.
+publication within the user's authorized scope. Use `$pisct:holistic-review`
+for final independent integration review.
 
 ## Repository Identity And Ownership
 
@@ -62,8 +32,7 @@ This repository owns the `surgeist` facade in `src/`, all crate implementations
 under `crates/`, their manifests, public contracts, tests, fixtures, documentation,
 and shared tooling. Root also owns Surgeist-to-Surgeist adapters, workspace
 wiring, cross-crate plans, integration verification, and source-derived API
-artifacts. Changes spanning these areas can be developed and reviewed together
-within the task's authorized scope.
+artifacts.
 
 Crates remain domain boundaries within one Git repository. Their original
 repositories supplied the imported snapshots; they are historical source
@@ -91,11 +60,8 @@ manifests, and implementation behavior from current source.
 | License, source attribution, and bundled-material provenance | `LICENSE`, `NOTICE.md`, `licenses/`, and crate-local notices and legal material |
 | Verification commands | This guide's Command Inventory and the affected crate supplements |
 
-The product Cargo workspace contains root plus 15 crates: 16 members in total.
 `default-members = ["."]` keeps unqualified root Cargo commands focused on the
-facade. Its 13 production path dependencies compile as needed; membership does
-not make `surgeist-test` or `surgeist-generator` facade dependencies or reexports.
-One committed root `Cargo.lock` resolves the product workspace. The API generator
+facade. One root `Cargo.lock` resolves the product workspace. The API generator
 and nested layout Dylint catalog remain separate Cargo workspaces.
 
 When sources disagree, report exact paths and revisions. Do not guess, silently
@@ -104,18 +70,7 @@ rewrite another authority, or widen the task to reconcile them.
 ## Product Boundary
 
 Surgeist is a reusable, host-adapter-agnostic Rust UI framework built from strict,
-typed, composable primitives. Public APIs, internal models, errors, defaults,
-features, tests, docs, and examples are product contracts. Keep symbolic values
-unresolved until their owning layer has the required context.
-
-Until the root `surgeist` public API reaches v1.x.x, do not add or retain
-compatibility or migration shims or machinery in any Surgeist crate. Reaching
-that version permits consideration of such support; it does not authorize it
-automatically. Name APIs for their semantic roles from first principles. Do not
-keep `v1`/`v2` or `old`/`new`/`current` prefixes or suffixes solely to distinguish
-successive designs. Genuine domain distinctions, such as authored versus
-computed values, remain valid. CSS-standard legacy syntax and aliases express
-CSS semantics and are not crate compatibility shims.
+typed, composable primitives.
 
 The following are domain boundaries. Current manifests and source establish the
 implemented dependency graph and behavior.
@@ -139,24 +94,32 @@ implemented dependency graph and behavior.
 | `surgeist-text` | Text shaping, measurement, font abstractions, and text layout |
 | `surgeist-window` | Window, app-host, event-loop, and platform-host contracts |
 
-- Add or repurpose a crate only for a durable API and domain boundary. Update
-  this table in the same authorized architecture change.
-- Keep production dependencies directional and acyclic. A dependency edge must
-  preserve the roles above.
-- Compose intentional front-door APIs. Surgeist-to-Surgeist lowering belongs in
-  root or a root-owned tool; backend-local adapters remain in their domain crate.
-- Keep crate internals private. Do not reach through sibling private modules or
-  duplicate cross-crate interpretation.
+- Update this table with authorized ownership changes.
+- Surgeist-to-Surgeist lowering belongs in root or a root-owned tool;
+  backend-local adapters remain in their domain crate.
 - `surgeist-test` may depend on production crates for shared verification. The
   facade must not production-depend on it or on corpus-generation tooling.
 - `surgeist-generator` owns shared CSS and browser-corpus mechanics; layout owns
   its semantic conversion and corpus adapter. Shared tooling does not absorb
   layout algorithms or application semantics.
-- A small change requiring many crate edits is evidence to revisit the boundary,
-  not permission to create a dependency sink.
 
-Inspecting another repository never grants write authority there. The separate
-original source checkouts are outside this repository's implementation scope.
+The separate original source checkouts are outside this repository's
+implementation scope.
+
+## Backward Compatibility
+
+Until the root `surgeist` public API reaches v1.x.x, do not add or retain
+compatibility or migration shims or machinery in any Surgeist crate. Reaching
+that version permits consideration of such support; it does not authorize it
+automatically. CSS-standard legacy syntax and aliases express CSS semantics
+and are not crate compatibility shims. Apply `$pisct:invariants` for semantic
+API naming.
+
+## Subagent Models
+
+Use GPT-6.1 Sol (`gpt-6.1-sol`) for every subagent, with no automatic alternatives.
+The coordinator also uses GPT-6.1 Sol. Follow `$pisct:coordination` for explicit
+launch settings, assignment-specific reasoning effort, and review independence.
 
 ## Generated Artifacts
 
@@ -166,37 +129,24 @@ directories containing manifests, independently of Cargo workspace membership.
 This includes the shared generator crate and test-support crate. Inspect
 `api/generator/src/lib.rs` for target selection and its pinned rustdoc toolchain.
 
-Each package retains its default-feature artifact. The configured
-`surgeist-generator` CSS profile additionally writes
-`api/crates/surgeist-generator.css-corpus.txt` using `--no-default-features
---features css-corpus`; it does not enable `browser-corpus`. Both `--crate
-surgeist-generator` and `--all` select its default and CSS artifacts. Listings,
-artifact headers, and stale-artifact diagnostics identify the CSS profile.
+The [API audit reference](docs/reference.md#source-and-artifact-locations)
+describes default-feature and CSS corpus profile artifacts. Use the
+[audit procedures](docs/how-to.md#check-public-api-audits) for checks and
+authorized refreshes. No external crate publication or pointer update is required.
+Keep the generator in its root owner; do not copy it into crates.
 
-Refresh API audits from the authorized source change in this repository and
-review the generated diff with that change. No external crate publication or
-pointer update is required. Source is authoritative; never hand-edit generated
-artifacts or carry additional API generator copies inside crates.
-
-Corpus generators and their inputs remain distinct from API auditing. Keep
-bundled fixture provenance, license material, and generated expectations with
-their owning corpus. Run mutation, browser acquisition, or source acquisition
-only within the task's explicit authorization; a verification command inventory
-does not grant that authority.
+Corpus generators and inputs remain distinct from API auditing. Use
+`$pisct:invariants` for generated-artifact handling and acquisition authority,
+and `$pisct:attribution` for bundled-material provenance.
 
 ## Command Inventory
 
 Run one top-level Cargo check, build, or test command at a time, with one Cargo
-build job.
-Allow the test harness to use its default parallel test threads. Limit test
-threads only when `pisct host status` reports high resource pressure. Record
-the host reading and selected thread limit with the check result, and restore
-the default parallel harness when that pressure clears.
-Select the affected package, target, feature combination, and test suite before
-execution. Do not use blanket workspace test runs or assume `--all-features` is
-supported. Workspace membership alone does not select a verification matrix.
-Use `$pisct:process` for authorized noninteractive checks with already-present
-tooling; missing prerequisites require setup authority, not an online retry.
+build job. Use default test-harness parallelism unless `pisct host status`
+advises a limit, following `$pisct:coordination` for resource-pressure handling.
+Do not use blanket workspace test runs. Select focused verification through
+`$pisct:testing` and the affected crate's supplement; execute commands through
+`$pisct:process`.
 
 The small facade checks from the repository root are:
 
@@ -207,17 +157,6 @@ cargo clippy --offline --locked -j 1 -p surgeist --all-targets -- -F unsafe-code
 cargo fmt --all -- --check
 ```
 
-For an affected crate, use its supplement to select focused checks and keep the
-same Cargo execution limits and default parallel test harness. For example,
-task-library tests are:
-
-```sh
-cargo test --offline --locked -j 1 -p surgeist-task --lib
-```
-
-Native GPU, window, browser, corpus, platform, and executor checks have distinct
-prerequisites and resource costs. Run only the applicable documented checks;
-neither facade success nor one feature combination proves those suites pass.
 The optional layout Dylint catalog is separately selected and is not a product
 test, default workspace member, or standing verification gate.
 
@@ -239,13 +178,4 @@ owns and removes its nested build output:
 env -u CARGO_TARGET_DIR CARGO_BUILD_JOBS=1 CARGO_NET_OFFLINE=true cargo test --offline -j 1 --manifest-path api/generator/Cargo.toml --lib tests::css_corpus_audit_uses_only_requested_features_and_reports_its_missing_artifact -- --ignored --exact
 ```
 
-For an authorized refresh, select `--root`, `--crate surgeist-task`, or `--all`
-after `--` in the same generator command. API auditing is explicit maintenance
-and is not part of normal product tests. A successful check reports current
-selected artifacts; a stale artifact returns to source-led regeneration and
-diff review. Stop on missing prerequisites or an unexplained generated delta.
-
-Discovery is complete when ownership, product boundaries, public entry points,
-dependencies, feature and platform constraints, artifact ownership, and the
-applicable verification commands and concurrency constraints are established
-from current source.
+API auditing is explicit maintenance and is not part of normal product tests.
