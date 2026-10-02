@@ -540,6 +540,35 @@ color calculations, and media-query writers, retain their separate text policies
 Mathematical arithmetic precision and range remain unfinished; canonical text
 does not make binary64 evaluation exact or resolve symbolic dependencies.
 
+### Declared color literal output
+
+`CssColor::to_specified_css()` applies the generic six-place number policy to
+ordinary color literals embedded as origins and to direct relative-color
+literals. The retained literal spelling, category and source origin remain
+unchanged. The selected
+[Color 5 origin rule](https://www.w3.org/TR/2026/WD-css-color-5-20260908/#serial-origin-color)
+preserves number and percentage categories, explicit alpha and unclamped
+magnitudes. An origin hue authored as `360` remains `360`; an explicit `1turn`
+becomes `360deg`. Angle conversion precedes rounding, so `.0000001turn` emits
+`0.000036deg`.
+
+Under the selected
+[relative-color rule](https://www.w3.org/TR/2026/WD-css-color-5-20260908/#serial-relative-color),
+direct percentages become numbers in the destination channel's scale before
+rounding. Thus `rgb(from red 20% g b)` emits `rgb(from red 51 g b)`,
+`lab(from red l 20% b)` emits `lab(from red l 25 b)`, and
+`oklab(from red l 20% b)` emits `oklab(from red l 0.08 b)`. Predefined and
+custom-profile `color()` channels divide percentages by 100. Direct numbers
+remain unscaled, and non-alpha channels remain unclamped. References, `none`
+and calculation branches retain their own serialization rules; direct
+percentage conversion does not rewrite `calc(30%)`.
+
+These rules also apply when relative colors occur inside another origin or
+`color-mix()`. Standalone color precision, hue normalization, ordinary color
+calculations, relative alpha and mix weights keep their separate policies.
+Composed colors share cumulative resource limits; byte limits count rounded
+text, and failure returns no partial string or changes to the authored graph.
+
 ## Authored preferred aspect ratios
 
 The selected [CSS Sizing 4 (2026-09-04)](https://www.w3.org/TR/2026/WD-css-sizing-4-20260904/#aspect-ratio)

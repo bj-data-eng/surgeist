@@ -119,7 +119,10 @@ fn schedule_alpha<'a>(
     work.push(Work::Text(")"));
     if let Some(alpha) = value.alpha() {
         work.push(Work::Owned(serialize_relative_expression(
-            alpha, true, context,
+            alpha,
+            true,
+            Factor::ONE,
+            context,
         )?));
         work.push(Work::Text(" / "));
     }
@@ -171,13 +174,19 @@ fn schedule_relative<'a>(
     work.push(Work::Text(")"));
     if let Some(alpha) = value.alpha() {
         work.push(Work::Owned(serialize_relative_expression(
-            alpha, true, context,
+            alpha,
+            true,
+            Factor::ONE,
+            context,
         )?));
         work.push(Work::Text(" / "));
     }
-    for channel in value.channels().iter().rev() {
+    for (index, channel) in value.channels().iter().enumerate().rev() {
         work.push(Work::Owned(serialize_relative_expression(
-            channel, false, context,
+            channel,
+            false,
+            relative_percentage_factor(value.function(), index),
+            context,
         )?));
         work.push(Work::Text(" "));
     }
@@ -547,21 +556,97 @@ fn exact_factor(value: Factor) -> crate::exact_decimal::ExactFactor {
     }
 }
 
-fn exact_text(
+/// Generic text belongs only to declared literal serialization. Identity and
+/// decimal shifts borrow the source; rational conversion owns its bounded work.
+fn generic_literal_text(
     representation: &str,
     factor: Factor,
-    rounded_places: Option<usize>,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<String> {
-    let value = crate::exact_decimal::ExactRational::from_lexical_factor(
-        representation,
-        exact_factor(factor),
-        context,
-    )?;
-    match rounded_places {
-        Some(places) => value.format_rounded(places, context.remaining_bytes(), context),
-        None => value.format_exact(context.remaining_bytes(), context),
+    let shift = match (factor.numerator, factor.denominator) {
+        (1, 1) => Some(0),
+        (1, 100) => Some(-2),
+        _ => None,
+    };
+    if let Some(shift) = shift {
+        context.charge_projection(1)?;
+        crate::numeric_formatting::format_css_number(
+            representation,
+            shift,
+            context.remaining_bytes(),
+        )
+    } else {
+        crate::exact_decimal::ExactRational::format_generic_number(
+            representation,
+            exact_factor(factor),
+            context.remaining_bytes(),
+            context,
+        )
     }
+}
+
+/// The destination function and checked slot determine direct percentage units.
+/// This policy never reaches references or calculation trees.
+fn relative_percentage_factor(function: &CssRelativeColorFunction, index: usize) -> Factor {
+    use CssRelativeColorFunction as F;
+    match function {
+        F::Rgb => Factor {
+            numerator: 255,
+            denominator: 100,
+        },
+        F::Hsl | F::Hwb => Factor::ONE,
+        F::Lab if index != 0 => Factor {
+            numerator: 5,
+            denominator: 4,
+        },
+        F::Lch if index == 1 => Factor {
+            numerator: 3,
+            denominator: 2,
+        },
+        F::Lab | F::Lch => Factor::ONE,
+        F::Oklab if index != 0 => Factor {
+            numerator: 1,
+            denominator: 250,
+        },
+        F::Oklch if index == 1 => Factor {
+            numerator: 1,
+            denominator: 250,
+        },
+        F::Oklab | F::Oklch | F::Color(_) => Factor {
+            numerator: 1,
+            denominator: 100,
+        },
+    }
+}
+
+fn declared_component_projection(
+    value: &CssColorComponent,
+    number_factor: Factor,
+    percentage_factor: Factor,
+    target: ComponentTarget,
+    origin: bool,
+    context: &mut SpecifiedSerializationContext,
+) -> Result<ProjectedScalar> {
+    if origin {
+        let literal = match value {
+            CssColorComponent::Number(value) => Some((value.numeric().representation(), false)),
+            CssColorComponent::Percentage(value) => Some((value.numeric().representation(), true)),
+            _ => None,
+        };
+        if let Some((source, percentage)) = literal {
+            context.charge_input(1)?;
+            return Ok(ProjectedScalar {
+                text: generic_literal_text(source, Factor::ONE, context)?,
+                number: None,
+                exact: None,
+                contextual: false,
+                missing: false,
+                percentage,
+                calculation: false,
+            });
+        }
+    }
+    component_projection(value, number_factor, percentage_factor, target, context)
 }
 
 fn component_projection(
@@ -722,11 +807,12 @@ fn serialize_alpha(
         return Ok(None);
     };
     if origin {
-        let projected = component_projection(
+        let projected = declared_component_projection(
             value,
             Factor::ONE,
             Factor::ONE,
             ComponentTarget::Preserve,
+            true,
             context,
         )?;
         let suffix = if projected.percentage && !projected.missing {
@@ -881,11 +967,12 @@ fn serialize_rgb(
             .channels()
             .iter()
             .map(|channel| {
-                component_projection(
+                declared_component_projection(
                     channel,
                     Factor::ONE,
                     Factor::ONE,
                     ComponentTarget::Preserve,
+                    true,
                     context,
                 )
             })
@@ -1058,18 +1145,37 @@ fn serialize_hsl(
     mode: Mode,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<String> {
+    if mode == Mode::Origin {
+        let hue = hue_projection(value.hue(), true, context)?;
+        let first = declared_component_projection(
+            value.saturation(),
+            Factor::ONE,
+            Factor::ONE,
+            ComponentTarget::Preserve,
+            true,
+            context,
+        )?;
+        let second = declared_component_projection(
+            value.lightness(),
+            Factor::ONE,
+            Factor::ONE,
+            ComponentTarget::Preserve,
+            true,
+            context,
+        )?;
+        let alpha = serialize_alpha(value.alpha(), true, false, context)?;
+        return hsl_like("hsl", &hue, &first, &second, alpha.as_deref(), context);
+    }
     let missing = matches!(value.hue(), CssColorHue::None)
         || value.saturation().is_none()
         || value.lightness().is_none();
-    let target = if mode == Mode::Origin {
-        ComponentTarget::Preserve
-    } else if missing {
+    let target = if missing {
         ComponentTarget::Percentage
     } else {
         ComponentTarget::Preserve
     };
-    let hue = hue_projection(value.hue(), mode == Mode::Origin, context)?;
-    let materialize = mode == Mode::Origin || missing;
+    let hue = hue_projection(value.hue(), false, context)?;
+    let materialize = missing;
     let saturation = component_projection_with_text(
         value.saturation(),
         Factor::ONE,
@@ -1086,17 +1192,7 @@ fn serialize_hsl(
         materialize,
         context,
     )?;
-    let alpha = serialize_alpha(value.alpha(), mode == Mode::Origin, false, context)?;
-    if mode == Mode::Origin {
-        return hsl_like(
-            "hsl",
-            &hue,
-            &saturation,
-            &lightness,
-            alpha.as_deref(),
-            context,
-        );
-    }
+    let alpha = serialize_alpha(value.alpha(), false, false, context)?;
     if hue.missing || saturation.missing || lightness.missing {
         return hsl_like(
             "hsl",
@@ -1258,18 +1354,37 @@ fn serialize_hwb(
     mode: Mode,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<String> {
+    if mode == Mode::Origin {
+        let hue = hue_projection(value.hue(), true, context)?;
+        let first = declared_component_projection(
+            value.whiteness(),
+            Factor::ONE,
+            Factor::ONE,
+            ComponentTarget::Preserve,
+            true,
+            context,
+        )?;
+        let second = declared_component_projection(
+            value.blackness(),
+            Factor::ONE,
+            Factor::ONE,
+            ComponentTarget::Preserve,
+            true,
+            context,
+        )?;
+        let alpha = serialize_alpha(value.alpha(), true, false, context)?;
+        return hsl_like("hwb", &hue, &first, &second, alpha.as_deref(), context);
+    }
     let missing = matches!(value.hue(), CssColorHue::None)
         || value.whiteness().is_none()
         || value.blackness().is_none();
-    let target = if mode == Mode::Origin {
-        ComponentTarget::Preserve
-    } else if missing {
+    let target = if missing {
         ComponentTarget::Percentage
     } else {
         ComponentTarget::Preserve
     };
-    let hue = hue_projection(value.hue(), mode == Mode::Origin, context)?;
-    let materialize = mode == Mode::Origin || missing;
+    let hue = hue_projection(value.hue(), false, context)?;
+    let materialize = missing;
     let mut white = component_projection_with_text(
         value.whiteness(),
         Factor::ONE,
@@ -1286,8 +1401,8 @@ fn serialize_hwb(
         materialize,
         context,
     )?;
-    let alpha = serialize_alpha(value.alpha(), mode == Mode::Origin, false, context)?;
-    if mode == Mode::Origin || hue.missing || white.missing || black.missing {
+    let alpha = serialize_alpha(value.alpha(), false, false, context)?;
+    if hue.missing || white.missing || black.missing {
         return hsl_like("hwb", &hue, &white, &black, alpha.as_deref(), context);
     }
     if hue.contextual || white.contextual || black.contextual {
@@ -1408,6 +1523,31 @@ fn hue_projection(
     context: &mut SpecifiedSerializationContext,
 ) -> Result<ProjectedScalar> {
     use CssColorHue as H;
+    if origin {
+        let literal = match value {
+            H::Number(value) => Some((value.numeric().representation(), Factor::ONE, "")),
+            H::Angle(value) => Some((
+                value.numeric().representation(),
+                angle_factor(value.unit()),
+                "deg",
+            )),
+            _ => None,
+        };
+        if let Some((source, factor, suffix)) = literal {
+            context.charge_input(1)?;
+            let text = generic_literal_text(source, factor, context)?;
+            return Ok(ProjectedScalar {
+                text: suffix_text(text, suffix, context)?,
+                number: None,
+                exact: None,
+                contextual: false,
+                missing: false,
+                percentage: false,
+                calculation: false,
+            });
+        }
+    }
+
     let (text, number, exact, contextual, missing, calculation) = match value {
         H::None => {
             context.charge_input(1)?;
@@ -1417,20 +1557,12 @@ fn hue_projection(
         H::Number(value) => {
             context.charge_input(1)?;
             let source = value.numeric().representation();
-            let exact = if origin {
-                crate::exact_decimal::ExactRational::from_lexical_factor(
-                    source,
-                    exact_factor(Factor::ONE),
-                    context,
-                )?
-            } else {
-                crate::exact_decimal::ExactRational::from_lexical_factor_modulo(
-                    source,
-                    exact_factor(Factor::ONE),
-                    360,
-                    context,
-                )?
-            };
+            let exact = crate::exact_decimal::ExactRational::from_lexical_factor_modulo(
+                source,
+                exact_factor(Factor::ONE),
+                360,
+                context,
+            )?;
             let number = ScaledNumber::from_exact(&exact)?;
             let text = exact
                 .clone_with_budget(context)?
@@ -1441,20 +1573,12 @@ fn hue_projection(
             context.charge_input(1)?;
             let factor = angle_factor(value.unit());
             let source = value.numeric().representation();
-            let exact = if origin {
-                crate::exact_decimal::ExactRational::from_lexical_factor(
-                    source,
-                    exact_factor(factor),
-                    context,
-                )?
-            } else {
-                crate::exact_decimal::ExactRational::from_lexical_factor_modulo(
-                    source,
-                    exact_factor(factor),
-                    360,
-                    context,
-                )?
-            };
+            let exact = crate::exact_decimal::ExactRational::from_lexical_factor_modulo(
+                source,
+                exact_factor(factor),
+                360,
+                context,
+            )?;
             let number = ScaledNumber::from_exact(&exact)?;
             let text = exact
                 .clone_with_budget(context)?
@@ -1489,11 +1613,6 @@ fn hue_projection(
                 true,
             )
         }
-    };
-    let text = if origin && !missing && !calculation {
-        suffix_text(text, "deg", context)?
-    } else {
-        text
     };
     Ok(ProjectedScalar {
         text,
@@ -1643,17 +1762,32 @@ fn serialize_lab(
     } else {
         ComponentTarget::Number
     };
-    let lightness = component_projection(
+    let lightness = declared_component_projection(
         value.lightness(),
         Factor::ONE,
         light_percentage,
         target,
+        origin,
         context,
     )?;
     let channels = [
         lightness,
-        component_projection(value.a(), Factor::ONE, axis_percentage, target, context)?,
-        component_projection(value.b(), Factor::ONE, axis_percentage, target, context)?,
+        declared_component_projection(
+            value.a(),
+            Factor::ONE,
+            axis_percentage,
+            target,
+            origin,
+            context,
+        )?,
+        declared_component_projection(
+            value.b(),
+            Factor::ONE,
+            axis_percentage,
+            target,
+            origin,
+            context,
+        )?,
     ];
     let alpha = serialize_alpha(value.alpha(), origin, false, context)?;
     modern_function(name, &channels, alpha.as_deref(), context)
@@ -1693,20 +1827,22 @@ fn serialize_lch(
     } else {
         ComponentTarget::Number
     };
-    let lightness = component_projection(
+    let lightness = declared_component_projection(
         value.lightness(),
         Factor::ONE,
         light_percentage,
         target,
+        origin,
         context,
     )?;
     let channels = [
         lightness,
-        component_projection(
+        declared_component_projection(
             value.chroma(),
             Factor::ONE,
             chroma_percentage,
             target,
+            origin,
             context,
         )?,
         hue_projection(value.hue(), origin, context)?,
@@ -1725,7 +1861,7 @@ fn serialize_predefined(
         .channels()
         .iter()
         .map(|channel| {
-            component_projection(
+            declared_component_projection(
                 channel,
                 Factor::ONE,
                 if origin {
@@ -1741,6 +1877,7 @@ fn serialize_predefined(
                 } else {
                     ComponentTarget::Number
                 },
+                origin,
                 context,
             )
         })
@@ -1760,7 +1897,7 @@ fn serialize_custom(
         .channels()
         .iter()
         .map(|channel| {
-            component_projection(
+            declared_component_projection(
                 channel,
                 Factor::ONE,
                 if origin {
@@ -1776,6 +1913,7 @@ fn serialize_custom(
                 } else {
                     ComponentTarget::Number
                 },
+                origin,
                 context,
             )
         })
@@ -1792,6 +1930,7 @@ fn serialize_custom(
 fn serialize_relative_expression(
     value: &CssRelativeColorExpression,
     alpha: bool,
+    percentage_factor: Factor,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<String> {
     use CssRelativeColorExpressionValue as V;
@@ -1814,7 +1953,7 @@ fn serialize_relative_expression(
                         .expect("explicit relative alpha retained"),
                 )
             } else {
-                exact_text(value.numeric().representation(), Factor::ONE, None, context)
+                generic_literal_text(value.numeric().representation(), Factor::ONE, context)
             }
         }
         V::Percentage(value) => {
@@ -1825,19 +1964,16 @@ fn serialize_relative_expression(
                         .expect("explicit relative alpha retained"),
                 )
             } else {
-                let text =
-                    exact_text(value.numeric().representation(), Factor::ONE, None, context)?;
-                suffix_text(text, "%", context)
+                generic_literal_text(value.numeric().representation(), percentage_factor, context)
             }
         }
         V::Angle(value) => {
             context.charge_input(1)?;
-            let exact = crate::exact_decimal::ExactRational::from_lexical_factor(
+            let text = generic_literal_text(
                 value.numeric().representation(),
-                exact_factor(angle_factor(value.unit())),
+                angle_factor(value.unit()),
                 context,
             )?;
-            let text = exact.format_exact(context.remaining_bytes(), context)?;
             suffix_text(text, "deg", context)
         }
         V::Calculation(value) => {
@@ -1867,17 +2003,34 @@ fn serialize_profile_expression(
                 serialize_alpha(Some(value), false, true, context)
                     .map(|value| value.expect("explicit custom relative alpha retained"))
             } else {
-                let value = component_projection(
-                    value,
-                    Factor::ONE,
-                    Factor {
-                        numerator: 1,
-                        denominator: 100,
-                    },
-                    ComponentTarget::Number,
-                    context,
-                )?;
-                Ok(value.text)
+                match value {
+                    CssColorComponent::Number(value) => {
+                        context.charge_input(1)?;
+                        generic_literal_text(value.numeric().representation(), Factor::ONE, context)
+                    }
+                    CssColorComponent::Percentage(value) => {
+                        context.charge_input(1)?;
+                        generic_literal_text(
+                            value.numeric().representation(),
+                            Factor {
+                                numerator: 1,
+                                denominator: 100,
+                            },
+                            context,
+                        )
+                    }
+                    _ => component_projection(
+                        value,
+                        Factor::ONE,
+                        Factor {
+                            numerator: 1,
+                            denominator: 100,
+                        },
+                        ComponentTarget::Number,
+                        context,
+                    )
+                    .map(|value| value.text),
+                }
             }
         }
         crate::CssProfileColorExpressionRef::Reference(value) => {
@@ -2081,4 +2234,140 @@ fn literal_weight(
     context: &mut SpecifiedSerializationContext,
 ) -> Result<String> {
     exact_weight(value, context)?.format_exact(context.remaining_bytes(), context)
+}
+
+#[cfg(test)]
+mod declared_literal_tests {
+    use super::*;
+    use crate::{CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef};
+
+    fn checked_color(source: &str) -> CssColor {
+        let declaration = crate::parse_property_value(
+            CssPropertyNameRef::Known(CssKnownProperty::Color),
+            crate::parse_component_values(source).unwrap(),
+            crate::CssImportance::Normal,
+        )
+        .unwrap();
+        let CssKnownPropertyValueRef::Color(value) =
+            declaration.known().unwrap().property_value().unwrap()
+        else {
+            panic!("checked color property");
+        };
+        value.value().clone()
+    }
+
+    fn assert_exact_bytes(source: &str, expected: &str) {
+        let value = checked_color(source);
+        let original = value.clone();
+        assert_eq!(
+            serialize(&value, Limits::new(usize::MAX, usize::MAX, expected.len())).unwrap(),
+            expected
+        );
+        assert_eq!(
+            serialize(
+                &value,
+                Limits::new(usize::MAX, usize::MAX, expected.len() - 1)
+            )
+            .unwrap_err()
+            .kind(),
+            crate::CssSpecifiedValueSerializationErrorKind::ByteLimit
+        );
+        assert_eq!(value, original);
+    }
+
+    #[test]
+    fn converted_angle_guard_handles_tail_carry_in_origins_and_relative_hues() {
+        for (source, expected) in [
+            (
+                "alpha(from hsl(1.00000199grad 50% 50%))",
+                "alpha(from hsl(0.900002deg 50% 50%))",
+            ),
+            (
+                "alpha(from hsl(-1.00000199grad 50% 50%))",
+                "alpha(from hsl(-0.900002deg 50% 50%))",
+            ),
+            (
+                "hsl(from red 1.00000199rad s l)",
+                "hsl(from red 57.295894deg s l)",
+            ),
+            (
+                "hsl(from red -1.00000199rad s l)",
+                "hsl(from red -57.295894deg s l)",
+            ),
+        ] {
+            assert_exact_bytes(source, expected);
+        }
+    }
+
+    #[test]
+    fn rational_relative_midpoint_keeps_long_authored_tails_and_signs() {
+        for (coefficient, expected) in [
+            (
+                "0.00000019607843137254901960784313725490196078431372549019",
+                "0",
+            ),
+            (
+                "0.00000019607843137254901960784313725490196078431372549020",
+                "0.000001",
+            ),
+            (
+                "-0.00000019607843137254901960784313725490196078431372549019",
+                "0",
+            ),
+            (
+                "-0.00000019607843137254901960784313725490196078431372549020",
+                "-0.000001",
+            ),
+        ] {
+            assert_exact_bytes(
+                &format!("rgb(from red {coefficient}% g b)"),
+                &format!("rgb(from red {expected} g b)"),
+            );
+        }
+        let coefficient = format!("0.1234567{}", "1".repeat(100_000));
+        assert_exact_bytes(
+            &format!("rgb(from red {coefficient}% g b)"),
+            "rgb(from red 0.314815 g b)",
+        );
+    }
+
+    #[test]
+    fn literal_conversion_work_shares_the_public_cumulative_projection_budget() {
+        // Two roots and g/b references add four projections. Identity uses one
+        // lexical emission; 20% uses scalar + one prefix chunk + division;
+        // .000000199% additionally compares two borrowed tail digits.
+        for (source, expected, projections) in [
+            (
+                "rgb(from red .1234567 g b)",
+                "rgb(from red 0.123457 g b)",
+                5,
+            ),
+            ("rgb(from red 20% g b)", "rgb(from red 51 g b)", 7),
+            (
+                "rgb(from red .000000199% g b)",
+                "rgb(from red 0.000001 g b)",
+                9,
+            ),
+        ] {
+            let value = checked_color(source);
+            let original = value.clone();
+            assert_eq!(
+                serialize(&value, Limits::new(5, projections, expected.len())).unwrap(),
+                expected
+            );
+            assert_eq!(
+                serialize(&value, Limits::new(5, projections - 1, expected.len()))
+                    .unwrap_err()
+                    .kind(),
+                crate::CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+            );
+            assert_eq!(
+                serialize(&value, Limits::new(4, projections, expected.len()))
+                    .unwrap_err()
+                    .kind(),
+                crate::CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            );
+            assert_eq!(value, original);
+        }
+    }
 }

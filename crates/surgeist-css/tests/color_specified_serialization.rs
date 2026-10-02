@@ -188,7 +188,7 @@ fn deferred_hsl_hwb_radian_and_alpha_order_follow_adopted_policies() {
         ),
         (
             "alpha(from hsl(1rad 50% 50%))",
-            "alpha(from hsl(57.29577951308232286464772187173366546630859375deg 50% 50%))",
+            "alpha(from hsl(57.29578deg 50% 50%))",
         ),
         (
             "hsl(calc(1em / 1px) calc(-20%) 50%)",

@@ -707,6 +707,47 @@ impl BigCoefficient {
     }
 }
 
+/// Generic CSSOM literals and color alpha/mix have distinct signed tie rules.
+#[derive(Clone, Copy)]
+enum DecimalRounding {
+    TowardPositiveInfinity,
+    AwayFromZero,
+}
+impl DecimalRounding {
+    fn rounds_up(self, ordering: std::cmp::Ordering, negative: bool) -> bool {
+        ordering.is_gt() || (ordering.is_eq() && (matches!(self, Self::AwayFromZero) || !negative))
+    }
+}
+
+/// Compare a borrowed decimal fraction with an exact positive rational. Long
+/// division retains only a u128 remainder, even for an arbitrarily long tail.
+fn compare_decimal_tail(
+    digits: impl Iterator<Item = u8>,
+    numerator: u128,
+    denominator: u128,
+    context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+) -> Result<std::cmp::Ordering, crate::CssSpecifiedValueSerializationError> {
+    use std::cmp::Ordering;
+    if numerator >= denominator {
+        return Ok(Ordering::Less); // the finite tail is strictly below one
+    }
+    let mut remainder = numerator;
+    for digit in digits {
+        context.charge_projection(1)?;
+        remainder *= 10;
+        let boundary = remainder / denominator;
+        match u128::from(digit).cmp(&boundary) {
+            Ordering::Equal => remainder %= denominator,
+            ordering => return Ok(ordering),
+        }
+    }
+    Ok(if remainder == 0 {
+        Ordering::Equal
+    } else {
+        Ordering::Less
+    })
+}
+
 #[derive(Debug, Eq, PartialEq)]
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) struct ExactRational {
@@ -1673,6 +1714,197 @@ impl ExactRational {
         )
     }
 
+    /// Emits a generic six-place number after exact literal conversion. Only
+    /// the retained prefix is materialized. The discarded source is compared
+    /// directly with the rational midpoint, without an exact-text bridge.
+    pub(crate) fn format_generic_number(
+        text: &str,
+        factor: ExactFactor,
+        byte_limit: usize,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+    ) -> Result<String, crate::CssSpecifiedValueSerializationError> {
+        use crate::CssSpecifiedValueSerializationError as Error;
+        use crate::CssSpecifiedValueSerializationErrorKind::{ByteLimit, CapacityOverflow};
+        if factor.denominator == 0 {
+            return Err(Error::new(CapacityOverflow));
+        }
+        context.charge_projection(1)?;
+        let lexical = LexicalDecimal::new(text);
+        let zero = || {
+            crate::specified_serialization::format_digits(
+                std::iter::empty(),
+                0,
+                0,
+                false,
+                byte_limit,
+            )
+        };
+        if lexical.len == 0 || factor.numerator == 0 {
+            return zero();
+        }
+        let Some(exponent) = lexical.exponent else {
+            return if lexical.exponent_negative {
+                zero()
+            } else {
+                Err(Error::new(ByteLimit))
+            };
+        };
+        // D*S >= 2*N makes the discarded scaled tail less than half a millionth.
+        // D*S < 20*N whenever a guard is needed; all arithmetic fits u128.
+        let mut scale = 1_u128;
+        let mut guard = 0_usize;
+        while u128::from(factor.denominator) * scale < u128::from(factor.numerator) * 2 {
+            scale *= 10;
+            guard += 1;
+        }
+        let denominator = u128::from(factor.denominator) * scale;
+        let Some(kept) = exponent
+            .checked_add(lexical.len as i128)
+            .and_then(|point| point.checked_add(6 + guard as i128))
+        else {
+            return if exponent < 0 {
+                zero()
+            } else {
+                Err(Error::new(ByteLimit))
+            };
+        };
+        if kept < 0 {
+            return zero(); // even N/(D*S) times this tail is below 0.05
+        }
+        // Beyond this conservative bound, even division cannot fit the final
+        // integer. Reject before expanding a positive exponent or reserving.
+        let bound =
+            byte_limit as i128 + 6 + guard as i128 + factor.denominator.ilog10() as i128 + 1;
+        if kept > bound {
+            return Err(Error::new(ByteLimit));
+        }
+        let kept = usize::try_from(kept).map_err(|_| Error::new(CapacityOverflow))?;
+        let retained = kept.min(lexical.len);
+        let tail = || lexical.digits().skip(retained);
+        // Probe the stack path only when the prefix can fit. A huge positive
+        // exponent must reach charged coefficient expansion in constant time.
+        let product = if kept <= 39 {
+            let prefix = lexical
+                .digits()
+                .take(retained)
+                .try_fold(0_u128, |value, digit| {
+                    value.checked_mul(10)?.checked_add(u128::from(digit))
+                });
+            prefix.and_then(|value| {
+                let zeros = 10_u128.checked_pow((kept - retained) as u32)?;
+                value
+                    .checked_mul(zeros)?
+                    .checked_mul(u128::from(factor.numerator))
+            })
+        } else {
+            None
+        };
+        if let Some(product) = product {
+            // Charge retained base-10^9 work and the quotient/remainder step.
+            // Small outputs need no heap scratch, including a one-byte carry.
+            context.charge_projection(
+                BigCoefficient::limb_count_for_digits(kept)
+                    .ok_or_else(|| Error::new(CapacityOverflow))?,
+            )?;
+            context.charge_projection(1)?;
+            let mut rounded = product / denominator;
+            let residual = product % denominator;
+            let ordering = if residual * 2 > denominator {
+                std::cmp::Ordering::Greater
+            } else {
+                compare_decimal_tail(
+                    tail(),
+                    denominator - residual * 2,
+                    u128::from(factor.numerator) * 2,
+                    context,
+                )?
+            };
+            if DecimalRounding::AwayFromZero.rounds_up(ordering, lexical.negative) {
+                rounded += 1;
+            }
+            if rounded == 0 {
+                return zero();
+            }
+            let mut exponent = -6_i128;
+            while rounded.is_multiple_of(10) {
+                rounded /= 10;
+                exponent += 1;
+            }
+            let mut digits = [0_u8; 39];
+            let mut len = 0;
+            while rounded != 0 {
+                digits[len] = (rounded % 10) as u8;
+                len += 1;
+                rounded /= 10;
+            }
+            return crate::specified_serialization::format_digits(
+                digits[..len].iter().rev().copied(),
+                len,
+                exponent,
+                lexical.negative,
+                byte_limit,
+            );
+        }
+        // Large integer text reuses the existing coefficient/division owner.
+        // Its retained storage is bounded by the current byte budget; discarded
+        // fractional digits and exponent-sized zero tails never enter storage.
+        let product_digits = kept
+            .checked_add(factor.numerator.ilog10() as usize + 1)
+            .ok_or_else(|| Error::new(CapacityOverflow))?;
+        let limbs = BigCoefficient::limb_count_for_digits(product_digits)
+            .ok_or_else(|| Error::new(CapacityOverflow))?;
+        let scratch_bytes = limbs
+            .checked_add(1)
+            .and_then(|n| n.checked_mul(4))
+            .ok_or_else(|| Error::new(CapacityOverflow))?;
+        if scratch_bytes > byte_limit {
+            return Err(Error::new(ByteLimit));
+        }
+        let end = lexical
+            .significant
+            .bytes()
+            .enumerate()
+            .filter(|(_, byte)| *byte != b'.')
+            .nth(retained.saturating_sub(1))
+            .map_or(0, |(index, _)| index + 1);
+        let borrowed = LexicalDecimal {
+            significant: &lexical.significant[..end],
+            len: retained,
+            exponent: Some(0),
+            negative: lexical.negative,
+            exponent_negative: false,
+            exponent_digits: "0",
+            exponent_adjustment: 0,
+        };
+        let prefix = BigCoefficient::from_lexical(&borrowed, context)?;
+        let prefix = if kept == retained {
+            prefix
+        } else {
+            prefix.mul_pow10(kept - retained, context)?
+        };
+        let product = prefix.mul_small(factor.numerator, context)?;
+        let (whole, remainder) = product.div_rem_small(factor.denominator, context)?;
+        let (mut rounded, low) = whole.div_rem_pow10(guard, context)?;
+        let low = low.limbs.iter().rev().fold(0_u128, |value, limb| {
+            value * u128::from(DECIMAL_LIMB_BASE) + u128::from(*limb)
+        });
+        let residual = low * u128::from(factor.denominator) + u128::from(remainder);
+        let ordering = if residual * 2 > denominator {
+            std::cmp::Ordering::Greater
+        } else {
+            compare_decimal_tail(
+                tail(),
+                denominator - residual * 2,
+                u128::from(factor.numerator) * 2,
+                context,
+            )?
+        };
+        if DecimalRounding::AwayFromZero.rounds_up(ordering, lexical.negative) {
+            rounded.increment(context)?;
+        }
+        Self::emit_rounded_coefficient(rounded, 6, lexical.negative, byte_limit)
+    }
+
     pub(crate) fn format_rounded(
         self,
         places: usize,
@@ -1778,20 +2010,26 @@ impl ExactRational {
                 (quotient, ordering)
             }
         };
-        if rounding == std::cmp::Ordering::Greater
-            || (rounding == std::cmp::Ordering::Equal && !self.negative)
-        {
+        if DecimalRounding::TowardPositiveInfinity.rounds_up(rounding, self.negative) {
             rounded.increment(context)?;
         }
-        let mut exponent = -places_i128;
-        exponent = exponent
+        Self::emit_rounded_coefficient(rounded, places_i128, self.negative, byte_limit)
+    }
+
+    fn emit_rounded_coefficient(
+        mut rounded: BigCoefficient,
+        places: i128,
+        negative: bool,
+        byte_limit: usize,
+    ) -> Result<String, crate::CssSpecifiedValueSerializationError> {
+        let exponent = (-places)
             .checked_add(rounded.strip_decimal_zeros())
             .ok_or_else(|| {
                 crate::CssSpecifiedValueSerializationError::new(
                     crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                 )
             })?;
-        let negative = self.negative && !rounded.is_zero();
+        let negative = negative && !rounded.is_zero();
         let digits = rounded.decimal_string(byte_limit)?;
         crate::specified_serialization::format_digits(
             digits.bytes().map(|byte| byte - b'0'),
@@ -2226,6 +2464,140 @@ mod tests {
         value
             .format_rounded(places, 1_048_576, &mut context)
             .unwrap()
+    }
+
+    fn generic(text: &str, factor: ExactFactor, limit: usize) -> String {
+        ExactRational::format_generic_number(
+            text,
+            factor,
+            limit,
+            &mut SpecifiedSerializationContext::new(Limits::default()),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn generic_rational_conversion_compares_long_borrowed_midpoint_tails_exactly() {
+        let rgb = ExactFactor {
+            numerator: 255,
+            denominator: 100,
+        };
+        // 0.5 millionths / 2.55 = 1/5,100,000. The two finite
+        // coefficients straddle that rational boundary without reaching it.
+        let below = "0.00000019607843137254901960784313725490196078431372549019";
+        let above = "0.00000019607843137254901960784313725490196078431372549020";
+        for (source, expected) in [(below, "0"), (above, "0.000001")] {
+            assert_eq!(generic(source, rgb, expected.len()), expected);
+            let negative = format!("-{source}");
+            let expected = if expected == "0" { "0" } else { "-0.000001" };
+            assert_eq!(generic(&negative, rgb, expected.len()), expected);
+        }
+        // Long unrounded fractional input must not become heap scratch.
+        let long = format!("0.1234567{}", "1".repeat(100_000));
+        assert_eq!(generic(&long, rgb, 8), "0.314815");
+        assert_eq!(generic(&format!("-{long}"), rgb, 9), "-0.314815");
+        // A guard prevents the tail from adding a second rounded unit.
+        let grad = ExactFactor {
+            numerator: 9,
+            denominator: 10,
+        };
+        let rad = ExactFactor {
+            numerator: 1_007_958_012_753_983,
+            denominator: 17_592_186_044_416,
+        };
+        for (factor, expected) in [(grad, "0.900002"), (rad, "57.295894")] {
+            assert_eq!(generic("1.00000199", factor, expected.len()), expected);
+            let expected = format!("-{expected}");
+            assert_eq!(generic("-1.00000199", factor, expected.len()), expected);
+        }
+    }
+
+    #[test]
+    fn generic_rational_ties_carries_zero_and_large_digits_budget_final_text() {
+        let factor = ExactFactor {
+            numerator: 5,
+            denominator: 4,
+        };
+        for (source, expected) in [
+            ("0.0000004", "0.000001"),
+            ("-0.0000004", "-0.000001"),
+            ("0.00000039999999", "0"),
+            ("0.00000040000001", "0.000001"),
+            ("0.7999996", "1"),
+            ("-0.7999996", "-1"),
+            ("1e-999999999999999999999999999999999999999999", "0"),
+            ("0e999999999999999999999999999999999999999999", "0"),
+            (
+                "1234567890123456789012345678901234567890",
+                "1543209862654320986265432098626543209862.5",
+            ),
+        ] {
+            assert_eq!(generic(source, factor, expected.len()), expected);
+            assert_eq!(
+                ExactRational::format_generic_number(
+                    source,
+                    factor,
+                    expected.len() - 1,
+                    &mut SpecifiedSerializationContext::new(Limits::default())
+                )
+                .unwrap_err()
+                .kind(),
+                ErrorKind::ByteLimit
+            );
+        }
+        assert_eq!(
+            ExactRational::format_generic_number(
+                "1e999999999999999999999999999999999999999999",
+                factor,
+                100,
+                &mut SpecifiedSerializationContext::new(Limits::default())
+            )
+            .unwrap_err()
+            .kind(),
+            ErrorKind::ByteLimit
+        );
+    }
+
+    #[test]
+    fn enormous_positive_conversion_reaches_projection_limit_without_expansion() {
+        let factor = ExactFactor {
+            numerator: 255,
+            denominator: 100,
+        };
+        let mut context = SpecifiedSerializationContext::new(Limits::new(0, 10, usize::MAX));
+        assert_eq!(
+            ExactRational::format_generic_number("1e1000000000", factor, usize::MAX, &mut context)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::ProjectionNodeLimit
+        );
+    }
+
+    #[test]
+    fn generic_rational_projection_work_has_independent_boundaries() {
+        let factor = ExactFactor {
+            numerator: 255,
+            denominator: 100,
+        };
+        // 20*2.55: scalar visit + one nine-digit prefix chunk + division = 3.
+        // 0.000000199*2.55: the same 3 plus two tail digit comparisons = 5.
+        for (source, expected, visits) in [("20", "51", 3), ("0.000000199", "0.000001", 5)] {
+            let mut exact =
+                SpecifiedSerializationContext::new(Limits::new(0, visits, expected.len()));
+            assert_eq!(
+                ExactRational::format_generic_number(source, factor, expected.len(), &mut exact)
+                    .unwrap(),
+                expected
+            );
+            let mut short =
+                SpecifiedSerializationContext::new(Limits::new(0, visits - 1, expected.len()));
+            assert_eq!(
+                ExactRational::format_generic_number(source, factor, expected.len(), &mut short)
+                    .unwrap_err()
+                    .kind(),
+                ErrorKind::ProjectionNodeLimit
+            );
+        }
     }
 
     #[test]
