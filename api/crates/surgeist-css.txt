@@ -504,14 +504,14 @@ pub surgeist_css::CssColorProfileDescriptorValueRef::Components(&'a [surgeist_cs
 pub surgeist_css::CssColorProfileDescriptorValueRef::Pending(&'a surgeist_css::CssSubstitutionDependentValue)
 pub surgeist_css::CssColorProfileDescriptorValueRef::RenderingIntent(surgeist_css::CssColorProfileRenderingIntent)
 pub surgeist_css::CssColorProfileDescriptorValueRef::Src(&'a surgeist_css::CssUrl)
-pub enum surgeist_css::CssColorProfileRenderingIntent
+#[non_exhaustive] pub enum surgeist_css::CssColorProfileRenderingIntent
 pub surgeist_css::CssColorProfileRenderingIntent::AbsoluteColorimetric
 pub surgeist_css::CssColorProfileRenderingIntent::Perceptual
 pub surgeist_css::CssColorProfileRenderingIntent::RelativeColorimetric
 pub surgeist_css::CssColorProfileRenderingIntent::Saturation
 impl surgeist_css::CssColorProfileRenderingIntent
 pub const fn surgeist_css::CssColorProfileRenderingIntent::css_name(self) -> &'static str
-pub enum surgeist_css::CssColorProfileRuleName
+#[non_exhaustive] pub enum surgeist_css::CssColorProfileRuleName
 pub surgeist_css::CssColorProfileRuleName::Custom(surgeist_css::CssColorProfileName)
 pub surgeist_css::CssColorProfileRuleName::DeviceCmyk
 #[non_exhaustive] pub enum surgeist_css::CssColorProfileValueErrorKind

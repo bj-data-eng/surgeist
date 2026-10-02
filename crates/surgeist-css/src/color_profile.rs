@@ -22,6 +22,7 @@ use std::fmt;
 /// }
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum CssColorProfileRuleName {
     Custom(CssColorProfileName),
     DeviceCmyk,
@@ -44,6 +45,7 @@ pub enum CssColorProfileRuleName {
 /// }
 /// ```
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum CssColorProfileRenderingIntent {
     #[default]
     RelativeColorimetric,
