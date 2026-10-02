@@ -2370,6 +2370,64 @@ underflow and loss of powerless hue apply; exact round trips are not promised.
 These helpers are independent of authored CSS, alpha, profiles, contextual
 evaluation, interpolation and computed CSS serialization.
 
+### Pure rectangular color-space conversion
+
+`CssRectangularColorCoordinates` couples three concrete numerical channels with
+their `CssRectangularColorSpace`. The space is `Predefined` with an existing
+`CssPredefinedColorSpace`, `Lab`, or `Oklab`: seven RGB spaces, XYZ D50/D65,
+and the two rectangular Lab families. These coordinates are independent of the
+authored `CssColor` graph and its specified serialization.
+
+`try_new(space, [Option<f64>; 3])` accepts every finite extended channel and
+explicit missing values. It preserves input bits, including negative zero,
+and rejects the first present nonfinite channel in zero-based index order.
+`space()` and `channels()` inspect the immutable value. RGB and XYZ channels
+use number reference units where `100%` means `1`; Lab uses native `[L, a, b]`
+units with ordinary lightness `0..100`, and Oklab uses native units with ordinary
+lightness `0..1`. These usual ranges are not constructor bounds.
+
+`convert_to(destination)` follows
+[Color 4's intrinsic conversion algorithm](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#color-convert-algorithm).
+Same-space conversion preserves every bit and missing value. Different-space
+conversion substitutes zero for missing input channels locally, converts
+through linear light and XYZ, adapts differing whitepoints with linear Bradford,
+and returns three present channels. The source remains unchanged, including
+when conversion fails. Results retain negative, out-of-gamut and extended
+lightness values without range clipping.
+
+ProPhoto RGB, Lab and XYZ D50 use D50; the other RGB spaces, Oklab and XYZ D65
+use D65. RGB matrices derive from the normative primary chromaticities and
+whitepoints: D50 XYZ is `[3457/3585, 1, 986/1195]`, and D65 XYZ is
+`[3127/3290, 1, 3583/3290]`. Consistent coefficients for Bradford and Lab/Oklab
+conversion are identified by the pinned implementation evidence in the
+[standards catalog](../specs/README.md). The catalog distinguishes normative
+definitions from the publication's nonnormative numerical samples.
+
+Rec.2020 uses the pinned definition's reflected gamma `12/5`, with inverse
+`5/12`, rather than frozen WebKit's older piecewise curve. ProPhoto uses reflected
+signed-absolute powers `9/5` and `5/9`; its encoded toe is `|c| <= 1/32`, and
+its linear toe is `|linear| <= 1/512`. This repairs the individually recorded
+negative-domain expression defect to satisfy the publication's extended-range
+contract. It does not claim agreement with WebKit's defective negative-input
+branch or normative harmonization.
+
+Private scratch arithmetic retains separate wider exponents for each channel
+through transfer functions and matrices, with binary64 significand precision.
+It prevents avoidable intermediate range loss when large encoded channels or
+tiny linear-light channels produce representable destination channels. Ordinary
+rounding and cancellation still apply; final underflow to zero is permitted.
+This is neither exact-real arithmetic nor a correctly rounded conversion
+guarantee. `CssRectangularColorConversionError::UnrepresentableResult` identifies
+the first computed destination channel that cannot become finite `f64`.
+`NonFiniteInput` identifies an invalid constructor channel. Both indices use
+the selected space's three-channel order. Cross-space round trips are
+approximate and cannot recover missingness replaced by zero.
+
+Alpha, profiles, gamut mapping, physical output and interpolation remain outside
+this helper. Callers compose the existing HSL/HWB and Lab-family polar helpers
+through their corresponding encoded sRGB or Lab/Oklab coordinates; no authored
+expression is evaluated or converted implicitly.
+
 ### Pure Lab-family rectangular and polar coordinates
 
 `convert_lab_to_lch([L, a, b])` and `convert_oklab_to_oklch([L, a, b])`

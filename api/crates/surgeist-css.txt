@@ -3394,6 +3394,18 @@ pub surgeist_css::CssRectShapeEdge::Auto
 pub surgeist_css::CssRectShapeEdge::LengthPercentage(surgeist_css::CssSpecifiedLengthPercentage)
 impl core::cmp::PartialEq for surgeist_css::CssRectShapeEdge
 pub fn surgeist_css::CssRectShapeEdge::eq(&self, other: &Self) -> bool
+#[non_exhaustive] pub enum surgeist_css::CssRectangularColorConversionError
+pub surgeist_css::CssRectangularColorConversionError::NonFiniteInput
+pub surgeist_css::CssRectangularColorConversionError::NonFiniteInput::component: usize
+pub surgeist_css::CssRectangularColorConversionError::UnrepresentableResult
+pub surgeist_css::CssRectangularColorConversionError::UnrepresentableResult::component: usize
+impl core::error::Error for surgeist_css::CssRectangularColorConversionError
+impl core::fmt::Display for surgeist_css::CssRectangularColorConversionError
+pub fn surgeist_css::CssRectangularColorConversionError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+#[non_exhaustive] pub enum surgeist_css::CssRectangularColorSpace
+pub surgeist_css::CssRectangularColorSpace::Lab
+pub surgeist_css::CssRectangularColorSpace::Oklab
+pub surgeist_css::CssRectangularColorSpace::Predefined(surgeist_css::CssPredefinedColorSpace)
 #[non_exhaustive] pub enum surgeist_css::CssReducedMotionPreference
 pub surgeist_css::CssReducedMotionPreference::NoPreference
 pub surgeist_css::CssReducedMotionPreference::Reduce
@@ -8005,6 +8017,12 @@ pub const fn surgeist_css::CssRectShape::top(&self) -> &surgeist_css::CssRectSha
 impl surgeist_css::CssRectShape
 pub fn surgeist_css::CssRectShape::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssRectShape::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssRectangularColorCoordinates
+impl surgeist_css::CssRectangularColorCoordinates
+pub const fn surgeist_css::CssRectangularColorCoordinates::channels(&self) -> &[core::option::Option<f64>; 3]
+pub fn surgeist_css::CssRectangularColorCoordinates::convert_to(&self, destination: surgeist_css::CssRectangularColorSpace) -> core::result::Result<Self, surgeist_css::CssRectangularColorConversionError>
+pub const fn surgeist_css::CssRectangularColorCoordinates::space(&self) -> surgeist_css::CssRectangularColorSpace
+pub fn surgeist_css::CssRectangularColorCoordinates::try_new(space: surgeist_css::CssRectangularColorSpace, channels: [core::option::Option<f64>; 3]) -> core::result::Result<Self, surgeist_css::CssRectangularColorConversionError>
 pub struct surgeist_css::CssRelativeColor
 impl surgeist_css::CssRelativeColor
 pub const fn surgeist_css::CssRelativeColor::alpha(&self) -> core::option::Option<&surgeist_css::CssRelativeColorExpression>

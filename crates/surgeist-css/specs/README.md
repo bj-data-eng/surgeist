@@ -261,6 +261,30 @@ both families. The conversion formula does not exclude that cleanup, and the
 nonnormative JavaScript samples do not override it. Manually constructed
 coordinates retain their supplied chroma and hue independently of conversion.
 
+Concrete rectangular conversion uses the normative RGB primaries and D50/D65
+whitepoints, linear Bradford adaptation, and the consistent pinned Lab/Oklab
+coefficients. Rec.2020 uses the dated publication's gamma 2.4; frozen WebKit's
+older piecewise transfer curve is browser divergence, rather than a competing
+normative definition. ProPhoto has a separate expression defect: its normative
+nonlinear branch prepares magnitude and sign but raises the signed negative
+input to a fractional power. The catalog selects reflected signed-absolute
+powers to fulfill the same publication's extended real-domain requirement.
+Its nonnormative sample supports that extension; frozen WebKit repeats the
+defect and cannot supply a valid negative-channel result. The
+[reference](../docs/reference.md#pure-rectangular-color-space-conversion)
+records numerical units, missingness, range and failure boundaries.
+
+The coefficient basis uses the consistent
+[Color 4 numerical samples](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#color-conversion-code)
+and frozen WebKit commit `73aa6c89e2cb77c46184a81aec944e4ab99d114d`.
+Under `Source/WebCore/platform/graphics/`, `ColorConversion.h` blob
+`6bd03353c1a6540a896b342571913fdfbe9b7193` identifies the Bradford basis and
+adaptation matrices; `ColorConversion.cpp` blob
+`e1d28a9c4c844459e432c39b71e1fde911023777` identifies the Lab/Oklab formulas
+and coefficients. RGB primary matrices derive independently from the normative
+chromaticities. The numerical helpers retain extended coordinates instead of
+importing the browser's Lab/Oklab lightness clamps.
+
 Text 4's `text-align` and `text-align-all` tables show a standalone `<string>`
 alternative, but its prose and example expressly combine a string with a keyword.
 The catalog's localized reconciliation retains the five positional keywords from

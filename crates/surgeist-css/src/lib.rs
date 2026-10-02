@@ -180,6 +180,12 @@
 //! [`convert_hwb_to_srgb`] and [`convert_srgb_to_hwb`] convert encoded sRGB
 //! samples without gamut clipping. Inverse conversion marks powerless hue
 //! missing while retaining the other coordinates; forward missing hue uses zero.
+//! [`CssRectangularColorCoordinates`] checks concrete RGB, XYZ, Lab and Oklab
+//! channels with explicit missingness. Its [`convert_to`](CssRectangularColorCoordinates::convert_to)
+//! method converts among [`CssRectangularColorSpace`] values without gamut
+//! clipping, preserving intermediate range with binary64 significand precision.
+//! Same-space conversion retains all bits; cross-space missing channels become
+//! zero locally. Alpha and authored expression evaluation remain separate.
 //! [`CssOverflowPropertyValue::value`] exposes [`CssOverflowValue`], retaining
 //! the authored one- or two-axis form.
 //!
@@ -1339,6 +1345,7 @@ mod opacity_scalar;
 mod page_line_minimum;
 mod pending_serialization;
 mod position_serialization;
+mod rectangular_color_conversion;
 mod resolution;
 mod scroll_snap;
 mod sizing;
@@ -1523,6 +1530,9 @@ pub use properties::*;
 pub use property_value::{
     CssPropertyValueErrorKind, CssPropertyValueParseError, parse_property_value,
     parse_property_value_for_grammar,
+};
+pub use rectangular_color_conversion::{
+    CssRectangularColorConversionError, CssRectangularColorCoordinates, CssRectangularColorSpace,
 };
 pub use report::*;
 pub use source::*;
