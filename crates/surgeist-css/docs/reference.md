@@ -492,7 +492,9 @@ unchanged; composed writers share one cumulative budget.
 
 Finite numbers in non-color specified calculations, declared relative-color
 calculations and ordinary colors embedded as origins use the same six-place,
-fixed-notation output policy. The mathematical
+fixed-notation output policy. Ordinary non-alpha color component and hue
+calculations also use this policy when their projected result remains
+context-dependent, including components inside `color-mix()`. The mathematical
 projector evaluates context-independent parts with binary64 arithmetic, then rounds the actual
 finite binary value for text. `calc(1 / 3)` emits `calc(0.333333)`, and the exact
 dyadic halfway value `calc(-1 / 128)` emits `calc(-0.007813)`.
@@ -541,9 +543,19 @@ and percentage categories, explicit unclamped alpha, and canonical angle units.
 For example, `alpha(from rgb(calc(1 / 128) none none))` emits
 `alpha(from rgb(calc(0.007813) none none))`; an origin percentage calculation
 keeps `%` without adopting the destination channel's relative percentage scale.
-Ordinary standalone color calculations and media-query writers retain their
-separate text policies. Standalone color captures retain their scratch costs even
-when their text is discarded during conversion.
+For ordinary non-alpha component and hue calculations, the existing projection
+result selects the text policy. A contextual hue such as
+`hsl(calc(1em / 1px + 0.0078125deg / 1deg) 50% 50%)` emits
+`hsl(calc(0.007813 + (1em / 1px)) 50% 50%)`. Contextual same-unit ratios remain
+symbolic under the existing projector; fully resolved absolute-unit ratios and
+NaN simplification retain their existing outcomes. Percentage scaling and angle
+conversion precede coefficient formatting.
+
+Fully numeric standalone color calculations, standalone alpha calculations,
+mix weights and media-query writers retain their separate text policies.
+Standalone numeric color captures retain their scratch costs even when their
+text is discarded during conversion. Contextual captures count the rounded text
+against their scratch bounds, using the same cumulative traversal budget.
 Mathematical arithmetic precision and range remain unfinished; canonical text
 does not make binary64 evaluation exact or resolve symbolic dependencies.
 
@@ -571,8 +583,11 @@ and calculation branches retain their own serialization rules; direct
 percentage conversion does not rewrite `calc(30%)`.
 
 These rules also apply when relative colors occur inside another origin or
-`color-mix()`. Standalone color precision, hue normalization, standalone color
-calculations, relative alpha and mix weights keep their separate policies.
+`color-mix()`. Standalone color precision, hue normalization, fully numeric
+standalone color calculations, standalone alpha and mix weights keep their
+separate policies.
+Context-dependent non-alpha calculations use the
+[calculated number policy](#calculated-number-output).
 Composed colors share cumulative resource limits; byte limits count rounded
 text, and failure returns no partial string or changes to the authored graph.
 

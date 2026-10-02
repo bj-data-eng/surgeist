@@ -777,7 +777,7 @@ fn component_projection_with_text(
                     }
                 }
             };
-            let (text, outcome) = crate::numeric::capture_color_calculation_scaled(
+            let (text, outcome) = crate::numeric::capture_color_component_calculation(
                 crate::numeric::ColorCalculationRef::Number(value),
                 scale,
                 context,
@@ -801,7 +801,7 @@ fn component_projection_with_text(
             } else {
                 crate::numeric::NumericProjectionScale::Identity
             };
-            let (text, outcome) = crate::numeric::capture_color_calculation_scaled(
+            let (text, outcome) = crate::numeric::capture_color_component_calculation(
                 crate::numeric::ColorCalculationRef::Percentage(value),
                 scale,
                 context,
@@ -1612,7 +1612,11 @@ fn hue_projection(
             let (text, outcome) = if origin {
                 crate::numeric::capture_origin_color_calculation(calculation, context)?
             } else {
-                crate::numeric::capture_color_calculation(calculation, context)?
+                crate::numeric::capture_color_component_calculation(
+                    calculation,
+                    crate::numeric::NumericProjectionScale::Identity,
+                    context,
+                )?
             };
             (
                 text,
@@ -1628,7 +1632,11 @@ fn hue_projection(
             let (text, outcome) = if origin {
                 crate::numeric::capture_origin_color_calculation(calculation, context)?
             } else {
-                crate::numeric::capture_color_calculation(calculation, context)?
+                crate::numeric::capture_color_component_calculation(
+                    calculation,
+                    crate::numeric::NumericProjectionScale::Identity,
+                    context,
+                )?
             };
             (
                 text,

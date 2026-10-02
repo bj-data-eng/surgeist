@@ -486,6 +486,25 @@ pub(crate) fn capture_color_specified_scaled(
     Ok((output, outcome))
 }
 
+/// Captures ordinary non-alpha color components, selecting coefficient text
+/// from the existing post-scale mathematical outcome before emitting scratch.
+pub(crate) fn capture_color_component_specified_scaled(
+    expression: &CssCalculationExpression,
+    scale: NumericProjectionScale,
+    context: &mut SpecifiedSerializationContext,
+) -> Result<(String, NumericProjectionOutcome)> {
+    let mut output = String::new();
+    let outcome = project_specified_impl_mode(
+        expression,
+        scale,
+        context,
+        &mut output,
+        (false, true),
+        NumericEmission::ColorComponentCalculation,
+    )?;
+    Ok((output, outcome))
+}
+
 /// Captures canonical components before lossy finite coefficient formatting.
 pub(crate) fn capture_specified_for_comparison(
     expression: &CssCalculationExpression,
@@ -653,6 +672,13 @@ fn project_specified_impl_mode(
     let outcome = NumericProjectionOutcome {
         context_dependent: projection.arena[root].resolved_magnitude.is_none(),
         scalar_value: projection.scalar(root).map(|value| value.value),
+    };
+    emission = match emission {
+        NumericEmission::ColorComponentCalculation if outcome.context_dependent => {
+            NumericEmission::CssComponent(None)
+        }
+        NumericEmission::ColorComponentCalculation => NumericEmission::ColorCalculation,
+        emission => emission,
     };
     if outer_calc {
         projection.serialize(root, output, charge_output, &mut emission)?;
@@ -1050,6 +1076,7 @@ fn rebase_span(
 enum NumericEmission<'a> {
     CssComponent(Option<&'a mut FiniteCoefficientCollector>),
     ColorCalculation,
+    ColorComponentCalculation,
 }
 // Known scalar syntax contributes at most two coefficients (operand -0).
 // These local slots do not allocate and never infer coefficients from text.

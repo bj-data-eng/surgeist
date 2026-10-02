@@ -889,7 +889,7 @@ fn color_calculation_text_follows_its_declared_slot() {
         ),
         (
             "hsl(calc(1em / 1px + 0.0078125deg / 1deg) 50% 50%)",
-            "hsl(calc(0.0078125 + (1em / 1px)) 50% 50%)",
+            "hsl(calc(0.007813 + (1em / 1px)) 50% 50%)",
         ),
         (
             "rgb(from red calc(r + 0.0078125) g b)",

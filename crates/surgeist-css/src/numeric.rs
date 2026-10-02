@@ -3334,6 +3334,19 @@ pub(crate) fn capture_origin_color_calculation(
     )
 }
 
+/// Captures an ordinary non-origin, non-alpha component with its slot's scale.
+/// Contextual coefficients use generic text; numeric color scratch is retained.
+pub(crate) fn capture_color_component_calculation(
+    calculation: ColorCalculationRef<'_>,
+    scale: NumericProjectionScale,
+    context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+) -> std::result::Result<
+    (String, NumericProjectionOutcome),
+    crate::CssSpecifiedValueSerializationError,
+> {
+    projection::capture_color_component_specified_scaled(calculation.expression(), scale, context)
+}
+
 pub(crate) fn capture_color_calculation(
     calculation: ColorCalculationRef<'_>,
     context: &mut crate::specified_serialization::SpecifiedSerializationContext,
@@ -3409,6 +3422,195 @@ pub(crate) fn length_components_equal(
             crate::specified_numeric::ordinary_length_literal_equal(left, right)
         }
         _ => left_capture.same_math_or_text(right_capture),
+    }
+}
+
+#[cfg(test)]
+mod color_component_calculation_tests {
+    use super::*;
+    use crate::{
+        CssSpecifiedValueSerializationErrorKind as Kind,
+        CssSpecifiedValueSerializationLimits as Limits,
+        specified_serialization::SpecifiedSerializationContext as Context,
+    };
+
+    fn components(source: &str) -> CssComponentValues {
+        crate::parse_component_values(source).unwrap()
+    }
+
+    fn assert_capture(
+        calculation: ColorCalculationRef<'_>,
+        scale: NumericProjectionScale,
+        expected: &str,
+        contextual: bool,
+    ) -> NumericProjectionOutcome {
+        let mut component_context = Context::new(Limits::default());
+        let mut color_context = Context::new(Limits::default());
+        let (text, component) =
+            capture_color_component_calculation(calculation, scale, &mut component_context)
+                .unwrap();
+        let (_, color) =
+            capture_color_calculation_scaled(calculation, scale, &mut color_context).unwrap();
+        assert_eq!(text, expected);
+        assert_eq!(component.context_dependent, contextual);
+        assert_eq!(component.context_dependent, color.context_dependent);
+        assert_eq!(
+            component.scalar_value.map(f64::to_bits),
+            color.scalar_value.map(f64::to_bits)
+        );
+        component
+    }
+
+    #[test]
+    fn component_capture_selects_from_math_outcome_and_preserves_scalar_bits() {
+        for (source, text, contextual, scalar) in [
+            (
+                "calc(1 / 128 + 1em / 1px)",
+                "calc(0.007813 + (1em / 1px))",
+                true,
+                None,
+            ),
+            (
+                "calc(1 / 128 + 1em / 1em)",
+                "calc(0.007813 + (1em / 1em))",
+                true,
+                None,
+            ),
+            (
+                "calc(1 / 128 + 1in / 96px)",
+                "calc(1.0078125)",
+                false,
+                Some(1.0078125_f64.to_bits()),
+            ),
+            (
+                "calc(1 / 128)",
+                "calc(0.0078125)",
+                false,
+                Some((1.0_f64 / 128.0).to_bits()),
+            ),
+            ("calc(0 * -1)", "calc(0)", false, Some((-0.0_f64).to_bits())),
+            (
+                "calc(1 / (0 * -1))",
+                "calc(-infinity)",
+                false,
+                Some(f64::NEG_INFINITY.to_bits()),
+            ),
+            (
+                "calc(0 * -1 + 1em / 1px)",
+                "calc((0 * -1) + (1em / 1px))",
+                true,
+                None,
+            ),
+        ] {
+            let value = CssNumberCalculation::try_from_components(components(source)).unwrap();
+            let before = value.clone();
+            let outcome = assert_capture(
+                ColorCalculationRef::Number(&value),
+                NumericProjectionScale::Identity,
+                text,
+                contextual,
+            );
+            assert_eq!(outcome.scalar_value.map(f64::to_bits), scalar);
+            assert_eq!(value, before);
+        }
+        let value =
+            CssNumberCalculation::try_from_components(components("calc(NaN + 1em / 1px)")).unwrap();
+        let outcome = assert_capture(
+            ColorCalculationRef::Number(&value),
+            NumericProjectionScale::Identity,
+            "calc(NaN)",
+            false,
+        );
+        assert!(outcome.scalar_value.unwrap().is_nan());
+    }
+
+    #[test]
+    fn component_capture_retains_scale_dimensions_and_canonical_angles() {
+        let number =
+            CssNumberCalculation::try_from_components(components("calc(.0078125 * 1em / 1px)"))
+                .unwrap();
+        assert_capture(
+            ColorCalculationRef::Number(&number),
+            NumericProjectionScale::NumberToPercentage {
+                numerator: 1,
+                denominator: 1,
+            },
+            "calc(0.007813 * 1% * 1em / 1px)",
+            true,
+        );
+        let percentage = CssPercentageCalculation::try_from_components(components(
+            "calc(.0078125% * 1em / 1px)",
+        ))
+        .unwrap();
+        assert_capture(
+            ColorCalculationRef::Percentage(&percentage),
+            NumericProjectionScale::PercentageToNumber {
+                numerator: 1,
+                denominator: 100,
+            },
+            "calc(0.007813% * 1em / 1px / 100%)",
+            true,
+        );
+        let angle = CssAngleCalculation::try_from_components(components(
+            "calc(.0000001turn + 1deg * 1em / 1px)",
+        ))
+        .unwrap();
+        assert_capture(
+            ColorCalculationRef::Angle(&angle),
+            NumericProjectionScale::Identity,
+            "calc(0.000036deg + (1deg * 1em / 1px))",
+            true,
+        );
+    }
+
+    #[test]
+    fn component_capture_uses_rounded_contextual_scratch_and_shared_work() {
+        let value =
+            CssNumberCalculation::try_from_components(components("calc(5e-324 * 1em / 1px)"))
+                .unwrap();
+        let calculation = ColorCalculationRef::Number(&value);
+        let scale = NumericProjectionScale::Number {
+            numerator: 1,
+            denominator: 1,
+        };
+        // Wrapper, product and three leaves give five inputs. Three leaves,
+        // inverse, merged number and product give six projections; the scale's
+        // factor, merged number and product add three more.
+        let mut context = Context::new(Limits::new(5, 9, 19));
+        let (text, outcome) =
+            capture_color_component_calculation(calculation, scale, &mut context).unwrap();
+        assert_eq!(text, "calc(0 * 1em / 1px)");
+        assert!(outcome.context_dependent);
+        assert_eq!(outcome.scalar_value, None);
+        assert_eq!(context.remaining_bytes(), 19);
+        assert_eq!(
+            context.charge_input(1).unwrap_err().kind(),
+            Kind::InputNodeLimit
+        );
+        assert_eq!(
+            context.charge_projection(1).unwrap_err().kind(),
+            Kind::ProjectionNodeLimit
+        );
+        for (inputs, projections, bytes, kind) in [
+            (4, 9, 19, Kind::InputNodeLimit),
+            (5, 8, 19, Kind::ProjectionNodeLimit),
+            (5, 9, 18, Kind::ByteLimit),
+        ] {
+            let mut context = Context::new(Limits::new(inputs, projections, bytes));
+            assert_eq!(
+                capture_color_component_calculation(calculation, scale, &mut context)
+                    .unwrap_err()
+                    .kind(),
+                kind
+            );
+        }
+        let mut context = Context::new(Limits::new(5, 9, 19));
+        assert_eq!(
+            capture_color_calculation_scaled(calculation, scale, &mut context)
+                .unwrap_err()
+                .kind(),
+            Kind::ByteLimit
+        );
     }
 }
 

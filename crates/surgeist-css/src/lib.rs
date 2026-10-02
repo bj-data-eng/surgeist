@@ -579,7 +579,11 @@
 //! and scroll shorthands compare unrounded canonical components before selecting rounded text.
 //! Relative calculations use this policy wherever embedded, including nested origins and mixes.
 //! Ordinary origins preserve number/percentage dimensions, canonical angle units and explicit
-//! unclamped alpha. Standalone color calculations keep their separate text and scratch policies.
+//! unclamped alpha. Ordinary non-alpha component and hue calculations use this policy when
+//! their projected result remains context-dependent, including inside mixes. The existing
+//! projection result selects formatting after percentage scaling and angle conversion.
+//! Fully numeric standalone color calculations, standalone alpha and mix weights keep their
+//! separate text and scratch policies; contextual captures count rounded scratch text.
 //! Integer calculation text follows the finite number policy without
 //! computed integer rounding; ordinary integer
 //! literals retain exact digits. Arithmetic precision and range remain unfinished.
