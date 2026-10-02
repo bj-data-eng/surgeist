@@ -1046,6 +1046,14 @@ profile_source!(
     "https://www.w3.org/TR/2026/WD-css-color-5-20260618/"
 );
 profile_source!(
+    I_COLOR5_20260908,
+    "I-COLOR5-20260908",
+    "CSS Color",
+    "5",
+    CssSpecificationTier::Snapshot2026Interop,
+    "https://www.w3.org/TR/2026/WD-css-color-5-20260908/"
+);
+profile_source!(
     I_SELECTORS4,
     "I-SELECTORS4",
     "Selectors",
@@ -1288,6 +1296,7 @@ static SPECIFICATION_SOURCES: &[CssSpecificationSource] = &[
     I_FONTS4,
     I_FONTS4_20260907,
     I_COLOR5,
+    I_COLOR5_20260908,
     I_SELECTORS4,
     I_CONTAIN2,
     I_NESTING1,
@@ -2720,7 +2729,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 628] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 630] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -3306,6 +3315,20 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 628] = [
         "#funcdef-color-mix",
         COLOR5_MIX_SUBSET,
         COLOR5_MIX_REMAINDER,
+    ),
+    CssFeatureMetadata::complete(
+        "interop.value.light-dark-color",
+        CssFeatureKind::Value,
+        "light-dark() color",
+        I_COLOR5_20260908,
+        "#typedef-light-dark-color",
+    ),
+    CssFeatureMetadata::complete(
+        "interop.value.light-dark-image",
+        CssFeatureKind::Value,
+        "light-dark() image",
+        I_COLOR5_20260908,
+        "#typedef-light-dark-image",
     ),
     // The selected Grid3 production adds two standalone display alternatives;
     // it does not extend Display3's syntactic <display-inside> production.

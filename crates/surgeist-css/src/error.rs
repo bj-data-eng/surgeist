@@ -1685,6 +1685,16 @@ pub(crate) fn is_component_resource_error(detail: &crate::CssComponentValueError
     )
 }
 
+/// A speculative grammar alternative must not erase resource failures.
+pub(crate) fn is_resource_parse_error(error: &ParseError<'_, Error>) -> bool {
+    is_nesting_limit_error(error)
+        || matches!(
+            &error.kind,
+            ParseErrorKind::Custom(Error { kind: ErrorKind::InvalidComponentValue(detail), .. })
+                if is_component_resource_error(detail)
+        )
+}
+
 pub(crate) fn with_descriptor_context<'i>(
     mut error: ParseError<'i, Error>,
     at_rule: &str,

@@ -104,6 +104,14 @@ fn schedule_authored<'a>(
         R::Alpha(value) => schedule_alpha(value, Mode::DeclaredRelative, work, context)?,
         R::Relative(value) => schedule_relative(value, Mode::DeclaredRelative, work, context)?,
         R::ColorMix(value) => schedule_mix(value, work, context)?,
+        R::LightDark(value) => {
+            reserve_work(work, 5)?;
+            work.push(Work::Text(")"));
+            work.push(Work::Color(value.dark(), Mode::Standalone));
+            work.push(Work::Text(", "));
+            work.push(Work::Color(value.light(), Mode::Standalone));
+            work.push(Work::Text("light-dark("));
+        }
     }
     Ok(())
 }

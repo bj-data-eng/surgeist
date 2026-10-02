@@ -33,9 +33,63 @@ enum CssColorRepresentation {
     Alpha(CssAlphaColor),
     Relative(Box<CssRelativeColor>),
     ColorMix(CssColorMix),
+    LightDark(Box<CssLightDarkColor>),
+}
+
+/// Two checked authored colors awaiting downstream used-scheme selection.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssLightDarkColor {
+    light: CssColor,
+    dark: CssColor,
+    nesting_depth: u32,
+}
+
+impl CssLightDarkColor {
+    /// Checks the complete composed color subtree against the structural ceiling.
+    pub fn try_new(light: CssColor, dark: CssColor) -> Result<Self, CssColorConstructionError> {
+        let nesting_depth = authored_color_depth(&light)?
+            .max(authored_color_depth(&dark)?)
+            .checked_add(1)
+            .ok_or(CssColorConstructionError::CapacityOverflow)?;
+        if nesting_depth > crate::STRUCTURAL_NESTING_LIMIT {
+            return Err(CssColorConstructionError::NestingLimit);
+        }
+        Ok(Self {
+            light,
+            dark,
+            nesting_depth,
+        })
+    }
+
+    /// Borrows the complete authored light-scheme branch.
+    pub const fn light(&self) -> &CssColor {
+        &self.light
+    }
+    /// Borrows the complete authored dark-scheme branch.
+    pub const fn dark(&self) -> &CssColor {
+        &self.dark
+    }
 }
 
 impl CssColor {
+    /// Retains a checked pair without selecting a scheme or resolving its colors.
+    pub fn from_light_dark(value: CssLightDarkColor) -> Self {
+        Self {
+            representation: CssColorRepresentation::LightDark(Box::new(value)),
+        }
+    }
+
+    /// Borrows the checked LightDark payload, when this is a color pair.
+    pub const fn light_dark_value(&self) -> Option<&CssLightDarkColor> {
+        match &self.representation {
+            CssColorRepresentation::LightDark(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn nesting_depth(&self) -> Result<u32, CssColorConstructionError> {
+        authored_color_depth(self).map_err(Into::into)
+    }
     /// Produces canonical specified color text without resolving external color context.
     pub fn to_specified_css(&self) -> Result<String, crate::CssSpecifiedValueSerializationError> {
         self.to_specified_css_with_limits(crate::CssSpecifiedValueSerializationLimits::default())
@@ -310,6 +364,7 @@ impl CssColor {
             CssColorRepresentation::Predefined(_) => "color",
             CssColorRepresentation::Relative(_) => "relative",
             CssColorRepresentation::ColorMix(_) => "color-mix",
+            CssColorRepresentation::LightDark(_) => "light-dark",
         }
     }
 }
@@ -930,6 +985,7 @@ impl CssColor {
         let mut profile = false;
         while let Some(color) = pending.pop() {
             match &color.representation {
+                R::LightDark(_) => return E::Contextual(X::LightDark),
                 R::CurrentColor => return E::Contextual(X::CurrentColor),
                 R::System(_) => return E::Contextual(X::SystemColor),
                 R::Custom(_) => profile = true,
@@ -1535,6 +1591,7 @@ fn authored_color_depth(mut color: &CssColor) -> Result<u32, ColorGraphDepthErro
             R::Predefined(v) => 1 + channels(&v.channels).max(alpha(&v.alpha)),
             // Every mix constructor caches the complete checked subtree depth.
             R::ColorMix(v) => v.nesting_depth,
+            R::LightDark(v) => v.nesting_depth,
             R::Custom(v) => v.nesting_depth,
             R::RelativeCustom(v) => v.nesting_depth,
             R::Alpha(v) => v.nesting_depth,

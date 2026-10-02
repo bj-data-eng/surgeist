@@ -37,6 +37,7 @@ pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
     CssFeatureId::new("official.value.radial-shape"),
     CssFeatureId::new("official.value.radial-size"),
     CssFeatureId::new("official.value.radial-extent"),
+    CssFeatureId::new("interop.value.light-dark-image"),
 ];
 
 pub(super) fn parse_image_layer_list<'i, 't>(
@@ -113,8 +114,15 @@ fn parse_background_layer<'i, 't>(
 
     while !input.is_exhausted() && !next_is_comma(input) {
         if image.is_none() && next_starts_background_image(input) {
-            image = Some(parse_image_value(input, numeric)?);
-            continue;
+            match input.try_parse(|input| parse_image_value(input, numeric)) {
+                Ok(value) => {
+                    image = Some(value);
+                    continue;
+                }
+                Err(error) if crate::error::is_resource_parse_error(&error) => return Err(error),
+                Err(_) if next_is_light_dark(input) => {}
+                Err(error) => return Err(error),
+            }
         }
         if position.is_none() && next_starts_background_position(input) {
             position = Some(parse_background_position_prefix(input, numeric)?);
@@ -141,10 +149,14 @@ fn parse_background_layer<'i, 't>(
         }
         if color.is_none() {
             let location = input.current_source_location();
-            if let Ok(parsed) = input.try_parse(|input| parse_color(input, numeric)) {
-                color = Some(parsed);
-                color_location = Some(location);
-                continue;
+            match input.try_parse(|input| parse_color(input, numeric)) {
+                Ok(parsed) => {
+                    color = Some(parsed);
+                    color_location = Some(location);
+                    continue;
+                }
+                Err(error) if crate::error::is_resource_parse_error(&error) => return Err(error),
+                Err(_) => {}
             }
         }
         return Err(unsupported_value(
@@ -187,6 +199,7 @@ fn next_starts_background_image<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
         Ok(Token::UnquotedUrl(_)) => true,
         Ok(Token::Function(name)) => {
             name.eq_ignore_ascii_case("url")
+                || name.eq_ignore_ascii_case("light-dark")
                 || name.eq_ignore_ascii_case("src")
                 || matches!(
                     name.to_ascii_lowercase().as_str(),
@@ -270,6 +283,36 @@ pub(super) fn parse_image_value<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssImageValue, ParseError<'i, Error>> {
+    if next_is_light_dark(input) {
+        let location = input.current_source_location();
+        let start = input.position().byte_index();
+        input.next().map_err(basic)?;
+        return input.parse_nested_block(|input| {
+            let light = parse_image_value(input, numeric)?;
+            input.expect_comma().map_err(basic)?;
+            let dark = parse_image_value(input, numeric)?;
+            input.expect_exhausted().map_err(basic)?;
+            CssLightDarkImage::try_new(light, dark)
+                .map(|value| CssImageValue::LightDark(Box::new(value)))
+                .map_err(|error| {
+                    let kind = match error {
+                        CssImageConstructionError::NestingLimit => {
+                            crate::CssComponentValueErrorKind::NestingLimit
+                        }
+                        CssImageConstructionError::CapacityOverflow => {
+                            crate::CssComponentValueErrorKind::CapacityOverflow
+                        }
+                    };
+                    crate::error::invalid_component_value(
+                        location,
+                        crate::CssComponentValueError::new(
+                            kind,
+                            numeric.origin_at(start).expect("image function origin"),
+                        ),
+                    )
+                })
+        });
+    }
     if input
         .try_parse(|input| input.expect_ident_matching("none"))
         .is_ok()
@@ -280,6 +323,13 @@ pub(super) fn parse_image_value<'i, 't>(
         return parse_gradient(input, numeric).map(CssImageValue::Gradient);
     }
     parse_url(input, numeric).map(CssImageValue::Url)
+}
+
+fn next_is_light_dark(input: &mut Parser<'_, '_>) -> bool {
+    let state = input.state();
+    let result = matches!(input.next(), Ok(Token::Function(name)) if name.eq_ignore_ascii_case("light-dark"));
+    input.reset(&state);
+    result
 }
 
 pub(super) fn parse_border_image_source<'i, 't>(
@@ -1073,19 +1123,6 @@ fn validate_radial_size<'i>(
                 })
         }
     }
-}
-
-pub(super) fn parse_mask_image<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssImageValue, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("none"))
-        .is_ok()
-    {
-        return Ok(CssImageValue::None);
-    }
-    parse_url(input, numeric).map(CssImageValue::Url)
 }
 
 pub(super) fn parse_background_size_list<'i, 't>(

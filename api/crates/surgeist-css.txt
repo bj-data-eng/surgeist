@@ -1651,6 +1651,12 @@ pub surgeist_css::CssHueInterpolationMethod::Decreasing
 pub surgeist_css::CssHueInterpolationMethod::Increasing
 pub surgeist_css::CssHueInterpolationMethod::Longer
 pub surgeist_css::CssHueInterpolationMethod::Shorter
+#[non_exhaustive] pub enum surgeist_css::CssImageConstructionError
+pub surgeist_css::CssImageConstructionError::CapacityOverflow
+pub surgeist_css::CssImageConstructionError::NestingLimit
+impl core::error::Error for surgeist_css::CssImageConstructionError
+impl core::fmt::Display for surgeist_css::CssImageConstructionError
+pub fn surgeist_css::CssImageConstructionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_css::CssImageOrientation
 pub surgeist_css::CssImageOrientation::Angle(surgeist_css::CssAngleValue)
 pub surgeist_css::CssImageOrientation::Flip(core::option::Option<surgeist_css::CssAngleValue>)
@@ -1663,6 +1669,7 @@ pub surgeist_css::CssImageRendering::CrispEdges
 pub surgeist_css::CssImageRendering::Pixelated
 #[non_exhaustive] pub enum surgeist_css::CssImageValue
 pub surgeist_css::CssImageValue::Gradient(surgeist_css::CssGradient)
+pub surgeist_css::CssImageValue::LightDark(alloc::boxed::Box<surgeist_css::CssLightDarkImage>)
 pub surgeist_css::CssImageValue::None
 pub surgeist_css::CssImageValue::Url(surgeist_css::CssUrl)
 impl surgeist_css::CssImageValue
@@ -5017,6 +5024,7 @@ pub const fn surgeist_css::CssColor::from_hsl(value: surgeist_css::CssHslColor) 
 pub const fn surgeist_css::CssColor::from_hwb(value: surgeist_css::CssHwbColor) -> Self
 pub const fn surgeist_css::CssColor::from_lab(value: surgeist_css::CssLabColor) -> Self
 pub const fn surgeist_css::CssColor::from_lch(value: surgeist_css::CssLchColor) -> Self
+pub fn surgeist_css::CssColor::from_light_dark(value: surgeist_css::CssLightDarkColor) -> Self
 pub const fn surgeist_css::CssColor::from_named(value: surgeist_css::CssNamedColor) -> Self
 pub const fn surgeist_css::CssColor::from_oklab(value: surgeist_css::CssLabColor) -> Self
 pub const fn surgeist_css::CssColor::from_oklch(value: surgeist_css::CssLchColor) -> Self
@@ -5033,6 +5041,7 @@ pub const fn surgeist_css::CssColor::is_transparent(&self) -> bool
 pub const fn surgeist_css::CssColor::kind_name(&self) -> &'static str
 pub const fn surgeist_css::CssColor::lab_value(&self) -> core::option::Option<&surgeist_css::CssLabColor>
 pub const fn surgeist_css::CssColor::lch_value(&self) -> core::option::Option<&surgeist_css::CssLchColor>
+pub const fn surgeist_css::CssColor::light_dark_value(&self) -> core::option::Option<&surgeist_css::CssLightDarkColor>
 pub const fn surgeist_css::CssColor::named(&self) -> core::option::Option<&surgeist_css::CssNamedColor>
 pub const fn surgeist_css::CssColor::oklab_value(&self) -> core::option::Option<&surgeist_css::CssLabColor>
 pub const fn surgeist_css::CssColor::oklch_value(&self) -> core::option::Option<&surgeist_css::CssLchColor>
@@ -6937,6 +6946,16 @@ pub struct surgeist_css::CssLetterSpacingPropertyValue
 impl surgeist_css::CssLetterSpacingPropertyValue
 pub fn surgeist_css::CssLetterSpacingPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssLetterSpacingPropertyValue::value(&self) -> &surgeist_css::CssTextSpacingAdjustment
+pub struct surgeist_css::CssLightDarkColor
+impl surgeist_css::CssLightDarkColor
+pub const fn surgeist_css::CssLightDarkColor::dark(&self) -> &surgeist_css::CssColor
+pub const fn surgeist_css::CssLightDarkColor::light(&self) -> &surgeist_css::CssColor
+pub fn surgeist_css::CssLightDarkColor::try_new(light: surgeist_css::CssColor, dark: surgeist_css::CssColor) -> core::result::Result<Self, surgeist_css::CssColorConstructionError>
+pub struct surgeist_css::CssLightDarkImage
+impl surgeist_css::CssLightDarkImage
+pub const fn surgeist_css::CssLightDarkImage::dark(&self) -> &surgeist_css::CssImageValue
+pub const fn surgeist_css::CssLightDarkImage::light(&self) -> &surgeist_css::CssImageValue
+pub fn surgeist_css::CssLightDarkImage::try_new(light: surgeist_css::CssImageValue, dark: surgeist_css::CssImageValue) -> core::result::Result<Self, surgeist_css::CssImageConstructionError>
 pub struct surgeist_css::CssLineHeightPropertyValue
 impl surgeist_css::CssLineHeightPropertyValue
 pub fn surgeist_css::CssLineHeightPropertyValue::as_css(&self) -> &str

@@ -194,7 +194,7 @@ fn color_mix_rejects_malformed_components_and_unimplemented_color_functions() {
         "color-mix(in srgb, red -1%, blue)",
         "color-mix(in srgb, red 25% 30%, blue)",
         "color-mix(in srgb, red,, blue)",
-        "light-dark(red, blue)",
+        "light-dark(red, blue, green)",
         "device-cmyk(0 0 0 1)",
     ] {
         let source = format!("color: {invalid}; opacity: 0.5");

@@ -56,14 +56,48 @@ impl CssImageValue {
     }
 
     pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        match self {
-            Self::None => {
-                charge(writer, 1)?;
-                writer.append("none")
-            }
-            Self::Url(url) => url.append_specified(writer),
-            Self::Gradient(gradient) => gradient.append_specified(writer),
+        enum Work<'a> {
+            Image(&'a CssImageValue),
+            Text(&'static str),
         }
+        let mut work = Vec::new();
+        work.try_reserve(1).map_err(|_| {
+            CssSpecifiedValueSerializationError::new(
+                crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
+            )
+        })?;
+        work.push(Work::Image(self));
+        while let Some(item) = work.pop() {
+            let image = match item {
+                Work::Text(text) => {
+                    writer.append(text)?;
+                    continue;
+                }
+                Work::Image(image) => image,
+            };
+            match image {
+                Self::None => {
+                    charge(writer, 1)?;
+                    writer.append("none")?;
+                }
+                Self::Url(url) => url.append_specified(writer)?,
+                Self::Gradient(gradient) => gradient.append_specified(writer)?,
+                Self::LightDark(value) => {
+                    charge(writer, 1)?;
+                    work.try_reserve(5).map_err(|_| {
+                        CssSpecifiedValueSerializationError::new(
+                            crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
+                        )
+                    })?;
+                    work.push(Work::Text(")"));
+                    work.push(Work::Image(value.dark()));
+                    work.push(Work::Text(", "));
+                    work.push(Work::Image(value.light()));
+                    work.push(Work::Text("light-dark("));
+                }
+            }
+        }
+        Ok(())
     }
 }
 

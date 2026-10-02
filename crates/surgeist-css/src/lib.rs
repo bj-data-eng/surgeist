@@ -147,7 +147,12 @@
 //! has no ordinary wrapper.
 //!
 //! The `background-image` and `mask-image` wrappers expose [`CssImageValueList`]
-//! through `images()`, retaining URL, `none`, and gradient branches in order.
+//! through `images()`, retaining URL, `none`, gradient and LightDark branches in order.
+//! [`CssLightDarkColor::try_new`] and [`CssLightDarkImage::try_new`] retain two
+//! checked branches and enforce the complete composed subtree's 256-level ceiling.
+//! Color pairs remain contextual; image pairs may contain two `none` branches.
+//! Specified serialization shares the enclosing resource budget and preserves both
+//! branches. Downstream style owns used-scheme selection and resource resolution.
 //! [`CssOverflowPropertyValue::value`] exposes [`CssOverflowValue`], retaining
 //! the authored one- or two-axis form.
 //!

@@ -6370,6 +6370,8 @@ pub enum CssImageValue {
     None,
     Url(CssUrl),
     Gradient(CssGradient),
+    /// Two authored image/none branches, retaining their order and scheme dependency.
+    LightDark(Box<CssLightDarkImage>),
 }
 
 /// One non-negative authored `border-image-slice` component.
@@ -6921,7 +6923,7 @@ mod position;
 pub use position::*;
 
 mod images;
-pub use images::CssImage;
+pub use images::{CssImage, CssImageConstructionError, CssLightDarkImage};
 
 /// The exact authored background box component count for one shorthand layer.
 ///
@@ -8191,8 +8193,7 @@ pub struct CssMaskLayer {
 }
 
 impl CssMaskLayer {
-    /// Constructs a nonempty mask layer in the supported URL/`none` image subset.
-    /// Gradient images remain outside this shorthand's selected grammar.
+    /// Constructs a nonempty mask layer with a checked image/none branch.
     #[must_use]
     pub fn try_new(
         image: Option<CssImageValue>,
@@ -8200,9 +8201,7 @@ impl CssMaskLayer {
         size: Option<CssBackgroundSize>,
         repeat: Option<CssBackgroundRepeat>,
     ) -> Option<Self> {
-        if matches!(image, Some(CssImageValue::Gradient(_)))
-            || (image.is_none() && position.is_none() && size.is_none() && repeat.is_none())
-        {
+        if image.is_none() && position.is_none() && size.is_none() && repeat.is_none() {
             None
         } else {
             Some(Self::new(image, position, size, repeat))

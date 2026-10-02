@@ -2270,7 +2270,43 @@ evidence supports the phase choice, without establishing identical percentage
 text, custom-profile support or browser results. Profile binding, origin
 evaluation and computed-value clamping belong downstream. Mathematical precision
 and range remain unfinished.
-`light-dark()`, `contrast-color()`, and `device-cmyk()` are not yet supported.
+`contrast-color()` and `device-cmyk()` are not yet supported.
+
+Color 5's selected September 8 edition admits `light-dark()` with exactly two
+colors or exactly two image/`none` branches. Mixed pairs are rejected.
+`CssLightDarkColor::try_new` and `CssLightDarkImage::try_new` preserve ordered
+branches through borrowed `light()`/`dark()` accessors. Their private payloads
+cache checked depth; each constructor checks the complete child graph against
+the 256-level ceiling, including gradient colors, numeric components and URL
+modifier arguments. Existing infallible gradient constructors do not themselves
+enforce this composed envelope; enclosing a supplied gradient in LightDark does.
+Image construction errors distinguish `NestingLimit` and `CapacityOverflow`.
+Speculative property alternatives preserve those typed resource failures and
+the original component provenance. Color eligibility reports contextual
+`LightDark`, including beneath relative, alpha and mix wrappers.
+
+Specified text is `light-dark(`, the complete first branch, `, `, the complete
+second branch, `)`. Iterative traversal shares input, projection and byte budgets
+with enclosing values and keeps authored graphs unchanged. Image `none` stays
+authored; even `light-dark(none, none)` is an image. Both branches remain symbolic
+through expansion, normalization and strict substitution reentry. Style later
+selects the used color scheme and resolves colors and resources.
+
+Color children use ordinary Standalone specified serialization, regardless of
+the enclosing pair's Mix or Origin role. Nested relative/alpha and mix values
+still assign their own children's roles. This operational interpretation is
+supported by frozen WebKit commit `73aa6c89e2cb77c46184a81aec944e4ab99d114d`,
+`CSSLightDarkColor.cpp:66–72` (blob `44ff1a0de0c328ede9888c4be0279132cdb9dbf4`),
+which serializes each stored color, and concrete-color dispatch in
+`CSSColor.cpp:394–396` (blob `b3006b4ade8d2a363d4948732305aebab3a0299c`).
+Color 5 §11 supplies no dedicated LightDark child-role algorithm; this does not
+claim a normative conflict or browser execution evidence. The semantic features
+`interop.value.light-dark-color` and `interop.value.light-dark-image` identify
+complete authored productions at `#typedef-light-dark-color` and
+`#typedef-light-dark-image`, using `I-COLOR5-20260908`. Earlier bounded features
+keep their existing June source identity; this does not claim complete Color 5
+or computed support. The selected September source body has SHA256
+`f749cb75ec1c0faca7d2443546c88be4e22750526dd45f9fefcfcdd079ed3c09`.
 
 Custom-profile `color(--Profile ...)` preserves a nonempty variable channel
 list, exact numbers and percentages, missing components, and optional alpha.
@@ -3507,9 +3543,11 @@ wrappers expose that list through `images()`. Intrinsic expansion and
 normalization preserve source occurrence, importance, and pending replacement
 components; they do not load images or match layers with sibling properties.
 
-The mask shorthand's selected image grammar remains URL/`none`. Its
-`CssMaskLayer::try_new` constructor accepts that subset through the shared
-`CssImageValue` model and rejects gradients and wholly empty layers.
+The mask shorthand uses the same shared image/`none` grammar, including selected
+gradients and LightDark images, as `mask-image`, following Masking 1 §7.1/§7.9.
+`CssMaskLayer::try_new` accepts those images and rejects wholly empty layers.
+Its existing position, size and repeat contracts remain; other mask components
+remain unfinished.
 
 ```rust
 use surgeist_css::{

@@ -12,6 +12,16 @@ source and behavior-revealing tests establish support. The CSS conformance
 ledger tracks requirement evidence and implementation findings; this directory
 does not duplicate its work status.
 
+The September 8 Color 5 `light-dark()` color and image/`none` productions
+have distinct authored feature records under `I-COLOR5-20260908`. They preserve
+both branches for downstream used-scheme selection. Their checked constructors
+enforce complete child depth, and specified output retains authored `none` and
+uses ordinary Standalone color children. The [reference](../docs/reference.md)
+records the pinned source and frozen WebKit evidence for that child-role
+interpretation. Existing June Color 5 feature records retain their earlier
+bounded provenance. Contrast-color, device-CMYK and downstream computation
+remain separate unfinished work.
+
 | Selection | Entries |
 | --- | ---: |
 | Snapshot 2026 official definition | 24 |

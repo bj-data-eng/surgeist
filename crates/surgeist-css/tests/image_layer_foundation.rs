@@ -26,7 +26,7 @@ fn authored(source: &CssDeclaration) -> &CssImageValueList {
 }
 
 #[test]
-fn mask_shorthand_retains_url_and_none_and_rejects_gradients() {
+fn mask_shorthand_retains_url_none_and_gradients() {
     for (css, image) in [
         ("url(mask.svg)", CssImageValue::Url(CssUrl::new("mask.svg"))),
         ("none", CssImageValue::None),
@@ -45,10 +45,11 @@ fn mask_shorthand_retains_url_and_none_and_rejects_gradients() {
         assert_eq!(value.as_css(), css);
     }
     let report = parse_style_attribute("mask: linear-gradient(red, blue); color: red");
-    assert_eq!(report.diagnostics().len(), 1);
-    let [retained] = report.syntax().as_slice() else {
-        panic!("only the valid sibling remains");
+    assert!(report.is_clean(), "{:?}", report.diagnostics());
+    let [mask, retained] = report.syntax().as_slice() else {
+        panic!("mask and valid sibling remain");
     };
+    assert_eq!(mask.known().unwrap().property(), CssKnownProperty::Mask);
     assert_eq!(
         retained.known().unwrap().property(),
         CssKnownProperty::Color
@@ -56,7 +57,7 @@ fn mask_shorthand_retains_url_and_none_and_rejects_gradients() {
 }
 
 #[test]
-fn mask_layer_construction_preserves_the_supported_image_subset_and_nonempty_boundary() {
+fn mask_layer_construction_accepts_images_and_preserves_nonempty_boundary() {
     assert!(CssMaskLayer::try_new(None, None, None, None).is_none());
     assert!(CssMaskLayer::try_new(Some(CssImageValue::None), None, None, None).is_some());
     assert!(
@@ -75,10 +76,10 @@ fn mask_layer_construction_preserves_the_supported_image_subset_and_nonempty_bou
         gradient,
         CssImageValue::Gradient(CssGradient::Linear(_))
     ));
-    assert!(CssMaskLayer::try_new(Some(gradient.clone()), None, None, None).is_none());
+    assert!(CssMaskLayer::try_new(Some(gradient.clone()), None, None, None).is_some());
     assert!(
         CssMaskLayer::try_new(Some(gradient), None, Some(CssBackgroundSize::Contain), None)
-            .is_none()
+            .is_some()
     );
 }
 

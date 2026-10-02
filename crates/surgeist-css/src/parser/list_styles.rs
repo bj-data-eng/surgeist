@@ -78,11 +78,15 @@ pub(super) fn parse_list_style<'i, 't>(
             position = Some(value);
             continue;
         }
-        if image.is_none()
-            && let Ok(value) = input.try_parse(|input| parse_list_style_image(input, numeric))
-        {
-            image = Some(value);
-            continue;
+        if image.is_none() {
+            match input.try_parse(|input| parse_list_style_image(input, numeric)) {
+                Ok(value) => {
+                    image = Some(value);
+                    continue;
+                }
+                Err(error) if crate::error::is_resource_parse_error(&error) => return Err(error),
+                Err(_) => {}
+            }
         }
         if style_type.is_none() {
             style_type = Some(parse_list_style_type(input, numeric)?);

@@ -92,11 +92,15 @@ fn parse_item<'i, 't>(
     if let Ok(string) = input.try_parse(parse_content_string) {
         return Ok(CssContentValueItem::String(string));
     }
-    if let Ok(image) = input.try_parse(|input| parse_image_value(input, numeric)) {
-        if let Some(image) = CssImage::try_new(image) {
-            return Ok(CssContentValueItem::Image(image));
+    match input.try_parse(|input| parse_image_value(input, numeric)) {
+        Ok(image) => {
+            if let Some(image) = CssImage::try_new(image) {
+                return Ok(CssContentValueItem::Image(image));
+            }
+            return Err(unsupported_value(input, None, "none is not an image item"));
         }
-        return Err(unsupported_value(input, None, "none is not an image item"));
+        Err(error) if crate::error::is_resource_parse_error(&error) => return Err(error),
+        Err(_) => {}
     }
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
         return match ident.to_ascii_lowercase().as_str() {

@@ -51,8 +51,33 @@ fn parse_selected_authored_color<'i, 't>(
     numeric: &NumericInputContext<'_>,
 ) -> std::result::Result<CssColor, ParseError<'i, Error>> {
     let location = input.current_source_location();
+    let start = input.position().byte_index();
     let token = input.next().map_err(basic)?.clone();
     match token {
+        Token::Function(name) if name.eq_ignore_ascii_case("light-dark") => input
+            .parse_nested_block(|input| {
+                let light = parse_color(input, numeric)?;
+                input.expect_comma().map_err(basic)?;
+                let dark = parse_color(input, numeric)?;
+                input.expect_exhausted().map_err(basic)?;
+                CssLightDarkColor::try_new(light, dark)
+                    .map(CssColor::from_light_dark)
+                    .map_err(|error| {
+                        let kind = match error {
+                            CssColorConstructionError::CapacityOverflow => {
+                                crate::CssComponentValueErrorKind::CapacityOverflow
+                            }
+                            _ => crate::CssComponentValueErrorKind::NestingLimit,
+                        };
+                        crate::error::invalid_component_value(
+                            location,
+                            crate::CssComponentValueError::new(
+                                kind,
+                                numeric.origin_at(start).expect("color function origin"),
+                            ),
+                        )
+                    })
+            }),
         Token::Ident(ident) if ident.eq_ignore_ascii_case("currentcolor") => {
             Ok(CssColor::current_color())
         }

@@ -4,7 +4,7 @@ use super::values::{
 };
 use cssparser::{ParseError, Parser, ToCss, Token, match_ignore_ascii_case};
 
-use super::background::{parse_background_repeat, parse_background_size, parse_mask_image};
+use super::background::{parse_background_repeat, parse_background_size, parse_image_value};
 use super::box_model::parse_drop_shadow;
 use super::position::{parse_full_position, parse_physical_position};
 use super::url::parse_url;
@@ -1078,11 +1078,15 @@ pub(super) fn parse_mask_layer<'i, 't>(
     let mut repeat = None;
 
     while !input.is_exhausted() && !next_is_comma(input) {
-        if image.is_none()
-            && let Ok(parsed_image) = input.try_parse(|input| parse_mask_image(input, numeric))
-        {
-            image = Some(parsed_image);
-            continue;
+        if image.is_none() {
+            match input.try_parse(|input| parse_image_value(input, numeric)) {
+                Ok(value) => {
+                    image = Some(value);
+                    continue;
+                }
+                Err(error) if crate::error::is_resource_parse_error(&error) => return Err(error),
+                Err(_) => {}
+            }
         }
         if repeat.is_none()
             && let Ok(parsed_repeat) = input.try_parse(parse_background_repeat)
