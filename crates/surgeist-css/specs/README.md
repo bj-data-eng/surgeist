@@ -23,7 +23,15 @@ bounded provenance. The same September source defines the complete authored
 `contrast-color(<color>)` feature: it preserves one checked symbolic input,
 uses Standalone child serialization and shares the enclosing resource budget.
 Downstream style owns contrast evaluation and white/black selection.
-Device-CMYK and downstream computation remain unfinished work.
+The same dated source defines authored `device-cmyk()`: legacy four comma-separated
+number components without alpha, or modern four number/percentage/`none` components
+with optional slash alpha. The checked model retains unbounded ink values and
+symbolic calculations, reports contextual device identity, and shares enclosing
+numeric/color/image depth and serialization budgets. Declared Standalone/Mix
+output scales direct percentages by 1/100; Origin retains domains and explicit alpha.
+The [reference](../docs/reference.md) distinguishes this authored contract from
+computed §11.5 serialization. Device/profile conversion, execution and computed
+output remain unfinished, including the §6/§10.3 representation conflict.
 
 | Selection | Entries |
 | --- | ---: |

@@ -2270,7 +2270,41 @@ evidence supports the phase choice, without establishing identical percentage
 text, custom-profile support or browser results. Profile binding, origin
 evaluation and computed-value clamping belong downstream. Mathematical precision
 and range remain unfinished.
-`device-cmyk()` is not yet supported.
+
+The selected [Color 5 WD 2026-09-08 §6](https://www.w3.org/TR/2026/WD-css-color-5-20260908/#device-cmyk)
+`device-cmyk()` grammar accepts exactly four comma-separated numbers or number
+calculations in legacy form, with no alpha. Modern form accepts four space-separated
+numbers, percentages or `none`, plus optional slash alpha-value or `none`.
+Mixed separators, wrong cardinality and obsolete fallback-color arguments are invalid.
+`CssDeviceCmykColor::try_new` checks these invariants over a fixed four-channel
+array, plus complete numeric depth. Its `syntax()`, `channels()` and `alpha()`
+accessors retain the supplied domains, scalar origins, calculations and omission.
+`CssColor::from_device_cmyk` and `device_cmyk_value()` expose this single checked
+payload. Eligibility reports contextual `DeviceCmyk`, including through relative,
+alpha and Mix ancestors; outer Contrast and LightDark keep their contextual priority.
+Absolute-only font palette values reject it.
+
+Declared Standalone/Mix output uses lowercase modern `device-cmyk(`, exact direct
+number channels and direct percentages divided by 100. Origin retains direct
+number/percentage domains and explicit alpha. Ink channels stay unbounded in this
+authored phase: `device-cmyk(-20% 140% none 2)` emits
+`device-cmyk(-0.2 1.4 none 2)`. Calculations remain symbolic and missing channels
+stay `none`. Ordinary direct alpha follows
+[Color 4 §4.2 clamping](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#alpha-syntax),
+then the selected shared retained serialization policy supplies six-place output
+and unitary omission. Calculated alpha retains the established authored calculation policy.
+All four channels, alpha, enclosing colors/images and siblings share complete
+256-level depth and cumulative input/projection/UTF-8 serialization budgets.
+The `interop.value.device-cmyk` record selects the complete authored production at
+`#funcdef-device-cmyk` under `I-COLOR5-20260908`.
+
+These are context-independent specified-value contracts. No RGB/Lab conversion,
+profile binding, resource loading, computed ink clamping or computed CSSOM output
+occurs. Color 5 §6 and §10.3 retain their unresolved computed-representation
+conflict; §11.5 concerns computed serialization. The frozen WebKit source at
+`73aa6c89e2cb77c46184a81aec944e4ab99d114d` supplies no authored device-CMYK
+implementation resolving that conflict. Naive conversion, contextual execution
+and computed serialization remain separate unfinished work.
 
 The selected September 8 Color 5 `contrast-color(<color>)` production retains
 exactly one symbolic input. `CssContrastColor::try_new` checks one wrapper plus

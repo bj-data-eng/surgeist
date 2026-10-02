@@ -5017,10 +5017,12 @@ pub const fn surgeist_css::CssColor::color_mix_value(&self) -> core::option::Opt
 pub const fn surgeist_css::CssColor::contrast_color_value(&self) -> core::option::Option<&surgeist_css::CssContrastColor>
 pub const fn surgeist_css::CssColor::current_color() -> Self
 pub const fn surgeist_css::CssColor::custom_value(&self) -> core::option::Option<&surgeist_css::CssCustomColor>
+pub const fn surgeist_css::CssColor::device_cmyk_value(&self) -> core::option::Option<&surgeist_css::CssDeviceCmykColor>
 pub const fn surgeist_css::CssColor::from_alpha(value: surgeist_css::CssAlphaColor) -> Self
 pub const fn surgeist_css::CssColor::from_color_mix(value: surgeist_css::CssColorMix) -> Self
 pub fn surgeist_css::CssColor::from_contrast_color(value: surgeist_css::CssContrastColor) -> Self
 pub const fn surgeist_css::CssColor::from_custom(value: surgeist_css::CssCustomColor) -> Self
+pub fn surgeist_css::CssColor::from_device_cmyk(value: surgeist_css::CssDeviceCmykColor) -> Self
 pub const fn surgeist_css::CssColor::from_hex(value: surgeist_css::CssHexColor) -> Self
 pub const fn surgeist_css::CssColor::from_hsl(value: surgeist_css::CssHslColor) -> Self
 pub const fn surgeist_css::CssColor::from_hwb(value: surgeist_css::CssHwbColor) -> Self
@@ -5752,6 +5754,12 @@ pub const fn surgeist_css::CssDescriptorValueError::at_rule(&self) -> &surgeist_
 pub const fn surgeist_css::CssDescriptorValueError::descriptor(&self) -> &surgeist_css::CssDescriptorName
 pub const fn surgeist_css::CssDescriptorValueError::encountered(&self) -> core::option::Option<&surgeist_css::CssTokenSummary>
 pub const fn surgeist_css::CssDescriptorValueError::expectation(&self) -> surgeist_css::CssGrammarExpectation
+pub struct surgeist_css::CssDeviceCmykColor
+impl surgeist_css::CssDeviceCmykColor
+pub const fn surgeist_css::CssDeviceCmykColor::alpha(&self) -> core::option::Option<&surgeist_css::CssColorComponent>
+pub const fn surgeist_css::CssDeviceCmykColor::channels(&self) -> &[surgeist_css::CssColorComponent; 4]
+pub const fn surgeist_css::CssDeviceCmykColor::syntax(&self) -> surgeist_css::CssColorSyntax
+pub fn surgeist_css::CssDeviceCmykColor::try_new(syntax: surgeist_css::CssColorSyntax, channels: [surgeist_css::CssColorComponent; 4], alpha: core::option::Option<surgeist_css::CssColorComponent>) -> core::result::Result<Self, surgeist_css::CssColorConstructionError>
 pub struct surgeist_css::CssDirectionPropertyValue
 impl surgeist_css::CssDirectionPropertyValue
 pub fn surgeist_css::CssDirectionPropertyValue::as_css(&self) -> &str

@@ -157,6 +157,13 @@
 //! the complete composed depth ceiling. Its input uses ordinary Standalone specified
 //! serialization under the enclosing budget. Downstream style evaluates contrast
 //! and chooses white or black; authored CSS retains the input unchanged.
+//! [`CssDeviceCmykColor::try_new`] retains four ordered, unbounded ink channels
+//! and optional alpha. Legacy form is number-only with no alpha; modern form
+//! also accepts percentages and `none`. [`CssColor::device_cmyk_value`] borrows
+//! the device-dependent input. Declared Standalone/Mix output scales direct
+//! percentages to numbers; Origin preserves their domains and explicit alpha.
+//! Calculations remain symbolic, and every child shares the enclosing depth and
+//! serialization limits. Device/profile conversion and computed output belong later.
 //! [`CssOverflowPropertyValue::value`] exposes [`CssOverflowValue`], retaining
 //! the authored one- or two-axis form.
 //!

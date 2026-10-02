@@ -185,7 +185,7 @@ fn color_mix_preserved_subset_accepts_supported_spaces_and_polar_hue_methods() {
 }
 
 #[test]
-fn color_mix_rejects_malformed_components_and_unimplemented_color_functions() {
+fn color_mix_rejects_malformed_components_and_invalid_nested_colors() {
     for invalid in [
         "color-mix(srgb, red, blue)",
         "color-mix(in srgb longer hue, red, blue)",
@@ -195,7 +195,7 @@ fn color_mix_rejects_malformed_components_and_unimplemented_color_functions() {
         "color-mix(in srgb, red 25% 30%, blue)",
         "color-mix(in srgb, red,, blue)",
         "light-dark(red, blue, green)",
-        "device-cmyk(0 0 0 1)",
+        "device-cmyk(0 0 1)",
     ] {
         let source = format!("color: {invalid}; opacity: 0.5");
         let report = parse_style_attribute(&source);

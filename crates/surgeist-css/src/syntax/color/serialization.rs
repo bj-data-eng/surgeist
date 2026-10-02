@@ -98,6 +98,9 @@ fn schedule_authored<'a>(
             work.push(Work::Owned(serialize_predefined(value, mode, context)?));
         }
         R::Custom(value) => work.push(Work::Owned(serialize_custom(value, mode, context)?)),
+        R::DeviceCmyk(value) => {
+            work.push(Work::Owned(serialize_device_cmyk(value, mode, context)?))
+        }
         R::RelativeCustom(value) => {
             schedule_relative_custom(value, Mode::DeclaredRelative, work, context)?;
         }
@@ -2236,6 +2239,49 @@ fn serialize_predefined(
     )?;
     let name = format!("color({}", predefined_name(value.color_space()));
     modern_function(&name, &channels, alpha.as_deref(), context)
+}
+
+fn serialize_device_cmyk(
+    value: &CssDeviceCmykColor,
+    mode: Mode,
+    context: &mut SpecifiedSerializationContext,
+) -> Result<String> {
+    let origin = mode == Mode::Origin;
+    let channels = value
+        .channels()
+        .iter()
+        .map(|channel| {
+            declared_component_projection(
+                channel,
+                Factor::ONE,
+                if origin {
+                    Factor::ONE
+                } else {
+                    Factor {
+                        numerator: 1,
+                        denominator: 100,
+                    }
+                },
+                if origin {
+                    ComponentTarget::Preserve
+                } else {
+                    ComponentTarget::Number
+                },
+                origin,
+                context,
+            )
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let alpha = serialize_alpha(
+        value.alpha(),
+        if origin {
+            AlphaRole::Origin
+        } else {
+            AlphaRole::Retained
+        },
+        context,
+    )?;
+    modern_function("device-cmyk", &channels, alpha.as_deref(), context)
 }
 
 fn serialize_custom(

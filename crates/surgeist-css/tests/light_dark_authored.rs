@@ -238,7 +238,7 @@ fn exact_cardinality_commas_exhaustion_and_same_kind_are_required() {
 }
 
 #[test]
-fn property_contexts_reject_the_other_form_and_keep_unfinished_color_guards() {
+fn property_contexts_reject_the_other_form_and_invalid_color_arguments() {
     for source in [
         "color:light-dark(none, none)",
         "color:light-dark(url(a.svg), url(b.svg))",
@@ -247,7 +247,7 @@ fn property_contexts_reject_the_other_form_and_keep_unfinished_color_guards() {
         "border-image-source:light-dark(red, blue)",
         "list-style-image:light-dark(red, blue)",
         "color:contrast-color(red, blue)",
-        "color:device-cmyk(0 0 0 1)",
+        "color:device-cmyk(0 0 1)",
     ] {
         let report = parse_style_attribute(&format!("{source};opacity:.5"));
         assert_eq!(report.syntax().len(), 1, "{source}");

@@ -231,7 +231,7 @@ fn exact_single_color_cardinality_and_exhaustion_drop_only_the_invalid_declarati
         "color-contrast(red vs white black)",
         "contrast-color(red to 4.5)",
         "contrast-color",
-        "device-cmyk(0 0 0 1)",
+        "device-cmyk(0 0 1)",
     ] {
         let source = format!("color:{invalid};opacity:.5");
         let report = parse_style_attribute(&source);

@@ -2729,7 +2729,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 631] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 632] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -3336,6 +3336,13 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 631] = [
         "contrast-color()",
         I_COLOR5_20260908,
         "#funcdef-contrast-color",
+    ),
+    CssFeatureMetadata::complete(
+        "interop.value.device-cmyk",
+        CssFeatureKind::Value,
+        "device-cmyk()",
+        I_COLOR5_20260908,
+        "#funcdef-device-cmyk",
     ),
     // The selected Grid3 production adds two standalone display alternatives;
     // it does not extend Display3's syntactic <display-inside> production.

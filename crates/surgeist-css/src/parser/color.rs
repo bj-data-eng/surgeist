@@ -137,6 +137,9 @@ fn parse_selected_authored_color<'i, 't>(
                 .parse_nested_block(|input| parse_authored_hsl(input, numeric))
                 .map(CssColor::from_hsl)
         }
+        Token::Function(name) if name.eq_ignore_ascii_case("device-cmyk") => input
+            .parse_nested_block(|input| parse_authored_device_cmyk(input, numeric))
+            .map(CssColor::from_device_cmyk),
         Token::Function(name) if name.eq_ignore_ascii_case("hwb") => input
             .parse_nested_block(|input| parse_authored_hwb(input, numeric))
             .map(CssColor::from_hwb),
@@ -233,6 +236,39 @@ fn parse_authored_rgb<'i, 't>(
         CssRgbColor::try_new(CssColorSyntax::Modern, [first, second, third], alpha)
             .map_err(|_| invalid_color(input.current_source_location(), Some("component")))
     }
+}
+
+fn parse_authored_device_cmyk<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &NumericInputContext<'_>,
+) -> std::result::Result<CssDeviceCmykColor, ParseError<'i, Error>> {
+    let first = parse_authored_color_component(input, numeric, true)?;
+    let legacy = input.try_parse(Parser::expect_comma).is_ok();
+    let second = parse_authored_color_component(input, numeric, !legacy)?;
+    if legacy {
+        input.expect_comma().map_err(basic)?;
+    }
+    let third = parse_authored_color_component(input, numeric, !legacy)?;
+    if legacy {
+        input.expect_comma().map_err(basic)?;
+    }
+    let fourth = parse_authored_color_component(input, numeric, !legacy)?;
+    let alpha = if !legacy && input.try_parse(|input| input.expect_delim('/')).is_ok() {
+        Some(parse_authored_alpha(input, numeric, true)?)
+    } else {
+        None
+    };
+    input.expect_exhausted().map_err(basic)?;
+    CssDeviceCmykColor::try_new(
+        if legacy {
+            CssColorSyntax::Legacy
+        } else {
+            CssColorSyntax::Modern
+        },
+        [first, second, third, fourth],
+        alpha,
+    )
+    .map_err(|_| invalid_color(input.current_source_location(), Some("component")))
 }
 
 fn parse_authored_hsl<'i, 't>(

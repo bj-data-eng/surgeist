@@ -35,6 +35,57 @@ enum CssColorRepresentation {
     ColorMix(CssColorMix),
     LightDark(Box<CssLightDarkColor>),
     ContrastColor(Box<CssContrastColor>),
+    DeviceCmyk(Box<CssDeviceCmykColor>),
+}
+
+/// An uncalibrated authored device-CMYK color, without device/profile resolution.
+///
+/// Four ink channels remain unbounded. Legacy syntax admits only numbers and
+/// number calculations, with no alpha; modern syntax also admits percentages
+/// and missing components, and an optional alpha. Declared serialization retains
+/// the device input rather than computing an RGB or Lab equivalent.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssDeviceCmykColor {
+    syntax: CssColorSyntax,
+    channels: [CssColorComponent; 4],
+    alpha: Option<CssColorComponent>,
+}
+
+impl CssDeviceCmykColor {
+    /// Checks syntax and complete component depth, retaining every supplied value.
+    pub fn try_new(
+        syntax: CssColorSyntax,
+        channels: [CssColorComponent; 4],
+        alpha: Option<CssColorComponent>,
+    ) -> Result<Self, CssColorConstructionError> {
+        if syntax == CssColorSyntax::Legacy
+            && (alpha.is_some()
+                || channels
+                    .iter()
+                    .any(|value| value.domain() != Some(CssCalculationType::Number)))
+        {
+            return Err(CssColorConstructionError::InvalidSyntax);
+        }
+        check_components_depth(channels.iter().chain(alpha.iter()))?;
+        Ok(Self {
+            syntax,
+            channels,
+            alpha,
+        })
+    }
+
+    /// Returns the retained authored punctuation form.
+    pub const fn syntax(&self) -> CssColorSyntax {
+        self.syntax
+    }
+    /// Borrows cyan, magenta, yellow and black in that order.
+    pub const fn channels(&self) -> &[CssColorComponent; 4] {
+        &self.channels
+    }
+    /// Borrows explicit alpha; omission remains distinct from `none`.
+    pub const fn alpha(&self) -> Option<&CssColorComponent> {
+        self.alpha.as_ref()
+    }
 }
 
 /// A checked symbolic input awaiting downstream contrast-policy evaluation.
@@ -96,6 +147,21 @@ impl CssLightDarkColor {
 }
 
 impl CssColor {
+    /// Retains an uncalibrated device input without conversion or ink clamping.
+    pub fn from_device_cmyk(value: CssDeviceCmykColor) -> Self {
+        Self {
+            representation: CssColorRepresentation::DeviceCmyk(Box::new(value)),
+        }
+    }
+
+    /// Borrows the checked authored CMYK payload, when present.
+    pub const fn device_cmyk_value(&self) -> Option<&CssDeviceCmykColor> {
+        match &self.representation {
+            CssColorRepresentation::DeviceCmyk(value) => Some(value),
+            _ => None,
+        }
+    }
+
     /// Retains a checked symbolic input without choosing white or black.
     pub fn from_contrast_color(value: CssContrastColor) -> Self {
         Self {
@@ -405,6 +471,7 @@ impl CssColor {
             CssColorRepresentation::ColorMix(_) => "color-mix",
             CssColorRepresentation::LightDark(_) => "light-dark",
             CssColorRepresentation::ContrastColor(_) => "contrast-color",
+            CssColorRepresentation::DeviceCmyk(_) => "device-cmyk",
         }
     }
 }
@@ -1027,6 +1094,7 @@ impl CssColor {
             match &color.representation {
                 R::LightDark(_) => return E::Contextual(X::LightDark),
                 R::ContrastColor(_) => return E::Contextual(X::ContrastColor),
+                R::DeviceCmyk(_) => return E::Contextual(X::DeviceCmyk),
                 R::CurrentColor => return E::Contextual(X::CurrentColor),
                 R::System(_) => return E::Contextual(X::SystemColor),
                 R::Custom(_) => profile = true,
@@ -1601,7 +1669,7 @@ fn authored_color_depth(mut color: &CssColor) -> Result<u32, ColorGraphDepthErro
     loop {
         let alpha = |v: &Option<CssColorComponent>| v.as_ref().map_or(0, color_component_depth);
         let channels =
-            |v: &[CssColorComponent; 3]| v.iter().map(color_component_depth).max().unwrap_or(0);
+            |v: &[CssColorComponent]| v.iter().map(color_component_depth).max().unwrap_or(0);
         let depth = match &color.representation {
             R::CurrentColor | R::Transparent | R::Hex(_) | R::Named(_) | R::System(_) => 0,
             R::Rgb(v) => 1 + channels(&v.channels).max(alpha(&v.alpha)),
@@ -1630,6 +1698,7 @@ fn authored_color_depth(mut color: &CssColor) -> Result<u32, ColorGraphDepthErro
                     .max(alpha(&v.alpha))
             }
             R::Predefined(v) => 1 + channels(&v.channels).max(alpha(&v.alpha)),
+            R::DeviceCmyk(v) => 1 + channels(&v.channels).max(alpha(&v.alpha)),
             // Every mix constructor caches the complete checked subtree depth.
             R::ColorMix(v) => v.nesting_depth,
             R::LightDark(v) => v.nesting_depth,

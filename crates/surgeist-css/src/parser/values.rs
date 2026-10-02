@@ -62,6 +62,7 @@ pub(crate) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
     CssFeatureId::new("ext.value.color-mix"),
     CssFeatureId::new("interop.value.light-dark-color"),
     CssFeatureId::new("interop.value.contrast-color"),
+    CssFeatureId::new("interop.value.device-cmyk"),
 ];
 
 pub(super) fn checked_percentage_value<'i>(
