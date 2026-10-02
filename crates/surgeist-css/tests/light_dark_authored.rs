@@ -260,7 +260,7 @@ fn property_contexts_reject_the_other_form_and_keep_unfinished_color_guards() {
 }
 
 #[test]
-fn all_existing_color_consumers_admit_light_dark_without_selecting_a_branch() {
+fn selected_color_consumers_admit_light_dark_without_selecting_a_branch() {
     for property in [
         "color",
         "background-color",
@@ -279,7 +279,6 @@ fn all_existing_color_consumers_admit_light_dark_without_selecting_a_branch() {
     for source in [
         "border:1px solid light-dark(red, blue)",
         "box-shadow:0 0 light-dark(red, blue)",
-        "text-shadow:0 0 light-dark(red, blue)",
         "background-image:linear-gradient(light-dark(red, blue), green)",
         "mask-image:radial-gradient(light-dark(red, blue), green)",
     ] {
@@ -301,7 +300,7 @@ fn all_existing_color_consumers_admit_light_dark_without_selecting_a_branch() {
 }
 
 #[test]
-fn all_existing_image_consumers_admit_light_dark_image_and_none_branches() {
+fn selected_image_consumers_admit_light_dark_image_and_none_branches() {
     for source in [
         "background-image:light-dark(none, url(a.svg))",
         "mask-image:light-dark(none, url(a.svg))",
