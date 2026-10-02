@@ -2383,7 +2383,10 @@ fn serialize_interpolation_method(value: &CssColorInterpolationMethod) -> String
         CssColorInterpolationSpace::Oklab => "oklab".into(),
         CssColorInterpolationSpace::Oklch => "oklch".into(),
     };
-    if let Some(hue) = value.hue() {
+    if let Some(hue) = value
+        .hue()
+        .filter(|hue| *hue != CssHueInterpolationMethod::Shorter)
+    {
         result.push(' ');
         result.push_str(match hue {
             CssHueInterpolationMethod::Shorter => "shorter hue",

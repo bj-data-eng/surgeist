@@ -2246,6 +2246,8 @@ names keep their case-sensitive decoded identity. Parsing does not distribute
 weights, resolve profiles, or evaluate colors. Specified serialization fills
 known omitted weights exactly before selected six-place rounding, keeps unknown
 calculation omissions, and omits equal effective shares with default Oklab.
+It omits explicit `shorter hue` from canonical Mix text while preserving the
+authored method; other hue interpolation methods remain explicit.
 
 This crate does not perform general color-space conversion, relative-channel evaluation,
 gamut mapping, contrast selection, or rendering.
