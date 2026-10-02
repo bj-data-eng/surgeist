@@ -696,6 +696,124 @@ fn component_projection(
     )
 }
 
+#[derive(Clone, Copy)]
+enum LabComponentRange {
+    LabLightness,
+    OklabLightness,
+    Chroma,
+}
+
+/// Parsed-domain bounds apply only to standalone direct L/C literals. Other
+/// roles and calculation trees keep their existing projection and scratch.
+fn lab_component_projection(
+    value: &CssColorComponent,
+    percentage_factor: Factor,
+    range: LabComponentRange,
+    mode: Mode,
+    context: &mut SpecifiedSerializationContext,
+) -> Result<ProjectedScalar> {
+    let origin = mode == Mode::Origin;
+    if mode != Mode::Standalone {
+        return declared_component_projection(
+            value,
+            Factor::ONE,
+            percentage_factor,
+            if origin {
+                ComponentTarget::Preserve
+            } else {
+                ComponentTarget::Number
+            },
+            origin,
+            context,
+        );
+    }
+    let (representation, factor, percentage) = match value {
+        CssColorComponent::Number(value) => (value.numeric().representation(), Factor::ONE, false),
+        CssColorComponent::Percentage(value) => {
+            (value.numeric().representation(), percentage_factor, true)
+        }
+        _ => {
+            return component_projection(
+                value,
+                Factor::ONE,
+                percentage_factor,
+                ComponentTarget::Number,
+                context,
+            );
+        }
+    };
+    context.charge_input(1)?;
+    // One selected direct-slot classification; its borrowed decimal comparison
+    // allocates no rational or expanded text and does not charge per digit.
+    context.charge_projection(1)?;
+    let lexical = crate::exact_decimal::LexicalDecimal::new(representation);
+    let endpoint = if lexical.len == 0 || lexical.negative {
+        Some("0")
+    } else {
+        let upper = match range {
+            LabComponentRange::LabLightness => Some((2, "100")),
+            LabComponentRange::OklabLightness => Some((if percentage { 2 } else { 0 }, "1")),
+            LabComponentRange::Chroma => None,
+        };
+        upper.and_then(|(exponent, text)| {
+            // At this normalized one-digit scale, 1 equals the upper bound
+            // and 2..=9 exceed it. Select both without a duplicate digit walk;
+            // all other coefficients use the existing inclusive comparison.
+            let at_boundary_scale = lexical.len == 1 && lexical.exponent == Some(exponent);
+            (at_boundary_scale || !lexical.absolute_at_most("1", exponent)).then_some(text)
+        })
+    };
+    if let Some(endpoint) = endpoint {
+        let mut text = LocalCss::new(context.remaining_bytes());
+        text.push(endpoint)?;
+        return Ok(ProjectedScalar {
+            text: text.finish(),
+            scalar_value: None,
+            number: None,
+            exact: None,
+            contextual: false,
+            missing: false,
+            percentage: false,
+            calculation: false,
+        });
+    }
+    direct_component_projection(representation, factor, false, true, context)
+}
+
+/// The caller owns the one direct-slot input visit. In-range and unbounded
+/// literals retain the existing exact arithmetic, work, and bounded text.
+fn direct_component_projection(
+    representation: &str,
+    factor: Factor,
+    percentage: bool,
+    materialize_direct: bool,
+    context: &mut SpecifiedSerializationContext,
+) -> Result<ProjectedScalar> {
+    let exact = crate::exact_decimal::ExactRational::from_lexical_factor(
+        representation,
+        exact_factor(factor),
+        context,
+    )?;
+    let number = ScaledNumber::from_exact(&exact)?;
+    let text = if materialize_direct {
+        exact
+            .clone_with_budget(context)?
+            .format_exact(context.remaining_bytes(), context)?
+    } else {
+        String::new()
+    };
+    Ok(ProjectedScalar {
+        scalar_value: None,
+        number: Some(number),
+        exact: Some(exact),
+        text,
+        contextual: false,
+        missing: false,
+        percentage,
+        calculation: false,
+    })
+}
+
 fn component_projection_with_text(
     value: &CssColorComponent,
     number_factor: Factor,
@@ -722,57 +840,23 @@ fn component_projection_with_text(
         }
         C::Number(value) => {
             context.charge_input(1)?;
-            let representation = value.numeric().representation();
-            let exact = crate::exact_decimal::ExactRational::from_lexical_factor(
-                representation,
-                exact_factor(number_factor),
+            direct_component_projection(
+                value.numeric().representation(),
+                number_factor,
+                target == ComponentTarget::Percentage,
+                materialize_direct,
                 context,
-            )?;
-            let number = ScaledNumber::from_exact(&exact)?;
-            let text = if materialize_direct {
-                exact
-                    .clone_with_budget(context)?
-                    .format_exact(context.remaining_bytes(), context)?
-            } else {
-                String::new()
-            };
-            Ok(ProjectedScalar {
-                scalar_value: None,
-                number: Some(number),
-                exact: Some(exact),
-                text,
-                contextual: false,
-                missing: false,
-                percentage: target == ComponentTarget::Percentage,
-                calculation: false,
-            })
+            )
         }
         C::Percentage(value) => {
             context.charge_input(1)?;
-            let representation = value.numeric().representation();
-            let exact = crate::exact_decimal::ExactRational::from_lexical_factor(
-                representation,
-                exact_factor(percentage_factor),
+            direct_component_projection(
+                value.numeric().representation(),
+                percentage_factor,
+                target != ComponentTarget::Number,
+                materialize_direct,
                 context,
-            )?;
-            let number = ScaledNumber::from_exact(&exact)?;
-            let text = if materialize_direct {
-                exact
-                    .clone_with_budget(context)?
-                    .format_exact(context.remaining_bytes(), context)?
-            } else {
-                String::new()
-            };
-            Ok(ProjectedScalar {
-                scalar_value: None,
-                number: Some(number),
-                exact: Some(exact),
-                text,
-                contextual: false,
-                missing: false,
-                percentage: target != ComponentTarget::Number,
-                calculation: false,
-            })
+            )
         }
         C::NumberCalculation(value) => {
             let scale = match target {
@@ -1963,12 +2047,15 @@ fn serialize_lab(
     } else {
         ComponentTarget::Number
     };
-    let lightness = declared_component_projection(
+    let lightness = lab_component_projection(
         value.lightness(),
-        Factor::ONE,
         light_percentage,
-        target,
-        origin,
+        if name == "lab" {
+            LabComponentRange::LabLightness
+        } else {
+            LabComponentRange::OklabLightness
+        },
+        mode,
         context,
     )?;
     let channels = [
@@ -2023,27 +2110,24 @@ fn serialize_lch(
             },
         )
     };
-    let target = if origin {
-        ComponentTarget::Preserve
-    } else {
-        ComponentTarget::Number
-    };
-    let lightness = declared_component_projection(
+    let lightness = lab_component_projection(
         value.lightness(),
-        Factor::ONE,
         light_percentage,
-        target,
-        origin,
+        if name == "lch" {
+            LabComponentRange::LabLightness
+        } else {
+            LabComponentRange::OklabLightness
+        },
+        mode,
         context,
     )?;
     let channels = [
         lightness,
-        declared_component_projection(
+        lab_component_projection(
             value.chroma(),
-            Factor::ONE,
             chroma_percentage,
-            target,
-            origin,
+            LabComponentRange::Chroma,
+            mode,
             context,
         )?,
         hue_projection(value.hue(), origin, context)?,

@@ -2137,7 +2137,7 @@ relative channels or a mix, or gamut-map a color.
 Any directly missing component, including alpha, selects a form preserving
 `none`: ordinary RGB emits normalized `color(srgb ...)`, while HSL and HWB
 retain their named functions. Direct HSL/HWB channels emit percentages and a
-bare degree hue. Resolved ordinary non-alpha calculations emit scalars under the
+bare degree hue. Resolved ordinary RGB/HSL/HWB non-alpha calculations emit scalars under the
 [calculated number policy](#calculated-number-output); contextual slots retain
 their calculation trees. RGB channels clamp to their output domain: 0..255 in
 legacy `rgb()`, or 0..1 after number/255 or percentage/100 scaling in the
@@ -2165,6 +2165,28 @@ component domains with modern punctuation. Ordinary direct alpha is clamped
 and rounded to six places before text emission. Calculated alpha remains explicit
 and unclamped, uses the [calculated number policy](#calculated-number-output)
 after its selected scale, and retains its calculation provenance.
+
+Standalone absolute Lab/LCH lightness clamps to 0..100, and Oklab/Oklch lightness
+clamps to 0..1 after exact percentage conversion, following
+[Color 4's Lab/LCH bounds](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#specifying-lab-lch)
+and [Oklab/Oklch bounds](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#specifying-oklab-oklch).
+Direct LCH/Oklch chroma has a zero minimum and no upper bound. The signed a/b
+axes remain unbounded, and in-range literals retain exact decimal text.
+For example, `lab(125% -20% 30%)` emits `lab(100 -25 37.5)`, and
+`oklch(-.2 -20% 30)` emits `oklch(0 0 30)`. These direct bounds also apply when
+properties compose standalone colors. Calculations retain their wrappers and
+required capture costs; Origin and relative channels remain unclamped.
+Lab-family mix-child bounds remain unfinished.
+
+The serializer selects clipped direct endpoints from borrowed exact lexical
+metadata before allocating a rational coefficient or expanding decimal text.
+Thus `lab(1e400 0 0)` can emit `lab(100 0 0)` within a 12-byte output limit;
+finite clipped exponents beyond i128 also work. Each selected direct slot adds
+one logical projection visit to the cumulative budget. In-range and unbounded
+values still return typed resource failures when their exact output or work
+cannot fit. Discarded direct text is unnecessary; required calculation scratch
+must still fit before composition. Authored token kinds, coefficients and
+provenance remain unchanged.
 
 `border-color` accepts one to four colors and an optional leading `logical`
 marker. Its `CssBorderColorShorthand` retains authored arity and role mode;
