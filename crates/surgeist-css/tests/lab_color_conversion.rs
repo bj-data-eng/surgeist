@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! Expectations follow Color 4 CRD 2026-09-08 §§9.3–9.6, not sample-code outputs.
+//! Expectations follow Color 4 CRD 2026-09-08 §§4.4.1/9.3–9.6, not sample-code outputs.
 //! Cardinal/diagonal angles and scaled 3-4-5 triangles are independent geometry
 //! oracles. Decimal 53.13010235415598° is the independently rounded atan(4/3).
 
@@ -83,13 +83,13 @@ fn three_four_five_geometry_uses_each_spaces_concrete_number_units() {
 }
 
 #[test]
-fn exact_epsilon_and_adjacent_values_select_missing_hue_strictly() {
+fn exact_epsilon_and_adjacent_values_apply_inclusive_neutral_cleanup() {
     for (forward, inverse, epsilon) in CONVERSIONS {
         let below = f64::from_bits(epsilon.to_bits() - 1);
         let above = f64::from_bits(epsilon.to_bits() + 1);
         for chroma in [0.0, below, epsilon] {
             let polar = forward([12.0, 0.0, -chroma]).unwrap();
-            assert_eq!(polar.chroma(), chroma);
+            assert_eq!(polar.chroma().to_bits(), 0.0_f64.to_bits());
             assert_eq!(polar.hue_degrees(), None);
             assert_eq!(inverse(&polar), [12.0, 0.0, 0.0]);
         }
@@ -97,6 +97,33 @@ fn exact_epsilon_and_adjacent_values_select_missing_hue_strictly() {
         assert_eq!(polar.chroma(), above);
         assert_eq!(polar.hue_degrees(), Some(270.0));
     }
+}
+
+#[test]
+fn lab_conversion_zeros_positive_powerless_chroma_without_changing_manual_coordinates() {
+    // Color 4 §4.4.1 requires cleanup after conversion; manually supplied
+    // powerless channels retain their values. Half the Lab epsilon is positive.
+    let chroma = 0.0015 / 2.0;
+    let converted = convert_lab_to_lch([-0.0, chroma, 0.0]).unwrap();
+    assert_eq!(converted.lightness().to_bits(), (-0.0_f64).to_bits());
+    assert_eq!(converted.chroma().to_bits(), 0.0_f64.to_bits());
+    assert_eq!(converted.hue_degrees(), None);
+    let manual = Polar::try_new(-0.0, chroma, Some(90.0)).unwrap();
+    assert_eq!(manual.chroma(), chroma);
+    assert_eq!(manual.hue_degrees(), Some(90.0));
+}
+
+#[test]
+fn oklab_conversion_zeros_positive_powerless_chroma_without_changing_manual_coordinates() {
+    // The same cross-cutting cleanup uses Oklab's own 0.000004 epsilon.
+    let chroma = 0.000004 / 2.0;
+    let converted = convert_oklab_to_oklch([0.5, 0.0, -chroma]).unwrap();
+    assert_eq!(converted.lightness(), 0.5);
+    assert_eq!(converted.chroma().to_bits(), 0.0_f64.to_bits());
+    assert_eq!(converted.hue_degrees(), None);
+    let manual = Polar::try_new(0.5, chroma, Some(270.0)).unwrap();
+    assert_eq!(manual.chroma(), chroma);
+    assert_eq!(manual.hue_degrees(), Some(270.0));
 }
 
 #[test]
@@ -143,14 +170,14 @@ fn finite_extended_lightness_is_copied_bit_for_bit_in_every_path() {
 }
 
 #[test]
-fn hypot_preserves_subnormal_and_tiny_nonzero_chroma_without_squaring() {
+fn conversion_cleans_subnormal_and_tiny_positive_chroma_to_neutral() {
     for (forward, _, _) in CONVERSIONS {
         let subnormal = forward([0.5, f64::from_bits(3), f64::from_bits(4)]).unwrap();
-        assert_eq!(subnormal.chroma().to_bits(), 5);
+        assert_eq!(subnormal.chroma().to_bits(), 0.0_f64.to_bits());
         assert_eq!(subnormal.hue_degrees(), None);
         let scale = 2.0_f64.powi(-600);
         let tiny = forward([0.5, 3.0 * scale, 4.0 * scale]).unwrap();
-        assert_eq!(tiny.chroma(), 5.0 * scale);
+        assert_eq!(tiny.chroma().to_bits(), 0.0_f64.to_bits());
         assert_eq!(tiny.hue_degrees(), None);
     }
 }
