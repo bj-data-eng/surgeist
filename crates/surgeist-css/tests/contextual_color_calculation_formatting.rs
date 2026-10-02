@@ -666,7 +666,7 @@ text_case!(
 text_case!(
     percentage_nonfinite_operand_wrapper_control,
     "hsl(0 calc(infinity * 1% * 1em / 1px) 50%)",
-    "hsl(0 calc((infinity * 1%) * 1em / 1px) 50%)"
+    "hsl(0 calc(infinity * 1% * 1em / 1px) 50%)"
 );
 #[test]
 fn checked_percentage_graph_retains_scale_inputs_and_provenance() {
