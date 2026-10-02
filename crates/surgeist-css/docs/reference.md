@@ -2321,6 +2321,55 @@ conflict; §11.5 concerns computed serialization. The frozen WebKit source at
 implementation resolving that conflict. Contextual execution and computed
 serialization remain separate unfinished work.
 
+### Pure HSL and HWB coordinates
+
+`CssHslColorCoordinates::try_new(Option<H>, S, L)` and
+`CssHwbColorCoordinates::try_new(Option<H>, W, B)` construct concrete coordinates
+for the [Color 4 HSL](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#hsl-to-rgb)
+and [HWB](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#hwb-to-rgb)
+algorithms. Hue uses degrees; saturation, lightness, whiteness and blackness
+use number units with a `0..100` reference range. Every present coordinate must
+be finite. HSL saturation must be nonnegative, following the forward algorithm's
+already-clamped input precondition. Extended lightness and saturation above 100,
+and negative or extended HWB coordinates, remain mathematical inputs.
+
+Both private-field carriers expose `hue_degrees()` and their named coordinates.
+Constructors check H, then the second and third coordinate before rejecting
+negative saturation. They normalize present hue to `[0, 360)` with positive
+zero, canonicalize saturation zero, and preserve lightness, whiteness and
+blackness bits. A manually supplied present hue stays present at a powerless
+coordinate, and missing hue stays missing at any other coordinates.
+
+| Operation | Concrete result |
+| --- | --- |
+| `convert_hsl_to_srgb(&coordinates)` | Fallible encoded `[r, g, b]`, with a `0..1` reference range |
+| `convert_hwb_to_srgb(&coordinates)` | Infallible encoded `[r, g, b]` after checked construction |
+| `convert_srgb_to_hsl([r, g, b])` | Fallible HSL carrier with optional hue |
+| `convert_srgb_to_hwb([r, g, b])` | Fallible HWB carrier with optional hue |
+
+Every finite extended RGB sample is admitted; the operations do not clip a
+display gamut. Missing forward hue uses zero degrees. HWB's white-plus-black
+normalization is intrinsic: W = 50 and B = 150 give gray `[0.25; 3]`. HSL
+S = 200 and L = 50 at hue zero give `[1.5, -0.5, -0.5]`. Out-of-gamut inverse
+HSL rotates a negative computed saturation's hue by 180 degrees and takes its
+absolute saturation; HWB keeps the direct RGB hue.
+
+Inverse HSL makes hue missing at normalized saturation at or below `1/100000`;
+inverse HWB does so when normalized W + B is at least `1 - 1/100000`, or RGB is
+gray. Saturation and W/B remain available unchanged. These are the specific
+algorithms' inclusive thresholds and retained-coordinate interpretation selected
+from frozen WebKit; the catalog records their conflicts with generic
+[powerless-component cleanup](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#powerless).
+
+`CssHslHwbConversionError` distinguishes the first `NonFiniteInput` index in
+H/S/L, H/W/B or R/G/B order, `NegativeSaturation`, and `UnrepresentableResult`
+when a required result exceeds finite `f64`. Percent scaling bounds every
+checked HWB forward intermediate, making that direction infallible. The other
+directions can overflow for extended inputs. Ordinary binary64 rounding,
+underflow and loss of powerless hue apply; exact round trips are not promised.
+These helpers are independent of authored CSS, alpha, profiles, contextual
+evaluation, interpolation and computed CSS serialization.
+
 ### Pure Lab-family rectangular and polar coordinates
 
 `convert_lab_to_lch([L, a, b])` and `convert_oklab_to_oklch([L, a, b])`

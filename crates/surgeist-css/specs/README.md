@@ -241,6 +241,18 @@ direct bounds, explicit relative overrides and genuine Origins keep their separa
 contracts. This does not claim identical WebKit text, custom-profile support,
 browser results, normative harmonization or complete color grammar/arithmetic.
 
+Three separate reconciliations govern pure HSL/HWB coordinate conversion.
+The generic powerless-component prose says hue is missing below epsilon,
+whereas the HSL table and inverse algorithm use an inclusive threshold.
+The generic prose also requests zeroing small positive saturation and adjusting
+near-gray HWB blackness; the inverse samples retain those coordinates.
+Frozen WebKit uses the inclusive HSL threshold, marks nearly neutral hue
+missing, and retains saturation and W/B. Its pinned conversion and color-model
+blobs support the selected numerical API behavior. These decisions preserve
+manually supplied hue and leave authored parsing and specified serialization
+under their separate contracts; they do not adopt WebKit's float narrowing or
+claim the draft requirements agree.
+
 Text 4's `text-align` and `text-align-all` tables show a standalone `<string>`
 alternative, but its prose and example expressly combine a string with a keyword.
 The catalog's localized reconciliation retains the five positional keywords from

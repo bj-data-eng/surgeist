@@ -174,6 +174,12 @@
 //! normalizes optional hue; [`convert_lch_to_lab`] and [`convert_oklch_to_oklab`]
 //! invert those coordinates, setting both axes to zero when hue is missing.
 //! These helpers use concrete number units independently of authored colors.
+//! [`CssHslColorCoordinates`] and [`CssHwbColorCoordinates`] describe concrete
+//! HSL and HWB coordinates with optional degree hue and percentage reference
+//! units. [`convert_hsl_to_srgb`], [`convert_srgb_to_hsl`],
+//! [`convert_hwb_to_srgb`] and [`convert_srgb_to_hwb`] convert encoded sRGB
+//! samples without gamut clipping. Inverse conversion marks powerless hue
+//! missing while retaining the other coordinates; forward missing hue uses zero.
 //! [`CssOverflowPropertyValue::value`] exposes [`CssOverflowValue`], retaining
 //! the authored one- or two-axis form.
 //!
@@ -1322,6 +1328,7 @@ mod exact_decimal;
 mod frequency;
 mod gap;
 mod grid_template_areas;
+mod hsl_color_conversion;
 mod inset;
 mod integer_value;
 mod lab_color_conversion;
@@ -1486,6 +1493,10 @@ pub use expansion::{
 pub use font_feature_values::*;
 pub use font_palette_values::*;
 pub use font_variant::*;
+pub use hsl_color_conversion::{
+    CssHslColorCoordinates, CssHslHwbConversionError, CssHwbColorCoordinates, convert_hsl_to_srgb,
+    convert_hwb_to_srgb, convert_srgb_to_hsl, convert_srgb_to_hwb,
+};
 pub use lab_color_conversion::{
     CssPolarColorConversionError, CssPolarColorCoordinates, convert_lab_to_lch, convert_lch_to_lab,
     convert_oklab_to_oklch, convert_oklch_to_oklab,

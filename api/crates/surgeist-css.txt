@@ -1673,6 +1673,14 @@ pub surgeist_css::CssHorizontalPositionKeyword::XStart
 #[non_exhaustive] pub enum surgeist_css::CssHoverCapability
 pub surgeist_css::CssHoverCapability::Hover
 pub surgeist_css::CssHoverCapability::None
+#[non_exhaustive] pub enum surgeist_css::CssHslHwbConversionError
+pub surgeist_css::CssHslHwbConversionError::NegativeSaturation
+pub surgeist_css::CssHslHwbConversionError::NonFiniteInput
+pub surgeist_css::CssHslHwbConversionError::NonFiniteInput::component: usize
+pub surgeist_css::CssHslHwbConversionError::UnrepresentableResult
+impl core::error::Error for surgeist_css::CssHslHwbConversionError
+impl core::fmt::Display for surgeist_css::CssHslHwbConversionError
+pub fn surgeist_css::CssHslHwbConversionError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_css::CssHueInterpolationMethod
 pub surgeist_css::CssHueInterpolationMethod::Decreasing
 pub surgeist_css::CssHueInterpolationMethod::Increasing
@@ -6734,6 +6742,12 @@ pub const fn surgeist_css::CssHslColor::lightness(&self) -> &surgeist_css::CssCo
 pub const fn surgeist_css::CssHslColor::saturation(&self) -> &surgeist_css::CssColorComponent
 pub const fn surgeist_css::CssHslColor::syntax(&self) -> surgeist_css::CssColorSyntax
 pub fn surgeist_css::CssHslColor::try_new(syntax: surgeist_css::CssColorSyntax, hue: surgeist_css::CssColorHue, saturation: surgeist_css::CssColorComponent, lightness: surgeist_css::CssColorComponent, alpha: core::option::Option<surgeist_css::CssColorComponent>) -> core::result::Result<Self, surgeist_css::CssColorConstructionError>
+pub struct surgeist_css::CssHslColorCoordinates
+impl surgeist_css::CssHslColorCoordinates
+pub const fn surgeist_css::CssHslColorCoordinates::hue_degrees(&self) -> core::option::Option<f64>
+pub const fn surgeist_css::CssHslColorCoordinates::lightness(&self) -> f64
+pub const fn surgeist_css::CssHslColorCoordinates::saturation(&self) -> f64
+pub fn surgeist_css::CssHslColorCoordinates::try_new(hue_degrees: core::option::Option<f64>, saturation: f64, lightness: f64) -> core::result::Result<Self, surgeist_css::CssHslHwbConversionError>
 pub struct surgeist_css::CssHwbColor
 impl surgeist_css::CssHwbColor
 pub const fn surgeist_css::CssHwbColor::alpha(&self) -> core::option::Option<&surgeist_css::CssColorComponent>
@@ -6741,6 +6755,12 @@ pub const fn surgeist_css::CssHwbColor::blackness(&self) -> &surgeist_css::CssCo
 pub const fn surgeist_css::CssHwbColor::hue(&self) -> &surgeist_css::CssColorHue
 pub fn surgeist_css::CssHwbColor::try_new(hue: surgeist_css::CssColorHue, whiteness: surgeist_css::CssColorComponent, blackness: surgeist_css::CssColorComponent, alpha: core::option::Option<surgeist_css::CssColorComponent>) -> core::result::Result<Self, surgeist_css::CssColorConstructionError>
 pub const fn surgeist_css::CssHwbColor::whiteness(&self) -> &surgeist_css::CssColorComponent
+pub struct surgeist_css::CssHwbColorCoordinates
+impl surgeist_css::CssHwbColorCoordinates
+pub const fn surgeist_css::CssHwbColorCoordinates::blackness(&self) -> f64
+pub const fn surgeist_css::CssHwbColorCoordinates::hue_degrees(&self) -> core::option::Option<f64>
+pub fn surgeist_css::CssHwbColorCoordinates::try_new(hue_degrees: core::option::Option<f64>, whiteness: f64, blackness: f64) -> core::result::Result<Self, surgeist_css::CssHslHwbConversionError>
+pub const fn surgeist_css::CssHwbColorCoordinates::whiteness(&self) -> f64
 pub struct surgeist_css::CssIdent
 impl surgeist_css::CssIdent
 pub fn surgeist_css::CssIdent::as_str(&self) -> &str
@@ -9147,10 +9167,14 @@ impl core::fmt::Display for surgeist_css::Error
 pub fn surgeist_css::Error::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub fn surgeist_css::conformance_exclusion(id: &str) -> core::option::Option<&'static surgeist_css::CssExclusionMetadata>
 pub const fn surgeist_css::conformance_exclusions() -> &'static [surgeist_css::CssExclusionMetadata]
+pub fn surgeist_css::convert_hsl_to_srgb(hsl: &surgeist_css::CssHslColorCoordinates) -> core::result::Result<[f64; 3], surgeist_css::CssHslHwbConversionError>
+pub fn surgeist_css::convert_hwb_to_srgb(hwb: &surgeist_css::CssHwbColorCoordinates) -> [f64; 3]
 pub fn surgeist_css::convert_lab_to_lch(lab: [f64; 3]) -> core::result::Result<surgeist_css::CssPolarColorCoordinates, surgeist_css::CssPolarColorConversionError>
 pub fn surgeist_css::convert_lch_to_lab(lch: &surgeist_css::CssPolarColorCoordinates) -> [f64; 3]
 pub fn surgeist_css::convert_oklab_to_oklch(oklab: [f64; 3]) -> core::result::Result<surgeist_css::CssPolarColorCoordinates, surgeist_css::CssPolarColorConversionError>
 pub fn surgeist_css::convert_oklch_to_oklab(oklch: &surgeist_css::CssPolarColorCoordinates) -> [f64; 3]
+pub fn surgeist_css::convert_srgb_to_hsl(rgb: [f64; 3]) -> core::result::Result<surgeist_css::CssHslColorCoordinates, surgeist_css::CssHslHwbConversionError>
+pub fn surgeist_css::convert_srgb_to_hwb(rgb: [f64; 3]) -> core::result::Result<surgeist_css::CssHwbColorCoordinates, surgeist_css::CssHslHwbConversionError>
 pub fn surgeist_css::expand_declaration(source: &surgeist_css::CssDeclaration) -> core::result::Result<surgeist_css::CssExpansion, surgeist_css::CssExpansionError>
 pub fn surgeist_css::feature_catalog() -> &'static [surgeist_css::CssFeatureMetadata]
 pub fn surgeist_css::feature_metadata(id: &str) -> core::option::Option<&'static surgeist_css::CssFeatureMetadata>
