@@ -1080,7 +1080,7 @@ fn serialize_hex(
             .collect(),
         _ => unreachable!("checked hex color"),
     };
-    let alpha = expanded.get(3).copied();
+    let alpha = expanded.get(3).copied().filter(|alpha| *alpha != 255);
     let mut out = LocalCss::new(context.remaining_bytes());
     let modern = mode == Mode::Origin;
     out.push(if alpha.is_some() && !modern {
@@ -1094,7 +1094,7 @@ fn serialize_hex(
         }
         out.push(&channel.to_string())?;
     }
-    if let Some(alpha) = alpha.filter(|alpha| *alpha != 255) {
+    if let Some(alpha) = alpha {
         out.push(if modern { " / " } else { ", " })?;
         out.push(&legacy_byte_alpha(alpha))?;
     }
