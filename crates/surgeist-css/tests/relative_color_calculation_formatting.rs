@@ -224,14 +224,14 @@ text_case!(
 );
 
 text_case!(
-    ordinary_calculated_origin_retains_unrounded_coefficient,
+    ordinary_calculated_origin_rounds_coefficient,
     "rgb(from color(srgb calc(1 / 128) 0 0) r g b)",
-    "rgb(from color(srgb calc(0.0078125) 0 0) r g b)"
+    "rgb(from color(srgb calc(0.007813) 0 0) r g b)"
 );
 text_case!(
-    ordinary_alpha_origin_retains_unrounded_coefficient,
+    ordinary_alpha_origin_rounds_coefficient,
     "alpha(from rgb(1 2 3 / calc(1 / 128)))",
-    "alpha(from rgb(1 2 3 / calc(0.0078125)))"
+    "alpha(from rgb(1 2 3 / calc(0.007813)))"
 );
 text_case!(
     ordinary_mix_weight_retains_unrounded_coefficient,
@@ -458,28 +458,27 @@ fn discarded_ordinary_rgb_capture_preserves_larger_scratch_requirement() {
 }
 
 #[test]
-fn protected_nested_origin_capture_keeps_scratch_failure_before_source_visits() {
+fn rounded_nested_origin_capture_controls_scratch_and_source_visit_precedence() {
     let value = color("rgb(from color(srgb calc(1 / 128) 0 0) r g b)");
     let before = value.clone();
-    // Outer root and b/g/r consume four inputs. Origin root then its first
-    // channel's Calc(divide) consume five more. Eleven bytes remain after
-    // "rgb(from "; the unrounded scratch needs 15 before the zero siblings
-    // are visited. Eight input slots thus fail during the calculation;
-    // nine reach its scratch failure. Literal precision work is not capped.
-    assert_eq!(
-        value
-            .to_specified_css_with_limits(Limits::new(9, usize::MAX, 20))
-            .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
-    );
-    assert_eq!(
-        value
-            .to_specified_css_with_limits(Limits::new(8, usize::MAX, 20))
-            .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
-    );
+    // Outer root and b/g/r consume four inputs. Origin root and the first
+    // channel's Calc(divide) consume five more. After "rgb(from ", a
+    // 22-byte limit leaves 13 bytes, below the rounded calc(0.007813)'s
+    // 14-byte scratch. At 23 bytes that capture fits and the zero siblings
+    // require more inputs. Eight input slots fail within the calculation.
+    for (inputs, bytes, expected) in [
+        (9, 22, Kind::ByteLimit),
+        (8, 22, Kind::InputNodeLimit),
+        (9, 23, Kind::InputNodeLimit),
+    ] {
+        assert_eq!(
+            value
+                .to_specified_css_with_limits(Limits::new(inputs, usize::MAX, bytes))
+                .unwrap_err()
+                .kind(),
+            expected
+        );
+    }
     assert_eq!(value, before);
 }
 

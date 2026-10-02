@@ -588,7 +588,7 @@ text_case!(
 text_case!(
     ordinary_origin_calculation_control,
     "alpha(from rgb(calc(1 / 128) 0 0))",
-    "alpha(from rgb(calc(0.0078125) 0 0))"
+    "alpha(from rgb(calc(0.007813) 0 0))"
 );
 text_case!(
     standalone_precision_control,

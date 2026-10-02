@@ -490,8 +490,9 @@ unchanged; composed writers share one cumulative budget.
 
 ### Calculated number output
 
-Finite numbers in non-color specified calculations and declared relative-color
-calculations use the same six-place, fixed-notation output policy. The mathematical
+Finite numbers in non-color specified calculations, declared relative-color
+calculations and ordinary colors embedded as origins use the same six-place,
+fixed-notation output policy. The mathematical
 projector evaluates context-independent parts with binary64 arithmetic, then rounds the actual
 finite binary value for text. `calc(1 / 3)` emits `calc(0.333333)`, and the exact
 dyadic halfway value `calc(-1 / 128)` emits `calc(-0.007813)`.
@@ -535,8 +536,14 @@ and retain their traversal costs even when shorthand output compresses.
 Calculated integer text uses this finite number policy without performing
 computed integer rounding; ordinary integer literals retain exact digits.
 Relative calculated coefficients use this policy wherever embedded, including
-nested origins and mix components. Ordinary standalone and ordinary-origin
-color calculations, and media-query writers, retain their separate text policies.
+nested origins and mix components. Ordinary-origin calculations preserve number
+and percentage categories, explicit unclamped alpha, and canonical angle units.
+For example, `alpha(from rgb(calc(1 / 128) none none))` emits
+`alpha(from rgb(calc(0.007813) none none))`; an origin percentage calculation
+keeps `%` without adopting the destination channel's relative percentage scale.
+Ordinary standalone color calculations and media-query writers retain their
+separate text policies. Standalone color captures retain their scratch costs even
+when their text is discarded during conversion.
 Mathematical arithmetic precision and range remain unfinished; canonical text
 does not make binary64 evaluation exact or resolve symbolic dependencies.
 
@@ -564,7 +571,7 @@ and calculation branches retain their own serialization rules; direct
 percentage conversion does not rewrite `calc(30%)`.
 
 These rules also apply when relative colors occur inside another origin or
-`color-mix()`. Standalone color precision, hue normalization, ordinary color
+`color-mix()`. Standalone color precision, hue normalization, standalone color
 calculations, relative alpha and mix weights keep their separate policies.
 Composed colors share cumulative resource limits; byte limits count rounded
 text, and failure returns no partial string or changes to the authored graph.
@@ -2117,9 +2124,13 @@ after the existing mathematical projection. This includes custom-profile
 calculations and calculated `alpha(from …)` overrides, even when nested inside
 another origin or mix. References remain symbolic, percentage scaling stays
 within the numeric projector, and authored expressions and origins remain
-unchanged. Ordinary color calculations used as origins keep their separate text
-and scratch policy. Direct relative literals and origin-number formatting,
-calculated relative-alpha clamping, and mathematical precision remain unfinished.
+unchanged. Ordinary colors used as origins also use the shared coefficient text
+policy, preserving their number and percentage dimensions, canonical angle units
+and explicit unclamped alpha. Direct relative literals convert percentages to
+the destination channel's scale before rounding; ordinary-origin literals retain
+their authored categories. See [calculated number output](#calculated-number-output)
+and [declared color literal output](#declared-color-literal-output).
+Calculated relative-alpha clamping and mathematical precision remain unfinished.
 `light-dark()`, `contrast-color()`, and `device-cmyk()` are not yet supported.
 
 Custom-profile `color(--Profile ...)` preserves a nonempty variable channel

@@ -3318,6 +3318,22 @@ impl ColorCalculationRef<'_> {
         }
     }
 }
+/// Captures an ordinary color embedded as an origin, retaining its specified
+/// dimensions while applying the generic coefficient text policy.
+pub(crate) fn capture_origin_color_calculation(
+    calculation: ColorCalculationRef<'_>,
+    context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+) -> std::result::Result<
+    (String, NumericProjectionOutcome),
+    crate::CssSpecifiedValueSerializationError,
+> {
+    capture_specified_scaled(
+        calculation.expression(),
+        NumericProjectionScale::Identity,
+        context,
+    )
+}
+
 pub(crate) fn capture_color_calculation(
     calculation: ColorCalculationRef<'_>,
     context: &mut crate::specified_serialization::SpecifiedSerializationContext,
@@ -3393,6 +3409,143 @@ pub(crate) fn length_components_equal(
             crate::specified_numeric::ordinary_length_literal_equal(left, right)
         }
         _ => left_capture.same_math_or_text(right_capture),
+    }
+}
+
+#[cfg(test)]
+mod origin_color_calculation_tests {
+    use super::*;
+    use crate::{
+        CssSpecifiedValueSerializationErrorKind as Kind,
+        CssSpecifiedValueSerializationLimits as Limits,
+        specified_serialization::SpecifiedSerializationContext as Context,
+    };
+
+    fn components(source: &str) -> CssComponentValues {
+        crate::parse_component_values(source).unwrap()
+    }
+
+    fn assert_capture(calculation: ColorCalculationRef<'_>, expected: &str) {
+        let mut origin_context = Context::new(Limits::default());
+        let mut standalone_context = Context::new(Limits::default());
+        let (text, origin) =
+            capture_origin_color_calculation(calculation, &mut origin_context).unwrap();
+        let (_, standalone) =
+            capture_color_calculation(calculation, &mut standalone_context).unwrap();
+        assert_eq!(text, expected);
+        assert_eq!(origin.context_dependent, standalone.context_dependent);
+        assert_eq!(
+            origin.scalar_value.map(f64::to_bits),
+            standalone.scalar_value.map(f64::to_bits)
+        );
+    }
+
+    #[test]
+    fn origin_capture_keeps_math_outcomes_and_specified_dimensions() {
+        for (source, text) in [
+            ("calc(1 / 128)", "calc(0.007813)"),
+            ("calc(1em / 1px + 1 / 128)", "calc(0.007813 + (1em / 1px))"),
+            ("calc(infinity)", "calc(infinity)"),
+            ("calc(NaN)", "calc(NaN)"),
+            ("calc(0 * -1)", "calc(0)"),
+            ("calc(1 / (0 * -1))", "calc(-infinity)"),
+            ("calc(0 * -1 + 1em / 1px)", "calc((0 * -1) + (1em / 1px))"),
+        ] {
+            let value = CssNumberCalculation::try_from_components(components(source)).unwrap();
+            let before = value.clone();
+            assert_capture(ColorCalculationRef::Number(&value), text);
+            assert_eq!(value, before);
+        }
+        let percentage =
+            CssPercentageCalculation::try_from_components(components("calc(.78125%)")).unwrap();
+        assert_capture(
+            ColorCalculationRef::Percentage(&percentage),
+            "calc(0.78125%)",
+        );
+        let angle =
+            CssAngleCalculation::try_from_components(components("calc(.0000001turn)")).unwrap();
+        assert_capture(ColorCalculationRef::Angle(&angle), "calc(0.000036deg)");
+    }
+
+    #[test]
+    fn origin_capture_uses_rounded_scratch_without_changing_standalone_scratch() {
+        let value = CssNumberCalculation::try_from_components(components("calc(1 / 128)")).unwrap();
+        let calculation = ColorCalculationRef::Number(&value);
+        let mut context = Context::new(Limits::new(usize::MAX, usize::MAX, 14));
+        assert_eq!(
+            capture_origin_color_calculation(calculation, &mut context)
+                .unwrap()
+                .0,
+            "calc(0.007813)"
+        );
+        for (origin, bytes) in [(true, 13), (false, 14)] {
+            let mut context = Context::new(Limits::new(usize::MAX, usize::MAX, bytes));
+            let error = if origin {
+                capture_origin_color_calculation(calculation, &mut context)
+            } else {
+                capture_color_calculation(calculation, &mut context)
+            }
+            .unwrap_err();
+            assert_eq!(error.kind(), Kind::ByteLimit);
+        }
+        let mut context = Context::new(Limits::new(usize::MAX, usize::MAX, 15));
+        assert_eq!(
+            capture_color_calculation(calculation, &mut context)
+                .unwrap()
+                .0,
+            "calc(0.0078125)"
+        );
+    }
+
+    #[test]
+    fn origin_capture_spends_the_callers_cumulative_work_and_remaining_bytes() {
+        let value = CssNumberCalculation::try_from_components(components("calc(1 / 128)")).unwrap();
+        let calculation = ColorCalculationRef::Number(&value);
+        // Inputs visit the wrapper, product and two leaves. Projection work
+        // visits the two leaves, inverse and product: four of each per capture.
+        for (inputs, projections, kind) in [
+            (7, 8, Kind::InputNodeLimit),
+            (8, 7, Kind::ProjectionNodeLimit),
+        ] {
+            let mut context = Context::new(Limits::new(inputs, projections, 14));
+            capture_origin_color_calculation(calculation, &mut context).unwrap();
+            assert_eq!(
+                capture_origin_color_calculation(calculation, &mut context)
+                    .unwrap_err()
+                    .kind(),
+                kind
+            );
+        }
+        let mut context = Context::new(Limits::new(8, 8, 15));
+        let mut outer = String::new();
+        context.append(&mut outer, "x").unwrap();
+        assert_eq!(
+            capture_origin_color_calculation(calculation, &mut context)
+                .unwrap()
+                .0,
+            "calc(0.007813)"
+        );
+        assert_eq!(
+            capture_origin_color_calculation(calculation, &mut context)
+                .unwrap()
+                .0,
+            "calc(0.007813)"
+        );
+        context.append(&mut outer, "x").unwrap();
+        assert_eq!(
+            capture_origin_color_calculation(calculation, &mut context)
+                .unwrap_err()
+                .kind(),
+            Kind::InputNodeLimit
+        );
+        let mut context = Context::new(Limits::new(usize::MAX, usize::MAX, 14));
+        context.append(&mut String::new(), "x").unwrap();
+        assert_eq!(
+            capture_origin_color_calculation(calculation, &mut context)
+                .unwrap_err()
+                .kind(),
+            Kind::ByteLimit
+        );
     }
 }
 

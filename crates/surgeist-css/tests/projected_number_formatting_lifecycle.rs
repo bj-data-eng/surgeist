@@ -6,8 +6,8 @@
 //! dtoa.cpp:130–146 calls ToFixedUncapped(d, 6); double-conversion.h:327–335
 //! defines FIXED ties away from zero. Expected numbers below come from exact
 //! integer/rational binary64 values, never the formatter's shortest spelling.
-//! Ordinary color captures preserve their separately owned text and scratch
-//! contracts; declared relative calculations use generic coefficient text.
+//! Standalone color captures preserve their separately owned text and scratch
+//! contracts; origin and declared relative calculations use generic coefficient text.
 
 use surgeist_css::*;
 
@@ -881,7 +881,7 @@ fn color_calculation_text_follows_its_declared_slot() {
         ),
         (
             "rgb(from color(srgb calc(1 / 128) 0 0) r g b)",
-            "rgb(from color(srgb calc(0.0078125) 0 0) r g b)",
+            "rgb(from color(srgb calc(0.007813) 0 0) r g b)",
         ),
         (
             "hsl(none calc(0.0078125) 50%)",

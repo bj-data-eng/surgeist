@@ -645,6 +645,28 @@ fn declared_component_projection(
                 calculation: false,
             });
         }
+        let calculation = match value {
+            CssColorComponent::NumberCalculation(value) => {
+                Some(crate::numeric::ColorCalculationRef::Number(value))
+            }
+            CssColorComponent::PercentageCalculation(value) => {
+                Some(crate::numeric::ColorCalculationRef::Percentage(value))
+            }
+            _ => None,
+        };
+        if let Some(calculation) = calculation {
+            let (text, outcome) =
+                crate::numeric::capture_origin_color_calculation(calculation, context)?;
+            return Ok(ProjectedScalar {
+                text,
+                number: outcome.scalar_value.map(ScaledNumber::from_binary64),
+                exact: None,
+                contextual: outcome.context_dependent,
+                missing: false,
+                percentage: false,
+                calculation: true,
+            });
+        }
     }
     component_projection(value, number_factor, percentage_factor, target, context)
 }
@@ -1586,10 +1608,12 @@ fn hue_projection(
             (text, Some(number), Some(exact), false, false, false)
         }
         H::NumberCalculation(value) => {
-            let (text, outcome) = crate::numeric::capture_color_calculation(
-                crate::numeric::ColorCalculationRef::Number(value),
-                context,
-            )?;
+            let calculation = crate::numeric::ColorCalculationRef::Number(value);
+            let (text, outcome) = if origin {
+                crate::numeric::capture_origin_color_calculation(calculation, context)?
+            } else {
+                crate::numeric::capture_color_calculation(calculation, context)?
+            };
             (
                 text,
                 outcome.scalar_value.map(ScaledNumber::from_binary64),
@@ -1600,10 +1624,12 @@ fn hue_projection(
             )
         }
         H::AngleCalculation(value) => {
-            let (text, outcome) = crate::numeric::capture_color_calculation(
-                crate::numeric::ColorCalculationRef::Angle(value),
-                context,
-            )?;
+            let calculation = crate::numeric::ColorCalculationRef::Angle(value);
+            let (text, outcome) = if origin {
+                crate::numeric::capture_origin_color_calculation(calculation, context)?
+            } else {
+                crate::numeric::capture_color_calculation(calculation, context)?
+            };
             (
                 text,
                 outcome.scalar_value.map(ScaledNumber::from_binary64),
