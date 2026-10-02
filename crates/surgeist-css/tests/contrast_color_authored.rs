@@ -529,25 +529,29 @@ fn normalization_preserves_contrast_order_values_and_source_occurrences() {
 
 #[test]
 fn wrapper_and_child_charge_exact_cumulative_node_projection_and_byte_budgets() {
-    for (source, expected, nodes) in [
-        ("contrast-color(red)", "contrast-color(red)", 2),
+    // As in the independent omitted-weight budget fixture, Mix's two omitted
+    // weights additionally consume twenty projection nodes for exact arithmetic.
+    for (source, expected, input_nodes, projection_nodes) in [
+        ("contrast-color(red)", "contrast-color(red)", 2, 2),
         (
             "light-dark(contrast-color(red), contrast-color(blue))",
             "light-dark(contrast-color(red), contrast-color(blue))",
+            5,
             5,
         ),
         (
             "color-mix(contrast-color(red), blue)",
             "color-mix(contrast-color(red), blue)",
             4,
+            24,
         ),
     ] {
         let value = color(source);
         assert_eq!(
             value
                 .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    nodes,
-                    nodes,
+                    input_nodes,
+                    projection_nodes,
                     expected.len()
                 ))
                 .unwrap(),
@@ -555,15 +559,27 @@ fn wrapper_and_child_charge_exact_cumulative_node_projection_and_byte_budgets() 
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(nodes - 1, nodes, expected.len()),
+                CssSpecifiedValueSerializationLimits::new(
+                    input_nodes - 1,
+                    projection_nodes,
+                    expected.len(),
+                ),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(nodes, nodes - 1, expected.len()),
+                CssSpecifiedValueSerializationLimits::new(
+                    input_nodes,
+                    projection_nodes - 1,
+                    expected.len(),
+                ),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(nodes, nodes, expected.len() - 1),
+                CssSpecifiedValueSerializationLimits::new(
+                    input_nodes,
+                    projection_nodes,
+                    expected.len() - 1,
+                ),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
