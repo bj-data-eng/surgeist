@@ -707,14 +707,15 @@ impl BigCoefficient {
     }
 }
 
-/// Generic CSSOM literals and color alpha/mix have distinct signed tie rules.
+/// Generic specified coefficients use away-from-zero ties; exact color
+/// rationals and final ordinary sRGB scalars use ties toward positive infinity.
 #[derive(Clone, Copy)]
-enum DecimalRounding {
+pub(crate) enum DecimalRounding {
     TowardPositiveInfinity,
     AwayFromZero,
 }
 impl DecimalRounding {
-    fn rounds_up(self, ordering: std::cmp::Ordering, negative: bool) -> bool {
+    pub(crate) fn rounds_up(self, ordering: std::cmp::Ordering, negative: bool) -> bool {
         ordering.is_gt() || (ordering.is_eq() && (matches!(self, Self::AwayFromZero) || !negative))
     }
 }

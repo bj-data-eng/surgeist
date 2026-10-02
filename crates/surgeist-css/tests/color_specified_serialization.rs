@@ -37,7 +37,7 @@ fn standalone_color4_branches_have_source_derived_canonical_text() {
         ),
         ("rgb(none 0 255)", "color(srgb none 0 1)"),
         ("hsl(none 50% 50%)", "hsl(none 50% 50%)"),
-        ("hsl(none calc(50) 50%)", "hsl(none calc(50%) 50%)"),
+        ("hsl(none calc(50) 50%)", "hsl(none 50% 50%)"),
         ("hwb(30 -20% -30%)", "rgb(255, 140.25, 0)"),
         ("rgb(1e400 -1e400 50%)", "rgb(255, 0, 127.5)"),
         ("hsl(0 1e400% 50%)", "rgb(255, 0, 0)"),
@@ -192,7 +192,7 @@ fn deferred_hsl_hwb_radian_and_alpha_order_follow_adopted_policies() {
         ),
         (
             "hsl(calc(1em / 1px) calc(-20%) 50%)",
-            "hsl(calc(1em / 1px) calc(-20%) 50%)",
+            "hsl(calc(1em / 1px) 0% 50%)",
         ),
         ("color(srgb 1 0 0 / 0.9999996)", "color(srgb 1 0 0 / 1)"),
         ("color(srgb 1 0 0 / 1)", "color(srgb 1 0 0)"),

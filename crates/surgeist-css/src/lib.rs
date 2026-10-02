@@ -587,13 +587,21 @@
 //! before formatting, while origin alpha preserves its dimension. Calculated weights keep
 //! percentages and their calculation wrapper, preventing omitted sibling shares from being
 //! filled even when they emit `calc(50%)`. These rules apply to nested mixes and ordinary
-//! colors inside a mix used as an origin. Fully numeric standalone non-alpha color
-//! calculations keep their separate text and scratch policies. Retained alpha, weight and
+//! colors inside a mix used as an origin. Resolved ordinary RGB/HSL/HWB non-alpha slots
+//! emit scalars, including resolved siblings of contextual slots. Finite calculated scalars
+//! round their original post-scale binary64 bits to six fractional places, nearest with ties
+//! toward positive infinity; HSL/HWB conversion formats the final clipped RGB channels.
+//! Direct literals keep exact decimal arithmetic. Captures must succeed before finalization
+//! and keep their scratch costs even when final text is shorter. Retained alpha, weight and
 //! contextual component captures count rounded scratch text within the cumulative budget.
 //! Any directly missing ordinary RGB/HSL/HWB component, including alpha, selects a form
 //! preserving `none`; omitted or calculated alpha alone does not. RGB uses normalized
 //! `color(srgb ...)`, while HSL/HWB retain their named functions. Direct HSL/HWB channels
-//! emit percentages and a bare degree hue; calculations keep their separate output policies.
+//! emit percentages and a bare degree hue. RGB clamps to its output domain; HSL saturation
+//! has a zero minimum, including resolved negative/NaN calculations under the selected
+//! frozen WebKit interpretation. Named lightness and HWB percentages remain unbounded,
+//! with NaN becoming zero and dimensional infinities remaining valid calculations.
+//! Numeric hue normalizes modulo 360 before conversion or named-form rounding.
 //! Ordinary mix children follow the same rule, with cumulative limits on the actual text.
 //! Integer calculation text follows the finite number policy without
 //! computed integer rounding; ordinary integer

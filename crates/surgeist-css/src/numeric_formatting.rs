@@ -2,9 +2,10 @@
 //!
 //! CSSOM limits fractional text to six places. Its decimal tie direction is
 //! unspecified; the selected frozen WebKit FIXED policy rounds ties away from
-//! zero. Color calculation text retains its separate formatter.
+//! zero. Final ordinary sRGB scalars select Color 4 ties toward positive infinity
+//! on the same finite-bit kernel; retained color calculation roles stay separate.
 
-use crate::exact_decimal::LexicalDecimal;
+use crate::exact_decimal::{DecimalRounding, LexicalDecimal};
 use crate::{
     CssSpecifiedValueSerializationError as Error, CssSpecifiedValueSerializationErrorKind,
 };
@@ -92,6 +93,17 @@ pub(crate) fn format_css_number(text: &str, shift: i128, limit: usize) -> Result
 /// or a shortest-decimal intermediate. Fixed stack storage covers every finite
 /// binary64 integer; only the final bounded text is allocated.
 pub(crate) fn format_projected_number(value: f64, limit: usize) -> Result<String> {
+    format_finite_number(value, limit, DecimalRounding::AwayFromZero)
+}
+
+/// Final ordinary sRGB text uses nearest millionths with exact ties toward
+/// positive infinity. The supplied value is the original post-scale outcome or
+/// the owning color algorithm's final binary64 channel, never decimal text.
+pub(crate) fn format_ordinary_color_number(value: f64, limit: usize) -> Result<String> {
+    format_finite_number(value, limit, DecimalRounding::TowardPositiveInfinity)
+}
+
+fn format_finite_number(value: f64, limit: usize, rounding: DecimalRounding) -> Result<String> {
     assert!(value.is_finite(), "checked finite projected scalar");
     let bits = value.to_bits();
     let negative = bits >> 63 != 0;
@@ -115,7 +127,10 @@ pub(crate) fn format_projected_number(value: f64, limit: usize) -> Result<String
             0
         } else {
             let denominator = 1_u128 << shift;
-            numerator / denominator + u128::from(numerator % denominator >= denominator / 2)
+            numerator / denominator
+                + u128::from(
+                    rounding.rounds_up((numerator % denominator).cmp(&(denominator / 2)), negative),
+                )
         };
         if rounded == 0 {
             return emit(std::iter::empty(), 0, 0, false, limit);
@@ -265,6 +280,42 @@ mod tests {
     }
 
     #[test]
+    fn ordinary_color_rounding_uses_positive_ties_and_exact_final_bounds() {
+        for (value, expected) in [
+            (f64::from_bits(0x3f7fffffffffffff), "0.007812"),
+            (f64::from_bits(0x3f80000000000000), "0.007813"),
+            (f64::from_bits(0x3f80000000000001), "0.007813"),
+            (-f64::from_bits(0x3f7fffffffffffff), "-0.007812"),
+            (-f64::from_bits(0x3f80000000000000), "-0.007812"),
+            (-f64::from_bits(0x3f80000000000001), "-0.007813"),
+            (f64::from_bits(0x3ea0c6f7a0b5ed8d), "0"),
+            (f64::from_bits(0x3ea0c6f7a0b5ed8e), "0.000001"),
+            (-f64::from_bits(0x3ea0c6f7a0b5ed8d), "0"),
+            (-f64::from_bits(0x3ea0c6f7a0b5ed8e), "-0.000001"),
+            (0.9999996, "1"),
+            (-0.9999996, "-1"),
+            (f64::from_bits(1), "0"),
+            (-f64::from_bits(1), "0"),
+            (f64::MIN_POSITIVE, "0"),
+            (-f64::MIN_POSITIVE, "0"),
+            (0.0, "0"),
+            (-0.0, "0"),
+            (f64::from_bits(0x43ab_c16d_674e_c801), "1000000000000000128"),
+        ] {
+            assert_eq!(
+                format_ordinary_color_number(value, expected.len()).unwrap(),
+                expected
+            );
+            assert_eq!(
+                format_ordinary_color_number(value, expected.len() - 1)
+                    .unwrap_err()
+                    .kind(),
+                ByteLimit
+            );
+        }
+    }
+
+    #[test]
     fn maximum_projected_integer_is_exact_and_preflighted() {
         // (2^53 - 1) * 2^971, independently expanded integer oracle.
         const INTEGER: &str = concat!(
@@ -274,19 +325,12 @@ mod tests {
             "583236903222948165808559332123348274797826204144723168738177180919299881",
             "250404026184124858368"
         );
-        assert_eq!(format_projected_number(f64::MAX, 309).unwrap(), INTEGER);
-        assert_eq!(
-            format_projected_number(-f64::MAX, 310).unwrap(),
-            format!("-{INTEGER}")
-        );
-        assert_eq!(
-            format_projected_number(f64::MAX, 308).unwrap_err().kind(),
-            ByteLimit
-        );
-        assert_eq!(
-            format_projected_number(-f64::MAX, 309).unwrap_err().kind(),
-            ByteLimit
-        );
+        for formatter in [format_projected_number, format_ordinary_color_number] {
+            assert_eq!(formatter(f64::MAX, 309).unwrap(), INTEGER);
+            assert_eq!(formatter(-f64::MAX, 310).unwrap(), format!("-{INTEGER}"));
+            assert_eq!(formatter(f64::MAX, 308).unwrap_err().kind(), ByteLimit);
+            assert_eq!(formatter(-f64::MAX, 309).unwrap_err().kind(), ByteLimit);
+        }
     }
 
     #[test]

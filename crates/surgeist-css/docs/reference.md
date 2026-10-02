@@ -564,9 +564,19 @@ serializes as `calc(50%)`; serialization does not fill an omitted sibling weight
 or normalize authored shares. These rules apply to nested mixes and to ordinary
 colors inside a mix used as an origin.
 
-Fully numeric standalone non-alpha color calculations and media-query writers
-retain their separate text policies. Numeric non-alpha color captures retain
-their scratch costs even when their text is discarded during conversion.
+Ordinary RGB, HSL and HWB non-alpha slots that resolve without external context
+emit final scalar text, including resolved siblings of contextual slots. Finite
+calculated scalars round their original post-scale binary64 bits to at most six fractional places,
+nearest with ties toward positive infinity under
+[Color 4's sRGB serialization rule](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#css-serialization-of-srgb).
+Six places is this implementation's bounded precision choice. Thus
+`hwb(none calc(-1 / 128) 20%)` emits `hwb(none -0.007812% 20%)`;
+the contextual coefficient policy above still rounds negative ties away from zero.
+Direct literals retain their exact decimal arithmetic. Media-query writers retain
+their separate text policies. Numeric non-alpha color captures must succeed
+before final scalar emission and retain their scratch costs even when their text
+is discarded. For example, `hsl(none calc(-10000000000) 50%)` needs a
+19-byte capture budget although its final `hsl(none 0% 50%)` is only 16 bytes.
 Retained alpha, weight and contextual component captures count rounded text
 against their scratch bounds, using the same cumulative traversal budget.
 Mathematical arithmetic precision and range remain unfinished; canonical text
@@ -2127,7 +2137,25 @@ relative channels or a mix, or gamut-map a color.
 Any directly missing component, including alpha, selects a form preserving
 `none`: ordinary RGB emits normalized `color(srgb ...)`, while HSL and HWB
 retain their named functions. Direct HSL/HWB channels emit percentages and a
-bare degree hue; calculations keep their separately described output policies.
+bare degree hue. Resolved ordinary non-alpha calculations emit scalars under the
+[calculated number policy](#calculated-number-output); contextual slots retain
+their calculation trees. RGB channels clamp to their output domain: 0..255 in
+legacy `rgb()`, or 0..1 after number/255 or percentage/100 scaling in the
+missing-preserving form. RGB NaN and negative infinity become zero; positive
+infinity becomes the upper endpoint.
+HSL saturation has a zero minimum and no upper bound. The selected eager
+normalization also applies to resolved negative, NaN and negative-infinite
+saturation calculations, following the
+[frozen WebKit parser interpretation](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/parser/CSSPropertyParserConsumer%2BColor.cpp#L187).
+Named HSL lightness and HWB whiteness/blackness remain unbounded; NaN becomes
+zero, while dimensional infinities retain valid `calc(infinity * 1%)` or
+`calc(-infinity * 1%)` text. Numeric hue normalizes to degrees modulo 360,
+with NaN and infinities becoming zero. Preserved named forms round calculated hue after
+normalization and map a rounded 360 back to zero; direct hue retains its exact
+literal path. RGB conversion uses the
+normalized unrounded hue.
+When HSL/HWB convert to RGB, the final converted and clipped binary64 channels
+use the same six-place positive-tie policy.
 For example, `rgb(255 0 0 / none)` emits `color(srgb 1 0 0 / none)`.
 An omitted alpha or a calculated alpha does not itself select this form.
 These rules also apply to ordinary children of `color-mix()`. Byte limits count
@@ -2193,7 +2221,7 @@ weights, resolve profiles, or evaluate colors. Specified serialization fills
 known omitted weights exactly before selected six-place rounding, keeps unknown
 calculation omissions, and omits equal effective shares with default Oklab.
 
-This crate does not perform color conversion, relative-channel evaluation,
+This crate does not perform general color-space conversion, relative-channel evaluation,
 gamut mapping, contrast selection, or rendering.
 
 ## Authored opacity and specified serialization

@@ -370,7 +370,7 @@ text_case!(
 text_case!(
     numeric_missing_control,
     "hsl(none calc(.0078125) 50%)",
-    "hsl(none calc(0.0078125%) 50%)"
+    "hsl(none 0.007813% 50%)"
 );
 text_case!(rgb_resolved_control, "rgb(calc(300) 0 0)", "rgb(255, 0, 0)");
 text_case!(
