@@ -111,7 +111,9 @@ impl CssPolarColorCoordinates {
 /// Lab number units have typical L in `0..100`. All finite extended coordinates
 /// are accepted without clamping. L is copied bit-for-bit; C uses stable hypot.
 /// Exactly C greater than `0.0015` produces normalized atan2(b, a) hue in degrees;
-/// at or below this threshold hue is missing. Nonfinite inputs are rejected in
+/// at or below this threshold hue is missing and chroma becomes positive zero,
+/// applying Color 4 §4.4.1's conversion-generated neutral cleanup.
+/// Nonfinite inputs are rejected in
 /// index order before arithmetic; overflowing required C returns an error.
 /// Ordinary `f64` rounding applies, and neutral conversion loses the axes on
 /// inversion. This does not evaluate authored CSS or convert between spaces.
@@ -133,8 +135,8 @@ pub fn convert_lab_to_lch(
 ///
 /// Oklab number units have typical L in `0..1`. This follows
 /// [`convert_lab_to_lch`]'s finite-input, extended-coordinate, lightness, stable
-/// hypot, error, and rounding contract, but hue is present only for C strictly
-/// greater than `0.000004`, as specified in §9.4.
+/// hypot, neutral cleanup, error, and rounding contract, but hue is present only
+/// for C strictly greater than `0.000004`, as specified in §9.4.
 ///
 /// ```
 /// use surgeist_css::convert_oklab_to_oklch;
@@ -209,14 +211,17 @@ fn rectangular_to_polar(
     if !chroma.is_finite() {
         return Err(CssPolarColorConversionError::UnrepresentableResult);
     }
+    if chroma <= epsilon {
+        return Ok(CssPolarColorCoordinates {
+            lightness,
+            chroma: 0.0,
+            hue_degrees: None,
+        });
+    }
     Ok(CssPolarColorCoordinates {
         lightness,
         chroma,
-        hue_degrees: if chroma > epsilon {
-            Some(normalize_hue(b.atan2(a).to_degrees()))
-        } else {
-            None
-        },
+        hue_degrees: Some(normalize_hue(b.atan2(a).to_degrees())),
     })
 }
 

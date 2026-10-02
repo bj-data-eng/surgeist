@@ -253,6 +253,14 @@ manually supplied hue and leave authored parsing and specified serialization
 under their separate contracts; they do not adopt WebKit's float narrowing or
 claim the draft requirements agree.
 
+Lab-to-LCH and Oklab-to-Oklch conversion likewise uses the specific tables'
+inclusive chroma thresholds, recorded as two individual reconciliations with
+the generic less-than wording. The normative conversion-generated cleanup
+zeros positive chroma when hue becomes missing; frozen WebKit applies it to
+both families. The conversion formula does not exclude that cleanup, and the
+nonnormative JavaScript samples do not override it. Manually constructed
+coordinates retain their supplied chroma and hue independently of conversion.
+
 Text 4's `text-align` and `text-align-all` tables show a standalone `<string>`
 alternative, but its prose and example expressly combine a string with a keyword.
 The catalog's localized reconciliation retains the five positional keywords from

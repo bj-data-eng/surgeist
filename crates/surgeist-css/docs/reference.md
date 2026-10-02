@@ -2382,7 +2382,11 @@ calculates chroma without intermediate squaring overflow or underflow.
 The resulting `CssPolarColorCoordinates` exposes `lightness()`, `chroma()` and
 `hue_degrees()`. Hue is normalized atan2(b, a) in degrees when chroma is strictly
 greater than `0.0015` for Lab or `0.000004` for Oklab; at equality and below,
-it is `None`. These thresholds come from Color 4 §§9.3–9.4.
+it is `None` and chroma becomes positive zero, applying
+[Color 4's conversion-generated neutral cleanup](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#powerless).
+The inclusive thresholds come from Color 4 §§9.3–9.4 and its conversion
+algorithm. Their discrepancy with the generic less-than wording is recorded
+individually in the catalog using frozen WebKit's inclusive behavior.
 
 `CssPolarColorCoordinates::try_new(L, C, Option<H>)` checks finite values in
 L/C/H order before rejecting negative chroma. It preserves lightness bits,
