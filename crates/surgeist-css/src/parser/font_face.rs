@@ -253,9 +253,10 @@ fn parse_font_face_value_with_components<'i, 't>(
     member_diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
     implicit_closures: &mut Vec<usize>,
 ) -> Result<CssAuthoredFontFaceDescriptorValue, ParseError<'i, Error>> {
-    let pending = super::variables::font_face_env_qualifies(components.items(), numeric).map_err(
-        |error| crate::error::invalid_component_value(input.current_source_location(), error),
-    )?;
+    let pending = super::variables::descriptor_environment_qualifies(components.items(), numeric)
+        .map_err(|error| {
+        crate::error::invalid_component_value(input.current_source_location(), error)
+    })?;
     if pending {
         return parse_descriptor_boundary(input, "font-face", kind.css_name(), |input| {
             consume_remaining_components(input)?;

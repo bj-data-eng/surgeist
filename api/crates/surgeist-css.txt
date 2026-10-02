@@ -493,6 +493,33 @@ pub surgeist_css::CssColorMixConstructionError::NestingLimit
 impl core::error::Error for surgeist_css::CssColorMixConstructionError
 impl core::fmt::Display for surgeist_css::CssColorMixConstructionError
 pub fn surgeist_css::CssColorMixConstructionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+#[non_exhaustive] pub enum surgeist_css::CssColorProfileDescriptorKind
+pub surgeist_css::CssColorProfileDescriptorKind::Components
+pub surgeist_css::CssColorProfileDescriptorKind::RenderingIntent
+pub surgeist_css::CssColorProfileDescriptorKind::Src
+impl surgeist_css::CssColorProfileDescriptorKind
+pub const fn surgeist_css::CssColorProfileDescriptorKind::css_name(self) -> &'static str
+#[non_exhaustive] pub enum surgeist_css::CssColorProfileDescriptorValueRef<'a>
+pub surgeist_css::CssColorProfileDescriptorValueRef::Components(&'a [surgeist_css::CssColorProfileComponentName])
+pub surgeist_css::CssColorProfileDescriptorValueRef::Pending(&'a surgeist_css::CssSubstitutionDependentValue)
+pub surgeist_css::CssColorProfileDescriptorValueRef::RenderingIntent(surgeist_css::CssColorProfileRenderingIntent)
+pub surgeist_css::CssColorProfileDescriptorValueRef::Src(&'a surgeist_css::CssUrl)
+pub enum surgeist_css::CssColorProfileRenderingIntent
+pub surgeist_css::CssColorProfileRenderingIntent::AbsoluteColorimetric
+pub surgeist_css::CssColorProfileRenderingIntent::Perceptual
+pub surgeist_css::CssColorProfileRenderingIntent::RelativeColorimetric
+pub surgeist_css::CssColorProfileRenderingIntent::Saturation
+impl surgeist_css::CssColorProfileRenderingIntent
+pub const fn surgeist_css::CssColorProfileRenderingIntent::css_name(self) -> &'static str
+pub enum surgeist_css::CssColorProfileRuleName
+pub surgeist_css::CssColorProfileRuleName::Custom(surgeist_css::CssColorProfileName)
+pub surgeist_css::CssColorProfileRuleName::DeviceCmyk
+#[non_exhaustive] pub enum surgeist_css::CssColorProfileValueErrorKind
+pub surgeist_css::CssColorProfileValueErrorKind::Component(surgeist_css::CssComponentValueErrorKind)
+pub surgeist_css::CssColorProfileValueErrorKind::Grammar(surgeist_css::ErrorKind)
+pub surgeist_css::CssColorProfileValueErrorKind::NotPending
+pub surgeist_css::CssColorProfileValueErrorKind::RecoveredComponent
+pub surgeist_css::CssColorProfileValueErrorKind::ResidualSubstitution
 #[non_exhaustive] pub enum surgeist_css::CssColorScalarErrorKind
 pub surgeist_css::CssColorScalarErrorKind::InvalidComponent
 pub surgeist_css::CssColorScalarErrorKind::OutOfRange
@@ -3424,6 +3451,7 @@ pub surgeist_css::CssRoundingStrategy::Nearest
 pub surgeist_css::CssRoundingStrategy::ToZero
 pub surgeist_css::CssRoundingStrategy::Up
 #[non_exhaustive] pub enum surgeist_css::CssRule
+pub surgeist_css::CssRule::ColorProfile(surgeist_css::CssColorProfileRule)
 pub surgeist_css::CssRule::Container(surgeist_css::CssContainerRule)
 pub surgeist_css::CssRule::CounterStyle(surgeist_css::CssCounterStyleRule)
 pub surgeist_css::CssRule::CustomMedia(surgeist_css::CssCustomMediaRule)
@@ -3446,6 +3474,7 @@ impl surgeist_css::CssRule
 pub fn surgeist_css::CssRule::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedRuleSerializationError>
 pub fn surgeist_css::CssRule::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedRuleSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssRuleContextKindRef<'a>
+pub surgeist_css::CssRuleContextKindRef::ColorProfile(&'a surgeist_css::CssColorProfileRule)
 pub surgeist_css::CssRuleContextKindRef::Container
 pub surgeist_css::CssRuleContextKindRef::Container::prelude: &'a surgeist_css::CssContainerPrelude
 pub surgeist_css::CssRuleContextKindRef::CounterStyle(&'a surgeist_css::CssCounterStyleRule)
@@ -3475,6 +3504,7 @@ pub surgeist_css::CssScale::Values(surgeist_css::CssScaleValues)
 pub surgeist_css::CssScanMode::Interlace
 pub surgeist_css::CssScanMode::Progressive
 #[non_exhaustive] pub enum surgeist_css::CssScopedRule
+pub surgeist_css::CssScopedRule::ColorProfile(surgeist_css::CssColorProfileRule)
 pub surgeist_css::CssScopedRule::Container(surgeist_css::CssScopedContainerRule)
 pub surgeist_css::CssScopedRule::CounterStyle(surgeist_css::CssCounterStyleRule)
 pub surgeist_css::CssScopedRule::CustomMedia(surgeist_css::CssCustomMediaRule)
@@ -5107,10 +5137,48 @@ pub struct surgeist_css::CssColorProfileComponentName(_)
 impl surgeist_css::CssColorProfileComponentName
 pub fn surgeist_css::CssColorProfileComponentName::as_str(&self) -> &str
 pub fn surgeist_css::CssColorProfileComponentName::try_new(decoded: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub struct surgeist_css::CssColorProfileDescriptor
+impl surgeist_css::CssColorProfileDescriptor
+pub const fn surgeist_css::CssColorProfileDescriptor::new(value: surgeist_css::CssColorProfileDescriptorValue) -> Self
+pub const fn surgeist_css::CssColorProfileDescriptor::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+pub const fn surgeist_css::CssColorProfileDescriptor::value(&self) -> &surgeist_css::CssColorProfileDescriptorValue
+impl surgeist_css::CssColorProfileDescriptor
+pub fn surgeist_css::CssColorProfileDescriptor::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssColorProfileDescriptor::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssColorProfileDescriptorValue
+impl surgeist_css::CssColorProfileDescriptorValue
+pub const fn surgeist_css::CssColorProfileDescriptorValue::components(&self) -> &surgeist_css::CssComponentValues
+pub const fn surgeist_css::CssColorProfileDescriptorValue::kind(&self) -> surgeist_css::CssColorProfileDescriptorKind
+pub fn surgeist_css::CssColorProfileDescriptorValue::reparse_after_substitution(&self, replacement: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssColorProfileValueError>
+pub fn surgeist_css::CssColorProfileDescriptorValue::reparse_after_substitution_with_limits(&self, replacement: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssColorProfileValueError>
+pub fn surgeist_css::CssColorProfileDescriptorValue::try_new(kind: surgeist_css::CssColorProfileDescriptorKind, components: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssColorProfileValueError>
+pub fn surgeist_css::CssColorProfileDescriptorValue::try_new_with_limits(kind: surgeist_css::CssColorProfileDescriptorKind, components: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssColorProfileValueError>
+pub fn surgeist_css::CssColorProfileDescriptorValue::view(&self) -> surgeist_css::CssColorProfileDescriptorValueRef<'_>
+impl surgeist_css::CssColorProfileDescriptorValue
+pub fn surgeist_css::CssColorProfileDescriptorValue::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssColorProfileDescriptorValue::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssColorProfileName(_)
 impl surgeist_css::CssColorProfileName
 pub fn surgeist_css::CssColorProfileName::as_str(&self) -> &str
 pub fn surgeist_css::CssColorProfileName::try_new(decoded: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub struct surgeist_css::CssColorProfileRule
+impl surgeist_css::CssColorProfileRule
+pub fn surgeist_css::CssColorProfileRule::descriptors(&self) -> &[surgeist_css::CssColorProfileDescriptor]
+pub fn surgeist_css::CssColorProfileRule::effective(&self, kind: surgeist_css::CssColorProfileDescriptorKind) -> core::option::Option<&surgeist_css::CssColorProfileDescriptorValue>
+pub const fn surgeist_css::CssColorProfileRule::name(&self) -> &surgeist_css::CssColorProfileRuleName
+pub const fn surgeist_css::CssColorProfileRule::new(name: surgeist_css::CssColorProfileRuleName, descriptors: alloc::vec::Vec<surgeist_css::CssColorProfileDescriptor>) -> Self
+pub const fn surgeist_css::CssColorProfileRule::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+impl surgeist_css::CssColorProfileRule
+pub fn surgeist_css::CssColorProfileRule::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssColorProfileRule::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssColorProfileValueError
+impl surgeist_css::CssColorProfileValueError
+pub fn surgeist_css::CssColorProfileValueError::kind(&self) -> &surgeist_css::CssColorProfileValueErrorKind
+pub fn surgeist_css::CssColorProfileValueError::origin(&self) -> &surgeist_css::CssSerializedOrigin
+impl core::error::Error for surgeist_css::CssColorProfileValueError
+pub fn surgeist_css::CssColorProfileValueError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_css::CssColorProfileValueError
+pub fn surgeist_css::CssColorProfileValueError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css::CssColorPropertyValue
 impl surgeist_css::CssColorPropertyValue
 pub fn surgeist_css::CssColorPropertyValue::as_css(&self) -> &str
@@ -9064,6 +9132,7 @@ pub fn surgeist_css::normalize_report(report: &surgeist_css::CssParseReport<surg
 pub fn surgeist_css::normalize_report_with_limits(report: &surgeist_css::CssParseReport<surgeist_css::CssSheet>, limits: surgeist_css::CssNormalizationLimits) -> core::result::Result<surgeist_css::CssNormalizedReport, surgeist_css::CssNormalizationError>
 pub fn surgeist_css::normalize_sheet(sheet: &surgeist_css::CssSheet) -> core::result::Result<surgeist_css::CssNormalizedSheet, surgeist_css::CssNormalizationError>
 pub fn surgeist_css::normalize_sheet_with_limits(sheet: &surgeist_css::CssSheet, limits: surgeist_css::CssNormalizationLimits) -> core::result::Result<surgeist_css::CssNormalizedSheet, surgeist_css::CssNormalizationError>
+pub fn surgeist_css::parse_color_profile_descriptor_value(source: &str, descriptor: surgeist_css::CssColorProfileDescriptorKind) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssColorProfileDescriptorValue>>
 pub fn surgeist_css::parse_component_values(source: &str) -> core::result::Result<surgeist_css::CssComponentValues, surgeist_css::CssComponentValueError>
 pub fn surgeist_css::parse_component_values_with_limits(source: &str, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<surgeist_css::CssComponentValues, surgeist_css::CssComponentValueError>
 pub fn surgeist_css::parse_declaration(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssDeclaration>>

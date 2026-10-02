@@ -233,6 +233,9 @@ fn append_rule(
     index: Option<usize>,
 ) -> Result<(), CssSpecifiedRuleSerializationError> {
     match rule {
+        CssRule::ColorProfile(rule) => writer
+            .color_profile(rule)
+            .map_err(|error| CssSpecifiedRuleSerializationError::resource(error, index)),
         CssRule::FontPaletteValues(rule) => writer
             .palette(rule)
             .map_err(|error| CssSpecifiedRuleSerializationError::resource(error, index)),

@@ -2729,7 +2729,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 632] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 636] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -4021,6 +4021,34 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 632] = [
         "#font-feature-values-syntax",
         "Ordered family lists, all seven subsidiary blocks, font-display, exact unbounded nonnegative integer tokens, checked construction, local recovery, ordinary group placement, and opaque normalization.",
         "Provisional section 6.9.1 constraints conflict with section 6.9.2 on character-variant one-index cardinality, first indexes above 99, and styleset indexes above 20. These three requirements remain unresolved. General rule serialization is unfinished; no CSSOM mapping or cascade is provided.",
+    ),
+    CssFeatureMetadata::complete(
+        "interop.rule.color-profile",
+        CssFeatureKind::Rule,
+        "@color-profile",
+        I_COLOR5_20260908,
+        "#at-profile",
+    ),
+    CssFeatureMetadata::complete(
+        "interop.descriptor.color-profile.src",
+        CssFeatureKind::Descriptor,
+        "src in @color-profile",
+        I_COLOR5_20260908,
+        "#descdef-color-profile-src",
+    ),
+    CssFeatureMetadata::complete(
+        "interop.descriptor.color-profile.rendering-intent",
+        CssFeatureKind::Descriptor,
+        "rendering-intent in @color-profile",
+        I_COLOR5_20260908,
+        "#descdef-color-profile-rendering-intent",
+    ),
+    CssFeatureMetadata::complete(
+        "interop.descriptor.color-profile.components",
+        CssFeatureKind::Descriptor,
+        "components in @color-profile",
+        I_COLOR5_20260908,
+        "#descdef-color-profile-components",
     ),
     CssFeatureMetadata::complete(
         "later.rule.font-palette-values",

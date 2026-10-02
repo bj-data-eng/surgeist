@@ -490,8 +490,8 @@ pub(crate) fn descriptor_substitution_qualifies(
     Ok(summary.var.qualifies() || summary.env.qualifies())
 }
 
-/// Font-face descriptors defer only for a syntactically valid env() family.
-pub(crate) fn font_face_env_qualifies(
+/// Descriptors without a separate var() exception defer only for valid env().
+pub(crate) fn descriptor_environment_qualifies(
     items: &[CssComponentValue],
     numeric: &NumericInputContext<'_>,
 ) -> Result<bool, CssComponentValueError> {

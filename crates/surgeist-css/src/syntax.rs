@@ -21,7 +21,7 @@ use crate::{
     CssFontWeight, CssFontWidthKeyword, CssLineHeight, CssTimeValue, CssValueOrigin,
 };
 use crate::{
-    CssContainerScrollQuery, CssContainerStyleQuery, CssFontFeatureValuesRule,
+    CssColorProfileRule, CssContainerScrollQuery, CssContainerStyleQuery, CssFontFeatureValuesRule,
     CssFontPaletteValuesRule,
 };
 pub(crate) use crate::{
@@ -170,6 +170,7 @@ pub enum CssRule {
     FontFace(CssFontFaceRule),
     FontFeatureValues(CssFontFeatureValuesRule),
     FontPaletteValues(CssFontPaletteValuesRule),
+    ColorProfile(CssColorProfileRule),
     Keyframes(CssKeyframesRule),
     Style(CssStyleRule),
     NestedDeclarations(CssNestedDeclarationsRule),
@@ -2036,6 +2037,7 @@ pub enum CssScopedRule {
     CustomMedia(crate::CssCustomMediaRule),
     FontFeatureValues(CssFontFeatureValuesRule),
     FontPaletteValues(CssFontPaletteValuesRule),
+    ColorProfile(CssColorProfileRule),
     Style(CssScopedStyleRule),
     Media(CssScopedMediaRule),
     Supports(CssScopedSupportsRule),

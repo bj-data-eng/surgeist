@@ -1242,6 +1242,8 @@ mod background_serialization;
 mod border_color;
 mod border_image_serialization;
 mod clip_path_serialization;
+mod color_profile;
+mod color_profile_serialization;
 mod component_values;
 mod conformance;
 mod content_serialization;
@@ -1446,6 +1448,7 @@ pub use numeric::{
 mod test_support;
 mod validation;
 
+pub use color_profile::*;
 pub use component_values::{
     CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueErrorKind,
     CssComponentValueLimits, CssComponentValueRef, CssComponentValues, CssFunctionValue,
@@ -1477,10 +1480,11 @@ pub use normalization::{
     normalize_sheet, normalize_sheet_with_limits,
 };
 pub use parser::{
-    CssNamespaceContext, parse_declaration, parse_font_face_descriptor_value,
-    parse_font_palette_descriptor_value, parse_media_query, parse_media_query_list,
-    parse_property_value_text, parse_property_value_text_for_grammar, parse_rule, parse_selector,
-    parse_selector_list, parse_sheet, parse_style_attribute, parse_style_block,
+    CssNamespaceContext, parse_color_profile_descriptor_value, parse_declaration,
+    parse_font_face_descriptor_value, parse_font_palette_descriptor_value, parse_media_query,
+    parse_media_query_list, parse_property_value_text, parse_property_value_text_for_grammar,
+    parse_rule, parse_selector, parse_selector_list, parse_sheet, parse_style_attribute,
+    parse_style_block,
 };
 pub use properties::*;
 pub use property_value::{

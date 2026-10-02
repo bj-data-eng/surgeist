@@ -5,9 +5,9 @@ use std::sync::Arc;
 
 use crate::syntax::*;
 use crate::{
-    CssCustomMediaRule, CssExpansion, CssExpansionError, CssFontFeatureValuesRule,
-    CssFontPaletteValuesRule, CssParseReport, CssRecoveryDiagnostic, CssSourcePosition,
-    CssSupportsConditionRule, expand_declaration,
+    CssColorProfileRule, CssCustomMediaRule, CssExpansion, CssExpansionError,
+    CssFontFeatureValuesRule, CssFontPaletteValuesRule, CssParseReport, CssRecoveryDiagnostic,
+    CssSourcePosition, CssSupportsConditionRule, expand_declaration,
 };
 
 /// Traversal and output budgets for one atomic stylesheet normalization.
@@ -388,6 +388,7 @@ pub enum CssRuleContextKindRef<'a> {
     CustomMedia(&'a CssCustomMediaRule),
     FontFeatureValues(&'a CssFontFeatureValuesRule),
     FontPaletteValues(&'a CssFontPaletteValuesRule),
+    ColorProfile(&'a CssColorProfileRule),
     Keyframes(&'a CssKeyframesRule),
     CounterStyle(&'a CssCounterStyleRule),
     Page(&'a CssPageRule),
@@ -416,6 +417,7 @@ enum RuleContextKind {
     CustomMedia(CssCustomMediaRule),
     FontFeatureValues(CssFontFeatureValuesRule),
     FontPaletteValues(CssFontPaletteValuesRule),
+    ColorProfile(CssColorProfileRule),
     Keyframes(CssKeyframesRule),
     CounterStyle(CssCounterStyleRule),
     Page(CssPageRule),
@@ -470,6 +472,7 @@ impl CssRuleContext {
             RuleContextKind::FontPaletteValues(value) => {
                 CssRuleContextKindRef::FontPaletteValues(value)
             }
+            RuleContextKind::ColorProfile(value) => CssRuleContextKindRef::ColorProfile(value),
             RuleContextKind::FontFace(value) => CssRuleContextKindRef::FontFace(value),
             RuleContextKind::Keyframes(value) => CssRuleContextKindRef::Keyframes(value),
             RuleContextKind::CounterStyle(value) => CssRuleContextKindRef::CounterStyle(value),
@@ -1017,6 +1020,13 @@ impl Normalizer {
                     context.rule,
                 );
             }
+            CssRule::ColorProfile(value) => {
+                self.record_rule(
+                    RuleContextKind::ColorProfile(value.clone()),
+                    position,
+                    context.rule,
+                );
+            }
             CssRule::FontFace(value) => {
                 self.record_rule(
                     RuleContextKind::FontFace(value.clone()),
@@ -1210,6 +1220,13 @@ impl Normalizer {
                     context.rule,
                 );
             }
+            CssScopedRule::ColorProfile(value) => {
+                self.record_rule(
+                    RuleContextKind::ColorProfile(value.clone()),
+                    position,
+                    context.rule,
+                );
+            }
             CssScopedRule::Scope(scope) => {
                 return Ok(Some(self.scope(scope, context, position, depth)));
             }
@@ -1236,6 +1253,7 @@ fn ordinary_position(rule: &CssRule) -> Option<CssSourcePosition> {
         CssRule::CustomMedia(value) => return value.position(),
         CssRule::FontFeatureValues(value) => return value.position(),
         CssRule::FontPaletteValues(value) => return value.position(),
+        CssRule::ColorProfile(value) => return value.position(),
         CssRule::FontFace(value) => value.position(),
         CssRule::Keyframes(value) => value.position(),
         CssRule::Media(value) => value.position(),
@@ -1251,6 +1269,7 @@ fn scoped_position(rule: &CssScopedRule) -> Option<CssSourcePosition> {
         CssScopedRule::CustomMedia(value) => return value.position(),
         CssScopedRule::FontFeatureValues(value) => return value.position(),
         CssScopedRule::FontPaletteValues(value) => return value.position(),
+        CssScopedRule::ColorProfile(value) => return value.position(),
         CssScopedRule::NestedDeclarations(value) => value.position(),
         CssScopedRule::CounterStyle(value) => value.position(),
         CssScopedRule::FontFace(value) => value.position(),

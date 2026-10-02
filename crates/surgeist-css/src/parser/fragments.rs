@@ -405,6 +405,34 @@ pub fn parse_font_palette_descriptor_value(
     })
 }
 
+/// Parses one complete authored color-profile descriptor with env-only deferral.
+pub fn parse_color_profile_descriptor_value(
+    source: &str,
+    descriptor: CssColorProfileDescriptorKind,
+) -> crate::CssParseReport<Option<CssColorProfileDescriptorValue>> {
+    bounded(source, || {
+        let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
+        let mut parser_input = ParserInput::new(source);
+        let mut input = Parser::new(&mut parser_input);
+        let result = (|| {
+            let openings = state.check_component_values(source, &input, "css.descriptor")?;
+            let value =
+                color_profile::parse_descriptor_value_from_parser(&mut input, descriptor, &state)?;
+            input.expect_exhausted().map_err(basic)?;
+            state.retain_component_closures(openings);
+            Ok(value)
+        })();
+        let (syntax, diagnostics) = match result {
+            Ok(value) => (Some(value), state.take_implicit_closure_diagnostics(source)),
+            Err(error) => (
+                None,
+                vec![reject(source, error, crate::CssRecoveryAction::RejectInput)],
+            ),
+        };
+        crate::CssParseReport::new(syntax, diagnostics)
+    })
+}
+
 /// Parses a complete raw property value using a supplied semantic property name.
 ///
 /// Importance is supplied separately: root annotations, semicolons and stray

@@ -2306,6 +2306,56 @@ conflict; §11.5 concerns computed serialization. The frozen WebKit source at
 implementation resolving that conflict. Naive conversion, contextual execution
 and computed serialization remain separate unfinished work.
 
+### Authored color profiles
+
+[`Color 5 §5.3`](https://www.w3.org/TR/2026/WD-css-color-5-20260908/#at-profile)
+defines `@color-profile` with exactly one dashed identifier or the reserved
+`device-cmyk` keyword. Custom names retain case, including the valid bare `--`;
+the reserved keyword is case-insensitive and distinct from `--device-cmyk`.
+`CssColorProfileRuleName` makes those identities explicit. Empty definitions and
+missing descriptors remain valid authored syntax.
+
+`src` accepts the shared Values 4 URL grammar, retaining `url()`/`src()` identity,
+target and modifiers. No URL resolution or ICC validation occurs. The four
+`CssColorProfileRenderingIntent` choices emit lowercase keywords; its default is
+the real initial `RelativeColorimetric`, without inventing an authored occurrence.
+`components` accepts a nonempty comma-separated list of ordinary identifiers.
+Decoded ASCII-case-insensitive `none` is excluded; CSS-wide names, `default`,
+duplicates, case-distinct names and escaped punctuation are accepted. Existing
+`CssColorProfileName` and `CssColorProfileComponentName` own checked identities.
+
+`CssColorProfileRule` retains every valid descriptor occurrence in source order;
+`effective(kind)` returns the last valid occurrence, including a pending one.
+It does not choose between duplicate profile definitions. Invalid descriptors
+and child rules recover independently with diagnostics while valid siblings and
+following rules survive. Clean validation rejects every diagnostic. Ordinary
+group lists, including scopes, retain global profiles with their parent contexts;
+a style-rule ancestor forbids them. Normalization exposes an intact
+`CssRuleContextKindRef::ColorProfile` payload and produces no style declarations
+from its descriptors.
+
+`parse_color_profile_descriptor_value` and
+`CssColorProfileDescriptorValue::try_new` share the whole-value grammar.
+Valid `env()` qualifies for whole-grammar deferral under
+[Env 1 §3](https://www.w3.org/TR/2025/WD-css-env-1-20250923/#env-function),
+including other tokens such as `var()` and matched blocks. A standalone `var()`
+does not qualify; quoted strings and URL data remain data. Pending values retain
+their components and origins. `reparse_after_substitution` accepts caller-supplied
+replacement components, rejects residual actual `var()`/`env()` functions,
+and returns an ordinary checked value or a typed error. Construction and reentry
+reject recovered implicit closures with their original closing origin; browser
+parsing can retain them with recovery diagnostics. CSS performs no substitution.
+
+Descriptor values, descriptor occurrences, and profile rules expose
+`to_specified_css` and bounded variants. The generic `CssRule` and `CssSheet`
+writers compose profile, palette and named-supports leaves under one cumulative
+input/projection/UTF-8 budget. Rule punctuation and newline joining follow the
+deterministic specified serialization policy. Style, ordinary groups and scopes
+retain typed atomic `UnsupportedRule` failures; their general emission remains
+unfinished. Four `interop.rule.color-profile` / `interop.descriptor.color-profile.*`
+records cite `I-COLOR5-20260908`; these describe one authored rule and three
+descriptor productions, without claiming complete Color 5 support.
+
 The selected September 8 Color 5 `contrast-color(<color>)` production retains
 exactly one symbolic input. `CssContrastColor::try_new` checks one wrapper plus
 the complete input graph against the 256-level ceiling; `color()` borrows the
@@ -3817,11 +3867,9 @@ three conflicting grammar requirements retain a documented provisional policy.
 Rule serialization for `@font-feature-values` remains unfinished; the selected
 palette rule kind has a canonical specified writer.
 
-The preceding public support catalog contained 456 records. The 31 additions
-above brought it to 487; fourteen additional media feature records and two
-custom-media rule/reference records reached 503. Later selected additions,
-including four palette rule/descriptor records, further extend the public support
-catalog. Its current cardinality comes from
+The public support catalog includes grammar-specific rule, descriptor and value
+records, including four palette and four color-profile records. Its current
+cardinality comes from
 [`feature_catalog()`](../src/conformance.rs). That
 catalog cardinality is distinct from the immutable official inventory of
 exactly 162 property units (161 canonical properties plus the custom-property
