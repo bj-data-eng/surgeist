@@ -3214,6 +3214,12 @@ pub fn surgeist_css::CssOverflowWrap::serialize_specified_with_limits(&self, lim
 pub surgeist_css::CssPageSelector::First
 pub surgeist_css::CssPageSelector::Left
 pub surgeist_css::CssPageSelector::Right
+#[non_exhaustive] pub enum surgeist_css::CssParsedColorAlphaRef<'a>
+pub surgeist_css::CssParsedColorAlphaRef::Missing
+pub surgeist_css::CssParsedColorAlphaRef::NumberCalculation(&'a surgeist_css::CssNumberCalculation)
+pub surgeist_css::CssParsedColorAlphaRef::Omitted
+pub surgeist_css::CssParsedColorAlphaRef::PercentageCalculation(&'a surgeist_css::CssPercentageCalculation)
+pub surgeist_css::CssParsedColorAlphaRef::Scalar(surgeist_css::CssColorAlphaScalarRef<'a>)
 #[non_exhaustive] pub enum surgeist_css::CssPathDataConstructionErrorKind
 pub surgeist_css::CssPathDataConstructionErrorKind::EmptyPath
 pub surgeist_css::CssPathDataConstructionErrorKind::ExpectedString
@@ -5123,6 +5129,14 @@ pub const fn surgeist_css::CssColor::system(&self) -> core::option::Option<surge
 pub fn surgeist_css::CssColor::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssColor::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub const fn surgeist_css::CssColor::transparent() -> Self
+pub struct surgeist_css::CssColorAlphaScalarRef<'a>
+impl<'a> surgeist_css::CssColorAlphaScalarRef<'a>
+pub fn surgeist_css::CssColorAlphaScalarRef<'a>::as_unit_f64(&self) -> f64
+pub const fn surgeist_css::CssColorAlphaScalarRef<'a>::authored_component(&self) -> &'a surgeist_css::CssColorComponent
+pub const fn surgeist_css::CssColorAlphaScalarRef<'a>::is_interior(&self) -> bool
+pub const fn surgeist_css::CssColorAlphaScalarRef<'a>::is_one(&self) -> bool
+pub const fn surgeist_css::CssColorAlphaScalarRef<'a>::is_zero(&self) -> bool
+pub fn surgeist_css::CssColorAlphaScalarRef<'a>::origin(&self) -> &'a surgeist_css::CssValueOrigin
 pub struct surgeist_css::CssColorComponentName(_)
 impl surgeist_css::CssColorComponentName
 pub fn surgeist_css::CssColorComponentName::as_str(&self) -> &str
@@ -6751,6 +6765,7 @@ impl surgeist_css::CssHslColor
 pub const fn surgeist_css::CssHslColor::alpha(&self) -> core::option::Option<&surgeist_css::CssColorComponent>
 pub const fn surgeist_css::CssHslColor::hue(&self) -> &surgeist_css::CssColorHue
 pub const fn surgeist_css::CssHslColor::lightness(&self) -> &surgeist_css::CssColorComponent
+pub fn surgeist_css::CssHslColor::parsed_alpha(&self) -> surgeist_css::CssParsedColorAlphaRef<'_>
 pub const fn surgeist_css::CssHslColor::saturation(&self) -> &surgeist_css::CssColorComponent
 pub const fn surgeist_css::CssHslColor::syntax(&self) -> surgeist_css::CssColorSyntax
 pub fn surgeist_css::CssHslColor::try_new(syntax: surgeist_css::CssColorSyntax, hue: surgeist_css::CssColorHue, saturation: surgeist_css::CssColorComponent, lightness: surgeist_css::CssColorComponent, alpha: core::option::Option<surgeist_css::CssColorComponent>) -> core::result::Result<Self, surgeist_css::CssColorConstructionError>
@@ -6765,6 +6780,7 @@ impl surgeist_css::CssHwbColor
 pub const fn surgeist_css::CssHwbColor::alpha(&self) -> core::option::Option<&surgeist_css::CssColorComponent>
 pub const fn surgeist_css::CssHwbColor::blackness(&self) -> &surgeist_css::CssColorComponent
 pub const fn surgeist_css::CssHwbColor::hue(&self) -> &surgeist_css::CssColorHue
+pub fn surgeist_css::CssHwbColor::parsed_alpha(&self) -> surgeist_css::CssParsedColorAlphaRef<'_>
 pub fn surgeist_css::CssHwbColor::try_new(hue: surgeist_css::CssColorHue, whiteness: surgeist_css::CssColorComponent, blackness: surgeist_css::CssColorComponent, alpha: core::option::Option<surgeist_css::CssColorComponent>) -> core::result::Result<Self, surgeist_css::CssColorConstructionError>
 pub const fn surgeist_css::CssHwbColor::whiteness(&self) -> &surgeist_css::CssColorComponent
 pub struct surgeist_css::CssHwbColorCoordinates
@@ -7000,6 +7016,7 @@ pub const fn surgeist_css::CssLabColor::a(&self) -> &surgeist_css::CssColorCompo
 pub const fn surgeist_css::CssLabColor::alpha(&self) -> core::option::Option<&surgeist_css::CssColorComponent>
 pub const fn surgeist_css::CssLabColor::b(&self) -> &surgeist_css::CssColorComponent
 pub const fn surgeist_css::CssLabColor::lightness(&self) -> &surgeist_css::CssColorComponent
+pub fn surgeist_css::CssLabColor::parsed_alpha(&self) -> surgeist_css::CssParsedColorAlphaRef<'_>
 pub fn surgeist_css::CssLabColor::try_new(lightness: surgeist_css::CssColorComponent, a: surgeist_css::CssColorComponent, b: surgeist_css::CssColorComponent, alpha: core::option::Option<surgeist_css::CssColorComponent>) -> core::result::Result<Self, surgeist_css::CssColorConstructionError>
 pub struct surgeist_css::CssLanguageRange
 impl surgeist_css::CssLanguageRange
@@ -7038,6 +7055,7 @@ pub const fn surgeist_css::CssLchColor::alpha(&self) -> core::option::Option<&su
 pub const fn surgeist_css::CssLchColor::chroma(&self) -> &surgeist_css::CssColorComponent
 pub const fn surgeist_css::CssLchColor::hue(&self) -> &surgeist_css::CssColorHue
 pub const fn surgeist_css::CssLchColor::lightness(&self) -> &surgeist_css::CssColorComponent
+pub fn surgeist_css::CssLchColor::parsed_alpha(&self) -> surgeist_css::CssParsedColorAlphaRef<'_>
 pub fn surgeist_css::CssLchColor::try_new(lightness: surgeist_css::CssColorComponent, chroma: surgeist_css::CssColorComponent, hue: surgeist_css::CssColorHue, alpha: core::option::Option<surgeist_css::CssColorComponent>) -> core::result::Result<Self, surgeist_css::CssColorConstructionError>
 pub struct surgeist_css::CssLeftPropertyValue
 impl surgeist_css::CssLeftPropertyValue
@@ -7876,6 +7894,7 @@ impl surgeist_css::CssPredefinedColor
 pub const fn surgeist_css::CssPredefinedColor::alpha(&self) -> core::option::Option<&surgeist_css::CssColorComponent>
 pub const fn surgeist_css::CssPredefinedColor::channels(&self) -> &[surgeist_css::CssColorComponent; 3]
 pub const fn surgeist_css::CssPredefinedColor::color_space(&self) -> surgeist_css::CssPredefinedColorSpace
+pub fn surgeist_css::CssPredefinedColor::parsed_alpha(&self) -> surgeist_css::CssParsedColorAlphaRef<'_>
 pub fn surgeist_css::CssPredefinedColor::try_new(color_space: surgeist_css::CssPredefinedColorSpace, channels: [surgeist_css::CssColorComponent; 3], alpha: core::option::Option<surgeist_css::CssColorComponent>) -> core::result::Result<Self, surgeist_css::CssColorConstructionError>
 pub struct surgeist_css::CssProductionId(_)
 impl surgeist_css::CssProductionId
@@ -8101,6 +8120,7 @@ pub struct surgeist_css::CssRgbColor
 impl surgeist_css::CssRgbColor
 pub const fn surgeist_css::CssRgbColor::alpha(&self) -> core::option::Option<&surgeist_css::CssColorComponent>
 pub const fn surgeist_css::CssRgbColor::channels(&self) -> &[surgeist_css::CssColorComponent; 3]
+pub fn surgeist_css::CssRgbColor::parsed_alpha(&self) -> surgeist_css::CssParsedColorAlphaRef<'_>
 pub const fn surgeist_css::CssRgbColor::syntax(&self) -> surgeist_css::CssColorSyntax
 pub fn surgeist_css::CssRgbColor::try_new(syntax: surgeist_css::CssColorSyntax, channels: [surgeist_css::CssColorComponent; 3], alpha: core::option::Option<surgeist_css::CssColorComponent>) -> core::result::Result<Self, surgeist_css::CssColorConstructionError>
 pub struct surgeist_css::CssRightPropertyValue

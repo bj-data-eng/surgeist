@@ -1325,6 +1325,7 @@ mod box_spacing;
 mod break_controls;
 mod calc_size;
 mod clip;
+mod color_alpha;
 mod color_scalar;
 mod column_rule;
 mod column_sizing;
@@ -1370,6 +1371,7 @@ pub use box_spacing::{
     CssPaddingShorthand, CssPaddingValue,
 };
 pub use calc_size::{CssBoxCalcSize, CssCalcSize, CssCalcSizeBasisRef, CssIntrinsicSizeKeyword};
+pub use color_alpha::{CssColorAlphaScalarRef, CssParsedColorAlphaRef};
 pub use color_scalar::{
     CssColorNumberLiteral, CssColorPercentageLiteral, CssColorScalarError, CssColorScalarErrorKind,
 };

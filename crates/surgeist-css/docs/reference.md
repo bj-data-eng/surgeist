@@ -2148,6 +2148,39 @@ family has a public checked `try_new`; `CssColor::from_*` composes checked
 payloads. `CssColor::current_color()` and `transparent()` construct the two
 keyword branches. The parser uses the same checked payload constraints.
 
+### Parsed alpha values
+
+`CssRgbColor`, `CssHslColor`, `CssHwbColor`, `CssLabColor`, `CssLchColor`, and
+`CssPredefinedColor` expose `parsed_alpha()` alongside their authored `alpha()`
+accessors. The Lab and LCH payloads also serve Oklab and Oklch. This immutable
+view applies [Color 4's parsed alpha rules](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#alpha-syntax)
+to both parsed input and checked Rust construction; it does not replace the
+authored component or its provenance.
+
+`CssParsedColorAlphaRef` distinguishes omitted opaque alpha, explicit missing
+alpha, a direct scalar, and retained number or percentage calculations. An
+omitted alpha remains distinct from explicitly supplying one, and `none` remains
+distinct from zero. Calculations borrow their authored trees without evaluation
+or range clamping.
+
+`CssColorAlphaScalarRef` exposes exact `is_zero()`, `is_one()`, and
+`is_interior()` observations. Negative or zero direct values project to positive
+zero; numbers at or above one and percentages at or above 100 project to one.
+Other positive values are interior. Classification uses the original decimal
+digits and exponent without floating-point rounding or exponent expansion.
+`authored_component()` and `origin()` retain access to the original domain,
+spelling and source identity.
+
+`as_unit_f64()` provides a finite approximate value in `0..1`, with percentage
+scaling owned by CSS. Ordinary binary64 rounding and underflow can turn an exact
+interior value into zero or one; its exact classification stays interior.
+This accessor does not promise correctly rounded exact-real arithmetic.
+Structural expansion and normalization preserve payloads exposing the same
+view. Specified serialization retains its existing role-dependent calculation,
+Origin, rounding and resource contracts.
+
+### Keyword values and specified serialization
+
 `CssColor::keyword_srgba8()` exposes the intrinsic meaning of the 148 opaque
 named colors from [Color 4 §6.1](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#named-colors)
 and [transparent black](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#transparent-color).

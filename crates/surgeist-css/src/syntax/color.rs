@@ -689,9 +689,25 @@ impl CssRgbColor {
         &self.channels
     }
 
+    /// Borrows the authored alpha without applying parsed-value clamping.
+    ///
+    /// Omission, missing components, original coefficients and calculations
+    /// retain their identities. Use [`Self::parsed_alpha`] for the intrinsic
+    /// parsed-alpha view while keeping this authored representation intact.
     #[must_use]
     pub const fn alpha(&self) -> Option<&CssColorComponent> {
         self.alpha.as_ref()
+    }
+
+    /// Borrows the intrinsic parsed-alpha view without allocating or evaluating math.
+    ///
+    /// Omitted alpha defaults to opaque; `none` remains explicitly missing.
+    /// Direct numbers and percentages are classified exactly after scaling and
+    /// clamping to [0, 1]. Calculations remain borrowed and unresolved for their
+    /// applicable phase. The authored component and its provenance do not change.
+    #[must_use]
+    pub fn parsed_alpha(&self) -> crate::CssParsedColorAlphaRef<'_> {
+        crate::color_alpha::parsed_alpha(self.alpha())
     }
 }
 
@@ -755,9 +771,25 @@ impl CssHslColor {
         &self.lightness
     }
 
+    /// Borrows the authored alpha without applying parsed-value clamping.
+    ///
+    /// Omission, missing components, original coefficients and calculations
+    /// retain their identities. Use [`Self::parsed_alpha`] for the intrinsic
+    /// parsed-alpha view while keeping this authored representation intact.
     #[must_use]
     pub const fn alpha(&self) -> Option<&CssColorComponent> {
         self.alpha.as_ref()
+    }
+
+    /// Borrows the intrinsic parsed-alpha view without allocating or evaluating math.
+    ///
+    /// Omitted alpha defaults to opaque; `none` remains explicitly missing.
+    /// Direct numbers and percentages are classified exactly after scaling and
+    /// clamping to [0, 1]. Calculations remain borrowed and unresolved for their
+    /// applicable phase. The authored component and its provenance do not change.
+    #[must_use]
+    pub fn parsed_alpha(&self) -> crate::CssParsedColorAlphaRef<'_> {
+        crate::color_alpha::parsed_alpha(self.alpha())
     }
 }
 
@@ -805,9 +837,25 @@ impl CssHwbColor {
         &self.blackness
     }
 
+    /// Borrows the authored alpha without applying parsed-value clamping.
+    ///
+    /// Omission, missing components, original coefficients and calculations
+    /// retain their identities. Use [`Self::parsed_alpha`] for the intrinsic
+    /// parsed-alpha view while keeping this authored representation intact.
     #[must_use]
     pub const fn alpha(&self) -> Option<&CssColorComponent> {
         self.alpha.as_ref()
+    }
+
+    /// Borrows the intrinsic parsed-alpha view without allocating or evaluating math.
+    ///
+    /// Omitted alpha defaults to opaque; `none` remains explicitly missing.
+    /// Direct numbers and percentages are classified exactly after scaling and
+    /// clamping to [0, 1]. Calculations remain borrowed and unresolved for their
+    /// applicable phase. The authored component and its provenance do not change.
+    #[must_use]
+    pub fn parsed_alpha(&self) -> crate::CssParsedColorAlphaRef<'_> {
+        crate::color_alpha::parsed_alpha(self.alpha())
     }
 }
 
@@ -856,9 +904,25 @@ impl CssLabColor {
         &self.b
     }
 
+    /// Borrows the authored alpha without applying parsed-value clamping.
+    ///
+    /// Omission, missing components, original coefficients and calculations
+    /// retain their identities. Use [`Self::parsed_alpha`] for the intrinsic
+    /// parsed-alpha view while keeping this authored representation intact.
     #[must_use]
     pub const fn alpha(&self) -> Option<&CssColorComponent> {
         self.alpha.as_ref()
+    }
+
+    /// Borrows the intrinsic parsed-alpha view without allocating or evaluating math.
+    ///
+    /// Omitted alpha defaults to opaque; `none` remains explicitly missing.
+    /// Direct numbers and percentages are classified exactly after scaling and
+    /// clamping to [0, 1]. Calculations remain borrowed and unresolved for their
+    /// applicable phase. The authored component and its provenance do not change.
+    #[must_use]
+    pub fn parsed_alpha(&self) -> crate::CssParsedColorAlphaRef<'_> {
+        crate::color_alpha::parsed_alpha(self.alpha())
     }
 }
 
@@ -907,9 +971,25 @@ impl CssLchColor {
         &self.hue
     }
 
+    /// Borrows the authored alpha without applying parsed-value clamping.
+    ///
+    /// Omission, missing components, original coefficients and calculations
+    /// retain their identities. Use [`Self::parsed_alpha`] for the intrinsic
+    /// parsed-alpha view while keeping this authored representation intact.
     #[must_use]
     pub const fn alpha(&self) -> Option<&CssColorComponent> {
         self.alpha.as_ref()
+    }
+
+    /// Borrows the intrinsic parsed-alpha view without allocating or evaluating math.
+    ///
+    /// Omitted alpha defaults to opaque; `none` remains explicitly missing.
+    /// Direct numbers and percentages are classified exactly after scaling and
+    /// clamping to [0, 1]. Calculations remain borrowed and unresolved for their
+    /// applicable phase. The authored component and its provenance do not change.
+    #[must_use]
+    pub fn parsed_alpha(&self) -> crate::CssParsedColorAlphaRef<'_> {
+        crate::color_alpha::parsed_alpha(self.alpha())
     }
 }
 
@@ -1446,9 +1526,25 @@ impl CssPredefinedColor {
         &self.channels
     }
 
+    /// Borrows the authored alpha without applying parsed-value clamping.
+    ///
+    /// Omission, missing components, original coefficients and calculations
+    /// retain their identities. Use [`Self::parsed_alpha`] for the intrinsic
+    /// parsed-alpha view while keeping this authored representation intact.
     #[must_use]
     pub const fn alpha(&self) -> Option<&CssColorComponent> {
         self.alpha.as_ref()
+    }
+
+    /// Borrows the intrinsic parsed-alpha view without allocating or evaluating math.
+    ///
+    /// Omitted alpha defaults to opaque; `none` remains explicitly missing.
+    /// Direct numbers and percentages are classified exactly after scaling and
+    /// clamping to [0, 1]. Calculations remain borrowed and unresolved for their
+    /// applicable phase. The authored component and its provenance do not change.
+    #[must_use]
+    pub fn parsed_alpha(&self) -> crate::CssParsedColorAlphaRef<'_> {
+        crate::color_alpha::parsed_alpha(self.alpha())
     }
 }
 

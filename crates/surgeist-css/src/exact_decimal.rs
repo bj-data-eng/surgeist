@@ -127,6 +127,19 @@ impl<'a> LexicalDecimal<'a> {
         let point = exponent.saturating_add(self.len as i128);
         point < 3 || (point == 3 && self.len == 1 && self.digits().next() == Some(1))
     }
+    /// Compares a checked number or percentage coefficient with the unit-alpha
+    /// endpoint (1 or 100), without expanding its exponent or allocating storage.
+    pub(crate) fn at_least_unit_endpoint(&self, percentage: bool) -> bool {
+        if self.len == 0 || self.negative {
+            return false;
+        }
+        let Some(exponent) = self.exponent else {
+            // An exponent outside i128 cannot cross a small fixed endpoint
+            // through the retained source-length adjustment.
+            return !self.exponent_negative;
+        };
+        exponent.saturating_add(self.len as i128) > if percentage { 2 } else { 0 }
+    }
     /// Tests the Fonts 4 inclusive weight interval without rounded float tokens.
     pub(crate) fn in_font_weight_range(&self) -> bool {
         if self.len == 0 || self.negative {
