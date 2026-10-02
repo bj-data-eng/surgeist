@@ -207,6 +207,19 @@ factor and generated mix-share precision are implementation selections folded
 into those decisions; ordinary alpha omission follows the selected normative
 order; the calculated sRGB phase conflict is separately identified.
 
+Two other color range-phase reconciliations retain specified calculations.
+Color 5 §11.3 calls declared relative alpha specified but clamped; Color 4
+§§15.2–15.3 describe declared, computed and used Lab/OK values after component
+clamping. Values 4 §§10.12–10.13 instead protect specified math from clamping
+and reserve scalar-wrapper removal for computed or later serialization.
+Frozen WebKit's unresolved relative objects and non-eager Lab/OK parsing retain
+stored calculations; its calculation serializer preserves the specified phase.
+The catalog records the exact parser, stored-component serializer and calc-stage
+blobs supporting that selection. Existing percentage scaling, coefficient text,
+direct bounds, explicit relative overrides and genuine Origins keep their separate
+contracts. This does not claim identical WebKit text, custom-profile support,
+browser results, normative harmonization or complete color grammar/arithmetic.
+
 Text 4's `text-align` and `text-align-all` tables show a standalone `<string>`
 alternative, but its prose and example expressly combine a string with a keyword.
 The catalog's localized reconciliation retains the five positional keywords from

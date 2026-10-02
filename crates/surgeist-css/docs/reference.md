@@ -566,8 +566,8 @@ the [standards catalog](../specs/catalog.json):
 requires historical scalar simplification, whereas its
 [§16.1.2](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#serializing-modern-alpha-values)
 preserves unclamped specified calculated alpha. The selection applies only to
-ordinary RGB/HSL/HWB slots, including ordinary Mix children. It does not resolve
-the separately retained relative-alpha or Lab/OK phase questions.
+ordinary RGB/HSL/HWB slots, including ordinary Mix children. Relative-alpha and
+Lab/OK calculations use the separate retained-phase selections described below.
 
 Contextual alpha and calculated alpha in custom, Lab/LCH/OK and predefined
 `color()` families remain explicit and unclamped, including rounded zero or
@@ -2203,6 +2203,20 @@ For example, `color-mix(lab(125 calc(0) 0), blue)` emits
 `color-mix(lab(100 calc(0) 0), blue)`. Calculations retain their wrappers and
 required capture costs; genuine Origin and relative channels remain unclamped.
 
+Specified Lab/LCH/Oklab/Oklch calculations retain out-of-range magnitudes:
+`lab(calc(125) 0 0)` keeps `calc(125)`, and `lch(50 calc(-20) 30)` keeps
+negative calculated chroma. Existing percentage scaling still applies, so
+`oklab(calc(120%) 0 0)` emits `oklab(calc(1.2) 0 0)`. This follows the
+[catalog's retained calculation phase](../specs/catalog.json):
+[Color 4 §§15.2–15.3](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#resolving-lab-lch-values)
+describe declared, computed and used values after L/C/H clamping, whereas
+[Values 4 §10.12](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-range)
+excludes specified calculations from range clamping. Frozen WebKit's non-eager
+Lab/OK parsing preserves calculations while bounding direct siblings, and its
+specified serializer keeps their wrappers. This selects the authored range
+phase; it does not adopt WebKit's exact percentage text, float narrowing or
+computed color conversion.
+
 The serializer selects clipped direct endpoints from borrowed exact lexical
 metadata before allocating a rational coefficient or expanding decimal text.
 Thus `lab(1e400 0 0)` can emit `lab(100 0 0)` within a 12-byte output limit;
@@ -2242,7 +2256,20 @@ and explicit unclamped alpha. Direct relative literals convert percentages to
 the destination channel's scale before rounding; ordinary-origin literals retain
 their authored categories. See [calculated number output](#calculated-number-output)
 and [declared color literal output](#declared-color-literal-output).
-Calculated relative-alpha clamping and mathematical precision remain unfinished.
+Calculated relative alpha keeps its specified wrapper and magnitude, including
+`alpha(from red / calc(2))` and explicit calculated unity. Direct alpha overrides
+clamp but remain explicit, preserving the distinction from an omitted override.
+The [catalog's relative calculated-alpha phase](../specs/catalog.json) selects
+this retained form because
+[Color 5 §11.3](https://www.w3.org/TR/2026/WD-css-color-5-20260908/#serial-relative-color)
+calls declared alpha specified but clamped, while Values 4 reserves calculation
+clamping and scalar-wrapper removal for computed or later serialization.
+Frozen WebKit retains stored relative alpha and specified calculation trees;
+its separate resolvers evaluate an origin before typed normalization. That
+evidence supports the phase choice, without establishing identical percentage
+text, custom-profile support or browser results. Profile binding, origin
+evaluation and computed-value clamping belong downstream. Mathematical precision
+and range remain unfinished.
 `light-dark()`, `contrast-color()`, and `device-cmyk()` are not yet supported.
 
 Custom-profile `color(--Profile ...)` preserves a nonempty variable channel
