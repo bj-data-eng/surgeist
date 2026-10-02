@@ -45,9 +45,9 @@ Do not create a complete set of ledgers for every crate in advance.
 Discover the live registrations and ledger titles with `pisct workspace list`
 and `pisct --workspace NAME ledger status`. Replace `NAME` with the selected
 workspace. Use the CLI's configured registry; avoid hardcoded database paths.
-Inspect a ledger's definition before selecting fields or writing. Use current
-CLI help for guarded writes, pagination, and storage limits; this skill is not
-a second CLI manual.
+Use `$pisct:coordination`'s ledger guidance for discovery, schema inspection,
+guarded writes, pagination, and readback; this skill owns the local namespaces
+and retrieval conventions.
 
 Start with title/status or requirement/state/next-action columns that actually
 exist. Read the relevant plan body and work rows, then open supporting source
@@ -63,18 +63,11 @@ Row numbers alone are not global identities.
 
 ## Plans and current work
 
-Reuse an existing plan's row for revisions. Store the complete current plan,
-including adopted refinements that still apply; do not make the reader assemble
-it from a base document and a chain of amendments. Split a plan only where work
-has an independently useful scope and acceptance boundary. Original imported
-plans need consolidation only when that work is revisited, not a bulk rewrite.
-
-Follow the installed PISCT planning skill's storage procedure when saving plans:
-validate Markdown, use guarded structured writes, read back the exact stored
-revision, and compare the body with the draft before removing it. Invoke its
-planning workflow when the user requests it. Preserve acceptance and completion
-evidence when importing existing plans; storage or review alone does not grant
-acceptance. An accepted plan is not permission to resume paused implementation.
+Use PISCT's Plans ledger storage and disposition procedure, reached through
+`$pisct:coordination`, for complete plan bodies, row revisions, validation,
+guarded writes, exact readback, and status changes. Keep drafts in `tmp/plans/`
+until that storage procedure succeeds. Original imported plans need
+consolidation only when their work is revisited, not a bulk rewrite.
 
 Use the existing work row's status, evidence and next-action fields for the
 current checkpoint. If there is no suitable row, create one for the actual
@@ -91,10 +84,6 @@ Record the minimum needed for another coordinator to continue:
 - Completed checks and review conclusions, incomplete checks, and next action.
 - Active writer/process ownership and any temporary artifact still needed.
 
-The coordinator writes shared checkpoint and disposition records. Delegated
-workers return concise results and their owned temporary paths unless ledger
-ownership was explicitly delegated. Preserve other agents' work and records.
-
 ## Evidence that survives cleanup
 
 For a check, retain the source basis, working directory, exact command and
@@ -106,24 +95,26 @@ does not establish a complete suite pass.
 
 For a review, retain the reviewed source basis, review scope, independent
 reviewer identity when available, verdict, and actionable findings/dispositions.
-For committed RED/GREEN requirements, retain both exact commits and reproduction
-commands. Reuse the owning row for this evidence; use a separate linked record
-only when the evidence is genuinely shared or too substantial for that row.
-This does not replace required checks or independent reproduction.
+For committed RED/GREEN requirements, retain both exact commits and the supplied
+execution evidence and commands. Distinguish checks executed by the reviewer
+from matching evidence it reused. `$pisct:testing` and the applicable review
+skill own whether independent execution or replay is needed; this skill adds
+no replay requirement. Reuse the owning row for evidence; use a separate linked
+record only when it is genuinely shared or too substantial for that row.
 
 ### Review report lifecycle
 
 Use the applicable PISCT review skill and its shared protocol for judgment and
 self-contained reports. This skill owns retention, not a second review rubric.
-For retention, CLEAN means `accepted`; NOT CLEAN means `changes_requested` or
-`blocked`. Preserve the actual result and its distinction between defects and
-missing evidence in the ledger. Acceptance applies only to the reviewed scope;
-a clean planning review does not verify implementation.
+For planning, task, and holistic review retention, CLEAN means `accepted`;
+NOT CLEAN means `changes_requested` or `blocked`. Other review skills retain
+their own result vocabulary. Preserve the actual result, findings and
+limitations in the ledger; these labels do not replace PISCT's judgment.
 
 - Keep NOT CLEAN reports and their needed working evidence while findings or
-  evidence gaps remain open. Record the next action in the owning row. A fix or
-  passing test alone does not turn a review CLEAN; obtain the applicable review
-  of the corrected basis.
+  evidence gaps remain open. Record the next action in the owning row. Use the
+  applicable PISCT review and coordination guidance to establish disposition
+  before removing them.
 - For CLEAN reviews, save the decisive review evidence described above in the
   owning ledger row, confirm the stored result is retrievable and sufficient
   without the report, then delete the temporary report and consumed supporting
@@ -186,13 +177,9 @@ that unavailable evidence is independently verified.
 
 ## Pause, resume, and finish
 
-If Codex reports an agent thread limit despite recently finished workers, send
-a no-op follow-up to a recently finished thread: ask it to run `true` and then
-stop immediately without resuming work. Leave active workers untouched. Retry
-the needed launch; if it still fails, try a few other recently finished threads.
-A completion reply does not prove Codex unloaded the thread. If capacity remains
-unavailable, record and report the limit in the current checkpoint instead of
-repeatedly retrying the same unchanged threads.
+Use `$pisct:thread-capacity-recovery` for subagent thread-limit failures. Record
+an unresolved capacity limit in the existing checkpoint; do not duplicate its
+recovery procedure here.
 
 On pause, stop or account for owned workers/processes using PISCT process
 handling, save the current checkpoint, and preserve unfinished source edits and
