@@ -168,6 +168,12 @@
 //! the uncalibrated Color 5 numerical fallback with finite `f64` coordinates.
 //! They preserve alpha bits and do not resolve authored colors or device profiles.
 //! Contextual conversion and computed output belong later.
+//! [`convert_lab_to_lch`] and [`convert_oklab_to_oklch`] provide pure numerical
+//! rectangular-to-polar coordinates from Color 4, with space-specific missing-hue
+//! thresholds. [`CssPolarColorCoordinates`] checks finite lightness/chroma and
+//! normalizes optional hue; [`convert_lch_to_lab`] and [`convert_oklch_to_oklab`]
+//! invert those coordinates, setting both axes to zero when hue is missing.
+//! These helpers use concrete number units independently of authored colors.
 //! [`CssOverflowPropertyValue::value`] exposes [`CssOverflowValue`], retaining
 //! the authored one- or two-axis form.
 //!
@@ -1315,6 +1321,7 @@ mod gap;
 mod grid_template_areas;
 mod inset;
 mod integer_value;
+mod lab_color_conversion;
 mod naive_color_conversion;
 mod numeric;
 mod numeric_formatting;
@@ -1476,6 +1483,10 @@ pub use expansion::{
 pub use font_feature_values::*;
 pub use font_palette_values::*;
 pub use font_variant::*;
+pub use lab_color_conversion::{
+    CssPolarColorConversionError, CssPolarColorCoordinates, convert_lab_to_lch, convert_lch_to_lab,
+    convert_oklab_to_oklch, convert_oklch_to_oklab,
+};
 pub use list_styles::{CssListStyleTypeValue, CssListStyleValue, CssMarkerSide};
 pub use naive_color_conversion::{
     CssNaiveColorConversionError, naively_convert_cmyk_to_srgba, naively_convert_srgba_to_cmyk,

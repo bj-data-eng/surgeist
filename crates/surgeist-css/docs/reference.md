@@ -2306,6 +2306,42 @@ conflict; §11.5 concerns computed serialization. The frozen WebKit source at
 implementation resolving that conflict. Contextual execution and computed
 serialization remain separate unfinished work.
 
+### Pure Lab-family rectangular and polar coordinates
+
+`convert_lab_to_lch([L, a, b])` and `convert_oklab_to_oklch([L, a, b])`
+implement [Color 4 CRD 2026-09-08 §9.5](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#lab-to-lch).
+The concrete `f64` inputs use each space's number units: typical Lab lightness
+is `0..100`, while typical Oklab lightness is `0..1`. Finite extended values are
+accepted without clamping. Lightness is copied bit-for-bit, and stable hypot
+calculates chroma without intermediate squaring overflow or underflow.
+
+The resulting `CssPolarColorCoordinates` exposes `lightness()`, `chroma()` and
+`hue_degrees()`. Hue is normalized atan2(b, a) in degrees when chroma is strictly
+greater than `0.0015` for Lab or `0.000004` for Oklab; at equality and below,
+it is `None`. These thresholds come from Color 4 §§9.3–9.4.
+
+`CssPolarColorCoordinates::try_new(L, C, Option<H>)` checks finite values in
+L/C/H order before rejecting negative chroma. It preserves lightness bits,
+canonicalizes chroma zero to positive zero, and normalizes present hue into
+`[0, 360)`, including positive zero at the rounded 360° endpoint. The constructor
+does not apply either space's threshold: missing hue stays missing at any
+chroma, and present hue stays present below the thresholds. Its fields are
+private. `CssPolarColorConversionError` distinguishes `NonFiniteInput` with the
+first invalid component index, `NegativeChroma`, and `UnrepresentableResult`
+when required forward chroma overflows finite `f64` arithmetic.
+
+`convert_lch_to_lab(&coordinates)` and `convert_oklch_to_oklab(&coordinates)`
+implement [Color 4 §9.6](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#lch-to-lab)
+infallibly. Present hue gives C cos(H) and C sin(H); missing hue sets both axes
+to positive zero regardless of chroma. Lightness retains its bits. For example,
+Lab `[50, 3, 4]` gives C = 5 and H approximately 53.13010235415598°, whereas
+`try_new(50.0, 5.0, None)` converts to `[50.0, 0.0, 0.0]`.
+
+Ordinary `f64` rounding applies; neutral forward conversion intentionally loses
+the opponent axes on inversion, and exact round trips are not promised. These
+helpers are independent of authored CSS, alpha, profile binding, gamut handling,
+and contextual evaluation.
+
 ### Naive numerical CMYK conversion
 
 `naively_convert_cmyk_to_srgba([c, m, y, k, a])` and

@@ -3218,6 +3218,14 @@ pub surgeist_css::CssPointerCapability::None
 #[non_exhaustive] pub enum surgeist_css::CssPointerEvents
 pub surgeist_css::CssPointerEvents::Auto
 pub surgeist_css::CssPointerEvents::None
+#[non_exhaustive] pub enum surgeist_css::CssPolarColorConversionError
+pub surgeist_css::CssPolarColorConversionError::NegativeChroma
+pub surgeist_css::CssPolarColorConversionError::NonFiniteInput
+pub surgeist_css::CssPolarColorConversionError::NonFiniteInput::component: usize
+pub surgeist_css::CssPolarColorConversionError::UnrepresentableResult
+impl core::error::Error for surgeist_css::CssPolarColorConversionError
+impl core::fmt::Display for surgeist_css::CssPolarColorConversionError
+pub fn surgeist_css::CssPolarColorConversionError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_css::CssPositionConstructionError
 pub surgeist_css::CssPositionConstructionError::NonPhysicalKeyword
 pub surgeist_css::CssPositionConstructionError::UnpairedEdgeOffsets
@@ -7781,6 +7789,12 @@ pub struct surgeist_css::CssPointerEventsPropertyValue
 impl surgeist_css::CssPointerEventsPropertyValue
 pub fn surgeist_css::CssPointerEventsPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssPointerEventsPropertyValue::value(&self) -> &surgeist_css::CssPointerEvents
+pub struct surgeist_css::CssPolarColorCoordinates
+impl surgeist_css::CssPolarColorCoordinates
+pub const fn surgeist_css::CssPolarColorCoordinates::chroma(&self) -> f64
+pub const fn surgeist_css::CssPolarColorCoordinates::hue_degrees(&self) -> core::option::Option<f64>
+pub const fn surgeist_css::CssPolarColorCoordinates::lightness(&self) -> f64
+pub fn surgeist_css::CssPolarColorCoordinates::try_new(lightness: f64, chroma: f64, hue_degrees: core::option::Option<f64>) -> core::result::Result<Self, surgeist_css::CssPolarColorConversionError>
 pub struct surgeist_css::CssPolygonPoint
 impl surgeist_css::CssPolygonPoint
 pub const fn surgeist_css::CssPolygonPoint::new(x: surgeist_css::CssSpecifiedLengthPercentage, y: surgeist_css::CssSpecifiedLengthPercentage) -> Self
@@ -9132,6 +9146,10 @@ impl core::fmt::Display for surgeist_css::Error
 pub fn surgeist_css::Error::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub fn surgeist_css::conformance_exclusion(id: &str) -> core::option::Option<&'static surgeist_css::CssExclusionMetadata>
 pub const fn surgeist_css::conformance_exclusions() -> &'static [surgeist_css::CssExclusionMetadata]
+pub fn surgeist_css::convert_lab_to_lch(lab: [f64; 3]) -> core::result::Result<surgeist_css::CssPolarColorCoordinates, surgeist_css::CssPolarColorConversionError>
+pub fn surgeist_css::convert_lch_to_lab(lch: &surgeist_css::CssPolarColorCoordinates) -> [f64; 3]
+pub fn surgeist_css::convert_oklab_to_oklch(oklab: [f64; 3]) -> core::result::Result<surgeist_css::CssPolarColorCoordinates, surgeist_css::CssPolarColorConversionError>
+pub fn surgeist_css::convert_oklch_to_oklab(oklch: &surgeist_css::CssPolarColorCoordinates) -> [f64; 3]
 pub fn surgeist_css::expand_declaration(source: &surgeist_css::CssDeclaration) -> core::result::Result<surgeist_css::CssExpansion, surgeist_css::CssExpansionError>
 pub fn surgeist_css::feature_catalog() -> &'static [surgeist_css::CssFeatureMetadata]
 pub fn surgeist_css::feature_metadata(id: &str) -> core::option::Option<&'static surgeist_css::CssFeatureMetadata>
