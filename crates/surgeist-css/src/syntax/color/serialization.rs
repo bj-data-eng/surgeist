@@ -1008,7 +1008,9 @@ fn serialize_rgb(
     }
 
     let alpha = serialize_alpha(value.alpha(), false, false, context)?;
-    if value.channels().iter().any(CssColorComponent::is_none) {
+    let missing = value.channels().iter().any(CssColorComponent::is_none)
+        || value.alpha().is_some_and(CssColorComponent::is_none);
+    if missing {
         let mut channels = value
             .channels()
             .iter()
@@ -1194,7 +1196,8 @@ fn serialize_hsl(
     }
     let missing = matches!(value.hue(), CssColorHue::None)
         || value.saturation().is_none()
-        || value.lightness().is_none();
+        || value.lightness().is_none()
+        || value.alpha().is_some_and(CssColorComponent::is_none);
     let target = if missing {
         ComponentTarget::Percentage
     } else {
@@ -1219,7 +1222,7 @@ fn serialize_hsl(
         context,
     )?;
     let alpha = serialize_alpha(value.alpha(), false, false, context)?;
-    if hue.missing || saturation.missing || lightness.missing {
+    if missing {
         return hsl_like(
             "hsl",
             &hue,
@@ -1403,7 +1406,8 @@ fn serialize_hwb(
     }
     let missing = matches!(value.hue(), CssColorHue::None)
         || value.whiteness().is_none()
-        || value.blackness().is_none();
+        || value.blackness().is_none()
+        || value.alpha().is_some_and(CssColorComponent::is_none);
     let target = if missing {
         ComponentTarget::Percentage
     } else {
@@ -1428,7 +1432,7 @@ fn serialize_hwb(
         context,
     )?;
     let alpha = serialize_alpha(value.alpha(), false, false, context)?;
-    if hue.missing || white.missing || black.missing {
+    if missing {
         return hsl_like("hwb", &hue, &white, &black, alpha.as_deref(), context);
     }
     if hue.contextual || white.contextual || black.contextual {

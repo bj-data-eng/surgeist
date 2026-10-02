@@ -590,6 +590,11 @@
 //! colors inside a mix used as an origin. Fully numeric standalone non-alpha color
 //! calculations keep their separate text and scratch policies. Retained alpha, weight and
 //! contextual component captures count rounded scratch text within the cumulative budget.
+//! Any directly missing ordinary RGB/HSL/HWB component, including alpha, selects a form
+//! preserving `none`; omitted or calculated alpha alone does not. RGB uses normalized
+//! `color(srgb ...)`, while HSL/HWB retain their named functions. Direct HSL/HWB channels
+//! emit percentages and a bare degree hue; calculations keep their separate output policies.
+//! Ordinary mix children follow the same rule, with cumulative limits on the actual text.
 //! Integer calculation text follows the finite number policy without
 //! computed integer rounding; ordinary integer
 //! literals retain exact digits. Arithmetic precision and range remain unfinished.

@@ -2124,6 +2124,14 @@ UTF-8 byte limits. Failure is atomic and leaves the graph and origins intact.
 This serializer preserves unresolved context and performs only selected pure
 HSL/HWB and exact scalar conversions. It does not bind profiles, evaluate
 relative channels or a mix, or gamut-map a color.
+Any directly missing component, including alpha, selects a form preserving
+`none`: ordinary RGB emits normalized `color(srgb ...)`, while HSL and HWB
+retain their named functions. Direct HSL/HWB channels emit percentages and a
+bare degree hue; calculations keep their separately described output policies.
+For example, `rgb(255 0 0 / none)` emits `color(srgb 1 0 0 / none)`.
+An omitted alpha or a calculated alpha does not itself select this form.
+These rules also apply to ordinary children of `color-mix()`. Byte limits count
+the preserving form's actual UTF-8 length within the shared cumulative budget.
 Origin colors nested in relative and `alpha()` forms retain unclamped authored
 component domains with modern punctuation. Ordinary direct alpha is clamped
 and rounded to six places before text emission. Calculated alpha remains explicit
