@@ -828,17 +828,11 @@ fn existing_timing_children_round_without_inventing_an_aggregate_writer() {
 }
 
 #[test]
-fn calculated_alpha_uses_slot_text_policies_and_keeps_unclamped_values() {
+fn calculated_alpha_finalizes_ordinary_slots_and_retains_relative_overrides() {
     for (source, expected) in [
-        (
-            "rgb(1 2 3 / calc(1 / 128))",
-            "rgba(1, 2, 3, calc(0.007813))",
-        ),
-        (
-            "rgb(1 2 3 / calc(-1 / 128))",
-            "rgba(1, 2, 3, calc(-0.007813))",
-        ),
-        ("rgb(1 2 3 / calc(2))", "rgba(1, 2, 3, calc(2))"),
+        ("rgb(1 2 3 / calc(1 / 128))", "rgba(1, 2, 3, 0.007813)"),
+        ("rgb(1 2 3 / calc(-1 / 128))", "rgba(1, 2, 3, 0)"),
+        ("rgb(1 2 3 / calc(2))", "rgb(1, 2, 3)"),
         (
             "alpha(from red / calc(0.78125%))",
             "alpha(from red / calc(0.007813))",

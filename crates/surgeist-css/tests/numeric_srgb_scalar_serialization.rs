@@ -456,9 +456,9 @@ text_case!(
     "oklab(none calc(-0.0078125) 0)"
 );
 text_case!(
-    calculated_alpha_retained_control,
+    calculated_alpha_clamps_negative_scalar,
     "rgb(0 0 0 / calc(-1 / 128))",
-    "rgba(0, 0, 0, calc(-0.007813))"
+    "rgba(0, 0, 0, 0)"
 );
 text_case!(
     calculated_weight_retained_control,

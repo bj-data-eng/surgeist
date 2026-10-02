@@ -192,14 +192,20 @@ undefined nor replace the selected 2021 tokenizer and unrelated parser entry
 points. The catalog keeps the original hash and identifies the affected source
 lines; it does not silently substitute a corrected draft.
 
-The top-level `source_reconciliations` also records five bounded Color 4 and
+The top-level `source_reconciliations` also records bounded Color 4 and
 Color 5 serialization decisions: grammar-valid relative alpha with explicit
 override retention, case-sensitive custom profile identifiers, nonnegative
 omitted mix weights, phase-specific numeric rounding, and deferred HSL or HWB
-conversion when contextual channel math remains unresolved. The exact radian
+conversion when contextual channel math remains unresolved, and ordinary sRGB
+calculated-alpha finalization. Color 4 §15.1's historical scalar simplification
+conflicts with §16.1.2's retained unclamped specified calculation. The recorded
+WebKit interpretation finalizes only noncontextual ordinary RGB/HSL/HWB alpha,
+including eligible siblings and Mix children; actual Origins, relative overrides
+and other retained families keep their separate contracts. Exact immutable
+WebKit source evidence accompanies that operational disposition. The exact radian
 factor and generated mix-share precision are implementation selections folded
 into those decisions; ordinary alpha omission follows the selected normative
-order rather than creating another source conflict.
+order; the calculated sRGB phase conflict is separately identified.
 
 Text 4's `text-align` and `text-align-all` tables show a standalone `<string>`
 alternative, but its prose and example expressly combine a string with a keyword.

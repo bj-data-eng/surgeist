@@ -583,8 +583,13 @@
 //! their projected result remains context-dependent, including inside mixes. The existing
 //! projection result selects formatting after percentage scaling and angle conversion.
 //! Retained calculated alpha and mix weights also use the shared coefficient policy.
-//! Calculated alpha stays explicit and unclamped; standalone percentage alpha divides by 100
-//! before formatting, while origin alpha preserves its dimension. Calculated weights keep
+//! Contextual alpha and calculated alpha outside ordinary RGB/HSL/HWB stay explicit and
+//! unclamped; percentage alpha divides by 100 before formatting, while actual Origin alpha
+//! preserves its dimension. Ordinary RGB/HSL/HWB scalar calculated alpha in standalone
+//! colors and Mix children independently normalizes NaN to zero and clamps to 0..1,
+//! omitting exact unity before rounding. This
+//! follows the recorded WebKit interpretation of conflicting Color 4 phase clauses.
+//! Calculated weights keep
 //! percentages and their calculation wrapper, preventing omitted sibling shares from being
 //! filled even when they emit `calc(50%)`. These rules apply to nested mixes and ordinary
 //! colors inside a mix used as an origin. Resolved ordinary RGB/HSL/HWB non-alpha slots

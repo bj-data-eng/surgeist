@@ -3,8 +3,9 @@
 //! serialization, Values 4 WD 2024-03-12 calculation serialization, Color 4
 //! CRD 2026-09-08 modern alpha, and Color 5 WD 2026-09-08 color-mix serialization.
 //! Finite projected binary64 coefficients round to six fractional places with
-//! exact halfway away from zero (the adopted operational policy), keeping the
-//! specified calculation, dimensions, authored graph and cumulative resources.
+//! exact halfway away from zero (the adopted operational policy). Protected
+//! alpha/weight leaves keep specified calculations and dimensions; ordinary
+//! RGB/HSL/HWB scalar alpha finalizes. Authored graphs and resource charges stay.
 
 use surgeist_css::*;
 
@@ -180,7 +181,7 @@ text_case!(
 
 macro_rules! family_cases {
     ($number:ident, $percentage:ident, $contextual:ident, $contextual_percentage:ident,
-     $prefix:literal, $separator:literal, $suffix:literal, $output_prefix:literal, $output_separator:literal, $output_suffix:literal) => {
+     $prefix:literal, $separator:literal, $suffix:literal, $output_prefix:literal, $output_separator:literal, $output_suffix:literal, $scalar_alpha:literal) => {
         #[test]
         fn $number() {
             assert_text(
@@ -188,7 +189,7 @@ macro_rules! family_cases {
                 concat!(
                     $output_prefix,
                     $output_separator,
-                    "calc(0.007813)",
+                    $scalar_alpha,
                     $output_suffix
                 ),
             );
@@ -200,7 +201,7 @@ macro_rules! family_cases {
                 concat!(
                     $output_prefix,
                     $output_separator,
-                    "calc(0.007813)",
+                    $scalar_alpha,
                     $output_suffix
                 ),
             );
@@ -242,7 +243,8 @@ family_cases!(
     ")",
     "rgba(1, 2, 3",
     ", ",
-    ")"
+    ")",
+    "0.007813"
 );
 family_cases!(
     rgba_modern_number,
@@ -254,7 +256,8 @@ family_cases!(
     ")",
     "rgba(1, 2, 3",
     ", ",
-    ")"
+    ")",
+    "0.007813"
 );
 family_cases!(
     rgb_legacy_number,
@@ -266,7 +269,8 @@ family_cases!(
     ")",
     "rgba(1, 2, 3",
     ", ",
-    ")"
+    ")",
+    "0.007813"
 );
 family_cases!(
     hsl_number,
@@ -278,7 +282,8 @@ family_cases!(
     ")",
     "rgba(255, 0, 0",
     ", ",
-    ")"
+    ")",
+    "0.007813"
 );
 family_cases!(
     hsla_modern_number,
@@ -290,7 +295,8 @@ family_cases!(
     ")",
     "rgba(255, 0, 0",
     ", ",
-    ")"
+    ")",
+    "0.007813"
 );
 family_cases!(
     hsl_legacy_number,
@@ -302,7 +308,8 @@ family_cases!(
     ")",
     "rgba(255, 0, 0",
     ", ",
-    ")"
+    ")",
+    "0.007813"
 );
 family_cases!(
     hwb_number,
@@ -314,7 +321,8 @@ family_cases!(
     ")",
     "rgba(255, 0, 0",
     ", ",
-    ")"
+    ")",
+    "0.007813"
 );
 family_cases!(
     lab_number,
@@ -326,7 +334,8 @@ family_cases!(
     ")",
     "lab(20 0 0",
     " / ",
-    ")"
+    ")",
+    "calc(0.007813)"
 );
 family_cases!(
     lch_number,
@@ -338,7 +347,8 @@ family_cases!(
     ")",
     "lch(20 30 0",
     " / ",
-    ")"
+    ")",
+    "calc(0.007813)"
 );
 family_cases!(
     oklab_number,
@@ -350,7 +360,8 @@ family_cases!(
     ")",
     "oklab(0.2 0 0",
     " / ",
-    ")"
+    ")",
+    "calc(0.007813)"
 );
 family_cases!(
     oklch_number,
@@ -362,7 +373,8 @@ family_cases!(
     ")",
     "oklch(0.2 0.3 0",
     " / ",
-    ")"
+    ")",
+    "calc(0.007813)"
 );
 family_cases!(
     predefined_number,
@@ -374,7 +386,8 @@ family_cases!(
     ")",
     "color(display-p3 0 0 0",
     " / ",
-    ")"
+    ")",
+    "calc(0.007813)"
 );
 family_cases!(
     custom_many_channels_number,
@@ -386,7 +399,8 @@ family_cases!(
     ")",
     "color(--P 0 none 0 0",
     " / ",
-    ")"
+    ")",
+    "calc(0.007813)"
 );
 
 text_case!(
@@ -488,12 +502,12 @@ text_case!(
 );
 
 #[test]
-fn calculated_alpha_and_weight_keep_explicit_unclamped_values() {
+fn ordinary_alpha_finalizes_while_retained_alpha_and_weights_keep_unclamped_values() {
     for (source, expected) in [
         ("color(--P 0 / calc(1))", "color(--P 0 / calc(1))"),
         ("color(--P 0 / calc(2 * 60%))", "color(--P 0 / calc(1.2))"),
         ("color(--P 0 / calc(-120%))", "color(--P 0 / calc(-1.2))"),
-        ("rgb(1 2 3 / calc(2))", "rgba(1, 2, 3, calc(2))"),
+        ("rgb(1 2 3 / calc(2))", "rgb(1, 2, 3)"),
         (
             "color-mix(red calc(0%), blue)",
             "color-mix(red calc(0%), blue)",

@@ -552,11 +552,28 @@ symbolic under the existing projector; fully resolved absolute-unit ratios and
 NaN simplification retain their existing outcomes. Percentage scaling and angle
 conversion precede coefficient formatting.
 
-Calculated alpha remains explicit and unclamped, including when rounding produces
-zero or unity. Number alpha keeps its scale; percentage alpha divides by 100
-before formatting. Thus `color(--P 0 / calc(.78125%))` emits
-`color(--P 0 / calc(0.007813))`. Origin alpha preserves its authored dimension
-instead of applying this standalone percentage conversion.
+Ordinary RGB, HSL and HWB calculated alpha that resolves without external
+context emits a scalar independently of missing or contextual sibling channels.
+Number alpha keeps its scale; percentage alpha divides by 100. NaN becomes zero,
+then alpha clamps to `[0,1]`. Exact clamped unity is omitted before formatting:
+`rgb(1 2 3 / calc(2))` emits `rgb(1, 2, 3)`, while `calc(.9999996)` remains
+explicit alpha `1` because its unrounded value is below one. Grammar reentry
+accepts that output but can omit its now-direct unity on subsequent serialization.
+
+This ordinary sRGB phase follows the frozen WebKit interpretation recorded in
+the [standards catalog](../specs/catalog.json):
+[Color 4 §15.1](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#resolving-sRGB-values)
+requires historical scalar simplification, whereas its
+[§16.1.2](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#serializing-modern-alpha-values)
+preserves unclamped specified calculated alpha. The selection applies only to
+ordinary RGB/HSL/HWB slots, including ordinary Mix children. It does not resolve
+the separately retained relative-alpha or Lab/OK phase questions.
+
+Contextual alpha and calculated alpha in custom, Lab/LCH/OK and predefined
+`color()` families remain explicit and unclamped, including rounded zero or
+unity. Thus `color(--P 0 / calc(.78125%))` emits
+`color(--P 0 / calc(0.007813))`. Actual Origin alpha preserves its authored
+dimension and calculation wrapper instead of applying ordinary finalization.
 
 Calculated mix weights keep `%` and their `calc()` wrapper. A calculated weight
 remains unknown for omitted-share and equal-weight decisions, even when it
@@ -573,10 +590,12 @@ Six places is this implementation's bounded precision choice. Thus
 `hwb(none calc(-1 / 128) 20%)` emits `hwb(none -0.007812% 20%)`;
 the contextual coefficient policy above still rounds negative ties away from zero.
 Direct literals retain their exact decimal arithmetic. Media-query writers retain
-their separate text policies. Numeric non-alpha color captures must succeed
+their separate text policies. Numeric color captures must succeed
 before final scalar emission and retain their scratch costs even when their text
 is discarded. For example, `hsl(none calc(-10000000000) 50%)` needs a
 19-byte capture budget although its final `hsl(none 0% 50%)` is only 16 bytes.
+Similarly, `rgb(none none none / calc(100000000000000000000))` needs 27 bytes
+for retained alpha scratch before emitting its 26-byte opaque color.
 Retained alpha, weight and contextual component captures count rounded text
 against their scratch bounds, using the same cumulative traversal budget.
 Mathematical arithmetic precision and range remain unfinished; canonical text
@@ -2162,9 +2181,11 @@ These rules also apply to ordinary children of `color-mix()`. Byte limits count
 the preserving form's actual UTF-8 length within the shared cumulative budget.
 Origin colors nested in relative and `alpha()` forms retain unclamped authored
 component domains with modern punctuation. Ordinary direct alpha is clamped
-and rounded to six places before text emission. Calculated alpha remains explicit
-and unclamped, uses the [calculated number policy](#calculated-number-output)
-after its selected scale, and retains its calculation provenance.
+and rounded to six places before text emission. Ordinary RGB/HSL/HWB scalar
+calculated alpha follows the selected per-slot clamping, unity omission and
+[calculated number policy](#calculated-number-output). Contextual and other
+retained calculated alpha keeps its wrapper; every path preserves the authored
+calculation and provenance.
 
 Direct Lab/LCH lightness clamps to 0..100 in standalone colors and ordinary
 `color-mix()` arguments. Oklab/Oklch lightness clamps to 0..1 after exact

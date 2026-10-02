@@ -372,7 +372,7 @@ fn omitted_direct_unity_and_calculated_alpha_are_distinct_from_none() {
         &checked_rgb(true, Some(number("1", true))),
         "rgb(255, 0, 0)",
     );
-    assert_value(&retained, "rgba(255, 0, 0, calc(0.007813))");
+    assert_value(&retained, "rgba(255, 0, 0, 0.007813)");
 }
 
 #[test]
@@ -383,15 +383,9 @@ fn nonmissing_ordinary_colors_keep_legacy_conversion_and_alpha_policy() {
         ("hsl(0 100 50 / 1)", "rgb(255, 0, 0)"),
         ("hwb(0 0 0 / .5)", "rgba(255, 0, 0, 0.5)"),
         ("rgb(255 0 0 / 200%)", "rgb(255, 0, 0)"),
-        ("rgb(255 0 0 / calc(2))", "rgba(255, 0, 0, calc(2))"),
-        (
-            "hsl(0 100 50 / calc(1 / 128))",
-            "rgba(255, 0, 0, calc(0.007813))",
-        ),
-        (
-            "hwb(0 0 0 / calc(.78125%))",
-            "rgba(255, 0, 0, calc(0.007813))",
-        ),
+        ("rgb(255 0 0 / calc(2))", "rgb(255, 0, 0)"),
+        ("hsl(0 100 50 / calc(1 / 128))", "rgba(255, 0, 0, 0.007813)"),
+        ("hwb(0 0 0 / calc(.78125%))", "rgba(255, 0, 0, 0.007813)"),
     ] {
         assert_text(source, expected);
     }

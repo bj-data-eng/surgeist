@@ -916,16 +916,23 @@ fn component_projection_with_text(
     }
 }
 
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum AlphaRole {
+    Origin,
+    OrdinarySrgb,
+    Retained,
+    ExplicitRelativeOverride,
+}
+
 fn serialize_alpha(
     value: Option<&CssColorComponent>,
-    origin: bool,
-    retain_explicit: bool,
+    role: AlphaRole,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<Option<String>> {
     let Some(value) = value else {
         return Ok(None);
     };
-    if origin {
+    if role == AlphaRole::Origin {
         let projected = declared_component_projection(
             value,
             Factor::ONE,
@@ -947,23 +954,44 @@ fn serialize_alpha(
         return Ok(Some("none".into()));
     }
     match value {
-        CssColorComponent::NumberCalculation(calculation) => {
-            let (text, _) = crate::numeric::capture_retained_color_calculation(
-                crate::numeric::ColorCalculationRef::Number(calculation),
-                crate::numeric::NumericProjectionScale::Identity,
-                context,
-            )?;
-            Ok(Some(text))
-        }
-        CssColorComponent::PercentageCalculation(calculation) => {
-            let (text, _) = crate::numeric::capture_retained_color_calculation(
-                crate::numeric::ColorCalculationRef::Percentage(calculation),
-                crate::numeric::NumericProjectionScale::PercentageToNumber {
-                    numerator: 1,
-                    denominator: 100,
-                },
-                context,
-            )?;
+        CssColorComponent::NumberCalculation(_) | CssColorComponent::PercentageCalculation(_) => {
+            let (calculation, scale) = match value {
+                CssColorComponent::NumberCalculation(value) => (
+                    crate::numeric::ColorCalculationRef::Number(value),
+                    crate::numeric::NumericProjectionScale::Identity,
+                ),
+                CssColorComponent::PercentageCalculation(value) => (
+                    crate::numeric::ColorCalculationRef::Percentage(value),
+                    crate::numeric::NumericProjectionScale::PercentageToNumber {
+                        numerator: 1,
+                        denominator: 100,
+                    },
+                ),
+                _ => unreachable!("calculated alpha"),
+            };
+            // Capture owns cumulative graph and scratch checks even when the
+            // ordinary scalar will be omitted. Its outcome precedes rounding.
+            let (text, outcome) =
+                crate::numeric::capture_retained_color_calculation(calculation, scale, context)?;
+            if role == AlphaRole::OrdinarySrgb
+                && !outcome.context_dependent
+                && let Some(scalar) = outcome.scalar_value
+            {
+                let clamped = if scalar.is_nan() {
+                    0.0
+                } else {
+                    scalar.clamp(0.0, 1.0)
+                };
+                if clamped == 1.0 {
+                    return Ok(None);
+                }
+                return Ok(Some(
+                    crate::numeric_formatting::format_ordinary_color_number(
+                        clamped,
+                        context.remaining_bytes(),
+                    )?,
+                ));
+            }
             Ok(Some(text))
         }
         CssColorComponent::Number(value) => {
@@ -971,7 +999,7 @@ fn serialize_alpha(
             alpha_literal(
                 value.numeric().representation(),
                 false,
-                retain_explicit,
+                role == AlphaRole::ExplicitRelativeOverride,
                 context,
             )
         }
@@ -980,7 +1008,7 @@ fn serialize_alpha(
             alpha_literal(
                 value.numeric().representation(),
                 true,
-                retain_explicit,
+                role == AlphaRole::ExplicitRelativeOverride,
                 context,
             )
         }
@@ -1097,11 +1125,11 @@ fn serialize_rgb(
                 )
             })
             .collect::<Result<Vec<_>>>()?;
-        let alpha = serialize_alpha(value.alpha(), true, false, context)?;
+        let alpha = serialize_alpha(value.alpha(), AlphaRole::Origin, context)?;
         return modern_function("rgb", &channels, alpha.as_deref(), context);
     }
 
-    let alpha = serialize_alpha(value.alpha(), false, false, context)?;
+    let alpha = serialize_alpha(value.alpha(), AlphaRole::OrdinarySrgb, context)?;
     let missing = value.channels().iter().any(CssColorComponent::is_none)
         || value.alpha().is_some_and(CssColorComponent::is_none);
     if missing {
@@ -1413,7 +1441,7 @@ fn serialize_hsl(
             true,
             context,
         )?;
-        let alpha = serialize_alpha(value.alpha(), true, false, context)?;
+        let alpha = serialize_alpha(value.alpha(), AlphaRole::Origin, context)?;
         return hsl_like("hsl", &hue, &first, &second, alpha.as_deref(), context);
     }
     let missing = matches!(value.hue(), CssColorHue::None)
@@ -1443,7 +1471,7 @@ fn serialize_hsl(
         materialize,
         context,
     )?;
-    let alpha = serialize_alpha(value.alpha(), false, false, context)?;
+    let alpha = serialize_alpha(value.alpha(), AlphaRole::OrdinarySrgb, context)?;
     finalize_hue(&mut hue, context)?;
     finalize_hsl_saturation(
         &mut saturation,
@@ -1632,7 +1660,7 @@ fn serialize_hwb(
             true,
             context,
         )?;
-        let alpha = serialize_alpha(value.alpha(), true, false, context)?;
+        let alpha = serialize_alpha(value.alpha(), AlphaRole::Origin, context)?;
         return hsl_like("hwb", &hue, &first, &second, alpha.as_deref(), context);
     }
     let missing = matches!(value.hue(), CssColorHue::None)
@@ -1662,7 +1690,7 @@ fn serialize_hwb(
         materialize,
         context,
     )?;
-    let alpha = serialize_alpha(value.alpha(), false, false, context)?;
+    let alpha = serialize_alpha(value.alpha(), AlphaRole::OrdinarySrgb, context)?;
     finalize_hue(&mut hue, context)?;
     finalize_hsl_hwb_component(
         &mut white,
@@ -2077,7 +2105,15 @@ fn serialize_lab(
             context,
         )?,
     ];
-    let alpha = serialize_alpha(value.alpha(), origin, false, context)?;
+    let alpha = serialize_alpha(
+        value.alpha(),
+        if origin {
+            AlphaRole::Origin
+        } else {
+            AlphaRole::Retained
+        },
+        context,
+    )?;
     modern_function(name, &channels, alpha.as_deref(), context)
 }
 
@@ -2132,7 +2168,15 @@ fn serialize_lch(
         )?,
         hue_projection(value.hue(), origin, context)?,
     ];
-    let alpha = serialize_alpha(value.alpha(), origin, false, context)?;
+    let alpha = serialize_alpha(
+        value.alpha(),
+        if origin {
+            AlphaRole::Origin
+        } else {
+            AlphaRole::Retained
+        },
+        context,
+    )?;
     modern_function(name, &channels, alpha.as_deref(), context)
 }
 
@@ -2167,7 +2211,15 @@ fn serialize_predefined(
             )
         })
         .collect::<Result<Vec<_>>>()?;
-    let alpha = serialize_alpha(value.alpha(), origin, false, context)?;
+    let alpha = serialize_alpha(
+        value.alpha(),
+        if origin {
+            AlphaRole::Origin
+        } else {
+            AlphaRole::Retained
+        },
+        context,
+    )?;
     let name = format!("color({}", predefined_name(value.color_space()));
     modern_function(&name, &channels, alpha.as_deref(), context)
 }
@@ -2203,7 +2255,15 @@ fn serialize_custom(
             )
         })
         .collect::<Result<Vec<_>>>()?;
-    let alpha = serialize_alpha(value.alpha(), origin, false, context)?;
+    let alpha = serialize_alpha(
+        value.alpha(),
+        if origin {
+            AlphaRole::Origin
+        } else {
+            AlphaRole::Retained
+        },
+        context,
+    )?;
     let profile = escaped_identifier(value.profile().as_str(), context)?;
     let mut name = LocalCss::new(context.remaining_bytes());
     name.push("color(")?;
@@ -2285,7 +2345,7 @@ fn serialize_profile_expression(
     match value.view() {
         crate::CssProfileColorExpressionRef::Literal(value) => {
             if alpha {
-                serialize_alpha(Some(value), false, true, context)
+                serialize_alpha(Some(value), AlphaRole::ExplicitRelativeOverride, context)
                     .map(|value| value.expect("explicit custom relative alpha retained"))
             } else {
                 match value {
