@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" aria-label="An irregular quadrilateral with none of the&#10;    sides being vertical or horizontal. Its four corners are marked with red circles. Around this&#10;    quadrilateral is a dashed rectangle. All sides of this rectangle are vertical or horizontal and&#10;    tangent the quadrilateral." height="200" role="img" width="230">
+      <polygon fill="rgb(51, 153, 204)" points="40 25, 180 8, 210 150, 10 180"/>
+      <rect fill="none" height="172" stroke="black" stroke-dasharray="3 2" width="200" x="10" y="8"/>
+      <circle cx="40" cy="25" fill="rgb(204, 51, 51)" r="3"/>
+      <circle cx="180" cy="8" fill="rgb(204, 51, 51)" r="3"/>
+      <circle cx="210" cy="150" fill="rgb(204, 51, 51)" r="3"/>
+      <circle cx="10" cy="180" fill="rgb(204, 51, 51)" r="3"/>
+     </svg>

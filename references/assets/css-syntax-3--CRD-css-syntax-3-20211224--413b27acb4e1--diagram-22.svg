@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="railroad-diagram" height="80" viewBox="0 0 384 80" width="384" color="black">
+       <style type="text/css">svg.railroad-diagram{background-color:hsl(30, 20%, 95%)}
+svg.railroad-diagram path{stroke-width:3px;stroke:black;fill:transparent}
+svg.railroad-diagram text{font:bold 14px monospace;fill:black;text-anchor:middle}
+svg.railroad-diagram text.label{text-anchor:start}
+svg.railroad-diagram text.comment{font:italic 12px monospace}
+svg.railroad-diagram rect{stroke-width:3px;stroke:black;fill:hsl(120,100%,90%)}</style><g transform="translate(.5 .5)">
+        <path d="M 20 30 v 20 m 10 -20 v 20 m -10 -10 h 20.5"/>
+        <g>
+         <path d="M40 40h0"/>
+         <path d="M240 40h0"/>
+         <path d="M40 40a10 10 0 0 0 10 -10v0a10 10 0 0 1 10 -10"/>
+         <g>
+          <path d="M60 20h160"/>
+         </g>
+         <path d="M220 20a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10"/>
+         <path d="M40 40h20"/>
+         <g>
+          <path d="M60 40h0"/>
+          <path d="M220 40h0"/>
+          <path d="M60 40h10"/>
+          <g class="non-terminal">
+           <path d="M70 40h0"/>
+           <path d="M210 40h0"/>
+           <rect height="22" width="140" x="70" y="29"/>
+           <text x="140" y="44">Component value</text>
+          </g>
+          <path d="M210 40h10"/>
+          <path d="M70 40a10 10 0 0 0 -10 10v0a10 10 0 0 0 10 10"/>
+          <g>
+           <path d="M70 60h140"/>
+          </g>
+          <path d="M210 60a10 10 0 0 0 10 -10v0a10 10 0 0 0 -10 -10"/>
+         </g>
+         <path d="M220 40h20"/>
+        </g>
+        <path d="M240 40h10"/>
+        <g class="non-terminal">
+         <path d="M250 40h0"/>
+         <path d="M334 40h0"/>
+         <rect height="22" width="84" x="250" y="29"/>
+         <text x="292" y="44">{} block</text>
+        </g>
+        <path d="M334 40h10"/>
+        <path d="M 344 40 h 20 m -10 -10 v 20 m 10 -20 v 20"/>
+       </g>
+      </svg>

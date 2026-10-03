@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="railroad-diagram" height="91" viewBox="0 0 676 91" width="676" color="black">
+       <style type="text/css">svg.railroad-diagram{background-color:hsl(30, 20%, 95%)}
+svg.railroad-diagram path{stroke-width:3px;stroke:black;fill:transparent}
+svg.railroad-diagram text{font:bold 14px monospace;fill:black;text-anchor:middle}
+svg.railroad-diagram text.label{text-anchor:start}
+svg.railroad-diagram text.comment{font:italic 12px monospace}
+svg.railroad-diagram rect{stroke-width:3px;stroke:black;fill:hsl(120,100%,90%)}</style><g transform="translate(.5 .5)">
+        <path d="M 20 30 v 20 m 10 -20 v 20 m -10 -10 h 20.5"/>
+        <path d="M40 40h10"/>
+        <g class="non-terminal">
+         <path d="M50 40h0"/>
+         <path d="M174 40h0"/>
+         <rect height="22" width="124" x="50" y="29"/>
+         <text x="112" y="44">&lt;ident-token&gt;</text>
+        </g>
+        <path d="M174 40h10"/>
+        <path d="M184 40h10"/>
+        <g class="non-terminal">
+         <path d="M194 40h0"/>
+         <path d="M238 40h0"/>
+         <rect height="22" width="44" x="194" y="29"/>
+         <text x="216" y="44">ws*</text>
+        </g>
+        <path d="M238 40h10"/>
+        <path d="M248 40h10"/>
+        <g class="terminal">
+         <path d="M258 40h0"/>
+         <path d="M286 40h0"/>
+         <rect height="22" rx="10" ry="10" width="28" x="258" y="29"/>
+         <text x="272" y="44">:</text>
+        </g>
+        <path d="M286 40h10"/>
+        <g>
+         <path d="M296 40h0"/>
+         <path d="M496 40h0"/>
+         <path d="M296 40a10 10 0 0 0 10 -10v0a10 10 0 0 1 10 -10"/>
+         <g>
+          <path d="M316 20h160"/>
+         </g>
+         <path d="M476 20a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10"/>
+         <path d="M296 40h20"/>
+         <g>
+          <path d="M316 40h0"/>
+          <path d="M476 40h0"/>
+          <path d="M316 40h10"/>
+          <g class="non-terminal">
+           <path d="M326 40h0"/>
+           <path d="M466 40h0"/>
+           <rect height="22" width="140" x="326" y="29"/>
+           <text x="396" y="44">Component value</text>
+          </g>
+          <path d="M466 40h10"/>
+          <path d="M326 40a10 10 0 0 0 -10 10v0a10 10 0 0 0 10 10"/>
+          <g>
+           <path d="M326 60h140"/>
+          </g>
+          <path d="M466 60a10 10 0 0 0 10 -10v0a10 10 0 0 0 -10 -10"/>
+         </g>
+         <path d="M476 40h20"/>
+        </g>
+        <g>
+         <path d="M496 40h0"/>
+         <path d="M636 40h0"/>
+         <path d="M496 40h20"/>
+         <g>
+          <path d="M516 40h100"/>
+         </g>
+         <path d="M616 40h20"/>
+         <path d="M496 40a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10"/>
+         <g class="non-terminal">
+          <path d="M516 60h0"/>
+          <path d="M616 60h0"/>
+          <rect height="22" width="100" x="516" y="49"/>
+          <text x="566" y="64">!important</text>
+         </g>
+         <path d="M616 60a10 10 0 0 0 10 -10v0a10 10 0 0 1 10 -10"/>
+        </g>
+        <path d="M 636 40 h 20 m -10 -10 v 20 m 10 -20 v 20"/>
+       </g>
+      </svg>

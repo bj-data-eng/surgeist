@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="railroad-diagram" height="122" viewBox="0 0 430 122" width="430" color="black">
+       <style type="text/css">svg.railroad-diagram{background-color:hsl(30, 20%, 95%)}
+svg.railroad-diagram path{stroke-width:3px;stroke:black;fill:transparent}
+svg.railroad-diagram text{font:bold 14px monospace;fill:black;text-anchor:middle}
+svg.railroad-diagram text.label{text-anchor:start}
+svg.railroad-diagram text.comment{font:italic 12px monospace}
+svg.railroad-diagram rect{stroke-width:3px;stroke:black;fill:hsl(120,100%,90%)}</style><g transform="translate(.5 .5)">
+        <path d="M 20 21 v 20 m 10 -20 v 20 m -10 -10 h 20.5"/>
+        <path d="M40 31h10"/>
+        <g class="terminal">
+         <path d="M50 31h0"/>
+         <path d="M78 31h0"/>
+         <rect height="22" rx="10" ry="10" width="28" x="50" y="20"/>
+         <text x="64" y="35">\</text>
+        </g>
+        <path d="M78 31h10"/>
+        <g>
+         <path d="M88 31h0"/>
+         <path d="M390 31h0"/>
+         <path d="M88 31h20"/>
+         <g class="non-terminal">
+          <path d="M108 31h25"/>
+          <path d="M345 31h25"/>
+          <rect height="22" width="212" x="133" y="20"/>
+          <text x="239" y="35">not newline or hex digit</text>
+         </g>
+         <path d="M370 31h20"/>
+         <path d="M88 31a10 10 0 0 1 10 10v10a10 10 0 0 0 10 10"/>
+         <g>
+          <path d="M108 61h0"/>
+          <path d="M370 61h0"/>
+          <g>
+           <path d="M108 61h0"/>
+           <path d="M220 61h0"/>
+           <path d="M108 61h10"/>
+           <g class="non-terminal">
+            <path d="M118 61h0"/>
+            <path d="M210 61h0"/>
+            <rect height="22" width="92" x="118" y="50"/>
+            <text x="164" y="65">hex digit</text>
+           </g>
+           <path d="M210 61h10"/>
+           <path d="M118 61a10 10 0 0 0 -10 10v10a10 10 0 0 0 10 10"/>
+           <g>
+            <path d="M118 91h9.5"/>
+            <path d="M200.5 91h9.5"/>
+            <text class="comment" x="164" y="96">1-6 times</text>
+           </g>
+           <path d="M210 91a10 10 0 0 0 10 -10v-10a10 10 0 0 0 -10 -10"/>
+          </g>
+          <path d="M220 61h10"/>
+          <g>
+           <path d="M230 61h0"/>
+           <path d="M370 61h0"/>
+           <path d="M230 61h20"/>
+           <g>
+            <path d="M250 61h100"/>
+           </g>
+           <path d="M350 61h20"/>
+           <path d="M230 61a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10"/>
+           <g class="non-terminal">
+            <path d="M250 81h0"/>
+            <path d="M350 81h0"/>
+            <rect height="22" width="100" x="250" y="70"/>
+            <text x="300" y="85">whitespace</text>
+           </g>
+           <path d="M350 81a10 10 0 0 0 10 -10v0a10 10 0 0 1 10 -10"/>
+          </g>
+         </g>
+         <path d="M370 61a10 10 0 0 0 10 -10v-10a10 10 0 0 1 10 -10"/>
+        </g>
+        <path d="M 390 31 h 20 m -10 -10 v 20 m 10 -20 v 20"/>
+       </g>
+      </svg>

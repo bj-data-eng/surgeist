@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="railroad-diagram" height="212" viewBox="0 0 212 212" width="212" color="black">
+       <style type="text/css">svg.railroad-diagram{background-color:hsl(30,20%,95%)}
+svg.railroad-diagram path{stroke-width:3px;stroke:black;fill:rgba(0,0,0,0)}
+svg.railroad-diagram text{font:bold 14px monospace;text-anchor:middle}
+svg.railroad-diagram text.label{text-anchor:start}
+svg.railroad-diagram text.comment{font:italic 12px monospace}
+svg.railroad-diagram rect{stroke-width:3px;stroke:black;fill:hsl(120,100%,90%)}</style><g transform="translate(.5 .5)">
+        <path d="M 20 21 v 20 m 10 -20 v 20 m -10 -10 h 20.5"/>
+        <g>
+         <path d="M40 31h0"/>
+         <path d="M172 31h0"/>
+         <path d="M40 31h20"/>
+         <g class="non-terminal">
+          <path d="M60 31h0"/>
+          <path d="M152 31h0"/>
+          <rect height="22" width="92" x="60" y="20"/>
+          <a>
+           <text x="106" y="35">translate</text>
+           <text x="106" y="35">translate</text>
+          </a>
+         </g>
+         <path d="M152 31h20"/>
+         <path d="M40 31a10 10 0 0 1 10 10v10a10 10 0 0 0 10 10"/>
+         <g class="non-terminal">
+          <path d="M60 61h16"/>
+          <path d="M136 61h16"/>
+          <rect height="22" width="60" x="76" y="50"/>
+          <a>
+           <text x="106" y="65">scale</text>
+           <text x="106" y="65">scale</text>
+          </a>
+         </g>
+         <path d="M152 61a10 10 0 0 0 10 -10v-10a10 10 0 0 1 10 -10"/>
+         <path d="M40 31a10 10 0 0 1 10 10v40a10 10 0 0 0 10 10"/>
+         <g class="non-terminal">
+          <path d="M60 91h12"/>
+          <path d="M140 91h12"/>
+          <rect height="22" width="68" x="72" y="80"/>
+          <a>
+           <text x="106" y="95">rotate</text>
+           <text x="106" y="95">rotate</text>
+          </a>
+         </g>
+         <path d="M152 91a10 10 0 0 0 10 -10v-40a10 10 0 0 1 10 -10"/>
+         <path d="M40 31a10 10 0 0 1 10 10v70a10 10 0 0 0 10 10"/>
+         <g class="non-terminal">
+          <path d="M60 121h16"/>
+          <path d="M136 121h16"/>
+          <rect height="22" width="60" x="76" y="110"/>
+          <a>
+           <text x="106" y="125">skewX</text>
+           <text x="106" y="125">skewX</text>
+          </a>
+         </g>
+         <path d="M152 121a10 10 0 0 0 10 -10v-70a10 10 0 0 1 10 -10"/>
+         <path d="M40 31a10 10 0 0 1 10 10v100a10 10 0 0 0 10 10"/>
+         <g class="non-terminal">
+          <path d="M60 151h16"/>
+          <path d="M136 151h16"/>
+          <rect height="22" width="60" x="76" y="140"/>
+          <a>
+           <text x="106" y="155">skewY</text>
+           <text x="106" y="155">skewY</text>
+          </a>
+         </g>
+         <path d="M152 151a10 10 0 0 0 10 -10v-100a10 10 0 0 1 10 -10"/>
+         <path d="M40 31a10 10 0 0 1 10 10v130a10 10 0 0 0 10 10"/>
+         <g class="non-terminal">
+          <path d="M60 181h12"/>
+          <path d="M140 181h12"/>
+          <rect height="22" width="68" x="72" y="170"/>
+          <a>
+           <text x="106" y="185">matrix</text>
+           <text x="106" y="185">matrix</text>
+          </a>
+         </g>
+         <path d="M152 181a10 10 0 0 0 10 -10v-130a10 10 0 0 1 10 -10"/>
+        </g>
+        <path d="M 172 31 h 20 m -10 -10 v 20 m 10 -20 v 20"/>
+       </g>
+      </svg>

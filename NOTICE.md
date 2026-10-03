@@ -34,6 +34,15 @@ provenance with redistributed crate source. The local crate links cover the
 complete source checkout; a separately packaged subset needs its own valid
 notice and license layout.
 
+The checkout also includes the bounded [reference collection](references/README.md):
+134 exact source identities, represented by 133 full document/source witnesses
+and one Unicode URL/hash-only exception, plus 52 passive SVG figures, an
+informative Unicode rule-data companion, and navigation/index material. The
+reference entries below cover this added collection only; they do not expand
+or re-audit the dependency inventories above. Source notices remain in the
+converted documents, and the [conversion report](references/CONVERSION-REPORT.md)
+records changes and limitations. The originals remain authoritative.
+
 ## Dependencies
 
 ### Ahem
@@ -223,6 +232,44 @@ The root facade depends on surgeist-window, distributed by bj-data-eng.
 * License: [MIT](licenses/surgeist/LICENSE)
 * Homepage: [surgeist-window](https://github.com/bj-data-eng/surgeist-window)
 
+### Unicode 17 grapheme implementation rule-data companion
+
+The checkout includes Unicode's licensed grapheme rule data from the Unicode 17
+final-tag `unicodetools` revision `ecd26be2e82be37609090942c14e518e57e905d8`,
+distributed by Unicode, Inc., with separate informative implementation notes.
+
+* License: [Unicode License v3](licenses/unicode/LICENSE)
+* Homepage: [Unicode tools](https://github.com/unicode-org/unicodetools)
+* Exact source, notices and coverage: [companion attribution](licenses/unicode/NOTICE.md)
+
+The complete upstream copyright and permission text is preserved byte-for-byte.
+This entry covers the rule-data companion. The full normative UAX 29 revision 47
+report is excluded from public distribution; its catalog entry is metadata only
+and normative citations remain upstream.
+
+### W3C reference documents and CSSWG source witnesses
+
+The checkout includes reformatted W3C documents and five uncompiled CSSWG source
+witnesses as software implementation support, distributed by the World Wide Web
+Consortium and the contributors identified in the exact originals. The 131
+full-body/source-text witnesses and 52 passive SVG figures are bounded by the
+[source catalog](references/SOURCE-CATALOG.md). The collection also preserves a
+factual GitHub source-history metadata capture as a supporting provenance
+witness, not as a separate specification or copied source-code component.
+
+* Licenses: [W3C Software and Document License, 2023](licenses/w3c/software-license-2023.txt) and [2015](licenses/w3c/software-license-2015.txt), and [W3C Document License, 2023](licenses/w3c/document-license-2023.txt) and [2015](licenses/w3c/document-license-2015.txt), as identified per document
+* Historical legal material: [W3C Document License, 2002](licenses/w3c/document-license-2002.txt)
+* Homepages: [W3C technical reports](https://www.w3.org/TR/) and [CSSWG drafts](https://github.com/w3c/csswg-drafts)
+* Exact-document copyright statements, applicable licenses and modification notices: [reference attribution](licenses/w3c/NOTICE.md)
+* Pinned CSSWG repository declaration: [LICENSE.md](licenses/w3c/csswg-drafts/LICENSE.md)
+
+The older document-use publications are also available under the 2015 document
+license, as expressly stated in the [official W3C licensing announcement](https://www.w3.org/news/2015/w3c-updates-general-document-license/).
+Their reformatted copies accompany software under its implementation-support
+exception and retain the required derived-material notices. They are not
+published for use as new technical specifications. Original copyright statements,
+authorship and status remain intact; no endorsement is implied.
+
 ### Web Platform Tests
 
 The layout crate includes subgrid and grid-lanes browser fixtures adapted from
@@ -245,6 +292,20 @@ records revision `f01d00b6963a8374784e6aadc67e608b100069d0` for pinned source
 URLs. Some adapted fixtures record only an upstream path, so their exact
 adaptation revision remains unrecorded. The included license and source notices
 were checked by the leaf against the named files at the pinned revision.
+
+### WHATWG Fullscreen
+
+The checkout includes the Fullscreen specification snapshot at
+`7c38d773117aa1e6bfa13754afe77483f40c908f`, distributed by WHATWG
+(Apple, Google, Mozilla, Microsoft), as reformatted implementation reference text.
+
+* License: [Creative Commons Attribution 4.0 International, with the upstream BSD 3-Clause provision for portions incorporated into source code](licenses/whatwg/LICENSE)
+* Homepage: [WHATWG Fullscreen](https://fullscreen.spec.whatwg.org/)
+* Exact revision, copyright statement and changes: [reference attribution](licenses/whatwg/NOTICE.md)
+
+The complete selected upstream LICENSE is preserved byte-for-byte. Its BSD
+provision applies to the stated source-code scope; the Markdown specification
+text is covered by Creative Commons Attribution 4.0 International.
 
 ## Crate Notices
 

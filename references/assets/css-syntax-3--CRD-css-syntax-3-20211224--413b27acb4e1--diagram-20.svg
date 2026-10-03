@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="railroad-diagram" height="138" viewBox="0 0 344 138" width="344" color="black">
+       <style type="text/css">svg.railroad-diagram{background-color:hsl(30, 20%, 95%)}
+svg.railroad-diagram path{stroke-width:3px;stroke:black;fill:transparent}
+svg.railroad-diagram text{font:bold 14px monospace;fill:black;text-anchor:middle}
+svg.railroad-diagram text.label{text-anchor:start}
+svg.railroad-diagram text.comment{font:italic 12px monospace}
+svg.railroad-diagram rect{stroke-width:3px;stroke:black;fill:hsl(120,100%,90%)}</style><g transform="translate(.5 .5)">
+        <path d="M 20 59 v 20 m 10 -20 v 20 m -10 -10 h 20.5"/>
+        <g>
+         <path d="M40 69h0"/>
+         <path d="M304 69h0"/>
+         <path d="M40 69a10 10 0 0 0 10 -10v-29a10 10 0 0 1 10 -10"/>
+         <g>
+          <path d="M60 20h224"/>
+         </g>
+         <path d="M284 20a10 10 0 0 1 10 10v29a10 10 0 0 0 10 10"/>
+         <path d="M40 69h20"/>
+         <g>
+          <path d="M60 69h0"/>
+          <path d="M284 69h0"/>
+          <path d="M60 69h10"/>
+          <g>
+           <path d="M70 69h0"/>
+           <path d="M274 69h0"/>
+           <path d="M70 69a10 10 0 0 0 10 -10v-10a10 10 0 0 1 10 -10"/>
+           <g class="non-terminal">
+            <path d="M90 39h0"/>
+            <path d="M254 39h0"/>
+            <rect height="22" width="164" x="90" y="28"/>
+            <text x="172" y="43">&lt;whitespace-token&gt;</text>
+           </g>
+           <path d="M254 39a10 10 0 0 1 10 10v10a10 10 0 0 0 10 10"/>
+           <path d="M70 69h20"/>
+           <g class="non-terminal">
+            <path d="M90 69h16"/>
+            <path d="M238 69h16"/>
+            <rect height="22" width="132" x="106" y="58"/>
+            <text x="172" y="73">Qualified rule</text>
+           </g>
+           <path d="M254 69h20"/>
+           <path d="M70 69a10 10 0 0 1 10 10v10a10 10 0 0 0 10 10"/>
+           <g class="non-terminal">
+            <path d="M90 99h44"/>
+            <path d="M210 99h44"/>
+            <rect height="22" width="76" x="134" y="88"/>
+            <text x="172" y="103">At-rule</text>
+           </g>
+           <path d="M254 99a10 10 0 0 0 10 -10v-10a10 10 0 0 1 10 -10"/>
+          </g>
+          <path d="M274 69h10"/>
+          <path d="M70 69a10 10 0 0 0 -10 10v29a10 10 0 0 0 10 10"/>
+          <g>
+           <path d="M70 118h204"/>
+          </g>
+          <path d="M274 118a10 10 0 0 0 10 -10v-29a10 10 0 0 0 -10 -10"/>
+         </g>
+         <path d="M284 69h20"/>
+        </g>
+        <path d="M 304 69 h 20 m -10 -10 v 20 m 10 -20 v 20"/>
+       </g>
+      </svg>

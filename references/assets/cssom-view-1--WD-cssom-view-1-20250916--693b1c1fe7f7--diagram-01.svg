@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" height="400" width="300">
+     <rect fill="white" height="100%" stroke="grey" stroke-width="3" width="100%"/>
+     <text fill="grey" font-family="Sans" font-size="25" x="10" y="30"> Document </text>
+     <g id="lv">
+      <rect fill="none" height="200" stroke="blue" stroke-width="4" width="296" x="2" y="2"/>
+      <text fill="blue" font-family="Sans" font-size="15" x="10" y="20"> Layout Viewport </text>
+     </g>
+     <g id="vv">
+      <rect fill="none" height="100" stroke="red" stroke-width="4" width="148" x="2" y="2"/>
+      <text fill="red" font-family="Sans" font-size="15" x="10" y="60"> Visual Viewport </text>
+     </g>
+    </svg>

@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="railroad-diagram" height="80" viewBox="0 0 304 80" width="304" color="black">
+       <style type="text/css">svg.railroad-diagram{background-color:hsl(30, 20%, 95%)}
+svg.railroad-diagram path{stroke-width:3px;stroke:black;fill:transparent}
+svg.railroad-diagram text{font:bold 14px monospace;fill:black;text-anchor:middle}
+svg.railroad-diagram text.label{text-anchor:start}
+svg.railroad-diagram text.comment{font:italic 12px monospace}
+svg.railroad-diagram rect{stroke-width:3px;stroke:black;fill:hsl(120,100%,90%)}</style><g transform="translate(.5 .5)">
+        <path d="M 20 30 v 20 m 10 -20 v 20 m -10 -10 h 20.5"/>
+        <g>
+         <path d="M40 40h0"/>
+         <path d="M264 40h0"/>
+         <path d="M40 40a10 10 0 0 0 10 -10v0a10 10 0 0 1 10 -10"/>
+         <g>
+          <path d="M60 20h184"/>
+         </g>
+         <path d="M244 20a10 10 0 0 1 10 10v0a10 10 0 0 0 10 10"/>
+         <path d="M40 40h20"/>
+         <g>
+          <path d="M60 40h0"/>
+          <path d="M244 40h0"/>
+          <path d="M60 40h10"/>
+          <g class="non-terminal">
+           <path d="M70 40h0"/>
+           <path d="M234 40h0"/>
+           <rect height="22" width="164" x="70" y="29"/>
+           <text x="152" y="44">&lt;whitespace-token&gt;</text>
+          </g>
+          <path d="M234 40h10"/>
+          <path d="M70 40a10 10 0 0 0 -10 10v0a10 10 0 0 0 10 10"/>
+          <g>
+           <path d="M70 60h164"/>
+          </g>
+          <path d="M234 60a10 10 0 0 0 10 -10v0a10 10 0 0 0 -10 -10"/>
+         </g>
+         <path d="M244 40h20"/>
+        </g>
+        <path d="M 264 40 h 20 m -10 -10 v 20 m 10 -20 v 20"/>
+       </g>
+      </svg>

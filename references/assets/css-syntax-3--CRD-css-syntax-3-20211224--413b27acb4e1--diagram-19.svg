@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="railroad-diagram" height="198" viewBox="0 0 344 198" width="344" color="black">
+       <style type="text/css">svg.railroad-diagram{background-color:hsl(30, 20%, 95%)}
+svg.railroad-diagram path{stroke-width:3px;stroke:black;fill:transparent}
+svg.railroad-diagram text{font:bold 14px monospace;fill:black;text-anchor:middle}
+svg.railroad-diagram text.label{text-anchor:start}
+svg.railroad-diagram text.comment{font:italic 12px monospace}
+svg.railroad-diagram rect{stroke-width:3px;stroke:black;fill:hsl(120,100%,90%)}</style><g transform="translate(.5 .5)">
+        <path d="M 20 119 v 20 m 10 -20 v 20 m -10 -10 h 20.5"/>
+        <g>
+         <path d="M40 129h0"/>
+         <path d="M304 129h0"/>
+         <path d="M40 129a10 10 0 0 0 10 -10v-89a10 10 0 0 1 10 -10"/>
+         <g>
+          <path d="M60 20h224"/>
+         </g>
+         <path d="M284 20a10 10 0 0 1 10 10v89a10 10 0 0 0 10 10"/>
+         <path d="M40 129h20"/>
+         <g>
+          <path d="M60 129h0"/>
+          <path d="M284 129h0"/>
+          <path d="M60 129h10"/>
+          <g>
+           <path d="M70 129h0"/>
+           <path d="M274 129h0"/>
+           <path d="M70 129a10 10 0 0 0 10 -10v-10a10 10 0 0 1 10 -10"/>
+           <g class="non-terminal">
+            <path d="M90 99h0"/>
+            <path d="M254 99h0"/>
+            <rect height="22" width="164" x="90" y="88"/>
+            <text x="172" y="103">&lt;whitespace-token&gt;</text>
+           </g>
+           <path d="M254 99a10 10 0 0 1 10 10v10a10 10 0 0 0 10 10"/>
+           <path d="M70 129a10 10 0 0 0 10 -10v-40a10 10 0 0 1 10 -10"/>
+           <g class="non-terminal">
+            <path d="M90 69h28"/>
+            <path d="M226 69h28"/>
+            <rect height="22" width="108" x="118" y="58"/>
+            <text x="172" y="73">&lt;CDC-token&gt;</text>
+           </g>
+           <path d="M254 69a10 10 0 0 1 10 10v40a10 10 0 0 0 10 10"/>
+           <path d="M70 129a10 10 0 0 0 10 -10v-70a10 10 0 0 1 10 -10"/>
+           <g class="non-terminal">
+            <path d="M90 39h28"/>
+            <path d="M226 39h28"/>
+            <rect height="22" width="108" x="118" y="28"/>
+            <text x="172" y="43">&lt;CDO-token&gt;</text>
+           </g>
+           <path d="M254 39a10 10 0 0 1 10 10v70a10 10 0 0 0 10 10"/>
+           <path d="M70 129h20"/>
+           <g class="non-terminal">
+            <path d="M90 129h16"/>
+            <path d="M238 129h16"/>
+            <rect height="22" width="132" x="106" y="118"/>
+            <text x="172" y="133">Qualified rule</text>
+           </g>
+           <path d="M254 129h20"/>
+           <path d="M70 129a10 10 0 0 1 10 10v10a10 10 0 0 0 10 10"/>
+           <g class="non-terminal">
+            <path d="M90 159h44"/>
+            <path d="M210 159h44"/>
+            <rect height="22" width="76" x="134" y="148"/>
+            <text x="172" y="163">At-rule</text>
+           </g>
+           <path d="M254 159a10 10 0 0 0 10 -10v-10a10 10 0 0 1 10 -10"/>
+          </g>
+          <path d="M274 129h10"/>
+          <path d="M70 129a10 10 0 0 0 -10 10v29a10 10 0 0 0 10 10"/>
+          <g>
+           <path d="M70 178h204"/>
+          </g>
+          <path d="M274 178a10 10 0 0 0 10 -10v-29a10 10 0 0 0 -10 -10"/>
+         </g>
+         <path d="M284 129h20"/>
+        </g>
+        <path d="M 304 129 h 20 m -10 -10 v 20 m 10 -20 v 20"/>
+       </g>
+      </svg>
