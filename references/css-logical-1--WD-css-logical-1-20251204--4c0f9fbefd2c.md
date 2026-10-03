@@ -19,7 +19,7 @@ Snapshot SHA-256: 4c0f9fbefd2c66a86f220d5daa1514facca3ad7dbae68a4c1a82b569de370e
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 23 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- 22 tables remain structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; Table 8 is a Markdown table. No raw HTML tables remain.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 - Existing external image/media URLs are resolved against the pinned source. Assets are not downloaded or availability-tested; image-only formulas/diagrams still require their source resources.
@@ -1090,101 +1090,19 @@ Tests
 
 These properties correspond to the [margin-top](https://www.w3.org/TR/css-box-4/#propdef-margin-top), [margin-bottom](https://www.w3.org/TR/css-box-4/#propdef-margin-bottom), [margin-left](https://www.w3.org/TR/css-box-4/#propdef-margin-left), and [margin-right](https://www.w3.org/TR/css-box-4/#propdef-margin-right) properties. The mapping depends on the element’s [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), and [text-orientation](https://www.w3.org/TR/css-writing-modes-4/#propdef-text-orientation).
 
-<strong>Table 8 — structured row/cell transcription</strong>
+<strong>Table 8 — margin-block and margin-inline</strong>
 
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-margin-block"></a>margin-block, <a id="propdef-margin-inline"></a>margin-inline
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-num-range"></a>
-
-<a id="ref-for-propdef-margin-top③"></a>
-
-[\<'margin-top'\>](https://www.w3.org/TR/css-box-4/#propdef-margin-top)[{1,2}](https://www.w3.org/TR/css-values-4/#mult-num-range)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field | Definition |
+| --- | --- |
+| **Name:** | <a id="propdef-margin-block"></a>margin-block, <a id="propdef-margin-inline"></a>margin-inline |
+| **[Value:](https://www.w3.org/TR/css-values/#value-defs)** | <a id="ref-for-mult-num-range"></a><a id="ref-for-propdef-margin-top③"></a>[\<'margin-top'\>](https://www.w3.org/TR/css-box-4/#propdef-margin-top)[{1,2}](https://www.w3.org/TR/css-values-4/#mult-num-range) |
+| **[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)** | see individual properties |
+| **[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)** | see individual properties |
+| **[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)** | see individual properties |
+| **[Percentages:](https://www.w3.org/TR/css-values/#percentages)** | see individual properties |
+| **[Computed value:](https://www.w3.org/TR/css-cascade/#computed)** | see individual properties |
+| **[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)** | see individual properties |
+| **[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)** | per grammar |
 
 Tests
 

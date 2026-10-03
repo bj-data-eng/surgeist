@@ -19,7 +19,7 @@ Snapshot SHA-256: 79ff953b47472ae5bc1eace14c0c470d7bd75d128e933806c97c50b6401946
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 24 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- Table 1 is a Markdown table; its first column contains row headers, shown in bold. The remaining 23 tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 - Existing external image/media URLs are resolved against the pinned source. Assets are not downloaded or availability-tested; image-only formulas/diagrams still require their source resources.
@@ -166,103 +166,18 @@ Definitions of CSS properties and values in this specification are analogous to 
 
 <a id="term-matching"></a>
 
-<strong>Table 1 — structured row/cell transcription</strong>
+<strong>Table 1</strong>
 
-<strong>Row 1</strong>
+| Term in CSS Masking | Term in [\[CSS3BG\]](#biblio-css3bg) |
+| --- | --- |
+| <strong><a id="ref-for-mask-layer-image"></a> [mask layer image](#mask-layer-image)</strong> | background images |
+| <strong><a id="ref-for-mask-painting-area"></a> [mask painting area](#mask-painting-area)</strong> | <a id="ref-for-background-painting-area"></a> [background painting area](https://www.w3.org/TR/css-backgrounds-3/#background-painting-area) |
+| <strong><a id="mask-size"></a>mask-size</strong> | background-size |
+| <strong><a id="mask-position"></a>mask-position</strong> | background-position |
+| <strong><a id="ref-for-mask-positioning-area"></a> [mask positioning area](#mask-positioning-area)</strong> | <a id="ref-for-background-positioning-area"></a> [background positioning area](https://www.w3.org/TR/css-backgrounds-3/#background-positioning-area) |
+| <strong><a id="ref-for-mask-border-image"></a> [mask border image](#mask-border-image)</strong> | border-image |
+| <strong><a id="ref-for-mask-border-image-area①"></a> [mask border image area](#mask-border-image-area)</strong> | <a id="ref-for-border-image-area"></a> [border image area](https://www.w3.org/TR/css-backgrounds-3/#border-image-area) |
 
-<strong>Column 1 (header cell):</strong>
-
-Term in CSS Masking
-
-<strong>Column 2 (header cell):</strong>
-
-Term in [\[CSS3BG\]](#biblio-css3bg)
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-mask-layer-image"></a>
-
-[mask layer image](#mask-layer-image)
-
-<strong>Column 2 (data cell):</strong>
-
-background images
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-mask-painting-area"></a>
-
-[mask painting area](#mask-painting-area)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-background-painting-area"></a>
-
-[background painting area](https://www.w3.org/TR/css-backgrounds-3/#background-painting-area)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="mask-size"></a>mask-size
-
-<strong>Column 2 (data cell):</strong>
-
-background-size
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="mask-position"></a>mask-position
-
-<strong>Column 2 (data cell):</strong>
-
-background-position
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-mask-positioning-area"></a>
-
-[mask positioning area](#mask-positioning-area)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-background-positioning-area"></a>
-
-[background positioning area](https://www.w3.org/TR/css-backgrounds-3/#background-positioning-area)
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-mask-border-image"></a>
-
-[mask border image](#mask-border-image)
-
-<strong>Column 2 (data cell):</strong>
-
-border-image
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-mask-border-image-area①"></a>
-
-[mask border image area](#mask-border-image-area)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-border-image-area"></a>
-
-[border image area](https://www.w3.org/TR/css-backgrounds-3/#border-image-area)
 
 ## <a id="clipping-paths"></a>5. Clipping Paths
 
