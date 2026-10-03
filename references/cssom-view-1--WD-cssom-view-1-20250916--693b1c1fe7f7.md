@@ -20,7 +20,8 @@ Conversion: offline format conversion of the exact stored HTML; not a new specif
 
 Representation notes:
 - 1 inline SVG diagrams are retained as local passive SVG assets, with original geometry and visible source diagram text. Supporting assets are not reference documents.
-- 4 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 4 source tables are presented as readable Markdown tables or explicit labeled layouts: 3 ordinary table conversions, 1 complex-table layout. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 
@@ -135,273 +136,127 @@ A <a id="scrolling-box"></a>scrolling box of a [viewport](https://www.w3.org/TR/
 
 The term <a id="scrolling-area"></a>scrolling area refers to a box of a [viewport](https://www.w3.org/TR/CSS2/visuren.html#x1) or an element that has the following edges, depending on the <a id="ref-for-x1②"></a>viewport’s or element’s [scrolling box’s](#scrolling-box) [overflow directions](#overflow-directions).
 
-<strong>Table 1 — structured row/cell transcription</strong>
+<a id="ref-for-overflow-directions①"></a>**If the [overflow directions](#overflow-directions) are…**
 
-<strong>Row 1</strong>
+**rightward and downward**
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-x1③"></a>**For a [viewport](https://www.w3.org/TR/CSS2/visuren.html#x1)**
 
-<a id="ref-for-overflow-directions①"></a>
+**top edge**  
+<a id="ref-for-initial-containing-block"></a>The top edge of the [initial containing block](https://www.w3.org/TR/css-display-4/#initial-containing-block).
 
-If the [overflow directions](#overflow-directions) are…
+**right edge**  
+<a id="ref-for-x1④"></a><a id="ref-for-margin-edge"></a><a id="ref-for-initial-containing-block①"></a>The right-most edge of the right edge of the [initial containing block](https://www.w3.org/TR/css-display-4/#initial-containing-block) and the right [margin edge](https://www.w3.org/TR/css-box-4/#margin-edge) of all of the [viewport’s](https://www.w3.org/TR/CSS2/visuren.html#x1) descendants' boxes.
 
-<strong>Column 2 (header cell):</strong>
+**bottom edge**  
+<a id="ref-for-x1⑤"></a><a id="ref-for-margin-edge①"></a><a id="ref-for-initial-containing-block②"></a>The bottom-most edge of the bottom edge of the [initial containing block](https://www.w3.org/TR/css-display-4/#initial-containing-block) and the bottom [margin edge](https://www.w3.org/TR/css-box-4/#margin-edge) of all of the [viewport’s](https://www.w3.org/TR/CSS2/visuren.html#x1) descendants' boxes.
 
-<a id="ref-for-x1③"></a>
+**left edge**  
+<a id="ref-for-initial-containing-block③"></a>The left edge of the [initial containing block](https://www.w3.org/TR/css-display-4/#initial-containing-block).
 
-For a [viewport](https://www.w3.org/TR/CSS2/visuren.html#x1)
+**For an element**
 
-<strong>Column 3 (header cell):</strong>
+**top edge**  
+<a id="ref-for-padding-edge"></a>The element’s top [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge).
 
-For an element
+**right edge**  
+<a id="ref-for-margin-edge②"></a><a id="ref-for-padding-edge①"></a>The right-most edge of the element’s right [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge) and the right [margin edge](https://www.w3.org/TR/css-box-4/#margin-edge) of all of the element’s descendants' boxes, excluding boxes that have an ancestor of the element as their containing block.
 
-<strong>Row 2</strong>
+**bottom edge**  
+<a id="ref-for-margin-edge③"></a><a id="ref-for-padding-edge②"></a>The bottom-most edge of the element’s bottom [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge) and the bottom [margin edge](https://www.w3.org/TR/css-box-4/#margin-edge) of all of the element’s descendants' boxes, excluding boxes that have an ancestor of the element as their containing block.
 
-<strong>Column 1 (data cell):</strong>
+**left edge**  
+<a id="ref-for-padding-edge③"></a>The element’s left [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge).
 
-rightward and downward
+**leftward and downward**
 
-<strong>Column 2 (data cell):</strong>
+**For a viewport**
 
-top edge  
-<a id="ref-for-initial-containing-block"></a>
+**top edge**  
+<a id="ref-for-initial-containing-block④"></a>The top edge of the [initial containing block](https://www.w3.org/TR/css-display-4/#initial-containing-block).
 
-The top edge of the [initial containing block](https://www.w3.org/TR/css-display-4/#initial-containing-block).
+**right edge**  
+<a id="ref-for-initial-containing-block⑤"></a>The right edge of the [initial containing block](https://www.w3.org/TR/css-display-4/#initial-containing-block).
 
-right edge  
-<a id="ref-for-x1④"></a>
+**bottom edge**  
+<a id="ref-for-x1⑥"></a><a id="ref-for-margin-edge④"></a><a id="ref-for-initial-containing-block⑥"></a>The bottom-most edge of the bottom edge of the [initial containing block](https://www.w3.org/TR/css-display-4/#initial-containing-block) and the bottom [margin edge](https://www.w3.org/TR/css-box-4/#margin-edge) of all of the [viewport’s](https://www.w3.org/TR/CSS2/visuren.html#x1) descendants' boxes.
 
-<a id="ref-for-margin-edge"></a>
+**left edge**  
+<a id="ref-for-x1⑦"></a><a id="ref-for-margin-edge⑤"></a><a id="ref-for-initial-containing-block⑦"></a>The left-most edge of the left edge of the [initial containing block](https://www.w3.org/TR/css-display-4/#initial-containing-block) and the left [margin edge](https://www.w3.org/TR/css-box-4/#margin-edge) of all of the [viewport’s](https://www.w3.org/TR/CSS2/visuren.html#x1) descendants' boxes.
 
-<a id="ref-for-initial-containing-block①"></a>
+**For an element**
 
-The right-most edge of the right edge of the [initial containing block](https://www.w3.org/TR/css-display-4/#initial-containing-block) and the right [margin edge](https://www.w3.org/TR/css-box-4/#margin-edge) of all of the [viewport’s](https://www.w3.org/TR/CSS2/visuren.html#x1) descendants' boxes.
+**top edge**  
+<a id="ref-for-padding-edge④"></a>The element’s top [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge).
 
-bottom edge  
-<a id="ref-for-x1⑤"></a>
+**right edge**  
+<a id="ref-for-padding-edge⑤"></a>The element’s right [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge).
 
-<a id="ref-for-margin-edge①"></a>
+**bottom edge**  
+<a id="ref-for-margin-edge⑥"></a><a id="ref-for-padding-edge⑥"></a>The bottom-most edge of the element’s bottom [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge) and the bottom [margin edge](https://www.w3.org/TR/css-box-4/#margin-edge) of all of the element’s descendants' boxes, excluding boxes that have an ancestor of the element as their containing block.
 
-<a id="ref-for-initial-containing-block②"></a>
+**left edge**  
+<a id="ref-for-margin-edge⑦"></a><a id="ref-for-padding-edge⑦"></a>The left-most edge of the element’s left [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge) and the left [margin edge](https://www.w3.org/TR/css-box-4/#margin-edge) of all of the element’s descendants' boxes, excluding boxes that have an ancestor of the element as their containing block.
 
-The bottom-most edge of the bottom edge of the [initial containing block](https://www.w3.org/TR/css-display-4/#initial-containing-block) and the bottom [margin edge](https://www.w3.org/TR/css-box-4/#margin-edge) of all of the [viewport’s](https://www.w3.org/TR/CSS2/visuren.html#x1) descendants' boxes.
+**leftward and upward**
 
-left edge  
-<a id="ref-for-initial-containing-block③"></a>
+**For a viewport**
 
-The left edge of the [initial containing block](https://www.w3.org/TR/css-display-4/#initial-containing-block).
+**top edge**  
+<a id="ref-for-x1⑧"></a><a id="ref-for-margin-edge⑧"></a><a id="ref-for-initial-containing-block⑧"></a>The top-most edge of the top edge of the [initial containing block](https://www.w3.org/TR/css-display-4/#initial-containing-block) and the top [margin edge](https://www.w3.org/TR/css-box-4/#margin-edge) of all of the [viewport’s](https://www.w3.org/TR/CSS2/visuren.html#x1) descendants' boxes.
 
-<strong>Column 3 (data cell):</strong>
+**right edge**  
+<a id="ref-for-initial-containing-block⑨"></a>The right edge of the [initial containing block](https://www.w3.org/TR/css-display-4/#initial-containing-block).
 
-top edge  
-<a id="ref-for-padding-edge"></a>
+**bottom edge**  
+<a id="ref-for-initial-containing-block①⓪"></a>The bottom edge of the [initial containing block](https://www.w3.org/TR/css-display-4/#initial-containing-block).
 
-The element’s top [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge).
+**left edge**  
+<a id="ref-for-x1⑨"></a><a id="ref-for-margin-edge⑨"></a><a id="ref-for-initial-containing-block①①"></a>The left-most edge of the left edge of the [initial containing block](https://www.w3.org/TR/css-display-4/#initial-containing-block) and the left [margin edge](https://www.w3.org/TR/css-box-4/#margin-edge) of all of the [viewport’s](https://www.w3.org/TR/CSS2/visuren.html#x1) descendants' boxes.
 
-right edge  
-<a id="ref-for-margin-edge②"></a>
+**For an element**
 
-<a id="ref-for-padding-edge①"></a>
+**top edge**  
+<a id="ref-for-margin-edge①⓪"></a><a id="ref-for-padding-edge⑧"></a>The top-most edge of the element’s top [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge) and the top [margin edge](https://www.w3.org/TR/css-box-4/#margin-edge) of all of the element’s descendants' boxes, excluding boxes that have an ancestor of the element as their containing block.
 
-The right-most edge of the element’s right [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge) and the right [margin edge](https://www.w3.org/TR/css-box-4/#margin-edge) of all of the element’s descendants' boxes, excluding boxes that have an ancestor of the element as their containing block.
+**right edge**  
+<a id="ref-for-padding-edge⑨"></a>The element’s right [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge).
 
-bottom edge  
-<a id="ref-for-margin-edge③"></a>
+**bottom edge**  
+<a id="ref-for-padding-edge①⓪"></a>The element’s bottom [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge).
 
-<a id="ref-for-padding-edge②"></a>
+**left edge**  
+<a id="ref-for-margin-edge①①"></a><a id="ref-for-padding-edge①①"></a>The left-most edge of the element’s left [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge) and the left [margin edge](https://www.w3.org/TR/css-box-4/#margin-edge) of all of the element’s descendants' boxes, excluding boxes that have an ancestor of the element as their containing block.
 
-The bottom-most edge of the element’s bottom [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge) and the bottom [margin edge](https://www.w3.org/TR/css-box-4/#margin-edge) of all of the element’s descendants' boxes, excluding boxes that have an ancestor of the element as their containing block.
+**rightward and upward**
 
-left edge  
-<a id="ref-for-padding-edge③"></a>
+**For a viewport**
 
-The element’s left [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge).
+**top edge**  
+<a id="ref-for-x1①⓪"></a><a id="ref-for-margin-edge①②"></a><a id="ref-for-initial-containing-block①②"></a>The top-most edge of the top edge of the [initial containing block](https://www.w3.org/TR/css-display-4/#initial-containing-block) and the top [margin edge](https://www.w3.org/TR/css-box-4/#margin-edge) of all of the [viewport’s](https://www.w3.org/TR/CSS2/visuren.html#x1) descendants' boxes.
 
-<strong>Row 3</strong>
+**right edge**  
+<a id="ref-for-x1①①"></a><a id="ref-for-margin-edge①③"></a><a id="ref-for-initial-containing-block①③"></a>The right-most edge of the right edge of the [initial containing block](https://www.w3.org/TR/css-display-4/#initial-containing-block) and the right [margin edge](https://www.w3.org/TR/css-box-4/#margin-edge) of all of the [viewport’s](https://www.w3.org/TR/CSS2/visuren.html#x1) descendants' boxes.
 
-<strong>Column 1 (data cell):</strong>
+**bottom edge**  
+<a id="ref-for-initial-containing-block①④"></a>The bottom edge of the [initial containing block](https://www.w3.org/TR/css-display-4/#initial-containing-block).
 
-leftward and downward
+**left edge**  
+<a id="ref-for-initial-containing-block①⑤"></a>The left edge of the [initial containing block](https://www.w3.org/TR/css-display-4/#initial-containing-block).
 
-<strong>Column 2 (data cell):</strong>
+**For an element**
 
-top edge  
-<a id="ref-for-initial-containing-block④"></a>
+**top edge**  
+<a id="ref-for-margin-edge①④"></a><a id="ref-for-padding-edge①②"></a>The top-most edge of the element’s top [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge) and the top [margin edge](https://www.w3.org/TR/css-box-4/#margin-edge) of all of the element’s descendants' boxes, excluding boxes that have an ancestor of the element as their containing block.
 
-The top edge of the [initial containing block](https://www.w3.org/TR/css-display-4/#initial-containing-block).
+**right edge**  
+<a id="ref-for-margin-edge①⑤"></a><a id="ref-for-padding-edge①③"></a>The right-most edge of the element’s right [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge) and the right [margin edge](https://www.w3.org/TR/css-box-4/#margin-edge) of all of the element’s descendants' boxes, excluding boxes that have an ancestor of the element as their containing block.
 
-right edge  
-<a id="ref-for-initial-containing-block⑤"></a>
+**bottom edge**  
+<a id="ref-for-padding-edge①④"></a>The element’s bottom [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge).
 
-The right edge of the [initial containing block](https://www.w3.org/TR/css-display-4/#initial-containing-block).
-
-bottom edge  
-<a id="ref-for-x1⑥"></a>
-
-<a id="ref-for-margin-edge④"></a>
-
-<a id="ref-for-initial-containing-block⑥"></a>
-
-The bottom-most edge of the bottom edge of the [initial containing block](https://www.w3.org/TR/css-display-4/#initial-containing-block) and the bottom [margin edge](https://www.w3.org/TR/css-box-4/#margin-edge) of all of the [viewport’s](https://www.w3.org/TR/CSS2/visuren.html#x1) descendants' boxes.
-
-left edge  
-<a id="ref-for-x1⑦"></a>
-
-<a id="ref-for-margin-edge⑤"></a>
-
-<a id="ref-for-initial-containing-block⑦"></a>
-
-The left-most edge of the left edge of the [initial containing block](https://www.w3.org/TR/css-display-4/#initial-containing-block) and the left [margin edge](https://www.w3.org/TR/css-box-4/#margin-edge) of all of the [viewport’s](https://www.w3.org/TR/CSS2/visuren.html#x1) descendants' boxes.
-
-<strong>Column 3 (data cell):</strong>
-
-top edge  
-<a id="ref-for-padding-edge④"></a>
-
-The element’s top [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge).
-
-right edge  
-<a id="ref-for-padding-edge⑤"></a>
-
-The element’s right [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge).
-
-bottom edge  
-<a id="ref-for-margin-edge⑥"></a>
-
-<a id="ref-for-padding-edge⑥"></a>
-
-The bottom-most edge of the element’s bottom [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge) and the bottom [margin edge](https://www.w3.org/TR/css-box-4/#margin-edge) of all of the element’s descendants' boxes, excluding boxes that have an ancestor of the element as their containing block.
-
-left edge  
-<a id="ref-for-margin-edge⑦"></a>
-
-<a id="ref-for-padding-edge⑦"></a>
-
-The left-most edge of the element’s left [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge) and the left [margin edge](https://www.w3.org/TR/css-box-4/#margin-edge) of all of the element’s descendants' boxes, excluding boxes that have an ancestor of the element as their containing block.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-leftward and upward
-
-<strong>Column 2 (data cell):</strong>
-
-top edge  
-<a id="ref-for-x1⑧"></a>
-
-<a id="ref-for-margin-edge⑧"></a>
-
-<a id="ref-for-initial-containing-block⑧"></a>
-
-The top-most edge of the top edge of the [initial containing block](https://www.w3.org/TR/css-display-4/#initial-containing-block) and the top [margin edge](https://www.w3.org/TR/css-box-4/#margin-edge) of all of the [viewport’s](https://www.w3.org/TR/CSS2/visuren.html#x1) descendants' boxes.
-
-right edge  
-<a id="ref-for-initial-containing-block⑨"></a>
-
-The right edge of the [initial containing block](https://www.w3.org/TR/css-display-4/#initial-containing-block).
-
-bottom edge  
-<a id="ref-for-initial-containing-block①⓪"></a>
-
-The bottom edge of the [initial containing block](https://www.w3.org/TR/css-display-4/#initial-containing-block).
-
-left edge  
-<a id="ref-for-x1⑨"></a>
-
-<a id="ref-for-margin-edge⑨"></a>
-
-<a id="ref-for-initial-containing-block①①"></a>
-
-The left-most edge of the left edge of the [initial containing block](https://www.w3.org/TR/css-display-4/#initial-containing-block) and the left [margin edge](https://www.w3.org/TR/css-box-4/#margin-edge) of all of the [viewport’s](https://www.w3.org/TR/CSS2/visuren.html#x1) descendants' boxes.
-
-<strong>Column 3 (data cell):</strong>
-
-top edge  
-<a id="ref-for-margin-edge①⓪"></a>
-
-<a id="ref-for-padding-edge⑧"></a>
-
-The top-most edge of the element’s top [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge) and the top [margin edge](https://www.w3.org/TR/css-box-4/#margin-edge) of all of the element’s descendants' boxes, excluding boxes that have an ancestor of the element as their containing block.
-
-right edge  
-<a id="ref-for-padding-edge⑨"></a>
-
-The element’s right [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge).
-
-bottom edge  
-<a id="ref-for-padding-edge①⓪"></a>
-
-The element’s bottom [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge).
-
-left edge  
-<a id="ref-for-margin-edge①①"></a>
-
-<a id="ref-for-padding-edge①①"></a>
-
-The left-most edge of the element’s left [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge) and the left [margin edge](https://www.w3.org/TR/css-box-4/#margin-edge) of all of the element’s descendants' boxes, excluding boxes that have an ancestor of the element as their containing block.
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-rightward and upward
-
-<strong>Column 2 (data cell):</strong>
-
-top edge  
-<a id="ref-for-x1①⓪"></a>
-
-<a id="ref-for-margin-edge①②"></a>
-
-<a id="ref-for-initial-containing-block①②"></a>
-
-The top-most edge of the top edge of the [initial containing block](https://www.w3.org/TR/css-display-4/#initial-containing-block) and the top [margin edge](https://www.w3.org/TR/css-box-4/#margin-edge) of all of the [viewport’s](https://www.w3.org/TR/CSS2/visuren.html#x1) descendants' boxes.
-
-right edge  
-<a id="ref-for-x1①①"></a>
-
-<a id="ref-for-margin-edge①③"></a>
-
-<a id="ref-for-initial-containing-block①③"></a>
-
-The right-most edge of the right edge of the [initial containing block](https://www.w3.org/TR/css-display-4/#initial-containing-block) and the right [margin edge](https://www.w3.org/TR/css-box-4/#margin-edge) of all of the [viewport’s](https://www.w3.org/TR/CSS2/visuren.html#x1) descendants' boxes.
-
-bottom edge  
-<a id="ref-for-initial-containing-block①④"></a>
-
-The bottom edge of the [initial containing block](https://www.w3.org/TR/css-display-4/#initial-containing-block).
-
-left edge  
-<a id="ref-for-initial-containing-block①⑤"></a>
-
-The left edge of the [initial containing block](https://www.w3.org/TR/css-display-4/#initial-containing-block).
-
-<strong>Column 3 (data cell):</strong>
-
-top edge  
-<a id="ref-for-margin-edge①④"></a>
-
-<a id="ref-for-padding-edge①②"></a>
-
-The top-most edge of the element’s top [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge) and the top [margin edge](https://www.w3.org/TR/css-box-4/#margin-edge) of all of the element’s descendants' boxes, excluding boxes that have an ancestor of the element as their containing block.
-
-right edge  
-<a id="ref-for-margin-edge①⑤"></a>
-
-<a id="ref-for-padding-edge①③"></a>
-
-The right-most edge of the element’s right [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge) and the right [margin edge](https://www.w3.org/TR/css-box-4/#margin-edge) of all of the element’s descendants' boxes, excluding boxes that have an ancestor of the element as their containing block.
-
-bottom edge  
-<a id="ref-for-padding-edge①④"></a>
-
-The element’s bottom [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge).
-
-left edge  
-<a id="ref-for-padding-edge①⑤"></a>
-
-The element’s left [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge).
+**left edge**  
+<a id="ref-for-padding-edge①⑤"></a>The element’s left [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge).
 
 <a id="ref-for-scrolling-area"></a>
 
@@ -1818,33 +1673,9 @@ The <a id="dom-mediaquerylist-removelistener"></a><code>removeListener(<var>call
 
 The following are the [event handlers](https://html.spec.whatwg.org/multipage/webappapis.html#event-handlers) (and their corresponding [event handler event types](https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-event-type)) that must be supported, as [event handler IDL attributes](https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-idl-attributes), by all objects implementing the <code><a href="#mediaquerylist">MediaQueryList</a></code> interface:
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-event-handlers①"></a>
-
-[Event handler](https://html.spec.whatwg.org/multipage/webappapis.html#event-handlers)
-
-<strong>Column 2 (header cell):</strong>
-
-<a id="ref-for-event-handler-event-type①"></a>
-
-[Event handler event type](https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-event-type)
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="dom-mediaquerylist-onchange"></a>`onchange`
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-eventdef-mediaquerylist-change①"></a>
-
-[change](#eventdef-mediaquerylist-change)
+| <a id="ref-for-event-handlers①"></a>[Event handler](https://html.spec.whatwg.org/multipage/webappapis.html#event-handlers) | <a id="ref-for-event-handler-event-type①"></a>[Event handler event type](https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-event-type) |
+|-----------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------|
+| <a id="dom-mediaquerylist-onchange"></a><code>onchange</code>                                                                      | <a id="ref-for-eventdef-mediaquerylist-change①"></a>[change](#eventdef-mediaquerylist-change)                                                                   |
 
 Tests
 
@@ -1912,51 +1743,9 @@ The <a id="dom-mediaquerylistevent-matches"></a>`matches` attribute must return 
 
 <i>This section is non-normative.</i>
 
-<strong>Table 3 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Event
-
-<strong>Column 2 (header cell):</strong>
-
-Interface
-
-<strong>Column 3 (header cell):</strong>
-
-Interesting targets
-
-<strong>Column 4 (header cell):</strong>
-
-Description
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="eventdef-mediaquerylist-change"></a>`change`
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mediaquerylistevent①"></a>
-
-<code><a href="#mediaquerylistevent">MediaQueryListEvent</a></code>
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-mediaquerylist⑨"></a>
-
-<code><a href="#mediaquerylist">MediaQueryList</a></code>
-
-<strong>Column 4 (data cell):</strong>
-
-<a id="ref-for-mediaquerylist-matches-state③"></a>
-
-<a id="ref-for-mediaquerylist①⓪"></a>
-
-Fired at the <code><a href="#mediaquerylist">MediaQueryList</a></code> when the [matches state](#mediaquerylist-matches-state) changes.
+| Event                                | Interface                            | Interesting targets                  | Description                                                                                                                           |
+|--------------------------------------|--------------------------------------|--------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------|
+| <a id="eventdef-mediaquerylist-change"></a><code>change</code> | <a id="ref-for-mediaquerylistevent①"></a><code><a href="#mediaquerylistevent">MediaQueryListEvent</a></code> | <a id="ref-for-mediaquerylist⑨"></a><code><a href="#mediaquerylist">MediaQueryList</a></code> | <a id="ref-for-mediaquerylist-matches-state③"></a><a id="ref-for-mediaquerylist①⓪"></a>Fired at the <code><a href="#mediaquerylist">MediaQueryList</a></code> when the [matches state](#mediaquerylist-matches-state) changes. |
 
 <a id="ref-for-screen②"></a>
 
@@ -5149,125 +4938,11 @@ Whenever scrolling is [completed](#scroll-completed), the user agent must run th
 
 <i>This section is non-normative.</i>
 
-<strong>Table 4 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Event
-
-<strong>Column 2 (header cell):</strong>
-
-Interface
-
-<strong>Column 3 (header cell):</strong>
-
-Interesting targets
-
-<strong>Column 4 (header cell):</strong>
-
-Description
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="eventdef-window-resize"></a>`resize`
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-event①"></a>
-
-<code><a href="https://dom.spec.whatwg.org/#event">Event</a></code>
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-visualviewport①②"></a>
-
-<a id="ref-for-window⑨"></a>
-
-<code><a href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#window">Window</a></code>, <code><a href="#visualviewport">VisualViewport</a></code>
-
-<strong>Column 4 (data cell):</strong>
-
-<a id="ref-for-layout-viewport⑦"></a>
-
-<a id="ref-for-visual-viewport①⑦"></a>
-
-<a id="ref-for-visualviewport①③"></a>
-
-<a id="ref-for-x1⑨⑦"></a>
-
-<a id="ref-for-window①⓪"></a>
-
-Fired at the <code><a href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#window">Window</a></code> when the [viewport](https://www.w3.org/TR/CSS2/visuren.html#x1) is resized. Fired at <code><a href="#visualviewport">VisualViewport</a></code> when the [visual viewport](#visual-viewport) is resized or the [layout viewport](#layout-viewport) is scaled.
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="eventdef-document-scroll"></a>`scroll`
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-event②"></a>
-
-<code><a href="https://dom.spec.whatwg.org/#event">Event</a></code>
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-document②①"></a>
-
-<a id="ref-for-visualviewport①④"></a>
-
-<code><a href="#visualviewport">VisualViewport</a></code>, <code><a href="https://dom.spec.whatwg.org/#document">Document</a></code>, elements
-
-<strong>Column 4 (data cell):</strong>
-
-<a id="ref-for-x1⑨⑧"></a>
-
-<a id="ref-for-visualviewport①⑥"></a>
-
-<a id="ref-for-document②②"></a>
-
-<a id="ref-for-visualviewport①⑤"></a>
-
-Fired at the <code><a href="#visualviewport">VisualViewport</a></code>, <code><a href="https://dom.spec.whatwg.org/#document">Document</a></code> or element when the <code><a href="#visualviewport">VisualViewport</a></code>, [viewport](https://www.w3.org/TR/CSS2/visuren.html#x1), or element is scrolled, respectively.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="eventdef-document-scrollend"></a>`scrollend`
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-event③"></a>
-
-<code><a href="https://dom.spec.whatwg.org/#event">Event</a></code>
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-visualviewport①⑦"></a>
-
-<a id="ref-for-document②③"></a>
-
-<code><a href="https://dom.spec.whatwg.org/#document">Document</a></code>, elements, <code><a href="#visualviewport">VisualViewport</a></code>
-
-<strong>Column 4 (data cell):</strong>
-
-<a id="ref-for-x1⑨⑨"></a>
-
-<a id="ref-for-visualviewport①⑨"></a>
-
-<a id="ref-for-scroll-completed①"></a>
-
-<a id="ref-for-document②④"></a>
-
-<a id="ref-for-visualviewport①⑧"></a>
-
-Fired at the <code><a href="#visualviewport">VisualViewport</a></code>, <code><a href="https://dom.spec.whatwg.org/#document">Document</a></code>, or element when a scroll is [completed](#scroll-completed): the <code><a href="#visualviewport">VisualViewport</a></code>, [viewport](https://www.w3.org/TR/CSS2/visuren.html#x1), or element has been scrolled, the scroll sequence has ended and any scroll offset changes have been applied.
+| Event                                | Interface                            | Interesting targets                                                                  | Description                                                                                                                                                                                                                                                                                                                                                                                               |
+|--------------------------------------|--------------------------------------|--------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <a id="eventdef-window-resize"></a><code>resize</code> | <a id="ref-for-event①"></a><code><a href="https://dom.spec.whatwg.org/#event">Event</a></code> | <a id="ref-for-visualviewport①②"></a><a id="ref-for-window⑨"></a><code><a href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#window">Window</a></code>, <code><a href="#visualviewport">VisualViewport</a></code>           | <a id="ref-for-layout-viewport⑦"></a><a id="ref-for-visual-viewport①⑦"></a><a id="ref-for-visualviewport①③"></a><a id="ref-for-x1⑨⑦"></a><a id="ref-for-window①⓪"></a>Fired at the <code><a href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#window">Window</a></code> when the [viewport](https://www.w3.org/TR/CSS2/visuren.html#x1) is resized. Fired at <code><a href="#visualviewport">VisualViewport</a></code> when the [visual viewport](#visual-viewport) is resized or the [layout viewport](#layout-viewport) is scaled.                                                        |
+| <a id="eventdef-document-scroll"></a><code>scroll</code> | <a id="ref-for-event②"></a><code><a href="https://dom.spec.whatwg.org/#event">Event</a></code> | <a id="ref-for-document②①"></a><a id="ref-for-visualviewport①④"></a><code><a href="#visualviewport">VisualViewport</a></code>, <code><a href="https://dom.spec.whatwg.org/#document">Document</a></code>, elements | <a id="ref-for-x1⑨⑧"></a><a id="ref-for-visualviewport①⑥"></a><a id="ref-for-document②②"></a><a id="ref-for-visualviewport①⑤"></a>Fired at the <code><a href="#visualviewport">VisualViewport</a></code>, <code><a href="https://dom.spec.whatwg.org/#document">Document</a></code> or element when the <code><a href="#visualviewport">VisualViewport</a></code>, [viewport](https://www.w3.org/TR/CSS2/visuren.html#x1), or element is scrolled, respectively.                                                                                                                                        |
+| <a id="eventdef-document-scrollend"></a><code>scrollend</code> | <a id="ref-for-event③"></a><code><a href="https://dom.spec.whatwg.org/#event">Event</a></code> | <a id="ref-for-visualviewport①⑦"></a><a id="ref-for-document②③"></a><code><a href="https://dom.spec.whatwg.org/#document">Document</a></code>, elements, <code><a href="#visualviewport">VisualViewport</a></code> | <a id="ref-for-x1⑨⑨"></a><a id="ref-for-visualviewport①⑨"></a><a id="ref-for-scroll-completed①"></a><a id="ref-for-document②④"></a><a id="ref-for-visualviewport①⑧"></a>Fired at the <code><a href="#visualviewport">VisualViewport</a></code>, <code><a href="https://dom.spec.whatwg.org/#document">Document</a></code>, or element when a scroll is [completed](#scroll-completed): the <code><a href="#visualviewport">VisualViewport</a></code>, [viewport](https://www.w3.org/TR/CSS2/visuren.html#x1), or element has been scrolled, the scroll sequence has ended and any scroll offset changes have been applied. |
 
 ## <a id="post-layout-snapshot"></a>14. Post-Layout State Snapshotting
 

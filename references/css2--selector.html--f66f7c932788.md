@@ -19,7 +19,8 @@ Snapshot SHA-256: f66f7c932788118efbbe1d328ecf012a85ae2881c02464d2a1751347b1e95e
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 1 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 1 source tables are presented as readable Markdown tables or explicit labeled layouts: 1 ordinary table conversion. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Existing external image/media URLs are resolved against the pinned source. Assets are not downloaded or availability-tested; image-only formulas/diagrams still require their source resources.
 
@@ -49,234 +50,23 @@ The case-sensitivity of document language element names in selectors depends on 
 
 The following table summarizes CSS 2.1 selector syntax:
 
-**Table 1 — structured row/cell transcription**
-
-**Row 1**
-
-**Column 1 (header cell):**
-
-Pattern
-
-**Column 2 (header cell):**
-
-Meaning
-
-**Column 3 (header cell):**
-
-Described in section
-
-**Row 2**
-
-**Column 1 (data cell):**
-
-\*
-
-**Column 2 (data cell):**
-
-Matches any element.
-
-**Column 3 (data cell):**
-
-[Universal selector](#universal-selector)
-
-**Row 3**
-
-**Column 1 (data cell):**
-
-E
-
-**Column 2 (data cell):**
-
-Matches any E element (i.e., an element of type E).
-
-**Column 3 (data cell):**
-
-[Type selectors](#type-selectors)
-
-**Row 4**
-
-**Column 1 (data cell):**
-
-E F
-
-**Column 2 (data cell):**
-
-Matches any F element that is a descendant of an E element.
-
-**Column 3 (data cell):**
-
-[Descendant selectors](#descendant-selectors)
-
-**Row 5**
-
-**Column 1 (data cell):**
-
-E \> F
-
-**Column 2 (data cell):**
-
-Matches any F element that is a child of an element E.
-
-**Column 3 (data cell):**
-
-[Child selectors](#child-selectors)
-
-**Row 6**
-
-**Column 1 (data cell):**
-
-E:first-child
-
-**Column 2 (data cell):**
-
-Matches element E when E is the first child of its parent.
-
-**Column 3 (data cell):**
-
-[The :first-child pseudo-class](#first-child)
-
-**Row 7**
-
-**Column 1 (data cell):**
-
-E:link  
-E:visited
-
-**Column 2 (data cell):**
-
-Matches element E if E is the source anchor of a hyperlink of which the target is not yet visited (:link) or already visited (:visited).
-
-**Column 3 (data cell):**
-
-[The link pseudo-classes](#link-pseudo-classes)
-
-**Row 8**
-
-**Column 1 (data cell):**
-
-E:active  
-E:hover  
-E:focus
-
-**Column 2 (data cell):**
-
-Matches E during certain user actions.
-
-**Column 3 (data cell):**
-
-[The dynamic pseudo-classes](#dynamic-pseudo-classes)
-
-**Row 9**
-
-**Column 1 (data cell):**
-
-E:lang(c)
-
-**Column 2 (data cell):**
-
-Matches element of type E if it is in (human) language c (the document language specifies how language is determined).
-
-**Column 3 (data cell):**
-
-[The :lang() pseudo-class](#lang)
-
-**Row 10**
-
-**Column 1 (data cell):**
-
-E + F
-
-**Column 2 (data cell):**
-
-Matches any F element immediately preceded by a sibling element E.
-
-**Column 3 (data cell):**
-
-[Adjacent selectors](#adjacent-selectors)
-
-**Row 11**
-
-**Column 1 (data cell):**
-
-E\[foo\]
-
-**Column 2 (data cell):**
-
-Matches any E element with the "foo" attribute set (whatever the value).
-
-**Column 3 (data cell):**
-
-[Attribute selectors](#attribute-selectors)
-
-**Row 12**
-
-**Column 1 (data cell):**
-
-E\[foo="warning"\]
-
-**Column 2 (data cell):**
-
-Matches any E element whose "foo" attribute value is exactly equal to "warning".
-
-**Column 3 (data cell):**
-
-[Attribute selectors](#attribute-selectors)
-
-**Row 13**
-
-**Column 1 (data cell):**
-
-E\[foo~="warning"\]
-
-**Column 2 (data cell):**
-
-Matches any E element whose "foo" attribute value is a list of space-separated values, one of which is exactly equal to "warning".
-
-**Column 3 (data cell):**
-
-[Attribute selectors](#attribute-selectors)
-
-**Row 14**
-
-**Column 1 (data cell):**
-
-E\[lang\|="en"\]
-
-**Column 2 (data cell):**
-
-Matches any E element whose "lang" attribute has a hyphen-separated list of values beginning (from the left) with "en".
-
-**Column 3 (data cell):**
-
-[Attribute selectors](#attribute-selectors)
-
-**Row 15**
-
-**Column 1 (data cell):**
-
-DIV.warning
-
-**Column 2 (data cell):**
-
-<em>Language specific.</em> (In HTML, the same as DIV\[class~="warning"\].)
-
-**Column 3 (data cell):**
-
-[Class selectors](#class-html)
-
-**Row 16**
-
-**Column 1 (data cell):**
-
-E#myid
-
-**Column 2 (data cell):**
-
-Matches any E element with ID equal to "myid".
-
-**Column 3 (data cell):**
-
-[ID selectors](#id-selectors)
+| Pattern                                                  | Meaning                                                                                                                                  | Described in section                                  |
+|----------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------|
+| \*                                                       | Matches any element.                                                                                                                     | [Universal selector](#universal-selector)             |
+| E                                                        | Matches any E element (i.e., an element of type E).                                                                                      | [Type selectors](#type-selectors)                     |
+| E F                                                      | Matches any F element that is a descendant of an E element.                                                                              | [Descendant selectors](#descendant-selectors)         |
+| E \> F                                                   | Matches any F element that is a child of an element E.                                                                                   | [Child selectors](#child-selectors)                   |
+| E:first-child                                            | Matches element E when E is the first child of its parent.                                                                               | [The :first-child pseudo-class](#first-child)         |
+| E:link<br>E:visited                         | Matches element E if E is the source anchor of a hyperlink of which the target is not yet visited (:link) or already visited (:visited). | [The link pseudo-classes](#link-pseudo-classes)       |
+| E:active<br>E:hover<br>E:focus | Matches E during certain user actions.                                                                                                   | [The dynamic pseudo-classes](#dynamic-pseudo-classes) |
+| E:lang(c)                                                | Matches element of type E if it is in (human) language c (the document language specifies how language is determined).                   | [The :lang() pseudo-class](#lang)                     |
+| E + F                                                    | Matches any F element immediately preceded by a sibling element E.                                                                       | [Adjacent selectors](#adjacent-selectors)             |
+| E\[foo\]                                                 | Matches any E element with the "foo" attribute set (whatever the value).                                                                 | [Attribute selectors](#attribute-selectors)           |
+| E\[foo="warning"\]                                       | Matches any E element whose "foo" attribute value is exactly equal to "warning".                                                         | [Attribute selectors](#attribute-selectors)           |
+| E\[foo~="warning"\]                                      | Matches any E element whose "foo" attribute value is a list of space-separated values, one of which is exactly equal to "warning".       | [Attribute selectors](#attribute-selectors)           |
+| E\[lang\|="en"\]                                         | Matches any E element whose "lang" attribute has a hyphen-separated list of values beginning (from the left) with "en".                  | [Attribute selectors](#attribute-selectors)           |
+| DIV.warning                                              | <em>Language specific.</em> (In HTML, the same as DIV\[class~="warning"\].)                                                                      | [Class selectors](#class-html)                        |
+| E#myid                                                   | Matches any E element with ID equal to "myid".                                                                                           | [ID selectors](#id-selectors)                         |
 
 <a id="selector-syntax"></a>
 

@@ -20,7 +20,8 @@ Conversion: offline format conversion of the exact stored HTML; not a new specif
 
 Representation notes:
 - 14 MathML expressions are represented as portable fenced TeX. Independent round-trip checks cover mathematical tokens, matrix shape/order, scripts, fractions and root structure; exact source MathML is retained in verification metadata. Visual equivalence is not certified.
-- 34 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 34 source tables are presented as readable Markdown tables or explicit labeled layouts: 6 ordinary table conversions, 28 complex-table layouts. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 - Existing external image/media URLs are resolved against the pinned source. Assets are not downloaded or availability-tested; image-only formulas/diagrams still require their source resources.
@@ -101,29 +102,7 @@ Filter effects are exposed with two levels of complexity:
 >
 > The filter effect used in the example above is repeated here with reference numbers in the left column before each of the six filter primitives:
 >
-> <strong>Table 1 — structured row/cell transcription</strong>
->
-> <strong>Row 1</strong>
->
-> <strong>Column 1 (data cell):</strong>
->
->   
->   
-> 1  
-> 2  
-> 3  
->   
->   
->   
->   
-> 4  
-> 5  
->   
-> 6  
->   
->   
->
-> <strong>Column 2 (data cell):</strong>
+> **Filter source**
 >
 > ```text
 > <filter id="MyFilter" filterUnits="userSpaceOnUse" x="0" y="0" width="200" height="120">
@@ -145,6 +124,37 @@ Filter effects are exposed with two levels of complexity:
 > </filter>
 > ```
 >
+> **Source margin markers**
+>
+>   
+>   
+> 1  
+> 2  
+> 3  
+>   
+>   
+>   
+>   
+> 4  
+> 5  
+>   
+> 6  
+>   
+>   
+>
+> The source aligns these markers with the following highlighted lines:
+>
+> - Marker 1, source line 3: `<feGaussianBlur in="SourceAlpha" stdDeviation="4" result="blur"/>`
+>
+> - Marker 2, source line 4: `<feOffset in="blur" dx="4" dy="4" result="offsetBlur"/>`
+>
+> - Marker 3, source line 5: `<feSpecularLighting in="blur" surfaceScale="5" specularConstant=".75"`
+>
+> - Marker 4, source line 10: `<feComposite in="specOut" in2="SourceAlpha" operator="in" result="specOut"/>`
+>
+> - Marker 5, source line 11: `<feComposite in="SourceGraphic" in2="specOut" operator="arithmetic"`
+>
+> - Marker 6, source line 13: `<feMerge>`
 > The following pictures show the intermediate image results from each of the six filter elements:
 >
 > ![filters01 - original source graphic](https://www.w3.org/TR/2018/WD-filter-effects-1-20181218/examples/filters01-0.png)
@@ -293,119 +303,18 @@ The pass through filter output is equal to the primary input of the filter primi
 
 The description of the [filter](#propdef-filter) property is as follows:
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-filter"></a>filter
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://drafts.csswg.org/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-filter-value-list"></a>
-
-<a id="ref-for-comb-one"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<filter-value-list\>](#typedef-filter-value-list)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://drafts.csswg.org/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-elementdef-use"></a>
-
-<a id="ref-for-graphics-element"></a>
-
-<a id="ref-for-elementdef-defs"></a>
-
-<a id="ref-for-container-element"></a>
-
-All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/svg2/struct.html#container-element) without the [defs](https://www.w3.org/TR/svg2/struct.html#elementdef-defs) element, all [graphics elements](https://www.w3.org/TR/svg2/struct.html#graphics-element) and the [use](https://www.w3.org/TR/svg2/struct.html#elementdef-use) element.
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://drafts.csswg.org/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://drafts.csswg.org/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://drafts.csswg.org/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animatable:](https://drafts.csswg.org/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-See prose in [Animation of Filters](#animation-of-filters).
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-filter"></a>filter                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| <strong><a href="https://drafts.csswg.org/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-filter-value-list"></a><a id="ref-for-comb-one"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<filter-value-list\>](#typedef-filter-value-list)                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-elementdef-use"></a><a id="ref-for-graphics-element"></a><a id="ref-for-elementdef-defs"></a><a id="ref-for-container-element"></a>All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/svg2/struct.html#container-element) without the [defs](https://www.w3.org/TR/svg2/struct.html#elementdef-defs) element, all [graphics elements](https://www.w3.org/TR/svg2/struct.html#graphics-element) and the [use](https://www.w3.org/TR/svg2/struct.html#elementdef-use) element. |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://drafts.csswg.org/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | as specified                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://drafts.csswg.org/web-animations/#animation-type">Animatable:</a>&#xA;      </strong> | See prose in [Animation of Filters](#animation-of-filters).                                                                                                                                                                                                                                                                                                                                                                                       |
 
 <a id="typedef-filter-value-list"></a>
 
@@ -853,229 +762,33 @@ Interpolate values as shadow list as [repeatable list](https://drafts.csswg.org/
 
 ## <a id="FilterElement"></a>7. SVG Filter Sources: the [filter](#elementdef-filter) element
 
-<strong>Table 3 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
+**Name:**
 
 <a id="elementdef-filter"></a>`filter`
 
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Categories:
-
-<strong>Column 2 (data cell):</strong>
+**Categories:**
 
 None.
 
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Content model:
-
-<strong>Column 2 (data cell):</strong>
+**Content model:**
 
 Any number of the following elements, in any order:
 
-- <a id="ref-for-elementdef-metadata"></a>
+- <a id="ref-for-elementdef-metadata"></a><a id="ref-for-elementdef-title"></a><a id="ref-for-elementdef-desc"></a>[descriptive](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermDescriptiveElement) — [desc](https://www.w3.org/TR/svg2/struct.html#elementdef-desc), [title](https://www.w3.org/TR/svg2/struct.html#elementdef-title), [metadata](https://www.w3.org/TR/svg2/struct.html#elementdef-metadata)
 
-  <a id="ref-for-elementdef-title"></a>
+- <a id="ref-for-elementdef-feturbulence①"></a><a id="ref-for-elementdef-fetile①"></a><a id="ref-for-elementdef-fespecularlighting②"></a><a id="ref-for-elementdef-feoffset②"></a><a id="ref-for-elementdef-femorphology①"></a><a id="ref-for-elementdef-femerge②"></a><a id="ref-for-elementdef-feimage①"></a><a id="ref-for-elementdef-fegaussianblur②"></a><a id="ref-for-elementdef-fedropshadow①"></a><a id="ref-for-elementdef-fedisplacementmap①"></a><a id="ref-for-elementdef-fediffuselighting①"></a><a id="ref-for-elementdef-feconvolvematrix①"></a><a id="ref-for-elementdef-fecomposite③"></a><a id="ref-for-elementdef-fecomponenttransfer①"></a><a id="ref-for-elementdef-fecolormatrix①"></a><a id="ref-for-elementdef-feflood①"></a><a id="ref-for-elementdef-feblend①"></a><a id="ref-for-elementdef-filter-primitive"></a>[filter primitive](#elementdef-filter-primitive) — [feBlend](#elementdef-feblend), [feFlood](#elementdef-feflood), [feColorMatrix](#elementdef-fecolormatrix), [feComponentTransfer](#elementdef-fecomponenttransfer), [feComposite](#elementdef-fecomposite), [feConvolveMatrix](#elementdef-feconvolvematrix), [feDiffuseLighting](#elementdef-fediffuselighting), [feDisplacementMap](#elementdef-fedisplacementmap), [feDropShadow](#elementdef-fedropshadow), [feGaussianBlur](#elementdef-fegaussianblur), [feImage](#elementdef-feimage), [feMerge](#elementdef-femerge), [feMorphology](#elementdef-femorphology), [feOffset](#elementdef-feoffset), [feSpecularLighting](#elementdef-fespecularlighting), [feTile](#elementdef-fetile), [feTurbulence](#elementdef-feturbulence)
 
-  <a id="ref-for-elementdef-desc"></a>
+- <a id="ref-for-AnimateElement"></a>[animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement)
 
-  [descriptive](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermDescriptiveElement) — [desc](https://www.w3.org/TR/svg2/struct.html#elementdef-desc), [title](https://www.w3.org/TR/svg2/struct.html#elementdef-title), [metadata](https://www.w3.org/TR/svg2/struct.html#elementdef-metadata)
+- <a id="ref-for-elementdef-script"></a>[script](https://www.w3.org/TR/svg2/interact.html#elementdef-script)
 
-- <a id="ref-for-elementdef-feturbulence①"></a>
+- <a id="ref-for-SetElement"></a>[set](https://www.w3.org/TR/SVG11/animate.html#SetElement)
 
-  <a id="ref-for-elementdef-fetile①"></a>
-
-  <a id="ref-for-elementdef-fespecularlighting②"></a>
-
-  <a id="ref-for-elementdef-feoffset②"></a>
-
-  <a id="ref-for-elementdef-femorphology①"></a>
-
-  <a id="ref-for-elementdef-femerge②"></a>
-
-  <a id="ref-for-elementdef-feimage①"></a>
-
-  <a id="ref-for-elementdef-fegaussianblur②"></a>
-
-  <a id="ref-for-elementdef-fedropshadow①"></a>
-
-  <a id="ref-for-elementdef-fedisplacementmap①"></a>
-
-  <a id="ref-for-elementdef-fediffuselighting①"></a>
-
-  <a id="ref-for-elementdef-feconvolvematrix①"></a>
-
-  <a id="ref-for-elementdef-fecomposite③"></a>
-
-  <a id="ref-for-elementdef-fecomponenttransfer①"></a>
-
-  <a id="ref-for-elementdef-fecolormatrix①"></a>
-
-  <a id="ref-for-elementdef-feflood①"></a>
-
-  <a id="ref-for-elementdef-feblend①"></a>
-
-  <a id="ref-for-elementdef-filter-primitive"></a>
-
-  [filter primitive](#elementdef-filter-primitive) — [feBlend](#elementdef-feblend), [feFlood](#elementdef-feflood), [feColorMatrix](#elementdef-fecolormatrix), [feComponentTransfer](#elementdef-fecomponenttransfer), [feComposite](#elementdef-fecomposite), [feConvolveMatrix](#elementdef-feconvolvematrix), [feDiffuseLighting](#elementdef-fediffuselighting), [feDisplacementMap](#elementdef-fedisplacementmap), [feDropShadow](#elementdef-fedropshadow), [feGaussianBlur](#elementdef-fegaussianblur), [feImage](#elementdef-feimage), [feMerge](#elementdef-femerge), [feMorphology](#elementdef-femorphology), [feOffset](#elementdef-feoffset), [feSpecularLighting](#elementdef-fespecularlighting), [feTile](#elementdef-fetile), [feTurbulence](#elementdef-feturbulence)
-
-- <a id="ref-for-AnimateElement"></a>
-
-  [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement)
-
-- <a id="ref-for-elementdef-script"></a>
-
-  [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script)
-
-- <a id="ref-for-SetElement"></a>
-
-  [set](https://www.w3.org/TR/SVG11/animate.html#SetElement)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Attributes:
-
-<strong>Column 2 (data cell):</strong>
+**Attributes:**
 
 - [core attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermCoreAttributes) — [id](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#IDAttribute), [xml:base](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLBaseAttribute), [xml:lang](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLLangAttribute), [xml:space](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLSpaceAttribute)
 
-- <a id="ref-for-propdef-writing-mode"></a>
-
-  <a id="ref-for-propdef-word-spacing"></a>
-
-  <a id="ref-for-propdef-visibility"></a>
-
-  <a id="ref-for-propdef-unicode-bidi"></a>
-
-  <a id="ref-for-TextRenderingProperty"></a>
-
-  <a id="ref-for-propdef-text-decoration"></a>
-
-  <a id="ref-for-TextAnchorProperty"></a>
-
-  <a id="ref-for-StrokeWidthProperty"></a>
-
-  <a id="ref-for-StrokeOpacityProperty"></a>
-
-  <a id="ref-for-StrokeMiterlimitProperty"></a>
-
-  <a id="ref-for-StrokeLinejoinProperty"></a>
-
-  <a id="ref-for-StrokeLinecapProperty"></a>
-
-  <a id="ref-for-StrokeDashoffsetProperty"></a>
-
-  <a id="ref-for-StrokeDasharrayProperty"></a>
-
-  <a id="ref-for-StrokeProperty"></a>
-
-  <a id="ref-for-StopOpacityProperty"></a>
-
-  <a id="ref-for-StopColorProperty"></a>
-
-  <a id="ref-for-ShapeRenderingProperty"></a>
-
-  <a id="ref-for-PointerEventsProperty"></a>
-
-  <a id="ref-for-propdef-overflow"></a>
-
-  <a id="ref-for-propdef-opacity③"></a>
-
-  <a id="ref-for-propdef-mask"></a>
-
-  <a id="ref-for-MarkerStartProperty"></a>
-
-  <a id="ref-for-MarkerMidProperty"></a>
-
-  <a id="ref-for-MarkerEndProperty"></a>
-
-  <a id="ref-for-MarkerProperty"></a>
-
-  <a id="ref-for-propdef-lighting-color①"></a>
-
-  <a id="ref-for-propdef-letter-spacing"></a>
-
-  <a id="ref-for-KerningProperty"></a>
-
-  <a id="ref-for-propdef-isolation"></a>
-
-  <a id="ref-for-propdef-image-rendering"></a>
-
-  <a id="ref-for-GlyphOrientationVerticalProperty"></a>
-
-  <a id="ref-for-GlyphOrientationHorizontalProperty"></a>
-
-  <a id="ref-for-propdef-font-weight"></a>
-
-  <a id="ref-for-propdef-font-variant"></a>
-
-  <a id="ref-for-propdef-font-style"></a>
-
-  <a id="ref-for-propdef-font-stretch"></a>
-
-  <a id="ref-for-propdef-font-size-adjust"></a>
-
-  <a id="ref-for-propdef-font-size"></a>
-
-  <a id="ref-for-propdef-font-family"></a>
-
-  <a id="ref-for-propdef-font"></a>
-
-  <a id="ref-for-propdef-flood-opacity①"></a>
-
-  <a id="ref-for-propdef-flood-color①"></a>
-
-  <a id="ref-for-propdef-filter⑧"></a>
-
-  <a id="ref-for-FillRuleProperty"></a>
-
-  <a id="ref-for-FillOpacityProperty"></a>
-
-  <a id="ref-for-FillProperty"></a>
-
-  <a id="ref-for-EnableBackgroundProperty"></a>
-
-  <a id="ref-for-DominantBaselineProperty"></a>
-
-  <a id="ref-for-propdef-display"></a>
-
-  <a id="ref-for-propdef-direction"></a>
-
-  <a id="ref-for-propdef-cursor"></a>
-
-  <a id="ref-for-ColorRenderingProperty"></a>
-
-  <a id="ref-for-propdef-color-interpolation-filters②"></a>
-
-  <a id="ref-for-ColorInterpolationProperty"></a>
-
-  <a id="ref-for-color0"></a>
-
-  <a id="ref-for-propdef-clip-rule"></a>
-
-  <a id="ref-for-propdef-clip-path"></a>
-
-  <a id="ref-for-propdef-clip"></a>
-
-  <a id="ref-for-BaselineShiftProperty"></a>
-
-  <a id="ref-for-AlignmentBaselineProperty"></a>
-
-  [presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
+- <a id="ref-for-propdef-writing-mode"></a><a id="ref-for-propdef-word-spacing"></a><a id="ref-for-propdef-visibility"></a><a id="ref-for-propdef-unicode-bidi"></a><a id="ref-for-TextRenderingProperty"></a><a id="ref-for-propdef-text-decoration"></a><a id="ref-for-TextAnchorProperty"></a><a id="ref-for-StrokeWidthProperty"></a><a id="ref-for-StrokeOpacityProperty"></a><a id="ref-for-StrokeMiterlimitProperty"></a><a id="ref-for-StrokeLinejoinProperty"></a><a id="ref-for-StrokeLinecapProperty"></a><a id="ref-for-StrokeDashoffsetProperty"></a><a id="ref-for-StrokeDasharrayProperty"></a><a id="ref-for-StrokeProperty"></a><a id="ref-for-StopOpacityProperty"></a><a id="ref-for-StopColorProperty"></a><a id="ref-for-ShapeRenderingProperty"></a><a id="ref-for-PointerEventsProperty"></a><a id="ref-for-propdef-overflow"></a><a id="ref-for-propdef-opacity③"></a><a id="ref-for-propdef-mask"></a><a id="ref-for-MarkerStartProperty"></a><a id="ref-for-MarkerMidProperty"></a><a id="ref-for-MarkerEndProperty"></a><a id="ref-for-MarkerProperty"></a><a id="ref-for-propdef-lighting-color①"></a><a id="ref-for-propdef-letter-spacing"></a><a id="ref-for-KerningProperty"></a><a id="ref-for-propdef-isolation"></a><a id="ref-for-propdef-image-rendering"></a><a id="ref-for-GlyphOrientationVerticalProperty"></a><a id="ref-for-GlyphOrientationHorizontalProperty"></a><a id="ref-for-propdef-font-weight"></a><a id="ref-for-propdef-font-variant"></a><a id="ref-for-propdef-font-style"></a><a id="ref-for-propdef-font-stretch"></a><a id="ref-for-propdef-font-size-adjust"></a><a id="ref-for-propdef-font-size"></a><a id="ref-for-propdef-font-family"></a><a id="ref-for-propdef-font"></a><a id="ref-for-propdef-flood-opacity①"></a><a id="ref-for-propdef-flood-color①"></a><a id="ref-for-propdef-filter⑧"></a><a id="ref-for-FillRuleProperty"></a><a id="ref-for-FillOpacityProperty"></a><a id="ref-for-FillProperty"></a><a id="ref-for-EnableBackgroundProperty"></a><a id="ref-for-DominantBaselineProperty"></a><a id="ref-for-propdef-display"></a><a id="ref-for-propdef-direction"></a><a id="ref-for-propdef-cursor"></a><a id="ref-for-ColorRenderingProperty"></a><a id="ref-for-propdef-color-interpolation-filters②"></a><a id="ref-for-ColorInterpolationProperty"></a><a id="ref-for-color0"></a><a id="ref-for-propdef-clip-rule"></a><a id="ref-for-propdef-clip-path"></a><a id="ref-for-propdef-clip"></a><a id="ref-for-BaselineShiftProperty"></a><a id="ref-for-AlignmentBaselineProperty"></a>[presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
 
 - [class](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#ClassAttribute)
 
@@ -1083,37 +796,19 @@ Attributes:
 
 - [externalResourcesRequired](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#ExternalResourcesRequiredAttribute)
 
-- <a id="ref-for-element-attrdef-filter-x"></a>
+- <a id="ref-for-element-attrdef-filter-x"></a>[x](#element-attrdef-filter-x)
 
-  [x](#element-attrdef-filter-x)
+- <a id="ref-for-element-attrdef-filter-y"></a>[y](#element-attrdef-filter-y)
 
-- <a id="ref-for-element-attrdef-filter-y"></a>
+- <a id="ref-for-element-attrdef-filter-width"></a>[width](#element-attrdef-filter-width)
 
-  [y](#element-attrdef-filter-y)
+- <a id="ref-for-element-attrdef-filter-height"></a>[height](#element-attrdef-filter-height)
 
-- <a id="ref-for-element-attrdef-filter-width"></a>
+- <a id="ref-for-element-attrdef-filter-filterunits"></a>[filterUnits](#element-attrdef-filter-filterunits)
 
-  [width](#element-attrdef-filter-width)
+- <a id="ref-for-element-attrdef-filter-primitiveunits"></a>[primitiveUnits](#element-attrdef-filter-primitiveunits)
 
-- <a id="ref-for-element-attrdef-filter-height"></a>
-
-  [height](#element-attrdef-filter-height)
-
-- <a id="ref-for-element-attrdef-filter-filterunits"></a>
-
-  [filterUnits](#element-attrdef-filter-filterunits)
-
-- <a id="ref-for-element-attrdef-filter-primitiveunits"></a>
-
-  [primitiveUnits](#element-attrdef-filter-primitiveunits)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-DOM Interfaces:
-
-<strong>Column 2 (data cell):</strong>
+**DOM Interfaces:**
 
 [SVGFilterElement](#InterfaceSVGFilterElement)
 
@@ -1881,219 +1576,37 @@ All intermediate offscreens are defined to not exceed the intersection of the [f
 
 ### <a id="feBlendElement"></a>9.5. Filter primitive [feBlend](#elementdef-feblend)
 
-<strong>Table 4 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
+**Name:**
 
 <a id="elementdef-feblend"></a>`feBlend`
 
-<strong>Row 2</strong>
+**Categories:**
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-filter-primitive②⑥"></a>[filter primitive](#filter-primitive)
 
-Categories:
+**Content model:**
 
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-SetElement①"></a><a id="ref-for-elementdef-script①"></a><a id="ref-for-AnimateElement①"></a><a id="ref-for-TermDescriptiveElement"></a>Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
 
-<a id="ref-for-filter-primitive②⑥"></a>
-
-[filter primitive](#filter-primitive)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Content model:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-SetElement①"></a>
-
-<a id="ref-for-elementdef-script①"></a>
-
-<a id="ref-for-AnimateElement①"></a>
-
-<a id="ref-for-TermDescriptiveElement"></a>
-
-Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Attributes:
-
-<strong>Column 2 (data cell):</strong>
+**Attributes:**
 
 - [core attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermCoreAttributes) — [id](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#IDAttribute), [xml:base](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLBaseAttribute), [xml:lang](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLLangAttribute), [xml:space](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLSpaceAttribute)
 
-- <a id="ref-for-propdef-writing-mode①"></a>
+- <a id="ref-for-propdef-writing-mode①"></a><a id="ref-for-propdef-word-spacing①"></a><a id="ref-for-propdef-visibility①"></a><a id="ref-for-propdef-unicode-bidi①"></a><a id="ref-for-TextRenderingProperty①"></a><a id="ref-for-propdef-text-decoration①"></a><a id="ref-for-TextAnchorProperty①"></a><a id="ref-for-StrokeWidthProperty①"></a><a id="ref-for-StrokeOpacityProperty①"></a><a id="ref-for-StrokeMiterlimitProperty①"></a><a id="ref-for-StrokeLinejoinProperty①"></a><a id="ref-for-StrokeLinecapProperty①"></a><a id="ref-for-StrokeDashoffsetProperty①"></a><a id="ref-for-StrokeDasharrayProperty①"></a><a id="ref-for-StrokeProperty②"></a><a id="ref-for-StopOpacityProperty①"></a><a id="ref-for-StopColorProperty①"></a><a id="ref-for-ShapeRenderingProperty①"></a><a id="ref-for-PointerEventsProperty①"></a><a id="ref-for-propdef-overflow①"></a><a id="ref-for-propdef-opacity④"></a><a id="ref-for-propdef-mask①"></a><a id="ref-for-MarkerStartProperty①"></a><a id="ref-for-MarkerMidProperty①"></a><a id="ref-for-MarkerEndProperty①"></a><a id="ref-for-MarkerProperty①"></a><a id="ref-for-propdef-lighting-color②"></a><a id="ref-for-propdef-letter-spacing①"></a><a id="ref-for-KerningProperty①"></a><a id="ref-for-propdef-isolation③"></a><a id="ref-for-propdef-image-rendering①"></a><a id="ref-for-GlyphOrientationVerticalProperty①"></a><a id="ref-for-GlyphOrientationHorizontalProperty①"></a><a id="ref-for-propdef-font-weight①"></a><a id="ref-for-propdef-font-variant①"></a><a id="ref-for-propdef-font-style①"></a><a id="ref-for-propdef-font-stretch①"></a><a id="ref-for-propdef-font-size-adjust①"></a><a id="ref-for-propdef-font-size①"></a><a id="ref-for-propdef-font-family①"></a><a id="ref-for-propdef-font①"></a><a id="ref-for-propdef-flood-opacity③"></a><a id="ref-for-propdef-flood-color②"></a><a id="ref-for-propdef-filter①②"></a><a id="ref-for-FillRuleProperty①"></a><a id="ref-for-FillOpacityProperty①"></a><a id="ref-for-FillProperty③"></a><a id="ref-for-EnableBackgroundProperty①"></a><a id="ref-for-DominantBaselineProperty①"></a><a id="ref-for-propdef-display④"></a><a id="ref-for-propdef-direction①"></a><a id="ref-for-propdef-cursor①"></a><a id="ref-for-ColorRenderingProperty①"></a><a id="ref-for-propdef-color-interpolation-filters⑦"></a><a id="ref-for-ColorInterpolationProperty⑤"></a><a id="ref-for-color0①"></a><a id="ref-for-propdef-clip-rule①"></a><a id="ref-for-propdef-clip-path①"></a><a id="ref-for-propdef-clip①"></a><a id="ref-for-BaselineShiftProperty①"></a><a id="ref-for-AlignmentBaselineProperty①"></a>[presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
 
-  <a id="ref-for-propdef-word-spacing①"></a>
-
-  <a id="ref-for-propdef-visibility①"></a>
-
-  <a id="ref-for-propdef-unicode-bidi①"></a>
-
-  <a id="ref-for-TextRenderingProperty①"></a>
-
-  <a id="ref-for-propdef-text-decoration①"></a>
-
-  <a id="ref-for-TextAnchorProperty①"></a>
-
-  <a id="ref-for-StrokeWidthProperty①"></a>
-
-  <a id="ref-for-StrokeOpacityProperty①"></a>
-
-  <a id="ref-for-StrokeMiterlimitProperty①"></a>
-
-  <a id="ref-for-StrokeLinejoinProperty①"></a>
-
-  <a id="ref-for-StrokeLinecapProperty①"></a>
-
-  <a id="ref-for-StrokeDashoffsetProperty①"></a>
-
-  <a id="ref-for-StrokeDasharrayProperty①"></a>
-
-  <a id="ref-for-StrokeProperty②"></a>
-
-  <a id="ref-for-StopOpacityProperty①"></a>
-
-  <a id="ref-for-StopColorProperty①"></a>
-
-  <a id="ref-for-ShapeRenderingProperty①"></a>
-
-  <a id="ref-for-PointerEventsProperty①"></a>
-
-  <a id="ref-for-propdef-overflow①"></a>
-
-  <a id="ref-for-propdef-opacity④"></a>
-
-  <a id="ref-for-propdef-mask①"></a>
-
-  <a id="ref-for-MarkerStartProperty①"></a>
-
-  <a id="ref-for-MarkerMidProperty①"></a>
-
-  <a id="ref-for-MarkerEndProperty①"></a>
-
-  <a id="ref-for-MarkerProperty①"></a>
-
-  <a id="ref-for-propdef-lighting-color②"></a>
-
-  <a id="ref-for-propdef-letter-spacing①"></a>
-
-  <a id="ref-for-KerningProperty①"></a>
-
-  <a id="ref-for-propdef-isolation③"></a>
-
-  <a id="ref-for-propdef-image-rendering①"></a>
-
-  <a id="ref-for-GlyphOrientationVerticalProperty①"></a>
-
-  <a id="ref-for-GlyphOrientationHorizontalProperty①"></a>
-
-  <a id="ref-for-propdef-font-weight①"></a>
-
-  <a id="ref-for-propdef-font-variant①"></a>
-
-  <a id="ref-for-propdef-font-style①"></a>
-
-  <a id="ref-for-propdef-font-stretch①"></a>
-
-  <a id="ref-for-propdef-font-size-adjust①"></a>
-
-  <a id="ref-for-propdef-font-size①"></a>
-
-  <a id="ref-for-propdef-font-family①"></a>
-
-  <a id="ref-for-propdef-font①"></a>
-
-  <a id="ref-for-propdef-flood-opacity③"></a>
-
-  <a id="ref-for-propdef-flood-color②"></a>
-
-  <a id="ref-for-propdef-filter①②"></a>
-
-  <a id="ref-for-FillRuleProperty①"></a>
-
-  <a id="ref-for-FillOpacityProperty①"></a>
-
-  <a id="ref-for-FillProperty③"></a>
-
-  <a id="ref-for-EnableBackgroundProperty①"></a>
-
-  <a id="ref-for-DominantBaselineProperty①"></a>
-
-  <a id="ref-for-propdef-display④"></a>
-
-  <a id="ref-for-propdef-direction①"></a>
-
-  <a id="ref-for-propdef-cursor①"></a>
-
-  <a id="ref-for-ColorRenderingProperty①"></a>
-
-  <a id="ref-for-propdef-color-interpolation-filters⑦"></a>
-
-  <a id="ref-for-ColorInterpolationProperty⑤"></a>
-
-  <a id="ref-for-color0①"></a>
-
-  <a id="ref-for-propdef-clip-rule①"></a>
-
-  <a id="ref-for-propdef-clip-path①"></a>
-
-  <a id="ref-for-propdef-clip①"></a>
-
-  <a id="ref-for-BaselineShiftProperty①"></a>
-
-  <a id="ref-for-AlignmentBaselineProperty①"></a>
-
-  [presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
-
-- <a id="ref-for-element-attrdef-filter-primitive-result④"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-height④"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-width④"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-y④"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-x④"></a>
-
-  <a id="ref-for-filter-primitive-attributes"></a>
-
-  [filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
+- <a id="ref-for-element-attrdef-filter-primitive-result④"></a><a id="ref-for-element-attrdef-filter-primitive-height④"></a><a id="ref-for-element-attrdef-filter-primitive-width④"></a><a id="ref-for-element-attrdef-filter-primitive-y④"></a><a id="ref-for-element-attrdef-filter-primitive-x④"></a><a id="ref-for-filter-primitive-attributes"></a>[filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
 
 - [class](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#ClassAttribute)
 
 - [style](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#StyleAttribute)
 
-- <a id="ref-for-element-attrdef-filter-primitive-in③"></a>
+- <a id="ref-for-element-attrdef-filter-primitive-in③"></a>[in](#element-attrdef-filter-primitive-in)
 
-  [in](#element-attrdef-filter-primitive-in)
+- <a id="ref-for-element-attrdef-feblend-in2"></a>[in2](#element-attrdef-feblend-in2)
 
-- <a id="ref-for-element-attrdef-feblend-in2"></a>
+- <a id="ref-for-element-attrdef-feblend-mode"></a>[mode](#element-attrdef-feblend-mode)
 
-  [in2](#element-attrdef-feblend-in2)
-
-- <a id="ref-for-element-attrdef-feblend-mode"></a>
-
-  [mode](#element-attrdef-feblend-mode)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-DOM Interfaces:
-
-<strong>Column 2 (data cell):</strong>
+**DOM Interfaces:**
 
 [SVGFEBlendElement](#InterfaceSVGFEBlendElement)
 
@@ -2220,219 +1733,37 @@ The [normal](https://www.w3.org/TR/compositing-1/#valdef-blend-mode-normal) blen
 
 ### <a id="feColorMatrixElement"></a>9.6. Filter primitive [feColorMatrix](#elementdef-fecolormatrix)
 
-<strong>Table 5 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
+**Name:**
 
 <a id="elementdef-fecolormatrix"></a>`feColorMatrix`
 
-<strong>Row 2</strong>
+**Categories:**
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-filter-primitive②⑦"></a>[filter primitive](#filter-primitive)
 
-Categories:
+**Content model:**
 
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-SetElement②"></a><a id="ref-for-elementdef-script②"></a><a id="ref-for-AnimateElement②"></a><a id="ref-for-TermDescriptiveElement①"></a>Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
 
-<a id="ref-for-filter-primitive②⑦"></a>
-
-[filter primitive](#filter-primitive)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Content model:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-SetElement②"></a>
-
-<a id="ref-for-elementdef-script②"></a>
-
-<a id="ref-for-AnimateElement②"></a>
-
-<a id="ref-for-TermDescriptiveElement①"></a>
-
-Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Attributes:
-
-<strong>Column 2 (data cell):</strong>
+**Attributes:**
 
 - [core attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermCoreAttributes) — [id](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#IDAttribute), [xml:base](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLBaseAttribute), [xml:lang](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLLangAttribute), [xml:space](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLSpaceAttribute)
 
-- <a id="ref-for-propdef-writing-mode②"></a>
+- <a id="ref-for-propdef-writing-mode②"></a><a id="ref-for-propdef-word-spacing②"></a><a id="ref-for-propdef-visibility②"></a><a id="ref-for-propdef-unicode-bidi②"></a><a id="ref-for-TextRenderingProperty②"></a><a id="ref-for-propdef-text-decoration②"></a><a id="ref-for-TextAnchorProperty②"></a><a id="ref-for-StrokeWidthProperty②"></a><a id="ref-for-StrokeOpacityProperty②"></a><a id="ref-for-StrokeMiterlimitProperty②"></a><a id="ref-for-StrokeLinejoinProperty②"></a><a id="ref-for-StrokeLinecapProperty②"></a><a id="ref-for-StrokeDashoffsetProperty②"></a><a id="ref-for-StrokeDasharrayProperty②"></a><a id="ref-for-StrokeProperty③"></a><a id="ref-for-StopOpacityProperty②"></a><a id="ref-for-StopColorProperty②"></a><a id="ref-for-ShapeRenderingProperty②"></a><a id="ref-for-PointerEventsProperty②"></a><a id="ref-for-propdef-overflow②"></a><a id="ref-for-propdef-opacity⑤"></a><a id="ref-for-propdef-mask②"></a><a id="ref-for-MarkerStartProperty②"></a><a id="ref-for-MarkerMidProperty②"></a><a id="ref-for-MarkerEndProperty②"></a><a id="ref-for-MarkerProperty②"></a><a id="ref-for-propdef-lighting-color③"></a><a id="ref-for-propdef-letter-spacing②"></a><a id="ref-for-KerningProperty②"></a><a id="ref-for-propdef-isolation④"></a><a id="ref-for-propdef-image-rendering②"></a><a id="ref-for-GlyphOrientationVerticalProperty②"></a><a id="ref-for-GlyphOrientationHorizontalProperty②"></a><a id="ref-for-propdef-font-weight②"></a><a id="ref-for-propdef-font-variant②"></a><a id="ref-for-propdef-font-style②"></a><a id="ref-for-propdef-font-stretch②"></a><a id="ref-for-propdef-font-size-adjust②"></a><a id="ref-for-propdef-font-size②"></a><a id="ref-for-propdef-font-family②"></a><a id="ref-for-propdef-font②"></a><a id="ref-for-propdef-flood-opacity④"></a><a id="ref-for-propdef-flood-color③"></a><a id="ref-for-propdef-filter①③"></a><a id="ref-for-FillRuleProperty②"></a><a id="ref-for-FillOpacityProperty②"></a><a id="ref-for-FillProperty④"></a><a id="ref-for-EnableBackgroundProperty②"></a><a id="ref-for-DominantBaselineProperty②"></a><a id="ref-for-propdef-display⑤"></a><a id="ref-for-propdef-direction②"></a><a id="ref-for-propdef-cursor②"></a><a id="ref-for-ColorRenderingProperty②"></a><a id="ref-for-propdef-color-interpolation-filters⑧"></a><a id="ref-for-ColorInterpolationProperty⑥"></a><a id="ref-for-color0②"></a><a id="ref-for-propdef-clip-rule②"></a><a id="ref-for-propdef-clip-path②"></a><a id="ref-for-propdef-clip②"></a><a id="ref-for-BaselineShiftProperty②"></a><a id="ref-for-AlignmentBaselineProperty②"></a>[presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
 
-  <a id="ref-for-propdef-word-spacing②"></a>
-
-  <a id="ref-for-propdef-visibility②"></a>
-
-  <a id="ref-for-propdef-unicode-bidi②"></a>
-
-  <a id="ref-for-TextRenderingProperty②"></a>
-
-  <a id="ref-for-propdef-text-decoration②"></a>
-
-  <a id="ref-for-TextAnchorProperty②"></a>
-
-  <a id="ref-for-StrokeWidthProperty②"></a>
-
-  <a id="ref-for-StrokeOpacityProperty②"></a>
-
-  <a id="ref-for-StrokeMiterlimitProperty②"></a>
-
-  <a id="ref-for-StrokeLinejoinProperty②"></a>
-
-  <a id="ref-for-StrokeLinecapProperty②"></a>
-
-  <a id="ref-for-StrokeDashoffsetProperty②"></a>
-
-  <a id="ref-for-StrokeDasharrayProperty②"></a>
-
-  <a id="ref-for-StrokeProperty③"></a>
-
-  <a id="ref-for-StopOpacityProperty②"></a>
-
-  <a id="ref-for-StopColorProperty②"></a>
-
-  <a id="ref-for-ShapeRenderingProperty②"></a>
-
-  <a id="ref-for-PointerEventsProperty②"></a>
-
-  <a id="ref-for-propdef-overflow②"></a>
-
-  <a id="ref-for-propdef-opacity⑤"></a>
-
-  <a id="ref-for-propdef-mask②"></a>
-
-  <a id="ref-for-MarkerStartProperty②"></a>
-
-  <a id="ref-for-MarkerMidProperty②"></a>
-
-  <a id="ref-for-MarkerEndProperty②"></a>
-
-  <a id="ref-for-MarkerProperty②"></a>
-
-  <a id="ref-for-propdef-lighting-color③"></a>
-
-  <a id="ref-for-propdef-letter-spacing②"></a>
-
-  <a id="ref-for-KerningProperty②"></a>
-
-  <a id="ref-for-propdef-isolation④"></a>
-
-  <a id="ref-for-propdef-image-rendering②"></a>
-
-  <a id="ref-for-GlyphOrientationVerticalProperty②"></a>
-
-  <a id="ref-for-GlyphOrientationHorizontalProperty②"></a>
-
-  <a id="ref-for-propdef-font-weight②"></a>
-
-  <a id="ref-for-propdef-font-variant②"></a>
-
-  <a id="ref-for-propdef-font-style②"></a>
-
-  <a id="ref-for-propdef-font-stretch②"></a>
-
-  <a id="ref-for-propdef-font-size-adjust②"></a>
-
-  <a id="ref-for-propdef-font-size②"></a>
-
-  <a id="ref-for-propdef-font-family②"></a>
-
-  <a id="ref-for-propdef-font②"></a>
-
-  <a id="ref-for-propdef-flood-opacity④"></a>
-
-  <a id="ref-for-propdef-flood-color③"></a>
-
-  <a id="ref-for-propdef-filter①③"></a>
-
-  <a id="ref-for-FillRuleProperty②"></a>
-
-  <a id="ref-for-FillOpacityProperty②"></a>
-
-  <a id="ref-for-FillProperty④"></a>
-
-  <a id="ref-for-EnableBackgroundProperty②"></a>
-
-  <a id="ref-for-DominantBaselineProperty②"></a>
-
-  <a id="ref-for-propdef-display⑤"></a>
-
-  <a id="ref-for-propdef-direction②"></a>
-
-  <a id="ref-for-propdef-cursor②"></a>
-
-  <a id="ref-for-ColorRenderingProperty②"></a>
-
-  <a id="ref-for-propdef-color-interpolation-filters⑧"></a>
-
-  <a id="ref-for-ColorInterpolationProperty⑥"></a>
-
-  <a id="ref-for-color0②"></a>
-
-  <a id="ref-for-propdef-clip-rule②"></a>
-
-  <a id="ref-for-propdef-clip-path②"></a>
-
-  <a id="ref-for-propdef-clip②"></a>
-
-  <a id="ref-for-BaselineShiftProperty②"></a>
-
-  <a id="ref-for-AlignmentBaselineProperty②"></a>
-
-  [presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
-
-- <a id="ref-for-element-attrdef-filter-primitive-result⑤"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-height⑤"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-width⑤"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-y⑤"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-x⑤"></a>
-
-  <a id="ref-for-filter-primitive-attributes①"></a>
-
-  [filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
+- <a id="ref-for-element-attrdef-filter-primitive-result⑤"></a><a id="ref-for-element-attrdef-filter-primitive-height⑤"></a><a id="ref-for-element-attrdef-filter-primitive-width⑤"></a><a id="ref-for-element-attrdef-filter-primitive-y⑤"></a><a id="ref-for-element-attrdef-filter-primitive-x⑤"></a><a id="ref-for-filter-primitive-attributes①"></a>[filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
 
 - [class](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#ClassAttribute)
 
 - [style](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#StyleAttribute)
 
-- <a id="ref-for-element-attrdef-filter-primitive-in⑥"></a>
+- <a id="ref-for-element-attrdef-filter-primitive-in⑥"></a>[in](#element-attrdef-filter-primitive-in)
 
-  [in](#element-attrdef-filter-primitive-in)
+- <a id="ref-for-element-attrdef-fecolormatrix-type"></a>[type](#element-attrdef-fecolormatrix-type)
 
-- <a id="ref-for-element-attrdef-fecolormatrix-type"></a>
+- <a id="ref-for-element-attrdef-fecolormatrix-values"></a>[values](#element-attrdef-fecolormatrix-values)
 
-  [type](#element-attrdef-fecolormatrix-type)
-
-- <a id="ref-for-element-attrdef-fecolormatrix-values"></a>
-
-  [values](#element-attrdef-fecolormatrix-values)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-DOM Interfaces:
-
-<strong>Column 2 (data cell):</strong>
+**DOM Interfaces:**
 
 [SVGFEColorMatrixElement](#InterfaceSVGFEColorMatrixElement)
 
@@ -2749,215 +2080,33 @@ Animatable: yes.
 
 ### <a id="feComponentTransferElement"></a>9.7. Filter primitive [feComponentTransfer](#elementdef-fecomponenttransfer)
 
-<strong>Table 6 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
+**Name:**
 
 <a id="elementdef-fecomponenttransfer"></a>`feComponentTransfer`
 
-<strong>Row 2</strong>
+**Categories:**
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-filter-primitive②⑧"></a>[filter primitive](#filter-primitive)
 
-Categories:
+**Content model:**
 
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-elementdef-script③"></a><a id="ref-for-elementdef-fefunca"></a><a id="ref-for-elementdef-fefuncb"></a><a id="ref-for-elementdef-fefuncg"></a><a id="ref-for-elementdef-fefuncr"></a><a id="ref-for-TermDescriptiveElement②"></a>Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [feFuncR](#elementdef-fefuncr), [feFuncG](#elementdef-fefuncg), [feFuncB](#elementdef-fefuncb), [feFuncA](#elementdef-fefunca), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script) elements, in any order.
 
-<a id="ref-for-filter-primitive②⑧"></a>
-
-[filter primitive](#filter-primitive)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Content model:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-elementdef-script③"></a>
-
-<a id="ref-for-elementdef-fefunca"></a>
-
-<a id="ref-for-elementdef-fefuncb"></a>
-
-<a id="ref-for-elementdef-fefuncg"></a>
-
-<a id="ref-for-elementdef-fefuncr"></a>
-
-<a id="ref-for-TermDescriptiveElement②"></a>
-
-Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [feFuncR](#elementdef-fefuncr), [feFuncG](#elementdef-fefuncg), [feFuncB](#elementdef-fefuncb), [feFuncA](#elementdef-fefunca), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script) elements, in any order.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Attributes:
-
-<strong>Column 2 (data cell):</strong>
+**Attributes:**
 
 - [core attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermCoreAttributes) — [id](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#IDAttribute), [xml:base](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLBaseAttribute), [xml:lang](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLLangAttribute), [xml:space](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLSpaceAttribute)
 
-- <a id="ref-for-propdef-writing-mode③"></a>
+- <a id="ref-for-propdef-writing-mode③"></a><a id="ref-for-propdef-word-spacing③"></a><a id="ref-for-propdef-visibility③"></a><a id="ref-for-propdef-unicode-bidi③"></a><a id="ref-for-TextRenderingProperty③"></a><a id="ref-for-propdef-text-decoration③"></a><a id="ref-for-TextAnchorProperty③"></a><a id="ref-for-StrokeWidthProperty③"></a><a id="ref-for-StrokeOpacityProperty③"></a><a id="ref-for-StrokeMiterlimitProperty③"></a><a id="ref-for-StrokeLinejoinProperty③"></a><a id="ref-for-StrokeLinecapProperty③"></a><a id="ref-for-StrokeDashoffsetProperty③"></a><a id="ref-for-StrokeDasharrayProperty③"></a><a id="ref-for-StrokeProperty④"></a><a id="ref-for-StopOpacityProperty③"></a><a id="ref-for-StopColorProperty③"></a><a id="ref-for-ShapeRenderingProperty③"></a><a id="ref-for-PointerEventsProperty③"></a><a id="ref-for-propdef-overflow③"></a><a id="ref-for-propdef-opacity⑥"></a><a id="ref-for-propdef-mask③"></a><a id="ref-for-MarkerStartProperty③"></a><a id="ref-for-MarkerMidProperty③"></a><a id="ref-for-MarkerEndProperty③"></a><a id="ref-for-MarkerProperty③"></a><a id="ref-for-propdef-lighting-color④"></a><a id="ref-for-propdef-letter-spacing③"></a><a id="ref-for-KerningProperty③"></a><a id="ref-for-propdef-isolation⑤"></a><a id="ref-for-propdef-image-rendering③"></a><a id="ref-for-GlyphOrientationVerticalProperty③"></a><a id="ref-for-GlyphOrientationHorizontalProperty③"></a><a id="ref-for-propdef-font-weight③"></a><a id="ref-for-propdef-font-variant③"></a><a id="ref-for-propdef-font-style③"></a><a id="ref-for-propdef-font-stretch③"></a><a id="ref-for-propdef-font-size-adjust③"></a><a id="ref-for-propdef-font-size③"></a><a id="ref-for-propdef-font-family③"></a><a id="ref-for-propdef-font③"></a><a id="ref-for-propdef-flood-opacity⑤"></a><a id="ref-for-propdef-flood-color④"></a><a id="ref-for-propdef-filter①④"></a><a id="ref-for-FillRuleProperty③"></a><a id="ref-for-FillOpacityProperty③"></a><a id="ref-for-FillProperty⑤"></a><a id="ref-for-EnableBackgroundProperty③"></a><a id="ref-for-DominantBaselineProperty③"></a><a id="ref-for-propdef-display⑥"></a><a id="ref-for-propdef-direction③"></a><a id="ref-for-propdef-cursor③"></a><a id="ref-for-ColorRenderingProperty③"></a><a id="ref-for-propdef-color-interpolation-filters⑨"></a><a id="ref-for-ColorInterpolationProperty⑦"></a><a id="ref-for-color0③"></a><a id="ref-for-propdef-clip-rule③"></a><a id="ref-for-propdef-clip-path③"></a><a id="ref-for-propdef-clip③"></a><a id="ref-for-BaselineShiftProperty③"></a><a id="ref-for-AlignmentBaselineProperty③"></a>[presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
 
-  <a id="ref-for-propdef-word-spacing③"></a>
-
-  <a id="ref-for-propdef-visibility③"></a>
-
-  <a id="ref-for-propdef-unicode-bidi③"></a>
-
-  <a id="ref-for-TextRenderingProperty③"></a>
-
-  <a id="ref-for-propdef-text-decoration③"></a>
-
-  <a id="ref-for-TextAnchorProperty③"></a>
-
-  <a id="ref-for-StrokeWidthProperty③"></a>
-
-  <a id="ref-for-StrokeOpacityProperty③"></a>
-
-  <a id="ref-for-StrokeMiterlimitProperty③"></a>
-
-  <a id="ref-for-StrokeLinejoinProperty③"></a>
-
-  <a id="ref-for-StrokeLinecapProperty③"></a>
-
-  <a id="ref-for-StrokeDashoffsetProperty③"></a>
-
-  <a id="ref-for-StrokeDasharrayProperty③"></a>
-
-  <a id="ref-for-StrokeProperty④"></a>
-
-  <a id="ref-for-StopOpacityProperty③"></a>
-
-  <a id="ref-for-StopColorProperty③"></a>
-
-  <a id="ref-for-ShapeRenderingProperty③"></a>
-
-  <a id="ref-for-PointerEventsProperty③"></a>
-
-  <a id="ref-for-propdef-overflow③"></a>
-
-  <a id="ref-for-propdef-opacity⑥"></a>
-
-  <a id="ref-for-propdef-mask③"></a>
-
-  <a id="ref-for-MarkerStartProperty③"></a>
-
-  <a id="ref-for-MarkerMidProperty③"></a>
-
-  <a id="ref-for-MarkerEndProperty③"></a>
-
-  <a id="ref-for-MarkerProperty③"></a>
-
-  <a id="ref-for-propdef-lighting-color④"></a>
-
-  <a id="ref-for-propdef-letter-spacing③"></a>
-
-  <a id="ref-for-KerningProperty③"></a>
-
-  <a id="ref-for-propdef-isolation⑤"></a>
-
-  <a id="ref-for-propdef-image-rendering③"></a>
-
-  <a id="ref-for-GlyphOrientationVerticalProperty③"></a>
-
-  <a id="ref-for-GlyphOrientationHorizontalProperty③"></a>
-
-  <a id="ref-for-propdef-font-weight③"></a>
-
-  <a id="ref-for-propdef-font-variant③"></a>
-
-  <a id="ref-for-propdef-font-style③"></a>
-
-  <a id="ref-for-propdef-font-stretch③"></a>
-
-  <a id="ref-for-propdef-font-size-adjust③"></a>
-
-  <a id="ref-for-propdef-font-size③"></a>
-
-  <a id="ref-for-propdef-font-family③"></a>
-
-  <a id="ref-for-propdef-font③"></a>
-
-  <a id="ref-for-propdef-flood-opacity⑤"></a>
-
-  <a id="ref-for-propdef-flood-color④"></a>
-
-  <a id="ref-for-propdef-filter①④"></a>
-
-  <a id="ref-for-FillRuleProperty③"></a>
-
-  <a id="ref-for-FillOpacityProperty③"></a>
-
-  <a id="ref-for-FillProperty⑤"></a>
-
-  <a id="ref-for-EnableBackgroundProperty③"></a>
-
-  <a id="ref-for-DominantBaselineProperty③"></a>
-
-  <a id="ref-for-propdef-display⑥"></a>
-
-  <a id="ref-for-propdef-direction③"></a>
-
-  <a id="ref-for-propdef-cursor③"></a>
-
-  <a id="ref-for-ColorRenderingProperty③"></a>
-
-  <a id="ref-for-propdef-color-interpolation-filters⑨"></a>
-
-  <a id="ref-for-ColorInterpolationProperty⑦"></a>
-
-  <a id="ref-for-color0③"></a>
-
-  <a id="ref-for-propdef-clip-rule③"></a>
-
-  <a id="ref-for-propdef-clip-path③"></a>
-
-  <a id="ref-for-propdef-clip③"></a>
-
-  <a id="ref-for-BaselineShiftProperty③"></a>
-
-  <a id="ref-for-AlignmentBaselineProperty③"></a>
-
-  [presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
-
-- <a id="ref-for-element-attrdef-filter-primitive-result⑥"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-height⑥"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-width⑥"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-y⑥"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-x⑥"></a>
-
-  <a id="ref-for-filter-primitive-attributes②"></a>
-
-  [filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
+- <a id="ref-for-element-attrdef-filter-primitive-result⑥"></a><a id="ref-for-element-attrdef-filter-primitive-height⑥"></a><a id="ref-for-element-attrdef-filter-primitive-width⑥"></a><a id="ref-for-element-attrdef-filter-primitive-y⑥"></a><a id="ref-for-element-attrdef-filter-primitive-x⑥"></a><a id="ref-for-filter-primitive-attributes②"></a>[filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
 
 - [class](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#ClassAttribute)
 
 - [style](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#StyleAttribute)
 
-- <a id="ref-for-element-attrdef-filter-primitive-in⑦"></a>
+- <a id="ref-for-element-attrdef-filter-primitive-in⑦"></a>[in](#element-attrdef-filter-primitive-in)
 
-  [in](#element-attrdef-filter-primitive-in)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-DOM Interfaces:
-
-<strong>Column 2 (data cell):</strong>
+**DOM Interfaces:**
 
 [SVGFEComponentTransferElement](#InterfaceSVGFEComponentTransferElement)
 
@@ -3030,83 +2179,25 @@ The following rules apply to the processing of the [feComponentTransfer](#elemen
 
 #### <a id="feFuncRElement"></a>9.7.1. Transfer function [feFuncR](#elementdef-fefuncr)
 
-<strong>Table 7 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
+**Name:**
 
 <a id="elementdef-fefuncr"></a>`feFuncR`
 
-<strong>Row 2</strong>
+**Categories:**
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-transfer-function-element④"></a>[transfer function element](#transfer-function-element)
 
-Categories:
+**Content model:**
 
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-SetElement③"></a><a id="ref-for-elementdef-script④"></a><a id="ref-for-AnimateElement③"></a><a id="ref-for-TermDescriptiveElement③"></a>Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
 
-<a id="ref-for-transfer-function-element④"></a>
-
-[transfer function element](#transfer-function-element)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Content model:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-SetElement③"></a>
-
-<a id="ref-for-elementdef-script④"></a>
-
-<a id="ref-for-AnimateElement③"></a>
-
-<a id="ref-for-TermDescriptiveElement③"></a>
-
-Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Attributes:
-
-<strong>Column 2 (data cell):</strong>
+**Attributes:**
 
 - [core attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermCoreAttributes) — [id](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#IDAttribute), [xml:base](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLBaseAttribute), [xml:lang](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLLangAttribute), [xml:space](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLSpaceAttribute)
 
-- <a id="ref-for-element-attrdef-fecomponenttransfer-offset"></a>
+- <a id="ref-for-element-attrdef-fecomponenttransfer-offset"></a><a id="ref-for-element-attrdef-fecomponenttransfer-exponent"></a><a id="ref-for-element-attrdef-fecomponenttransfer-amplitude"></a><a id="ref-for-element-attrdef-fecomponenttransfer-intercept"></a><a id="ref-for-element-attrdef-fecomponenttransfer-slope"></a><a id="ref-for-element-attrdef-fecomponenttransfer-tablevalues"></a><a id="ref-for-element-attrdef-fecomponenttransfer-type①"></a><a id="ref-for-transfer-function-element-attributes"></a>[transfer function element attributes](#transfer-function-element-attributes) — [type](#element-attrdef-fecomponenttransfer-type), [tableValues](#element-attrdef-fecomponenttransfer-tablevalues), [slope](#element-attrdef-fecomponenttransfer-slope), [intercept](#element-attrdef-fecomponenttransfer-intercept), [amplitude](#element-attrdef-fecomponenttransfer-amplitude), [exponent](#element-attrdef-fecomponenttransfer-exponent), [offset](#element-attrdef-fecomponenttransfer-offset)
 
-  <a id="ref-for-element-attrdef-fecomponenttransfer-exponent"></a>
-
-  <a id="ref-for-element-attrdef-fecomponenttransfer-amplitude"></a>
-
-  <a id="ref-for-element-attrdef-fecomponenttransfer-intercept"></a>
-
-  <a id="ref-for-element-attrdef-fecomponenttransfer-slope"></a>
-
-  <a id="ref-for-element-attrdef-fecomponenttransfer-tablevalues"></a>
-
-  <a id="ref-for-element-attrdef-fecomponenttransfer-type①"></a>
-
-  <a id="ref-for-transfer-function-element-attributes"></a>
-
-  [transfer function element attributes](#transfer-function-element-attributes) — [type](#element-attrdef-fecomponenttransfer-type), [tableValues](#element-attrdef-fecomponenttransfer-tablevalues), [slope](#element-attrdef-fecomponenttransfer-slope), [intercept](#element-attrdef-fecomponenttransfer-intercept), [amplitude](#element-attrdef-fecomponenttransfer-amplitude), [exponent](#element-attrdef-fecomponenttransfer-exponent), [offset](#element-attrdef-fecomponenttransfer-offset)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-DOM Interfaces:
-
-<strong>Column 2 (data cell):</strong>
+**DOM Interfaces:**
 
 [SVGFEFuncRElement](#InterfaceSVGFEFuncRElement)
 
@@ -3359,83 +2450,25 @@ Animatable: yes.
 
 #### <a id="feFuncGElement"></a>9.7.2. Transfer function [feFuncG](#elementdef-fefuncg)
 
-<strong>Table 8 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
+**Name:**
 
 <a id="elementdef-fefuncg"></a>`feFuncG`
 
-<strong>Row 2</strong>
+**Categories:**
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-transfer-function-element⑥"></a>[transfer function element](#transfer-function-element)
 
-Categories:
+**Content model:**
 
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-SetElement④"></a><a id="ref-for-elementdef-script⑤"></a><a id="ref-for-AnimateElement④"></a><a id="ref-for-TermDescriptiveElement④"></a>Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
 
-<a id="ref-for-transfer-function-element⑥"></a>
-
-[transfer function element](#transfer-function-element)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Content model:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-SetElement④"></a>
-
-<a id="ref-for-elementdef-script⑤"></a>
-
-<a id="ref-for-AnimateElement④"></a>
-
-<a id="ref-for-TermDescriptiveElement④"></a>
-
-Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Attributes:
-
-<strong>Column 2 (data cell):</strong>
+**Attributes:**
 
 - [core attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermCoreAttributes) — [id](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#IDAttribute), [xml:base](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLBaseAttribute), [xml:lang](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLLangAttribute), [xml:space](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLSpaceAttribute)
 
-- <a id="ref-for-element-attrdef-fecomponenttransfer-offset③"></a>
+- <a id="ref-for-element-attrdef-fecomponenttransfer-offset③"></a><a id="ref-for-element-attrdef-fecomponenttransfer-exponent③"></a><a id="ref-for-element-attrdef-fecomponenttransfer-amplitude③"></a><a id="ref-for-element-attrdef-fecomponenttransfer-intercept③"></a><a id="ref-for-element-attrdef-fecomponenttransfer-slope③"></a><a id="ref-for-element-attrdef-fecomponenttransfer-tablevalues③"></a><a id="ref-for-element-attrdef-fecomponenttransfer-type③"></a><a id="ref-for-transfer-function-element-attributes①"></a>[transfer function element attributes](#transfer-function-element-attributes) — [type](#element-attrdef-fecomponenttransfer-type), [tableValues](#element-attrdef-fecomponenttransfer-tablevalues), [slope](#element-attrdef-fecomponenttransfer-slope), [intercept](#element-attrdef-fecomponenttransfer-intercept), [amplitude](#element-attrdef-fecomponenttransfer-amplitude), [exponent](#element-attrdef-fecomponenttransfer-exponent), [offset](#element-attrdef-fecomponenttransfer-offset)
 
-  <a id="ref-for-element-attrdef-fecomponenttransfer-exponent③"></a>
-
-  <a id="ref-for-element-attrdef-fecomponenttransfer-amplitude③"></a>
-
-  <a id="ref-for-element-attrdef-fecomponenttransfer-intercept③"></a>
-
-  <a id="ref-for-element-attrdef-fecomponenttransfer-slope③"></a>
-
-  <a id="ref-for-element-attrdef-fecomponenttransfer-tablevalues③"></a>
-
-  <a id="ref-for-element-attrdef-fecomponenttransfer-type③"></a>
-
-  <a id="ref-for-transfer-function-element-attributes①"></a>
-
-  [transfer function element attributes](#transfer-function-element-attributes) — [type](#element-attrdef-fecomponenttransfer-type), [tableValues](#element-attrdef-fecomponenttransfer-tablevalues), [slope](#element-attrdef-fecomponenttransfer-slope), [intercept](#element-attrdef-fecomponenttransfer-intercept), [amplitude](#element-attrdef-fecomponenttransfer-amplitude), [exponent](#element-attrdef-fecomponenttransfer-exponent), [offset](#element-attrdef-fecomponenttransfer-offset)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-DOM Interfaces:
-
-<strong>Column 2 (data cell):</strong>
+**DOM Interfaces:**
 
 [SVGFEFuncGElement](#InterfaceSVGFEFuncGElement)
 
@@ -3447,83 +2480,25 @@ See [feFuncR](#elementdef-fefuncr) for the definitions of the attribute values.
 
 #### <a id="feFuncBElement"></a>9.7.3. Transfer function [feFuncB](#elementdef-fefuncb)
 
-<strong>Table 9 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
+**Name:**
 
 <a id="elementdef-fefuncb"></a>`feFuncB`
 
-<strong>Row 2</strong>
+**Categories:**
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-transfer-function-element⑦"></a>[transfer function element](#transfer-function-element)
 
-Categories:
+**Content model:**
 
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-SetElement⑤"></a><a id="ref-for-elementdef-script⑥"></a><a id="ref-for-AnimateElement⑤"></a><a id="ref-for-TermDescriptiveElement⑤"></a>Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
 
-<a id="ref-for-transfer-function-element⑦"></a>
-
-[transfer function element](#transfer-function-element)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Content model:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-SetElement⑤"></a>
-
-<a id="ref-for-elementdef-script⑥"></a>
-
-<a id="ref-for-AnimateElement⑤"></a>
-
-<a id="ref-for-TermDescriptiveElement⑤"></a>
-
-Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Attributes:
-
-<strong>Column 2 (data cell):</strong>
+**Attributes:**
 
 - [core attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermCoreAttributes) — [id](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#IDAttribute), [xml:base](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLBaseAttribute), [xml:lang](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLLangAttribute), [xml:space](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLSpaceAttribute)
 
-- <a id="ref-for-element-attrdef-fecomponenttransfer-offset④"></a>
+- <a id="ref-for-element-attrdef-fecomponenttransfer-offset④"></a><a id="ref-for-element-attrdef-fecomponenttransfer-exponent④"></a><a id="ref-for-element-attrdef-fecomponenttransfer-amplitude④"></a><a id="ref-for-element-attrdef-fecomponenttransfer-intercept④"></a><a id="ref-for-element-attrdef-fecomponenttransfer-slope④"></a><a id="ref-for-element-attrdef-fecomponenttransfer-tablevalues④"></a><a id="ref-for-element-attrdef-fecomponenttransfer-type④"></a><a id="ref-for-transfer-function-element-attributes②"></a>[transfer function element attributes](#transfer-function-element-attributes) — [type](#element-attrdef-fecomponenttransfer-type), [tableValues](#element-attrdef-fecomponenttransfer-tablevalues), [slope](#element-attrdef-fecomponenttransfer-slope), [intercept](#element-attrdef-fecomponenttransfer-intercept), [amplitude](#element-attrdef-fecomponenttransfer-amplitude), [exponent](#element-attrdef-fecomponenttransfer-exponent), [offset](#element-attrdef-fecomponenttransfer-offset)
 
-  <a id="ref-for-element-attrdef-fecomponenttransfer-exponent④"></a>
-
-  <a id="ref-for-element-attrdef-fecomponenttransfer-amplitude④"></a>
-
-  <a id="ref-for-element-attrdef-fecomponenttransfer-intercept④"></a>
-
-  <a id="ref-for-element-attrdef-fecomponenttransfer-slope④"></a>
-
-  <a id="ref-for-element-attrdef-fecomponenttransfer-tablevalues④"></a>
-
-  <a id="ref-for-element-attrdef-fecomponenttransfer-type④"></a>
-
-  <a id="ref-for-transfer-function-element-attributes②"></a>
-
-  [transfer function element attributes](#transfer-function-element-attributes) — [type](#element-attrdef-fecomponenttransfer-type), [tableValues](#element-attrdef-fecomponenttransfer-tablevalues), [slope](#element-attrdef-fecomponenttransfer-slope), [intercept](#element-attrdef-fecomponenttransfer-intercept), [amplitude](#element-attrdef-fecomponenttransfer-amplitude), [exponent](#element-attrdef-fecomponenttransfer-exponent), [offset](#element-attrdef-fecomponenttransfer-offset)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-DOM Interfaces:
-
-<strong>Column 2 (data cell):</strong>
+**DOM Interfaces:**
 
 [SVGFEFuncBElement](#InterfaceSVGFEFuncBElement)
 
@@ -3535,83 +2510,25 @@ See [feFuncR](#elementdef-fefuncr) for the definitions of the attribute values.
 
 #### <a id="feFuncAElement"></a>9.7.4. Transfer function [feFuncA](#elementdef-fefunca)
 
-<strong>Table 10 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
+**Name:**
 
 <a id="elementdef-fefunca"></a>`feFuncA`
 
-<strong>Row 2</strong>
+**Categories:**
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-transfer-function-element⑧"></a>[transfer function element](#transfer-function-element)
 
-Categories:
+**Content model:**
 
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-SetElement⑥"></a><a id="ref-for-elementdef-script⑦"></a><a id="ref-for-AnimateElement⑥"></a><a id="ref-for-TermDescriptiveElement⑥"></a>Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
 
-<a id="ref-for-transfer-function-element⑧"></a>
-
-[transfer function element](#transfer-function-element)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Content model:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-SetElement⑥"></a>
-
-<a id="ref-for-elementdef-script⑦"></a>
-
-<a id="ref-for-AnimateElement⑥"></a>
-
-<a id="ref-for-TermDescriptiveElement⑥"></a>
-
-Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Attributes:
-
-<strong>Column 2 (data cell):</strong>
+**Attributes:**
 
 - [core attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermCoreAttributes) — [id](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#IDAttribute), [xml:base](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLBaseAttribute), [xml:lang](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLLangAttribute), [xml:space](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLSpaceAttribute)
 
-- <a id="ref-for-element-attrdef-fecomponenttransfer-offset⑤"></a>
+- <a id="ref-for-element-attrdef-fecomponenttransfer-offset⑤"></a><a id="ref-for-element-attrdef-fecomponenttransfer-exponent⑤"></a><a id="ref-for-element-attrdef-fecomponenttransfer-amplitude⑤"></a><a id="ref-for-element-attrdef-fecomponenttransfer-intercept⑤"></a><a id="ref-for-element-attrdef-fecomponenttransfer-slope⑤"></a><a id="ref-for-element-attrdef-fecomponenttransfer-tablevalues⑤"></a><a id="ref-for-element-attrdef-fecomponenttransfer-type⑤"></a><a id="ref-for-transfer-function-element-attributes③"></a>[transfer function element attributes](#transfer-function-element-attributes) — [type](#element-attrdef-fecomponenttransfer-type), [tableValues](#element-attrdef-fecomponenttransfer-tablevalues), [slope](#element-attrdef-fecomponenttransfer-slope), [intercept](#element-attrdef-fecomponenttransfer-intercept), [amplitude](#element-attrdef-fecomponenttransfer-amplitude), [exponent](#element-attrdef-fecomponenttransfer-exponent), [offset](#element-attrdef-fecomponenttransfer-offset)
 
-  <a id="ref-for-element-attrdef-fecomponenttransfer-exponent⑤"></a>
-
-  <a id="ref-for-element-attrdef-fecomponenttransfer-amplitude⑤"></a>
-
-  <a id="ref-for-element-attrdef-fecomponenttransfer-intercept⑤"></a>
-
-  <a id="ref-for-element-attrdef-fecomponenttransfer-slope⑤"></a>
-
-  <a id="ref-for-element-attrdef-fecomponenttransfer-tablevalues⑤"></a>
-
-  <a id="ref-for-element-attrdef-fecomponenttransfer-type⑤"></a>
-
-  <a id="ref-for-transfer-function-element-attributes③"></a>
-
-  [transfer function element attributes](#transfer-function-element-attributes) — [type](#element-attrdef-fecomponenttransfer-type), [tableValues](#element-attrdef-fecomponenttransfer-tablevalues), [slope](#element-attrdef-fecomponenttransfer-slope), [intercept](#element-attrdef-fecomponenttransfer-intercept), [amplitude](#element-attrdef-fecomponenttransfer-amplitude), [exponent](#element-attrdef-fecomponenttransfer-exponent), [offset](#element-attrdef-fecomponenttransfer-offset)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-DOM Interfaces:
-
-<strong>Column 2 (data cell):</strong>
+**DOM Interfaces:**
 
 [SVGFEFuncAElement](#InterfaceSVGFEFuncAElement)
 
@@ -3623,235 +2540,45 @@ See [feFuncR](#elementdef-fefuncr) for the definitions of the attribute values.
 
 ### <a id="feCompositeElement"></a>9.8. Filter primitive [feComposite](#elementdef-fecomposite)
 
-<strong>Table 11 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
+**Name:**
 
 <a id="elementdef-fecomposite"></a>`feComposite`
 
-<strong>Row 2</strong>
+**Categories:**
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-filter-primitive②⑨"></a>[filter primitive](#filter-primitive)
 
-Categories:
+**Content model:**
 
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-SetElement⑦"></a><a id="ref-for-elementdef-script⑧"></a><a id="ref-for-AnimateElement⑦"></a><a id="ref-for-TermDescriptiveElement⑦"></a>Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
 
-<a id="ref-for-filter-primitive②⑨"></a>
-
-[filter primitive](#filter-primitive)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Content model:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-SetElement⑦"></a>
-
-<a id="ref-for-elementdef-script⑧"></a>
-
-<a id="ref-for-AnimateElement⑦"></a>
-
-<a id="ref-for-TermDescriptiveElement⑦"></a>
-
-Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Attributes:
-
-<strong>Column 2 (data cell):</strong>
+**Attributes:**
 
 - [core attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermCoreAttributes) — [id](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#IDAttribute), [xml:base](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLBaseAttribute), [xml:lang](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLLangAttribute), [xml:space](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLSpaceAttribute)
 
-- <a id="ref-for-propdef-writing-mode④"></a>
+- <a id="ref-for-propdef-writing-mode④"></a><a id="ref-for-propdef-word-spacing④"></a><a id="ref-for-propdef-visibility④"></a><a id="ref-for-propdef-unicode-bidi④"></a><a id="ref-for-TextRenderingProperty④"></a><a id="ref-for-propdef-text-decoration④"></a><a id="ref-for-TextAnchorProperty④"></a><a id="ref-for-StrokeWidthProperty④"></a><a id="ref-for-StrokeOpacityProperty④"></a><a id="ref-for-StrokeMiterlimitProperty④"></a><a id="ref-for-StrokeLinejoinProperty④"></a><a id="ref-for-StrokeLinecapProperty④"></a><a id="ref-for-StrokeDashoffsetProperty④"></a><a id="ref-for-StrokeDasharrayProperty④"></a><a id="ref-for-StrokeProperty⑤"></a><a id="ref-for-StopOpacityProperty④"></a><a id="ref-for-StopColorProperty④"></a><a id="ref-for-ShapeRenderingProperty④"></a><a id="ref-for-PointerEventsProperty④"></a><a id="ref-for-propdef-overflow④"></a><a id="ref-for-propdef-opacity⑦"></a><a id="ref-for-propdef-mask④"></a><a id="ref-for-MarkerStartProperty④"></a><a id="ref-for-MarkerMidProperty④"></a><a id="ref-for-MarkerEndProperty④"></a><a id="ref-for-MarkerProperty④"></a><a id="ref-for-propdef-lighting-color⑤"></a><a id="ref-for-propdef-letter-spacing④"></a><a id="ref-for-KerningProperty④"></a><a id="ref-for-propdef-isolation⑥"></a><a id="ref-for-propdef-image-rendering④"></a><a id="ref-for-GlyphOrientationVerticalProperty④"></a><a id="ref-for-GlyphOrientationHorizontalProperty④"></a><a id="ref-for-propdef-font-weight④"></a><a id="ref-for-propdef-font-variant④"></a><a id="ref-for-propdef-font-style④"></a><a id="ref-for-propdef-font-stretch④"></a><a id="ref-for-propdef-font-size-adjust④"></a><a id="ref-for-propdef-font-size④"></a><a id="ref-for-propdef-font-family④"></a><a id="ref-for-propdef-font④"></a><a id="ref-for-propdef-flood-opacity⑥"></a><a id="ref-for-propdef-flood-color⑤"></a><a id="ref-for-propdef-filter①⑤"></a><a id="ref-for-FillRuleProperty④"></a><a id="ref-for-FillOpacityProperty④"></a><a id="ref-for-FillProperty⑥"></a><a id="ref-for-EnableBackgroundProperty④"></a><a id="ref-for-DominantBaselineProperty④"></a><a id="ref-for-propdef-display⑦"></a><a id="ref-for-propdef-direction④"></a><a id="ref-for-propdef-cursor④"></a><a id="ref-for-ColorRenderingProperty④"></a><a id="ref-for-propdef-color-interpolation-filters①⓪"></a><a id="ref-for-ColorInterpolationProperty⑧"></a><a id="ref-for-color0④"></a><a id="ref-for-propdef-clip-rule④"></a><a id="ref-for-propdef-clip-path④"></a><a id="ref-for-propdef-clip④"></a><a id="ref-for-BaselineShiftProperty④"></a><a id="ref-for-AlignmentBaselineProperty④"></a>[presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
 
-  <a id="ref-for-propdef-word-spacing④"></a>
-
-  <a id="ref-for-propdef-visibility④"></a>
-
-  <a id="ref-for-propdef-unicode-bidi④"></a>
-
-  <a id="ref-for-TextRenderingProperty④"></a>
-
-  <a id="ref-for-propdef-text-decoration④"></a>
-
-  <a id="ref-for-TextAnchorProperty④"></a>
-
-  <a id="ref-for-StrokeWidthProperty④"></a>
-
-  <a id="ref-for-StrokeOpacityProperty④"></a>
-
-  <a id="ref-for-StrokeMiterlimitProperty④"></a>
-
-  <a id="ref-for-StrokeLinejoinProperty④"></a>
-
-  <a id="ref-for-StrokeLinecapProperty④"></a>
-
-  <a id="ref-for-StrokeDashoffsetProperty④"></a>
-
-  <a id="ref-for-StrokeDasharrayProperty④"></a>
-
-  <a id="ref-for-StrokeProperty⑤"></a>
-
-  <a id="ref-for-StopOpacityProperty④"></a>
-
-  <a id="ref-for-StopColorProperty④"></a>
-
-  <a id="ref-for-ShapeRenderingProperty④"></a>
-
-  <a id="ref-for-PointerEventsProperty④"></a>
-
-  <a id="ref-for-propdef-overflow④"></a>
-
-  <a id="ref-for-propdef-opacity⑦"></a>
-
-  <a id="ref-for-propdef-mask④"></a>
-
-  <a id="ref-for-MarkerStartProperty④"></a>
-
-  <a id="ref-for-MarkerMidProperty④"></a>
-
-  <a id="ref-for-MarkerEndProperty④"></a>
-
-  <a id="ref-for-MarkerProperty④"></a>
-
-  <a id="ref-for-propdef-lighting-color⑤"></a>
-
-  <a id="ref-for-propdef-letter-spacing④"></a>
-
-  <a id="ref-for-KerningProperty④"></a>
-
-  <a id="ref-for-propdef-isolation⑥"></a>
-
-  <a id="ref-for-propdef-image-rendering④"></a>
-
-  <a id="ref-for-GlyphOrientationVerticalProperty④"></a>
-
-  <a id="ref-for-GlyphOrientationHorizontalProperty④"></a>
-
-  <a id="ref-for-propdef-font-weight④"></a>
-
-  <a id="ref-for-propdef-font-variant④"></a>
-
-  <a id="ref-for-propdef-font-style④"></a>
-
-  <a id="ref-for-propdef-font-stretch④"></a>
-
-  <a id="ref-for-propdef-font-size-adjust④"></a>
-
-  <a id="ref-for-propdef-font-size④"></a>
-
-  <a id="ref-for-propdef-font-family④"></a>
-
-  <a id="ref-for-propdef-font④"></a>
-
-  <a id="ref-for-propdef-flood-opacity⑥"></a>
-
-  <a id="ref-for-propdef-flood-color⑤"></a>
-
-  <a id="ref-for-propdef-filter①⑤"></a>
-
-  <a id="ref-for-FillRuleProperty④"></a>
-
-  <a id="ref-for-FillOpacityProperty④"></a>
-
-  <a id="ref-for-FillProperty⑥"></a>
-
-  <a id="ref-for-EnableBackgroundProperty④"></a>
-
-  <a id="ref-for-DominantBaselineProperty④"></a>
-
-  <a id="ref-for-propdef-display⑦"></a>
-
-  <a id="ref-for-propdef-direction④"></a>
-
-  <a id="ref-for-propdef-cursor④"></a>
-
-  <a id="ref-for-ColorRenderingProperty④"></a>
-
-  <a id="ref-for-propdef-color-interpolation-filters①⓪"></a>
-
-  <a id="ref-for-ColorInterpolationProperty⑧"></a>
-
-  <a id="ref-for-color0④"></a>
-
-  <a id="ref-for-propdef-clip-rule④"></a>
-
-  <a id="ref-for-propdef-clip-path④"></a>
-
-  <a id="ref-for-propdef-clip④"></a>
-
-  <a id="ref-for-BaselineShiftProperty④"></a>
-
-  <a id="ref-for-AlignmentBaselineProperty④"></a>
-
-  [presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
-
-- <a id="ref-for-element-attrdef-filter-primitive-result⑦"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-height⑦"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-width⑦"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-y⑦"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-x⑦"></a>
-
-  <a id="ref-for-filter-primitive-attributes③"></a>
-
-  [filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
+- <a id="ref-for-element-attrdef-filter-primitive-result⑦"></a><a id="ref-for-element-attrdef-filter-primitive-height⑦"></a><a id="ref-for-element-attrdef-filter-primitive-width⑦"></a><a id="ref-for-element-attrdef-filter-primitive-y⑦"></a><a id="ref-for-element-attrdef-filter-primitive-x⑦"></a><a id="ref-for-filter-primitive-attributes③"></a>[filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
 
 - [class](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#ClassAttribute)
 
 - [style](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#StyleAttribute)
 
-- <a id="ref-for-element-attrdef-filter-primitive-in⑧"></a>
+- <a id="ref-for-element-attrdef-filter-primitive-in⑧"></a>[in](#element-attrdef-filter-primitive-in)
 
-  [in](#element-attrdef-filter-primitive-in)
+- <a id="ref-for-element-attrdef-fecomposite-in2"></a>[in2](#element-attrdef-fecomposite-in2)
 
-- <a id="ref-for-element-attrdef-fecomposite-in2"></a>
+- <a id="ref-for-element-attrdef-fecomposite-operator"></a>[operator](#element-attrdef-fecomposite-operator)
 
-  [in2](#element-attrdef-fecomposite-in2)
+- <a id="ref-for-element-attrdef-fecomposite-k1"></a>[k1](#element-attrdef-fecomposite-k1)
 
-- <a id="ref-for-element-attrdef-fecomposite-operator"></a>
+- <a id="ref-for-element-attrdef-fecomposite-k2"></a>[k2](#element-attrdef-fecomposite-k2)
 
-  [operator](#element-attrdef-fecomposite-operator)
+- <a id="ref-for-element-attrdef-fecomposite-k3"></a>[k3](#element-attrdef-fecomposite-k3)
 
-- <a id="ref-for-element-attrdef-fecomposite-k1"></a>
+- <a id="ref-for-element-attrdef-fecomposite-k4"></a>[k4](#element-attrdef-fecomposite-k4)
 
-  [k1](#element-attrdef-fecomposite-k1)
-
-- <a id="ref-for-element-attrdef-fecomposite-k2"></a>
-
-  [k2](#element-attrdef-fecomposite-k2)
-
-- <a id="ref-for-element-attrdef-fecomposite-k3"></a>
-
-  [k3](#element-attrdef-fecomposite-k3)
-
-- <a id="ref-for-element-attrdef-fecomposite-k4"></a>
-
-  [k4](#element-attrdef-fecomposite-k4)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-DOM Interfaces:
-
-<strong>Column 2 (data cell):</strong>
+**DOM Interfaces:**
 
 [SVGFECompositeElement](#InterfaceSVGFECompositeElement)
 
@@ -4159,247 +2886,51 @@ Animatable: yes.
 
 ### <a id="feConvolveMatrixElement"></a>9.9. Filter primitive [feConvolveMatrix](#elementdef-feconvolvematrix)
 
-<strong>Table 12 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
+**Name:**
 
 <a id="elementdef-feconvolvematrix"></a>`feConvolveMatrix`
 
-<strong>Row 2</strong>
+**Categories:**
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-filter-primitive③⓪"></a>[filter primitive](#filter-primitive)
 
-Categories:
+**Content model:**
 
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-SetElement⑧"></a><a id="ref-for-elementdef-script⑨"></a><a id="ref-for-AnimateElement⑧"></a><a id="ref-for-TermDescriptiveElement⑧"></a>Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
 
-<a id="ref-for-filter-primitive③⓪"></a>
-
-[filter primitive](#filter-primitive)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Content model:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-SetElement⑧"></a>
-
-<a id="ref-for-elementdef-script⑨"></a>
-
-<a id="ref-for-AnimateElement⑧"></a>
-
-<a id="ref-for-TermDescriptiveElement⑧"></a>
-
-Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Attributes:
-
-<strong>Column 2 (data cell):</strong>
+**Attributes:**
 
 - [core attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermCoreAttributes) — [id](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#IDAttribute), [xml:base](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLBaseAttribute), [xml:lang](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLLangAttribute), [xml:space](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLSpaceAttribute)
 
-- <a id="ref-for-propdef-writing-mode⑤"></a>
+- <a id="ref-for-propdef-writing-mode⑤"></a><a id="ref-for-propdef-word-spacing⑤"></a><a id="ref-for-propdef-visibility⑤"></a><a id="ref-for-propdef-unicode-bidi⑤"></a><a id="ref-for-TextRenderingProperty⑤"></a><a id="ref-for-propdef-text-decoration⑤"></a><a id="ref-for-TextAnchorProperty⑤"></a><a id="ref-for-StrokeWidthProperty⑤"></a><a id="ref-for-StrokeOpacityProperty⑤"></a><a id="ref-for-StrokeMiterlimitProperty⑤"></a><a id="ref-for-StrokeLinejoinProperty⑤"></a><a id="ref-for-StrokeLinecapProperty⑤"></a><a id="ref-for-StrokeDashoffsetProperty⑤"></a><a id="ref-for-StrokeDasharrayProperty⑤"></a><a id="ref-for-StrokeProperty⑥"></a><a id="ref-for-StopOpacityProperty⑤"></a><a id="ref-for-StopColorProperty⑤"></a><a id="ref-for-ShapeRenderingProperty⑤"></a><a id="ref-for-PointerEventsProperty⑤"></a><a id="ref-for-propdef-overflow⑤"></a><a id="ref-for-propdef-opacity⑧"></a><a id="ref-for-propdef-mask⑤"></a><a id="ref-for-MarkerStartProperty⑤"></a><a id="ref-for-MarkerMidProperty⑤"></a><a id="ref-for-MarkerEndProperty⑤"></a><a id="ref-for-MarkerProperty⑤"></a><a id="ref-for-propdef-lighting-color⑥"></a><a id="ref-for-propdef-letter-spacing⑤"></a><a id="ref-for-KerningProperty⑤"></a><a id="ref-for-propdef-isolation⑦"></a><a id="ref-for-propdef-image-rendering⑤"></a><a id="ref-for-GlyphOrientationVerticalProperty⑤"></a><a id="ref-for-GlyphOrientationHorizontalProperty⑤"></a><a id="ref-for-propdef-font-weight⑤"></a><a id="ref-for-propdef-font-variant⑤"></a><a id="ref-for-propdef-font-style⑤"></a><a id="ref-for-propdef-font-stretch⑤"></a><a id="ref-for-propdef-font-size-adjust⑤"></a><a id="ref-for-propdef-font-size⑤"></a><a id="ref-for-propdef-font-family⑤"></a><a id="ref-for-propdef-font⑤"></a><a id="ref-for-propdef-flood-opacity⑦"></a><a id="ref-for-propdef-flood-color⑥"></a><a id="ref-for-propdef-filter①⑥"></a><a id="ref-for-FillRuleProperty⑤"></a><a id="ref-for-FillOpacityProperty⑤"></a><a id="ref-for-FillProperty⑦"></a><a id="ref-for-EnableBackgroundProperty⑤"></a><a id="ref-for-DominantBaselineProperty⑤"></a><a id="ref-for-propdef-display⑧"></a><a id="ref-for-propdef-direction⑤"></a><a id="ref-for-propdef-cursor⑤"></a><a id="ref-for-ColorRenderingProperty⑤"></a><a id="ref-for-propdef-color-interpolation-filters①①"></a><a id="ref-for-ColorInterpolationProperty⑨"></a><a id="ref-for-color0⑤"></a><a id="ref-for-propdef-clip-rule⑤"></a><a id="ref-for-propdef-clip-path⑤"></a><a id="ref-for-propdef-clip⑤"></a><a id="ref-for-BaselineShiftProperty⑤"></a><a id="ref-for-AlignmentBaselineProperty⑤"></a>[presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
 
-  <a id="ref-for-propdef-word-spacing⑤"></a>
-
-  <a id="ref-for-propdef-visibility⑤"></a>
-
-  <a id="ref-for-propdef-unicode-bidi⑤"></a>
-
-  <a id="ref-for-TextRenderingProperty⑤"></a>
-
-  <a id="ref-for-propdef-text-decoration⑤"></a>
-
-  <a id="ref-for-TextAnchorProperty⑤"></a>
-
-  <a id="ref-for-StrokeWidthProperty⑤"></a>
-
-  <a id="ref-for-StrokeOpacityProperty⑤"></a>
-
-  <a id="ref-for-StrokeMiterlimitProperty⑤"></a>
-
-  <a id="ref-for-StrokeLinejoinProperty⑤"></a>
-
-  <a id="ref-for-StrokeLinecapProperty⑤"></a>
-
-  <a id="ref-for-StrokeDashoffsetProperty⑤"></a>
-
-  <a id="ref-for-StrokeDasharrayProperty⑤"></a>
-
-  <a id="ref-for-StrokeProperty⑥"></a>
-
-  <a id="ref-for-StopOpacityProperty⑤"></a>
-
-  <a id="ref-for-StopColorProperty⑤"></a>
-
-  <a id="ref-for-ShapeRenderingProperty⑤"></a>
-
-  <a id="ref-for-PointerEventsProperty⑤"></a>
-
-  <a id="ref-for-propdef-overflow⑤"></a>
-
-  <a id="ref-for-propdef-opacity⑧"></a>
-
-  <a id="ref-for-propdef-mask⑤"></a>
-
-  <a id="ref-for-MarkerStartProperty⑤"></a>
-
-  <a id="ref-for-MarkerMidProperty⑤"></a>
-
-  <a id="ref-for-MarkerEndProperty⑤"></a>
-
-  <a id="ref-for-MarkerProperty⑤"></a>
-
-  <a id="ref-for-propdef-lighting-color⑥"></a>
-
-  <a id="ref-for-propdef-letter-spacing⑤"></a>
-
-  <a id="ref-for-KerningProperty⑤"></a>
-
-  <a id="ref-for-propdef-isolation⑦"></a>
-
-  <a id="ref-for-propdef-image-rendering⑤"></a>
-
-  <a id="ref-for-GlyphOrientationVerticalProperty⑤"></a>
-
-  <a id="ref-for-GlyphOrientationHorizontalProperty⑤"></a>
-
-  <a id="ref-for-propdef-font-weight⑤"></a>
-
-  <a id="ref-for-propdef-font-variant⑤"></a>
-
-  <a id="ref-for-propdef-font-style⑤"></a>
-
-  <a id="ref-for-propdef-font-stretch⑤"></a>
-
-  <a id="ref-for-propdef-font-size-adjust⑤"></a>
-
-  <a id="ref-for-propdef-font-size⑤"></a>
-
-  <a id="ref-for-propdef-font-family⑤"></a>
-
-  <a id="ref-for-propdef-font⑤"></a>
-
-  <a id="ref-for-propdef-flood-opacity⑦"></a>
-
-  <a id="ref-for-propdef-flood-color⑥"></a>
-
-  <a id="ref-for-propdef-filter①⑥"></a>
-
-  <a id="ref-for-FillRuleProperty⑤"></a>
-
-  <a id="ref-for-FillOpacityProperty⑤"></a>
-
-  <a id="ref-for-FillProperty⑦"></a>
-
-  <a id="ref-for-EnableBackgroundProperty⑤"></a>
-
-  <a id="ref-for-DominantBaselineProperty⑤"></a>
-
-  <a id="ref-for-propdef-display⑧"></a>
-
-  <a id="ref-for-propdef-direction⑤"></a>
-
-  <a id="ref-for-propdef-cursor⑤"></a>
-
-  <a id="ref-for-ColorRenderingProperty⑤"></a>
-
-  <a id="ref-for-propdef-color-interpolation-filters①①"></a>
-
-  <a id="ref-for-ColorInterpolationProperty⑨"></a>
-
-  <a id="ref-for-color0⑤"></a>
-
-  <a id="ref-for-propdef-clip-rule⑤"></a>
-
-  <a id="ref-for-propdef-clip-path⑤"></a>
-
-  <a id="ref-for-propdef-clip⑤"></a>
-
-  <a id="ref-for-BaselineShiftProperty⑤"></a>
-
-  <a id="ref-for-AlignmentBaselineProperty⑤"></a>
-
-  [presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
-
-- <a id="ref-for-element-attrdef-filter-primitive-result⑧"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-height⑧"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-width⑧"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-y⑧"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-x⑧"></a>
-
-  <a id="ref-for-filter-primitive-attributes④"></a>
-
-  [filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
+- <a id="ref-for-element-attrdef-filter-primitive-result⑧"></a><a id="ref-for-element-attrdef-filter-primitive-height⑧"></a><a id="ref-for-element-attrdef-filter-primitive-width⑧"></a><a id="ref-for-element-attrdef-filter-primitive-y⑧"></a><a id="ref-for-element-attrdef-filter-primitive-x⑧"></a><a id="ref-for-filter-primitive-attributes④"></a>[filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
 
 - [class](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#ClassAttribute)
 
 - [style](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#StyleAttribute)
 
-- <a id="ref-for-element-attrdef-filter-primitive-in①③"></a>
+- <a id="ref-for-element-attrdef-filter-primitive-in①③"></a>[in](#element-attrdef-filter-primitive-in)
 
-  [in](#element-attrdef-filter-primitive-in)
+- <a id="ref-for-element-attrdef-order"></a>[order](#element-attrdef-order)
 
-- <a id="ref-for-element-attrdef-order"></a>
+- <a id="ref-for-element-attrdef-feconvolvematrix-kernelmatrix"></a>[kernelMatrix](#element-attrdef-feconvolvematrix-kernelmatrix)
 
-  [order](#element-attrdef-order)
+- <a id="ref-for-element-attrdef-feconvolvematrix-divisor"></a>[divisor](#element-attrdef-feconvolvematrix-divisor)
 
-- <a id="ref-for-element-attrdef-feconvolvematrix-kernelmatrix"></a>
+- <a id="ref-for-element-attrdef-feconvolvematrix-bias"></a>[bias](#element-attrdef-feconvolvematrix-bias)
 
-  [kernelMatrix](#element-attrdef-feconvolvematrix-kernelmatrix)
+- <a id="ref-for-element-attrdef-feconvolvematrix-targetx"></a>[targetX](#element-attrdef-feconvolvematrix-targetx)
 
-- <a id="ref-for-element-attrdef-feconvolvematrix-divisor"></a>
+- <a id="ref-for-element-attrdef-feconvolvematrix-targety"></a>[targetY](#element-attrdef-feconvolvematrix-targety)
 
-  [divisor](#element-attrdef-feconvolvematrix-divisor)
+- <a id="ref-for-element-attrdef-feconvolvematrix-edgemode"></a>[edgeMode](#element-attrdef-feconvolvematrix-edgemode)
 
-- <a id="ref-for-element-attrdef-feconvolvematrix-bias"></a>
+- <a id="ref-for-element-attrdef-feconvolvematrix-kernelunitlength"></a>[kernelUnitLength](#element-attrdef-feconvolvematrix-kernelunitlength)
 
-  [bias](#element-attrdef-feconvolvematrix-bias)
+- <a id="ref-for-element-attrdef-feconvolvematrix-preservealpha"></a>[preserveAlpha](#element-attrdef-feconvolvematrix-preservealpha)
 
-- <a id="ref-for-element-attrdef-feconvolvematrix-targetx"></a>
-
-  [targetX](#element-attrdef-feconvolvematrix-targetx)
-
-- <a id="ref-for-element-attrdef-feconvolvematrix-targety"></a>
-
-  [targetY](#element-attrdef-feconvolvematrix-targety)
-
-- <a id="ref-for-element-attrdef-feconvolvematrix-edgemode"></a>
-
-  [edgeMode](#element-attrdef-feconvolvematrix-edgemode)
-
-- <a id="ref-for-element-attrdef-feconvolvematrix-kernelunitlength"></a>
-
-  [kernelUnitLength](#element-attrdef-feconvolvematrix-kernelunitlength)
-
-- <a id="ref-for-element-attrdef-feconvolvematrix-preservealpha"></a>
-
-  [preserveAlpha](#element-attrdef-feconvolvematrix-preservealpha)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-DOM Interfaces:
-
-<strong>Column 2 (data cell):</strong>
+**DOM Interfaces:**
 
 [SVGFEConvolveMatrixElement](#InterfaceSVGFEConvolveMatrixElement)
 
@@ -4749,221 +3280,39 @@ Animatable: yes.
 
 ### <a id="feDiffuseLightingElement"></a>9.10. Filter primitive [feDiffuseLighting](#elementdef-fediffuselighting)
 
-<strong>Table 13 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
+**Name:**
 
 <a id="elementdef-fediffuselighting"></a>`feDiffuseLighting`
 
-<strong>Row 2</strong>
+**Categories:**
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-filter-primitive③①"></a>[filter primitive](#filter-primitive)
 
-Categories:
+**Content model:**
 
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-light-source①"></a><a id="ref-for-elementdef-script①⓪"></a><a id="ref-for-TermDescriptiveElement⑨"></a>Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script) and exactly one [light sources](#light-source) element, in any order.
 
-<a id="ref-for-filter-primitive③①"></a>
-
-[filter primitive](#filter-primitive)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Content model:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-light-source①"></a>
-
-<a id="ref-for-elementdef-script①⓪"></a>
-
-<a id="ref-for-TermDescriptiveElement⑨"></a>
-
-Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script) and exactly one [light sources](#light-source) element, in any order.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Attributes:
-
-<strong>Column 2 (data cell):</strong>
+**Attributes:**
 
 - [core attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermCoreAttributes) — [id](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#IDAttribute), [xml:base](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLBaseAttribute), [xml:lang](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLLangAttribute), [xml:space](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLSpaceAttribute)
 
-- <a id="ref-for-propdef-writing-mode⑥"></a>
+- <a id="ref-for-propdef-writing-mode⑥"></a><a id="ref-for-propdef-word-spacing⑥"></a><a id="ref-for-propdef-visibility⑥"></a><a id="ref-for-propdef-unicode-bidi⑥"></a><a id="ref-for-TextRenderingProperty⑥"></a><a id="ref-for-propdef-text-decoration⑥"></a><a id="ref-for-TextAnchorProperty⑥"></a><a id="ref-for-StrokeWidthProperty⑥"></a><a id="ref-for-StrokeOpacityProperty⑥"></a><a id="ref-for-StrokeMiterlimitProperty⑥"></a><a id="ref-for-StrokeLinejoinProperty⑥"></a><a id="ref-for-StrokeLinecapProperty⑥"></a><a id="ref-for-StrokeDashoffsetProperty⑥"></a><a id="ref-for-StrokeDasharrayProperty⑥"></a><a id="ref-for-StrokeProperty⑦"></a><a id="ref-for-StopOpacityProperty⑥"></a><a id="ref-for-StopColorProperty⑥"></a><a id="ref-for-ShapeRenderingProperty⑥"></a><a id="ref-for-PointerEventsProperty⑥"></a><a id="ref-for-propdef-overflow⑥"></a><a id="ref-for-propdef-opacity⑨"></a><a id="ref-for-propdef-mask⑥"></a><a id="ref-for-MarkerStartProperty⑥"></a><a id="ref-for-MarkerMidProperty⑥"></a><a id="ref-for-MarkerEndProperty⑥"></a><a id="ref-for-MarkerProperty⑥"></a><a id="ref-for-propdef-lighting-color⑦"></a><a id="ref-for-propdef-letter-spacing⑥"></a><a id="ref-for-KerningProperty⑥"></a><a id="ref-for-propdef-isolation⑧"></a><a id="ref-for-propdef-image-rendering⑦"></a><a id="ref-for-GlyphOrientationVerticalProperty⑥"></a><a id="ref-for-GlyphOrientationHorizontalProperty⑥"></a><a id="ref-for-propdef-font-weight⑥"></a><a id="ref-for-propdef-font-variant⑥"></a><a id="ref-for-propdef-font-style⑥"></a><a id="ref-for-propdef-font-stretch⑥"></a><a id="ref-for-propdef-font-size-adjust⑥"></a><a id="ref-for-propdef-font-size⑥"></a><a id="ref-for-propdef-font-family⑥"></a><a id="ref-for-propdef-font⑥"></a><a id="ref-for-propdef-flood-opacity⑧"></a><a id="ref-for-propdef-flood-color⑦"></a><a id="ref-for-propdef-filter①⑦"></a><a id="ref-for-FillRuleProperty⑥"></a><a id="ref-for-FillOpacityProperty⑥"></a><a id="ref-for-FillProperty⑧"></a><a id="ref-for-EnableBackgroundProperty⑥"></a><a id="ref-for-DominantBaselineProperty⑥"></a><a id="ref-for-propdef-display⑨"></a><a id="ref-for-propdef-direction⑥"></a><a id="ref-for-propdef-cursor⑥"></a><a id="ref-for-ColorRenderingProperty⑥"></a><a id="ref-for-propdef-color-interpolation-filters①②"></a><a id="ref-for-ColorInterpolationProperty①⓪"></a><a id="ref-for-color0⑥"></a><a id="ref-for-propdef-clip-rule⑥"></a><a id="ref-for-propdef-clip-path⑥"></a><a id="ref-for-propdef-clip⑥"></a><a id="ref-for-BaselineShiftProperty⑥"></a><a id="ref-for-AlignmentBaselineProperty⑥"></a>[presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
 
-  <a id="ref-for-propdef-word-spacing⑥"></a>
-
-  <a id="ref-for-propdef-visibility⑥"></a>
-
-  <a id="ref-for-propdef-unicode-bidi⑥"></a>
-
-  <a id="ref-for-TextRenderingProperty⑥"></a>
-
-  <a id="ref-for-propdef-text-decoration⑥"></a>
-
-  <a id="ref-for-TextAnchorProperty⑥"></a>
-
-  <a id="ref-for-StrokeWidthProperty⑥"></a>
-
-  <a id="ref-for-StrokeOpacityProperty⑥"></a>
-
-  <a id="ref-for-StrokeMiterlimitProperty⑥"></a>
-
-  <a id="ref-for-StrokeLinejoinProperty⑥"></a>
-
-  <a id="ref-for-StrokeLinecapProperty⑥"></a>
-
-  <a id="ref-for-StrokeDashoffsetProperty⑥"></a>
-
-  <a id="ref-for-StrokeDasharrayProperty⑥"></a>
-
-  <a id="ref-for-StrokeProperty⑦"></a>
-
-  <a id="ref-for-StopOpacityProperty⑥"></a>
-
-  <a id="ref-for-StopColorProperty⑥"></a>
-
-  <a id="ref-for-ShapeRenderingProperty⑥"></a>
-
-  <a id="ref-for-PointerEventsProperty⑥"></a>
-
-  <a id="ref-for-propdef-overflow⑥"></a>
-
-  <a id="ref-for-propdef-opacity⑨"></a>
-
-  <a id="ref-for-propdef-mask⑥"></a>
-
-  <a id="ref-for-MarkerStartProperty⑥"></a>
-
-  <a id="ref-for-MarkerMidProperty⑥"></a>
-
-  <a id="ref-for-MarkerEndProperty⑥"></a>
-
-  <a id="ref-for-MarkerProperty⑥"></a>
-
-  <a id="ref-for-propdef-lighting-color⑦"></a>
-
-  <a id="ref-for-propdef-letter-spacing⑥"></a>
-
-  <a id="ref-for-KerningProperty⑥"></a>
-
-  <a id="ref-for-propdef-isolation⑧"></a>
-
-  <a id="ref-for-propdef-image-rendering⑦"></a>
-
-  <a id="ref-for-GlyphOrientationVerticalProperty⑥"></a>
-
-  <a id="ref-for-GlyphOrientationHorizontalProperty⑥"></a>
-
-  <a id="ref-for-propdef-font-weight⑥"></a>
-
-  <a id="ref-for-propdef-font-variant⑥"></a>
-
-  <a id="ref-for-propdef-font-style⑥"></a>
-
-  <a id="ref-for-propdef-font-stretch⑥"></a>
-
-  <a id="ref-for-propdef-font-size-adjust⑥"></a>
-
-  <a id="ref-for-propdef-font-size⑥"></a>
-
-  <a id="ref-for-propdef-font-family⑥"></a>
-
-  <a id="ref-for-propdef-font⑥"></a>
-
-  <a id="ref-for-propdef-flood-opacity⑧"></a>
-
-  <a id="ref-for-propdef-flood-color⑦"></a>
-
-  <a id="ref-for-propdef-filter①⑦"></a>
-
-  <a id="ref-for-FillRuleProperty⑥"></a>
-
-  <a id="ref-for-FillOpacityProperty⑥"></a>
-
-  <a id="ref-for-FillProperty⑧"></a>
-
-  <a id="ref-for-EnableBackgroundProperty⑥"></a>
-
-  <a id="ref-for-DominantBaselineProperty⑥"></a>
-
-  <a id="ref-for-propdef-display⑨"></a>
-
-  <a id="ref-for-propdef-direction⑥"></a>
-
-  <a id="ref-for-propdef-cursor⑥"></a>
-
-  <a id="ref-for-ColorRenderingProperty⑥"></a>
-
-  <a id="ref-for-propdef-color-interpolation-filters①②"></a>
-
-  <a id="ref-for-ColorInterpolationProperty①⓪"></a>
-
-  <a id="ref-for-color0⑥"></a>
-
-  <a id="ref-for-propdef-clip-rule⑥"></a>
-
-  <a id="ref-for-propdef-clip-path⑥"></a>
-
-  <a id="ref-for-propdef-clip⑥"></a>
-
-  <a id="ref-for-BaselineShiftProperty⑥"></a>
-
-  <a id="ref-for-AlignmentBaselineProperty⑥"></a>
-
-  [presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
-
-- <a id="ref-for-element-attrdef-filter-primitive-result⑨"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-height⑨"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-width⑨"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-y⑨"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-x⑨"></a>
-
-  <a id="ref-for-filter-primitive-attributes⑤"></a>
-
-  [filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
+- <a id="ref-for-element-attrdef-filter-primitive-result⑨"></a><a id="ref-for-element-attrdef-filter-primitive-height⑨"></a><a id="ref-for-element-attrdef-filter-primitive-width⑨"></a><a id="ref-for-element-attrdef-filter-primitive-y⑨"></a><a id="ref-for-element-attrdef-filter-primitive-x⑨"></a><a id="ref-for-filter-primitive-attributes⑤"></a>[filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
 
 - [class](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#ClassAttribute)
 
 - [style](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#StyleAttribute)
 
-- <a id="ref-for-element-attrdef-filter-primitive-in①④"></a>
+- <a id="ref-for-element-attrdef-filter-primitive-in①④"></a>[in](#element-attrdef-filter-primitive-in)
 
-  [in](#element-attrdef-filter-primitive-in)
+- <a id="ref-for-element-attrdef-fediffuselighting-surfacescale"></a>[surfaceScale](#element-attrdef-fediffuselighting-surfacescale)
 
-- <a id="ref-for-element-attrdef-fediffuselighting-surfacescale"></a>
+- <a id="ref-for-element-attrdef-fediffuselighting-diffuseconstant"></a>[diffuseConstant](#element-attrdef-fediffuselighting-diffuseconstant)
 
-  [surfaceScale](#element-attrdef-fediffuselighting-surfacescale)
+- <a id="ref-for-element-attrdef-fediffuselighting-kernelunitlength"></a>[kernelUnitLength](#element-attrdef-fediffuselighting-kernelunitlength)
 
-- <a id="ref-for-element-attrdef-fediffuselighting-diffuseconstant"></a>
-
-  [diffuseConstant](#element-attrdef-fediffuselighting-diffuseconstant)
-
-- <a id="ref-for-element-attrdef-fediffuselighting-kernelunitlength"></a>
-
-  [kernelUnitLength](#element-attrdef-fediffuselighting-kernelunitlength)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-DOM Interfaces:
-
-<strong>Column 2 (data cell):</strong>
+**DOM Interfaces:**
 
 [SVGFEDiffuseLightingElement](#InterfaceSVGFEDiffuseLightingElement)
 
@@ -5040,181 +3389,194 @@ The surface described by the input alpha image I(x,y) is:
 
 In these formulas, the `dx` and `dy` values (e.g., `I(x-dx,y-dy)`), represent deltas relative to a given `(x,y)` position for the purpose of estimating the slope of the surface at that point. These deltas are determined by the value (explicit or implicit) of attribute [kernelUnitLength](#element-attrdef-fediffuselighting-kernelunitlength).
 
-<strong>Table 14 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Top/left corner:
-
-<strong>Column 2 (header cell):</strong>
-
-Top row:
-
-<strong>Column 3 (header cell):</strong>
-
-Top/right corner:
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (data cell):</strong>
+**Top/left corner:**
 
 FACTOR<sub>x</sub>=2/(3\*dx)  
 K<sub>x</sub> =  
-    \|  0  0  0 \|  
-    \|  0 -2  2 \|  
-    \|  0 -1  1 \|  
+
+```text
+    |  0  0  0 |
+    |  0 -2  2 |
+    |  0 -1  1 |
+```
+
   
 FACTOR<sub>y</sub>=2/(3\*dy)  
 K<sub>y</sub> =    
-    \|  0  0  0 \|  
-    \|  0 -2 -1 \|  
-    \|  0  2  1 \|
 
-<strong>Column 2 (data cell):</strong>
+```text
+    |  0  0  0 |
+    |  0 -2 -1 |
+    |  0  2  1 |
+```
+
+**Top row:**
 
 FACTOR<sub>x</sub>=1/(3\*dx)  
 K<sub>x</sub> =  
-    \|  0  0  0 \|  
-    \| -2  0  2 \|  
-    \| -1  0  1 \|  
+
+```text
+    |  0  0  0 |
+    | -2  0  2 |
+    | -1  0  1 |
+```
+
   
 FACTOR<sub>y</sub>=1/(2\*dy)  
 K<sub>y</sub> =    
-    \|  0  0  0 \|  
-    \| -1 -2 -1 \|  
-    \|  1  2  1 \|
 
-<strong>Column 3 (data cell):</strong>
+```text
+    |  0  0  0 |
+    | -1 -2 -1 |
+    |  1  2  1 |
+```
+
+**Top/right corner:**
 
 FACTOR<sub>x</sub>=2/(3\*dx)  
 K<sub>x</sub> =  
-    \|  0  0  0 \|  
-    \| -2  2  0 \|  
-    \| -1  1  0 \|  
+
+```text
+    |  0  0  0 |
+    | -2  2  0 |
+    | -1  1  0 |
+```
+
   
 FACTOR<sub>y</sub>=2/(3\*dy)  
 K<sub>y</sub> =    
-    \|  0  0  0 \|  
-    \| -1 -2  0 \|  
-    \|  1  2  0 \|
 
-<strong>Row 3</strong>
+```text
+    |  0  0  0 |
+    | -1 -2  0 |
+    |  1  2  0 |
+```
 
-<strong>Column 1 (header cell):</strong>
-
-Left column:
-
-<strong>Column 2 (header cell):</strong>
-
-Interior pixels:
-
-<strong>Column 3 (header cell):</strong>
-
-Right column:
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (data cell):</strong>
+**Left column:**
 
 FACTOR<sub>x</sub>=1/(2\*dx)  
 K<sub>x</sub> =  
-    \| 0 -1  1 \|  
-    \| 0 -2  2 \|  
-    \| 0 -1  1 \|  
+
+```text
+    | 0 -1  1 |
+    | 0 -2  2 |
+    | 0 -1  1 |
+```
+
   
 FACTOR<sub>y</sub>=1/(3\*dy)  
 K<sub>y</sub> =    
-    \|  0 -2 -1 \|  
-    \|  0  0  0 \|  
-    \|  0  2  1 \|
 
-<strong>Column 2 (data cell):</strong>
+```text
+    |  0 -2 -1 |
+    |  0  0  0 |
+    |  0  2  1 |
+```
+
+**Interior pixels:**
 
 FACTOR<sub>x</sub>=1/(4\*dx)  
 K<sub>x</sub> =  
-    \| -1  0  1 \|  
-    \| -2  0  2 \|  
-    \| -1  0  1 \|  
+
+```text
+    | -1  0  1 |
+    | -2  0  2 |
+    | -1  0  1 |
+```
+
   
 FACTOR<sub>y</sub>=1/(4\*dy)  
 K<sub>y</sub> =    
-    \| -1 -2 -1 \|  
-    \|  0  0  0 \|  
-    \|  1  2  1 \|
 
-<strong>Column 3 (data cell):</strong>
+```text
+    | -1 -2 -1 |
+    |  0  0  0 |
+    |  1  2  1 |
+```
+
+**Right column:**
 
 FACTOR<sub>x</sub>=1/(2\*dx)  
 K<sub>x</sub> =  
-    \| -1  1  0\|  
-    \| -2  2  0\|  
-    \| -1  1  0\|  
+
+```text
+    | -1  1  0|
+    | -2  2  0|
+    | -1  1  0|
+```
+
   
 FACTOR<sub>y</sub>=1/(3\*dy)  
 K<sub>y</sub> =    
-    \| -1 -2  0 \|  
-    \|  0  0  0 \|  
-    \|  1  2  0 \|
 
-<strong>Row 5</strong>
+```text
+    | -1 -2  0 |
+    |  0  0  0 |
+    |  1  2  0 |
+```
 
-<strong>Column 1 (header cell):</strong>
-
-Bottom/left corner:
-
-<strong>Column 2 (header cell):</strong>
-
-Bottom row:
-
-<strong>Column 3 (header cell):</strong>
-
-Bottom/right corner:
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (data cell):</strong>
+**Bottom/left corner:**
 
 FACTOR<sub>x</sub>=2/(3\*dx)  
 K<sub>x</sub> =  
-    \| 0 -1  1 \|  
-    \| 0 -2  2 \|  
-    \| 0  0  0 \|  
+
+```text
+    | 0 -1  1 |
+    | 0 -2  2 |
+    | 0  0  0 |
+```
+
   
 FACTOR<sub>y</sub>=2/(3\*dy)  
 K<sub>y</sub> =    
-    \|  0 -2 -1 \|  
-    \|  0  2  1 \|  
-    \|  0  0  0 \|
 
-<strong>Column 2 (data cell):</strong>
+```text
+    |  0 -2 -1 |
+    |  0  2  1 |
+    |  0  0  0 |
+```
+
+**Bottom row:**
 
 FACTOR<sub>x</sub>=1/(3\*dx)  
 K<sub>x</sub> =  
-    \| -1  0  1 \|  
-    \| -2  0  2 \|  
-    \|  0  0  0 \|  
+
+```text
+    | -1  0  1 |
+    | -2  0  2 |
+    |  0  0  0 |
+```
+
   
 FACTOR<sub>y</sub>=1/(2\*dy)  
 K<sub>y</sub> =    
-    \| -1 -2 -1 \|  
-    \|  1  2  1 \|  
-    \|  0  0  0 \|
 
-<strong>Column 3 (data cell):</strong>
+```text
+    | -1 -2 -1 |
+    |  1  2  1 |
+    |  0  0  0 |
+```
+
+**Bottom/right corner:**
 
 FACTOR<sub>x</sub>=2/(3\*dx)  
 K<sub>x</sub> =  
-    \| -1  1  0 \|  
-    \| -2  2  0 \|  
-    \|  0  0  0 \|  
+
+```text
+    | -1  1  0 |
+    | -2  2  0 |
+    |  0  0  0 |
+```
+
   
 FACTOR<sub>y</sub>=2/(3\*dy)  
 K<sub>y</sub> =    
-    \| -1 -2  0 \|  
-    \|  1  2  0 \|  
-    \|  0  0  0 \|
+
+```text
+    | -1 -2  0 |
+    |  1  2  0 |
+    |  0  0  0 |
+```
 
 L, the unit vector from the image sample to the light, is calculated as follows:
 
@@ -5298,227 +3660,41 @@ The [light source](#light-source) is defined by one of the child elements [feDis
 
 ### <a id="feDisplacementMapElement"></a>9.11. Filter primitive [feDisplacementMap](#elementdef-fedisplacementmap)
 
-<strong>Table 15 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
+**Name:**
 
 <a id="elementdef-fedisplacementmap"></a>`feDisplacementMap`
 
-<strong>Row 2</strong>
+**Categories:**
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-filter-primitive③②"></a>[filter primitive](#filter-primitive)
 
-Categories:
+**Content model:**
 
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-SetElement⑨"></a><a id="ref-for-elementdef-script①①"></a><a id="ref-for-AnimateElement⑨"></a><a id="ref-for-TermDescriptiveElement①⓪"></a>Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
 
-<a id="ref-for-filter-primitive③②"></a>
-
-[filter primitive](#filter-primitive)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Content model:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-SetElement⑨"></a>
-
-<a id="ref-for-elementdef-script①①"></a>
-
-<a id="ref-for-AnimateElement⑨"></a>
-
-<a id="ref-for-TermDescriptiveElement①⓪"></a>
-
-Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Attributes:
-
-<strong>Column 2 (data cell):</strong>
+**Attributes:**
 
 - [core attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermCoreAttributes) — [id](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#IDAttribute), [xml:base](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLBaseAttribute), [xml:lang](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLLangAttribute), [xml:space](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLSpaceAttribute)
 
-- <a id="ref-for-propdef-writing-mode⑦"></a>
+- <a id="ref-for-propdef-writing-mode⑦"></a><a id="ref-for-propdef-word-spacing⑦"></a><a id="ref-for-propdef-visibility⑦"></a><a id="ref-for-propdef-unicode-bidi⑦"></a><a id="ref-for-TextRenderingProperty⑦"></a><a id="ref-for-propdef-text-decoration⑦"></a><a id="ref-for-TextAnchorProperty⑦"></a><a id="ref-for-StrokeWidthProperty⑦"></a><a id="ref-for-StrokeOpacityProperty⑦"></a><a id="ref-for-StrokeMiterlimitProperty⑦"></a><a id="ref-for-StrokeLinejoinProperty⑦"></a><a id="ref-for-StrokeLinecapProperty⑦"></a><a id="ref-for-StrokeDashoffsetProperty⑦"></a><a id="ref-for-StrokeDasharrayProperty⑦"></a><a id="ref-for-StrokeProperty⑧"></a><a id="ref-for-StopOpacityProperty⑦"></a><a id="ref-for-StopColorProperty⑦"></a><a id="ref-for-ShapeRenderingProperty⑦"></a><a id="ref-for-PointerEventsProperty⑦"></a><a id="ref-for-propdef-overflow⑦"></a><a id="ref-for-propdef-opacity①⓪"></a><a id="ref-for-propdef-mask⑦"></a><a id="ref-for-MarkerStartProperty⑦"></a><a id="ref-for-MarkerMidProperty⑦"></a><a id="ref-for-MarkerEndProperty⑦"></a><a id="ref-for-MarkerProperty⑦"></a><a id="ref-for-propdef-lighting-color⑨"></a><a id="ref-for-propdef-letter-spacing⑦"></a><a id="ref-for-KerningProperty⑦"></a><a id="ref-for-propdef-isolation⑨"></a><a id="ref-for-propdef-image-rendering⑨"></a><a id="ref-for-GlyphOrientationVerticalProperty⑦"></a><a id="ref-for-GlyphOrientationHorizontalProperty⑦"></a><a id="ref-for-propdef-font-weight⑦"></a><a id="ref-for-propdef-font-variant⑦"></a><a id="ref-for-propdef-font-style⑦"></a><a id="ref-for-propdef-font-stretch⑦"></a><a id="ref-for-propdef-font-size-adjust⑦"></a><a id="ref-for-propdef-font-size⑦"></a><a id="ref-for-propdef-font-family⑦"></a><a id="ref-for-propdef-font⑦"></a><a id="ref-for-propdef-flood-opacity⑨"></a><a id="ref-for-propdef-flood-color⑧"></a><a id="ref-for-propdef-filter①⑧"></a><a id="ref-for-FillRuleProperty⑦"></a><a id="ref-for-FillOpacityProperty⑦"></a><a id="ref-for-FillProperty⑨"></a><a id="ref-for-EnableBackgroundProperty⑦"></a><a id="ref-for-DominantBaselineProperty⑦"></a><a id="ref-for-propdef-display①⓪"></a><a id="ref-for-propdef-direction⑦"></a><a id="ref-for-propdef-cursor⑦"></a><a id="ref-for-ColorRenderingProperty⑦"></a><a id="ref-for-propdef-color-interpolation-filters①③"></a><a id="ref-for-ColorInterpolationProperty①①"></a><a id="ref-for-color0⑦"></a><a id="ref-for-propdef-clip-rule⑦"></a><a id="ref-for-propdef-clip-path⑦"></a><a id="ref-for-propdef-clip⑦"></a><a id="ref-for-BaselineShiftProperty⑦"></a><a id="ref-for-AlignmentBaselineProperty⑦"></a>[presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
 
-  <a id="ref-for-propdef-word-spacing⑦"></a>
-
-  <a id="ref-for-propdef-visibility⑦"></a>
-
-  <a id="ref-for-propdef-unicode-bidi⑦"></a>
-
-  <a id="ref-for-TextRenderingProperty⑦"></a>
-
-  <a id="ref-for-propdef-text-decoration⑦"></a>
-
-  <a id="ref-for-TextAnchorProperty⑦"></a>
-
-  <a id="ref-for-StrokeWidthProperty⑦"></a>
-
-  <a id="ref-for-StrokeOpacityProperty⑦"></a>
-
-  <a id="ref-for-StrokeMiterlimitProperty⑦"></a>
-
-  <a id="ref-for-StrokeLinejoinProperty⑦"></a>
-
-  <a id="ref-for-StrokeLinecapProperty⑦"></a>
-
-  <a id="ref-for-StrokeDashoffsetProperty⑦"></a>
-
-  <a id="ref-for-StrokeDasharrayProperty⑦"></a>
-
-  <a id="ref-for-StrokeProperty⑧"></a>
-
-  <a id="ref-for-StopOpacityProperty⑦"></a>
-
-  <a id="ref-for-StopColorProperty⑦"></a>
-
-  <a id="ref-for-ShapeRenderingProperty⑦"></a>
-
-  <a id="ref-for-PointerEventsProperty⑦"></a>
-
-  <a id="ref-for-propdef-overflow⑦"></a>
-
-  <a id="ref-for-propdef-opacity①⓪"></a>
-
-  <a id="ref-for-propdef-mask⑦"></a>
-
-  <a id="ref-for-MarkerStartProperty⑦"></a>
-
-  <a id="ref-for-MarkerMidProperty⑦"></a>
-
-  <a id="ref-for-MarkerEndProperty⑦"></a>
-
-  <a id="ref-for-MarkerProperty⑦"></a>
-
-  <a id="ref-for-propdef-lighting-color⑨"></a>
-
-  <a id="ref-for-propdef-letter-spacing⑦"></a>
-
-  <a id="ref-for-KerningProperty⑦"></a>
-
-  <a id="ref-for-propdef-isolation⑨"></a>
-
-  <a id="ref-for-propdef-image-rendering⑨"></a>
-
-  <a id="ref-for-GlyphOrientationVerticalProperty⑦"></a>
-
-  <a id="ref-for-GlyphOrientationHorizontalProperty⑦"></a>
-
-  <a id="ref-for-propdef-font-weight⑦"></a>
-
-  <a id="ref-for-propdef-font-variant⑦"></a>
-
-  <a id="ref-for-propdef-font-style⑦"></a>
-
-  <a id="ref-for-propdef-font-stretch⑦"></a>
-
-  <a id="ref-for-propdef-font-size-adjust⑦"></a>
-
-  <a id="ref-for-propdef-font-size⑦"></a>
-
-  <a id="ref-for-propdef-font-family⑦"></a>
-
-  <a id="ref-for-propdef-font⑦"></a>
-
-  <a id="ref-for-propdef-flood-opacity⑨"></a>
-
-  <a id="ref-for-propdef-flood-color⑧"></a>
-
-  <a id="ref-for-propdef-filter①⑧"></a>
-
-  <a id="ref-for-FillRuleProperty⑦"></a>
-
-  <a id="ref-for-FillOpacityProperty⑦"></a>
-
-  <a id="ref-for-FillProperty⑨"></a>
-
-  <a id="ref-for-EnableBackgroundProperty⑦"></a>
-
-  <a id="ref-for-DominantBaselineProperty⑦"></a>
-
-  <a id="ref-for-propdef-display①⓪"></a>
-
-  <a id="ref-for-propdef-direction⑦"></a>
-
-  <a id="ref-for-propdef-cursor⑦"></a>
-
-  <a id="ref-for-ColorRenderingProperty⑦"></a>
-
-  <a id="ref-for-propdef-color-interpolation-filters①③"></a>
-
-  <a id="ref-for-ColorInterpolationProperty①①"></a>
-
-  <a id="ref-for-color0⑦"></a>
-
-  <a id="ref-for-propdef-clip-rule⑦"></a>
-
-  <a id="ref-for-propdef-clip-path⑦"></a>
-
-  <a id="ref-for-propdef-clip⑦"></a>
-
-  <a id="ref-for-BaselineShiftProperty⑦"></a>
-
-  <a id="ref-for-AlignmentBaselineProperty⑦"></a>
-
-  [presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
-
-- <a id="ref-for-element-attrdef-filter-primitive-result①⓪"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-height①⓪"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-width①⓪"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-y①⓪"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-x①⓪"></a>
-
-  <a id="ref-for-filter-primitive-attributes⑥"></a>
-
-  [filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
+- <a id="ref-for-element-attrdef-filter-primitive-result①⓪"></a><a id="ref-for-element-attrdef-filter-primitive-height①⓪"></a><a id="ref-for-element-attrdef-filter-primitive-width①⓪"></a><a id="ref-for-element-attrdef-filter-primitive-y①⓪"></a><a id="ref-for-element-attrdef-filter-primitive-x①⓪"></a><a id="ref-for-filter-primitive-attributes⑥"></a>[filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
 
 - [class](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#ClassAttribute)
 
 - [style](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#StyleAttribute)
 
-- <a id="ref-for-element-attrdef-filter-primitive-in①⑤"></a>
+- <a id="ref-for-element-attrdef-filter-primitive-in①⑤"></a>[in](#element-attrdef-filter-primitive-in)
 
-  [in](#element-attrdef-filter-primitive-in)
+- <a id="ref-for-element-attrdef-fedisplacementmap-in2"></a>[in2](#element-attrdef-fedisplacementmap-in2)
 
-- <a id="ref-for-element-attrdef-fedisplacementmap-in2"></a>
+- <a id="ref-for-element-attrdef-fedisplacementmap-scale"></a>[scale](#element-attrdef-fedisplacementmap-scale)
 
-  [in2](#element-attrdef-fedisplacementmap-in2)
+- <a id="ref-for-element-attrdef-fedisplacementmap-xchannelselector"></a>[xChannelSelector](#element-attrdef-fedisplacementmap-xchannelselector)
 
-- <a id="ref-for-element-attrdef-fedisplacementmap-scale"></a>
+- <a id="ref-for-element-attrdef-fedisplacementmap-ychannelselector"></a>[yChannelSelector](#element-attrdef-fedisplacementmap-ychannelselector)
 
-  [scale](#element-attrdef-fedisplacementmap-scale)
-
-- <a id="ref-for-element-attrdef-fedisplacementmap-xchannelselector"></a>
-
-  [xChannelSelector](#element-attrdef-fedisplacementmap-xchannelselector)
-
-- <a id="ref-for-element-attrdef-fedisplacementmap-ychannelselector"></a>
-
-  [yChannelSelector](#element-attrdef-fedisplacementmap-ychannelselector)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-DOM Interfaces:
-
-<strong>Column 2 (data cell):</strong>
+**DOM Interfaces:**
 
 [SVGFEDisplacementMapElement](#InterfaceSVGFEDisplacementMapElement)
 
@@ -5647,223 +3823,39 @@ Animatable: yes.
 
 ### <a id="feDropShadowElement"></a>9.12. Filter primitive [feDropShadow](#elementdef-fedropshadow)
 
-<strong>Table 16 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
+**Name:**
 
 <a id="elementdef-fedropshadow"></a>`feDropShadow`
 
-<strong>Row 2</strong>
+**Categories:**
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-filter-primitive③③"></a>[filter primitive](#filter-primitive)
 
-Categories:
+**Content model:**
 
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-SetElement①⓪"></a><a id="ref-for-elementdef-script①②"></a><a id="ref-for-AnimateElement①⓪"></a><a id="ref-for-TermDescriptiveElement①①"></a>Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
 
-<a id="ref-for-filter-primitive③③"></a>
-
-[filter primitive](#filter-primitive)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Content model:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-SetElement①⓪"></a>
-
-<a id="ref-for-elementdef-script①②"></a>
-
-<a id="ref-for-AnimateElement①⓪"></a>
-
-<a id="ref-for-TermDescriptiveElement①①"></a>
-
-Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Attributes:
-
-<strong>Column 2 (data cell):</strong>
+**Attributes:**
 
 - [core attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermCoreAttributes) — [id](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#IDAttribute), [xml:base](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLBaseAttribute), [xml:lang](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLLangAttribute), [xml:space](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLSpaceAttribute)
 
-- <a id="ref-for-propdef-writing-mode⑧"></a>
+- <a id="ref-for-propdef-writing-mode⑧"></a><a id="ref-for-propdef-word-spacing⑧"></a><a id="ref-for-propdef-visibility⑧"></a><a id="ref-for-propdef-unicode-bidi⑧"></a><a id="ref-for-TextRenderingProperty⑧"></a><a id="ref-for-propdef-text-decoration⑧"></a><a id="ref-for-TextAnchorProperty⑧"></a><a id="ref-for-StrokeWidthProperty⑧"></a><a id="ref-for-StrokeOpacityProperty⑧"></a><a id="ref-for-StrokeMiterlimitProperty⑧"></a><a id="ref-for-StrokeLinejoinProperty⑧"></a><a id="ref-for-StrokeLinecapProperty⑧"></a><a id="ref-for-StrokeDashoffsetProperty⑧"></a><a id="ref-for-StrokeDasharrayProperty⑧"></a><a id="ref-for-StrokeProperty⑨"></a><a id="ref-for-StopOpacityProperty⑧"></a><a id="ref-for-StopColorProperty⑧"></a><a id="ref-for-ShapeRenderingProperty⑧"></a><a id="ref-for-PointerEventsProperty⑧"></a><a id="ref-for-propdef-overflow⑧"></a><a id="ref-for-propdef-opacity①①"></a><a id="ref-for-propdef-mask⑧"></a><a id="ref-for-MarkerStartProperty⑧"></a><a id="ref-for-MarkerMidProperty⑧"></a><a id="ref-for-MarkerEndProperty⑧"></a><a id="ref-for-MarkerProperty⑧"></a><a id="ref-for-propdef-lighting-color①⓪"></a><a id="ref-for-propdef-letter-spacing⑧"></a><a id="ref-for-KerningProperty⑧"></a><a id="ref-for-propdef-isolation①⓪"></a><a id="ref-for-propdef-image-rendering①①"></a><a id="ref-for-GlyphOrientationVerticalProperty⑧"></a><a id="ref-for-GlyphOrientationHorizontalProperty⑧"></a><a id="ref-for-propdef-font-weight⑧"></a><a id="ref-for-propdef-font-variant⑧"></a><a id="ref-for-propdef-font-style⑧"></a><a id="ref-for-propdef-font-stretch⑧"></a><a id="ref-for-propdef-font-size-adjust⑧"></a><a id="ref-for-propdef-font-size⑧"></a><a id="ref-for-propdef-font-family⑧"></a><a id="ref-for-propdef-font⑧"></a><a id="ref-for-propdef-flood-opacity①⓪"></a><a id="ref-for-propdef-flood-color⑨"></a><a id="ref-for-propdef-filter①⑨"></a><a id="ref-for-FillRuleProperty⑧"></a><a id="ref-for-FillOpacityProperty⑧"></a><a id="ref-for-FillProperty①⓪"></a><a id="ref-for-EnableBackgroundProperty⑧"></a><a id="ref-for-DominantBaselineProperty⑧"></a><a id="ref-for-propdef-display①①"></a><a id="ref-for-propdef-direction⑧"></a><a id="ref-for-propdef-cursor⑧"></a><a id="ref-for-ColorRenderingProperty⑧"></a><a id="ref-for-propdef-color-interpolation-filters①⑤"></a><a id="ref-for-ColorInterpolationProperty①②"></a><a id="ref-for-color0⑧"></a><a id="ref-for-propdef-clip-rule⑧"></a><a id="ref-for-propdef-clip-path⑧"></a><a id="ref-for-propdef-clip⑧"></a><a id="ref-for-BaselineShiftProperty⑧"></a><a id="ref-for-AlignmentBaselineProperty⑧"></a>[presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
 
-  <a id="ref-for-propdef-word-spacing⑧"></a>
-
-  <a id="ref-for-propdef-visibility⑧"></a>
-
-  <a id="ref-for-propdef-unicode-bidi⑧"></a>
-
-  <a id="ref-for-TextRenderingProperty⑧"></a>
-
-  <a id="ref-for-propdef-text-decoration⑧"></a>
-
-  <a id="ref-for-TextAnchorProperty⑧"></a>
-
-  <a id="ref-for-StrokeWidthProperty⑧"></a>
-
-  <a id="ref-for-StrokeOpacityProperty⑧"></a>
-
-  <a id="ref-for-StrokeMiterlimitProperty⑧"></a>
-
-  <a id="ref-for-StrokeLinejoinProperty⑧"></a>
-
-  <a id="ref-for-StrokeLinecapProperty⑧"></a>
-
-  <a id="ref-for-StrokeDashoffsetProperty⑧"></a>
-
-  <a id="ref-for-StrokeDasharrayProperty⑧"></a>
-
-  <a id="ref-for-StrokeProperty⑨"></a>
-
-  <a id="ref-for-StopOpacityProperty⑧"></a>
-
-  <a id="ref-for-StopColorProperty⑧"></a>
-
-  <a id="ref-for-ShapeRenderingProperty⑧"></a>
-
-  <a id="ref-for-PointerEventsProperty⑧"></a>
-
-  <a id="ref-for-propdef-overflow⑧"></a>
-
-  <a id="ref-for-propdef-opacity①①"></a>
-
-  <a id="ref-for-propdef-mask⑧"></a>
-
-  <a id="ref-for-MarkerStartProperty⑧"></a>
-
-  <a id="ref-for-MarkerMidProperty⑧"></a>
-
-  <a id="ref-for-MarkerEndProperty⑧"></a>
-
-  <a id="ref-for-MarkerProperty⑧"></a>
-
-  <a id="ref-for-propdef-lighting-color①⓪"></a>
-
-  <a id="ref-for-propdef-letter-spacing⑧"></a>
-
-  <a id="ref-for-KerningProperty⑧"></a>
-
-  <a id="ref-for-propdef-isolation①⓪"></a>
-
-  <a id="ref-for-propdef-image-rendering①①"></a>
-
-  <a id="ref-for-GlyphOrientationVerticalProperty⑧"></a>
-
-  <a id="ref-for-GlyphOrientationHorizontalProperty⑧"></a>
-
-  <a id="ref-for-propdef-font-weight⑧"></a>
-
-  <a id="ref-for-propdef-font-variant⑧"></a>
-
-  <a id="ref-for-propdef-font-style⑧"></a>
-
-  <a id="ref-for-propdef-font-stretch⑧"></a>
-
-  <a id="ref-for-propdef-font-size-adjust⑧"></a>
-
-  <a id="ref-for-propdef-font-size⑧"></a>
-
-  <a id="ref-for-propdef-font-family⑧"></a>
-
-  <a id="ref-for-propdef-font⑧"></a>
-
-  <a id="ref-for-propdef-flood-opacity①⓪"></a>
-
-  <a id="ref-for-propdef-flood-color⑨"></a>
-
-  <a id="ref-for-propdef-filter①⑨"></a>
-
-  <a id="ref-for-FillRuleProperty⑧"></a>
-
-  <a id="ref-for-FillOpacityProperty⑧"></a>
-
-  <a id="ref-for-FillProperty①⓪"></a>
-
-  <a id="ref-for-EnableBackgroundProperty⑧"></a>
-
-  <a id="ref-for-DominantBaselineProperty⑧"></a>
-
-  <a id="ref-for-propdef-display①①"></a>
-
-  <a id="ref-for-propdef-direction⑧"></a>
-
-  <a id="ref-for-propdef-cursor⑧"></a>
-
-  <a id="ref-for-ColorRenderingProperty⑧"></a>
-
-  <a id="ref-for-propdef-color-interpolation-filters①⑤"></a>
-
-  <a id="ref-for-ColorInterpolationProperty①②"></a>
-
-  <a id="ref-for-color0⑧"></a>
-
-  <a id="ref-for-propdef-clip-rule⑧"></a>
-
-  <a id="ref-for-propdef-clip-path⑧"></a>
-
-  <a id="ref-for-propdef-clip⑧"></a>
-
-  <a id="ref-for-BaselineShiftProperty⑧"></a>
-
-  <a id="ref-for-AlignmentBaselineProperty⑧"></a>
-
-  [presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
-
-- <a id="ref-for-element-attrdef-filter-primitive-result①①"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-height①①"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-width①①"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-y①①"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-x①①"></a>
-
-  <a id="ref-for-filter-primitive-attributes⑦"></a>
-
-  [filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
+- <a id="ref-for-element-attrdef-filter-primitive-result①①"></a><a id="ref-for-element-attrdef-filter-primitive-height①①"></a><a id="ref-for-element-attrdef-filter-primitive-width①①"></a><a id="ref-for-element-attrdef-filter-primitive-y①①"></a><a id="ref-for-element-attrdef-filter-primitive-x①①"></a><a id="ref-for-filter-primitive-attributes⑦"></a>[filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
 
 - [class](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#ClassAttribute)
 
 - [style](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#StyleAttribute)
 
-- <a id="ref-for-element-attrdef-filter-primitive-in②⑥"></a>
+- <a id="ref-for-element-attrdef-filter-primitive-in②⑥"></a>[in](#element-attrdef-filter-primitive-in)
 
-  [in](#element-attrdef-filter-primitive-in)
+- <a id="ref-for-element-attrdef-fedropshadow-stddeviation"></a>[stdDeviation](#element-attrdef-fedropshadow-stddeviation)
 
-- <a id="ref-for-element-attrdef-fedropshadow-stddeviation"></a>
+- <a id="ref-for-element-attrdef-fedropshadow-dx"></a>[dx](#element-attrdef-fedropshadow-dx)
 
-  [stdDeviation](#element-attrdef-fedropshadow-stddeviation)
+- <a id="ref-for-element-attrdef-fedropshadow-dy"></a>[dy](#element-attrdef-fedropshadow-dy)
 
-- <a id="ref-for-element-attrdef-fedropshadow-dx"></a>
-
-  [dx](#element-attrdef-fedropshadow-dx)
-
-- <a id="ref-for-element-attrdef-fedropshadow-dy"></a>
-
-  [dy](#element-attrdef-fedropshadow-dy)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-DOM Interfaces:
-
-<strong>Column 2 (data cell):</strong>
+**DOM Interfaces:**
 
 [SVGFEDropShadowElement](#InterfaceSVGFEDropShadowElement)
 
@@ -6021,207 +4013,31 @@ Animatable: yes.
 
 ### <a id="feFloodElement"></a>9.13. Filter primitive [feFlood](#elementdef-feflood)
 
-<strong>Table 17 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
+**Name:**
 
 <a id="elementdef-feflood"></a>`feFlood`
 
-<strong>Row 2</strong>
+**Categories:**
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-filter-primitive③⑤"></a>[filter primitive](#filter-primitive)
 
-Categories:
+**Content model:**
 
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-SetElement①①"></a><a id="ref-for-elementdef-script①③"></a><a id="ref-for-AnimateElement①①"></a><a id="ref-for-TermDescriptiveElement①②"></a>Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
 
-<a id="ref-for-filter-primitive③⑤"></a>
-
-[filter primitive](#filter-primitive)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Content model:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-SetElement①①"></a>
-
-<a id="ref-for-elementdef-script①③"></a>
-
-<a id="ref-for-AnimateElement①①"></a>
-
-<a id="ref-for-TermDescriptiveElement①②"></a>
-
-Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Attributes:
-
-<strong>Column 2 (data cell):</strong>
+**Attributes:**
 
 - [core attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermCoreAttributes) — [id](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#IDAttribute), [xml:base](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLBaseAttribute), [xml:lang](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLLangAttribute), [xml:space](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLSpaceAttribute)
 
-- <a id="ref-for-propdef-writing-mode⑨"></a>
+- <a id="ref-for-propdef-writing-mode⑨"></a><a id="ref-for-propdef-word-spacing⑨"></a><a id="ref-for-propdef-visibility⑨"></a><a id="ref-for-propdef-unicode-bidi⑨"></a><a id="ref-for-TextRenderingProperty⑨"></a><a id="ref-for-propdef-text-decoration⑨"></a><a id="ref-for-TextAnchorProperty⑨"></a><a id="ref-for-StrokeWidthProperty⑨"></a><a id="ref-for-StrokeOpacityProperty⑨"></a><a id="ref-for-StrokeMiterlimitProperty⑨"></a><a id="ref-for-StrokeLinejoinProperty⑨"></a><a id="ref-for-StrokeLinecapProperty⑨"></a><a id="ref-for-StrokeDashoffsetProperty⑨"></a><a id="ref-for-StrokeDasharrayProperty⑨"></a><a id="ref-for-StrokeProperty①⓪"></a><a id="ref-for-StopOpacityProperty⑨"></a><a id="ref-for-StopColorProperty⑨"></a><a id="ref-for-ShapeRenderingProperty⑨"></a><a id="ref-for-PointerEventsProperty⑨"></a><a id="ref-for-propdef-overflow⑨"></a><a id="ref-for-propdef-opacity①②"></a><a id="ref-for-propdef-mask⑨"></a><a id="ref-for-MarkerStartProperty⑨"></a><a id="ref-for-MarkerMidProperty⑨"></a><a id="ref-for-MarkerEndProperty⑨"></a><a id="ref-for-MarkerProperty⑨"></a><a id="ref-for-propdef-lighting-color①①"></a><a id="ref-for-propdef-letter-spacing⑨"></a><a id="ref-for-KerningProperty⑨"></a><a id="ref-for-propdef-isolation①①"></a><a id="ref-for-propdef-image-rendering①②"></a><a id="ref-for-GlyphOrientationVerticalProperty⑨"></a><a id="ref-for-GlyphOrientationHorizontalProperty⑨"></a><a id="ref-for-propdef-font-weight⑨"></a><a id="ref-for-propdef-font-variant⑨"></a><a id="ref-for-propdef-font-style⑨"></a><a id="ref-for-propdef-font-stretch⑨"></a><a id="ref-for-propdef-font-size-adjust⑨"></a><a id="ref-for-propdef-font-size⑨"></a><a id="ref-for-propdef-font-family⑨"></a><a id="ref-for-propdef-font⑨"></a><a id="ref-for-propdef-flood-opacity①②"></a><a id="ref-for-propdef-flood-color①①"></a><a id="ref-for-propdef-filter②⓪"></a><a id="ref-for-FillRuleProperty⑨"></a><a id="ref-for-FillOpacityProperty⑨"></a><a id="ref-for-FillProperty①①"></a><a id="ref-for-EnableBackgroundProperty⑨"></a><a id="ref-for-DominantBaselineProperty⑨"></a><a id="ref-for-propdef-display①②"></a><a id="ref-for-propdef-direction⑨"></a><a id="ref-for-propdef-cursor⑨"></a><a id="ref-for-ColorRenderingProperty⑨"></a><a id="ref-for-propdef-color-interpolation-filters①⑥"></a><a id="ref-for-ColorInterpolationProperty①③"></a><a id="ref-for-color0⑨"></a><a id="ref-for-propdef-clip-rule⑨"></a><a id="ref-for-propdef-clip-path⑨"></a><a id="ref-for-propdef-clip⑨"></a><a id="ref-for-BaselineShiftProperty⑨"></a><a id="ref-for-AlignmentBaselineProperty⑨"></a>[presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
 
-  <a id="ref-for-propdef-word-spacing⑨"></a>
-
-  <a id="ref-for-propdef-visibility⑨"></a>
-
-  <a id="ref-for-propdef-unicode-bidi⑨"></a>
-
-  <a id="ref-for-TextRenderingProperty⑨"></a>
-
-  <a id="ref-for-propdef-text-decoration⑨"></a>
-
-  <a id="ref-for-TextAnchorProperty⑨"></a>
-
-  <a id="ref-for-StrokeWidthProperty⑨"></a>
-
-  <a id="ref-for-StrokeOpacityProperty⑨"></a>
-
-  <a id="ref-for-StrokeMiterlimitProperty⑨"></a>
-
-  <a id="ref-for-StrokeLinejoinProperty⑨"></a>
-
-  <a id="ref-for-StrokeLinecapProperty⑨"></a>
-
-  <a id="ref-for-StrokeDashoffsetProperty⑨"></a>
-
-  <a id="ref-for-StrokeDasharrayProperty⑨"></a>
-
-  <a id="ref-for-StrokeProperty①⓪"></a>
-
-  <a id="ref-for-StopOpacityProperty⑨"></a>
-
-  <a id="ref-for-StopColorProperty⑨"></a>
-
-  <a id="ref-for-ShapeRenderingProperty⑨"></a>
-
-  <a id="ref-for-PointerEventsProperty⑨"></a>
-
-  <a id="ref-for-propdef-overflow⑨"></a>
-
-  <a id="ref-for-propdef-opacity①②"></a>
-
-  <a id="ref-for-propdef-mask⑨"></a>
-
-  <a id="ref-for-MarkerStartProperty⑨"></a>
-
-  <a id="ref-for-MarkerMidProperty⑨"></a>
-
-  <a id="ref-for-MarkerEndProperty⑨"></a>
-
-  <a id="ref-for-MarkerProperty⑨"></a>
-
-  <a id="ref-for-propdef-lighting-color①①"></a>
-
-  <a id="ref-for-propdef-letter-spacing⑨"></a>
-
-  <a id="ref-for-KerningProperty⑨"></a>
-
-  <a id="ref-for-propdef-isolation①①"></a>
-
-  <a id="ref-for-propdef-image-rendering①②"></a>
-
-  <a id="ref-for-GlyphOrientationVerticalProperty⑨"></a>
-
-  <a id="ref-for-GlyphOrientationHorizontalProperty⑨"></a>
-
-  <a id="ref-for-propdef-font-weight⑨"></a>
-
-  <a id="ref-for-propdef-font-variant⑨"></a>
-
-  <a id="ref-for-propdef-font-style⑨"></a>
-
-  <a id="ref-for-propdef-font-stretch⑨"></a>
-
-  <a id="ref-for-propdef-font-size-adjust⑨"></a>
-
-  <a id="ref-for-propdef-font-size⑨"></a>
-
-  <a id="ref-for-propdef-font-family⑨"></a>
-
-  <a id="ref-for-propdef-font⑨"></a>
-
-  <a id="ref-for-propdef-flood-opacity①②"></a>
-
-  <a id="ref-for-propdef-flood-color①①"></a>
-
-  <a id="ref-for-propdef-filter②⓪"></a>
-
-  <a id="ref-for-FillRuleProperty⑨"></a>
-
-  <a id="ref-for-FillOpacityProperty⑨"></a>
-
-  <a id="ref-for-FillProperty①①"></a>
-
-  <a id="ref-for-EnableBackgroundProperty⑨"></a>
-
-  <a id="ref-for-DominantBaselineProperty⑨"></a>
-
-  <a id="ref-for-propdef-display①②"></a>
-
-  <a id="ref-for-propdef-direction⑨"></a>
-
-  <a id="ref-for-propdef-cursor⑨"></a>
-
-  <a id="ref-for-ColorRenderingProperty⑨"></a>
-
-  <a id="ref-for-propdef-color-interpolation-filters①⑥"></a>
-
-  <a id="ref-for-ColorInterpolationProperty①③"></a>
-
-  <a id="ref-for-color0⑨"></a>
-
-  <a id="ref-for-propdef-clip-rule⑨"></a>
-
-  <a id="ref-for-propdef-clip-path⑨"></a>
-
-  <a id="ref-for-propdef-clip⑨"></a>
-
-  <a id="ref-for-BaselineShiftProperty⑨"></a>
-
-  <a id="ref-for-AlignmentBaselineProperty⑨"></a>
-
-  [presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
-
-- <a id="ref-for-element-attrdef-filter-primitive-result①②"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-height①②"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-width①②"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-y①②"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-x①②"></a>
-
-  <a id="ref-for-filter-primitive-attributes⑧"></a>
-
-  [filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
+- <a id="ref-for-element-attrdef-filter-primitive-result①②"></a><a id="ref-for-element-attrdef-filter-primitive-height①②"></a><a id="ref-for-element-attrdef-filter-primitive-width①②"></a><a id="ref-for-element-attrdef-filter-primitive-y①②"></a><a id="ref-for-element-attrdef-filter-primitive-x①②"></a><a id="ref-for-filter-primitive-attributes⑧"></a>[filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
 
 - [class](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#ClassAttribute)
 
 - [style](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#StyleAttribute)
 
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-DOM Interfaces:
-
-<strong>Column 2 (data cell):</strong>
+**DOM Interfaces:**
 
 [SVGFEFloodElement](#InterfaceSVGFEFloodElement)
 
@@ -6239,113 +4055,18 @@ This filter primitive creates a rectangle filled with the color and opacity valu
 
 #### <a id="FloodColorProperty"></a>9.13.1. The [flood-color](#propdef-flood-color) property
 
-<strong>Table 18 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-flood-color"></a>flood-color
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://drafts.csswg.org/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valuea-def-color②"></a>
-
-[\<color\>](https://www.w3.org/TR/css3-color/#valuea-def-color)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://drafts.csswg.org/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-black
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-elementdef-fedropshadow①⓪"></a>
-
-<a id="ref-for-elementdef-feflood⑧"></a>
-
-[feFlood](#elementdef-feflood) and [feDropShadow](#elementdef-fedropshadow) elements
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://drafts.csswg.org/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://drafts.csswg.org/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://drafts.csswg.org/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animatable:](https://drafts.csswg.org/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-as [by computed value](https://drafts.csswg.org/web-animations-1/#by-computed-value)
+| Field               | Definition                                                                                                                 |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-flood-color"></a>flood-color                                                                                             |
+| <strong><a href="https://drafts.csswg.org/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-valuea-def-color②"></a>[\<color\>](https://www.w3.org/TR/css3-color/#valuea-def-color)                                         |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | black                                                                                                                      |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-elementdef-fedropshadow①⓪"></a><a id="ref-for-elementdef-feflood⑧"></a>[feFlood](#elementdef-feflood) and [feDropShadow](#elementdef-fedropshadow) elements |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                         |
+| <strong><a href="https://drafts.csswg.org/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                        |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | as specified                                                                                                               |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                     |
+| <strong><a href="https://drafts.csswg.org/web-animations/#animation-type">Animatable:</a>&#xA;      </strong> | as [by computed value](https://drafts.csswg.org/web-animations-1/#by-computed-value)                                       |
 
 <a id="ref-for-propdef-flood-color①④"></a>
 
@@ -6361,113 +4082,18 @@ The [flood-color](#propdef-flood-color) property is a [presentation attribute](h
 
 #### <a id="FloodOpacityProperty"></a>9.13.2. The [flood-opacity](#propdef-flood-opacity) property
 
-<strong>Table 19 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-flood-opacity"></a>flood-opacity
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://drafts.csswg.org/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-alpha-value"></a>
-
-[\<alpha-value\>](https://www.w3.org/TR/css-color-4/#typedef-alpha-value)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://drafts.csswg.org/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-1
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-elementdef-fedropshadow①①"></a>
-
-<a id="ref-for-elementdef-feflood⑨"></a>
-
-[feFlood](#elementdef-feflood) and [feDropShadow](#elementdef-fedropshadow) elements
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://drafts.csswg.org/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://drafts.csswg.org/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://drafts.csswg.org/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-the specified value converted to a number, clamped to the range \[0,1\]
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animatable:](https://drafts.csswg.org/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-[by computed value](https://drafts.csswg.org/web-animations-1/#by-computed-value)
+| Field               | Definition                                                                                                                 |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-flood-opacity"></a>flood-opacity                                                                                           |
+| <strong><a href="https://drafts.csswg.org/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-alpha-value"></a>[\<alpha-value\>](https://www.w3.org/TR/css-color-4/#typedef-alpha-value)                               |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 1                                                                                                                          |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-elementdef-fedropshadow①①"></a><a id="ref-for-elementdef-feflood⑨"></a>[feFlood](#elementdef-feflood) and [feDropShadow](#elementdef-fedropshadow) elements |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                         |
+| <strong><a href="https://drafts.csswg.org/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                        |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | the specified value converted to a number, clamped to the range \[0,1\]                                                    |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                     |
+| <strong><a href="https://drafts.csswg.org/web-animations/#animation-type">Animatable:</a>&#xA;      </strong> | [by computed value](https://drafts.csswg.org/web-animations-1/#by-computed-value)                                          |
 
 <a id="ref-for-propdef-flood-opacity①⑤"></a>
 
@@ -6485,219 +4111,37 @@ The [flood-opacity](#propdef-flood-opacity) property is a [presentation attribut
 
 ### <a id="feGaussianBlurElement"></a>9.14. Filter primitive [feGaussianBlur](#elementdef-fegaussianblur)
 
-<strong>Table 20 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
+**Name:**
 
 <a id="elementdef-fegaussianblur"></a>`feGaussianBlur`
 
-<strong>Row 2</strong>
+**Categories:**
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-filter-primitive③⑥"></a>[filter primitive](#filter-primitive)
 
-Categories:
+**Content model:**
 
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-SetElement①②"></a><a id="ref-for-elementdef-script①④"></a><a id="ref-for-AnimateElement①②"></a><a id="ref-for-TermDescriptiveElement①③"></a>Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
 
-<a id="ref-for-filter-primitive③⑥"></a>
-
-[filter primitive](#filter-primitive)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Content model:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-SetElement①②"></a>
-
-<a id="ref-for-elementdef-script①④"></a>
-
-<a id="ref-for-AnimateElement①②"></a>
-
-<a id="ref-for-TermDescriptiveElement①③"></a>
-
-Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Attributes:
-
-<strong>Column 2 (data cell):</strong>
+**Attributes:**
 
 - [core attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermCoreAttributes) — [id](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#IDAttribute), [xml:base](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLBaseAttribute), [xml:lang](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLLangAttribute), [xml:space](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLSpaceAttribute)
 
-- <a id="ref-for-propdef-writing-mode①⓪"></a>
+- <a id="ref-for-propdef-writing-mode①⓪"></a><a id="ref-for-propdef-word-spacing①⓪"></a><a id="ref-for-propdef-visibility①⓪"></a><a id="ref-for-propdef-unicode-bidi①⓪"></a><a id="ref-for-TextRenderingProperty①⓪"></a><a id="ref-for-propdef-text-decoration①⓪"></a><a id="ref-for-TextAnchorProperty①⓪"></a><a id="ref-for-StrokeWidthProperty①⓪"></a><a id="ref-for-StrokeOpacityProperty①⓪"></a><a id="ref-for-StrokeMiterlimitProperty①⓪"></a><a id="ref-for-StrokeLinejoinProperty①⓪"></a><a id="ref-for-StrokeLinecapProperty①⓪"></a><a id="ref-for-StrokeDashoffsetProperty①⓪"></a><a id="ref-for-StrokeDasharrayProperty①⓪"></a><a id="ref-for-StrokeProperty①①"></a><a id="ref-for-StopOpacityProperty①⓪"></a><a id="ref-for-StopColorProperty①⓪"></a><a id="ref-for-ShapeRenderingProperty①⓪"></a><a id="ref-for-PointerEventsProperty①⓪"></a><a id="ref-for-propdef-overflow①⓪"></a><a id="ref-for-propdef-opacity①③"></a><a id="ref-for-propdef-mask①⓪"></a><a id="ref-for-MarkerStartProperty①⓪"></a><a id="ref-for-MarkerMidProperty①⓪"></a><a id="ref-for-MarkerEndProperty①⓪"></a><a id="ref-for-MarkerProperty①⓪"></a><a id="ref-for-propdef-lighting-color①②"></a><a id="ref-for-propdef-letter-spacing①⓪"></a><a id="ref-for-KerningProperty①⓪"></a><a id="ref-for-propdef-isolation①②"></a><a id="ref-for-propdef-image-rendering①③"></a><a id="ref-for-GlyphOrientationVerticalProperty①⓪"></a><a id="ref-for-GlyphOrientationHorizontalProperty①⓪"></a><a id="ref-for-propdef-font-weight①⓪"></a><a id="ref-for-propdef-font-variant①⓪"></a><a id="ref-for-propdef-font-style①⓪"></a><a id="ref-for-propdef-font-stretch①⓪"></a><a id="ref-for-propdef-font-size-adjust①⓪"></a><a id="ref-for-propdef-font-size①⓪"></a><a id="ref-for-propdef-font-family①⓪"></a><a id="ref-for-propdef-font①⓪"></a><a id="ref-for-propdef-flood-opacity①⑧"></a><a id="ref-for-propdef-flood-color①⑦"></a><a id="ref-for-propdef-filter②①"></a><a id="ref-for-FillRuleProperty①⓪"></a><a id="ref-for-FillOpacityProperty①⓪"></a><a id="ref-for-FillProperty①②"></a><a id="ref-for-EnableBackgroundProperty①⓪"></a><a id="ref-for-DominantBaselineProperty①⓪"></a><a id="ref-for-propdef-display①③"></a><a id="ref-for-propdef-direction①⓪"></a><a id="ref-for-propdef-cursor①⓪"></a><a id="ref-for-ColorRenderingProperty①⓪"></a><a id="ref-for-propdef-color-interpolation-filters①⑦"></a><a id="ref-for-ColorInterpolationProperty①④"></a><a id="ref-for-color0①⓪"></a><a id="ref-for-propdef-clip-rule①⓪"></a><a id="ref-for-propdef-clip-path①⓪"></a><a id="ref-for-propdef-clip①⓪"></a><a id="ref-for-BaselineShiftProperty①⓪"></a><a id="ref-for-AlignmentBaselineProperty①⓪"></a>[presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
 
-  <a id="ref-for-propdef-word-spacing①⓪"></a>
-
-  <a id="ref-for-propdef-visibility①⓪"></a>
-
-  <a id="ref-for-propdef-unicode-bidi①⓪"></a>
-
-  <a id="ref-for-TextRenderingProperty①⓪"></a>
-
-  <a id="ref-for-propdef-text-decoration①⓪"></a>
-
-  <a id="ref-for-TextAnchorProperty①⓪"></a>
-
-  <a id="ref-for-StrokeWidthProperty①⓪"></a>
-
-  <a id="ref-for-StrokeOpacityProperty①⓪"></a>
-
-  <a id="ref-for-StrokeMiterlimitProperty①⓪"></a>
-
-  <a id="ref-for-StrokeLinejoinProperty①⓪"></a>
-
-  <a id="ref-for-StrokeLinecapProperty①⓪"></a>
-
-  <a id="ref-for-StrokeDashoffsetProperty①⓪"></a>
-
-  <a id="ref-for-StrokeDasharrayProperty①⓪"></a>
-
-  <a id="ref-for-StrokeProperty①①"></a>
-
-  <a id="ref-for-StopOpacityProperty①⓪"></a>
-
-  <a id="ref-for-StopColorProperty①⓪"></a>
-
-  <a id="ref-for-ShapeRenderingProperty①⓪"></a>
-
-  <a id="ref-for-PointerEventsProperty①⓪"></a>
-
-  <a id="ref-for-propdef-overflow①⓪"></a>
-
-  <a id="ref-for-propdef-opacity①③"></a>
-
-  <a id="ref-for-propdef-mask①⓪"></a>
-
-  <a id="ref-for-MarkerStartProperty①⓪"></a>
-
-  <a id="ref-for-MarkerMidProperty①⓪"></a>
-
-  <a id="ref-for-MarkerEndProperty①⓪"></a>
-
-  <a id="ref-for-MarkerProperty①⓪"></a>
-
-  <a id="ref-for-propdef-lighting-color①②"></a>
-
-  <a id="ref-for-propdef-letter-spacing①⓪"></a>
-
-  <a id="ref-for-KerningProperty①⓪"></a>
-
-  <a id="ref-for-propdef-isolation①②"></a>
-
-  <a id="ref-for-propdef-image-rendering①③"></a>
-
-  <a id="ref-for-GlyphOrientationVerticalProperty①⓪"></a>
-
-  <a id="ref-for-GlyphOrientationHorizontalProperty①⓪"></a>
-
-  <a id="ref-for-propdef-font-weight①⓪"></a>
-
-  <a id="ref-for-propdef-font-variant①⓪"></a>
-
-  <a id="ref-for-propdef-font-style①⓪"></a>
-
-  <a id="ref-for-propdef-font-stretch①⓪"></a>
-
-  <a id="ref-for-propdef-font-size-adjust①⓪"></a>
-
-  <a id="ref-for-propdef-font-size①⓪"></a>
-
-  <a id="ref-for-propdef-font-family①⓪"></a>
-
-  <a id="ref-for-propdef-font①⓪"></a>
-
-  <a id="ref-for-propdef-flood-opacity①⑧"></a>
-
-  <a id="ref-for-propdef-flood-color①⑦"></a>
-
-  <a id="ref-for-propdef-filter②①"></a>
-
-  <a id="ref-for-FillRuleProperty①⓪"></a>
-
-  <a id="ref-for-FillOpacityProperty①⓪"></a>
-
-  <a id="ref-for-FillProperty①②"></a>
-
-  <a id="ref-for-EnableBackgroundProperty①⓪"></a>
-
-  <a id="ref-for-DominantBaselineProperty①⓪"></a>
-
-  <a id="ref-for-propdef-display①③"></a>
-
-  <a id="ref-for-propdef-direction①⓪"></a>
-
-  <a id="ref-for-propdef-cursor①⓪"></a>
-
-  <a id="ref-for-ColorRenderingProperty①⓪"></a>
-
-  <a id="ref-for-propdef-color-interpolation-filters①⑦"></a>
-
-  <a id="ref-for-ColorInterpolationProperty①④"></a>
-
-  <a id="ref-for-color0①⓪"></a>
-
-  <a id="ref-for-propdef-clip-rule①⓪"></a>
-
-  <a id="ref-for-propdef-clip-path①⓪"></a>
-
-  <a id="ref-for-propdef-clip①⓪"></a>
-
-  <a id="ref-for-BaselineShiftProperty①⓪"></a>
-
-  <a id="ref-for-AlignmentBaselineProperty①⓪"></a>
-
-  [presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
-
-- <a id="ref-for-element-attrdef-filter-primitive-result①③"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-height①③"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-width①③"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-y①③"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-x①③"></a>
-
-  <a id="ref-for-filter-primitive-attributes⑨"></a>
-
-  [filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
+- <a id="ref-for-element-attrdef-filter-primitive-result①③"></a><a id="ref-for-element-attrdef-filter-primitive-height①③"></a><a id="ref-for-element-attrdef-filter-primitive-width①③"></a><a id="ref-for-element-attrdef-filter-primitive-y①③"></a><a id="ref-for-element-attrdef-filter-primitive-x①③"></a><a id="ref-for-filter-primitive-attributes⑨"></a>[filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
 
 - [class](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#ClassAttribute)
 
 - [style](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#StyleAttribute)
 
-- <a id="ref-for-element-attrdef-filter-primitive-in②⑦"></a>
+- <a id="ref-for-element-attrdef-filter-primitive-in②⑦"></a>[in](#element-attrdef-filter-primitive-in)
 
-  [in](#element-attrdef-filter-primitive-in)
+- <a id="ref-for-element-attrdef-fegaussianblur-stddeviation②"></a>[stdDeviation](#element-attrdef-fegaussianblur-stddeviation)
 
-- <a id="ref-for-element-attrdef-fegaussianblur-stddeviation②"></a>
+- <a id="ref-for-element-attrdef-fegaussianblur-edgemode"></a>[edgeMode](#element-attrdef-fegaussianblur-edgemode)
 
-  [stdDeviation](#element-attrdef-fegaussianblur-stddeviation)
-
-- <a id="ref-for-element-attrdef-fegaussianblur-edgemode"></a>
-
-  [edgeMode](#element-attrdef-fegaussianblur-edgemode)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-DOM Interfaces:
-
-<strong>Column 2 (data cell):</strong>
+**DOM Interfaces:**
 
 [SVGFEGaussianBlurElement](#InterfaceSVGFEGaussianBlurElement)
 
@@ -6805,197 +4249,25 @@ Animatable: yes.
 
 ### <a id="feImageElement"></a>9.15. Filter primitive [feImage](#elementdef-feimage)
 
-<strong>Table 21 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
+**Name:**
 
 <a id="elementdef-feimage"></a>`feImage`
 
-<strong>Row 2</strong>
+**Categories:**
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-filter-primitive③⑦"></a>[filter primitive](#filter-primitive)
 
-Categories:
+**Content model:**
 
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-SetElement①③"></a><a id="ref-for-elementdef-script①⑤"></a><a id="ref-for-AnimateTransformElement"></a><a id="ref-for-AnimateElement①③"></a><a id="ref-for-TermDescriptiveElement①④"></a>Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [animateTransform](https://www.w3.org/TR/SVG11/animate.html#AnimateTransformElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
 
-<a id="ref-for-filter-primitive③⑦"></a>
-
-[filter primitive](#filter-primitive)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Content model:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-SetElement①③"></a>
-
-<a id="ref-for-elementdef-script①⑤"></a>
-
-<a id="ref-for-AnimateTransformElement"></a>
-
-<a id="ref-for-AnimateElement①③"></a>
-
-<a id="ref-for-TermDescriptiveElement①④"></a>
-
-Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [animateTransform](https://www.w3.org/TR/SVG11/animate.html#AnimateTransformElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Attributes:
-
-<strong>Column 2 (data cell):</strong>
+**Attributes:**
 
 - [core attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermCoreAttributes) — [id](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#IDAttribute), [xml:base](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLBaseAttribute), [xml:lang](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLLangAttribute), [xml:space](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLSpaceAttribute)
 
-- <a id="ref-for-propdef-writing-mode①①"></a>
+- <a id="ref-for-propdef-writing-mode①①"></a><a id="ref-for-propdef-word-spacing①①"></a><a id="ref-for-propdef-visibility①①"></a><a id="ref-for-propdef-unicode-bidi①①"></a><a id="ref-for-TextRenderingProperty①①"></a><a id="ref-for-propdef-text-decoration①①"></a><a id="ref-for-TextAnchorProperty①①"></a><a id="ref-for-StrokeWidthProperty①①"></a><a id="ref-for-StrokeOpacityProperty①①"></a><a id="ref-for-StrokeMiterlimitProperty①①"></a><a id="ref-for-StrokeLinejoinProperty①①"></a><a id="ref-for-StrokeLinecapProperty①①"></a><a id="ref-for-StrokeDashoffsetProperty①①"></a><a id="ref-for-StrokeDasharrayProperty①①"></a><a id="ref-for-StrokeProperty①②"></a><a id="ref-for-StopOpacityProperty①①"></a><a id="ref-for-StopColorProperty①①"></a><a id="ref-for-ShapeRenderingProperty①①"></a><a id="ref-for-PointerEventsProperty①①"></a><a id="ref-for-propdef-overflow①①"></a><a id="ref-for-propdef-opacity①④"></a><a id="ref-for-propdef-mask①①"></a><a id="ref-for-MarkerStartProperty①①"></a><a id="ref-for-MarkerMidProperty①①"></a><a id="ref-for-MarkerEndProperty①①"></a><a id="ref-for-MarkerProperty①①"></a><a id="ref-for-propdef-lighting-color①③"></a><a id="ref-for-propdef-letter-spacing①①"></a><a id="ref-for-KerningProperty①①"></a><a id="ref-for-propdef-isolation①③"></a><a id="ref-for-propdef-image-rendering①④"></a><a id="ref-for-GlyphOrientationVerticalProperty①①"></a><a id="ref-for-GlyphOrientationHorizontalProperty①①"></a><a id="ref-for-propdef-font-weight①①"></a><a id="ref-for-propdef-font-variant①①"></a><a id="ref-for-propdef-font-style①①"></a><a id="ref-for-propdef-font-stretch①①"></a><a id="ref-for-propdef-font-size-adjust①①"></a><a id="ref-for-propdef-font-size①①"></a><a id="ref-for-propdef-font-family①①"></a><a id="ref-for-propdef-font①①"></a><a id="ref-for-propdef-flood-opacity①⑨"></a><a id="ref-for-propdef-flood-color①⑧"></a><a id="ref-for-propdef-filter②②"></a><a id="ref-for-FillRuleProperty①①"></a><a id="ref-for-FillOpacityProperty①①"></a><a id="ref-for-FillProperty①③"></a><a id="ref-for-EnableBackgroundProperty①①"></a><a id="ref-for-DominantBaselineProperty①①"></a><a id="ref-for-propdef-display①④"></a><a id="ref-for-propdef-direction①①"></a><a id="ref-for-propdef-cursor①①"></a><a id="ref-for-ColorRenderingProperty①①"></a><a id="ref-for-propdef-color-interpolation-filters①⑧"></a><a id="ref-for-ColorInterpolationProperty①⑤"></a><a id="ref-for-color0①①"></a><a id="ref-for-propdef-clip-rule①①"></a><a id="ref-for-propdef-clip-path①①"></a><a id="ref-for-propdef-clip①①"></a><a id="ref-for-BaselineShiftProperty①①"></a><a id="ref-for-AlignmentBaselineProperty①①"></a>[presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
 
-  <a id="ref-for-propdef-word-spacing①①"></a>
-
-  <a id="ref-for-propdef-visibility①①"></a>
-
-  <a id="ref-for-propdef-unicode-bidi①①"></a>
-
-  <a id="ref-for-TextRenderingProperty①①"></a>
-
-  <a id="ref-for-propdef-text-decoration①①"></a>
-
-  <a id="ref-for-TextAnchorProperty①①"></a>
-
-  <a id="ref-for-StrokeWidthProperty①①"></a>
-
-  <a id="ref-for-StrokeOpacityProperty①①"></a>
-
-  <a id="ref-for-StrokeMiterlimitProperty①①"></a>
-
-  <a id="ref-for-StrokeLinejoinProperty①①"></a>
-
-  <a id="ref-for-StrokeLinecapProperty①①"></a>
-
-  <a id="ref-for-StrokeDashoffsetProperty①①"></a>
-
-  <a id="ref-for-StrokeDasharrayProperty①①"></a>
-
-  <a id="ref-for-StrokeProperty①②"></a>
-
-  <a id="ref-for-StopOpacityProperty①①"></a>
-
-  <a id="ref-for-StopColorProperty①①"></a>
-
-  <a id="ref-for-ShapeRenderingProperty①①"></a>
-
-  <a id="ref-for-PointerEventsProperty①①"></a>
-
-  <a id="ref-for-propdef-overflow①①"></a>
-
-  <a id="ref-for-propdef-opacity①④"></a>
-
-  <a id="ref-for-propdef-mask①①"></a>
-
-  <a id="ref-for-MarkerStartProperty①①"></a>
-
-  <a id="ref-for-MarkerMidProperty①①"></a>
-
-  <a id="ref-for-MarkerEndProperty①①"></a>
-
-  <a id="ref-for-MarkerProperty①①"></a>
-
-  <a id="ref-for-propdef-lighting-color①③"></a>
-
-  <a id="ref-for-propdef-letter-spacing①①"></a>
-
-  <a id="ref-for-KerningProperty①①"></a>
-
-  <a id="ref-for-propdef-isolation①③"></a>
-
-  <a id="ref-for-propdef-image-rendering①④"></a>
-
-  <a id="ref-for-GlyphOrientationVerticalProperty①①"></a>
-
-  <a id="ref-for-GlyphOrientationHorizontalProperty①①"></a>
-
-  <a id="ref-for-propdef-font-weight①①"></a>
-
-  <a id="ref-for-propdef-font-variant①①"></a>
-
-  <a id="ref-for-propdef-font-style①①"></a>
-
-  <a id="ref-for-propdef-font-stretch①①"></a>
-
-  <a id="ref-for-propdef-font-size-adjust①①"></a>
-
-  <a id="ref-for-propdef-font-size①①"></a>
-
-  <a id="ref-for-propdef-font-family①①"></a>
-
-  <a id="ref-for-propdef-font①①"></a>
-
-  <a id="ref-for-propdef-flood-opacity①⑨"></a>
-
-  <a id="ref-for-propdef-flood-color①⑧"></a>
-
-  <a id="ref-for-propdef-filter②②"></a>
-
-  <a id="ref-for-FillRuleProperty①①"></a>
-
-  <a id="ref-for-FillOpacityProperty①①"></a>
-
-  <a id="ref-for-FillProperty①③"></a>
-
-  <a id="ref-for-EnableBackgroundProperty①①"></a>
-
-  <a id="ref-for-DominantBaselineProperty①①"></a>
-
-  <a id="ref-for-propdef-display①④"></a>
-
-  <a id="ref-for-propdef-direction①①"></a>
-
-  <a id="ref-for-propdef-cursor①①"></a>
-
-  <a id="ref-for-ColorRenderingProperty①①"></a>
-
-  <a id="ref-for-propdef-color-interpolation-filters①⑧"></a>
-
-  <a id="ref-for-ColorInterpolationProperty①⑤"></a>
-
-  <a id="ref-for-color0①①"></a>
-
-  <a id="ref-for-propdef-clip-rule①①"></a>
-
-  <a id="ref-for-propdef-clip-path①①"></a>
-
-  <a id="ref-for-propdef-clip①①"></a>
-
-  <a id="ref-for-BaselineShiftProperty①①"></a>
-
-  <a id="ref-for-AlignmentBaselineProperty①①"></a>
-
-  [presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
-
-- <a id="ref-for-element-attrdef-filter-primitive-result①④"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-height①④"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-width①④"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-y①④"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-x①④"></a>
-
-  <a id="ref-for-filter-primitive-attributes①⓪"></a>
-
-  [filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
+- <a id="ref-for-element-attrdef-filter-primitive-result①④"></a><a id="ref-for-element-attrdef-filter-primitive-height①④"></a><a id="ref-for-element-attrdef-filter-primitive-width①④"></a><a id="ref-for-element-attrdef-filter-primitive-y①④"></a><a id="ref-for-element-attrdef-filter-primitive-x①④"></a><a id="ref-for-filter-primitive-attributes①⓪"></a>[filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
 
 - [class](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#ClassAttribute)
 
@@ -7003,29 +4275,15 @@ Attributes:
 
 - [externalResourcesRequired](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#ExternalResourcesRequiredAttribute)
 
-- <a id="ref-for-element-attrdef-feimage-preserveaspectratio"></a>
+- <a id="ref-for-element-attrdef-feimage-preserveaspectratio"></a>[preserveAspectRatio](#element-attrdef-feimage-preserveaspectratio)
 
-  [preserveAspectRatio](#element-attrdef-feimage-preserveaspectratio)
+- <a id="ref-for-element-attrdef-feimage-xlinkhref"></a>[xlink:href](#element-attrdef-feimage-xlinkhref)
 
-- <a id="ref-for-element-attrdef-feimage-xlinkhref"></a>
+- <a id="ref-for-element-attrdef-feimage-href"></a>[href](#element-attrdef-feimage-href)
 
-  [xlink:href](#element-attrdef-feimage-xlinkhref)
+- <a id="ref-for-element-attrdef-feimage-crossorigin"></a>[crossorigin](#element-attrdef-feimage-crossorigin)
 
-- <a id="ref-for-element-attrdef-feimage-href"></a>
-
-  [href](#element-attrdef-feimage-href)
-
-- <a id="ref-for-element-attrdef-feimage-crossorigin"></a>
-
-  [crossorigin](#element-attrdef-feimage-crossorigin)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-DOM Interfaces:
-
-<strong>Column 2 (data cell):</strong>
+**DOM Interfaces:**
 
 [SVGFEImageElement](#InterfaceSVGFEImageElement)
 
@@ -7179,205 +4437,31 @@ Animatable: no.
 
 ### <a id="feMergeElement"></a>9.16. Filter primitive [feMerge](#elementdef-femerge)
 
-<strong>Table 22 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
+**Name:**
 
 <a id="elementdef-femerge"></a>`feMerge`
 
-<strong>Row 2</strong>
+**Categories:**
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-filter-primitive③⑧"></a>[filter primitive](#filter-primitive)
 
-Categories:
+**Content model:**
 
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-elementdef-script①⑥"></a><a id="ref-for-elementdef-femergenode①"></a><a id="ref-for-TermDescriptiveElement①⑤"></a>Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [feMergeNode](#elementdef-femergenode), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script) elements, in any order.
 
-<a id="ref-for-filter-primitive③⑧"></a>
-
-[filter primitive](#filter-primitive)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Content model:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-elementdef-script①⑥"></a>
-
-<a id="ref-for-elementdef-femergenode①"></a>
-
-<a id="ref-for-TermDescriptiveElement①⑤"></a>
-
-Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [feMergeNode](#elementdef-femergenode), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script) elements, in any order.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Attributes:
-
-<strong>Column 2 (data cell):</strong>
+**Attributes:**
 
 - [core attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermCoreAttributes) — [id](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#IDAttribute), [xml:base](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLBaseAttribute), [xml:lang](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLLangAttribute), [xml:space](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLSpaceAttribute)
 
-- <a id="ref-for-propdef-writing-mode①②"></a>
+- <a id="ref-for-propdef-writing-mode①②"></a><a id="ref-for-propdef-word-spacing①②"></a><a id="ref-for-propdef-visibility①②"></a><a id="ref-for-propdef-unicode-bidi①②"></a><a id="ref-for-TextRenderingProperty①②"></a><a id="ref-for-propdef-text-decoration①②"></a><a id="ref-for-TextAnchorProperty①②"></a><a id="ref-for-StrokeWidthProperty①②"></a><a id="ref-for-StrokeOpacityProperty①②"></a><a id="ref-for-StrokeMiterlimitProperty①②"></a><a id="ref-for-StrokeLinejoinProperty①②"></a><a id="ref-for-StrokeLinecapProperty①②"></a><a id="ref-for-StrokeDashoffsetProperty①②"></a><a id="ref-for-StrokeDasharrayProperty①②"></a><a id="ref-for-StrokeProperty①③"></a><a id="ref-for-StopOpacityProperty①②"></a><a id="ref-for-StopColorProperty①②"></a><a id="ref-for-ShapeRenderingProperty①②"></a><a id="ref-for-PointerEventsProperty①②"></a><a id="ref-for-propdef-overflow①②"></a><a id="ref-for-propdef-opacity①⑤"></a><a id="ref-for-propdef-mask①②"></a><a id="ref-for-MarkerStartProperty①②"></a><a id="ref-for-MarkerMidProperty①②"></a><a id="ref-for-MarkerEndProperty①②"></a><a id="ref-for-MarkerProperty①②"></a><a id="ref-for-propdef-lighting-color①④"></a><a id="ref-for-propdef-letter-spacing①②"></a><a id="ref-for-KerningProperty①②"></a><a id="ref-for-propdef-isolation①④"></a><a id="ref-for-propdef-image-rendering①⑥"></a><a id="ref-for-GlyphOrientationVerticalProperty①②"></a><a id="ref-for-GlyphOrientationHorizontalProperty①②"></a><a id="ref-for-propdef-font-weight①②"></a><a id="ref-for-propdef-font-variant①②"></a><a id="ref-for-propdef-font-style①②"></a><a id="ref-for-propdef-font-stretch①②"></a><a id="ref-for-propdef-font-size-adjust①②"></a><a id="ref-for-propdef-font-size①②"></a><a id="ref-for-propdef-font-family①②"></a><a id="ref-for-propdef-font①②"></a><a id="ref-for-propdef-flood-opacity②⓪"></a><a id="ref-for-propdef-flood-color①⑨"></a><a id="ref-for-propdef-filter②③"></a><a id="ref-for-FillRuleProperty①②"></a><a id="ref-for-FillOpacityProperty①②"></a><a id="ref-for-FillProperty①④"></a><a id="ref-for-EnableBackgroundProperty①②"></a><a id="ref-for-DominantBaselineProperty①②"></a><a id="ref-for-propdef-display①⑤"></a><a id="ref-for-propdef-direction①②"></a><a id="ref-for-propdef-cursor①②"></a><a id="ref-for-ColorRenderingProperty①②"></a><a id="ref-for-propdef-color-interpolation-filters①⑨"></a><a id="ref-for-ColorInterpolationProperty①⑥"></a><a id="ref-for-color0①②"></a><a id="ref-for-propdef-clip-rule①②"></a><a id="ref-for-propdef-clip-path①②"></a><a id="ref-for-propdef-clip①②"></a><a id="ref-for-BaselineShiftProperty①②"></a><a id="ref-for-AlignmentBaselineProperty①②"></a>[presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
 
-  <a id="ref-for-propdef-word-spacing①②"></a>
-
-  <a id="ref-for-propdef-visibility①②"></a>
-
-  <a id="ref-for-propdef-unicode-bidi①②"></a>
-
-  <a id="ref-for-TextRenderingProperty①②"></a>
-
-  <a id="ref-for-propdef-text-decoration①②"></a>
-
-  <a id="ref-for-TextAnchorProperty①②"></a>
-
-  <a id="ref-for-StrokeWidthProperty①②"></a>
-
-  <a id="ref-for-StrokeOpacityProperty①②"></a>
-
-  <a id="ref-for-StrokeMiterlimitProperty①②"></a>
-
-  <a id="ref-for-StrokeLinejoinProperty①②"></a>
-
-  <a id="ref-for-StrokeLinecapProperty①②"></a>
-
-  <a id="ref-for-StrokeDashoffsetProperty①②"></a>
-
-  <a id="ref-for-StrokeDasharrayProperty①②"></a>
-
-  <a id="ref-for-StrokeProperty①③"></a>
-
-  <a id="ref-for-StopOpacityProperty①②"></a>
-
-  <a id="ref-for-StopColorProperty①②"></a>
-
-  <a id="ref-for-ShapeRenderingProperty①②"></a>
-
-  <a id="ref-for-PointerEventsProperty①②"></a>
-
-  <a id="ref-for-propdef-overflow①②"></a>
-
-  <a id="ref-for-propdef-opacity①⑤"></a>
-
-  <a id="ref-for-propdef-mask①②"></a>
-
-  <a id="ref-for-MarkerStartProperty①②"></a>
-
-  <a id="ref-for-MarkerMidProperty①②"></a>
-
-  <a id="ref-for-MarkerEndProperty①②"></a>
-
-  <a id="ref-for-MarkerProperty①②"></a>
-
-  <a id="ref-for-propdef-lighting-color①④"></a>
-
-  <a id="ref-for-propdef-letter-spacing①②"></a>
-
-  <a id="ref-for-KerningProperty①②"></a>
-
-  <a id="ref-for-propdef-isolation①④"></a>
-
-  <a id="ref-for-propdef-image-rendering①⑥"></a>
-
-  <a id="ref-for-GlyphOrientationVerticalProperty①②"></a>
-
-  <a id="ref-for-GlyphOrientationHorizontalProperty①②"></a>
-
-  <a id="ref-for-propdef-font-weight①②"></a>
-
-  <a id="ref-for-propdef-font-variant①②"></a>
-
-  <a id="ref-for-propdef-font-style①②"></a>
-
-  <a id="ref-for-propdef-font-stretch①②"></a>
-
-  <a id="ref-for-propdef-font-size-adjust①②"></a>
-
-  <a id="ref-for-propdef-font-size①②"></a>
-
-  <a id="ref-for-propdef-font-family①②"></a>
-
-  <a id="ref-for-propdef-font①②"></a>
-
-  <a id="ref-for-propdef-flood-opacity②⓪"></a>
-
-  <a id="ref-for-propdef-flood-color①⑨"></a>
-
-  <a id="ref-for-propdef-filter②③"></a>
-
-  <a id="ref-for-FillRuleProperty①②"></a>
-
-  <a id="ref-for-FillOpacityProperty①②"></a>
-
-  <a id="ref-for-FillProperty①④"></a>
-
-  <a id="ref-for-EnableBackgroundProperty①②"></a>
-
-  <a id="ref-for-DominantBaselineProperty①②"></a>
-
-  <a id="ref-for-propdef-display①⑤"></a>
-
-  <a id="ref-for-propdef-direction①②"></a>
-
-  <a id="ref-for-propdef-cursor①②"></a>
-
-  <a id="ref-for-ColorRenderingProperty①②"></a>
-
-  <a id="ref-for-propdef-color-interpolation-filters①⑨"></a>
-
-  <a id="ref-for-ColorInterpolationProperty①⑥"></a>
-
-  <a id="ref-for-color0①②"></a>
-
-  <a id="ref-for-propdef-clip-rule①②"></a>
-
-  <a id="ref-for-propdef-clip-path①②"></a>
-
-  <a id="ref-for-propdef-clip①②"></a>
-
-  <a id="ref-for-BaselineShiftProperty①②"></a>
-
-  <a id="ref-for-AlignmentBaselineProperty①②"></a>
-
-  [presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
-
-- <a id="ref-for-element-attrdef-filter-primitive-result①⑤"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-height①⑤"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-width①⑤"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-y①⑥"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-x①⑥"></a>
-
-  <a id="ref-for-filter-primitive-attributes①①"></a>
-
-  [filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
+- <a id="ref-for-element-attrdef-filter-primitive-result①⑤"></a><a id="ref-for-element-attrdef-filter-primitive-height①⑤"></a><a id="ref-for-element-attrdef-filter-primitive-width①⑤"></a><a id="ref-for-element-attrdef-filter-primitive-y①⑥"></a><a id="ref-for-element-attrdef-filter-primitive-x①⑥"></a><a id="ref-for-filter-primitive-attributes①①"></a>[filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
 
 - [class](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#ClassAttribute)
 
 - [style](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#StyleAttribute)
 
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-DOM Interfaces:
-
-<strong>Column 2 (data cell):</strong>
+**DOM Interfaces:**
 
 [SVGFEMergeElement](#InterfaceSVGFEMergeElement)
 
@@ -7411,67 +4495,25 @@ If the topmost image input is [SourceGraphic](#attr-valuedef-in-sourcegraphic) a
 
 #### <a id="feMergeNodeElement"></a>9.16.1. Merge node [feMergeNode](#elementdef-femergenode)
 
-<strong>Table 23 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
+**Name:**
 
 <a id="elementdef-femergenode"></a>`feMergeNode`
 
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Categories:
-
-<strong>Column 2 (data cell):</strong>
+**Categories:**
 
 None.
 
-<strong>Row 3</strong>
+**Content model:**
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-SetElement①④"></a><a id="ref-for-elementdef-script①⑦"></a><a id="ref-for-AnimateElement①④"></a><a id="ref-for-TermDescriptiveElement①⑥"></a>Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
 
-Content model:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-SetElement①④"></a>
-
-<a id="ref-for-elementdef-script①⑦"></a>
-
-<a id="ref-for-AnimateElement①④"></a>
-
-<a id="ref-for-TermDescriptiveElement①⑥"></a>
-
-Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Attributes:
-
-<strong>Column 2 (data cell):</strong>
+**Attributes:**
 
 - [core attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermCoreAttributes) — [id](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#IDAttribute), [xml:base](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLBaseAttribute), [xml:lang](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLLangAttribute), [xml:space](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLSpaceAttribute)
 
-- <a id="ref-for-element-attrdef-filter-primitive-in②⑨"></a>
+- <a id="ref-for-element-attrdef-filter-primitive-in②⑨"></a>[in](#element-attrdef-filter-primitive-in)
 
-  [in](#element-attrdef-filter-primitive-in)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-DOM Interfaces:
-
-<strong>Column 2 (data cell):</strong>
+**DOM Interfaces:**
 
 [SVGFEMergeNodeElement](#InterfaceSVGFEMergeNodeElement)
 
@@ -7479,219 +4521,37 @@ DOM Interfaces:
 
 ### <a id="feMorphologyElement"></a>9.17. Filter primitive [feMorphology](#elementdef-femorphology)
 
-<strong>Table 24 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
+**Name:**
 
 <a id="elementdef-femorphology"></a>`feMorphology`
 
-<strong>Row 2</strong>
+**Categories:**
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-filter-primitive③⑨"></a>[filter primitive](#filter-primitive)
 
-Categories:
+**Content model:**
 
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-SetElement①⑤"></a><a id="ref-for-elementdef-script①⑧"></a><a id="ref-for-AnimateElement①⑤"></a><a id="ref-for-TermDescriptiveElement①⑦"></a>Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
 
-<a id="ref-for-filter-primitive③⑨"></a>
-
-[filter primitive](#filter-primitive)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Content model:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-SetElement①⑤"></a>
-
-<a id="ref-for-elementdef-script①⑧"></a>
-
-<a id="ref-for-AnimateElement①⑤"></a>
-
-<a id="ref-for-TermDescriptiveElement①⑦"></a>
-
-Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Attributes:
-
-<strong>Column 2 (data cell):</strong>
+**Attributes:**
 
 - [core attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermCoreAttributes) — [id](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#IDAttribute), [xml:base](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLBaseAttribute), [xml:lang](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLLangAttribute), [xml:space](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLSpaceAttribute)
 
-- <a id="ref-for-propdef-writing-mode①③"></a>
+- <a id="ref-for-propdef-writing-mode①③"></a><a id="ref-for-propdef-word-spacing①③"></a><a id="ref-for-propdef-visibility①③"></a><a id="ref-for-propdef-unicode-bidi①③"></a><a id="ref-for-TextRenderingProperty①③"></a><a id="ref-for-propdef-text-decoration①③"></a><a id="ref-for-TextAnchorProperty①③"></a><a id="ref-for-StrokeWidthProperty①③"></a><a id="ref-for-StrokeOpacityProperty①③"></a><a id="ref-for-StrokeMiterlimitProperty①③"></a><a id="ref-for-StrokeLinejoinProperty①③"></a><a id="ref-for-StrokeLinecapProperty①③"></a><a id="ref-for-StrokeDashoffsetProperty①③"></a><a id="ref-for-StrokeDasharrayProperty①③"></a><a id="ref-for-StrokeProperty①④"></a><a id="ref-for-StopOpacityProperty①③"></a><a id="ref-for-StopColorProperty①③"></a><a id="ref-for-ShapeRenderingProperty①③"></a><a id="ref-for-PointerEventsProperty①③"></a><a id="ref-for-propdef-overflow①③"></a><a id="ref-for-propdef-opacity①⑥"></a><a id="ref-for-propdef-mask①③"></a><a id="ref-for-MarkerStartProperty①③"></a><a id="ref-for-MarkerMidProperty①③"></a><a id="ref-for-MarkerEndProperty①③"></a><a id="ref-for-MarkerProperty①③"></a><a id="ref-for-propdef-lighting-color①⑤"></a><a id="ref-for-propdef-letter-spacing①③"></a><a id="ref-for-KerningProperty①③"></a><a id="ref-for-propdef-isolation①⑤"></a><a id="ref-for-propdef-image-rendering①⑦"></a><a id="ref-for-GlyphOrientationVerticalProperty①③"></a><a id="ref-for-GlyphOrientationHorizontalProperty①③"></a><a id="ref-for-propdef-font-weight①③"></a><a id="ref-for-propdef-font-variant①③"></a><a id="ref-for-propdef-font-style①③"></a><a id="ref-for-propdef-font-stretch①③"></a><a id="ref-for-propdef-font-size-adjust①③"></a><a id="ref-for-propdef-font-size①③"></a><a id="ref-for-propdef-font-family①③"></a><a id="ref-for-propdef-font①③"></a><a id="ref-for-propdef-flood-opacity②①"></a><a id="ref-for-propdef-flood-color②⓪"></a><a id="ref-for-propdef-filter②④"></a><a id="ref-for-FillRuleProperty①③"></a><a id="ref-for-FillOpacityProperty①③"></a><a id="ref-for-FillProperty①⑤"></a><a id="ref-for-EnableBackgroundProperty①③"></a><a id="ref-for-DominantBaselineProperty①③"></a><a id="ref-for-propdef-display①⑥"></a><a id="ref-for-propdef-direction①③"></a><a id="ref-for-propdef-cursor①③"></a><a id="ref-for-ColorRenderingProperty①③"></a><a id="ref-for-propdef-color-interpolation-filters②⓪"></a><a id="ref-for-ColorInterpolationProperty①⑦"></a><a id="ref-for-color0①③"></a><a id="ref-for-propdef-clip-rule①③"></a><a id="ref-for-propdef-clip-path①③"></a><a id="ref-for-propdef-clip①③"></a><a id="ref-for-BaselineShiftProperty①③"></a><a id="ref-for-AlignmentBaselineProperty①③"></a>[presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
 
-  <a id="ref-for-propdef-word-spacing①③"></a>
-
-  <a id="ref-for-propdef-visibility①③"></a>
-
-  <a id="ref-for-propdef-unicode-bidi①③"></a>
-
-  <a id="ref-for-TextRenderingProperty①③"></a>
-
-  <a id="ref-for-propdef-text-decoration①③"></a>
-
-  <a id="ref-for-TextAnchorProperty①③"></a>
-
-  <a id="ref-for-StrokeWidthProperty①③"></a>
-
-  <a id="ref-for-StrokeOpacityProperty①③"></a>
-
-  <a id="ref-for-StrokeMiterlimitProperty①③"></a>
-
-  <a id="ref-for-StrokeLinejoinProperty①③"></a>
-
-  <a id="ref-for-StrokeLinecapProperty①③"></a>
-
-  <a id="ref-for-StrokeDashoffsetProperty①③"></a>
-
-  <a id="ref-for-StrokeDasharrayProperty①③"></a>
-
-  <a id="ref-for-StrokeProperty①④"></a>
-
-  <a id="ref-for-StopOpacityProperty①③"></a>
-
-  <a id="ref-for-StopColorProperty①③"></a>
-
-  <a id="ref-for-ShapeRenderingProperty①③"></a>
-
-  <a id="ref-for-PointerEventsProperty①③"></a>
-
-  <a id="ref-for-propdef-overflow①③"></a>
-
-  <a id="ref-for-propdef-opacity①⑥"></a>
-
-  <a id="ref-for-propdef-mask①③"></a>
-
-  <a id="ref-for-MarkerStartProperty①③"></a>
-
-  <a id="ref-for-MarkerMidProperty①③"></a>
-
-  <a id="ref-for-MarkerEndProperty①③"></a>
-
-  <a id="ref-for-MarkerProperty①③"></a>
-
-  <a id="ref-for-propdef-lighting-color①⑤"></a>
-
-  <a id="ref-for-propdef-letter-spacing①③"></a>
-
-  <a id="ref-for-KerningProperty①③"></a>
-
-  <a id="ref-for-propdef-isolation①⑤"></a>
-
-  <a id="ref-for-propdef-image-rendering①⑦"></a>
-
-  <a id="ref-for-GlyphOrientationVerticalProperty①③"></a>
-
-  <a id="ref-for-GlyphOrientationHorizontalProperty①③"></a>
-
-  <a id="ref-for-propdef-font-weight①③"></a>
-
-  <a id="ref-for-propdef-font-variant①③"></a>
-
-  <a id="ref-for-propdef-font-style①③"></a>
-
-  <a id="ref-for-propdef-font-stretch①③"></a>
-
-  <a id="ref-for-propdef-font-size-adjust①③"></a>
-
-  <a id="ref-for-propdef-font-size①③"></a>
-
-  <a id="ref-for-propdef-font-family①③"></a>
-
-  <a id="ref-for-propdef-font①③"></a>
-
-  <a id="ref-for-propdef-flood-opacity②①"></a>
-
-  <a id="ref-for-propdef-flood-color②⓪"></a>
-
-  <a id="ref-for-propdef-filter②④"></a>
-
-  <a id="ref-for-FillRuleProperty①③"></a>
-
-  <a id="ref-for-FillOpacityProperty①③"></a>
-
-  <a id="ref-for-FillProperty①⑤"></a>
-
-  <a id="ref-for-EnableBackgroundProperty①③"></a>
-
-  <a id="ref-for-DominantBaselineProperty①③"></a>
-
-  <a id="ref-for-propdef-display①⑥"></a>
-
-  <a id="ref-for-propdef-direction①③"></a>
-
-  <a id="ref-for-propdef-cursor①③"></a>
-
-  <a id="ref-for-ColorRenderingProperty①③"></a>
-
-  <a id="ref-for-propdef-color-interpolation-filters②⓪"></a>
-
-  <a id="ref-for-ColorInterpolationProperty①⑦"></a>
-
-  <a id="ref-for-color0①③"></a>
-
-  <a id="ref-for-propdef-clip-rule①③"></a>
-
-  <a id="ref-for-propdef-clip-path①③"></a>
-
-  <a id="ref-for-propdef-clip①③"></a>
-
-  <a id="ref-for-BaselineShiftProperty①③"></a>
-
-  <a id="ref-for-AlignmentBaselineProperty①③"></a>
-
-  [presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
-
-- <a id="ref-for-element-attrdef-filter-primitive-result①⑥"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-height①⑥"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-width①⑥"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-y①⑦"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-x①⑦"></a>
-
-  <a id="ref-for-filter-primitive-attributes①②"></a>
-
-  [filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
+- <a id="ref-for-element-attrdef-filter-primitive-result①⑥"></a><a id="ref-for-element-attrdef-filter-primitive-height①⑥"></a><a id="ref-for-element-attrdef-filter-primitive-width①⑥"></a><a id="ref-for-element-attrdef-filter-primitive-y①⑦"></a><a id="ref-for-element-attrdef-filter-primitive-x①⑦"></a><a id="ref-for-filter-primitive-attributes①②"></a>[filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
 
 - [class](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#ClassAttribute)
 
 - [style](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#StyleAttribute)
 
-- <a id="ref-for-element-attrdef-filter-primitive-in③⓪"></a>
+- <a id="ref-for-element-attrdef-filter-primitive-in③⓪"></a>[in](#element-attrdef-filter-primitive-in)
 
-  [in](#element-attrdef-filter-primitive-in)
+- <a id="ref-for-element-attrdef-femorphology-operator"></a>[operator](#element-attrdef-femorphology-operator)
 
-- <a id="ref-for-element-attrdef-femorphology-operator"></a>
+- <a id="ref-for-element-attrdef-femorphology-radius"></a>[radius](#element-attrdef-femorphology-radius)
 
-  [operator](#element-attrdef-femorphology-operator)
-
-- <a id="ref-for-element-attrdef-femorphology-radius"></a>
-
-  [radius](#element-attrdef-femorphology-radius)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-DOM Interfaces:
-
-<strong>Column 2 (data cell):</strong>
+**DOM Interfaces:**
 
 [SVGFEMorphologyElement](#InterfaceSVGFEMorphologyElement)
 
@@ -7799,219 +4659,37 @@ Animatable: yes.
 
 ### <a id="feOffsetElement"></a>9.18. Filter primitive [feOffset](#elementdef-feoffset)
 
-<strong>Table 25 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
+**Name:**
 
 <a id="elementdef-feoffset"></a>`feOffset`
 
-<strong>Row 2</strong>
+**Categories:**
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-filter-primitive④⓪"></a>[filter primitive](#filter-primitive)
 
-Categories:
+**Content model:**
 
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-SetElement①⑥"></a><a id="ref-for-elementdef-script①⑨"></a><a id="ref-for-AnimateElement①⑥"></a><a id="ref-for-TermDescriptiveElement①⑧"></a>Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
 
-<a id="ref-for-filter-primitive④⓪"></a>
-
-[filter primitive](#filter-primitive)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Content model:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-SetElement①⑥"></a>
-
-<a id="ref-for-elementdef-script①⑨"></a>
-
-<a id="ref-for-AnimateElement①⑥"></a>
-
-<a id="ref-for-TermDescriptiveElement①⑧"></a>
-
-Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Attributes:
-
-<strong>Column 2 (data cell):</strong>
+**Attributes:**
 
 - [core attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermCoreAttributes) — [id](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#IDAttribute), [xml:base](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLBaseAttribute), [xml:lang](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLLangAttribute), [xml:space](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLSpaceAttribute)
 
-- <a id="ref-for-propdef-writing-mode①④"></a>
+- <a id="ref-for-propdef-writing-mode①④"></a><a id="ref-for-propdef-word-spacing①④"></a><a id="ref-for-propdef-visibility①④"></a><a id="ref-for-propdef-unicode-bidi①④"></a><a id="ref-for-TextRenderingProperty①④"></a><a id="ref-for-propdef-text-decoration①④"></a><a id="ref-for-TextAnchorProperty①④"></a><a id="ref-for-StrokeWidthProperty①④"></a><a id="ref-for-StrokeOpacityProperty①④"></a><a id="ref-for-StrokeMiterlimitProperty①④"></a><a id="ref-for-StrokeLinejoinProperty①④"></a><a id="ref-for-StrokeLinecapProperty①④"></a><a id="ref-for-StrokeDashoffsetProperty①④"></a><a id="ref-for-StrokeDasharrayProperty①④"></a><a id="ref-for-StrokeProperty①⑤"></a><a id="ref-for-StopOpacityProperty①④"></a><a id="ref-for-StopColorProperty①④"></a><a id="ref-for-ShapeRenderingProperty①④"></a><a id="ref-for-PointerEventsProperty①④"></a><a id="ref-for-propdef-overflow①④"></a><a id="ref-for-propdef-opacity①⑦"></a><a id="ref-for-propdef-mask①④"></a><a id="ref-for-MarkerStartProperty①④"></a><a id="ref-for-MarkerMidProperty①④"></a><a id="ref-for-MarkerEndProperty①④"></a><a id="ref-for-MarkerProperty①④"></a><a id="ref-for-propdef-lighting-color①⑥"></a><a id="ref-for-propdef-letter-spacing①④"></a><a id="ref-for-KerningProperty①④"></a><a id="ref-for-propdef-isolation①⑥"></a><a id="ref-for-propdef-image-rendering①⑧"></a><a id="ref-for-GlyphOrientationVerticalProperty①④"></a><a id="ref-for-GlyphOrientationHorizontalProperty①④"></a><a id="ref-for-propdef-font-weight①④"></a><a id="ref-for-propdef-font-variant①④"></a><a id="ref-for-propdef-font-style①④"></a><a id="ref-for-propdef-font-stretch①④"></a><a id="ref-for-propdef-font-size-adjust①④"></a><a id="ref-for-propdef-font-size①④"></a><a id="ref-for-propdef-font-family①④"></a><a id="ref-for-propdef-font①④"></a><a id="ref-for-propdef-flood-opacity②②"></a><a id="ref-for-propdef-flood-color②①"></a><a id="ref-for-propdef-filter②⑤"></a><a id="ref-for-FillRuleProperty①④"></a><a id="ref-for-FillOpacityProperty①④"></a><a id="ref-for-FillProperty①⑥"></a><a id="ref-for-EnableBackgroundProperty①④"></a><a id="ref-for-DominantBaselineProperty①④"></a><a id="ref-for-propdef-display①⑦"></a><a id="ref-for-propdef-direction①④"></a><a id="ref-for-propdef-cursor①④"></a><a id="ref-for-ColorRenderingProperty①④"></a><a id="ref-for-propdef-color-interpolation-filters②①"></a><a id="ref-for-ColorInterpolationProperty①⑧"></a><a id="ref-for-color0①④"></a><a id="ref-for-propdef-clip-rule①④"></a><a id="ref-for-propdef-clip-path①④"></a><a id="ref-for-propdef-clip①④"></a><a id="ref-for-BaselineShiftProperty①④"></a><a id="ref-for-AlignmentBaselineProperty①④"></a>[presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
 
-  <a id="ref-for-propdef-word-spacing①④"></a>
-
-  <a id="ref-for-propdef-visibility①④"></a>
-
-  <a id="ref-for-propdef-unicode-bidi①④"></a>
-
-  <a id="ref-for-TextRenderingProperty①④"></a>
-
-  <a id="ref-for-propdef-text-decoration①④"></a>
-
-  <a id="ref-for-TextAnchorProperty①④"></a>
-
-  <a id="ref-for-StrokeWidthProperty①④"></a>
-
-  <a id="ref-for-StrokeOpacityProperty①④"></a>
-
-  <a id="ref-for-StrokeMiterlimitProperty①④"></a>
-
-  <a id="ref-for-StrokeLinejoinProperty①④"></a>
-
-  <a id="ref-for-StrokeLinecapProperty①④"></a>
-
-  <a id="ref-for-StrokeDashoffsetProperty①④"></a>
-
-  <a id="ref-for-StrokeDasharrayProperty①④"></a>
-
-  <a id="ref-for-StrokeProperty①⑤"></a>
-
-  <a id="ref-for-StopOpacityProperty①④"></a>
-
-  <a id="ref-for-StopColorProperty①④"></a>
-
-  <a id="ref-for-ShapeRenderingProperty①④"></a>
-
-  <a id="ref-for-PointerEventsProperty①④"></a>
-
-  <a id="ref-for-propdef-overflow①④"></a>
-
-  <a id="ref-for-propdef-opacity①⑦"></a>
-
-  <a id="ref-for-propdef-mask①④"></a>
-
-  <a id="ref-for-MarkerStartProperty①④"></a>
-
-  <a id="ref-for-MarkerMidProperty①④"></a>
-
-  <a id="ref-for-MarkerEndProperty①④"></a>
-
-  <a id="ref-for-MarkerProperty①④"></a>
-
-  <a id="ref-for-propdef-lighting-color①⑥"></a>
-
-  <a id="ref-for-propdef-letter-spacing①④"></a>
-
-  <a id="ref-for-KerningProperty①④"></a>
-
-  <a id="ref-for-propdef-isolation①⑥"></a>
-
-  <a id="ref-for-propdef-image-rendering①⑧"></a>
-
-  <a id="ref-for-GlyphOrientationVerticalProperty①④"></a>
-
-  <a id="ref-for-GlyphOrientationHorizontalProperty①④"></a>
-
-  <a id="ref-for-propdef-font-weight①④"></a>
-
-  <a id="ref-for-propdef-font-variant①④"></a>
-
-  <a id="ref-for-propdef-font-style①④"></a>
-
-  <a id="ref-for-propdef-font-stretch①④"></a>
-
-  <a id="ref-for-propdef-font-size-adjust①④"></a>
-
-  <a id="ref-for-propdef-font-size①④"></a>
-
-  <a id="ref-for-propdef-font-family①④"></a>
-
-  <a id="ref-for-propdef-font①④"></a>
-
-  <a id="ref-for-propdef-flood-opacity②②"></a>
-
-  <a id="ref-for-propdef-flood-color②①"></a>
-
-  <a id="ref-for-propdef-filter②⑤"></a>
-
-  <a id="ref-for-FillRuleProperty①④"></a>
-
-  <a id="ref-for-FillOpacityProperty①④"></a>
-
-  <a id="ref-for-FillProperty①⑥"></a>
-
-  <a id="ref-for-EnableBackgroundProperty①④"></a>
-
-  <a id="ref-for-DominantBaselineProperty①④"></a>
-
-  <a id="ref-for-propdef-display①⑦"></a>
-
-  <a id="ref-for-propdef-direction①④"></a>
-
-  <a id="ref-for-propdef-cursor①④"></a>
-
-  <a id="ref-for-ColorRenderingProperty①④"></a>
-
-  <a id="ref-for-propdef-color-interpolation-filters②①"></a>
-
-  <a id="ref-for-ColorInterpolationProperty①⑧"></a>
-
-  <a id="ref-for-color0①④"></a>
-
-  <a id="ref-for-propdef-clip-rule①④"></a>
-
-  <a id="ref-for-propdef-clip-path①④"></a>
-
-  <a id="ref-for-propdef-clip①④"></a>
-
-  <a id="ref-for-BaselineShiftProperty①④"></a>
-
-  <a id="ref-for-AlignmentBaselineProperty①④"></a>
-
-  [presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
-
-- <a id="ref-for-element-attrdef-filter-primitive-result①⑦"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-height①⑦"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-width①⑦"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-y①⑧"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-x①⑧"></a>
-
-  <a id="ref-for-filter-primitive-attributes①③"></a>
-
-  [filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
+- <a id="ref-for-element-attrdef-filter-primitive-result①⑦"></a><a id="ref-for-element-attrdef-filter-primitive-height①⑦"></a><a id="ref-for-element-attrdef-filter-primitive-width①⑦"></a><a id="ref-for-element-attrdef-filter-primitive-y①⑧"></a><a id="ref-for-element-attrdef-filter-primitive-x①⑧"></a><a id="ref-for-filter-primitive-attributes①③"></a>[filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
 
 - [class](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#ClassAttribute)
 
 - [style](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#StyleAttribute)
 
-- <a id="ref-for-element-attrdef-filter-primitive-in③①"></a>
+- <a id="ref-for-element-attrdef-filter-primitive-in③①"></a>[in](#element-attrdef-filter-primitive-in)
 
-  [in](#element-attrdef-filter-primitive-in)
+- <a id="ref-for-element-attrdef-feoffset-dx①"></a>[dx](#element-attrdef-feoffset-dx)
 
-- <a id="ref-for-element-attrdef-feoffset-dx①"></a>
+- <a id="ref-for-element-attrdef-feoffset-dy①"></a>[dy](#element-attrdef-feoffset-dy)
 
-  [dx](#element-attrdef-feoffset-dx)
-
-- <a id="ref-for-element-attrdef-feoffset-dy①"></a>
-
-  [dy](#element-attrdef-feoffset-dy)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-DOM Interfaces:
-
-<strong>Column 2 (data cell):</strong>
+**DOM Interfaces:**
 
 [SVGFEOffsetElement](#InterfaceSVGFEOffsetElement)
 
@@ -8069,225 +4747,41 @@ Animatable: yes.
 
 ### <a id="feSpecularLightingElement"></a>9.19. Filter primitive [feSpecularLighting](#elementdef-fespecularlighting)
 
-<strong>Table 26 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
+**Name:**
 
 <a id="elementdef-fespecularlighting"></a>`feSpecularLighting`
 
-<strong>Row 2</strong>
+**Categories:**
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-filter-primitive④①"></a>[filter primitive](#filter-primitive)
 
-Categories:
+**Content model:**
 
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-light-source⑤"></a><a id="ref-for-elementdef-script②⓪"></a><a id="ref-for-TermDescriptiveElement①⑨"></a>Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script) and exactly one [light sources](#light-source) element, in any order.
 
-<a id="ref-for-filter-primitive④①"></a>
-
-[filter primitive](#filter-primitive)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Content model:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-light-source⑤"></a>
-
-<a id="ref-for-elementdef-script②⓪"></a>
-
-<a id="ref-for-TermDescriptiveElement①⑨"></a>
-
-Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script) and exactly one [light sources](#light-source) element, in any order.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Attributes:
-
-<strong>Column 2 (data cell):</strong>
+**Attributes:**
 
 - [core attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermCoreAttributes) — [id](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#IDAttribute), [xml:base](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLBaseAttribute), [xml:lang](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLLangAttribute), [xml:space](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLSpaceAttribute)
 
-- <a id="ref-for-propdef-writing-mode①⑤"></a>
+- <a id="ref-for-propdef-writing-mode①⑤"></a><a id="ref-for-propdef-word-spacing①⑤"></a><a id="ref-for-propdef-visibility①⑤"></a><a id="ref-for-propdef-unicode-bidi①⑤"></a><a id="ref-for-TextRenderingProperty①⑤"></a><a id="ref-for-propdef-text-decoration①⑤"></a><a id="ref-for-TextAnchorProperty①⑤"></a><a id="ref-for-StrokeWidthProperty①⑤"></a><a id="ref-for-StrokeOpacityProperty①⑤"></a><a id="ref-for-StrokeMiterlimitProperty①⑤"></a><a id="ref-for-StrokeLinejoinProperty①⑤"></a><a id="ref-for-StrokeLinecapProperty①⑤"></a><a id="ref-for-StrokeDashoffsetProperty①⑤"></a><a id="ref-for-StrokeDasharrayProperty①⑤"></a><a id="ref-for-StrokeProperty①⑥"></a><a id="ref-for-StopOpacityProperty①⑤"></a><a id="ref-for-StopColorProperty①⑤"></a><a id="ref-for-ShapeRenderingProperty①⑤"></a><a id="ref-for-PointerEventsProperty①⑤"></a><a id="ref-for-propdef-overflow①⑤"></a><a id="ref-for-propdef-opacity①⑧"></a><a id="ref-for-propdef-mask①⑤"></a><a id="ref-for-MarkerStartProperty①⑤"></a><a id="ref-for-MarkerMidProperty①⑤"></a><a id="ref-for-MarkerEndProperty①⑤"></a><a id="ref-for-MarkerProperty①⑤"></a><a id="ref-for-propdef-lighting-color①⑦"></a><a id="ref-for-propdef-letter-spacing①⑤"></a><a id="ref-for-KerningProperty①⑤"></a><a id="ref-for-propdef-isolation①⑦"></a><a id="ref-for-propdef-image-rendering②⓪"></a><a id="ref-for-GlyphOrientationVerticalProperty①⑤"></a><a id="ref-for-GlyphOrientationHorizontalProperty①⑤"></a><a id="ref-for-propdef-font-weight①⑤"></a><a id="ref-for-propdef-font-variant①⑤"></a><a id="ref-for-propdef-font-style①⑤"></a><a id="ref-for-propdef-font-stretch①⑤"></a><a id="ref-for-propdef-font-size-adjust①⑤"></a><a id="ref-for-propdef-font-size①⑤"></a><a id="ref-for-propdef-font-family①⑤"></a><a id="ref-for-propdef-font①⑤"></a><a id="ref-for-propdef-flood-opacity②③"></a><a id="ref-for-propdef-flood-color②②"></a><a id="ref-for-propdef-filter②⑥"></a><a id="ref-for-FillRuleProperty①⑤"></a><a id="ref-for-FillOpacityProperty①⑤"></a><a id="ref-for-FillProperty①⑦"></a><a id="ref-for-EnableBackgroundProperty①⑤"></a><a id="ref-for-DominantBaselineProperty①⑤"></a><a id="ref-for-propdef-display①⑧"></a><a id="ref-for-propdef-direction①⑤"></a><a id="ref-for-propdef-cursor①⑤"></a><a id="ref-for-ColorRenderingProperty①⑤"></a><a id="ref-for-propdef-color-interpolation-filters②②"></a><a id="ref-for-ColorInterpolationProperty①⑨"></a><a id="ref-for-color0①⑤"></a><a id="ref-for-propdef-clip-rule①⑤"></a><a id="ref-for-propdef-clip-path①⑤"></a><a id="ref-for-propdef-clip①⑤"></a><a id="ref-for-BaselineShiftProperty①⑤"></a><a id="ref-for-AlignmentBaselineProperty①⑤"></a>[presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
 
-  <a id="ref-for-propdef-word-spacing①⑤"></a>
-
-  <a id="ref-for-propdef-visibility①⑤"></a>
-
-  <a id="ref-for-propdef-unicode-bidi①⑤"></a>
-
-  <a id="ref-for-TextRenderingProperty①⑤"></a>
-
-  <a id="ref-for-propdef-text-decoration①⑤"></a>
-
-  <a id="ref-for-TextAnchorProperty①⑤"></a>
-
-  <a id="ref-for-StrokeWidthProperty①⑤"></a>
-
-  <a id="ref-for-StrokeOpacityProperty①⑤"></a>
-
-  <a id="ref-for-StrokeMiterlimitProperty①⑤"></a>
-
-  <a id="ref-for-StrokeLinejoinProperty①⑤"></a>
-
-  <a id="ref-for-StrokeLinecapProperty①⑤"></a>
-
-  <a id="ref-for-StrokeDashoffsetProperty①⑤"></a>
-
-  <a id="ref-for-StrokeDasharrayProperty①⑤"></a>
-
-  <a id="ref-for-StrokeProperty①⑥"></a>
-
-  <a id="ref-for-StopOpacityProperty①⑤"></a>
-
-  <a id="ref-for-StopColorProperty①⑤"></a>
-
-  <a id="ref-for-ShapeRenderingProperty①⑤"></a>
-
-  <a id="ref-for-PointerEventsProperty①⑤"></a>
-
-  <a id="ref-for-propdef-overflow①⑤"></a>
-
-  <a id="ref-for-propdef-opacity①⑧"></a>
-
-  <a id="ref-for-propdef-mask①⑤"></a>
-
-  <a id="ref-for-MarkerStartProperty①⑤"></a>
-
-  <a id="ref-for-MarkerMidProperty①⑤"></a>
-
-  <a id="ref-for-MarkerEndProperty①⑤"></a>
-
-  <a id="ref-for-MarkerProperty①⑤"></a>
-
-  <a id="ref-for-propdef-lighting-color①⑦"></a>
-
-  <a id="ref-for-propdef-letter-spacing①⑤"></a>
-
-  <a id="ref-for-KerningProperty①⑤"></a>
-
-  <a id="ref-for-propdef-isolation①⑦"></a>
-
-  <a id="ref-for-propdef-image-rendering②⓪"></a>
-
-  <a id="ref-for-GlyphOrientationVerticalProperty①⑤"></a>
-
-  <a id="ref-for-GlyphOrientationHorizontalProperty①⑤"></a>
-
-  <a id="ref-for-propdef-font-weight①⑤"></a>
-
-  <a id="ref-for-propdef-font-variant①⑤"></a>
-
-  <a id="ref-for-propdef-font-style①⑤"></a>
-
-  <a id="ref-for-propdef-font-stretch①⑤"></a>
-
-  <a id="ref-for-propdef-font-size-adjust①⑤"></a>
-
-  <a id="ref-for-propdef-font-size①⑤"></a>
-
-  <a id="ref-for-propdef-font-family①⑤"></a>
-
-  <a id="ref-for-propdef-font①⑤"></a>
-
-  <a id="ref-for-propdef-flood-opacity②③"></a>
-
-  <a id="ref-for-propdef-flood-color②②"></a>
-
-  <a id="ref-for-propdef-filter②⑥"></a>
-
-  <a id="ref-for-FillRuleProperty①⑤"></a>
-
-  <a id="ref-for-FillOpacityProperty①⑤"></a>
-
-  <a id="ref-for-FillProperty①⑦"></a>
-
-  <a id="ref-for-EnableBackgroundProperty①⑤"></a>
-
-  <a id="ref-for-DominantBaselineProperty①⑤"></a>
-
-  <a id="ref-for-propdef-display①⑧"></a>
-
-  <a id="ref-for-propdef-direction①⑤"></a>
-
-  <a id="ref-for-propdef-cursor①⑤"></a>
-
-  <a id="ref-for-ColorRenderingProperty①⑤"></a>
-
-  <a id="ref-for-propdef-color-interpolation-filters②②"></a>
-
-  <a id="ref-for-ColorInterpolationProperty①⑨"></a>
-
-  <a id="ref-for-color0①⑤"></a>
-
-  <a id="ref-for-propdef-clip-rule①⑤"></a>
-
-  <a id="ref-for-propdef-clip-path①⑤"></a>
-
-  <a id="ref-for-propdef-clip①⑤"></a>
-
-  <a id="ref-for-BaselineShiftProperty①⑤"></a>
-
-  <a id="ref-for-AlignmentBaselineProperty①⑤"></a>
-
-  [presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
-
-- <a id="ref-for-element-attrdef-filter-primitive-result①⑧"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-height①⑧"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-width①⑧"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-y①⑨"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-x①⑨"></a>
-
-  <a id="ref-for-filter-primitive-attributes①④"></a>
-
-  [filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
+- <a id="ref-for-element-attrdef-filter-primitive-result①⑧"></a><a id="ref-for-element-attrdef-filter-primitive-height①⑧"></a><a id="ref-for-element-attrdef-filter-primitive-width①⑧"></a><a id="ref-for-element-attrdef-filter-primitive-y①⑨"></a><a id="ref-for-element-attrdef-filter-primitive-x①⑨"></a><a id="ref-for-filter-primitive-attributes①④"></a>[filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
 
 - [class](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#ClassAttribute)
 
 - [style](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#StyleAttribute)
 
-- <a id="ref-for-element-attrdef-filter-primitive-in③②"></a>
+- <a id="ref-for-element-attrdef-filter-primitive-in③②"></a>[in](#element-attrdef-filter-primitive-in)
 
-  [in](#element-attrdef-filter-primitive-in)
+- <a id="ref-for-element-attrdef-fespecularlighting-surfacescale"></a>[surfaceScale](#element-attrdef-fespecularlighting-surfacescale)
 
-- <a id="ref-for-element-attrdef-fespecularlighting-surfacescale"></a>
+- <a id="ref-for-element-attrdef-fespecularlighting-specularconstant"></a>[specularConstant](#element-attrdef-fespecularlighting-specularconstant)
 
-  [surfaceScale](#element-attrdef-fespecularlighting-surfacescale)
+- <a id="ref-for-element-attrdef-fespecularlighting-specularexponent"></a>[specularExponent](#element-attrdef-fespecularlighting-specularexponent)
 
-- <a id="ref-for-element-attrdef-fespecularlighting-specularconstant"></a>
+- <a id="ref-for-element-attrdef-fespecularlighting-kernelunitlength"></a>[kernelUnitLength](#element-attrdef-fespecularlighting-kernelunitlength)
 
-  [specularConstant](#element-attrdef-fespecularlighting-specularconstant)
-
-- <a id="ref-for-element-attrdef-fespecularlighting-specularexponent"></a>
-
-  [specularExponent](#element-attrdef-fespecularlighting-specularexponent)
-
-- <a id="ref-for-element-attrdef-fespecularlighting-kernelunitlength"></a>
-
-  [kernelUnitLength](#element-attrdef-fespecularlighting-kernelunitlength)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-DOM Interfaces:
-
-<strong>Column 2 (data cell):</strong>
+**DOM Interfaces:**
 
 [SVGFESpecularLightingElement](#InterfaceSVGFESpecularLightingElement)
 
@@ -8415,211 +4909,33 @@ The light source is defined by one of the child elements [feDistantLight](#eleme
 
 ### <a id="feTileElement"></a>9.20. Filter primitive [feTile](#elementdef-fetile)
 
-<strong>Table 27 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
+**Name:**
 
 <a id="elementdef-fetile"></a>`feTile`
 
-<strong>Row 2</strong>
+**Categories:**
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-filter-primitive④②"></a>[filter primitive](#filter-primitive)
 
-Categories:
+**Content model:**
 
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-SetElement①⑦"></a><a id="ref-for-elementdef-script②①"></a><a id="ref-for-AnimateElement①⑦"></a><a id="ref-for-TermDescriptiveElement②⓪"></a>Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
 
-<a id="ref-for-filter-primitive④②"></a>
-
-[filter primitive](#filter-primitive)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Content model:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-SetElement①⑦"></a>
-
-<a id="ref-for-elementdef-script②①"></a>
-
-<a id="ref-for-AnimateElement①⑦"></a>
-
-<a id="ref-for-TermDescriptiveElement②⓪"></a>
-
-Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Attributes:
-
-<strong>Column 2 (data cell):</strong>
+**Attributes:**
 
 - [core attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermCoreAttributes) — [id](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#IDAttribute), [xml:base](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLBaseAttribute), [xml:lang](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLLangAttribute), [xml:space](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLSpaceAttribute)
 
-- <a id="ref-for-propdef-writing-mode①⑥"></a>
+- <a id="ref-for-propdef-writing-mode①⑥"></a><a id="ref-for-propdef-word-spacing①⑥"></a><a id="ref-for-propdef-visibility①⑥"></a><a id="ref-for-propdef-unicode-bidi①⑥"></a><a id="ref-for-TextRenderingProperty①⑥"></a><a id="ref-for-propdef-text-decoration①⑥"></a><a id="ref-for-TextAnchorProperty①⑥"></a><a id="ref-for-StrokeWidthProperty①⑥"></a><a id="ref-for-StrokeOpacityProperty①⑥"></a><a id="ref-for-StrokeMiterlimitProperty①⑥"></a><a id="ref-for-StrokeLinejoinProperty①⑥"></a><a id="ref-for-StrokeLinecapProperty①⑥"></a><a id="ref-for-StrokeDashoffsetProperty①⑥"></a><a id="ref-for-StrokeDasharrayProperty①⑥"></a><a id="ref-for-StrokeProperty①⑦"></a><a id="ref-for-StopOpacityProperty①⑥"></a><a id="ref-for-StopColorProperty①⑥"></a><a id="ref-for-ShapeRenderingProperty①⑥"></a><a id="ref-for-PointerEventsProperty①⑥"></a><a id="ref-for-propdef-overflow①⑥"></a><a id="ref-for-propdef-opacity①⑨"></a><a id="ref-for-propdef-mask①⑥"></a><a id="ref-for-MarkerStartProperty①⑥"></a><a id="ref-for-MarkerMidProperty①⑥"></a><a id="ref-for-MarkerEndProperty①⑥"></a><a id="ref-for-MarkerProperty①⑥"></a><a id="ref-for-propdef-lighting-color①⑨"></a><a id="ref-for-propdef-letter-spacing①⑥"></a><a id="ref-for-KerningProperty①⑥"></a><a id="ref-for-propdef-isolation①⑧"></a><a id="ref-for-propdef-image-rendering②①"></a><a id="ref-for-GlyphOrientationVerticalProperty①⑥"></a><a id="ref-for-GlyphOrientationHorizontalProperty①⑥"></a><a id="ref-for-propdef-font-weight①⑥"></a><a id="ref-for-propdef-font-variant①⑥"></a><a id="ref-for-propdef-font-style①⑥"></a><a id="ref-for-propdef-font-stretch①⑥"></a><a id="ref-for-propdef-font-size-adjust①⑥"></a><a id="ref-for-propdef-font-size①⑥"></a><a id="ref-for-propdef-font-family①⑥"></a><a id="ref-for-propdef-font①⑥"></a><a id="ref-for-propdef-flood-opacity②④"></a><a id="ref-for-propdef-flood-color②③"></a><a id="ref-for-propdef-filter②⑦"></a><a id="ref-for-FillRuleProperty①⑥"></a><a id="ref-for-FillOpacityProperty①⑥"></a><a id="ref-for-FillProperty①⑧"></a><a id="ref-for-EnableBackgroundProperty①⑥"></a><a id="ref-for-DominantBaselineProperty①⑥"></a><a id="ref-for-propdef-display①⑨"></a><a id="ref-for-propdef-direction①⑥"></a><a id="ref-for-propdef-cursor①⑥"></a><a id="ref-for-ColorRenderingProperty①⑥"></a><a id="ref-for-propdef-color-interpolation-filters②③"></a><a id="ref-for-ColorInterpolationProperty②⓪"></a><a id="ref-for-color0①⑥"></a><a id="ref-for-propdef-clip-rule①⑥"></a><a id="ref-for-propdef-clip-path①⑥"></a><a id="ref-for-propdef-clip①⑥"></a><a id="ref-for-BaselineShiftProperty①⑥"></a><a id="ref-for-AlignmentBaselineProperty①⑥"></a>[presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
 
-  <a id="ref-for-propdef-word-spacing①⑥"></a>
-
-  <a id="ref-for-propdef-visibility①⑥"></a>
-
-  <a id="ref-for-propdef-unicode-bidi①⑥"></a>
-
-  <a id="ref-for-TextRenderingProperty①⑥"></a>
-
-  <a id="ref-for-propdef-text-decoration①⑥"></a>
-
-  <a id="ref-for-TextAnchorProperty①⑥"></a>
-
-  <a id="ref-for-StrokeWidthProperty①⑥"></a>
-
-  <a id="ref-for-StrokeOpacityProperty①⑥"></a>
-
-  <a id="ref-for-StrokeMiterlimitProperty①⑥"></a>
-
-  <a id="ref-for-StrokeLinejoinProperty①⑥"></a>
-
-  <a id="ref-for-StrokeLinecapProperty①⑥"></a>
-
-  <a id="ref-for-StrokeDashoffsetProperty①⑥"></a>
-
-  <a id="ref-for-StrokeDasharrayProperty①⑥"></a>
-
-  <a id="ref-for-StrokeProperty①⑦"></a>
-
-  <a id="ref-for-StopOpacityProperty①⑥"></a>
-
-  <a id="ref-for-StopColorProperty①⑥"></a>
-
-  <a id="ref-for-ShapeRenderingProperty①⑥"></a>
-
-  <a id="ref-for-PointerEventsProperty①⑥"></a>
-
-  <a id="ref-for-propdef-overflow①⑥"></a>
-
-  <a id="ref-for-propdef-opacity①⑨"></a>
-
-  <a id="ref-for-propdef-mask①⑥"></a>
-
-  <a id="ref-for-MarkerStartProperty①⑥"></a>
-
-  <a id="ref-for-MarkerMidProperty①⑥"></a>
-
-  <a id="ref-for-MarkerEndProperty①⑥"></a>
-
-  <a id="ref-for-MarkerProperty①⑥"></a>
-
-  <a id="ref-for-propdef-lighting-color①⑨"></a>
-
-  <a id="ref-for-propdef-letter-spacing①⑥"></a>
-
-  <a id="ref-for-KerningProperty①⑥"></a>
-
-  <a id="ref-for-propdef-isolation①⑧"></a>
-
-  <a id="ref-for-propdef-image-rendering②①"></a>
-
-  <a id="ref-for-GlyphOrientationVerticalProperty①⑥"></a>
-
-  <a id="ref-for-GlyphOrientationHorizontalProperty①⑥"></a>
-
-  <a id="ref-for-propdef-font-weight①⑥"></a>
-
-  <a id="ref-for-propdef-font-variant①⑥"></a>
-
-  <a id="ref-for-propdef-font-style①⑥"></a>
-
-  <a id="ref-for-propdef-font-stretch①⑥"></a>
-
-  <a id="ref-for-propdef-font-size-adjust①⑥"></a>
-
-  <a id="ref-for-propdef-font-size①⑥"></a>
-
-  <a id="ref-for-propdef-font-family①⑥"></a>
-
-  <a id="ref-for-propdef-font①⑥"></a>
-
-  <a id="ref-for-propdef-flood-opacity②④"></a>
-
-  <a id="ref-for-propdef-flood-color②③"></a>
-
-  <a id="ref-for-propdef-filter②⑦"></a>
-
-  <a id="ref-for-FillRuleProperty①⑥"></a>
-
-  <a id="ref-for-FillOpacityProperty①⑥"></a>
-
-  <a id="ref-for-FillProperty①⑧"></a>
-
-  <a id="ref-for-EnableBackgroundProperty①⑥"></a>
-
-  <a id="ref-for-DominantBaselineProperty①⑥"></a>
-
-  <a id="ref-for-propdef-display①⑨"></a>
-
-  <a id="ref-for-propdef-direction①⑥"></a>
-
-  <a id="ref-for-propdef-cursor①⑥"></a>
-
-  <a id="ref-for-ColorRenderingProperty①⑥"></a>
-
-  <a id="ref-for-propdef-color-interpolation-filters②③"></a>
-
-  <a id="ref-for-ColorInterpolationProperty②⓪"></a>
-
-  <a id="ref-for-color0①⑥"></a>
-
-  <a id="ref-for-propdef-clip-rule①⑥"></a>
-
-  <a id="ref-for-propdef-clip-path①⑥"></a>
-
-  <a id="ref-for-propdef-clip①⑥"></a>
-
-  <a id="ref-for-BaselineShiftProperty①⑥"></a>
-
-  <a id="ref-for-AlignmentBaselineProperty①⑥"></a>
-
-  [presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
-
-- <a id="ref-for-element-attrdef-filter-primitive-result①⑨"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-height①⑨"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-width①⑨"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-y②⓪"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-x②⓪"></a>
-
-  <a id="ref-for-filter-primitive-attributes①⑤"></a>
-
-  [filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
+- <a id="ref-for-element-attrdef-filter-primitive-result①⑨"></a><a id="ref-for-element-attrdef-filter-primitive-height①⑨"></a><a id="ref-for-element-attrdef-filter-primitive-width①⑨"></a><a id="ref-for-element-attrdef-filter-primitive-y②⓪"></a><a id="ref-for-element-attrdef-filter-primitive-x②⓪"></a><a id="ref-for-filter-primitive-attributes①⑤"></a>[filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
 
 - [class](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#ClassAttribute)
 
 - [style](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#StyleAttribute)
 
-- <a id="ref-for-element-attrdef-filter-primitive-in③③"></a>
+- <a id="ref-for-element-attrdef-filter-primitive-in③③"></a>[in](#element-attrdef-filter-primitive-in)
 
-  [in](#element-attrdef-filter-primitive-in)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-DOM Interfaces:
-
-<strong>Column 2 (data cell):</strong>
+**DOM Interfaces:**
 
 [SVGFETileElement](#InterfaceSVGFETileElement)
 
@@ -8641,227 +4957,41 @@ Implementers must take appropriate measures in constructing the tiled image to a
 
 ### <a id="feTurbulenceElement"></a>9.21. Filter primitive [feTurbulence](#elementdef-feturbulence)
 
-<strong>Table 28 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
+**Name:**
 
 <a id="elementdef-feturbulence"></a>`feTurbulence`
 
-<strong>Row 2</strong>
+**Categories:**
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-filter-primitive④③"></a>[filter primitive](#filter-primitive)
 
-Categories:
+**Content model:**
 
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-SetElement①⑧"></a><a id="ref-for-elementdef-script②②"></a><a id="ref-for-AnimateElement①⑧"></a><a id="ref-for-TermDescriptiveElement②①"></a>Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
 
-<a id="ref-for-filter-primitive④③"></a>
-
-[filter primitive](#filter-primitive)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Content model:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-SetElement①⑧"></a>
-
-<a id="ref-for-elementdef-script②②"></a>
-
-<a id="ref-for-AnimateElement①⑧"></a>
-
-<a id="ref-for-TermDescriptiveElement②①"></a>
-
-Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Attributes:
-
-<strong>Column 2 (data cell):</strong>
+**Attributes:**
 
 - [core attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermCoreAttributes) — [id](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#IDAttribute), [xml:base](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLBaseAttribute), [xml:lang](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLLangAttribute), [xml:space](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLSpaceAttribute)
 
-- <a id="ref-for-propdef-writing-mode①⑦"></a>
+- <a id="ref-for-propdef-writing-mode①⑦"></a><a id="ref-for-propdef-word-spacing①⑦"></a><a id="ref-for-propdef-visibility①⑦"></a><a id="ref-for-propdef-unicode-bidi①⑦"></a><a id="ref-for-TextRenderingProperty①⑦"></a><a id="ref-for-propdef-text-decoration①⑦"></a><a id="ref-for-TextAnchorProperty①⑦"></a><a id="ref-for-StrokeWidthProperty①⑦"></a><a id="ref-for-StrokeOpacityProperty①⑦"></a><a id="ref-for-StrokeMiterlimitProperty①⑦"></a><a id="ref-for-StrokeLinejoinProperty①⑦"></a><a id="ref-for-StrokeLinecapProperty①⑦"></a><a id="ref-for-StrokeDashoffsetProperty①⑦"></a><a id="ref-for-StrokeDasharrayProperty①⑦"></a><a id="ref-for-StrokeProperty①⑧"></a><a id="ref-for-StopOpacityProperty①⑦"></a><a id="ref-for-StopColorProperty①⑦"></a><a id="ref-for-ShapeRenderingProperty①⑦"></a><a id="ref-for-PointerEventsProperty①⑦"></a><a id="ref-for-propdef-overflow①⑦"></a><a id="ref-for-propdef-opacity②⓪"></a><a id="ref-for-propdef-mask①⑦"></a><a id="ref-for-MarkerStartProperty①⑦"></a><a id="ref-for-MarkerMidProperty①⑦"></a><a id="ref-for-MarkerEndProperty①⑦"></a><a id="ref-for-MarkerProperty①⑦"></a><a id="ref-for-propdef-lighting-color②⓪"></a><a id="ref-for-propdef-letter-spacing①⑦"></a><a id="ref-for-KerningProperty①⑦"></a><a id="ref-for-propdef-isolation①⑨"></a><a id="ref-for-propdef-image-rendering②②"></a><a id="ref-for-GlyphOrientationVerticalProperty①⑦"></a><a id="ref-for-GlyphOrientationHorizontalProperty①⑦"></a><a id="ref-for-propdef-font-weight①⑦"></a><a id="ref-for-propdef-font-variant①⑦"></a><a id="ref-for-propdef-font-style①⑦"></a><a id="ref-for-propdef-font-stretch①⑦"></a><a id="ref-for-propdef-font-size-adjust①⑦"></a><a id="ref-for-propdef-font-size①⑦"></a><a id="ref-for-propdef-font-family①⑦"></a><a id="ref-for-propdef-font①⑦"></a><a id="ref-for-propdef-flood-opacity②⑤"></a><a id="ref-for-propdef-flood-color②④"></a><a id="ref-for-propdef-filter②⑧"></a><a id="ref-for-FillRuleProperty①⑦"></a><a id="ref-for-FillOpacityProperty①⑦"></a><a id="ref-for-FillProperty①⑨"></a><a id="ref-for-EnableBackgroundProperty①⑦"></a><a id="ref-for-DominantBaselineProperty①⑦"></a><a id="ref-for-propdef-display②⓪"></a><a id="ref-for-propdef-direction①⑦"></a><a id="ref-for-propdef-cursor①⑦"></a><a id="ref-for-ColorRenderingProperty①⑦"></a><a id="ref-for-propdef-color-interpolation-filters②④"></a><a id="ref-for-ColorInterpolationProperty②①"></a><a id="ref-for-color0①⑦"></a><a id="ref-for-propdef-clip-rule①⑦"></a><a id="ref-for-propdef-clip-path①⑦"></a><a id="ref-for-propdef-clip①⑦"></a><a id="ref-for-BaselineShiftProperty①⑦"></a><a id="ref-for-AlignmentBaselineProperty①⑦"></a>[presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
 
-  <a id="ref-for-propdef-word-spacing①⑦"></a>
-
-  <a id="ref-for-propdef-visibility①⑦"></a>
-
-  <a id="ref-for-propdef-unicode-bidi①⑦"></a>
-
-  <a id="ref-for-TextRenderingProperty①⑦"></a>
-
-  <a id="ref-for-propdef-text-decoration①⑦"></a>
-
-  <a id="ref-for-TextAnchorProperty①⑦"></a>
-
-  <a id="ref-for-StrokeWidthProperty①⑦"></a>
-
-  <a id="ref-for-StrokeOpacityProperty①⑦"></a>
-
-  <a id="ref-for-StrokeMiterlimitProperty①⑦"></a>
-
-  <a id="ref-for-StrokeLinejoinProperty①⑦"></a>
-
-  <a id="ref-for-StrokeLinecapProperty①⑦"></a>
-
-  <a id="ref-for-StrokeDashoffsetProperty①⑦"></a>
-
-  <a id="ref-for-StrokeDasharrayProperty①⑦"></a>
-
-  <a id="ref-for-StrokeProperty①⑧"></a>
-
-  <a id="ref-for-StopOpacityProperty①⑦"></a>
-
-  <a id="ref-for-StopColorProperty①⑦"></a>
-
-  <a id="ref-for-ShapeRenderingProperty①⑦"></a>
-
-  <a id="ref-for-PointerEventsProperty①⑦"></a>
-
-  <a id="ref-for-propdef-overflow①⑦"></a>
-
-  <a id="ref-for-propdef-opacity②⓪"></a>
-
-  <a id="ref-for-propdef-mask①⑦"></a>
-
-  <a id="ref-for-MarkerStartProperty①⑦"></a>
-
-  <a id="ref-for-MarkerMidProperty①⑦"></a>
-
-  <a id="ref-for-MarkerEndProperty①⑦"></a>
-
-  <a id="ref-for-MarkerProperty①⑦"></a>
-
-  <a id="ref-for-propdef-lighting-color②⓪"></a>
-
-  <a id="ref-for-propdef-letter-spacing①⑦"></a>
-
-  <a id="ref-for-KerningProperty①⑦"></a>
-
-  <a id="ref-for-propdef-isolation①⑨"></a>
-
-  <a id="ref-for-propdef-image-rendering②②"></a>
-
-  <a id="ref-for-GlyphOrientationVerticalProperty①⑦"></a>
-
-  <a id="ref-for-GlyphOrientationHorizontalProperty①⑦"></a>
-
-  <a id="ref-for-propdef-font-weight①⑦"></a>
-
-  <a id="ref-for-propdef-font-variant①⑦"></a>
-
-  <a id="ref-for-propdef-font-style①⑦"></a>
-
-  <a id="ref-for-propdef-font-stretch①⑦"></a>
-
-  <a id="ref-for-propdef-font-size-adjust①⑦"></a>
-
-  <a id="ref-for-propdef-font-size①⑦"></a>
-
-  <a id="ref-for-propdef-font-family①⑦"></a>
-
-  <a id="ref-for-propdef-font①⑦"></a>
-
-  <a id="ref-for-propdef-flood-opacity②⑤"></a>
-
-  <a id="ref-for-propdef-flood-color②④"></a>
-
-  <a id="ref-for-propdef-filter②⑧"></a>
-
-  <a id="ref-for-FillRuleProperty①⑦"></a>
-
-  <a id="ref-for-FillOpacityProperty①⑦"></a>
-
-  <a id="ref-for-FillProperty①⑨"></a>
-
-  <a id="ref-for-EnableBackgroundProperty①⑦"></a>
-
-  <a id="ref-for-DominantBaselineProperty①⑦"></a>
-
-  <a id="ref-for-propdef-display②⓪"></a>
-
-  <a id="ref-for-propdef-direction①⑦"></a>
-
-  <a id="ref-for-propdef-cursor①⑦"></a>
-
-  <a id="ref-for-ColorRenderingProperty①⑦"></a>
-
-  <a id="ref-for-propdef-color-interpolation-filters②④"></a>
-
-  <a id="ref-for-ColorInterpolationProperty②①"></a>
-
-  <a id="ref-for-color0①⑦"></a>
-
-  <a id="ref-for-propdef-clip-rule①⑦"></a>
-
-  <a id="ref-for-propdef-clip-path①⑦"></a>
-
-  <a id="ref-for-propdef-clip①⑦"></a>
-
-  <a id="ref-for-BaselineShiftProperty①⑦"></a>
-
-  <a id="ref-for-AlignmentBaselineProperty①⑦"></a>
-
-  [presentation attributes](https://www.w3.org/TR/2008/REC-SVGTiny12-20081222/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/SVG11/text.html#AlignmentBaselineProperty), [baseline-shift](https://www.w3.org/TR/SVG11/text.html#BaselineShiftProperty), [clip](https://www.w3.org/TR/css-masking-1/#propdef-clip), [clip-path](https://www.w3.org/TR/css-masking-1/#propdef-clip-path), [clip-rule](https://www.w3.org/TR/css-masking-1/#propdef-clip-rule), [color](https://www.w3.org/TR/css3-color/#color0), [color-interpolation](https://www.w3.org/TR/svg2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](#propdef-color-interpolation-filters), [color-rendering](https://www.w3.org/TR/svg2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css3-ui/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/SVG11/text.html#DominantBaselineProperty), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/svg2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/svg2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/svg2/painting.html#FillRuleProperty), [filter](#propdef-filter), [flood-color](#propdef-flood-color), [flood-opacity](#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-3/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-3/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-3/#propdef-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-4/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-3/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-3/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-3/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-3/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationVerticalProperty), [image-rendering](https://drafts.csswg.org/css-images-3/#propdef-image-rendering), [isolation](https://www.w3.org/TR/compositing-1/#propdef-isolation), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](#propdef-lighting-color), [marker](https://www.w3.org/TR/svg2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/svg2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/svg2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/svg2/painting.html#MarkerStartProperty), [mask](https://www.w3.org/TR/css-masking-1/#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/svg2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/svg2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/svg2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/svg2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/svg2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/svg2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/svg2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/svg2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/svg2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/svg2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/svg2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/svg2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/svg2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/svg2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
-
-- <a id="ref-for-element-attrdef-filter-primitive-result②⓪"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-height②⓪"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-width②⓪"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-y②①"></a>
-
-  <a id="ref-for-element-attrdef-filter-primitive-x②①"></a>
-
-  <a id="ref-for-filter-primitive-attributes①⑥"></a>
-
-  [filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
+- <a id="ref-for-element-attrdef-filter-primitive-result②⓪"></a><a id="ref-for-element-attrdef-filter-primitive-height②⓪"></a><a id="ref-for-element-attrdef-filter-primitive-width②⓪"></a><a id="ref-for-element-attrdef-filter-primitive-y②①"></a><a id="ref-for-element-attrdef-filter-primitive-x②①"></a><a id="ref-for-filter-primitive-attributes①⑥"></a>[filter primitive attributes](#filter-primitive-attributes) —[x](#element-attrdef-filter-primitive-x), [y](#element-attrdef-filter-primitive-y), [width](#element-attrdef-filter-primitive-width), [height](#element-attrdef-filter-primitive-height), [result](#element-attrdef-filter-primitive-result)
 
 - [class](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#ClassAttribute)
 
 - [style](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#StyleAttribute)
 
-- <a id="ref-for-element-attrdef-feturbulence-basefrequency"></a>
+- <a id="ref-for-element-attrdef-feturbulence-basefrequency"></a>[baseFrequency](#element-attrdef-feturbulence-basefrequency)
 
-  [baseFrequency](#element-attrdef-feturbulence-basefrequency)
+- <a id="ref-for-element-attrdef-feturbulence-numoctaves"></a>[numOctaves](#element-attrdef-feturbulence-numoctaves)
 
-- <a id="ref-for-element-attrdef-feturbulence-numoctaves"></a>
+- <a id="ref-for-element-attrdef-feturbulence-seed"></a>[seed](#element-attrdef-feturbulence-seed)
 
-  [numOctaves](#element-attrdef-feturbulence-numoctaves)
+- <a id="ref-for-element-attrdef-feturbulence-stitchtiles"></a>[stitchTiles](#element-attrdef-feturbulence-stitchtiles)
 
-- <a id="ref-for-element-attrdef-feturbulence-seed"></a>
+- <a id="ref-for-element-attrdef-feturbulence-type"></a>[type](#element-attrdef-feturbulence-type)
 
-  [seed](#element-attrdef-feturbulence-seed)
-
-- <a id="ref-for-element-attrdef-feturbulence-stitchtiles"></a>
-
-  [stitchTiles](#element-attrdef-feturbulence-stitchtiles)
-
-- <a id="ref-for-element-attrdef-feturbulence-type"></a>
-
-  [type](#element-attrdef-feturbulence-type)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-DOM Interfaces:
-
-<strong>Column 2 (data cell):</strong>
+**DOM Interfaces:**
 
 [SVGFETurbulenceElement](#InterfaceSVGFETurbulenceElement)
 
@@ -9251,111 +5381,18 @@ Animatable: yes.
 
 The description of the [color-interpolation-filters](#propdef-color-interpolation-filters) property is as follows:
 
-<strong>Table 29 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-color-interpolation-filters"></a>color-interpolation-filters
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://drafts.csswg.org/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one①②"></a>
-
-auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) sRGB <a id="ref-for-comb-one①③"></a>\| linearRGB
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://drafts.csswg.org/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-linearRGB
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-filter-primitive④④"></a>
-
-All [filter primitives](#filter-primitive)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://drafts.csswg.org/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://drafts.csswg.org/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://drafts.csswg.org/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animatable:](https://drafts.csswg.org/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-no
+| Field               | Definition                                                                                                      |
+|---------------------|-----------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-color-interpolation-filters"></a>color-interpolation-filters                                                                  |
+| <strong><a href="https://drafts.csswg.org/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one①②"></a>auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) sRGB <a id="ref-for-comb-one①③"></a>\| linearRGB |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | linearRGB                                                                                                       |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-filter-primitive④④"></a>All [filter primitives](#filter-primitive)                                                   |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                             |
+| <strong><a href="https://drafts.csswg.org/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                             |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | as specified                                                                                                    |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                     |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                          |
+| <strong><a href="https://drafts.csswg.org/web-animations/#animation-type">Animatable:</a>&#xA;      </strong> | no                                                                                                              |
 
 <a id="valdef-color-interpolation-filters-auto"></a>auto  
 <a id="ref-for-valdef-color-interpolation-filters-srgb②"></a>
@@ -9428,73 +5465,27 @@ The following sections define the elements that define a <a id="light-source"></
 
 ### <a id="feDistantLightElement"></a>11.2. Light source [feDistantLight](#elementdef-fedistantlight)
 
-<strong>Table 30 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
+**Name:**
 
 <a id="elementdef-fedistantlight"></a>`feDistantLight`
 
-<strong>Row 2</strong>
+**Categories:**
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-light-source⑦"></a>[light source](#light-source)
 
-Categories:
+**Content model:**
 
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-SetElement①⑨"></a><a id="ref-for-elementdef-script②③"></a><a id="ref-for-AnimateElement①⑨"></a><a id="ref-for-TermDescriptiveElement②②"></a>Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
 
-<a id="ref-for-light-source⑦"></a>
-
-[light source](#light-source)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Content model:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-SetElement①⑨"></a>
-
-<a id="ref-for-elementdef-script②③"></a>
-
-<a id="ref-for-AnimateElement①⑨"></a>
-
-<a id="ref-for-TermDescriptiveElement②②"></a>
-
-Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Attributes:
-
-<strong>Column 2 (data cell):</strong>
+**Attributes:**
 
 - [core attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermCoreAttributes) — [id](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#IDAttribute), [xml:base](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLBaseAttribute), [xml:lang](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLLangAttribute), [xml:space](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLSpaceAttribute)
 
-- <a id="ref-for-element-attrdef-fedistantlight-azimuth"></a>
+- <a id="ref-for-element-attrdef-fedistantlight-azimuth"></a>[azimuth](#element-attrdef-fedistantlight-azimuth)
 
-  [azimuth](#element-attrdef-fedistantlight-azimuth)
+- <a id="ref-for-element-attrdef-fedistantlight-elevation"></a>[elevation](#element-attrdef-fedistantlight-elevation)
 
-- <a id="ref-for-element-attrdef-fedistantlight-elevation"></a>
-
-  [elevation](#element-attrdef-fedistantlight-elevation)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-DOM Interfaces:
-
-<strong>Column 2 (data cell):</strong>
+**DOM Interfaces:**
 
 [SVGFEDistantLightElement](#InterfaceSVGFEDistantLightElement)
 
@@ -9542,77 +5533,29 @@ Angles which azimuth and elevation represent
 
 ### <a id="fePointLightElement"></a>11.3. Light source [fePointLight](#elementdef-fepointlight)
 
-<strong>Table 31 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
+**Name:**
 
 <a id="elementdef-fepointlight"></a>`fePointLight`
 
-<strong>Row 2</strong>
+**Categories:**
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-light-source⑧"></a>[light source](#light-source)
 
-Categories:
+**Content model:**
 
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-SetElement②⓪"></a><a id="ref-for-elementdef-script②④"></a><a id="ref-for-AnimateElement②⓪"></a><a id="ref-for-TermDescriptiveElement②③"></a>Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
 
-<a id="ref-for-light-source⑧"></a>
-
-[light source](#light-source)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Content model:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-SetElement②⓪"></a>
-
-<a id="ref-for-elementdef-script②④"></a>
-
-<a id="ref-for-AnimateElement②⓪"></a>
-
-<a id="ref-for-TermDescriptiveElement②③"></a>
-
-Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Attributes:
-
-<strong>Column 2 (data cell):</strong>
+**Attributes:**
 
 - [core attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermCoreAttributes) — [id](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#IDAttribute), [xml:base](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLBaseAttribute), [xml:lang](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLLangAttribute), [xml:space](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLSpaceAttribute)
 
-- <a id="ref-for-element-attrdef-fepointlight-x"></a>
+- <a id="ref-for-element-attrdef-fepointlight-x"></a>[x](#element-attrdef-fepointlight-x)
 
-  [x](#element-attrdef-fepointlight-x)
+- <a id="ref-for-element-attrdef-fepointlight-y"></a>[y](#element-attrdef-fepointlight-y)
 
-- <a id="ref-for-element-attrdef-fepointlight-y"></a>
+- <a id="ref-for-element-attrdef-fepointlight-z"></a>[z](#element-attrdef-fepointlight-z)
 
-  [y](#element-attrdef-fepointlight-y)
-
-- <a id="ref-for-element-attrdef-fepointlight-z"></a>
-
-  [z](#element-attrdef-fepointlight-z)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-DOM Interfaces:
-
-<strong>Column 2 (data cell):</strong>
+**DOM Interfaces:**
 
 [SVGFEPointLightElement](#InterfaceSVGFEPointLightElement)
 
@@ -9678,97 +5621,39 @@ Animatable: yes.
 
 ### <a id="feSpotLightElement"></a>11.4. Light source [feSpotLight](#elementdef-fespotlight)
 
-<strong>Table 32 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
+**Name:**
 
 <a id="elementdef-fespotlight"></a>`feSpotLight`
 
-<strong>Row 2</strong>
+**Categories:**
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-light-source⑨"></a>[light source](#light-source)
 
-Categories:
+**Content model:**
 
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-SetElement②①"></a><a id="ref-for-elementdef-script②⑤"></a><a id="ref-for-AnimateElement②①"></a><a id="ref-for-TermDescriptiveElement②④"></a>Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
 
-<a id="ref-for-light-source⑨"></a>
-
-[light source](#light-source)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Content model:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-SetElement②①"></a>
-
-<a id="ref-for-elementdef-script②⑤"></a>
-
-<a id="ref-for-AnimateElement②①"></a>
-
-<a id="ref-for-TermDescriptiveElement②④"></a>
-
-Any number of [descriptive elements](https://www.w3.org/TR/svg2/struct.html#TermDescriptiveElement), [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [script](https://www.w3.org/TR/svg2/interact.html#elementdef-script), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement) elements, in any order.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Attributes:
-
-<strong>Column 2 (data cell):</strong>
+**Attributes:**
 
 - [core attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermCoreAttributes) — [id](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#IDAttribute), [xml:base](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLBaseAttribute), [xml:lang](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLLangAttribute), [xml:space](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLSpaceAttribute)
 
-- <a id="ref-for-element-attrdef-fespotlight-x"></a>
+- <a id="ref-for-element-attrdef-fespotlight-x"></a>[x](#element-attrdef-fespotlight-x)
 
-  [x](#element-attrdef-fespotlight-x)
+- <a id="ref-for-element-attrdef-fespotlight-y"></a>[y](#element-attrdef-fespotlight-y)
 
-- <a id="ref-for-element-attrdef-fespotlight-y"></a>
+- <a id="ref-for-element-attrdef-fespotlight-z"></a>[z](#element-attrdef-fespotlight-z)
 
-  [y](#element-attrdef-fespotlight-y)
+- <a id="ref-for-element-attrdef-fespotlight-pointsatx"></a>[pointsAtX](#element-attrdef-fespotlight-pointsatx)
 
-- <a id="ref-for-element-attrdef-fespotlight-z"></a>
+- <a id="ref-for-element-attrdef-fespotlight-pointsaty"></a>[pointsAtY](#element-attrdef-fespotlight-pointsaty)
 
-  [z](#element-attrdef-fespotlight-z)
+- <a id="ref-for-element-attrdef-fespotlight-pointsatz"></a>[pointsAtZ](#element-attrdef-fespotlight-pointsatz)
 
-- <a id="ref-for-element-attrdef-fespotlight-pointsatx"></a>
+- <a id="ref-for-element-attrdef-fespotlight-specularexponent"></a>[specularExponent](#element-attrdef-fespotlight-specularexponent)
 
-  [pointsAtX](#element-attrdef-fespotlight-pointsatx)
+- <a id="ref-for-element-attrdef-fespotlight-limitingconeangle①"></a>[limitingConeAngle](#element-attrdef-fespotlight-limitingconeangle)
 
-- <a id="ref-for-element-attrdef-fespotlight-pointsaty"></a>
-
-  [pointsAtY](#element-attrdef-fespotlight-pointsaty)
-
-- <a id="ref-for-element-attrdef-fespotlight-pointsatz"></a>
-
-  [pointsAtZ](#element-attrdef-fespotlight-pointsatz)
-
-- <a id="ref-for-element-attrdef-fespotlight-specularexponent"></a>
-
-  [specularExponent](#element-attrdef-fespotlight-specularexponent)
-
-- <a id="ref-for-element-attrdef-fespotlight-limitingconeangle①"></a>
-
-  [limitingConeAngle](#element-attrdef-fespotlight-limitingconeangle)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-DOM Interfaces:
-
-<strong>Column 2 (data cell):</strong>
+**DOM Interfaces:**
 
 [SVGFESpotLightElement](#InterfaceSVGFESpotLightElement)
 
@@ -9932,113 +5817,18 @@ Animatable: yes.
 
 ### <a id="LightingColorProperty"></a>11.5. The [lighting-color](#propdef-lighting-color) property
 
-<strong>Table 33 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-lighting-color"></a>lighting-color
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://drafts.csswg.org/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valuea-def-color③"></a>
-
-[\<color\>](https://www.w3.org/TR/css3-color/#valuea-def-color)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://drafts.csswg.org/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-white
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-elementdef-fespecularlighting⑨"></a>
-
-<a id="ref-for-elementdef-fediffuselighting⑧"></a>
-
-[feDiffuseLighting](#elementdef-fediffuselighting) and [feSpecularLighting](#elementdef-fespecularlighting) elements
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://drafts.csswg.org/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://drafts.csswg.org/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://drafts.csswg.org/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animatable:](https://drafts.csswg.org/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-as [by computed value](https://drafts.csswg.org/web-animations-1/#by-computed-value)
+| Field               | Definition                                                                                                                                                 |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-lighting-color"></a>lighting-color                                                                                                                          |
+| <strong><a href="https://drafts.csswg.org/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-valuea-def-color③"></a>[\<color\>](https://www.w3.org/TR/css3-color/#valuea-def-color)                                                                         |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | white                                                                                                                                                      |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-elementdef-fespecularlighting⑨"></a><a id="ref-for-elementdef-fediffuselighting⑧"></a>[feDiffuseLighting](#elementdef-fediffuselighting) and [feSpecularLighting](#elementdef-fespecularlighting) elements |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                         |
+| <strong><a href="https://drafts.csswg.org/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                        |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | as specified                                                                                                                                               |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                                                     |
+| <strong><a href="https://drafts.csswg.org/web-animations/#animation-type">Animatable:</a>&#xA;      </strong> | as [by computed value](https://drafts.csswg.org/web-animations-1/#by-computed-value)                                                                       |
 
 <a id="ref-for-propdef-lighting-color②③"></a>
 
@@ -13999,269 +9789,13 @@ Ebert et al, AP Professional. Texturing and Modeling. 1994.
 
 ## <a id="property-index"></a>Property Index
 
-<strong>Table 34 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope col):</strong>
-
-Name
-
-<strong>Column 2 (header cell; scope col):</strong>
-
-Value
-
-<strong>Column 3 (header cell; scope col):</strong>
-
-Initial
-
-<strong>Column 4 (header cell; scope col):</strong>
-
-Applies to
-
-<strong>Column 5 (header cell; scope col):</strong>
-
-Inh.
-
-<strong>Column 6 (header cell; scope col):</strong>
-
-%ages
-
-<strong>Column 7 (header cell; scope col):</strong>
-
-Ani­mat­able
-
-<strong>Column 8 (header cell; scope col):</strong>
-
-Canonical order
-
-<strong>Column 9 (header cell; scope col):</strong>
-
-Com­puted value
-
-<strong>Column 10 (header cell; scope col):</strong>
-
-Media
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-color-interpolation-filters③④"></a>
-
-[color-interpolation-filters](#propdef-color-interpolation-filters)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| sRGB \| linearRGB
-
-<strong>Column 3 (data cell):</strong>
-
-linearRGB
-
-<strong>Column 4 (data cell):</strong>
-
-All filter primitives
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-no
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified
-
-<strong>Column 10 (data cell):</strong>
-
-visual
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-filter③⑤"></a>
-
-[filter](#propdef-filter)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| \<filter-value-list\>
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-All elements. In SVG, it applies to container elements without the defs element, all graphics elements and the use element.
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-See prose in Animation of Filters.
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified
-
-<strong>Column 10 (data cell):</strong>
-
-visual
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-flood-color②⑦"></a>
-
-[flood-color](#propdef-flood-color)
-
-<strong>Column 2 (data cell):</strong>
-
-\<color\>
-
-<strong>Column 3 (data cell):</strong>
-
-black
-
-<strong>Column 4 (data cell):</strong>
-
-feFlood and feDropShadow elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-as color
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified
-
-<strong>Column 10 (data cell):</strong>
-
-visual
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-flood-opacity②⑥"></a>
-
-[flood-opacity](#propdef-flood-opacity)
-
-<strong>Column 2 (data cell):</strong>
-
-\<alpha-value\>
-
-<strong>Column 3 (data cell):</strong>
-
-1
-
-<strong>Column 4 (data cell):</strong>
-
-feFlood and feDropShadow elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-as number or percentage
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the specified value converted to a number, clamped to the range \[0,1\]
-
-<strong>Column 10 (data cell):</strong>
-
-visual
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-lighting-color②⑦"></a>
-
-[lighting-color](#propdef-lighting-color)
-
-<strong>Column 2 (data cell):</strong>
-
-\<color\>
-
-<strong>Column 3 (data cell):</strong>
-
-white
-
-<strong>Column 4 (data cell):</strong>
-
-feDiffuseLighting and feSpecularLighting elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-as color
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified
-
-<strong>Column 10 (data cell):</strong>
-
-visual
+| Name                | Value                         | Initial   | Applies to                                                                                                                  | Inh. | %ages | Ani­mat­able                         | Canonical order | Com­puted value                                                          | Media  |
+|---------------------|-------------------------------|-----------|-----------------------------------------------------------------------------------------------------------------------------|------|-------|------------------------------------|-----------------|-------------------------------------------------------------------------|--------|
+| <strong><span><a id="ref-for-propdef-color-interpolation-filters③④"></a></span><a href="#propdef-color-interpolation-filters">color-interpolation-filters</a>&#xA;      </strong> | auto \| sRGB \| linearRGB     | linearRGB | All filter primitives                                                                                                       | yes  | n/a   | no                                 | per grammar     | as specified                                                            | visual |
+| <strong><span><a id="ref-for-propdef-filter③⑤"></a></span><a href="#propdef-filter">filter</a>&#xA;      </strong> | none \| \<filter-value-list\> | none      | All elements. In SVG, it applies to container elements without the defs element, all graphics elements and the use element. | no   | n/a   | See prose in Animation of Filters. | per grammar     | as specified                                                            | visual |
+| <strong><span><a id="ref-for-propdef-flood-color②⑦"></a></span><a href="#propdef-flood-color">flood-color</a>&#xA;      </strong> | \<color\>                     | black     | feFlood and feDropShadow elements                                                                                           | no   | n/a   | as color                           | per grammar     | as specified                                                            | visual |
+| <strong><span><a id="ref-for-propdef-flood-opacity②⑥"></a></span><a href="#propdef-flood-opacity">flood-opacity</a>&#xA;      </strong> | \<alpha-value\>               | 1         | feFlood and feDropShadow elements                                                                                           | no   | n/a   | as number or percentage            | per grammar     | the specified value converted to a number, clamped to the range \[0,1\] | visual |
+| <strong><span><a id="ref-for-propdef-lighting-color②⑦"></a></span><a href="#propdef-lighting-color">lighting-color</a>&#xA;      </strong> | \<color\>                     | white     | feDiffuseLighting and feSpecularLighting elements                                                                           | no   | n/a   | as color                           | per grammar     | as specified                                                            | visual |
 
 ## <a id="idl-index"></a>IDL Index
 

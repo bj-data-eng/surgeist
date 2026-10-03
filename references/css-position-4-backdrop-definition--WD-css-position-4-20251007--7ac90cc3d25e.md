@@ -19,7 +19,8 @@ Snapshot SHA-256: 7ac90cc3d25e38d054d28f5899774eb3eb7ce50b8a930fee6530681cab0434
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 2 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 2 source tables are presented as readable Markdown tables or explicit labeled layouts: 2 ordinary table conversions. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 
@@ -517,99 +518,17 @@ To <a id="process-top-layer-removals"></a>process top layer removals, given a <c
 
 ### <a id="overlay"></a>3.4. Controlling the Top Layer: the [overlay](#propdef-overlay) property
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-overlay"></a>overlay
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) auto
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-see prose
+| Field               | Definition                                                                      |
+|---------------------|---------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-overlay"></a>overlay                                                      |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) auto |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | as specified                                                                    |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                     |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | see prose                                                                       |
 
 <a id="ref-for-in-the-top-layer①"></a>
 
@@ -1273,85 +1192,9 @@ Anne van Kesteren; et al. [HTML Standard](https://html.spec.whatwg.org/multipage
 
 ## <a id="property-index"></a>Property Index
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope col):</strong>
-
-Name
-
-<strong>Column 2 (header cell; scope col):</strong>
-
-Value
-
-<strong>Column 3 (header cell; scope col):</strong>
-
-Initial
-
-<strong>Column 4 (header cell; scope col):</strong>
-
-Applies to
-
-<strong>Column 5 (header cell; scope col):</strong>
-
-Inh.
-
-<strong>Column 6 (header cell; scope col):</strong>
-
-%ages
-
-<strong>Column 7 (header cell; scope col):</strong>
-
-Anim­ation type
-
-<strong>Column 8 (header cell; scope col):</strong>
-
-Canonical order
-
-<strong>Column 9 (header cell; scope col):</strong>
-
-Com­puted value
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-overlay①⑦"></a>
-
-[overlay](#propdef-overlay)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| auto
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-see prose
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified
+| Name                | Value        | Initial | Applies to   | Inh. | %ages | Anim­ation type | Canonical order | Com­puted value |
+|---------------------|--------------|---------|--------------|------|-------|----------------|-----------------|----------------|
+| <strong><span><a id="ref-for-propdef-overlay①⑦"></a></span><a href="#propdef-overlay">overlay</a>&#xA;      </strong> | none \| auto | none    | all elements | no   | n/a   | see prose      | per grammar     | as specified   |
 
 ## <a id="issues-index"></a>Issues Index
 

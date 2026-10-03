@@ -19,7 +19,8 @@ Snapshot SHA-256: 7361249cbb73d90e811e6eb7f8cd5bc4de5bbb81c2a7add6d1cbcb9dfd800d
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 23 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 23 source tables are presented as readable Markdown tables or explicit labeled layouts: 16 ordinary table conversions, 7 complex-table layouts. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 - Existing external image/media URLs are resolved against the pinned source. Assets are not downloaded or availability-tested; image-only formulas/diagrams still require their source resources.
@@ -151,149 +152,18 @@ The <a id="box-alignment-properties"></a>box alignment properties in CSS are a s
 
 The following table summarizes the [box alignment properties](#box-alignment-properties) and the display types they can apply to.
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Common
-
-<strong>Column 2 (header cell):</strong>
-
-Axis
-
-<strong>Column 3 (header cell):</strong>
-
-Aligns
-
-<strong>Column 4 (header cell):</strong>
-
-Applies to
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-propdef-justify-content"></a>
-
-[justify-content](#propdef-justify-content)
-
-<strong>Column 2 (data cell):</strong>
-
-main/inline
-
-<strong>Column 3 (data cell; row span 2):</strong>
-
-![](https://www.w3.org/TR/2026/WD-css-align-3-20260130/images/content-example.svg) content within element (effectively adjusts padding)
-
-<strong>Column 4 (data cell; row span 2):</strong>
-
-<a id="ref-for-grid-container"></a>
-
-<a id="ref-for-flex-container"></a>
-
-<a id="ref-for-block-container"></a>
-
-[block containers](https://www.w3.org/TR/css-display-4/#block-container), [flex containers](https://www.w3.org/TR/css-flexbox-1/#flex-container), and [grid containers](https://www.w3.org/TR/css-grid-2/#grid-container)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-propdef-align-content"></a>
-
-[align-content](#propdef-align-content)
-
-<strong>Column 2 (data cell):</strong>
-
-cross/block
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-propdef-justify-self"></a>
-
-[justify-self](#propdef-justify-self)
-
-<strong>Column 2 (data cell):</strong>
-
-inline
-
-<strong>Column 3 (data cell; row span 2):</strong>
-
-![](https://www.w3.org/TR/2026/WD-css-align-3-20260130/images/self-example.svg) element within parent (effectively adjusts margins)
-
-<strong>Column 4 (data cell):</strong>
-
-<a id="ref-for-grid-item"></a>
-
-block-level boxes, absolutely-positioned boxes, and [grid items](https://www.w3.org/TR/css-grid-2/#grid-item)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-propdef-align-self③"></a>
-
-[align-self](#propdef-align-self)
-
-<strong>Column 2 (data cell):</strong>
-
-cross/block
-
-<strong>Column 4 (data cell):</strong>
-
-<a id="ref-for-grid-item①"></a>
-
-<a id="ref-for-flex-item"></a>
-
-absolutely-positioned boxes, [flex items](https://www.w3.org/TR/css-flexbox-1/#flex-item), and [grid items](https://www.w3.org/TR/css-grid-2/#grid-item)
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-propdef-justify-items①"></a>
-
-[justify-items](#propdef-justify-items)
-
-<strong>Column 2 (data cell):</strong>
-
-inline
-
-<strong>Column 3 (data cell; row span 2):</strong>
-
-![](https://www.w3.org/TR/2026/WD-css-align-3-20260130/images/items-example.svg) items inside box (controls child items’ justify-self: auto)
-
-<strong>Column 4 (data cell):</strong>
-
-<a id="ref-for-grid-container①"></a>
-
-<a id="ref-for-block-container①"></a>
-
-[block containers](https://www.w3.org/TR/css-display-4/#block-container) and [grid containers](https://www.w3.org/TR/css-grid-2/#grid-container)
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-propdef-align-items"></a>
-
-[align-items](#propdef-align-items)
-
-<strong>Column 2 (data cell):</strong>
-
-cross/block
-
-<strong>Column 4 (data cell):</strong>
-
-<a id="ref-for-grid-container②"></a>
-
-<a id="ref-for-flex-container①"></a>
-
-[flex containers](https://www.w3.org/TR/css-flexbox-1/#flex-container) and [grid containers](https://www.w3.org/TR/css-grid-2/#grid-container)
+**Table 1**
+
+Representation note: merged header paths are written explicitly; values from merged body cells are repeated wherever they apply.
+
+| Common | Axis | Aligns | Applies to |
+| --- | --- | --- | --- |
+| <a id="ref-for-propdef-justify-content"></a> [justify-content](#propdef-justify-content) | main/inline | ![](https://www.w3.org/TR/2026/WD-css-align-3-20260130/images/content-example.svg) content within element (effectively adjusts padding) | <a id="ref-for-grid-container"></a> <a id="ref-for-flex-container"></a> <a id="ref-for-block-container"></a> [block containers](https://www.w3.org/TR/css-display-4/#block-container), [flex containers](https://www.w3.org/TR/css-flexbox-1/#flex-container), and [grid containers](https://www.w3.org/TR/css-grid-2/#grid-container) |
+| <a id="ref-for-propdef-align-content"></a> [align-content](#propdef-align-content) | cross/block | ![](https://www.w3.org/TR/2026/WD-css-align-3-20260130/images/content-example.svg) content within element (effectively adjusts padding) | [block containers](https://www.w3.org/TR/css-display-4/#block-container), [flex containers](https://www.w3.org/TR/css-flexbox-1/#flex-container), and [grid containers](https://www.w3.org/TR/css-grid-2/#grid-container) |
+| <a id="ref-for-propdef-justify-self"></a> [justify-self](#propdef-justify-self) | inline | ![](https://www.w3.org/TR/2026/WD-css-align-3-20260130/images/self-example.svg) element within parent (effectively adjusts margins) | <a id="ref-for-grid-item"></a> block-level boxes, absolutely-positioned boxes, and [grid items](https://www.w3.org/TR/css-grid-2/#grid-item) |
+| <a id="ref-for-propdef-align-self③"></a> [align-self](#propdef-align-self) | cross/block | ![](https://www.w3.org/TR/2026/WD-css-align-3-20260130/images/self-example.svg) element within parent (effectively adjusts margins) | <a id="ref-for-grid-item①"></a> <a id="ref-for-flex-item"></a> absolutely-positioned boxes, [flex items](https://www.w3.org/TR/css-flexbox-1/#flex-item), and [grid items](https://www.w3.org/TR/css-grid-2/#grid-item) |
+| <a id="ref-for-propdef-justify-items①"></a> [justify-items](#propdef-justify-items) | inline | ![](https://www.w3.org/TR/2026/WD-css-align-3-20260130/images/items-example.svg) items inside box (controls child items’ justify-self: auto) | <a id="ref-for-grid-container①"></a> <a id="ref-for-block-container①"></a> [block containers](https://www.w3.org/TR/css-display-4/#block-container) and [grid containers](https://www.w3.org/TR/css-grid-2/#grid-container) |
+| <a id="ref-for-propdef-align-items"></a> [align-items](#propdef-align-items) | cross/block | ![](https://www.w3.org/TR/2026/WD-css-align-3-20260130/images/items-example.svg) items inside box (controls child items’ justify-self: auto) | <a id="ref-for-grid-container②"></a> <a id="ref-for-flex-container①"></a> [flex containers](https://www.w3.org/TR/css-flexbox-1/#flex-container) and [grid containers](https://www.w3.org/TR/css-grid-2/#grid-container) |
 
 > <strong data-conversion-semantic="note">Note</strong>
 >
@@ -1238,211 +1108,29 @@ For all other elements:
 
 ### <a id="align-justify-content"></a>5.1.  The [justify-content](#propdef-justify-content) and [align-content](#propdef-align-content) Properties
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-align-content"></a>align-content
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-content-position②"></a>
-
-<a id="ref-for-mult-opt①"></a>
-
-<a id="ref-for-typedef-overflow-position②"></a>
-
-<a id="ref-for-typedef-content-distribution①"></a>
-
-<a id="ref-for-typedef-baseline-position①"></a>
-
-<a id="ref-for-comb-one①⑤"></a>
-
-normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<baseline-position\>](#typedef-baseline-position) <a id="ref-for-comb-one①⑥"></a>\| [\<content-distribution\>](#typedef-content-distribution) <a id="ref-for-comb-one①⑦"></a>\| [\<overflow-position\>](#typedef-overflow-position)[?](https://www.w3.org/TR/css-values-4/#mult-opt) [\<content-position\>](#typedef-content-position)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-normal
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-block containers, multicol containers, flex containers, and grid containers
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword(s)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
-
-<strong>Table 3 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-justify-content"></a>justify-content
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-content-position③"></a>
-
-<a id="ref-for-mult-opt②"></a>
-
-<a id="ref-for-typedef-overflow-position③"></a>
-
-<a id="ref-for-typedef-content-distribution②"></a>
-
-<a id="ref-for-comb-one①⑧"></a>
-
-normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<content-distribution\>](#typedef-content-distribution) <a id="ref-for-comb-one①⑨"></a>\| [\<overflow-position\>](#typedef-overflow-position)[?](https://www.w3.org/TR/css-values-4/#mult-opt) \[ [\<content-position\>](#typedef-content-position) <a id="ref-for-comb-one②⓪"></a>\| left <a id="ref-for-comb-one②①"></a>\| right \]
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-normal
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-multicol containers, flex containers, and grid containers
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword(s)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-align-content"></a>align-content                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-content-position②"></a><a id="ref-for-mult-opt①"></a><a id="ref-for-typedef-overflow-position②"></a><a id="ref-for-typedef-content-distribution①"></a><a id="ref-for-typedef-baseline-position①"></a><a id="ref-for-comb-one①⑤"></a>normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<baseline-position\>](#typedef-baseline-position) <a id="ref-for-comb-one①⑥"></a>\| [\<content-distribution\>](#typedef-content-distribution) <a id="ref-for-comb-one①⑦"></a>\| [\<overflow-position\>](#typedef-overflow-position)[?](https://www.w3.org/TR/css-values-4/#mult-opt) [\<content-position\>](#typedef-content-position) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | normal                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | block containers, multicol containers, flex containers, and grid containers                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword(s)                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-justify-content"></a>justify-content                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-content-position③"></a><a id="ref-for-mult-opt②"></a><a id="ref-for-typedef-overflow-position③"></a><a id="ref-for-typedef-content-distribution②"></a><a id="ref-for-comb-one①⑧"></a>normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<content-distribution\>](#typedef-content-distribution) <a id="ref-for-comb-one①⑨"></a>\| [\<overflow-position\>](#typedef-overflow-position)[?](https://www.w3.org/TR/css-values-4/#mult-opt) \[ [\<content-position\>](#typedef-content-position) <a id="ref-for-comb-one②⓪"></a>\| left <a id="ref-for-comb-one②①"></a>\| right \] |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | normal                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | multicol containers, flex containers, and grid containers                                                                                                                                                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword(s)                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 <a id="ref-for-alignment-subject⑤④"></a>
 
@@ -1464,385 +1152,89 @@ For all layout modes, the [alignment subject](#alignment-subject) and [alignment
 
 #### <a id="distribution-block"></a>5.1.1. Block Containers (Including Table Cells)
 
-<strong>Table 4 — structured row/cell transcription</strong>
+<a id="ref-for-alignment-container③⓪"></a>**[Alignment Container](#alignment-container)**
 
-<strong>Row 1</strong>
+<a id="ref-for-block-container③"></a>The [block container](https://www.w3.org/TR/css-display-4/#block-container)’s content box.
 
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-alignment-container③⓪"></a>
-
-[Alignment Container](#alignment-container)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-block-container③"></a>
-
-The [block container](https://www.w3.org/TR/css-display-4/#block-container)’s content box.
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-alignment-subject⑤⑥"></a>
-
-[Alignment Subject(s)](#alignment-subject)
-
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-alignment-subject⑤⑥"></a>**[Alignment Subject(s)](#alignment-subject)**
 
 The entire contents of the block, as a unit.
 
-<strong>Row 3</strong>
+<a id="ref-for-propdef-align-content①⓪"></a>**[align-content](#propdef-align-content) Axis**
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-scroll-container④"></a><a id="ref-for-block-container④"></a><a id="ref-for-typedef-overflow-position④"></a><a id="ref-for-fallback-alignment①②"></a><a id="ref-for-typedef-content-distribution③"></a><a id="ref-for-block-axis⑥"></a>The [block axis](https://www.w3.org/TR/css-writing-modes-4/#block-axis). If a [\<content-distribution\>](#typedef-content-distribution) is specified its [fallback alignment](#fallback-alignment) is used instead. If no [\<overflow-position\>](#typedef-overflow-position) is specified, and the [block container](https://www.w3.org/TR/css-display-4/#block-container) is not a [scroll container](https://www.w3.org/TR/css-overflow-3/#scroll-container), then alignment is safe.
 
-<a id="ref-for-propdef-align-content①⓪"></a>
+<a id="ref-for-propdef-justify-content⑧"></a>**[justify-content](#propdef-justify-content) Axis**
 
-[align-content](#propdef-align-content) Axis
+<a id="ref-for-block-container⑤"></a>Does not apply to and has no effect on [block containers](https://www.w3.org/TR/css-display-4/#block-container).
 
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-valdef-justify-content-normal②"></a>**[normal](#valdef-justify-content-normal) Behavior**
 
-<a id="ref-for-scroll-container④"></a>
+<a id="ref-for-establish-an-independent-formatting-context"></a><a id="ref-for-valdef-justify-content-normal③"></a>All values other than [normal](#valdef-justify-content-normal) force the block container to [establish an independent formatting context](https://www.w3.org/TR/css-display-4/#establish-an-independent-formatting-context).
 
-<a id="ref-for-block-container④"></a>
+<a id="ref-for-propdef-align-content①①"></a><a id="ref-for-propdef-vertical-align②"></a><a id="ref-for-valdef-baseline-shift-top"></a><a id="ref-for-valdef-self-position-start②②"></a><a id="ref-for-valdef-baseline-shift-bottom"></a><a id="ref-for-valdef-self-position-end①③"></a><a id="ref-for-valdef-alignment-baseline-middle"></a><a id="ref-for-valdef-self-position-center①"></a><a id="ref-for-valdef-justify-self-baseline④"></a>For table cells, the behavior of [align-content: normal](#propdef-align-content) depends on the computed value of [vertical-align](https://www.w3.org/TR/CSS2/visudet.html#propdef-vertical-align): [top](https://www.w3.org/TR/css-inline-3/#valdef-baseline-shift-top) makes it behave as [start](#valdef-self-position-start) and [bottom](https://www.w3.org/TR/css-inline-3/#valdef-baseline-shift-bottom) makes it behave as [end](#valdef-self-position-end); otherwise [middle](https://www.w3.org/TR/css-inline-3/#valdef-alignment-baseline-middle) makes it behave as [center](#valdef-self-position-center), and all other values make it behave as [baseline](#valdef-justify-self-baseline). [\[CSS2\]](#biblio-css2)
 
-<a id="ref-for-typedef-overflow-position④"></a>
-
-<a id="ref-for-fallback-alignment①②"></a>
-
-<a id="ref-for-typedef-content-distribution③"></a>
-
-<a id="ref-for-block-axis⑥"></a>
-
-The [block axis](https://www.w3.org/TR/css-writing-modes-4/#block-axis). If a [\<content-distribution\>](#typedef-content-distribution) is specified its [fallback alignment](#fallback-alignment) is used instead. If no [\<overflow-position\>](#typedef-overflow-position) is specified, and the [block container](https://www.w3.org/TR/css-display-4/#block-container) is not a [scroll container](https://www.w3.org/TR/css-overflow-3/#scroll-container), then alignment is safe.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-propdef-justify-content⑧"></a>
-
-[justify-content](#propdef-justify-content) Axis
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-block-container⑤"></a>
-
-Does not apply to and has no effect on [block containers](https://www.w3.org/TR/css-display-4/#block-container).
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-justify-content-normal②"></a>
-
-[normal](#valdef-justify-content-normal) Behavior
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-establish-an-independent-formatting-context"></a>
-
-<a id="ref-for-valdef-justify-content-normal③"></a>
-
-All values other than [normal](#valdef-justify-content-normal) force the block container to [establish an independent formatting context](https://www.w3.org/TR/css-display-4/#establish-an-independent-formatting-context).
-
-<a id="ref-for-propdef-align-content①①"></a>
-
-<a id="ref-for-propdef-vertical-align②"></a>
-
-<a id="ref-for-valdef-baseline-shift-top"></a>
-
-<a id="ref-for-valdef-self-position-start②②"></a>
-
-<a id="ref-for-valdef-baseline-shift-bottom"></a>
-
-<a id="ref-for-valdef-self-position-end①③"></a>
-
-<a id="ref-for-valdef-alignment-baseline-middle"></a>
-
-<a id="ref-for-valdef-self-position-center①"></a>
-
-<a id="ref-for-valdef-justify-self-baseline④"></a>
-
-For table cells, the behavior of [align-content: normal](#propdef-align-content) depends on the computed value of [vertical-align](https://www.w3.org/TR/CSS2/visudet.html#propdef-vertical-align): [top](https://www.w3.org/TR/css-inline-3/#valdef-baseline-shift-top) makes it behave as [start](#valdef-self-position-start) and [bottom](https://www.w3.org/TR/css-inline-3/#valdef-baseline-shift-bottom) makes it behave as [end](#valdef-self-position-end); otherwise [middle](https://www.w3.org/TR/css-inline-3/#valdef-alignment-baseline-middle) makes it behave as [center](#valdef-self-position-center), and all other values make it behave as [baseline](#valdef-justify-self-baseline). [\[CSS2\]](#biblio-css2)
-
-<a id="ref-for-valdef-justify-content-normal④"></a>
-
-<a id="ref-for-valdef-self-position-start②③"></a>
-
-[normal](#valdef-justify-content-normal) otherwise behaves as [start](#valdef-self-position-start).
+<a id="ref-for-valdef-justify-content-normal④"></a><a id="ref-for-valdef-self-position-start②③"></a>[normal](#valdef-justify-content-normal) otherwise behaves as [start](#valdef-self-position-start).
 
 #### <a id="distribution-multicol"></a>5.1.2. Multicol Containers
 
-<strong>Table 5 — structured row/cell transcription</strong>
+<a id="ref-for-alignment-container③①"></a>**[Alignment Container](#alignment-container)**
 
-<strong>Row 1</strong>
+<a id="ref-for-multi-column-container"></a>The [multi-column container](https://www.w3.org/TR/css-multicol-1/#multi-column-container)’s content box.
 
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-alignment-container③①"></a>
-
-[Alignment Container](#alignment-container)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-multi-column-container"></a>
-
-The [multi-column container](https://www.w3.org/TR/css-multicol-1/#multi-column-container)’s content box.
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-alignment-subject⑤⑦"></a>
-
-[Alignment Subject(s)](#alignment-subject)
-
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-alignment-subject⑤⑦"></a>**[Alignment Subject(s)](#alignment-subject)**
 
 The column boxes, with any spacing inserted between column boxes added to the relevant column gaps.
 
-<strong>Row 3</strong>
+<a id="ref-for-propdef-align-content①②"></a>**[align-content](#propdef-align-content) Axis**
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-fallback-alignment①③"></a><a id="ref-for-typedef-content-distribution④"></a><a id="ref-for-block-axis⑦"></a>The [block axis](https://www.w3.org/TR/css-writing-modes-4/#block-axis), treating the column boxes (and any column-spanning elements), as a singular unit. If a [\<content-distribution\>](#typedef-content-distribution) is specified its [fallback alignment](#fallback-alignment) is used instead.
 
-<a id="ref-for-propdef-align-content①②"></a>
+<a id="ref-for-propdef-justify-content⑨"></a>**[justify-content](#propdef-justify-content) Axis**
 
-[align-content](#propdef-align-content) Axis
+<a id="ref-for-inline-axis⑥"></a>The [inline axis](https://www.w3.org/TR/css-writing-modes-4/#inline-axis).
 
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-valdef-justify-content-normal⑤"></a>**[normal](#valdef-justify-content-normal) Behavior**
 
-<a id="ref-for-fallback-alignment①③"></a>
+<a id="ref-for-valdef-align-content-stretch①"></a><a id="ref-for-valdef-justify-content-normal⑥"></a>[normal](#valdef-justify-content-normal) behaves as [stretch](#valdef-align-content-stretch); both are defined as described in the column-sizing rules of [\[CSS-MULTICOL-1\]](#biblio-css-multicol-1).
 
-<a id="ref-for-typedef-content-distribution④"></a>
-
-<a id="ref-for-block-axis⑦"></a>
-
-The [block axis](https://www.w3.org/TR/css-writing-modes-4/#block-axis), treating the column boxes (and any column-spanning elements), as a singular unit. If a [\<content-distribution\>](#typedef-content-distribution) is specified its [fallback alignment](#fallback-alignment) is used instead.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-propdef-justify-content⑨"></a>
-
-[justify-content](#propdef-justify-content) Axis
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-inline-axis⑥"></a>
-
-The [inline axis](https://www.w3.org/TR/css-writing-modes-4/#inline-axis).
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-justify-content-normal⑤"></a>
-
-[normal](#valdef-justify-content-normal) Behavior
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-align-content-stretch①"></a>
-
-<a id="ref-for-valdef-justify-content-normal⑥"></a>
-
-[normal](#valdef-justify-content-normal) behaves as [stretch](#valdef-align-content-stretch); both are defined as described in the column-sizing rules of [\[CSS-MULTICOL-1\]](#biblio-css-multicol-1).
-
-<a id="ref-for-valdef-column-width-auto"></a>
-
-<a id="ref-for-propdef-column-width"></a>
-
-<a id="ref-for-propdef-justify-content①⓪"></a>
-
-<a id="ref-for-valdef-justify-content-normal⑦"></a>
-
-<a id="ref-for-valdef-align-content-stretch②"></a>
-
-In the case of multi-column containers with a non-[auto](https://www.w3.org/TR/css-multicol-2/#valdef-column-width-auto) [column-width](https://www.w3.org/TR/css-multicol-2/#propdef-column-width), [justify-content](#propdef-justify-content) values other than [normal](#valdef-justify-content-normal) or [stretch](#valdef-align-content-stretch) cause the columns to take their specified <a id="ref-for-propdef-column-width①"></a>column-width rather than stretching to fill the container. The column boxes are then aligned as specified by <a id="ref-for-propdef-justify-content①①"></a>justify-content.
+<a id="ref-for-valdef-column-width-auto"></a><a id="ref-for-propdef-column-width"></a><a id="ref-for-propdef-justify-content①⓪"></a><a id="ref-for-valdef-justify-content-normal⑦"></a><a id="ref-for-valdef-align-content-stretch②"></a>In the case of multi-column containers with a non-[auto](https://www.w3.org/TR/css-multicol-2/#valdef-column-width-auto) [column-width](https://www.w3.org/TR/css-multicol-2/#propdef-column-width), [justify-content](#propdef-justify-content) values other than [normal](#valdef-justify-content-normal) or [stretch](#valdef-align-content-stretch) cause the columns to take their specified <a id="ref-for-propdef-column-width①"></a>column-width rather than stretching to fill the container. The column boxes are then aligned as specified by <a id="ref-for-propdef-justify-content①①"></a>justify-content.
 
 #### <a id="distribution-flex"></a>5.1.3. Flex Containers
 
-<strong>Table 6 — structured row/cell transcription</strong>
+<a id="ref-for-alignment-container③②"></a>**[Alignment Container](#alignment-container)**
 
-<strong>Row 1</strong>
+<a id="ref-for-flex-container⑧"></a>The [flex container](https://www.w3.org/TR/css-flexbox-1/#flex-container)’s content box.
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-alignment-subject⑤⑧"></a>**[Alignment Subject(s)](#alignment-subject)**
 
-<a id="ref-for-alignment-container③②"></a>
+<a id="ref-for-flex-line"></a><a id="ref-for-flex-item⑤"></a><a id="ref-for-propdef-justify-content①②"></a>For [justify-content](#propdef-justify-content), the [flex items](https://www.w3.org/TR/css-flexbox-1/#flex-item) in each [flex line](https://www.w3.org/TR/css-flexbox-1/#flex-line).
 
-[Alignment Container](#alignment-container)
+<a id="ref-for-propdef-align-content①③"></a><a id="ref-for-flex-line①"></a><a id="ref-for-multi-line-flex-container"></a>For [align-content](#propdef-align-content), the [flex lines](https://www.w3.org/TR/css-flexbox-1/#flex-line). Note, this only has an effect on [multi-line flex containers](https://www.w3.org/TR/css-flexbox-1/#multi-line-flex-container).
 
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-propdef-align-content①④"></a>**[align-content](#propdef-align-content) Axis**
 
-<a id="ref-for-flex-container⑧"></a>
+<a id="ref-for-cross-axis②"></a>The [cross axis](https://www.w3.org/TR/css-flexbox-1/#cross-axis).
 
-The [flex container](https://www.w3.org/TR/css-flexbox-1/#flex-container)’s content box.
+<a id="ref-for-propdef-justify-content①③"></a>**[justify-content](#propdef-justify-content) Axis**
 
-<strong>Row 2</strong>
+<a id="ref-for-valdef-self-position-flex-start⑤"></a><a id="ref-for-valdef-align-content-stretch③"></a><a id="ref-for-propdef-flex"></a><a id="ref-for-main-axis②"></a><a id="ref-for-propdef-justify-content①④"></a>The [justify-content](#propdef-justify-content) property applies along the [main axis](https://www.w3.org/TR/css-flexbox-1/#main-axis), but since stretching in the <a id="ref-for-main-axis③"></a>main axis is controlled by [flex](https://www.w3.org/TR/css-flexbox-1/#propdef-flex), [stretch](#valdef-align-content-stretch) behaves as [flex-start](#valdef-self-position-flex-start).
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-valdef-justify-content-normal⑧"></a>**[normal](#valdef-justify-content-normal) Behavior**
 
-<a id="ref-for-alignment-subject⑤⑧"></a>
-
-[Alignment Subject(s)](#alignment-subject)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-flex-line"></a>
-
-<a id="ref-for-flex-item⑤"></a>
-
-<a id="ref-for-propdef-justify-content①②"></a>
-
-For [justify-content](#propdef-justify-content), the [flex items](https://www.w3.org/TR/css-flexbox-1/#flex-item) in each [flex line](https://www.w3.org/TR/css-flexbox-1/#flex-line).
-
-<a id="ref-for-propdef-align-content①③"></a>
-
-<a id="ref-for-flex-line①"></a>
-
-<a id="ref-for-multi-line-flex-container"></a>
-
-For [align-content](#propdef-align-content), the [flex lines](https://www.w3.org/TR/css-flexbox-1/#flex-line). Note, this only has an effect on [multi-line flex containers](https://www.w3.org/TR/css-flexbox-1/#multi-line-flex-container).
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-propdef-align-content①④"></a>
-
-[align-content](#propdef-align-content) Axis
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-cross-axis②"></a>
-
-The [cross axis](https://www.w3.org/TR/css-flexbox-1/#cross-axis).
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-propdef-justify-content①③"></a>
-
-[justify-content](#propdef-justify-content) Axis
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-self-position-flex-start⑤"></a>
-
-<a id="ref-for-valdef-align-content-stretch③"></a>
-
-<a id="ref-for-propdef-flex"></a>
-
-<a id="ref-for-main-axis②"></a>
-
-<a id="ref-for-propdef-justify-content①④"></a>
-
-The [justify-content](#propdef-justify-content) property applies along the [main axis](https://www.w3.org/TR/css-flexbox-1/#main-axis), but since stretching in the <a id="ref-for-main-axis③"></a>main axis is controlled by [flex](https://www.w3.org/TR/css-flexbox-1/#propdef-flex), [stretch](#valdef-align-content-stretch) behaves as [flex-start](#valdef-self-position-flex-start).
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-justify-content-normal⑧"></a>
-
-[normal](#valdef-justify-content-normal) Behavior
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-align-content-stretch④"></a>
-
-<a id="ref-for-valdef-justify-content-normal⑨"></a>
-
-[normal](#valdef-justify-content-normal) behaves as [stretch](#valdef-align-content-stretch).
+<a id="ref-for-valdef-align-content-stretch④"></a><a id="ref-for-valdef-justify-content-normal⑨"></a>[normal](#valdef-justify-content-normal) behaves as [stretch](#valdef-align-content-stretch).
 
 See [\[CSS-FLEXBOX-1\]](#biblio-css-flexbox-1) for details.
 
 #### <a id="distribution-grid"></a>5.1.4. Grid Containers
 
-<strong>Table 7 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-alignment-container③③"></a>
-
-[Alignment Container](#alignment-container)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-grid-container③"></a>
-
-The [grid container](https://www.w3.org/TR/css-grid-2/#grid-container)’s content box.
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-alignment-subject⑤⑨"></a>
-
-[Alignment Subject(s)](#alignment-subject)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-collapsed-gutter"></a>
-
-<a id="ref-for-gutter"></a>
-
-<a id="ref-for-grid-track"></a>
-
-The [grid tracks](https://www.w3.org/TR/css-grid-2/#grid-track) in the appropriate axis, with any spacing inserted between tracks added to the relevant [gutters](#gutter), and treating [collapsed gutters](https://www.w3.org/TR/css-grid-1/#collapsed-gutter) as a single opportunity for space insertion.
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-propdef-align-content①⑤"></a>
-
-[align-content](#propdef-align-content) Axis
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-grid-row"></a>
-
-<a id="ref-for-block-axis⑧"></a>
-
-The [block axis](https://www.w3.org/TR/css-writing-modes-4/#block-axis), aligning the [grid rows](https://www.w3.org/TR/css-grid-2/#grid-row).
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-propdef-justify-content①⑤"></a>
-
-[justify-content](#propdef-justify-content) Axis
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-grid-column"></a>
-
-<a id="ref-for-inline-axis⑦"></a>
-
-The [inline axis](https://www.w3.org/TR/css-writing-modes-4/#inline-axis), aligning the [grid columns](https://www.w3.org/TR/css-grid-2/#grid-column).
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-justify-content-normal①⓪"></a>
-
-[normal](#valdef-justify-content-normal) Behavior
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-align-content-stretch⑤"></a>
-
-<a id="ref-for-valdef-justify-content-normal①①"></a>
-
-[normal](#valdef-justify-content-normal) behaves as [stretch](#valdef-align-content-stretch).
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                              |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong><span><a id="ref-for-alignment-container③③"></a></span><a href="#alignment-container">Alignment Container</a>&#xA;&#x9;&#x9;&#x9;&#xA;      </strong> | <a id="ref-for-grid-container③"></a> The [grid container](https://www.w3.org/TR/css-grid-2/#grid-container)’s content box.                                                                                                                                                                                                                                                               |
+| <strong><span><a id="ref-for-alignment-subject⑤⑨"></a></span><a href="#alignment-subject">Alignment Subject(s)</a>&#xA;&#x9;&#x9;&#x9;&#xA;      </strong> | <a id="ref-for-collapsed-gutter"></a><a id="ref-for-gutter"></a><a id="ref-for-grid-track"></a> The [grid tracks](https://www.w3.org/TR/css-grid-2/#grid-track) in the appropriate axis, with any spacing inserted between tracks added to the relevant [gutters](#gutter), and treating [collapsed gutters](https://www.w3.org/TR/css-grid-1/#collapsed-gutter) as a single opportunity for space insertion. |
+| <strong><span><a id="ref-for-propdef-align-content①⑤"></a></span><a href="#propdef-align-content">align-content</a> Axis&#xA;&#x9;&#x9;&#x9;&#xA;      </strong> | <a id="ref-for-grid-row"></a><a id="ref-for-block-axis⑧"></a> The [block axis](https://www.w3.org/TR/css-writing-modes-4/#block-axis), aligning the [grid rows](https://www.w3.org/TR/css-grid-2/#grid-row).                                                                                                                                                                                   |
+| <strong><span><a id="ref-for-propdef-justify-content①⑤"></a></span><a href="#propdef-justify-content">justify-content</a> Axis&#xA;&#x9;&#x9;&#x9;&#xA;      </strong> | <a id="ref-for-grid-column"></a><a id="ref-for-inline-axis⑦"></a> The [inline axis](https://www.w3.org/TR/css-writing-modes-4/#inline-axis), aligning the [grid columns](https://www.w3.org/TR/css-grid-2/#grid-column).                                                                                                                                                                           |
+| <strong><span><a id="ref-for-valdef-justify-content-normal①⓪"></a></span><a href="#valdef-justify-content-normal">normal</a> Behavior&#xA;&#x9;&#x9;&#x9;&#xA;      </strong> | <a id="ref-for-valdef-align-content-stretch⑤"></a><a id="ref-for-valdef-justify-content-normal①①"></a> [normal](#valdef-justify-content-normal) behaves as [stretch](#valdef-align-content-stretch).                                                                                                                                                                                                                                    |
 
 See [\[CSS-GRID-1\]](#biblio-css-grid-1) for details.
 
@@ -1850,103 +1242,17 @@ See [\[CSS-GRID-1\]](#biblio-css-grid-1) for details.
 
 ### <a id="place-content"></a>5.2.  Content-Distribution Shorthand: the [place-content](#propdef-place-content) property
 
-<strong>Table 8 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-place-content"></a>place-content
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-opt③"></a>
-
-<a id="ref-for-propdef-justify-content①⑥"></a>
-
-<a id="ref-for-propdef-align-content①⑥"></a>
-
-[\<'align-content'\>](#propdef-align-content) [\<'justify-content'\>](#propdef-justify-content)[?](https://www.w3.org/TR/css-values-4/#mult-opt)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-normal
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-place-content"></a>place-content                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-opt③"></a><a id="ref-for-propdef-justify-content①⑥"></a><a id="ref-for-propdef-align-content①⑥"></a>[\<'align-content'\>](#propdef-align-content) [\<'justify-content'\>](#propdef-justify-content)[?](https://www.w3.org/TR/css-values-4/#mult-opt) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | normal                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                  |
 
 <a id="ref-for-shorthand-property"></a>
 
@@ -2227,108 +1533,17 @@ See [§ 9.3 Aligning Boxes by Baseline](#align-by-baseline) for additional det
 
 ### <a id="justify-self-property"></a>6.1.  Inline-Axis (or Main-Axis) Self-Alignment: the [justify-self](#propdef-justify-self) property
 
-<strong>Table 9 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-justify-self"></a>justify-self
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-baseline-position③"></a>
-
-<a id="ref-for-typedef-self-position②"></a>
-
-<a id="ref-for-mult-opt④"></a>
-
-<a id="ref-for-typedef-overflow-position⑤"></a>
-
-<a id="ref-for-comb-one②②"></a>
-
-auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<overflow-position\>](#typedef-overflow-position)[?](https://www.w3.org/TR/css-values-4/#mult-opt) \[ normal <a id="ref-for-comb-one②③"></a>\| [\<self-position\>](#typedef-self-position) <a id="ref-for-comb-one②④"></a>\| left <a id="ref-for-comb-one②⑤"></a>\| right \]  
-<a id="ref-for-comb-one②⑥"></a>\| stretch <a id="ref-for-comb-one②⑦"></a>\| [\<baseline-position\>](#typedef-baseline-position)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-block-level boxes, absolutely-positioned boxes, and grid items
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword(s)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-justify-self"></a>justify-self                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-baseline-position③"></a><a id="ref-for-typedef-self-position②"></a><a id="ref-for-mult-opt④"></a><a id="ref-for-typedef-overflow-position⑤"></a><a id="ref-for-comb-one②②"></a>auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<overflow-position\>](#typedef-overflow-position)[?](https://www.w3.org/TR/css-values-4/#mult-opt) \[ normal <a id="ref-for-comb-one②③"></a>\| [\<self-position\>](#typedef-self-position) <a id="ref-for-comb-one②④"></a>\| left <a id="ref-for-comb-one②⑤"></a>\| right \] <br><a id="ref-for-comb-one②⑥"></a>\| stretch <a id="ref-for-comb-one②⑦"></a>\| [\<baseline-position\>](#typedef-baseline-position) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | block-level boxes, absolutely-positioned boxes, and grid items                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword(s)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 
 <a id="ref-for-alignment-subject⑥⑧"></a>
 
@@ -2432,103 +1647,29 @@ Values other than [stretch](#valdef-justify-self-stretch) cause a [width](https:
 
 #### <a id="justify-block"></a>6.1.1. Block-Level Boxes
 
-<strong>Table 10 — structured row/cell transcription</strong>
+<a id="ref-for-propdef-justify-self①⓪"></a>**[justify-self](#propdef-justify-self) Axis**
 
-<strong>Row 1</strong>
+<a id="ref-for-static-position②"></a><a id="ref-for-static-position-containing-block"></a><a id="ref-for-inline-axis①⓪"></a><a id="ref-for-containing-block⑥"></a>The block’s [containing block’s](https://www.w3.org/TR/css-display-4/#containing-block) [inline axis](https://www.w3.org/TR/css-writing-modes-4/#inline-axis), generally. The [static-position containing block](https://www.w3.org/TR/css-position-3/#static-position-containing-block)’s <a id="ref-for-inline-axis①①"></a>inline axis when determining the [static position](https://www.w3.org/TR/css-position-3/#static-position).
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-alignment-container③⑨"></a>**[Alignment Container](#alignment-container)**
 
-<a id="ref-for-propdef-justify-self①⓪"></a>
+<a id="ref-for-writing-mode⑧"></a><a id="ref-for-alignment-container④⓪"></a><a id="ref-for-block-formatting-context"></a><a id="ref-for-containing-block⑦"></a>The box’s [containing block](https://www.w3.org/TR/css-display-4/#containing-block), except that for block-level elements that establish a [block formatting context](https://www.w3.org/TR/css-display-4/#block-formatting-context) and are placed next to a float, the [alignment container](#alignment-container) is reduced by the space taken up by the float, assuming the [writing mode](https://www.w3.org/TR/css-writing-modes-4/#writing-mode) of the <a id="ref-for-containing-block⑧"></a>containing block.
 
-[justify-self](#propdef-justify-self) Axis
+<a id="ref-for-alignment-subject⑥⑨"></a>**[Alignment Subject](#alignment-subject)**
 
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-writing-mode⑨"></a>The block’s margin box, assuming the [writing mode](https://www.w3.org/TR/css-writing-modes-4/#writing-mode) of the block.
 
-<a id="ref-for-static-position②"></a>
-
-<a id="ref-for-static-position-containing-block"></a>
-
-<a id="ref-for-inline-axis①⓪"></a>
-
-<a id="ref-for-containing-block⑥"></a>
-
-The block’s [containing block’s](https://www.w3.org/TR/css-display-4/#containing-block) [inline axis](https://www.w3.org/TR/css-writing-modes-4/#inline-axis), generally. The [static-position containing block](https://www.w3.org/TR/css-position-3/#static-position-containing-block)’s <a id="ref-for-inline-axis①①"></a>inline axis when determining the [static position](https://www.w3.org/TR/css-position-3/#static-position).
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-alignment-container③⑨"></a>
-
-[Alignment Container](#alignment-container)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-writing-mode⑧"></a>
-
-<a id="ref-for-alignment-container④⓪"></a>
-
-<a id="ref-for-block-formatting-context"></a>
-
-<a id="ref-for-containing-block⑦"></a>
-
-The box’s [containing block](https://www.w3.org/TR/css-display-4/#containing-block), except that for block-level elements that establish a [block formatting context](https://www.w3.org/TR/css-display-4/#block-formatting-context) and are placed next to a float, the [alignment container](#alignment-container) is reduced by the space taken up by the float, assuming the [writing mode](https://www.w3.org/TR/css-writing-modes-4/#writing-mode) of the <a id="ref-for-containing-block⑧"></a>containing block.
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-alignment-subject⑥⑨"></a>
-
-[Alignment Subject](#alignment-subject)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-writing-mode⑨"></a>
-
-The block’s margin box, assuming the [writing mode](https://www.w3.org/TR/css-writing-modes-4/#writing-mode) of the block.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-justify-self-normal②"></a>
-
-[normal](#valdef-justify-self-normal) Behavior
-
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-valdef-justify-self-normal②"></a>**[normal](#valdef-justify-self-normal) Behavior**
 
 The box lays out according to the default rules for block layout (see [CSS2.1§10.3](https://www.w3.org/TR/CSS2/visudet.html#Computing_widths_and_margins)).
 
-<strong>Row 5</strong>
+**Other Details**
 
-<strong>Column 1 (header cell):</strong>
-
-Other Details
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-non-replaced③"></a>
-
-<a id="ref-for-valdef-width-stretch"></a>
-
-<a id="ref-for-valdef-width-fit-content①"></a>
-
-<a id="ref-for-valdef-justify-self-normal③"></a>
-
-<a id="ref-for-propdef-justify-self①①"></a>
-
-<a id="ref-for-block-level-box"></a>
-
-<a id="ref-for-automatic-size"></a>
-
-The [automatic size](https://www.w3.org/TR/css-sizing-3/#automatic-size) of a [block-level box](https://www.w3.org/TR/css-display-4/#block-level-box) whose [justify-self](#propdef-justify-self) is not [normal](#valdef-justify-self-normal) is equivalent to [fit-content](https://www.w3.org/TR/css-sizing-4/#valdef-width-fit-content) (rather than e.g. [stretch](https://www.w3.org/TR/css-sizing-4/#valdef-width-stretch), as is typical for a [non-replaced](https://www.w3.org/TR/css-display-4/#non-replaced) <a id="ref-for-block-level-box①"></a>block-level box). Additionally, in terms of CSS2.1 block-level formatting [\[CSS2\]](#biblio-css2), the rules for “over-constrained” computations in [section 10.3.3](https://www.w3.org/TR/CSS2/visudet.html#blockwidth) are ignored in favor of alignment as specified here and the used value of the margin properties are therefore not adjusted to correct for the over-constraint.
+<a id="ref-for-non-replaced③"></a><a id="ref-for-valdef-width-stretch"></a><a id="ref-for-valdef-width-fit-content①"></a><a id="ref-for-valdef-justify-self-normal③"></a><a id="ref-for-propdef-justify-self①①"></a><a id="ref-for-block-level-box"></a><a id="ref-for-automatic-size"></a>The [automatic size](https://www.w3.org/TR/css-sizing-3/#automatic-size) of a [block-level box](https://www.w3.org/TR/css-display-4/#block-level-box) whose [justify-self](#propdef-justify-self) is not [normal](#valdef-justify-self-normal) is equivalent to [fit-content](https://www.w3.org/TR/css-sizing-4/#valdef-width-fit-content) (rather than e.g. [stretch](https://www.w3.org/TR/css-sizing-4/#valdef-width-stretch), as is typical for a [non-replaced](https://www.w3.org/TR/css-display-4/#non-replaced) <a id="ref-for-block-level-box①"></a>block-level box). Additionally, in terms of CSS2.1 block-level formatting [\[CSS2\]](#biblio-css2), the rules for “over-constrained” computations in [section 10.3.3](https://www.w3.org/TR/CSS2/visudet.html#blockwidth) are ignored in favor of alignment as specified here and the used value of the margin properties are therefore not adjusted to correct for the over-constraint.
 
 This property does not apply to floats.
 
-<a id="ref-for-valdef-justify-self-normal④"></a>
-
-Anonymous block boxes always behave as [normal](#valdef-justify-self-normal).
+<a id="ref-for-valdef-justify-self-normal④"></a>Anonymous block boxes always behave as [normal](#valdef-justify-self-normal).
 
 > <strong data-conversion-semantic="example">Example</strong>
 >
@@ -2540,117 +1681,31 @@ Anonymous block boxes always behave as [normal](#valdef-justify-self-normal).
 
 This section describes the effect of [justify-self](#propdef-justify-self) on how the margin box of an absolutely-positioned box is positioned with respect to its (absolute-positioning) containing block.
 
-<strong>Table 11 — structured row/cell transcription</strong>
+<a id="ref-for-propdef-justify-self①③"></a>**[justify-self](#propdef-justify-self) Axis**
 
-<strong>Row 1</strong>
+<a id="ref-for-inline-axis①②"></a>The block’s containing block’s [inline axis](https://www.w3.org/TR/css-writing-modes-4/#inline-axis).
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-alignment-container④①"></a>**[Alignment Container](#alignment-container)**
 
-<a id="ref-for-propdef-justify-self①③"></a>
+<a id="ref-for-static-position-containing-block①"></a><a id="ref-for-static-position③"></a><a id="ref-for-static-position-rectangle"></a><a id="ref-for-valdef-top-auto①"></a><a id="ref-for-writing-mode①⓪"></a><a id="ref-for-propdef-left"></a><a id="ref-for-propdef-bottom"></a><a id="ref-for-propdef-right"></a><a id="ref-for-propdef-top"></a><a id="ref-for-inset-properties"></a><a id="ref-for-containing-block⑨"></a>The box’s [containing block](https://www.w3.org/TR/css-display-4/#containing-block), as modified by the [inset properties](https://www.w3.org/TR/css-logical-1/#inset-properties) ([top](https://www.w3.org/TR/css-position-3/#propdef-top)/[right](https://www.w3.org/TR/css-position-3/#propdef-right)/[bottom](https://www.w3.org/TR/css-position-3/#propdef-bottom)/[left](https://www.w3.org/TR/css-position-3/#propdef-left)), assuming the [writing mode](https://www.w3.org/TR/css-writing-modes-4/#writing-mode) of the <a id="ref-for-containing-block①⓪"></a>containing block. If both inset properties in the relevant axis are [auto](https://www.w3.org/TR/css-position-3/#valdef-top-auto), then use the box’s [static-position rectangle](#static-position-rectangle) (i.e. set both insets to the box’s [static position](https://www.w3.org/TR/css-position-3/#static-position)) and assume the <a id="ref-for-writing-mode①①"></a>writing mode of the [static-position containing block](https://www.w3.org/TR/css-position-3/#static-position-containing-block).
 
-[justify-self](#propdef-justify-self) Axis
+<a id="ref-for-alignment-subject⑦⓪"></a>**[Alignment Subject](#alignment-subject)**
 
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-writing-mode①②"></a>The box’s margin box, assuming the [writing mode](https://www.w3.org/TR/css-writing-modes-4/#writing-mode) of the box.
 
-<a id="ref-for-inline-axis①②"></a>
+<a id="ref-for-valdef-justify-self-normal⑤"></a>**[normal](#valdef-justify-self-normal) Behavior**
 
-The block’s containing block’s [inline axis](https://www.w3.org/TR/css-writing-modes-4/#inline-axis).
+<a id="ref-for-valdef-self-position-start②⑥"></a><a id="ref-for-valdef-justify-self-stretch③"></a>Behaves as [stretch](#valdef-justify-self-stretch) or [start](#valdef-self-position-start), depending on the type of box. See [CSS Positioned Layout 3 § 4 Absolute Positioning Layout Model](https://www.w3.org/TR/css-position-3/#abspos-layout).
 
-<strong>Row 2</strong>
+**Other Details**
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-inset-properties①"></a>In terms of CSS2.1 formatting [\[CSS2\]](#biblio-css2), the rules for “over-constrained” computations in [section 10.3.7](https://www.w3.org/TR/CSS2/visudet.html#abs-non-replaced-width) are ignored in favor of alignment as specified here, and the used value of the [inset properties](https://www.w3.org/TR/css-logical-1/#inset-properties) are not adjusted to correct for the over-constraint.
 
-<a id="ref-for-alignment-container④①"></a>
+<a id="ref-for-valdef-justify-self-stretch④"></a><a id="ref-for-valdef-justify-self-normal⑥"></a><a id="ref-for-fit-content-size"></a><a id="ref-for-valdef-width-auto②"></a>Values other than [stretch](#valdef-justify-self-stretch) or [normal](#valdef-justify-self-normal) cause [non-replaced absolutely-positioned boxes](https://www.w3.org/TR/CSS2/visudet.html#abs-non-replaced-width) to use [fit-content sizing](https://www.w3.org/TR/css-sizing-3/#fit-content-size) for calculating [auto](https://www.w3.org/TR/css-sizing-3/#valdef-width-auto) sizes in the affected axis.
 
-[Alignment Container](#alignment-container)
+<a id="ref-for-valdef-justify-self-stretch⑤"></a>Note that [stretch](#valdef-justify-self-stretch) <em>does</em> cause replaced absolutely-positioned boxes to fill their containing block just as non-replaced ones do.
 
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-static-position-containing-block①"></a>
-
-<a id="ref-for-static-position③"></a>
-
-<a id="ref-for-static-position-rectangle"></a>
-
-<a id="ref-for-valdef-top-auto①"></a>
-
-<a id="ref-for-writing-mode①⓪"></a>
-
-<a id="ref-for-propdef-left"></a>
-
-<a id="ref-for-propdef-bottom"></a>
-
-<a id="ref-for-propdef-right"></a>
-
-<a id="ref-for-propdef-top"></a>
-
-<a id="ref-for-inset-properties"></a>
-
-<a id="ref-for-containing-block⑨"></a>
-
-The box’s [containing block](https://www.w3.org/TR/css-display-4/#containing-block), as modified by the [inset properties](https://www.w3.org/TR/css-logical-1/#inset-properties) ([top](https://www.w3.org/TR/css-position-3/#propdef-top)/[right](https://www.w3.org/TR/css-position-3/#propdef-right)/[bottom](https://www.w3.org/TR/css-position-3/#propdef-bottom)/[left](https://www.w3.org/TR/css-position-3/#propdef-left)), assuming the [writing mode](https://www.w3.org/TR/css-writing-modes-4/#writing-mode) of the <a id="ref-for-containing-block①⓪"></a>containing block. If both inset properties in the relevant axis are [auto](https://www.w3.org/TR/css-position-3/#valdef-top-auto), then use the box’s [static-position rectangle](#static-position-rectangle) (i.e. set both insets to the box’s [static position](https://www.w3.org/TR/css-position-3/#static-position)) and assume the <a id="ref-for-writing-mode①①"></a>writing mode of the [static-position containing block](https://www.w3.org/TR/css-position-3/#static-position-containing-block).
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-alignment-subject⑦⓪"></a>
-
-[Alignment Subject](#alignment-subject)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-writing-mode①②"></a>
-
-The box’s margin box, assuming the [writing mode](https://www.w3.org/TR/css-writing-modes-4/#writing-mode) of the box.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-justify-self-normal⑤"></a>
-
-[normal](#valdef-justify-self-normal) Behavior
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-self-position-start②⑥"></a>
-
-<a id="ref-for-valdef-justify-self-stretch③"></a>
-
-Behaves as [stretch](#valdef-justify-self-stretch) or [start](#valdef-self-position-start), depending on the type of box. See [CSS Positioned Layout 3 § 4 Absolute Positioning Layout Model](https://www.w3.org/TR/css-position-3/#abspos-layout).
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Other Details
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-inset-properties①"></a>
-
-In terms of CSS2.1 formatting [\[CSS2\]](#biblio-css2), the rules for “over-constrained” computations in [section 10.3.7](https://www.w3.org/TR/CSS2/visudet.html#abs-non-replaced-width) are ignored in favor of alignment as specified here, and the used value of the [inset properties](https://www.w3.org/TR/css-logical-1/#inset-properties) are not adjusted to correct for the over-constraint.
-
-<a id="ref-for-valdef-justify-self-stretch④"></a>
-
-<a id="ref-for-valdef-justify-self-normal⑥"></a>
-
-<a id="ref-for-fit-content-size"></a>
-
-<a id="ref-for-valdef-width-auto②"></a>
-
-Values other than [stretch](#valdef-justify-self-stretch) or [normal](#valdef-justify-self-normal) cause [non-replaced absolutely-positioned boxes](https://www.w3.org/TR/CSS2/visudet.html#abs-non-replaced-width) to use [fit-content sizing](https://www.w3.org/TR/css-sizing-3/#fit-content-size) for calculating [auto](https://www.w3.org/TR/css-sizing-3/#valdef-width-auto) sizes in the affected axis.
-
-<a id="ref-for-valdef-justify-self-stretch⑤"></a>
-
-Note that [stretch](#valdef-justify-self-stretch) <em>does</em> cause replaced absolutely-positioned boxes to fill their containing block just as non-replaced ones do.
-
-<a id="ref-for-valdef-top-auto②"></a>
-
-<a id="ref-for-propdef-justify-self①④"></a>
-
-<a id="ref-for-static-position-rectangle①"></a>
+<a id="ref-for-valdef-top-auto②"></a><a id="ref-for-propdef-justify-self①④"></a><a id="ref-for-static-position-rectangle①"></a>
 
 > <strong data-conversion-semantic="note">Note</strong>
 >
@@ -2674,77 +1729,12 @@ This property does not apply to [flex items](https://www.w3.org/TR/css-flexbox-1
 
 #### <a id="justify-grid"></a>6.1.5. Grid Items
 
-<strong>Table 12 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-propdef-justify-self①⑤"></a>
-
-[justify-self](#propdef-justify-self) Axis
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-inline-axis①③"></a>
-
-The grid’s [inline axis](https://www.w3.org/TR/css-writing-modes-4/#inline-axis).
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-alignment-container④②"></a>
-
-[Alignment Container](#alignment-container)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-grid-container④"></a>
-
-<a id="ref-for-writing-mode①③"></a>
-
-<a id="ref-for-grid-area"></a>
-
-<a id="ref-for-grid-item③"></a>
-
-The [grid item’s](https://www.w3.org/TR/css-grid-2/#grid-item) [grid area](https://www.w3.org/TR/css-grid-2/#grid-area), assuming the [writing mode](https://www.w3.org/TR/css-writing-modes-4/#writing-mode) of the [grid container](https://www.w3.org/TR/css-grid-2/#grid-container).
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-alignment-subject⑦①"></a>
-
-[Alignment Subject](#alignment-subject)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-writing-mode①④"></a>
-
-<a id="ref-for-grid-item④"></a>
-
-The [grid item’s](https://www.w3.org/TR/css-grid-2/#grid-item) margin box, assuming the [writing mode](https://www.w3.org/TR/css-writing-modes-4/#writing-mode) of the <a id="ref-for-grid-item⑤"></a>grid item.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-justify-self-normal⑦"></a>
-
-[normal](#valdef-justify-self-normal) Behavior
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-replaced-element"></a>
-
-<a id="ref-for-valdef-self-position-start②⑦"></a>
-
-<a id="ref-for-non-replaced④"></a>
-
-<a id="ref-for-valdef-justify-self-stretch⑥"></a>
-
-Sizes as either [stretch](#valdef-justify-self-stretch) (typical [non-replaced elements](https://www.w3.org/TR/css-display-4/#non-replaced)) or [start](#valdef-self-position-start) (typical [replaced elements](https://www.w3.org/TR/css-display-4/#replaced-element)); see [Grid Item Sizing](https://www.w3.org/TR/css-grid-1/#grid-item-sizing) in [\[CSS-GRID-1\]](#biblio-css-grid-1). The resulting box is then start-aligned.
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong><span><a id="ref-for-propdef-justify-self①⑤"></a></span><a href="#propdef-justify-self">justify-self</a> Axis&#xA;&#x9;&#x9;&#x9;&#xA;      </strong> | <a id="ref-for-inline-axis①③"></a> The grid’s [inline axis](https://www.w3.org/TR/css-writing-modes-4/#inline-axis).                                                                                                                                                                                                                                                                                                                                                                                                                |
+| <strong><span><a id="ref-for-alignment-container④②"></a></span><a href="#alignment-container">Alignment Container</a>&#xA;&#x9;&#x9;&#x9;&#xA;      </strong> | <a id="ref-for-grid-container④"></a><a id="ref-for-writing-mode①③"></a><a id="ref-for-grid-area"></a><a id="ref-for-grid-item③"></a> The [grid item’s](https://www.w3.org/TR/css-grid-2/#grid-item) [grid area](https://www.w3.org/TR/css-grid-2/#grid-area), assuming the [writing mode](https://www.w3.org/TR/css-writing-modes-4/#writing-mode) of the [grid container](https://www.w3.org/TR/css-grid-2/#grid-container).                                                                                                                                                |
+| <strong><span><a id="ref-for-alignment-subject⑦①"></a></span><a href="#alignment-subject">Alignment Subject</a>&#xA;&#x9;&#x9;&#x9;&#xA;      </strong> | <a id="ref-for-writing-mode①④"></a><a id="ref-for-grid-item④"></a> The [grid item’s](https://www.w3.org/TR/css-grid-2/#grid-item) margin box, assuming the [writing mode](https://www.w3.org/TR/css-writing-modes-4/#writing-mode) of the <a id="ref-for-grid-item⑤"></a>grid item.                                                                                                                                                                                                                                                                          |
+| <strong><span><a id="ref-for-valdef-justify-self-normal⑦"></a></span><a href="#valdef-justify-self-normal">normal</a> Behavior&#xA;&#x9;&#x9;&#x9;&#xA;      </strong> | <a id="ref-for-replaced-element"></a><a id="ref-for-valdef-self-position-start②⑦"></a><a id="ref-for-non-replaced④"></a><a id="ref-for-valdef-justify-self-stretch⑥"></a> Sizes as either [stretch](#valdef-justify-self-stretch) (typical [non-replaced elements](https://www.w3.org/TR/css-display-4/#non-replaced)) or [start](#valdef-self-position-start) (typical [replaced elements](https://www.w3.org/TR/css-display-4/#replaced-element)); see [Grid Item Sizing](https://www.w3.org/TR/css-grid-1/#grid-item-sizing) in [\[CSS-GRID-1\]](#biblio-css-grid-1). The resulting box is then start-aligned. |
 
 See [\[CSS-GRID-1\]](#biblio-css-grid-1) for details.
 
@@ -2752,108 +1742,17 @@ See [\[CSS-GRID-1\]](#biblio-css-grid-1) for details.
 
 ### <a id="align-self-property"></a>6.2.  Block-Axis (or Cross-Axis) Self-Alignment: the [align-self](#propdef-align-self) property
 
-<strong>Table 13 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-align-self"></a>align-self
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-baseline-position⑤"></a>
-
-<a id="ref-for-typedef-self-position④"></a>
-
-<a id="ref-for-mult-opt⑤"></a>
-
-<a id="ref-for-typedef-overflow-position⑦"></a>
-
-<a id="ref-for-comb-one②⑧"></a>
-
-auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<overflow-position\>](#typedef-overflow-position)[?](https://www.w3.org/TR/css-values-4/#mult-opt) \[ normal <a id="ref-for-comb-one②⑨"></a>\| [\<self-position\>](#typedef-self-position) \]  
-<a id="ref-for-comb-one③⓪"></a>\| stretch <a id="ref-for-comb-one③①"></a>\| [\<baseline-position\>](#typedef-baseline-position)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-flex items, grid items, and absolutely-positioned boxes
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword(s)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-align-self"></a>align-self                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-baseline-position⑤"></a><a id="ref-for-typedef-self-position④"></a><a id="ref-for-mult-opt⑤"></a><a id="ref-for-typedef-overflow-position⑦"></a><a id="ref-for-comb-one②⑧"></a>auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<overflow-position\>](#typedef-overflow-position)[?](https://www.w3.org/TR/css-values-4/#mult-opt) \[ normal <a id="ref-for-comb-one②⑨"></a>\| [\<self-position\>](#typedef-self-position) \]<br><a id="ref-for-comb-one③⓪"></a>\| stretch <a id="ref-for-comb-one③①"></a>\| [\<baseline-position\>](#typedef-baseline-position) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | flex items, grid items, and absolutely-positioned boxes                                                                                                                                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword(s)                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 <a id="ref-for-alignment-subject⑦②"></a>
 
@@ -2921,123 +1820,31 @@ The [align-self](#propdef-align-self) property does not apply to block-level box
 
 This section describes the effect of [align-self](#propdef-align-self) on how the margin box of an absolutely-positioned box is positioned with respect to its (absolute-positioning) containing block.
 
-<strong>Table 14 — structured row/cell transcription</strong>
+<a id="ref-for-propdef-align-self①④"></a>**[align-self](#propdef-align-self) Axis**
 
-<strong>Row 1</strong>
+<a id="ref-for-static-position④"></a><a id="ref-for-static-position-containing-block②"></a><a id="ref-for-block-axis①①"></a><a id="ref-for-containing-block①①"></a>The box’s [containing block’s](https://www.w3.org/TR/css-display-4/#containing-block) [block axis](https://www.w3.org/TR/css-writing-modes-4/#block-axis), generally. The [static-position containing block](https://www.w3.org/TR/css-position-3/#static-position-containing-block)’s <a id="ref-for-block-axis①②"></a>block axis when determining the [static position](https://www.w3.org/TR/css-position-3/#static-position).
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-alignment-container④⑥"></a>**[Alignment Container](#alignment-container)**
 
-<a id="ref-for-propdef-align-self①④"></a>
+<a id="ref-for-static-position-containing-block③"></a><a id="ref-for-static-position⑤"></a><a id="ref-for-static-position-rectangle②"></a><a id="ref-for-valdef-top-auto④"></a><a id="ref-for-writing-mode①⑤"></a><a id="ref-for-propdef-left①"></a><a id="ref-for-propdef-bottom①"></a><a id="ref-for-propdef-right①"></a><a id="ref-for-propdef-top①"></a><a id="ref-for-inset-properties②"></a><a id="ref-for-containing-block①②"></a>The box’s [containing block](https://www.w3.org/TR/css-display-4/#containing-block), as modified by the [inset properties](https://www.w3.org/TR/css-logical-1/#inset-properties) ([top](https://www.w3.org/TR/css-position-3/#propdef-top)/[right](https://www.w3.org/TR/css-position-3/#propdef-right)/[bottom](https://www.w3.org/TR/css-position-3/#propdef-bottom)/[left](https://www.w3.org/TR/css-position-3/#propdef-left)), assuming the [writing mode](https://www.w3.org/TR/css-writing-modes-4/#writing-mode) of the <a id="ref-for-containing-block①③"></a>containing block. If both inset properties in the relevant axis are [auto](https://www.w3.org/TR/css-position-3/#valdef-top-auto), then use the box’s [static-position rectangle](#static-position-rectangle) (i.e. set both insets to the box’s [static position](https://www.w3.org/TR/css-position-3/#static-position)) and assume the <a id="ref-for-writing-mode①⑥"></a>writing mode of the [static-position containing block](https://www.w3.org/TR/css-position-3/#static-position-containing-block).
 
-[align-self](#propdef-align-self) Axis
+<a id="ref-for-alignment-subject⑦③"></a>**[Alignment Subject](#alignment-subject)**
 
-<strong>Column 2 (data cell):</strong>
+<a id="ref-for-writing-mode①⑦"></a>The box’s margin box, assuming the [writing mode](https://www.w3.org/TR/css-writing-modes-4/#writing-mode) of the box.
 
-<a id="ref-for-static-position④"></a>
+<a id="ref-for-valdef-align-self-normal①"></a>**[normal](#valdef-align-self-normal) Behavior**
 
-<a id="ref-for-static-position-containing-block②"></a>
+<a id="ref-for-valdef-self-position-start②⑧"></a><a id="ref-for-valdef-align-self-stretch①"></a>Behaves as [stretch](#valdef-align-self-stretch) or [start](#valdef-self-position-start), depending on the type of box. See [CSS Positioned Layout 3 § 4 Absolute Positioning Layout Model](https://www.w3.org/TR/css-position-3/#abspos-layout).
 
-<a id="ref-for-block-axis①①"></a>
+**Other Details**
 
-<a id="ref-for-containing-block①①"></a>
+<a id="ref-for-inset-properties③"></a>In terms of CSS2.1 formatting [\[CSS2\]](#biblio-css2), the rules for "over-constrained" computations in [section 10.6.4](https://www.w3.org/TR/CSS2/visudet.html#abs-non-replaced-height) are ignored in favor of alignment as specified here and the used value of the [inset properties](https://www.w3.org/TR/css-logical-1/#inset-properties) are not adjusted to correct for the over-constraint.
 
-The box’s [containing block’s](https://www.w3.org/TR/css-display-4/#containing-block) [block axis](https://www.w3.org/TR/css-writing-modes-4/#block-axis), generally. The [static-position containing block](https://www.w3.org/TR/css-position-3/#static-position-containing-block)’s <a id="ref-for-block-axis①②"></a>block axis when determining the [static position](https://www.w3.org/TR/css-position-3/#static-position).
+<a id="ref-for-valdef-justify-self-stretch⑦"></a><a id="ref-for-valdef-justify-self-normal⑧"></a><a id="ref-for-fit-content-size①"></a><a id="ref-for-valdef-width-auto③"></a>Values other than [stretch](#valdef-justify-self-stretch) or [normal](#valdef-justify-self-normal) cause [non-replaced absolutely-positioned boxes](https://www.w3.org/TR/CSS2/visudet.html#abs-non-replaced-height) to use [fit-content sizing](https://www.w3.org/TR/css-sizing-3/#fit-content-size) for calculating [auto](https://www.w3.org/TR/css-sizing-3/#valdef-width-auto) sizes in the affected axis.
 
-<strong>Row 2</strong>
+<a id="ref-for-valdef-justify-self-stretch⑧"></a>Note that [stretch](#valdef-justify-self-stretch) does cause replaced absolutely-positioned boxes to fill their containing block just as non-replaced ones do.
 
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-alignment-container④⑥"></a>
-
-[Alignment Container](#alignment-container)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-static-position-containing-block③"></a>
-
-<a id="ref-for-static-position⑤"></a>
-
-<a id="ref-for-static-position-rectangle②"></a>
-
-<a id="ref-for-valdef-top-auto④"></a>
-
-<a id="ref-for-writing-mode①⑤"></a>
-
-<a id="ref-for-propdef-left①"></a>
-
-<a id="ref-for-propdef-bottom①"></a>
-
-<a id="ref-for-propdef-right①"></a>
-
-<a id="ref-for-propdef-top①"></a>
-
-<a id="ref-for-inset-properties②"></a>
-
-<a id="ref-for-containing-block①②"></a>
-
-The box’s [containing block](https://www.w3.org/TR/css-display-4/#containing-block), as modified by the [inset properties](https://www.w3.org/TR/css-logical-1/#inset-properties) ([top](https://www.w3.org/TR/css-position-3/#propdef-top)/[right](https://www.w3.org/TR/css-position-3/#propdef-right)/[bottom](https://www.w3.org/TR/css-position-3/#propdef-bottom)/[left](https://www.w3.org/TR/css-position-3/#propdef-left)), assuming the [writing mode](https://www.w3.org/TR/css-writing-modes-4/#writing-mode) of the <a id="ref-for-containing-block①③"></a>containing block. If both inset properties in the relevant axis are [auto](https://www.w3.org/TR/css-position-3/#valdef-top-auto), then use the box’s [static-position rectangle](#static-position-rectangle) (i.e. set both insets to the box’s [static position](https://www.w3.org/TR/css-position-3/#static-position)) and assume the <a id="ref-for-writing-mode①⑥"></a>writing mode of the [static-position containing block](https://www.w3.org/TR/css-position-3/#static-position-containing-block).
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-alignment-subject⑦③"></a>
-
-[Alignment Subject](#alignment-subject)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-writing-mode①⑦"></a>
-
-The box’s margin box, assuming the [writing mode](https://www.w3.org/TR/css-writing-modes-4/#writing-mode) of the box.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-align-self-normal①"></a>
-
-[normal](#valdef-align-self-normal) Behavior
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-self-position-start②⑧"></a>
-
-<a id="ref-for-valdef-align-self-stretch①"></a>
-
-Behaves as [stretch](#valdef-align-self-stretch) or [start](#valdef-self-position-start), depending on the type of box. See [CSS Positioned Layout 3 § 4 Absolute Positioning Layout Model](https://www.w3.org/TR/css-position-3/#abspos-layout).
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Other Details
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-inset-properties③"></a>
-
-In terms of CSS2.1 formatting [\[CSS2\]](#biblio-css2), the rules for "over-constrained" computations in [section 10.6.4](https://www.w3.org/TR/CSS2/visudet.html#abs-non-replaced-height) are ignored in favor of alignment as specified here and the used value of the [inset properties](https://www.w3.org/TR/css-logical-1/#inset-properties) are not adjusted to correct for the over-constraint.
-
-<a id="ref-for-valdef-justify-self-stretch⑦"></a>
-
-<a id="ref-for-valdef-justify-self-normal⑧"></a>
-
-<a id="ref-for-fit-content-size①"></a>
-
-<a id="ref-for-valdef-width-auto③"></a>
-
-Values other than [stretch](#valdef-justify-self-stretch) or [normal](#valdef-justify-self-normal) cause [non-replaced absolutely-positioned boxes](https://www.w3.org/TR/CSS2/visudet.html#abs-non-replaced-height) to use [fit-content sizing](https://www.w3.org/TR/css-sizing-3/#fit-content-size) for calculating [auto](https://www.w3.org/TR/css-sizing-3/#valdef-width-auto) sizes in the affected axis.
-
-<a id="ref-for-valdef-justify-self-stretch⑧"></a>
-
-Note that [stretch](#valdef-justify-self-stretch) does cause replaced absolutely-positioned boxes to fill their containing block just as non-replaced ones do.
-
-<a id="ref-for-valdef-top-auto⑤"></a>
-
-<a id="ref-for-propdef-align-self①⑤"></a>
-
-<a id="ref-for-static-position-rectangle③"></a>
+<a id="ref-for-valdef-top-auto⑤"></a><a id="ref-for-propdef-align-self①⑤"></a><a id="ref-for-static-position-rectangle③"></a>
 
 > <strong data-conversion-semantic="note">Note</strong>
 >
@@ -3049,149 +1856,23 @@ This property does not apply to table cells, because their position and size is 
 
 #### <a id="align-flex"></a>6.2.4. Flex Items
 
-<strong>Table 15 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-propdef-align-self①⑥"></a>
-
-[align-self](#propdef-align-self) Axis
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-cross-axis③"></a>
-
-<a id="ref-for-flex-container①⓪"></a>
-
-The [flex container’s](https://www.w3.org/TR/css-flexbox-1/#flex-container) [cross axis](https://www.w3.org/TR/css-flexbox-1/#cross-axis).
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-alignment-container④⑦"></a>
-
-[Alignment Container](#alignment-container)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-flex-container①①"></a>
-
-<a id="ref-for-writing-mode①⑧"></a>
-
-<a id="ref-for-flex-item⑧"></a>
-
-<a id="ref-for-flex-line②"></a>
-
-The [flex line](https://www.w3.org/TR/css-flexbox-1/#flex-line) the [flex item](https://www.w3.org/TR/css-flexbox-1/#flex-item) is in, assuming the [writing mode](https://www.w3.org/TR/css-writing-modes-4/#writing-mode) of the [flex container](https://www.w3.org/TR/css-flexbox-1/#flex-container).
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-alignment-subject⑦④"></a>
-
-[Alignment Subject](#alignment-subject)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-writing-mode①⑨"></a>
-
-<a id="ref-for-flex-item⑨"></a>
-
-The [flex item’s](https://www.w3.org/TR/css-flexbox-1/#flex-item) margin box, assuming the [writing mode](https://www.w3.org/TR/css-writing-modes-4/#writing-mode) of the <a id="ref-for-flex-item①⓪"></a>flex item.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-align-self-normal②"></a>
-
-[normal](#valdef-align-self-normal) Behavior
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-align-self-stretch②"></a>
-
-Behaves as [stretch](#valdef-align-self-stretch).
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                             |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong><span><a id="ref-for-propdef-align-self①⑥"></a></span><a href="#propdef-align-self">align-self</a> Axis&#xA;&#x9;&#x9;&#x9;&#xA;      </strong> | <a id="ref-for-cross-axis③"></a><a id="ref-for-flex-container①⓪"></a> The [flex container’s](https://www.w3.org/TR/css-flexbox-1/#flex-container) [cross axis](https://www.w3.org/TR/css-flexbox-1/#cross-axis).                                                                                                                                                                                                      |
+| <strong><span><a id="ref-for-alignment-container④⑦"></a></span><a href="#alignment-container">Alignment Container</a>&#xA;&#x9;&#x9;&#x9;&#xA;      </strong> | <a id="ref-for-flex-container①①"></a><a id="ref-for-writing-mode①⑧"></a><a id="ref-for-flex-item⑧"></a><a id="ref-for-flex-line②"></a> The [flex line](https://www.w3.org/TR/css-flexbox-1/#flex-line) the [flex item](https://www.w3.org/TR/css-flexbox-1/#flex-item) is in, assuming the [writing mode](https://www.w3.org/TR/css-writing-modes-4/#writing-mode) of the [flex container](https://www.w3.org/TR/css-flexbox-1/#flex-container). |
+| <strong><span><a id="ref-for-alignment-subject⑦④"></a></span><a href="#alignment-subject">Alignment Subject</a>&#xA;&#x9;&#x9;&#x9;&#xA;      </strong> | <a id="ref-for-writing-mode①⑨"></a><a id="ref-for-flex-item⑨"></a> The [flex item’s](https://www.w3.org/TR/css-flexbox-1/#flex-item) margin box, assuming the [writing mode](https://www.w3.org/TR/css-writing-modes-4/#writing-mode) of the <a id="ref-for-flex-item①⓪"></a>flex item.                                                                                                                                         |
+| <strong><span><a id="ref-for-valdef-align-self-normal②"></a></span><a href="#valdef-align-self-normal">normal</a> Behavior&#xA;&#x9;&#x9;&#x9;&#xA;      </strong> | <a id="ref-for-valdef-align-self-stretch②"></a> Behaves as [stretch](#valdef-align-self-stretch).                                                                                                                                                                                                                                                                                                                  |
 
 See [\[CSS-FLEXBOX-1\]](#biblio-css-flexbox-1) for details.
 
 #### <a id="align-grid"></a>6.2.5. Grid Items
 
-<strong>Table 16 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-propdef-align-self①⑦"></a>
-
-[align-self](#propdef-align-self) Axis
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-block-axis①③"></a>
-
-The grid’s [block axis](https://www.w3.org/TR/css-writing-modes-4/#block-axis).
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-alignment-container④⑧"></a>
-
-[Alignment Container](#alignment-container)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-grid-container⑤"></a>
-
-<a id="ref-for-writing-mode②⓪"></a>
-
-<a id="ref-for-grid-area①"></a>
-
-<a id="ref-for-grid-item⑥"></a>
-
-The [grid item’s](https://www.w3.org/TR/css-grid-2/#grid-item) [grid area](https://www.w3.org/TR/css-grid-2/#grid-area), assuming the [writing mode](https://www.w3.org/TR/css-writing-modes-4/#writing-mode) of the [grid container](https://www.w3.org/TR/css-grid-2/#grid-container).
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-alignment-subject⑦⑤"></a>
-
-[Alignment Subject](#alignment-subject)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-writing-mode②①"></a>
-
-<a id="ref-for-grid-item⑦"></a>
-
-The [grid item’s](https://www.w3.org/TR/css-grid-2/#grid-item) margin box, assuming the [writing mode](https://www.w3.org/TR/css-writing-modes-4/#writing-mode) of the <a id="ref-for-grid-item⑧"></a>grid item.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-align-self-normal③"></a>
-
-[normal](#valdef-align-self-normal) Behavior
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-replaced-element①"></a>
-
-<a id="ref-for-valdef-self-position-start②⑨"></a>
-
-<a id="ref-for-non-replaced⑤"></a>
-
-<a id="ref-for-valdef-justify-self-stretch⑨"></a>
-
-Sizes as either [stretch](#valdef-justify-self-stretch) (typical [non-replaced elements](https://www.w3.org/TR/css-display-4/#non-replaced)) or [start](#valdef-self-position-start) (typical [replaced elements](https://www.w3.org/TR/css-display-4/#replaced-element)); see [Grid Item Sizing](https://www.w3.org/TR/css-grid-1/#grid-item-sizing) in [\[CSS-GRID-1\]](#biblio-css-grid-1). The resulting box is then start-aligned.
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong><span><a id="ref-for-propdef-align-self①⑦"></a></span><a href="#propdef-align-self">align-self</a> Axis&#xA;&#x9;&#x9;&#x9;&#xA;      </strong> | <a id="ref-for-block-axis①③"></a> The grid’s [block axis](https://www.w3.org/TR/css-writing-modes-4/#block-axis).                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| <strong><span><a id="ref-for-alignment-container④⑧"></a></span><a href="#alignment-container">Alignment Container</a>&#xA;&#x9;&#x9;&#x9;&#xA;      </strong> | <a id="ref-for-grid-container⑤"></a><a id="ref-for-writing-mode②⓪"></a><a id="ref-for-grid-area①"></a><a id="ref-for-grid-item⑥"></a> The [grid item’s](https://www.w3.org/TR/css-grid-2/#grid-item) [grid area](https://www.w3.org/TR/css-grid-2/#grid-area), assuming the [writing mode](https://www.w3.org/TR/css-writing-modes-4/#writing-mode) of the [grid container](https://www.w3.org/TR/css-grid-2/#grid-container).                                                                                                                                                |
+| <strong><span><a id="ref-for-alignment-subject⑦⑤"></a></span><a href="#alignment-subject">Alignment Subject</a>&#xA;&#x9;&#x9;&#x9;&#xA;      </strong> | <a id="ref-for-writing-mode②①"></a><a id="ref-for-grid-item⑦"></a> The [grid item’s](https://www.w3.org/TR/css-grid-2/#grid-item) margin box, assuming the [writing mode](https://www.w3.org/TR/css-writing-modes-4/#writing-mode) of the <a id="ref-for-grid-item⑧"></a>grid item.                                                                                                                                                                                                                                                                          |
+| <strong><span><a id="ref-for-valdef-align-self-normal③"></a></span><a href="#valdef-align-self-normal">normal</a> Behavior&#xA;&#x9;&#x9;&#x9;&#xA;      </strong> | <a id="ref-for-replaced-element①"></a><a id="ref-for-valdef-self-position-start②⑨"></a><a id="ref-for-non-replaced⑤"></a><a id="ref-for-valdef-justify-self-stretch⑨"></a> Sizes as either [stretch](#valdef-justify-self-stretch) (typical [non-replaced elements](https://www.w3.org/TR/css-display-4/#non-replaced)) or [start](#valdef-self-position-start) (typical [replaced elements](https://www.w3.org/TR/css-display-4/#replaced-element)); see [Grid Item Sizing](https://www.w3.org/TR/css-grid-1/#grid-item-sizing) in [\[CSS-GRID-1\]](#biblio-css-grid-1). The resulting box is then start-aligned. |
 
 See [\[CSS-GRID-1\]](#biblio-css-grid-1) for details.
 
@@ -3199,103 +1880,17 @@ See [\[CSS-GRID-1\]](#biblio-css-grid-1) for details.
 
 ### <a id="place-self-property"></a>6.3.  Self-Alignment Shorthand: the [place-self](#propdef-place-self) property
 
-<strong>Table 17 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-place-self"></a>place-self
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-opt⑥"></a>
-
-<a id="ref-for-propdef-justify-self①⑦"></a>
-
-<a id="ref-for-propdef-align-self①⑧"></a>
-
-[\<'align-self'\>](#propdef-align-self) [\<'justify-self'\>](#propdef-justify-self)[?](https://www.w3.org/TR/css-values-4/#mult-opt)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                    |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-place-self"></a>place-self                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-opt⑥"></a><a id="ref-for-propdef-justify-self①⑦"></a><a id="ref-for-propdef-align-self①⑧"></a>[\<'align-self'\>](#propdef-align-self) [\<'justify-self'\>](#propdef-justify-self)[?](https://www.w3.org/TR/css-values-4/#mult-opt) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                      |
 
 <a id="ref-for-shorthand-property①"></a>
 
@@ -3493,111 +2088,17 @@ The [align-items](#propdef-align-items) and [justify-items](#propdef-justify-ite
 
 ### <a id="justify-items-property"></a>7.1.  Inline-Axis (or Main-Axis) Default Alignment: the [justify-items](#propdef-justify-items) property
 
-<strong>Table 18 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-justify-items"></a>justify-items
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-all①"></a>
-
-<a id="ref-for-typedef-self-position⑥"></a>
-
-<a id="ref-for-mult-opt⑦"></a>
-
-<a id="ref-for-typedef-overflow-position⑨"></a>
-
-<a id="ref-for-typedef-baseline-position⑦"></a>
-
-<a id="ref-for-comb-one③②"></a>
-
-normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) stretch <a id="ref-for-comb-one③③"></a>\| [\<baseline-position\>](#typedef-baseline-position) <a id="ref-for-comb-one③④"></a>\| [\<overflow-position\>](#typedef-overflow-position)[?](https://www.w3.org/TR/css-values-4/#mult-opt) \[ [\<self-position\>](#typedef-self-position) <a id="ref-for-comb-one③⑤"></a>\| left <a id="ref-for-comb-one③⑥"></a>\| right \] <a id="ref-for-comb-one③⑦"></a>\| legacy <a id="ref-for-comb-one③⑧"></a>\| legacy [&#x26;&#x26;](https://www.w3.org/TR/css-values-4/#comb-all) \[ left <a id="ref-for-comb-one③⑨"></a>\| right <a id="ref-for-comb-one④⓪"></a>\| center \]
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-legacy
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-justify-items-legacy③"></a>
-
-specified keyword(s), except for [legacy](#valdef-justify-items-legacy) (see prose)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-justify-items"></a>justify-items                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-all①"></a><a id="ref-for-typedef-self-position⑥"></a><a id="ref-for-mult-opt⑦"></a><a id="ref-for-typedef-overflow-position⑨"></a><a id="ref-for-typedef-baseline-position⑦"></a><a id="ref-for-comb-one③②"></a>normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) stretch <a id="ref-for-comb-one③③"></a>\| [\<baseline-position\>](#typedef-baseline-position) <a id="ref-for-comb-one③④"></a>\| [\<overflow-position\>](#typedef-overflow-position)[?](https://www.w3.org/TR/css-values-4/#mult-opt) \[ [\<self-position\>](#typedef-self-position) <a id="ref-for-comb-one③⑤"></a>\| left <a id="ref-for-comb-one③⑥"></a>\| right \] <a id="ref-for-comb-one③⑦"></a>\| legacy <a id="ref-for-comb-one③⑧"></a>\| legacy [&#x26;&#x26;](https://www.w3.org/TR/css-values-4/#comb-all) \[ left <a id="ref-for-comb-one③⑨"></a>\| right <a id="ref-for-comb-one④⓪"></a>\| center \] |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | legacy                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-valdef-justify-items-legacy③"></a>specified keyword(s), except for [legacy](#valdef-justify-items-legacy) (see prose)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 <a id="ref-for-propdef-justify-self②⑥"></a>
 
@@ -3632,107 +2133,17 @@ Other values have no special handling and are merely referenced by [justify-self
 
 ### <a id="align-items-property"></a>7.2.  Block-Axis (or Cross-Axis) Default Alignment: the [align-items](#propdef-align-items) property
 
-<strong>Table 19 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-align-items"></a>align-items
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-self-position⑦"></a>
-
-<a id="ref-for-mult-opt⑧"></a>
-
-<a id="ref-for-typedef-overflow-position①⓪"></a>
-
-<a id="ref-for-typedef-baseline-position⑧"></a>
-
-<a id="ref-for-comb-one④①"></a>
-
-normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) stretch <a id="ref-for-comb-one④②"></a>\| [\<baseline-position\>](#typedef-baseline-position) <a id="ref-for-comb-one④③"></a>\| [\<overflow-position\>](#typedef-overflow-position)[?](https://www.w3.org/TR/css-values-4/#mult-opt) [\<self-position\>](#typedef-self-position)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-normal
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword(s)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                        |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-align-items"></a>align-items                                                                                                                                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-self-position⑦"></a><a id="ref-for-mult-opt⑧"></a><a id="ref-for-typedef-overflow-position①⓪"></a><a id="ref-for-typedef-baseline-position⑧"></a><a id="ref-for-comb-one④①"></a>normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) stretch <a id="ref-for-comb-one④②"></a>\| [\<baseline-position\>](#typedef-baseline-position) <a id="ref-for-comb-one④③"></a>\| [\<overflow-position\>](#typedef-overflow-position)[?](https://www.w3.org/TR/css-values-4/#mult-opt) [\<self-position\>](#typedef-self-position) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | normal                                                                                                                                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword(s)                                                                                                                                                                                                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 <a id="ref-for-propdef-align-self②⑥"></a>
 
@@ -3746,103 +2157,17 @@ Values have no special handling and are merely referenced by [align-self](#propd
 
 ### <a id="place-items-property"></a>7.3.  Default Alignment Shorthand: the [place-items](#propdef-place-items) property
 
-<strong>Table 20 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-place-items"></a>place-items
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-opt⑨"></a>
-
-<a id="ref-for-propdef-justify-items⑧"></a>
-
-<a id="ref-for-propdef-align-items⑤"></a>
-
-[\<'align-items'\>](#propdef-align-items) [\<'justify-items'\>](#propdef-justify-items)[?](https://www.w3.org/TR/css-values-4/#mult-opt)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                        |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-place-items"></a>place-items                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-opt⑨"></a><a id="ref-for-propdef-justify-items⑧"></a><a id="ref-for-propdef-align-items⑤"></a>[\<'align-items'\>](#propdef-align-items) [\<'justify-items'\>](#propdef-justify-items)[?](https://www.w3.org/TR/css-values-4/#mult-opt) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                          |
 
 <a id="ref-for-shorthand-property②"></a>
 
@@ -3874,109 +2199,17 @@ The [gap](#propdef-gap) property, and its [row-gap](#propdef-row-gap) and [colum
 
 ### <a id="column-row-gap"></a>8.1.  Row and Column Gutters: the [row-gap](#propdef-row-gap) and [column-gap](#propdef-column-gap) properties
 
-<strong>Table 21 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-row-gap"></a>row-gap, <a id="propdef-column-gap"></a>column-gap
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-length-percentage"></a>
-
-<a id="ref-for-comb-one④④"></a>
-
-normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<length-percentage \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-normal
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-grid-container⑥"></a>
-
-<a id="ref-for-flex-container①②"></a>
-
-<a id="ref-for-multi-column-container①"></a>
-
-[multi-column containers](https://www.w3.org/TR/css-multicol-1/#multi-column-container), [flex containers](https://www.w3.org/TR/css-flexbox-1/#flex-container), [grid containers](https://www.w3.org/TR/css-grid-2/#grid-container)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-see [§ 8.3 Percentages In gap Properties](#gap-percent)
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-length-percentage①"></a>
-
-specified keyword, else a computed [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) value
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value type
+| Field               | Definition                                                                                                                                                                                                                                                                                    |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-row-gap"></a>row-gap, <a id="propdef-column-gap"></a>column-gap                                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-length-percentage"></a><a id="ref-for-comb-one④④"></a>normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<length-percentage \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage)                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | normal                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-grid-container⑥"></a><a id="ref-for-flex-container①②"></a><a id="ref-for-multi-column-container①"></a>[multi-column containers](https://www.w3.org/TR/css-multicol-1/#multi-column-container), [flex containers](https://www.w3.org/TR/css-flexbox-1/#flex-container), [grid containers](https://www.w3.org/TR/css-grid-2/#grid-container) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | see [§ 8.3 Percentages In gap Properties](#gap-percent)                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-typedef-length-percentage①"></a>specified keyword, else a computed [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) value                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value type                                                                                                                                                                                                                                                                        |
 
 <a id="ref-for-valdef-align-content-space-between③"></a>
 
@@ -4104,109 +2337,17 @@ In all cases, the [gutter](#gutter) disappears when it coincides with a [fragmen
 
 ### <a id="gap-shorthand"></a>8.2.  Gap Shorthand: the [gap](#propdef-gap) property
 
-<strong>Table 22 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-gap"></a>gap
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-opt①⓪"></a>
-
-<a id="ref-for-propdef-column-gap⑥"></a>
-
-<a id="ref-for-propdef-row-gap⑥"></a>
-
-[\<'row-gap'\>](#propdef-row-gap) [\<'column-gap'\>](#propdef-column-gap)[?](https://www.w3.org/TR/css-values-4/#mult-opt)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-grid-container⑨"></a>
-
-<a id="ref-for-flex-container①⑥"></a>
-
-<a id="ref-for-multi-column-container④"></a>
-
-[multi-column containers](https://www.w3.org/TR/css-multicol-1/#multi-column-container), [flex containers](https://www.w3.org/TR/css-flexbox-1/#flex-container), [grid containers](https://www.w3.org/TR/css-grid-2/#grid-container)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-refer to corresponding dimension of the content area
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value type
+| Field               | Definition                                                                                                                                                                                                                                                                                    |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-gap"></a>gap                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-opt①⓪"></a><a id="ref-for-propdef-column-gap⑥"></a><a id="ref-for-propdef-row-gap⑥"></a>[\<'row-gap'\>](#propdef-row-gap) [\<'column-gap'\>](#propdef-column-gap)[?](https://www.w3.org/TR/css-values-4/#mult-opt)                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-grid-container⑨"></a><a id="ref-for-flex-container①⑥"></a><a id="ref-for-multi-column-container④"></a>[multi-column containers](https://www.w3.org/TR/css-multicol-1/#multi-column-container), [flex containers](https://www.w3.org/TR/css-flexbox-1/#flex-container), [grid containers](https://www.w3.org/TR/css-grid-2/#grid-container) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | refer to corresponding dimension of the content area                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value type                                                                                                                                                                                                                                                                        |
 
 <a id="ref-for-shorthand-property③"></a>
 
@@ -5170,525 +3311,20 @@ Daniel Glazman; Emilio Cobos Álvarez. [CSS Object Model (CSSOM)](https://www.w3
 
 ## <a id="property-index"></a>Property Index
 
-<strong>Table 23 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope col):</strong>
-
-Name
-
-<strong>Column 2 (header cell; scope col):</strong>
-
-Value
-
-<strong>Column 3 (header cell; scope col):</strong>
-
-Initial
-
-<strong>Column 4 (header cell; scope col):</strong>
-
-Applies to
-
-<strong>Column 5 (header cell; scope col):</strong>
-
-Inh.
-
-<strong>Column 6 (header cell; scope col):</strong>
-
-%ages
-
-<strong>Column 7 (header cell; scope col):</strong>
-
-Anim­ation type
-
-<strong>Column 8 (header cell; scope col):</strong>
-
-Canonical order
-
-<strong>Column 9 (header cell; scope col):</strong>
-
-Com­puted value
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-align-content②⑤"></a>
-
-[align-content](#propdef-align-content)
-
-<strong>Column 2 (data cell):</strong>
-
-normal \| \<baseline-position\> \| \<content-distribution\> \| \<overflow-position\>? \<content-position\>
-
-<strong>Column 3 (data cell):</strong>
-
-normal
-
-<strong>Column 4 (data cell):</strong>
-
-block containers, multicol containers, flex containers, and grid containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword(s)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-align-items⑧"></a>
-
-[align-items](#propdef-align-items)
-
-<strong>Column 2 (data cell):</strong>
-
-normal \| stretch \| \<baseline-position\> \| \<overflow-position\>? \<self-position\>
-
-<strong>Column 3 (data cell):</strong>
-
-normal
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword(s)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-align-self②⑨"></a>
-
-[align-self](#propdef-align-self)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| \<overflow-position\>? \[ normal \| \<self-position\> \]\| stretch \| \<baseline-position\>
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-flex items, grid items, and absolutely-positioned boxes
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword(s)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-column-gap①①"></a>
-
-[column-gap](#propdef-column-gap)
-
-<strong>Column 2 (data cell):</strong>
-
-normal \| \<length-percentage \[0,∞\]\>
-
-<strong>Column 3 (data cell):</strong>
-
-normal
-
-<strong>Column 4 (data cell):</strong>
-
-multi-column containers, flex containers, grid containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-see
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword, else a computed \<length-percentage\> value
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-gap①①"></a>
-
-[gap](#propdef-gap)
-
-<strong>Column 2 (data cell):</strong>
-
-\<'row-gap'\> \<'column-gap'\>?
-
-<strong>Column 3 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 4 (data cell):</strong>
-
-multi-column containers, flex containers, grid containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-refer to corresponding dimension of the content area
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-justify-content②⑤"></a>
-
-[justify-content](#propdef-justify-content)
-
-<strong>Column 2 (data cell):</strong>
-
-normal \| \<content-distribution\> \| \<overflow-position\>? \[ \<content-position\> \| left \| right \]
-
-<strong>Column 3 (data cell):</strong>
-
-normal
-
-<strong>Column 4 (data cell):</strong>
-
-multicol containers, flex containers, and grid containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword(s)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-justify-items①①"></a>
-
-[justify-items](#propdef-justify-items)
-
-<strong>Column 2 (data cell):</strong>
-
-normal \| stretch \| \<baseline-position\> \| \<overflow-position\>? \[ \<self-position\> \| left \| right \] \| legacy \| legacy &#x26;&#x26; \[ left \| right \| center \]
-
-<strong>Column 3 (data cell):</strong>
-
-legacy
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword(s), except for legacy (see prose)
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-justify-self③⓪"></a>
-
-[justify-self](#propdef-justify-self)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| \<overflow-position\>? \[ normal \| \<self-position\> \| left \| right \] \| stretch \| \<baseline-position\>
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-block-level boxes, absolutely-positioned boxes, and grid items
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword(s)
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-place-content②"></a>
-
-[place-content](#propdef-place-content)
-
-<strong>Column 2 (data cell):</strong>
-
-\<'align-content'\> \<'justify-content'\>?
-
-<strong>Column 3 (data cell):</strong>
-
-normal
-
-<strong>Column 4 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 11</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-place-items②"></a>
-
-[place-items](#propdef-place-items)
-
-<strong>Column 2 (data cell):</strong>
-
-\<'align-items'\> \<'justify-items'\>?
-
-<strong>Column 3 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 12</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-place-self②"></a>
-
-[place-self](#propdef-place-self)
-
-<strong>Column 2 (data cell):</strong>
-
-\<'align-self'\> \<'justify-self'\>?
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 13</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-row-gap①①"></a>
-
-[row-gap](#propdef-row-gap)
-
-<strong>Column 2 (data cell):</strong>
-
-normal \| \<length-percentage \[0,∞\]\>
-
-<strong>Column 3 (data cell):</strong>
-
-normal
-
-<strong>Column 4 (data cell):</strong>
-
-multi-column containers, flex containers, grid containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-see
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword, else a computed \<length-percentage\> value
+| Name                | Value                                                                                                                                                                                          | Initial                   | Applies to                                                                  | Inh. | %ages                                                | Anim­ation type         | Canonical order | Com­puted value                                                 |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------|-----------------------------------------------------------------------------|------|------------------------------------------------------|------------------------|-----------------|----------------------------------------------------------------|
+| <strong><span><a id="ref-for-propdef-align-content②⑤"></a></span><a href="#propdef-align-content">align-content</a>&#xA;      </strong> | normal \| \<baseline-position\> \| \<content-distribution\> \| \<overflow-position\>? \<content-position\>                                                                                     | normal                    | block containers, multicol containers, flex containers, and grid containers | no   | n/a                                                  | discrete               | per grammar     | specified keyword(s)                                           |
+| <strong><span><a id="ref-for-propdef-align-items⑧"></a></span><a href="#propdef-align-items">align-items</a>&#xA;      </strong> | normal \| stretch \| \<baseline-position\> \| \<overflow-position\>? \<self-position\>                                                                                                         | normal                    | all elements                                                                | no   | n/a                                                  | discrete               | per grammar     | specified keyword(s)                                           |
+| <strong><span><a id="ref-for-propdef-align-self②⑨"></a></span><a href="#propdef-align-self">align-self</a>&#xA;      </strong> | auto \| \<overflow-position\>? \[ normal \| \<self-position\> \]\| stretch \| \<baseline-position\>                                                                                            | auto                      | flex items, grid items, and absolutely-positioned boxes                     | no   | n/a                                                  | discrete               | per grammar     | specified keyword(s)                                           |
+| <strong><span><a id="ref-for-propdef-column-gap①①"></a></span><a href="#propdef-column-gap">column-gap</a>&#xA;      </strong> | normal \| \<length-percentage \[0,∞\]\>                                                                                                                                                        | normal                    | multi-column containers, flex containers, grid containers                   | no   | see                                                  | by computed value type | per grammar     | specified keyword, else a computed \<length-percentage\> value |
+| <strong><span><a id="ref-for-propdef-gap①①"></a></span><a href="#propdef-gap">gap</a>&#xA;      </strong> | \<'row-gap'\> \<'column-gap'\>?                                                                                                                                                                | see individual properties | multi-column containers, flex containers, grid containers                   | no   | refer to corresponding dimension of the content area | by computed value type | per grammar     | see individual properties                                      |
+| <strong><span><a id="ref-for-propdef-justify-content②⑤"></a></span><a href="#propdef-justify-content">justify-content</a>&#xA;      </strong> | normal \| \<content-distribution\> \| \<overflow-position\>? \[ \<content-position\> \| left \| right \]                                                                                       | normal                    | multicol containers, flex containers, and grid containers                   | no   | n/a                                                  | discrete               | per grammar     | specified keyword(s)                                           |
+| <strong><span><a id="ref-for-propdef-justify-items①①"></a></span><a href="#propdef-justify-items">justify-items</a>&#xA;      </strong> | normal \| stretch \| \<baseline-position\> \| \<overflow-position\>? \[ \<self-position\> \| left \| right \] \| legacy \| legacy &#x26;&#x26; \[ left \| right \| center \] | legacy                    | all elements                                                                | no   | n/a                                                  | discrete               | per grammar     | specified keyword(s), except for legacy (see prose)            |
+| <strong><span><a id="ref-for-propdef-justify-self③⓪"></a></span><a href="#propdef-justify-self">justify-self</a>&#xA;      </strong> | auto \| \<overflow-position\>? \[ normal \| \<self-position\> \| left \| right \] \| stretch \| \<baseline-position\>                                                                          | auto                      | block-level boxes, absolutely-positioned boxes, and grid items              | no   | n/a                                                  | discrete               | per grammar     | specified keyword(s)                                           |
+| <strong><span><a id="ref-for-propdef-place-content②"></a></span><a href="#propdef-place-content">place-content</a>&#xA;      </strong> | \<'align-content'\> \<'justify-content'\>?                                                                                                                                                     | normal                    | see individual properties                                                   | no   | n/a                                                  | discrete               | per grammar     | see individual properties                                      |
+| <strong><span><a id="ref-for-propdef-place-items②"></a></span><a href="#propdef-place-items">place-items</a>&#xA;      </strong> | \<'align-items'\> \<'justify-items'\>?                                                                                                                                                         | see individual properties | all elements                                                                | no   | n/a                                                  | discrete               | per grammar     | see individual properties                                      |
+| <strong><span><a id="ref-for-propdef-place-self②"></a></span><a href="#propdef-place-self">place-self</a>&#xA;      </strong> | \<'align-self'\> \<'justify-self'\>?                                                                                                                                                           | auto                      | see individual properties                                                   | no   | n/a                                                  | discrete               | per grammar     | see individual properties                                      |
+| <strong><span><a id="ref-for-propdef-row-gap①①"></a></span><a href="#propdef-row-gap">row-gap</a>&#xA;      </strong> | normal \| \<length-percentage \[0,∞\]\>                                                                                                                                                        | normal                    | multi-column containers, flex containers, grid containers                   | no   | see                                                  | by computed value type | per grammar     | specified keyword, else a computed \<length-percentage\> value |
 
 ## <a id="issues-index"></a>Issues Index
 

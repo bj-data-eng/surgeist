@@ -19,7 +19,8 @@ Snapshot SHA-256: 0fb91119308e706a5e4df368a91fa3b43cd5fe8cd8f192418b2df0a30ba8a6
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 5 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 6 source tables are presented as readable Markdown tables or explicit labeled layouts: 5 ordinary table conversions, 1 already-readable table. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 - Existing external image/media URLs are resolved against the pinned source. Assets are not downloaded or availability-tested; image-only formulas/diagrams still require their source resources.
@@ -128,109 +129,18 @@ The root element for SVG is the [SVG element](https://www.w3.org/TR/SVG11/struct
 
 The blend mode defines the formula that must be used to mix the colors with the backdrop. This behavior is described in more detail in [Blending](#blending).
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-mix-blend-mode"></a>mix-blend-mode
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-ltblendmodegt"></a>
-
-[\<blend-mode\>](#ltblendmodegt)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-normal
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG11/intro.html#TermContainerElement), [graphics elements](https://www.w3.org/TR/SVG11/intro.html#TermGraphicsElement) and [graphics referencing elements](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermGraphicsReferencingElement). [\[SVG11\]](#biblio-svg11)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                      |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-mix-blend-mode"></a>mix-blend-mode                                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-ltblendmodegt"></a>[\<blend-mode\>](#ltblendmodegt)                                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | normal                                                                                                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG11/intro.html#TermContainerElement), [graphics elements](https://www.w3.org/TR/SVG11/intro.html#TermGraphicsElement) and [graphics referencing elements](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermGraphicsReferencingElement). [\[SVG11\]](#biblio-svg11) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | as specified                                                                                                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                                                                        |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                                                                                                                                                                                                                                                          |
 
 <a id="ref-for-ltblendmodegt①"></a>
 
@@ -510,109 +420,18 @@ For CSS, setting [isolation](#propdef-isolation) to isolate will turn the elemen
 
 By default, elements use the auto keyword which implies that they are not isolated. However operations that cause the creation of stacking context [\[CSS21\]](#biblio-css21) must cause a group to be isolated. These operations are described in ['behavior specific to HTML'](#csscompositingrules_CSS) and ['behavior specific to SVG'](#csscompositingrules_SVG).
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-isolation"></a>isolation
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-isolated-propid"></a>
-
-[\<isolation-mode\>](#isolated-propid)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG11/intro.html#TermContainerElement), [graphics elements](https://www.w3.org/TR/SVG11/intro.html#TermGraphicsElement) and [graphics referencing elements](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermGraphicsReferencingElement). [\[SVG11\]](#biblio-svg11)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                      |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-isolation"></a>isolation                                                                                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-isolated-propid"></a>[\<isolation-mode\>](#isolated-propid)                                                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG11/intro.html#TermContainerElement), [graphics elements](https://www.w3.org/TR/SVG11/intro.html#TermGraphicsElement) and [graphics referencing elements](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermGraphicsReferencingElement). [\[SVG11\]](#biblio-svg11) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | as specified                                                                                                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                                                                        |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                                                                                                                                                                                                                                                          |
 
 <a id="ref-for-isolated-propid①"></a>
 
@@ -655,111 +474,18 @@ Each background layer must blend with the element’s background layer that is b
 
 The description of the [background-blend-mode](#propdef-background-blend-mode) property is as follows:
 
-<strong>Table 3 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-background-blend-mode"></a>background-blend-mode
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma"></a>
-
-<a id="ref-for-ltblendmodegt②"></a>
-
-[\<blend-mode\>](#ltblendmodegt)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-normal
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-All HTML elements
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
+| Field               | Definition                                                                                                                 |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-background-blend-mode"></a>background-blend-mode                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma"></a><a id="ref-for-ltblendmodegt②"></a>[\<blend-mode\>](#ltblendmodegt)[\#](https://www.w3.org/TR/css-values-4/#mult-comma) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | normal                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | All HTML elements                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | as specified                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                   |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                     |
 
 Tests
 
@@ -826,31 +552,11 @@ The [canvas 2d](https://html.spec.whatwg.org/multipage/canvas.html#2dcontext) co
 This property takes the following value:
 
 <a id="propdef-mix"></a>‘globalCompositeOperation’  
-<strong>Table 4 — structured row/cell transcription</strong>
 
-<strong>Row 1</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<em>Value:</em>  
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-compositemode"></a>
-
-<a id="ref-for-ltblendmodegt③"></a>
-
-[\<blend-mode\>](#ltblendmodegt) \| [\<composite-mode\>](#compositemode)
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<em>Initial:</em>  
-
-<strong>Column 2 (data cell):</strong>
-
-source-over
+| Column 1              | Column 2                                                                                                        |
+|-----------------------|-----------------------------------------------------------------------------------------------------------------|
+| <em>Value:</em>   | <a id="ref-for-compositemode"></a><a id="ref-for-ltblendmodegt③"></a> [\<blend-mode\>](#ltblendmodegt) \| [\<composite-mode\>](#compositemode) |
+| <em>Initial:</em>   | source-over                                                                                                     |
 
 <a id="ref-for-compositemode①"></a>
 
@@ -2042,178 +1748,9 @@ Thomas Porter; Tom Duff. Compositing digital images. July 1984.
 
 ## <a id="property-index"></a>Property Index
 
-<strong>Table 6 — structured row/cell transcription</strong>
+| Name                | Value              | Initial | Applies to                                                                                                             | Inh. | %ages | Anim­ation type | Canonical order | Com­puted value | Media  |
+|---------------------|--------------------|---------|------------------------------------------------------------------------------------------------------------------------|------|-------|----------------|-----------------|----------------|--------|
+| <strong><span><a id="ref-for-propdef-background-blend-mode⑤"></a></span><a href="#propdef-background-blend-mode">background-blend-mode</a>&#xA;      </strong> | \<blend-mode\>#    | normal  | All HTML elements                                                                                                      | no   | N/A   | discrete       | per grammar     | as specified   | visual |
+| <strong><span><a id="ref-for-propdef-isolation②"></a></span><a href="#propdef-isolation">isolation</a>&#xA;      </strong> | \<isolation-mode\> | auto    | All elements. In SVG, it applies to container elements, graphics elements and graphics referencing elements. \[SVG11\] | no   | N/A   | discrete       | per grammar     | as specified   | visual |
+| <strong><span><a id="ref-for-propdef-mix-blend-mode①"></a></span><a href="#propdef-mix-blend-mode">mix-blend-mode</a>&#xA;      </strong> | \<blend-mode\>     | normal  | All elements. In SVG, it applies to container elements, graphics elements and graphics referencing elements. \[SVG11\] | no   | N/A   | discrete       | per grammar     | as specified   | visual |
 
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope col):</strong>
-
-Name
-
-<strong>Column 2 (header cell; scope col):</strong>
-
-Value
-
-<strong>Column 3 (header cell; scope col):</strong>
-
-Initial
-
-<strong>Column 4 (header cell; scope col):</strong>
-
-Applies to
-
-<strong>Column 5 (header cell; scope col):</strong>
-
-Inh.
-
-<strong>Column 6 (header cell; scope col):</strong>
-
-%ages
-
-<strong>Column 7 (header cell; scope col):</strong>
-
-Anim­ation type
-
-<strong>Column 8 (header cell; scope col):</strong>
-
-Canonical order
-
-<strong>Column 9 (header cell; scope col):</strong>
-
-Com­puted value
-
-<strong>Column 10 (header cell; scope col):</strong>
-
-Media
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-background-blend-mode⑤"></a>
-
-[background-blend-mode](#propdef-background-blend-mode)
-
-<strong>Column 2 (data cell):</strong>
-
-\<blend-mode\>#
-
-<strong>Column 3 (data cell):</strong>
-
-normal
-
-<strong>Column 4 (data cell):</strong>
-
-All HTML elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified
-
-<strong>Column 10 (data cell):</strong>
-
-visual
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-isolation②"></a>
-
-[isolation](#propdef-isolation)
-
-<strong>Column 2 (data cell):</strong>
-
-\<isolation-mode\>
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-All elements. In SVG, it applies to container elements, graphics elements and graphics referencing elements. \[SVG11\]
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified
-
-<strong>Column 10 (data cell):</strong>
-
-visual
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-mix-blend-mode①"></a>
-
-[mix-blend-mode](#propdef-mix-blend-mode)
-
-<strong>Column 2 (data cell):</strong>
-
-\<blend-mode\>
-
-<strong>Column 3 (data cell):</strong>
-
-normal
-
-<strong>Column 4 (data cell):</strong>
-
-All elements. In SVG, it applies to container elements, graphics elements and graphics referencing elements. \[SVG11\]
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified
-
-<strong>Column 10 (data cell):</strong>
-
-visual

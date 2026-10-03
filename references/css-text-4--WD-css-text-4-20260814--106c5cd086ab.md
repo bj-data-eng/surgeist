@@ -19,7 +19,9 @@ Snapshot SHA-256: 106c5cd086ab23b0edea5aa3ff6876b61cc623154f728aa269b74f0527dba1
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 40 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 44 source tables are presented as readable Markdown tables or explicit labeled layouts: 37 ordinary table conversions, 3 complex-table layouts, 4 already-readable tables. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
+- Live HTML/CSS demonstrations are represented by static source code and text, not equivalent browser appearance. Incidental whitespace in sample-display elements may collapse as in HTML; exact source markup is retained, and true preformatted/code blocks stay literal.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 - Existing external image/media URLs are resolved against the pinned source. Assets are not downloaded or availability-tested; image-only formulas/diagrams still require their source resources.
@@ -215,101 +217,17 @@ For the purpose of determining adjacency for text processing (such as white spac
 
 ### <a id="text-transform-property"></a>2.1. <a id="caps-prop"></a><a id="text-transform"></a> Case Transforms: the [text-transform](#propdef-text-transform) property
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-text-transform"></a>text-transform
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-any"></a>
-
-<a id="ref-for-comb-one"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[capitalize <a id="ref-for-comb-one①"></a>\| uppercase <a id="ref-for-comb-one②"></a>\| lowercase \] [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) full-width <a id="ref-for-comb-any①"></a>\|\| full-size-kana <a id="ref-for-comb-one③"></a>\| math-auto
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-text
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                                                                                                           |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-text-transform"></a>text-transform                                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-any"></a><a id="ref-for-comb-one"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[capitalize <a id="ref-for-comb-one①"></a>\| uppercase <a id="ref-for-comb-one②"></a>\| lowercase \] [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) full-width <a id="ref-for-comb-any①"></a>\|\| full-size-kana <a id="ref-for-comb-one③"></a>\| math-auto |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | text                                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                             |
 
 This property transforms text for styling purposes. It has no effect on the underlying content, and must not affect the content of a plain text copy &#x26; paste operation.
 
@@ -451,103 +369,17 @@ The mappings for [small Kana](#kana-small) to [full-size Kana](#kana-full-size) 
 
 ### <a id="word-space-transform"></a>2.2. <a id="word-boundary-expansion"></a> Expanding Between Words: the [word-space-transform](#propdef-word-space-transform) property
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-word-space-transform"></a>word-space-transform
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-opt"></a>
-
-<a id="ref-for-comb-all"></a>
-
-<a id="ref-for-comb-one④"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[ space <a id="ref-for-comb-one⑤"></a>\| ideographic-space \] [&#x26;&#x26;](https://www.w3.org/TR/css-values-4/#comb-all) auto-phrase[?](https://www.w3.org/TR/css-values-4/#mult-opt)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-text
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                                                                                                       |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-word-space-transform"></a>word-space-transform                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-opt"></a><a id="ref-for-comb-all"></a><a id="ref-for-comb-one④"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[ space <a id="ref-for-comb-one⑤"></a>\| ideographic-space \] [&#x26;&#x26;](https://www.w3.org/TR/css-values-4/#comb-all) auto-phrase[?](https://www.w3.org/TR/css-values-4/#mult-opt) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | text                                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | as specified                                                                                                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                         |
 
 Some languages and writing systems have alternative ways of delimiting words, either using different separating characters, or sometimes no visible character at all. This property allows authors to change the rendering from one style to another without needing to change the markup.
 
@@ -816,107 +648,17 @@ Word space transformation and text transformation happen after [§ 4.3.1 Phase
 
 ## <a id="white-space-property"></a>3.  White Space and Wrapping: the [white-space](#propdef-white-space) property
 
-<strong>Table 3 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-white-space"></a>white-space
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-white-space-trim"></a>
-
-<a id="ref-for-propdef-text-wrap-mode"></a>
-
-<a id="ref-for-comb-any②"></a>
-
-<a id="ref-for-propdef-white-space-collapse"></a>
-
-<a id="ref-for-comb-one⑥"></a>
-
-normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) pre <a id="ref-for-comb-one⑦"></a>\| pre-wrap <a id="ref-for-comb-one⑧"></a>\| pre-line <a id="ref-for-comb-one⑨"></a>\| [\<'white-space-collapse'\>](#propdef-white-space-collapse) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<'text-wrap-mode'\>](#propdef-text-wrap-mode) <a id="ref-for-comb-any③"></a>\|\| [\<'white-space-trim'\>](#propdef-white-space-trim)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-normal
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-text
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-white-space"></a>white-space                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-propdef-white-space-trim"></a><a id="ref-for-propdef-text-wrap-mode"></a><a id="ref-for-comb-any②"></a><a id="ref-for-propdef-white-space-collapse"></a><a id="ref-for-comb-one⑥"></a>normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) pre <a id="ref-for-comb-one⑦"></a>\| pre-wrap <a id="ref-for-comb-one⑧"></a>\| pre-line <a id="ref-for-comb-one⑨"></a>\| [\<'white-space-collapse'\>](#propdef-white-space-collapse) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<'text-wrap-mode'\>](#propdef-text-wrap-mode) <a id="ref-for-comb-any③"></a>\|\| [\<'white-space-trim'\>](#propdef-white-space-trim) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | normal                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | text                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 <a id="ref-for-propdef-white-space-collapse①"></a>
 
@@ -952,121 +694,12 @@ Unless otherwise specified, any omitted [longhand](https://www.w3.org/TR/css-cas
 
 The following table gives the normative mapping of the values of the [shorthand](https://www.w3.org/TR/css-cascade-5/#shorthand-property)’s special keywords to their equivalent [longhand](https://www.w3.org/TR/css-cascade-5/#longhand) values.
 
-<strong>Table 4 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-propdef-white-space①"></a>
-
-[white-space](#propdef-white-space)
-
-<strong>Column 2 (header cell):</strong>
-
-<a id="ref-for-propdef-white-space-collapse②"></a>
-
-[white-space-collapse](#propdef-white-space-collapse)
-
-<strong>Column 3 (header cell):</strong>
-
-<a id="ref-for-propdef-text-wrap-mode②"></a>
-
-[text-wrap-mode](#propdef-text-wrap-mode)
-
-<strong>Column 4 (header cell):</strong>
-
-<a id="ref-for-propdef-white-space-trim②"></a>
-
-[white-space-trim](#propdef-white-space-trim)
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="valdef-white-space-normal"></a>normal
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-white-space-collapse-collapse"></a>
-
-[collapse](#valdef-white-space-collapse-collapse)
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-valdef-text-wrap-mode-wrap"></a>
-
-[wrap](#valdef-text-wrap-mode-wrap)
-
-<strong>Column 4 (data cell):</strong>
-
-none
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="valdef-white-space-pre"></a>pre
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-white-space-collapse-preserve"></a>
-
-[preserve](#valdef-white-space-collapse-preserve)
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-valdef-text-wrap-mode-nowrap"></a>
-
-[nowrap](#valdef-text-wrap-mode-nowrap)
-
-<strong>Column 4 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="valdef-white-space-pre-wrap"></a>pre-wrap
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-white-space-collapse-preserve①"></a>
-
-[preserve](#valdef-white-space-collapse-preserve)
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-valdef-text-wrap-mode-wrap①"></a>
-
-[wrap](#valdef-text-wrap-mode-wrap)
-
-<strong>Column 4 (data cell):</strong>
-
-none
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="valdef-white-space-pre-line"></a>pre-line
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-white-space-collapse-preserve-breaks"></a>
-
-[preserve-breaks](#valdef-white-space-collapse-preserve-breaks)
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-valdef-text-wrap-mode-wrap②"></a>
-
-[wrap](#valdef-text-wrap-mode-wrap)
-
-<strong>Column 4 (data cell):</strong>
-
-none
+| <a id="ref-for-propdef-white-space①"></a>[white-space](#propdef-white-space) | <a id="ref-for-propdef-white-space-collapse②"></a>[white-space-collapse](#propdef-white-space-collapse)           | <a id="ref-for-propdef-text-wrap-mode②"></a>[text-wrap-mode](#propdef-text-wrap-mode) | <a id="ref-for-propdef-white-space-trim②"></a>[white-space-trim](#propdef-white-space-trim) |
+|--------------------------------------------------------|------------------------------------------------------------------------------------|--------------------------------------------------------------|------------------------------------------------------------------|
+| <strong><dfn><span><a id="valdef-white-space-normal"></a></span>normal</dfn>&#xA;&#x9;&#x9;&#x9;&#xA;      </strong>                                    | <a id="ref-for-valdef-white-space-collapse-collapse"></a>[collapse](#valdef-white-space-collapse-collapse)               | <a id="ref-for-valdef-text-wrap-mode-wrap"></a>[wrap](#valdef-text-wrap-mode-wrap)       | none                                                             |
+| <strong><dfn><span><a id="valdef-white-space-pre"></a></span>pre</dfn>&#xA;&#x9;&#x9;&#x9;&#xA;      </strong>                                    | <a id="ref-for-valdef-white-space-collapse-preserve"></a>[preserve](#valdef-white-space-collapse-preserve)               | <a id="ref-for-valdef-text-wrap-mode-nowrap"></a>[nowrap](#valdef-text-wrap-mode-nowrap)   | none                                                             |
+| <strong><dfn><span><a id="valdef-white-space-pre-wrap"></a></span>pre-wrap</dfn>&#xA;&#x9;&#x9;&#x9;&#xA;      </strong>                                    | <a id="ref-for-valdef-white-space-collapse-preserve①"></a>[preserve](#valdef-white-space-collapse-preserve)               | <a id="ref-for-valdef-text-wrap-mode-wrap①"></a>[wrap](#valdef-text-wrap-mode-wrap)       | none                                                             |
+| <strong><dfn><span><a id="valdef-white-space-pre-line"></a></span>pre-line</dfn>&#xA;&#x9;&#x9;&#x9;&#xA;      </strong>                                    | <a id="ref-for-valdef-white-space-collapse-preserve-breaks"></a>[preserve-breaks](#valdef-white-space-collapse-preserve-breaks) | <a id="ref-for-valdef-text-wrap-mode-wrap②"></a>[wrap](#valdef-text-wrap-mode-wrap)       | none                                                             |
 
 <a id="ref-for-preserved-white-space①"></a>
 
@@ -1084,203 +717,14 @@ none
 
 The following informative table summarizes the behavior of various [white-space](#propdef-white-space) values:
 
-<strong>Table 5 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<strong>Column 2 (header cell):</strong>
-
-New Lines
-
-<strong>Column 3 (header cell):</strong>
-
-Spaces and Tabs
-
-<strong>Column 4 (header cell):</strong>
-
-Text Wrapping
-
-<strong>Column 5 (header cell):</strong>
-
-<a id="ref-for-spaces"></a>
-
-End-of-line [spaces](#spaces)
-
-<strong>Column 6 (header cell):</strong>
-
-<a id="ref-for-other-space-separators②"></a>
-
-End-of-line [other space separators](#other-space-separators)
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-white-space-normal"></a>
-
-[normal](#valdef-white-space-normal)
-
-<strong>Column 2 (data cell):</strong>
-
-Collapse
-
-<strong>Column 3 (data cell):</strong>
-
-Collapse
-
-<strong>Column 4 (data cell):</strong>
-
-Wrap
-
-<strong>Column 5 (data cell):</strong>
-
-Remove
-
-<strong>Column 6 (data cell):</strong>
-
-Hang
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-white-space-pre"></a>
-
-[pre](#valdef-white-space-pre)
-
-<strong>Column 2 (data cell):</strong>
-
-Preserve
-
-<strong>Column 3 (data cell):</strong>
-
-Preserve
-
-<strong>Column 4 (data cell):</strong>
-
-No wrap
-
-<strong>Column 5 (data cell):</strong>
-
-Preserve
-
-<strong>Column 6 (data cell):</strong>
-
-No wrap
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-white-space-nowrap"></a>
-
-[nowrap](https://www.w3.org/TR/css-text-3/#valdef-white-space-nowrap)
-
-<strong>Column 2 (data cell):</strong>
-
-Collapse
-
-<strong>Column 3 (data cell):</strong>
-
-Collapse
-
-<strong>Column 4 (data cell):</strong>
-
-No wrap
-
-<strong>Column 5 (data cell):</strong>
-
-Remove
-
-<strong>Column 6 (data cell):</strong>
-
-Hang
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-white-space-pre-wrap"></a>
-
-[pre-wrap](#valdef-white-space-pre-wrap)
-
-<strong>Column 2 (data cell):</strong>
-
-Preserve
-
-<strong>Column 3 (data cell):</strong>
-
-Preserve
-
-<strong>Column 4 (data cell):</strong>
-
-Wrap
-
-<strong>Column 5 (data cell):</strong>
-
-Hang
-
-<strong>Column 6 (data cell):</strong>
-
-Hang
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-white-space-collapse-break-spaces"></a>
-
-[break-spaces](#valdef-white-space-collapse-break-spaces)
-
-<strong>Column 2 (data cell):</strong>
-
-Preserve
-
-<strong>Column 3 (data cell):</strong>
-
-Preserve
-
-<strong>Column 4 (data cell):</strong>
-
-Wrap
-
-<strong>Column 5 (data cell):</strong>
-
-Wrap
-
-<strong>Column 6 (data cell):</strong>
-
-Wrap
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-white-space-pre-line"></a>
-
-[pre-line](#valdef-white-space-pre-line)
-
-<strong>Column 2 (data cell):</strong>
-
-Preserve
-
-<strong>Column 3 (data cell):</strong>
-
-Collapse
-
-<strong>Column 4 (data cell):</strong>
-
-Wrap
-
-<strong>Column 5 (data cell):</strong>
-
-Remove
-
-<strong>Column 6 (data cell):</strong>
-
-Hang
+|                     | New Lines | Spaces and Tabs | Text Wrapping | <a id="ref-for-spaces"></a>End-of-line [spaces](#spaces) | <a id="ref-for-other-space-separators②"></a>End-of-line [other space separators](#other-space-separators) |
+|---------------------|-----------|-----------------|---------------|--------------------------------------------------|----------------------------------------------------------------------------------|
+| <strong><span><a id="ref-for-valdef-white-space-normal"></a></span><a href="#valdef-white-space-normal">normal</a>&#xA;&#x9;&#x9;&#x9;&#x9;&#xA;      </strong> | Collapse  | Collapse        | Wrap          | Remove                                           | Hang                                                                             |
+| <strong><span><a id="ref-for-valdef-white-space-pre"></a></span><a href="#valdef-white-space-pre">pre</a>&#xA;&#x9;&#x9;&#x9;&#x9;&#xA;      </strong> | Preserve  | Preserve        | No wrap       | Preserve                                         | No wrap                                                                          |
+| <strong><span><a id="ref-for-valdef-white-space-nowrap"></a></span><a href="https://www.w3.org/TR/css-text-3/#valdef-white-space-nowrap">nowrap</a>&#xA;&#x9;&#x9;&#x9;&#x9;&#xA;      </strong> | Collapse  | Collapse        | No wrap       | Remove                                           | Hang                                                                             |
+| <strong><span><a id="ref-for-valdef-white-space-pre-wrap"></a></span><a href="#valdef-white-space-pre-wrap">pre-wrap</a>&#xA;&#x9;&#x9;&#x9;&#x9;&#xA;      </strong> | Preserve  | Preserve        | Wrap          | Hang                                             | Hang                                                                             |
+| <strong><span><a id="ref-for-valdef-white-space-collapse-break-spaces"></a></span><a href="#valdef-white-space-collapse-break-spaces">break-spaces</a>&#xA;&#x9;&#x9;&#x9;&#x9;&#xA;      </strong> | Preserve  | Preserve        | Wrap          | Wrap                                             | Wrap                                                                             |
+| <strong><span><a id="ref-for-valdef-white-space-pre-line"></a></span><a href="#valdef-white-space-pre-line">pre-line</a>&#xA;&#x9;&#x9;&#x9;&#x9;&#xA;      </strong> | Preserve  | Collapse        | Wrap          | Remove                                           | Hang                                                                             |
 
 ## <a id="white-space-processing"></a>4.  White Space Processing &#x26; Control Characters
 
@@ -1354,99 +798,17 @@ Carriage returns (U+000D) are treated identically to spaces (U+0020) in all resp
 >
 > <a id="issue-257c8a37"></a> This section is still under discussion and may change in future drafts.
 
-<strong>Table 6 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-white-space-collapse"></a>white-space-collapse
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one①⓪"></a>
-
-collapse [\|](https://www.w3.org/TR/css-values-4/#comb-one) discard <a id="ref-for-comb-one①①"></a>\| preserve <a id="ref-for-comb-one①②"></a>\| preserve-breaks <a id="ref-for-comb-one①③"></a>\| preserve-spaces <a id="ref-for-comb-one①④"></a>\| break-spaces
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-collapse
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-text
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                           |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-white-space-collapse"></a>white-space-collapse                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one①⓪"></a>collapse [\|](https://www.w3.org/TR/css-values-4/#comb-one) discard <a id="ref-for-comb-one①①"></a>\| preserve <a id="ref-for-comb-one①②"></a>\| preserve-breaks <a id="ref-for-comb-one①③"></a>\| preserve-spaces <a id="ref-for-comb-one①④"></a>\| break-spaces |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | collapse                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | text                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                             |
 
 This property specifies whether and how [white space](#white-space-processing) is collapsed. Values have the following meanings, which must be interpreted according to the [White Space Processing Rules](#white-space-rules):
 
@@ -1545,105 +907,17 @@ This value directs user agents to “discard” all white space in the element.
 
 ### <a id="white-space-trim"></a>4.2. <a id="text-space-trim"></a> White Space Trimming: the [white-space-trim](#propdef-white-space-trim) property
 
-<strong>Table 7 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-white-space-trim"></a>white-space-trim
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-any④"></a>
-
-<a id="ref-for-comb-one①⑤"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) discard-before [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) discard-after <a id="ref-for-comb-any⑤"></a>\|\| discard-inner
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-block-container"></a>
-
-<a id="ref-for-inline-box②"></a>
-
-[inline boxes](https://www.w3.org/TR/css-display-4/#inline-box) and [block containers](https://www.w3.org/TR/css-display-4/#block-container)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword(s)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                            |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-white-space-trim"></a>white-space-trim                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-any④"></a><a id="ref-for-comb-one①⑤"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) discard-before [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) discard-after <a id="ref-for-comb-any⑤"></a>\|\| discard-inner |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-block-container"></a><a id="ref-for-inline-box②"></a>[inline boxes](https://www.w3.org/TR/css-display-4/#inline-box) and [block containers](https://www.w3.org/TR/css-display-4/#block-container)                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword(s)                                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                              |
 
 This property allows authors to specify trimming behavior at the beginning and end of a box. Values have the following meanings:
 
@@ -2193,103 +1467,17 @@ When [white-space-collapse](#propdef-white-space-collapse) is [collapse](#valdef
 
 ### <a id="tab-size-property"></a>4.4. <a id="tab-size"></a> Tab Character Size: the [tab-size](#propdef-tab-size) property
 
-<strong>Table 8 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-tab-size"></a>tab-size
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value"></a>
-
-<a id="ref-for-comb-one①⑥"></a>
-
-<a id="ref-for-number-value"></a>
-
-[\<number \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#number-value) [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<length \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#length-value)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-8
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-text
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-the specified number or absolute length
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value type
+| Field               | Definition                                                                                                                                                                                                                                                |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-tab-size"></a>tab-size                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-length-value"></a><a id="ref-for-comb-one①⑥"></a><a id="ref-for-number-value"></a>[\<number \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#number-value) [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<length \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#length-value) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 8                                                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | text                                                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | the specified number or absolute length                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value type                                                                                                                                                                                                                                    |
 
 <a id="ref-for-preserved-white-space⑨"></a>
 
@@ -2337,99 +1525,17 @@ Where text is allowed to wrap is controlled by the [line-breaking rules and cont
 
 ### <a id="text-wrap-mode"></a>5.1.  Deciding Whether to Wrap: the [text-wrap-mode](#propdef-text-wrap-mode) property
 
-<strong>Table 9 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-text-wrap-mode"></a>text-wrap-mode
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one①⑦"></a>
-
-wrap [\|](https://www.w3.org/TR/css-values-4/#comb-one) nowrap
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-wrap
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-text
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                        |
+|---------------------|-----------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-text-wrap-mode"></a>text-wrap-mode                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one①⑦"></a>wrap [\|](https://www.w3.org/TR/css-values-4/#comb-one) nowrap |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | wrap                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | text                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                 |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                       |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                          |
 
 <a id="ref-for-inline-level"></a>
 
@@ -2491,101 +1597,17 @@ Regardless of the [text-wrap-mode](#propdef-text-wrap-mode) value, [preserved](#
 
 ### <a id="wrap-inside"></a>5.2.  Controlling Breaks Within Boxes: the [wrap-inside](#propdef-wrap-inside) property
 
-<strong>Table 10 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-wrap-inside"></a>wrap-inside
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one①⑧"></a>
-
-auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) avoid
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-inline-box③"></a>
-
-[inline boxes](https://www.w3.org/TR/css-display-4/#inline-box)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                         |
+|---------------------|------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-wrap-inside"></a>wrap-inside                                                     |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one①⑧"></a>auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) avoid   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-inline-box③"></a>[inline boxes](https://www.w3.org/TR/css-display-4/#inline-box) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                  |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                        |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                           |
 
 <a id="valdef-wrap-inside-auto"></a>auto  
 Lines may break at allowed break points within the box, as determined by the line-breaking rules in effect.
@@ -2653,103 +1675,17 @@ If boxes with [avoid](#valdef-wrap-inside-avoid) are nested and the UA must brea
 
 ### <a id="wrap-before"></a>5.3.  Controlling Breaks Between Boxes: the [wrap-before](#propdef-wrap-before)/[wrap-after](#propdef-wrap-after) properties
 
-<strong>Table 11 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-wrap-before"></a>wrap-before, <a id="propdef-wrap-after"></a>wrap-after
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one①⑨"></a>
-
-auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) avoid <a id="ref-for-comb-one②⓪"></a>\| avoid-line <a id="ref-for-comb-one②①"></a>\| avoid-flex <a id="ref-for-comb-one②②"></a>\| line <a id="ref-for-comb-one②③"></a>\| flex
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-flex-item"></a>
-
-<a id="ref-for-inline-level①"></a>
-
-[inline-level](https://www.w3.org/TR/css-display-4/#inline-level) boxes and [flex items](https://www.w3.org/TR/css-flexbox-1/#flex-item)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                               |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-wrap-before"></a>wrap-before, <a id="propdef-wrap-after"></a>wrap-after                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one①⑨"></a>auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) avoid <a id="ref-for-comb-one②⓪"></a>\| avoid-line <a id="ref-for-comb-one②①"></a>\| avoid-flex <a id="ref-for-comb-one②②"></a>\| line <a id="ref-for-comb-one②③"></a>\| flex |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-flex-item"></a><a id="ref-for-inline-level①"></a>[inline-level](https://www.w3.org/TR/css-display-4/#inline-level) boxes and [flex items](https://www.w3.org/TR/css-flexbox-1/#flex-item)                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                 |
 
 <a id="ref-for-flex-line"></a>
 
@@ -2803,103 +1739,17 @@ Forced line breaks on [inline-level](https://www.w3.org/TR/css-display-4/#inline
 
 ### <a id="text-wrap-style"></a>5.4.  Selecting How to Wrap: the [text-wrap-style](#propdef-text-wrap-style) property
 
-<strong>Table 12 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-text-wrap-style"></a>text-wrap-style
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one②④"></a>
-
-auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) balance <a id="ref-for-comb-one②⑤"></a>\| stable <a id="ref-for-comb-one②⑥"></a>\| pretty <a id="ref-for-comb-one②⑦"></a>\| avoid-short-last-line
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-inline-formatting-context①"></a>
-
-<a id="ref-for-block-container③"></a>
-
-[block containers](https://www.w3.org/TR/css-display-4/#block-container) hat establish an [inline formatting context](https://www.w3.org/TR/css-display-4/#inline-formatting-context)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                  |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-text-wrap-style"></a>text-wrap-style                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one②④"></a>auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) balance <a id="ref-for-comb-one②⑤"></a>\| stable <a id="ref-for-comb-one②⑥"></a>\| pretty <a id="ref-for-comb-one②⑦"></a>\| avoid-short-last-line                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-inline-formatting-context①"></a><a id="ref-for-block-container③"></a>[block containers](https://www.w3.org/TR/css-display-4/#block-container) hat establish an [inline formatting context](https://www.w3.org/TR/css-display-4/#inline-formatting-context) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                    |
 
 <a id="ref-for-propdef-text-wrap-mode⑧"></a>
 
@@ -3059,103 +1909,17 @@ Specifies the UA <em>should</em> avoid excessively short last lines, and is expe
 
 ### <a id="text-wrap-shorthand"></a>5.5.  Joint Wrapping Control: the [text-wrap](#propdef-text-wrap) shorthand property
 
-<strong>Table 13 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-text-wrap"></a>text-wrap
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-text-wrap-style⑥"></a>
-
-<a id="ref-for-comb-any⑥"></a>
-
-<a id="ref-for-propdef-text-wrap-mode⑨"></a>
-
-[\<'text-wrap-mode'\>](#propdef-text-wrap-mode) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<'text-wrap-style'\>](#propdef-text-wrap-style)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-wrap
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
+| Field               | Definition                                                                                                                                                                                                      |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-text-wrap"></a>text-wrap                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-propdef-text-wrap-style⑥"></a><a id="ref-for-comb-any⑥"></a><a id="ref-for-propdef-text-wrap-mode⑨"></a>[\<'text-wrap-mode'\>](#propdef-text-wrap-mode) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<'text-wrap-style'\>](#propdef-text-wrap-style) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | wrap                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                       |
 
 <a id="ref-for-propdef-text-wrap-mode①⓪"></a>
 
@@ -3217,99 +1981,17 @@ While CSS does not fully define where [soft wrap opportunities](#soft-wrap-oppor
 
 ### <a id="word-break-property"></a>6.1. <a id="word-break"></a> Breaking Rules for Letters: the [word-break](#propdef-word-break) property
 
-<strong>Table 14 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-word-break"></a>word-break
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one②⑧"></a>
-
-normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) break-all <a id="ref-for-comb-one②⑨"></a>\| keep-all <a id="ref-for-comb-one③⓪"></a>\| manual <a id="ref-for-comb-one③①"></a>\| auto-phrase <a id="ref-for-comb-one③②"></a>\| break-word
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-normal
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-text
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                            |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-word-break"></a>word-break                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one②⑧"></a>normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) break-all <a id="ref-for-comb-one②⑨"></a>\| keep-all <a id="ref-for-comb-one③⓪"></a>\| manual <a id="ref-for-comb-one③①"></a>\| auto-phrase <a id="ref-for-comb-one③②"></a>\| break-word |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | normal                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | text                                                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                              |
 
 <a id="ref-for-soft-wrap-opportunity②⓪"></a>
 
@@ -3570,25 +2252,35 @@ Symbols that line-break the same way as letters of a particular category are aff
 >
 > Alternatively, in user agents that support detection of phrases boundaries in Japanese, the same results can be achieved automatically by using [word-break: auto-phrase](#propdef-word-break) (assuming the [content language](#content-language) is specified).
 >
-> <strong>Table 15 — structured row/cell transcription</strong>
 >
-> <strong>Row 1</strong>
+> These are static transcriptions of the source’s live browser demonstration. The “browser” text below is the source content, not a measured rendering. Original demonstration HTML/CSS is included so clipping, direction, and line-breaking are not lost. See the [source demonstration](https://www.w3.org/TR/2026/WD-css-text-4-20260814/#jp-title-break).
 >
-> <strong>Column 1 (header cell):</strong>
+> **Demonstration stylesheet from the source**
 >
-> Sample markup and style rule
+> The source places these demonstration cells inside the `jp-title-break` container.
 >
-> <strong>Column 2 (header cell):</strong>
+> ```css
+> #jp-title-break td samp,
+> #jp-title-break td pre {
+> 	font-size: 1.5em;
+> 	width: 6em;
+> 	line-height: 2;
+> 	padding: 0.5em 1em;
+> 	display: block;
+> 	margin: auto;
+> 	border: solid gray 1px;
+> 	color: black;
+> 	background: white;
+> }
+> ```
 >
-> Expected rendering
+> ```css
+> samp[lang="ja"] { font-family: "MS Gothic", "Osaka-Mono", monospace }
+> ```
 >
-> <strong>Column 3 (header cell):</strong>
+> **Example 1**
 >
-> Result in your browser
->
-> <strong>Row 2</strong>
->
-> <strong>Column 1 (header cell; scope row):</strong>
+> **Sample markup and style rule**
 >
 > ```text
 > <h1>
@@ -3602,24 +2294,30 @@ Symbols that line-break the same way as letters of a particular category are aff
 > }
 > ```
 >
-> <strong>Column 2 (data cell):</strong>
+> **Expected rendering**
 >
 > ```text
 > 窓ぎわのトッ
 > トちゃん
 > ```
 >
-> <strong>Column 3 (data cell):</strong>
+> **Result in your browser**
 >
 > ```text
-> 
-> 							窓ぎわのトットちゃん
-> 						
+> 窓ぎわのトットちゃん
 > ```
 >
-> <strong>Row 3</strong>
+> **Original browser-demonstration HTML**
 >
-> <strong>Column 1 (header cell; scope row):</strong>
+> ```html
+> <samp lang="ja">
+> 							窓ぎわの<wbr>トットちゃん
+> 						</wbr></samp>
+> ```
+>
+> **Example 2**
+>
+> **Sample markup and style rule**
 >
 > ```text
 > <h1>
@@ -3633,24 +2331,30 @@ Symbols that line-break the same way as letters of a particular category are aff
 > }
 > ```
 >
-> <strong>Column 2 (data cell):</strong>
+> **Expected rendering**
 >
 > ```text
 > 窓ぎわの
 > トットちゃん
 > ```
 >
-> <strong>Column 3 (data cell):</strong>
+> **Result in your browser**
 >
 > ```text
-> 
-> 							窓ぎわのトットちゃん
-> 						
+> 窓ぎわのトットちゃん
 > ```
 >
-> <strong>Row 4</strong>
+> **Original browser-demonstration HTML**
 >
-> <strong>Column 1 (header cell; scope row):</strong>
+> ```html
+> <samp lang="ja" style="word-break:keep-all">
+> 							窓ぎわの<wbr>トットちゃん
+> 						</wbr></samp>
+> ```
+>
+> **Example 3**
+>
+> **Sample markup and style rule**
 >
 > ```text
 > <h1 lang=ja>
@@ -3664,20 +2368,27 @@ Symbols that line-break the same way as letters of a particular category are aff
 > }
 > ```
 >
-> <strong>Column 2 (data cell):</strong>
+> **Expected rendering**
 >
 > ```text
 > 窓ぎわの
 > トットちゃん
 > ```
 >
-> <strong>Column 3 (data cell):</strong>
+> **Result in your browser**
 >
 > ```text
-> 
-> 							窓ぎわのトットちゃん
-> 						
+> 窓ぎわのトットちゃん
 > ```
+>
+> **Original browser-demonstration HTML**
+>
+> ```html
+> <samp lang="ja" style="word-break:auto-phrase">
+> 							窓ぎわのトットちゃん
+> 						</samp>
+> ```
+>
 <a id="ref-for-soft-wrap-opportunity③①"></a>
 
 User agents must not, in response to any value of this property, suppress [soft wrap opportunities](#soft-wrap-opportunity) which are:
@@ -3770,99 +2481,17 @@ User agents may activate language-specific content analysis described in [auto-p
 
 ### <a id="line-break-property"></a>6.2.  Line Breaking Strictness: the [line-break](#propdef-line-break) property
 
-<strong>Table 16 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-line-break"></a>line-break
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one③③"></a>
-
-auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) loose <a id="ref-for-comb-one③④"></a>\| normal <a id="ref-for-comb-one③⑤"></a>\| strict <a id="ref-for-comb-one③⑥"></a>\| anywhere
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-text
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-line-break"></a>line-break                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one③③"></a>auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) loose <a id="ref-for-comb-one③④"></a>\| normal <a id="ref-for-comb-one③⑤"></a>\| strict <a id="ref-for-comb-one③⑥"></a>\| anywhere |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | text                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | n/a                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                  |
 
 <a id="ref-for-wrapping④"></a>
 
@@ -4060,147 +2689,19 @@ CSS distinguishes between four levels of strictness in the rules for text wrappi
 >
 > <a id="example-17746cb4"></a> Hyphenation practices vary across languages, and can involve not just inserting a hyphen before the line break, but inserting a hyphen after the break (or both), inserting a different character than U+2010, or changing the spelling of the word.
 >
-> <strong>Table 17 — structured row/cell transcription</strong>
->
-> <strong>Row 1</strong>
->
-> <strong>Column 1 (header cell):</strong>
->
-> Language
->
-> <strong>Column 2 (header cell):</strong>
->
-> Unbroken
->
-> <strong>Column 3 (header cell):</strong>
->
-> Before
->
-> <strong>Column 4 (header cell):</strong>
->
-> After
->
-> <strong>Row 2</strong>
->
-> <strong>Column 1 (header cell):</strong>
->
-> English
->
-> <strong>Column 2 (data cell):</strong>
->
-> Unbroken
->
-> <strong>Column 3 (data cell):</strong>
->
-> Un‐
->
-> <strong>Column 4 (data cell):</strong>
->
-> broken
->
-> <strong>Row 3</strong>
->
-> <strong>Column 1 (header cell):</strong>
->
-> Dutch
->
-> <strong>Column 2 (data cell):</strong>
->
-> cafeetje
->
-> <strong>Column 3 (data cell):</strong>
->
-> café‐
->
-> <strong>Column 4 (data cell):</strong>
->
-> tje
->
-> <strong>Row 4</strong>
->
-> <strong>Column 1 (header cell):</strong>
->
-> Hungarian
->
-> <strong>Column 2 (data cell):</strong>
->
-> Összeg
->
-> <strong>Column 3 (data cell):</strong>
->
-> Ösz‐
->
-> <strong>Column 4 (data cell):</strong>
->
-> szeg
->
-> <strong>Row 5</strong>
->
-> <strong>Column 1 (header cell; row span 2):</strong>
->
-> Mandarin
->
-> <strong>Column 2 (data cell):</strong>
->
-> tú’àn
->
-> <strong>Column 3 (data cell):</strong>
->
-> tú‐
->
-> <strong>Column 4 (data cell):</strong>
->
-> àn
->
-> <strong>Row 6</strong>
->
-> <strong>Column 2 (data cell):</strong>
->
-> àizēng‐fēnmíng
->
-> <strong>Column 3 (data cell):</strong>
->
-> àizēng‐
->
-> <strong>Column 4 (data cell):</strong>
->
-> ‐fēnmíng
->
-> <strong>Row 7</strong>
->
-> <strong>Column 1 (header cell):</strong>
->
-> Uyghur
->
-> <strong>Column 2 (data cell):</strong>
->
-> ![ \[isolated DAL + isolated ALEF + initial MEEM + medial YEH + final DAL + isolated ALEF MAKSURA\]](https://www.w3.org/TR/2026/WD-css-text-4-20260814/images/uyghur-unbroken.svg)
->
-> <strong>Column 3 (data cell):</strong>
->
-> ![\[isolated DAL + isolated ALEF + initial MEEM + final YEH + hyphen \]](https://www.w3.org/TR/2026/WD-css-text-4-20260814/images/uyghur-hyphenate-joined-before.svg)
->
-> <strong>Column 4 (data cell):</strong>
->
-> ![\[ isolated DAL + isolated ALEF MAKSURA\]](https://www.w3.org/TR/2026/WD-css-text-4-20260814/images/uyghur-hyphenate-joined-after.svg)
->
-> <strong>Row 8</strong>
->
-> <strong>Column 1 (header cell):</strong>
->
-> Cree
->
-> <strong>Column 2 (data cell):</strong>
->
-> ![\[ᑲᓯᑕᓂᐘᓂᓂᐠ\] (CANADIAN SYLLABICS KA + CANADIAN SYLLABICS SI + CANADIAN SYLLABICS TA + CANADIAN SYLLABICS NI + CANADIAN SYLLABICS WEST-CREE WA + CANADIAN SYLLABICS NI + CANADIAN SYLLABICS NI + CANADIAN SYLLABICS FINAL GRAVE)](https://www.w3.org/TR/2026/WD-css-text-4-20260814/images/cree.svg)
->
-> <strong>Column 3 (data cell):</strong>
->
-> ![\[ᑲᓯᑕᓂ᐀\] (CANADIAN SYLLABICS KA + CANADIAN SYLLABICS SI + CANADIAN SYLLABICS TA + CANADIAN SYLLABICS NI + CANADIAN SYLLABICS HYPHEN)](https://www.w3.org/TR/2026/WD-css-text-4-20260814/images/cree-before.svg)
->
-> <strong>Column 4 (data cell):</strong>
->
-> ![\[ᐘᓂᓂᐠ\] (CANADIAN SYLLABICS WEST-CREE WA + CANADIAN SYLLABICS NI + CANADIAN SYLLABICS NI + CANADIAN SYLLABICS FINAL GRAVE)](https://www.w3.org/TR/2026/WD-css-text-4-20260814/images/cree-after.svg)
+> **Table 17**
+>
+> Representation note: merged header paths are written explicitly; values from merged body cells are repeated wherever they apply.
+>
+> | Language | Unbroken | Before | After |
+> | --- | --- | --- | --- |
+> | English | Unbroken | Un‐ | broken |
+> | Dutch | cafeetje | café‐ | tje |
+> | Hungarian | Összeg | Ösz‐ | szeg |
+> | Mandarin | tú’àn | tú‐ | àn |
+> | Mandarin | àizēng‐fēnmíng | àizēng‐ | ‐fēnmíng |
+> | Uyghur | ![ \[isolated DAL + isolated ALEF + initial MEEM + medial YEH + final DAL + isolated ALEF MAKSURA\]](https://www.w3.org/TR/2026/WD-css-text-4-20260814/images/uyghur-unbroken.svg) | ![\[isolated DAL + isolated ALEF + initial MEEM + final YEH + hyphen \]](https://www.w3.org/TR/2026/WD-css-text-4-20260814/images/uyghur-hyphenate-joined-before.svg) | ![\[ isolated DAL + isolated ALEF MAKSURA\]](https://www.w3.org/TR/2026/WD-css-text-4-20260814/images/uyghur-hyphenate-joined-after.svg) |
+> | Cree | ![\[ᑲᓯᑕᓂᐘᓂᓂᐠ\] (CANADIAN SYLLABICS KA + CANADIAN SYLLABICS SI + CANADIAN SYLLABICS TA + CANADIAN SYLLABICS NI + CANADIAN SYLLABICS WEST-CREE WA + CANADIAN SYLLABICS NI + CANADIAN SYLLABICS NI + CANADIAN SYLLABICS FINAL GRAVE)](https://www.w3.org/TR/2026/WD-css-text-4-20260814/images/cree.svg) | ![\[ᑲᓯᑕᓂ᐀\] (CANADIAN SYLLABICS KA + CANADIAN SYLLABICS SI + CANADIAN SYLLABICS TA + CANADIAN SYLLABICS NI + CANADIAN SYLLABICS HYPHEN)](https://www.w3.org/TR/2026/WD-css-text-4-20260814/images/cree-before.svg) | ![\[ᐘᓂᓂᐠ\] (CANADIAN SYLLABICS WEST-CREE WA + CANADIAN SYLLABICS NI + CANADIAN SYLLABICS NI + CANADIAN SYLLABICS FINAL GRAVE)](https://www.w3.org/TR/2026/WD-css-text-4-20260814/images/cree-after.svg) |
 
 <a id="ref-for-soft-wrap-opportunity③⑥"></a>
 
@@ -4228,99 +2729,17 @@ Hyphenation opportunities <em>are</em> considered when calculating [min-content 
 >
 > Note: This allows tables to hyphenate their contents instead of overflowing their containing block, which is particularly important in long-word languages like German.
 
-<strong>Table 18 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-hyphens"></a>hyphens
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one③⑦"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) manual <a id="ref-for-comb-one③⑧"></a>\| auto
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-manual
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-text
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                   |
+|---------------------|--------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-hyphens"></a>hyphens                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one③⑦"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) manual <a id="ref-for-comb-one③⑧"></a>\| auto |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | manual                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | text                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                                            |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | n/a                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                     |
 
 <a id="ref-for-hyphenate②"></a>
 
@@ -4389,101 +2808,17 @@ Any glyphs shown due to hyphenation at a [hyphenation opportunity](#hyphenation-
 
 #### <a id="hyphenate-character"></a>6.3.2.  Hyphens: the [hyphenate-character](#propdef-hyphenate-character) property
 
-<strong>Table 19 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-hyphenate-character"></a>hyphenate-character
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-string-value"></a>
-
-<a id="ref-for-comb-one③⑨"></a>
-
-auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<string\>](https://www.w3.org/TR/css-values-4/#string-value)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-text
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                   |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-hyphenate-character"></a>hyphenate-character                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-string-value"></a><a id="ref-for-comb-one③⑨"></a>auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<string\>](https://www.w3.org/TR/css-values-4/#string-value) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | text                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                     |
 
 This property specifies the string that is shown between parts of hyphenated words. Values have the following meanings:
 
@@ -4530,103 +2865,17 @@ Specifies the string that appears at the hyphenation break when hyphenating. (Th
 
 #### <a id="hyphenate-size-limits"></a>6.3.3.  Hyphenation Size Limit: the [hyphenate-limit-zone](#propdef-hyphenate-limit-zone) property
 
-<strong>Table 20 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-hyphenate-limit-zone"></a>hyphenate-limit-zone
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-length-percentage"></a>
-
-[\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-0
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-block-container④"></a>
-
-[block containers](https://www.w3.org/TR/css-display-4/#block-container)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-refers to length of the line box
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-length-percentage①"></a>
-
-computed [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) value
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value type
+| Field               | Definition                                                                                                               |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-hyphenate-limit-zone"></a>hyphenate-limit-zone                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-length-percentage"></a>[\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage)                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 0                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-block-container④"></a>[block containers](https://www.w3.org/TR/css-display-4/#block-container)                              |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | refers to length of the line box                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-typedef-length-percentage①"></a>computed [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) value |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value type                                                                                                   |
 
 <a id="ref-for-propdef-hyphenate-limit-zone①"></a>
 
@@ -4640,105 +2889,17 @@ This property specifies the maximum amount of unfilled space (before justificati
 
 #### <a id="hyphenate-char-limits"></a>6.3.4.  Hyphenation Character Limits: the [hyphenate-limit-chars](#propdef-hyphenate-limit-chars) property
 
-<strong>Table 21 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-hyphenate-limit-chars"></a>hyphenate-limit-chars
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-num-range"></a>
-
-<a id="ref-for-integer-value①"></a>
-
-<a id="ref-for-comb-one④⓪"></a>
-
-\[ auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<integer \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#integer-value) \][{1,3}](https://www.w3.org/TR/css-values-4/#mult-num-range)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-text
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-hyphenate-limit-chars-auto"></a>
-
-three values, each either the [auto](#valdef-hyphenate-limit-chars-auto) keyword or an integer
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value type
+| Field               | Definition                                                                                                                                                                                                                                                 |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-hyphenate-limit-chars"></a>hyphenate-limit-chars                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-num-range"></a><a id="ref-for-integer-value①"></a><a id="ref-for-comb-one④⓪"></a>\[ auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<integer \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#integer-value) \][{1,3}](https://www.w3.org/TR/css-values-4/#mult-num-range) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | text                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-valdef-hyphenate-limit-chars-auto"></a>three values, each either the [auto](#valdef-hyphenate-limit-chars-auto) keyword or an integer                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value type                                                                                                                                                                                                                                     |
 
 This property specifies the minimum number of characters in a hyphenated word. If the word does not meet the required minimum number of characters in the word / before the hyphen / after the hyphen, then the word must not be hyphenated. Nonspacing combining marks (Unicode General Category Mn) and intra-word punctuation (Unicode General Category P\*) do not count towards the minimum.
 
@@ -4765,101 +2926,17 @@ If three values are specified, the first value is the required minimum for the t
 
 #### <a id="hyphenate-line-limits"></a>6.3.5.  Hyphenation Line Limits: the [hyphenate-limit-lines](#propdef-hyphenate-limit-lines) and [hyphenate-limit-last](#propdef-hyphenate-limit-last) properties
 
-<strong>Table 22 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-hyphenate-limit-lines"></a>hyphenate-limit-lines
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-integer-value②"></a>
-
-<a id="ref-for-comb-one④①"></a>
-
-no-limit [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<integer \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#integer-value)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-no-limit
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-block containers
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword or integer
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value type
+| Field               | Definition                                                                                                                                                                 |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-hyphenate-limit-lines"></a>hyphenate-limit-lines                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-integer-value②"></a><a id="ref-for-comb-one④①"></a>no-limit [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<integer \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#integer-value) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | no-limit                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | block containers                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword or integer                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value type                                                                                                                                                     |
 
 <a id="ref-for-valdef-dynamic-range-limit-no-limit"></a>
 
@@ -4867,101 +2944,17 @@ This property indicates the maximum number of successive hyphenated lines in an 
 
 In some cases, user agents may not be able to honor the specified value. (See overflow-wrap.) It is not defined whether hyphenation introduced by such emergency breaking influences nearby hyphenation points.
 
-<strong>Table 23 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-hyphenate-limit-last"></a>hyphenate-limit-last
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one④②"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) always <a id="ref-for-comb-one④③"></a>\| column <a id="ref-for-comb-one④④"></a>\| page <a id="ref-for-comb-one④⑤"></a>\| spread
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-block-container⑤"></a>
-
-[block containers](https://www.w3.org/TR/css-display-4/#block-container)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                             |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-hyphenate-limit-last"></a>hyphenate-limit-last                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one④②"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) always <a id="ref-for-comb-one④③"></a>\| column <a id="ref-for-comb-one④④"></a>\| page <a id="ref-for-comb-one④⑤"></a>\| spread |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-block-container⑤"></a>[block containers](https://www.w3.org/TR/css-display-4/#block-container)                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                               |
 
 This property indicates hyphenation behavior at the end of elements, column, pages, and spreads. A spread is a set of two pages that are visible to the reader at the same time. Values have the following meanings:
 
@@ -5017,99 +3010,17 @@ The last line before any spread break inside the element should not be hyphenate
 
 ### <a id="overflow-wrap-property"></a>6.4. <a id="overflow-wrap"></a> Overflow Wrapping: the [overflow-wrap](#propdef-overflow-wrap) ([word-wrap](#propdef-word-wrap)) property
 
-<strong>Table 24 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-overflow-wrap"></a>overflow-wrap
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one④⑥"></a>
-
-normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) break-word <a id="ref-for-comb-one④⑦"></a>\| anywhere
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-normal
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-text
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                             |
+|---------------------|------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-overflow-wrap"></a>overflow-wrap                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one④⑥"></a>normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) break-word <a id="ref-for-comb-one④⑦"></a>\| anywhere |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | normal                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | text                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | n/a                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                               |
 
 <a id="ref-for-propdef-white-space⑨"></a>
 
@@ -5300,101 +3211,17 @@ Alignment and justification controls how inline content is distributed within a 
 
 ### <a id="text-align-property"></a>7.1.  Text Alignment: the [text-align](#propdef-text-align) shorthand
 
-<strong>Table 25 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-text-align"></a>text-align
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-string-value②"></a>
-
-<a id="ref-for-comb-one④⑧"></a>
-
-start [\|](https://www.w3.org/TR/css-values-4/#comb-one) end <a id="ref-for-comb-one④⑨"></a>\| left <a id="ref-for-comb-one⑤⓪"></a>\| right <a id="ref-for-comb-one⑤①"></a>\| center <a id="ref-for-comb-one⑤②"></a>\| [\<string\>](https://www.w3.org/TR/css-values-4/#string-value) <a id="ref-for-comb-one⑤③"></a>\| justify <a id="ref-for-comb-one⑤④"></a>\| match-parent <a id="ref-for-comb-one⑤⑤"></a>\| justify-all
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-start
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-block containers
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                     |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-text-align"></a>text-align                                                                                                                                                                                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-string-value②"></a><a id="ref-for-comb-one④⑧"></a>start [\|](https://www.w3.org/TR/css-values-4/#comb-one) end <a id="ref-for-comb-one④⑨"></a>\| left <a id="ref-for-comb-one⑤⓪"></a>\| right <a id="ref-for-comb-one⑤①"></a>\| center <a id="ref-for-comb-one⑤②"></a>\| [\<string\>](https://www.w3.org/TR/css-values-4/#string-value) <a id="ref-for-comb-one⑤③"></a>\| justify <a id="ref-for-comb-one⑤④"></a>\| match-parent <a id="ref-for-comb-one⑤⑤"></a>\| justify-all |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | start                                                                                                                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | block containers                                                                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                                            |
 
 <a id="ref-for-shorthand-property①"></a>
 
@@ -5649,103 +3476,17 @@ Character-based alignment occurs before table cell width computation so that aut
 
 ### <a id="text-align-all-property"></a>7.3. <a id="text-align-all"></a> Default Text Alignment: the [text-align-all](#propdef-text-align-all) property
 
-<strong>Table 26 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-text-align-all"></a>text-align-all
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-string-value⑦"></a>
-
-<a id="ref-for-comb-one⑤⑥"></a>
-
-start [\|](https://www.w3.org/TR/css-values-4/#comb-one) end <a id="ref-for-comb-one⑤⑦"></a>\| left <a id="ref-for-comb-one⑤⑧"></a>\| right <a id="ref-for-comb-one⑤⑨"></a>\| center <a id="ref-for-comb-one⑥⓪"></a>\| [\<string\>](https://www.w3.org/TR/css-values-4/#string-value) <a id="ref-for-comb-one⑥①"></a>\| justify <a id="ref-for-comb-one⑥②"></a>\| match-parent
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-start
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-block containers
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-text-align-match-parent②"></a>
-
-keyword as specified, except for [match-parent](#valdef-text-align-match-parent) which computes as defined above
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                   |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-text-align-all"></a>text-align-all                                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-string-value⑦"></a><a id="ref-for-comb-one⑤⑥"></a>start [\|](https://www.w3.org/TR/css-values-4/#comb-one) end <a id="ref-for-comb-one⑤⑦"></a>\| left <a id="ref-for-comb-one⑤⑧"></a>\| right <a id="ref-for-comb-one⑤⑨"></a>\| center <a id="ref-for-comb-one⑥⓪"></a>\| [\<string\>](https://www.w3.org/TR/css-values-4/#string-value) <a id="ref-for-comb-one⑥①"></a>\| justify <a id="ref-for-comb-one⑥②"></a>\| match-parent |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | start                                                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | block containers                                                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-valdef-text-align-match-parent②"></a>keyword as specified, except for [match-parent](#valdef-text-align-match-parent) which computes as defined above                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                                                     |
 
 <a id="ref-for-propdef-text-align④"></a>
 
@@ -5767,101 +3508,17 @@ This longhand of the [text-align](#propdef-text-align) [shorthand property](http
 
 ### <a id="text-align-last-property"></a>7.4. <a id="text-align-last"></a> Last Line Alignment: the [text-align-last](#propdef-text-align-last) property
 
-<strong>Table 27 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-text-align-last"></a>text-align-last
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one⑥③"></a>
-
-auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) start <a id="ref-for-comb-one⑥④"></a>\| end <a id="ref-for-comb-one⑥⑤"></a>\| left <a id="ref-for-comb-one⑥⑥"></a>\| right <a id="ref-for-comb-one⑥⑦"></a>\| center <a id="ref-for-comb-one⑥⑧"></a>\| justify <a id="ref-for-comb-one⑥⑨"></a>\| match-parent
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-block containers
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-text-align-match-parent③"></a>
-
-keyword as specified, except for [match-parent](#valdef-text-align-match-parent) which computes as defined above
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                                                      |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-text-align-last"></a>text-align-last                                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one⑥③"></a>auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) start <a id="ref-for-comb-one⑥④"></a>\| end <a id="ref-for-comb-one⑥⑤"></a>\| left <a id="ref-for-comb-one⑥⑥"></a>\| right <a id="ref-for-comb-one⑥⑦"></a>\| center <a id="ref-for-comb-one⑥⑧"></a>\| justify <a id="ref-for-comb-one⑥⑨"></a>\| match-parent |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | block containers                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-valdef-text-align-match-parent③"></a>keyword as specified, except for [match-parent](#valdef-text-align-match-parent) which computes as defined above                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                        |
 
 <a id="ref-for-forced-line-break①③"></a>
 
@@ -5881,103 +3538,17 @@ If <a id="valdef-text-align-last-auto"></a>auto is specified, content on the aff
 
 ### <a id="text-justify-property"></a>7.5. <a id="text-justify"></a> Justification Method: the [text-justify](#propdef-text-justify) property
 
-<strong>Table 28 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-text-justify"></a>text-justify
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-any⑦"></a>
-
-<a id="ref-for-comb-one⑦⓪"></a>
-
-\[ auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) none <a id="ref-for-comb-one⑦①"></a>\| inter-word <a id="ref-for-comb-one⑦②"></a>\| inter-character <a id="ref-for-comb-one⑦③"></a>\| ruby \] [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) no-compress
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-text
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-text-justify-distribute"></a>
-
-specified keyword (except for the [distribute](#valdef-text-justify-distribute) legacy value)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                                                                  |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-text-justify"></a>text-justify                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-any⑦"></a><a id="ref-for-comb-one⑦⓪"></a>\[ auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) none <a id="ref-for-comb-one⑦①"></a>\| inter-word <a id="ref-for-comb-one⑦②"></a>\| inter-character <a id="ref-for-comb-one⑦③"></a>\| ruby \] [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) no-compress |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | text                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-valdef-text-justify-distribute"></a>specified keyword (except for the [distribute](#valdef-text-justify-distribute) legacy value)                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                    |
 
 <a id="ref-for-valdef-text-align-justify③"></a>
 
@@ -6259,101 +3830,17 @@ Further information on text justification can be found in (or submitted to) [“
 
 ### <a id="text-group-align-property"></a>7.6.  Aligning a block of text within its container: the [text-group-align](#propdef-text-group-align) property
 
-<strong>Table 29 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-text-group-align"></a>text-group-align
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one⑦④"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) start <a id="ref-for-comb-one⑦⑤"></a>\| end <a id="ref-for-comb-one⑦⑥"></a>\| left <a id="ref-for-comb-one⑦⑦"></a>\| right <a id="ref-for-comb-one⑦⑧"></a>\| center
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-block-container⑥"></a>
-
-[block containers](https://www.w3.org/TR/css-display-4/#block-container)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                     |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-text-group-align"></a>text-group-align                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one⑦④"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) start <a id="ref-for-comb-one⑦⑤"></a>\| end <a id="ref-for-comb-one⑦⑥"></a>\| left <a id="ref-for-comb-one⑦⑦"></a>\| right <a id="ref-for-comb-one⑦⑧"></a>\| center |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-block-container⑥"></a>[block containers](https://www.w3.org/TR/css-display-4/#block-container)                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                       |
 
 This property aligns the contents of the line boxes as a group while maintaining their text alignment.
 
@@ -6443,103 +3930,17 @@ CSS offers control over regular text spacing via the [word-spacing](#propdef-wor
 
 ### <a id="word-spacing-property"></a>8.1. <a id="word-spacing"></a> Word Spacing: the [word-spacing](#propdef-word-spacing) property
 
-<strong>Table 30 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-word-spacing"></a>word-spacing
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-length-percentage②"></a>
-
-<a id="ref-for-comb-one⑦⑨"></a>
-
-normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-normal
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-text
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-font-size"></a>
-
-relative to used [font-size](https://www.w3.org/TR/css-fonts-4/#propdef-font-size)
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-an absolute length and/or a percentage
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value type
+| Field               | Definition                                                                                                                                                                             |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-word-spacing"></a>word-spacing                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-length-percentage②"></a><a id="ref-for-comb-one⑦⑨"></a>normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | normal                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | text                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | <a id="ref-for-propdef-font-size"></a>relative to used [font-size](https://www.w3.org/TR/css-fonts-4/#propdef-font-size)                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | an absolute length and/or a percentage                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | n/a                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value type                                                                                                                                                                 |
 
 This property specifies additional spacing between “words”. Values are interpreted as defined below:
 
@@ -6579,105 +3980,17 @@ If there are no [word-separator characters](#word-separator), or if a word-separ
 
 ### <a id="letter-spacing-property"></a>8.2. <a id="letter-spacing"></a> Tracking: the [letter-spacing](#propdef-letter-spacing) property
 
-<strong>Table 31 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-letter-spacing"></a>letter-spacing
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-length-percentage③"></a>
-
-<a id="ref-for-comb-one⑧⓪"></a>
-
-normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-normal
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-inline-box⑥"></a>
-
-[inline boxes](https://www.w3.org/TR/css-display-4/#inline-box) and text
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-font-size③"></a>
-
-relative to used [font-size](https://www.w3.org/TR/css-fonts-4/#propdef-font-size)
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-an absolute length and/or a percentage
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value type
+| Field               | Definition                                                                                                                                                                             |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-letter-spacing"></a>letter-spacing                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-length-percentage③"></a><a id="ref-for-comb-one⑧⓪"></a>normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | normal                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-inline-box⑥"></a>[inline boxes](https://www.w3.org/TR/css-display-4/#inline-box) and text                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | <a id="ref-for-propdef-font-size③"></a>relative to used [font-size](https://www.w3.org/TR/css-fonts-4/#propdef-font-size)                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | an absolute length and/or a percentage                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | n/a                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value type                                                                                                                                                                 |
 
 <a id="ref-for-typographic-character-unit③⑦"></a>
 
@@ -6823,86 +4136,13 @@ If it is able, the UA <em>may</em> apply letter spacing to [cursive scripts](#cu
 >
 > <a id="example-9902d8b5"></a> Below are some appropriate and inappropriate examples of spacing out Arabic text.
 >
-> <strong>Table 32 — structured row/cell transcription</strong>
->
-> <strong>Row 1</strong>
->
-> <strong>Column 1 (data cell):</strong>
->
-> ![](https://www.w3.org/TR/2026/WD-css-text-4-20260814/images/arabic-stretch-original.png)
->
-> <strong>Column 2 (data cell):</strong>
->
-> —
->
-> <strong>Column 3 (data cell):</strong>
->
-> Original text
->
-> <strong>Row 2</strong>
->
-> <strong>Column 1 (data cell):</strong>
->
-> ![](https://www.w3.org/TR/2026/WD-css-text-4-20260814/images/arabic-stretch-spaced.png)
->
-> <strong>Column 2 (data cell):</strong>
->
-> BAD
->
-> <strong>Column 3 (header cell):</strong>
->
-> Even distribution of space between each letter. <em>Notice this breaks cursive joins!</em>
->
-> <strong>Row 3</strong>
->
-> <strong>Column 1 (data cell):</strong>
->
-> ![](https://www.w3.org/TR/2026/WD-css-text-4-20260814/images/arabic-stretch-kashida.png)
->
-> <strong>Column 2 (data cell):</strong>
->
-> OK
->
-> <strong>Column 3 (header cell):</strong>
->
-> Distributing ∑<var>letter-spacing</var> by typographically-appropriate cursive elongation. <em>The resulting text is as long as the previous evenly-spaced example.</em>
->
-> <strong>Row 4</strong>
->
-> <strong>Column 1 (data cell):</strong>
->
-> ![](https://www.w3.org/TR/2026/WD-css-text-4-20260814/images/arabic-stretch-suppressed.png)
->
-> <strong>Column 2 (data cell):</strong>
->
-> OK
->
-> <strong>Column 3 (header cell):</strong>
->
-> <a id="ref-for-spaces③⑤"></a>
->
-> <a id="ref-for-propdef-letter-spacing①①"></a>
->
-> <a id="ref-for-propdef-letter-spacing①⓪"></a>
->
-> Suppressing [letter-spacing](#propdef-letter-spacing) between Arabic letters. <em>Notice <a href="#propdef-letter-spacing">letter-spacing</a> is nonetheless applied
-					to non-Arabic characters (like <a href="#spaces">spaces</a>).</em>
->
-> <strong>Row 5</strong>
->
-> <strong>Column 1 (data cell):</strong>
->
-> ![](https://www.w3.org/TR/2026/WD-css-text-4-20260814/images/arabic-stretch-unjoined.png)
->
-> <strong>Column 2 (data cell):</strong>
->
-> BAD
->
-> <strong>Column 3 (header cell):</strong>
->
-> <a id="ref-for-propdef-letter-spacing①②"></a>
->
-> Applying [letter-spacing](#propdef-letter-spacing) only between non-joined letters. <em>This distorts typographic color and obfuscates word boundaries.</em>
+> | Column 1                                                                                    | Column 2 | Column 3            |
+> |---------------------------------------------------------------------------------------------|----------|---------------------|
+> | ![](https://www.w3.org/TR/2026/WD-css-text-4-20260814/images/arabic-stretch-original.png)   | —        | Original text       |
+> | ![](https://www.w3.org/TR/2026/WD-css-text-4-20260814/images/arabic-stretch-spaced.png)     | BAD      | <strong>&#xA;&#x9;&#x9;&#x9;&#x9;&#x9;Even distribution of space between each letter.&#xA;&#x9;&#x9;&#x9;&#x9;&#x9;<em>Notice this breaks cursive joins!</em>&#xA;&#x9;&#x9;&#x9;&#xA;      </strong> |
+> | ![](https://www.w3.org/TR/2026/WD-css-text-4-20260814/images/arabic-stretch-kashida.png)    | OK       | <strong>&#xA;&#x9;&#x9;&#x9;&#x9;&#x9;Distributing ∑<var>letter-spacing</var>&#xA;&#x9;&#x9;&#x9;&#x9;&#x9;by typographically-appropriate cursive elongation.&#xA;&#x9;&#x9;&#x9;&#x9;&#x9;<em>The resulting text is as long as the previous evenly-spaced example.</em>&#xA;&#xA;&#x9;&#x9;&#x9;&#xA;      </strong> |
+> | ![](https://www.w3.org/TR/2026/WD-css-text-4-20260814/images/arabic-stretch-suppressed.png) | OK       | <strong><span><a id="ref-for-spaces③⑤"></a></span><span><a id="ref-for-propdef-letter-spacing①①"></a></span><span><a id="ref-for-propdef-letter-spacing①⓪"></a></span>&#xA;&#x9;&#x9;&#x9;&#x9;&#x9;Suppressing <a href="#propdef-letter-spacing">letter-spacing</a> between Arabic letters.&#xA;&#x9;&#x9;&#x9;&#x9;&#x9;<em>Notice <a href="#propdef-letter-spacing">letter-spacing</a> is nonetheless applied&#xA;&#x9;&#x9;&#x9;&#x9;&#x9;to non-Arabic characters (like <a href="#spaces">spaces</a>).</em>&#xA;&#xA;&#x9;&#x9;&#x9;&#xA;      </strong> |
+> | ![](https://www.w3.org/TR/2026/WD-css-text-4-20260814/images/arabic-stretch-unjoined.png)   | BAD      | <strong><span><a id="ref-for-propdef-letter-spacing①②"></a></span>&#xA;&#x9;&#x9;&#x9;&#x9;&#x9;Applying <a href="#propdef-letter-spacing">letter-spacing</a> only between non-joined letters.&#xA;&#x9;&#x9;&#x9;&#x9;&#x9;<em>This distorts typographic color and obfuscates word boundaries.</em>&#xA;&#x9;&#x9;&#xA;    </strong> |
 
 <a id="ref-for-propdef-letter-spacing①③"></a>
 
@@ -6914,101 +4154,17 @@ If it is able, the UA <em>may</em> apply letter spacing to [cursive scripts](#cu
 
 ### <a id="line-padding-property"></a>8.3.  Line Start/End Padding: the [line-padding](#propdef-line-padding) property
 
-<strong>Table 33 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-line-padding"></a>line-padding
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value②"></a>
-
-[\<length\>](https://www.w3.org/TR/css-values-4/#length-value)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-0
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-inline-box⑦"></a>
-
-[inline boxes](https://www.w3.org/TR/css-display-4/#inline-box)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-absolute length
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value type
+| Field               | Definition                                                                         |
+|---------------------|------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-line-padding"></a>line-padding                                                    |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-length-value②"></a>[\<length\>](https://www.w3.org/TR/css-values-4/#length-value)  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 0                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-inline-box⑦"></a>[inline boxes](https://www.w3.org/TR/css-display-4/#inline-box) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | absolute length                                                                    |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                        |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value type                                                             |
 
 <a id="ref-for-propdef-letter-spacing①④"></a>
 
@@ -7050,101 +4206,17 @@ Whereas [letter-spacing](#propdef-letter-spacing) adjusts spacing between [typog
 
 ### <a id="text-autospace-property"></a>8.4.  Automatic Contextual Spacing: the [text-autospace](#propdef-text-autospace) property
 
-<strong>Table 34 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-text-autospace"></a>text-autospace
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-autospace"></a>
-
-<a id="ref-for-comb-one⑧①"></a>
-
-normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<autospace\>](#typedef-autospace) <a id="ref-for-comb-one⑧②"></a>\| auto
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-normal
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-text
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword(s)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                     |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-text-autospace"></a>text-autospace                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-autospace"></a><a id="ref-for-comb-one⑧①"></a>normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<autospace\>](#typedef-autospace) <a id="ref-for-comb-one⑧②"></a>\| auto |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | normal                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | text                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword(s)                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                       |
 
 <a id="ref-for-inline-formatting-context②"></a>
 
@@ -7351,101 +4423,17 @@ Spacing introduced by [text-autospace](#propdef-text-autospace) is inserted afte
 
 ### <a id="text-spacing-trim-property"></a>8.5.  CJK Punctuation Spacing: the [text-spacing-trim](#propdef-text-spacing-trim) property
 
-<strong>Table 35 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-text-spacing-trim"></a>text-spacing-trim
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one⑧⑤"></a>
-
-<a id="ref-for-typedef-spacing-trim"></a>
-
-[\<spacing-trim\>](#typedef-spacing-trim) [\|](https://www.w3.org/TR/css-values-4/#comb-one) auto
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-normal
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-text
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword(s)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                              |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-text-spacing-trim"></a>text-spacing-trim                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one⑧⑤"></a><a id="ref-for-typedef-spacing-trim"></a>[\<spacing-trim\>](#typedef-spacing-trim) [\|](https://www.w3.org/TR/css-values-4/#comb-one) auto |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | normal                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | text                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword(s)                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                |
 
 <a id="ref-for-inline-formatting-context③"></a>
 
@@ -7562,125 +4550,19 @@ The user agent chooses a set of typographically high quality spacing values. Dif
 >
 > Here is an informal summary of what the various values do:
 >
-> <strong>Table 36 — structured row/cell transcription</strong>
+> **Table 36**
 >
-> <strong>Row 1</strong>
+> Representation note: merged header paths are written explicitly; values from merged body cells are repeated wherever they apply.
 >
-> <strong>Column 1 (header cell):</strong>
->
-> Value
->
-> <strong>Column 2 (header cell):</strong>
->
-> Trim at line start
->
-> <strong>Column 3 (header cell):</strong>
->
-> Trim at line end
->
-> <strong>Column 4 (header cell):</strong>
->
-> Trim adjacent pairs
->
-> <strong>Column 5 (header cell):</strong>
->
-> Trim everywhere
->
-> <strong>Row 2</strong>
->
-> <strong>Column 1 (header cell):</strong>
->
-> <a id="ref-for-valdef-text-spacing-trim-space-all②"></a>
->
-> [space-all](#valdef-text-spacing-trim-space-all)
->
-> <strong>Column 2 (data cell; column span 4):</strong>
->
-> no
->
-> <strong>Row 3</strong>
->
-> <strong>Column 1 (header cell):</strong>
->
-> <a id="ref-for-valdef-text-spacing-trim-normal①"></a>
->
-> [normal](#valdef-text-spacing-trim-normal)
->
-> <strong>Column 2 (data cell):</strong>
->
-> no
->
-> <strong>Column 3 (data cell; row span 3):</strong>
->
-> only if would not fit
->
-> <strong>Column 4 (data cell; row span 4):</strong>
->
-> yes
->
-> <strong>Column 5 (data cell; row span 4):</strong>
->
-> no
->
-> <strong>Row 4</strong>
->
-> <strong>Column 1 (header cell):</strong>
->
-> <a id="ref-for-valdef-text-spacing-trim-space-first"></a>
->
-> [space-first](#valdef-text-spacing-trim-space-first)
->
-> <strong>Column 2 (data cell):</strong>
->
-> yes except on the first line
->
-> <strong>Row 5</strong>
->
-> <strong>Column 1 (header cell):</strong>
->
-> <a id="ref-for-valdef-text-spacing-trim-trim-start①"></a>
->
-> [trim-start](#valdef-text-spacing-trim-trim-start)
->
-> <strong>Column 2 (data cell; row span 2):</strong>
->
-> yes
->
-> <strong>Row 6</strong>
->
-> <strong>Column 1 (header cell):</strong>
->
-> <a id="ref-for-valdef-text-spacing-trim-trim-both④"></a>
->
-> [trim-both](#valdef-text-spacing-trim-trim-both)
->
-> <strong>Column 3 (data cell):</strong>
->
-> yes
->
-> <strong>Row 7</strong>
->
-> <strong>Column 1 (header cell):</strong>
->
-> <a id="ref-for-valdef-text-spacing-trim-trim-all"></a>
->
-> [trim-all](#valdef-text-spacing-trim-trim-all)
->
-> <strong>Column 2 (data cell; column span 4):</strong>
->
-> yes
->
-> <strong>Row 8</strong>
->
-> <strong>Column 1 (header cell):</strong>
->
-> <a id="ref-for-valdef-text-spacing-trim-auto①"></a>
->
-> [auto](#valdef-text-spacing-trim-auto)
->
-> <strong>Column 2 (data cell; column span 4):</strong>
->
-> user-agent specific / platform dependent
+> | Value | Trim at line start | Trim at line end | Trim adjacent pairs | Trim everywhere |
+> | --- | --- | --- | --- | --- |
+> | <a id="ref-for-valdef-text-spacing-trim-space-all②"></a> [space-all](#valdef-text-spacing-trim-space-all) | no | no | no | no |
+> | <a id="ref-for-valdef-text-spacing-trim-normal①"></a> [normal](#valdef-text-spacing-trim-normal) | no | only if would not fit | yes | no |
+> | <a id="ref-for-valdef-text-spacing-trim-space-first"></a> [space-first](#valdef-text-spacing-trim-space-first) | yes except on the first line | only if would not fit | yes | no |
+> | <a id="ref-for-valdef-text-spacing-trim-trim-start①"></a> [trim-start](#valdef-text-spacing-trim-trim-start) | yes | only if would not fit | yes | no |
+> | <a id="ref-for-valdef-text-spacing-trim-trim-both④"></a> [trim-both](#valdef-text-spacing-trim-trim-both) | yes | yes | yes | no |
+> | <a id="ref-for-valdef-text-spacing-trim-trim-all"></a> [trim-all](#valdef-text-spacing-trim-trim-all) | yes | yes | yes | yes |
+> | <a id="ref-for-valdef-text-spacing-trim-auto①"></a> [auto](#valdef-text-spacing-trim-auto) | user-agent specific / platform dependent | user-agent specific / platform dependent | user-agent specific / platform dependent | user-agent specific / platform dependent |
 
 #### <a id="fullwidth-collapsing"></a>8.5.1.  Fullwidth Punctuation Collapsing
 
@@ -7892,105 +4774,17 @@ The UA must classify [fullwidth colon punctuation](#fullwidth-colon-punctuation)
 
 ### <a id="text-spacing-property"></a>8.6.  Character Class Spacing Shorthand: the [text-spacing](#propdef-text-spacing) property
 
-<strong>Table 39 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-text-spacing"></a>text-spacing
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-autospace②"></a>
-
-<a id="ref-for-comb-any①①"></a>
-
-<a id="ref-for-typedef-spacing-trim②"></a>
-
-<a id="ref-for-comb-one⑨①"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) auto <a id="ref-for-comb-one⑨②"></a>\| [\<spacing-trim\>](#typedef-spacing-trim) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<autospace\>](#typedef-autospace)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-text
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword(s)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                                                                                                                                                                                        |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-text-spacing"></a>text-spacing                                                                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-autospace②"></a><a id="ref-for-comb-any①①"></a><a id="ref-for-typedef-spacing-trim②"></a><a id="ref-for-comb-one⑨①"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) auto <a id="ref-for-comb-one⑨②"></a>\| [\<spacing-trim\>](#typedef-spacing-trim) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<autospace\>](#typedef-autospace) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | text                                                                                                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword(s)                                                                                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                       |
 
 <a id="ref-for-propdef-text-spacing-trim⑦"></a>
 
@@ -8112,109 +4906,17 @@ Edge effects control the indentation of lines with respect to other lines in the
 
 ### <a id="text-indent-property"></a>9.1. <a id="text-indent"></a> First Line Indentation: the [text-indent](#propdef-text-indent) property
 
-<strong>Table 40 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-text-indent"></a>text-indent
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-opt①"></a>
-
-<a id="ref-for-comb-all①"></a>
-
-<a id="ref-for-typedef-length-percentage④"></a>
-
-\[ [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) \] [&#x26;&#x26;](https://www.w3.org/TR/css-values-4/#comb-all) hanging[?](https://www.w3.org/TR/css-values-4/#mult-opt) <a id="ref-for-comb-all②"></a>&#x26;&#x26; each-line<a id="ref-for-mult-opt②"></a>?
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-0
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-block containers
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-inner-size"></a>
-
-<a id="ref-for-inline-axis①"></a>
-
-refers to block container’s own [inline-axis](https://www.w3.org/TR/css-writing-modes-4/#inline-axis) [inner size](https://www.w3.org/TR/css-sizing-3/#inner-size)
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-length-percentage⑤"></a>
-
-computed [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) value, plus any specified keywords
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value type
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                    |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-text-indent"></a>text-indent                                                                                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-opt①"></a><a id="ref-for-comb-all①"></a><a id="ref-for-typedef-length-percentage④"></a>\[ [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) \] [&#x26;&#x26;](https://www.w3.org/TR/css-values-4/#comb-all) hanging[?](https://www.w3.org/TR/css-values-4/#mult-opt) <a id="ref-for-comb-all②"></a>&#x26;&#x26; each-line<a id="ref-for-mult-opt②"></a>? |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 0                                                                                                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | block containers                                                                                                                                                                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | <a id="ref-for-inner-size"></a><a id="ref-for-inline-axis①"></a>refers to block container’s own [inline-axis](https://www.w3.org/TR/css-writing-modes-4/#inline-axis) [inner size](https://www.w3.org/TR/css-sizing-3/#inner-size)                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-typedef-length-percentage⑤"></a>computed [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) value, plus any specified keywords                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value type                                                                                                                                                                                                                                                                                                                                                        |
 
 <a id="ref-for-start③"></a>
 
@@ -8371,101 +5073,17 @@ Multiple adjacent glyphs can hang together, however specific limits on how many 
 
 #### <a id="hanging-punctuation-property"></a>9.2.1. <a id="hanging-punctuation"></a> Hanging Punctuation: the [hanging-punctuation](#propdef-hanging-punctuation) property
 
-<strong>Table 41 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-hanging-punctuation"></a>hanging-punctuation
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-any①②"></a>
-
-<a id="ref-for-comb-one⑨③"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[ first [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) \[ force-end <a id="ref-for-comb-one⑨④"></a>\| allow-end \] <a id="ref-for-comb-any①③"></a>\|\| last \]
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-text
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword(s)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                                  |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-hanging-punctuation"></a>hanging-punctuation                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-any①②"></a><a id="ref-for-comb-one⑨③"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[ first [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) \[ force-end <a id="ref-for-comb-one⑨④"></a>\| allow-end \] <a id="ref-for-comb-any①③"></a>\|\| last \] |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | text                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword(s)                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                    |
 
 <a id="ref-for-hang①⑨"></a>
 
@@ -10016,1405 +6634,42 @@ General Rules for Punctuation (《标点符号用法》).. 2011. GB/T 15834―20
 
 ## <a id="property-index"></a>Property Index
 
-<strong>Table 44 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope col):</strong>
-
-Name
-
-<strong>Column 2 (header cell; scope col):</strong>
-
-Value
-
-<strong>Column 3 (header cell; scope col):</strong>
-
-Initial
-
-<strong>Column 4 (header cell; scope col):</strong>
-
-Applies to
-
-<strong>Column 5 (header cell; scope col):</strong>
-
-Inh.
-
-<strong>Column 6 (header cell; scope col):</strong>
-
-%ages
-
-<strong>Column 7 (header cell; scope col):</strong>
-
-Anim­ation type
-
-<strong>Column 8 (header cell; scope col):</strong>
-
-Canonical order
-
-<strong>Column 9 (header cell; scope col):</strong>
-
-Com­puted value
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-hanging-punctuation⑦"></a>
-
-[hanging-punctuation](#propdef-hanging-punctuation)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| \[ first \|\| \[ force-end \| allow-end \] \|\| last \]
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-text
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword(s)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-hyphenate-character④"></a>
-
-[hyphenate-character](#propdef-hyphenate-character)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| \<string\>
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-text
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-hyphenate-limit-chars③"></a>
-
-[hyphenate-limit-chars](#propdef-hyphenate-limit-chars)
-
-<strong>Column 2 (data cell):</strong>
-
-\[ auto \| \<integer \[0,∞\]\> \]{1,3}
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-text
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-three values, each either the auto keyword or an integer
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-hyphenate-limit-last③"></a>
-
-[hyphenate-limit-last](#propdef-hyphenate-limit-last)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| always \| column \| page \| spread
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-block containers
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-hyphenate-limit-lines③"></a>
-
-[hyphenate-limit-lines](#propdef-hyphenate-limit-lines)
-
-<strong>Column 2 (data cell):</strong>
-
-no-limit \| \<integer \[0,∞\]\>
-
-<strong>Column 3 (data cell):</strong>
-
-no-limit
-
-<strong>Column 4 (data cell):</strong>
-
-block containers
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword or integer
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-hyphenate-limit-zone③"></a>
-
-[hyphenate-limit-zone](#propdef-hyphenate-limit-zone)
-
-<strong>Column 2 (data cell):</strong>
-
-\<length-percentage\>
-
-<strong>Column 3 (data cell):</strong>
-
-0
-
-<strong>Column 4 (data cell):</strong>
-
-block containers
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-refers to length of the line box
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-computed \<length-percentage\> value
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-hyphens⑤"></a>
-
-[hyphens](#propdef-hyphens)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| manual \| auto
-
-<strong>Column 3 (data cell):</strong>
-
-manual
-
-<strong>Column 4 (data cell):</strong>
-
-text
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-n/a
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-letter-spacing②⓪"></a>
-
-[letter-spacing](#propdef-letter-spacing)
-
-<strong>Column 2 (data cell):</strong>
-
-normal \| \<length-percentage\>
-
-<strong>Column 3 (data cell):</strong>
-
-normal
-
-<strong>Column 4 (data cell):</strong>
-
-inline boxes and text
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-relative to used font-size
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-n/a
-
-<strong>Column 9 (data cell):</strong>
-
-an absolute length and/or a percentage
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-line-break①③"></a>
-
-[line-break](#propdef-line-break)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| loose \| normal \| strict \| anywhere
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-text
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-n/a
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 11</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-line-padding④"></a>
-
-[line-padding](#propdef-line-padding)
-
-<strong>Column 2 (data cell):</strong>
-
-\<length\>
-
-<strong>Column 3 (data cell):</strong>
-
-0
-
-<strong>Column 4 (data cell):</strong>
-
-inline boxes
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-absolute length
-
-<strong>Row 12</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-overflow-wrap①③"></a>
-
-[overflow-wrap](#propdef-overflow-wrap)
-
-<strong>Column 2 (data cell):</strong>
-
-normal \| break-word \| anywhere
-
-<strong>Column 3 (data cell):</strong>
-
-normal
-
-<strong>Column 4 (data cell):</strong>
-
-text
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-n/a
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 13</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-tab-size②"></a>
-
-[tab-size](#propdef-tab-size)
-
-<strong>Column 2 (data cell):</strong>
-
-\<number \[0,∞\]\> \| \<length \[0,∞\]\>
-
-<strong>Column 3 (data cell):</strong>
-
-8
-
-<strong>Column 4 (data cell):</strong>
-
-text
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-n/a
-
-<strong>Column 9 (data cell):</strong>
-
-the specified number or absolute length
-
-<strong>Row 14</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-text-align①④"></a>
-
-[text-align](#propdef-text-align)
-
-<strong>Column 2 (data cell):</strong>
-
-start \| end \| left \| right \| center \| \<string\> \| justify \| match-parent \| justify-all
-
-<strong>Column 3 (data cell):</strong>
-
-start
-
-<strong>Column 4 (data cell):</strong>
-
-block containers
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-n/a
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 15</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-text-align-all⑧"></a>
-
-[text-align-all](#propdef-text-align-all)
-
-<strong>Column 2 (data cell):</strong>
-
-start \| end \| left \| right \| center \| \<string\> \| justify \| match-parent
-
-<strong>Column 3 (data cell):</strong>
-
-start
-
-<strong>Column 4 (data cell):</strong>
-
-block containers
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-n/a
-
-<strong>Column 9 (data cell):</strong>
-
-keyword as specified, except for match-parent which computes as defined above
-
-<strong>Row 16</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-text-align-last①⓪"></a>
-
-[text-align-last](#propdef-text-align-last)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| start \| end \| left \| right \| center \| justify \| match-parent
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-block containers
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-n/a
-
-<strong>Column 9 (data cell):</strong>
-
-keyword as specified, except for match-parent which computes as defined above
-
-<strong>Row 17</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-text-autospace①③"></a>
-
-[text-autospace](#propdef-text-autospace)
-
-<strong>Column 2 (data cell):</strong>
-
-normal \| \<autospace\> \| auto
-
-<strong>Column 3 (data cell):</strong>
-
-normal
-
-<strong>Column 4 (data cell):</strong>
-
-text
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword(s)
-
-<strong>Row 18</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-text-group-align②"></a>
-
-[text-group-align](#propdef-text-group-align)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| start \| end \| left \| right \| center
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-block containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 19</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-text-indent①⓪"></a>
-
-[text-indent](#propdef-text-indent)
-
-<strong>Column 2 (data cell):</strong>
-
-\[ \<length-percentage\> \] &#x26;&#x26; hanging? &#x26;&#x26; each-line?
-
-<strong>Column 3 (data cell):</strong>
-
-0
-
-<strong>Column 4 (data cell):</strong>
-
-block containers
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-refers to block container’s own inline-axis inner size
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-computed \<length-percentage\> value, plus any specified keywords
-
-<strong>Row 20</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-text-justify①①"></a>
-
-[text-justify](#propdef-text-justify)
-
-<strong>Column 2 (data cell):</strong>
-
-\[ auto \| none \| inter-word \| inter-character \| ruby \] \|\| no-compress
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-text
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-n/a
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword (except for the distribute legacy value)
-
-<strong>Row 21</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-text-spacing①⓪"></a>
-
-[text-spacing](#propdef-text-spacing)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| auto \| \<spacing-trim\> \|\| \<autospace\>
-
-<strong>Column 3 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 4 (data cell):</strong>
-
-text
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword(s)
-
-<strong>Row 22</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-text-spacing-trim①⑦"></a>
-
-[text-spacing-trim](#propdef-text-spacing-trim)
-
-<strong>Column 2 (data cell):</strong>
-
-\<spacing-trim\> \| auto
-
-<strong>Column 3 (data cell):</strong>
-
-normal
-
-<strong>Column 4 (data cell):</strong>
-
-text
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword(s)
-
-<strong>Row 23</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-text-transform⑨"></a>
-
-[text-transform](#propdef-text-transform)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| \[capitalize \| uppercase \| lowercase \] \|\| full-width \|\| full-size-kana \| math-auto
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-text
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-n/a
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 24</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-text-wrap⑤"></a>
-
-[text-wrap](#propdef-text-wrap)
-
-<strong>Column 2 (data cell):</strong>
-
-\<'text-wrap-mode'\> \|\| \<'text-wrap-style'\>
-
-<strong>Column 3 (data cell):</strong>
-
-wrap
-
-<strong>Column 4 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 5 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 6 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 7 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 25</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-text-wrap-mode①④"></a>
-
-[text-wrap-mode](#propdef-text-wrap-mode)
-
-<strong>Column 2 (data cell):</strong>
-
-wrap \| nowrap
-
-<strong>Column 3 (data cell):</strong>
-
-wrap
-
-<strong>Column 4 (data cell):</strong>
-
-text
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 26</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-text-wrap-style①③"></a>
-
-[text-wrap-style](#propdef-text-wrap-style)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| balance \| stable \| pretty \| avoid-short-last-line
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-block containers hat establish an inline formatting context
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 27</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-white-space①⑥"></a>
-
-[white-space](#propdef-white-space)
-
-<strong>Column 2 (data cell):</strong>
-
-normal \| pre \| pre-wrap \| pre-line \| \<'white-space-collapse'\> \|\| \<'text-wrap-mode'\> \|\| \<'white-space-trim'\>
-
-<strong>Column 3 (data cell):</strong>
-
-normal
-
-<strong>Column 4 (data cell):</strong>
-
-text
-
-<strong>Column 5 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-n/a
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 28</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-white-space-collapse①⑨"></a>
-
-[white-space-collapse](#propdef-white-space-collapse)
-
-<strong>Column 2 (data cell):</strong>
-
-collapse \| discard \| preserve \| preserve-breaks \| preserve-spaces \| break-spaces
-
-<strong>Column 3 (data cell):</strong>
-
-collapse
-
-<strong>Column 4 (data cell):</strong>
-
-text
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 29</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-white-space-trim①②"></a>
-
-[white-space-trim](#propdef-white-space-trim)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| discard-before \|\| discard-after \|\| discard-inner
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-inline boxes and block containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword(s)
-
-<strong>Row 30</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-word-break③④"></a>
-
-[word-break](#propdef-word-break)
-
-<strong>Column 2 (data cell):</strong>
-
-normal \| break-all \| keep-all \| manual \| auto-phrase \| break-word
-
-<strong>Column 3 (data cell):</strong>
-
-normal
-
-<strong>Column 4 (data cell):</strong>
-
-text
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-n/a
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 31</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-word-space-transform⑧"></a>
-
-[word-space-transform](#propdef-word-space-transform)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| \[ space \| ideographic-space \] &#x26;&#x26; auto-phrase?
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-text
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified
-
-<strong>Row 32</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-word-spacing①①"></a>
-
-[word-spacing](#propdef-word-spacing)
-
-<strong>Column 2 (data cell):</strong>
-
-normal \| \<length-percentage\>
-
-<strong>Column 3 (data cell):</strong>
-
-normal
-
-<strong>Column 4 (data cell):</strong>
-
-text
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-relative to used font-size
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-n/a
-
-<strong>Column 9 (data cell):</strong>
-
-an absolute length and/or a percentage
-
-<strong>Row 33</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-wrap-after③"></a>
-
-[wrap-after](#propdef-wrap-after)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| avoid \| avoid-line \| avoid-flex \| line \| flex
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-inline-level boxes and flex items
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 34</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-wrap-before③"></a>
-
-[wrap-before](#propdef-wrap-before)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| avoid \| avoid-line \| avoid-flex \| line \| flex
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-inline-level boxes and flex items
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 35</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-wrap-inside③"></a>
-
-[wrap-inside](#propdef-wrap-inside)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| avoid
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-inline boxes
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
+| Name                | Value                                                                                                                     | Initial                   | Applies to                                                  | Inh.                      | %ages                                                  | Anim­ation type            | Canonical order | Com­puted value                                                                |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------|---------------------------|-------------------------------------------------------------|---------------------------|--------------------------------------------------------|---------------------------|-----------------|-------------------------------------------------------------------------------|
+| <strong><span><a id="ref-for-propdef-hanging-punctuation⑦"></a></span><a href="#propdef-hanging-punctuation">hanging-punctuation</a>&#xA;      </strong> | none \| \[ first \|\| \[ force-end \| allow-end \] \|\| last \]                                                           | none                      | text                                                        | yes                       | n/a                                                    | discrete                  | per grammar     | specified keyword(s)                                                          |
+| <strong><span><a id="ref-for-propdef-hyphenate-character④"></a></span><a href="#propdef-hyphenate-character">hyphenate-character</a>&#xA;      </strong> | auto \| \<string\>                                                                                                        | auto                      | text                                                        | yes                       | n/a                                                    | discrete                  | per grammar     | specified keyword                                                             |
+| <strong><span><a id="ref-for-propdef-hyphenate-limit-chars③"></a></span><a href="#propdef-hyphenate-limit-chars">hyphenate-limit-chars</a>&#xA;      </strong> | \[ auto \| \<integer \[0,∞\]\> \]{1,3}                                                                                    | auto                      | text                                                        | yes                       | n/a                                                    | by computed value type    | per grammar     | three values, each either the auto keyword or an integer                      |
+| <strong><span><a id="ref-for-propdef-hyphenate-limit-last③"></a></span><a href="#propdef-hyphenate-limit-last">hyphenate-limit-last</a>&#xA;      </strong> | none \| always \| column \| page \| spread                                                                                | none                      | block containers                                            | yes                       | n/a                                                    | discrete                  | per grammar     | specified keyword                                                             |
+| <strong><span><a id="ref-for-propdef-hyphenate-limit-lines③"></a></span><a href="#propdef-hyphenate-limit-lines">hyphenate-limit-lines</a>&#xA;      </strong> | no-limit \| \<integer \[0,∞\]\>                                                                                           | no-limit                  | block containers                                            | yes                       | n/a                                                    | by computed value type    | per grammar     | specified keyword or integer                                                  |
+| <strong><span><a id="ref-for-propdef-hyphenate-limit-zone③"></a></span><a href="#propdef-hyphenate-limit-zone">hyphenate-limit-zone</a>&#xA;      </strong> | \<length-percentage\>                                                                                                     | 0                         | block containers                                            | yes                       | refers to length of the line box                       | by computed value type    | per grammar     | computed \<length-percentage\> value                                          |
+| <strong><span><a id="ref-for-propdef-hyphens⑤"></a></span><a href="#propdef-hyphens">hyphens</a>&#xA;      </strong> | none \| manual \| auto                                                                                                    | manual                    | text                                                        | yes                       | n/a                                                    | discrete                  | n/a             | specified keyword                                                             |
+| <strong><span><a id="ref-for-propdef-letter-spacing②⓪"></a></span><a href="#propdef-letter-spacing">letter-spacing</a>&#xA;      </strong> | normal \| \<length-percentage\>                                                                                           | normal                    | inline boxes and text                                       | yes                       | relative to used font-size                             | by computed value type    | n/a             | an absolute length and/or a percentage                                        |
+| <strong><span><a id="ref-for-propdef-line-break①③"></a></span><a href="#propdef-line-break">line-break</a>&#xA;      </strong> | auto \| loose \| normal \| strict \| anywhere                                                                             | auto                      | text                                                        | yes                       | n/a                                                    | discrete                  | n/a             | specified keyword                                                             |
+| <strong><span><a id="ref-for-propdef-line-padding④"></a></span><a href="#propdef-line-padding">line-padding</a>&#xA;      </strong> | \<length\>                                                                                                                | 0                         | inline boxes                                                | yes                       | N/A                                                    | by computed value type    | per grammar     | absolute length                                                               |
+| <strong><span><a id="ref-for-propdef-overflow-wrap①③"></a></span><a href="#propdef-overflow-wrap">overflow-wrap</a>&#xA;      </strong> | normal \| break-word \| anywhere                                                                                          | normal                    | text                                                        | yes                       | n/a                                                    | discrete                  | n/a             | specified keyword                                                             |
+| <strong><span><a id="ref-for-propdef-tab-size②"></a></span><a href="#propdef-tab-size">tab-size</a>&#xA;      </strong> | \<number \[0,∞\]\> \| \<length \[0,∞\]\>                                                                                  | 8                         | text                                                        | yes                       | n/a                                                    | by computed value type    | n/a             | the specified number or absolute length                                       |
+| <strong><span><a id="ref-for-propdef-text-align①④"></a></span><a href="#propdef-text-align">text-align</a>&#xA;      </strong> | start \| end \| left \| right \| center \| \<string\> \| justify \| match-parent \| justify-all                           | start                     | block containers                                            | yes                       | see individual properties                              | discrete                  | n/a             | see individual properties                                                     |
+| <strong><span><a id="ref-for-propdef-text-align-all⑧"></a></span><a href="#propdef-text-align-all">text-align-all</a>&#xA;      </strong> | start \| end \| left \| right \| center \| \<string\> \| justify \| match-parent                                          | start                     | block containers                                            | yes                       | n/a                                                    | discrete                  | n/a             | keyword as specified, except for match-parent which computes as defined above |
+| <strong><span><a id="ref-for-propdef-text-align-last①⓪"></a></span><a href="#propdef-text-align-last">text-align-last</a>&#xA;      </strong> | auto \| start \| end \| left \| right \| center \| justify \| match-parent                                                | auto                      | block containers                                            | yes                       | n/a                                                    | discrete                  | n/a             | keyword as specified, except for match-parent which computes as defined above |
+| <strong><span><a id="ref-for-propdef-text-autospace①③"></a></span><a href="#propdef-text-autospace">text-autospace</a>&#xA;      </strong> | normal \| \<autospace\> \| auto                                                                                           | normal                    | text                                                        | yes                       | N/A                                                    | discrete                  | per grammar     | specified keyword(s)                                                          |
+| <strong><span><a id="ref-for-propdef-text-group-align②"></a></span><a href="#propdef-text-group-align">text-group-align</a>&#xA;      </strong> | none \| start \| end \| left \| right \| center                                                                           | none                      | block containers                                            | no                        | N/A                                                    | discrete                  | per grammar     | specified keyword                                                             |
+| <strong><span><a id="ref-for-propdef-text-indent①⓪"></a></span><a href="#propdef-text-indent">text-indent</a>&#xA;      </strong> | \[ \<length-percentage\> \] &#x26;&#x26; hanging? &#x26;&#x26; each-line?             | 0                         | block containers                                            | yes                       | refers to block container’s own inline-axis inner size | by computed value type    | per grammar     | computed \<length-percentage\> value, plus any specified keywords             |
+| <strong><span><a id="ref-for-propdef-text-justify①①"></a></span><a href="#propdef-text-justify">text-justify</a>&#xA;      </strong> | \[ auto \| none \| inter-word \| inter-character \| ruby \] \|\| no-compress                                              | auto                      | text                                                        | yes                       | n/a                                                    | discrete                  | n/a             | specified keyword (except for the distribute legacy value)                    |
+| <strong><span><a id="ref-for-propdef-text-spacing①⓪"></a></span><a href="#propdef-text-spacing">text-spacing</a>&#xA;      </strong> | none \| auto \| \<spacing-trim\> \|\| \<autospace\>                                                                       | see individual properties | text                                                        | yes                       | N/A                                                    | discrete                  | per grammar     | specified keyword(s)                                                          |
+| <strong><span><a id="ref-for-propdef-text-spacing-trim①⑦"></a></span><a href="#propdef-text-spacing-trim">text-spacing-trim</a>&#xA;      </strong> | \<spacing-trim\> \| auto                                                                                                  | normal                    | text                                                        | yes                       | N/A                                                    | discrete                  | per grammar     | specified keyword(s)                                                          |
+| <strong><span><a id="ref-for-propdef-text-transform⑨"></a></span><a href="#propdef-text-transform">text-transform</a>&#xA;      </strong> | none \| \[capitalize \| uppercase \| lowercase \] \|\| full-width \|\| full-size-kana \| math-auto                        | none                      | text                                                        | yes                       | n/a                                                    | discrete                  | n/a             | specified keyword                                                             |
+| <strong><span><a id="ref-for-propdef-text-wrap⑤"></a></span><a href="#propdef-text-wrap">text-wrap</a>&#xA;      </strong> | \<'text-wrap-mode'\> \|\| \<'text-wrap-style'\>                                                                           | wrap                      | see individual properties                                   | see individual properties | see individual properties                              | see individual properties | per grammar     | see individual properties                                                     |
+| <strong><span><a id="ref-for-propdef-text-wrap-mode①④"></a></span><a href="#propdef-text-wrap-mode">text-wrap-mode</a>&#xA;      </strong> | wrap \| nowrap                                                                                                            | wrap                      | text                                                        | yes                       | n/a                                                    | discrete                  | per grammar     | specified keyword                                                             |
+| <strong><span><a id="ref-for-propdef-text-wrap-style①③"></a></span><a href="#propdef-text-wrap-style">text-wrap-style</a>&#xA;      </strong> | auto \| balance \| stable \| pretty \| avoid-short-last-line                                                              | auto                      | block containers hat establish an inline formatting context | yes                       | n/a                                                    | discrete                  | per grammar     | specified keyword                                                             |
+| <strong><span><a id="ref-for-propdef-white-space①⑥"></a></span><a href="#propdef-white-space">white-space</a>&#xA;      </strong> | normal \| pre \| pre-wrap \| pre-line \| \<'white-space-collapse'\> \|\| \<'text-wrap-mode'\> \|\| \<'white-space-trim'\> | normal                    | text                                                        | see individual properties | n/a                                                    | discrete                  | n/a             | specified keyword                                                             |
+| <strong><span><a id="ref-for-propdef-white-space-collapse①⑨"></a></span><a href="#propdef-white-space-collapse">white-space-collapse</a>&#xA;      </strong> | collapse \| discard \| preserve \| preserve-breaks \| preserve-spaces \| break-spaces                                     | collapse                  | text                                                        | yes                       | n/a                                                    | discrete                  | per grammar     | specified keyword                                                             |
+| <strong><span><a id="ref-for-propdef-white-space-trim①②"></a></span><a href="#propdef-white-space-trim">white-space-trim</a>&#xA;      </strong> | none \| discard-before \|\| discard-after \|\| discard-inner                                                              | none                      | inline boxes and block containers                           | no                        | n/a                                                    | discrete                  | per grammar     | specified keyword(s)                                                          |
+| <strong><span><a id="ref-for-propdef-word-break③④"></a></span><a href="#propdef-word-break">word-break</a>&#xA;      </strong> | normal \| break-all \| keep-all \| manual \| auto-phrase \| break-word                                                    | normal                    | text                                                        | yes                       | n/a                                                    | discrete                  | n/a             | specified keyword                                                             |
+| <strong><span><a id="ref-for-propdef-word-space-transform⑧"></a></span><a href="#propdef-word-space-transform">word-space-transform</a>&#xA;      </strong> | none \| \[ space \| ideographic-space \] &#x26;&#x26; auto-phrase?                                      | none                      | text                                                        | yes                       | N/A                                                    | discrete                  | per grammar     | as specified                                                                  |
+| <strong><span><a id="ref-for-propdef-word-spacing①①"></a></span><a href="#propdef-word-spacing">word-spacing</a>&#xA;      </strong> | normal \| \<length-percentage\>                                                                                           | normal                    | text                                                        | yes                       | relative to used font-size                             | by computed value type    | n/a             | an absolute length and/or a percentage                                        |
+| <strong><span><a id="ref-for-propdef-wrap-after③"></a></span><a href="#propdef-wrap-after">wrap-after</a>&#xA;      </strong> | auto \| avoid \| avoid-line \| avoid-flex \| line \| flex                                                                 | auto                      | inline-level boxes and flex items                           | no                        | n/a                                                    | discrete                  | per grammar     | specified keyword                                                             |
+| <strong><span><a id="ref-for-propdef-wrap-before③"></a></span><a href="#propdef-wrap-before">wrap-before</a>&#xA;      </strong> | auto \| avoid \| avoid-line \| avoid-flex \| line \| flex                                                                 | auto                      | inline-level boxes and flex items                           | no                        | n/a                                                    | discrete                  | per grammar     | specified keyword                                                             |
+| <strong><span><a id="ref-for-propdef-wrap-inside③"></a></span><a href="#propdef-wrap-inside">wrap-inside</a>&#xA;      </strong> | auto \| avoid                                                                                                             | auto                      | inline boxes                                                | no                        | n/a                                                    | discrete                  | per grammar     | specified keyword                                                             |
 
 ## <a id="issues-index"></a>Issues Index
 

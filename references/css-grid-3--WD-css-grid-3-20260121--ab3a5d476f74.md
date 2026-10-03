@@ -19,7 +19,8 @@ Snapshot SHA-256: ab3a5d476f748764136b3ad89f2b4c9c9b47d6d50304aaa5d0a02319b9f5f4
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 9 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 9 source tables are presented as readable Markdown tables or explicit labeled layouts: 8 ordinary table conversions, 1 complex-table layout. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 - Existing external image/media URLs are resolved against the pinned source. Assets are not downloaded or availability-tested; image-only formulas/diagrams still require their source resources.
@@ -179,37 +180,21 @@ All CSS properties work the same as in a regular [grid container](https://www.w3
 
 A <a id="grid-lanes-container"></a>grid lanes container is a [grid container](https://www.w3.org/TR/css-grid-2/#grid-container) whose contents participate in [grid lanes layout](#grid-lanes-layout). A [grid lanes container](#grid-lanes-container) creates column [tracks](https://www.w3.org/TR/css-grid-2/#grid-track) if its [stacking axis](#stacking-axis) is the [block axis](https://www.w3.org/TR/css-writing-modes-4/#block-axis), or row <a id="ref-for-grid-track①"></a>tracks if its <a id="ref-for-stacking-axis①"></a>stacking axis is the [inline axis](https://www.w3.org/TR/css-writing-modes-4/#inline-axis).
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
 Comparing Grid Lanes Containers
 
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Column Lanes
-
-<strong>Column 2 (data cell):</strong>
+**Column Lanes**
 
 ```text
 grid-template-columns: 1fr 2fr 3fr;
 ```
-<strong>Column 3 (data cell):</strong>
 
 ![Column grid lanes layout lays out items in columns, but ordered across the columns, placing each item in the then-shortest column.](https://www.w3.org/TR/2026/WD-css-grid-3-20260121/images/masonry-columns.png)
 
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Row Lanes
-
-<strong>Column 2 (data cell):</strong>
+**Row Lanes**
 
 ```text
 grid-template-rows: 1fr 2fr 3fr;
 ```
-<strong>Column 3 (data cell):</strong>
 
 ![Row grid lanes layout lays out items in rows, but ordered down across the rows, placing each item in the then-shortest row.](https://www.w3.org/TR/2026/WD-css-grid-3-20260121/images/masonry-rows.png)
 
@@ -290,31 +275,10 @@ As with [grid layout](https://www.w3.org/TR/css-grid-2/#grid-layout) and [flex l
 
 ### <a id="grid-lanes-containers"></a>2.2.  Establishing Grid Lanes Layout
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-display①"></a>
-
-[display](https://www.w3.org/TR/css-display-4/#propdef-display)
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[New values:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one"></a>
-
-grid-lanes [\|](https://www.w3.org/TR/css-values-4/#comb-one) inline-grid-lanes
+| Field               | Definition                                                                                         |
+|---------------------|----------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="ref-for-propdef-display①"></a>[display](https://www.w3.org/TR/css-display-4/#propdef-display)                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">New values:</a>&#xA;      </strong> | <a id="ref-for-comb-one"></a>grid-lanes [\|](https://www.w3.org/TR/css-values-4/#comb-one) inline-grid-lanes |
 
 <a id="valdef-display-grid-lanes"></a>grid-lanes  
 <a id="ref-for-grid-lanes-container①"></a>
@@ -822,111 +786,17 @@ The grid-column-\* and grid-row-\* properties (and their shorthands) apply in th
 
 ### <a id="placement-tolerance"></a>4.2. <a id="item-slack"></a> Placement Precision: the [flow-tolerance](#propdef-flow-tolerance) property
 
-<strong>Table 3 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-flow-tolerance"></a>flow-tolerance
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-length-percentage"></a>
-
-<a id="ref-for-comb-one②"></a>
-
-normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) <a id="ref-for-comb-one③"></a>\| infinite
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-normal
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-grid-lanes-container①⑥"></a>
-
-[grid lanes containers](#grid-lanes-container)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-grid-lanes-container①⑦"></a>
-
-<a id="ref-for-content-box"></a>
-
-<a id="ref-for-grid-axis①⑥"></a>
-
-relative to the [grid-axis](#grid-axis) [content box](https://www.w3.org/TR/css-box-4/#content-box) size of the [grid lanes container](#grid-lanes-container)
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-length-percentage①"></a>
-
-a computed [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) value
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-as length
+| Field               | Definition                                                                                                                                                                                                             |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-flow-tolerance"></a>flow-tolerance                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-length-percentage"></a><a id="ref-for-comb-one②"></a>normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) <a id="ref-for-comb-one③"></a>\| infinite  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | normal                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-grid-lanes-container①⑥"></a>[grid lanes containers](#grid-lanes-container)                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | <a id="ref-for-grid-lanes-container①⑦"></a><a id="ref-for-content-box"></a><a id="ref-for-grid-axis①⑥"></a>relative to the [grid-axis](#grid-axis) [content box](https://www.w3.org/TR/css-box-4/#content-box) size of the [grid lanes container](#grid-lanes-container) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-typedef-length-percentage①"></a>a computed [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) value                                                                                             |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | as length                                                                                                                                                                                                              |
 
 <a id="ref-for-grid-lanes-container①⑧"></a>
 
@@ -1591,155 +1461,14 @@ Typically, a grid lanes design can be expected to degrade quite nicely in a UA t
 
 Multiple layout modes in CSS place their children as atomic "items" organized into rows and/or colummns in their container, and allow the author to configure their ordering and placement. The item-\* properties provide generic controls for these ordering and placement options, encapsulating the layout-specific [flex-flow](https://www.w3.org/TR/css-flexbox-1/#propdef-flex-flow) and [grid-auto-flow](https://www.w3.org/TR/css-grid-2/#propdef-grid-auto-flow) properties.
 
-<strong>Table 4 — structured row/cell transcription</strong>
+| Flow-oriented Proposal                                       | Track-oriented Proposal                                      | Value Space                                                                                                                     | Description                                                                                                                                                               | Existing flex property | Existing grid property                                                                                                       |
+|--------------------------------------------------------------|--------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------|------------------------------------------------------------------------------------------------------------------------------|
+| <a id="ref-for-propdef-item-direction"></a>[item-direction](#propdef-item-direction) | <a id="ref-for-propdef-item-track"></a>[item-track](#propdef-item-track)         | auto \| row \| column \| row-reverse \| column-reverse                                                                          | Controls whether items are placed into rows or columns, and whether within those tracks they are ordered start-to-end or end-to-start.                                    | flex-direction         | grid-auto-flow                                                                                                               |
+| <a id="ref-for-propdef-item-wrap"></a>[item-wrap](#propdef-item-wrap)           | <a id="ref-for-propdef-item-cross"></a>[item-cross](#propdef-item-cross)         | \[ auto \| nowrap \| wrap \] \|\| \[ normal \| reverse \] \| wrap-reverse                                                       | Controls whether items are wrapped in the axis opposite to that controled by the row/column property, and if so if they are placed in start-to-end or end-to-start order. | flex-wrap              | <a id="ref-for-propdef-grid-auto-flow③"></a>Introduced into [grid-auto-flow](https://www.w3.org/TR/css-grid-2/#propdef-grid-auto-flow) in this level. |
+| <a id="ref-for-propdef-item-pack"></a>[item-pack](#propdef-item-pack)           | <a id="ref-for-propdef-item-pack①"></a>[item-pack](#propdef-item-pack)           | normal \| dense \|\| balance                                                                                                    | Configures how items are packed into their tracks.                                                                                                                        |                        | <a id="ref-for-propdef-grid-auto-flow④"></a>[grid-auto-flow](https://www.w3.org/TR/css-grid-2/#propdef-grid-auto-flow)                                |
+| <a id="ref-for-propdef-flow-tolerance④"></a>[flow-tolerance](#propdef-flow-tolerance) | <a id="ref-for-propdef-flow-tolerance⑤"></a>[flow-tolerance](#propdef-flow-tolerance) | <a id="ref-for-typedef-length-percentage③"></a>normal \| [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) \| infinite | Defines a layout-specific amount of “slack” in placement decisions.                                                                                                       |                        |                                                                                                                              |
 
 Overview of Item Flow Controls
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Flow-oriented Proposal
-
-<strong>Column 2 (header cell):</strong>
-
-Track-oriented Proposal
-
-<strong>Column 3 (header cell):</strong>
-
-Value Space
-
-<strong>Column 4 (header cell):</strong>
-
-Description
-
-<strong>Column 5 (header cell):</strong>
-
-Existing flex property
-
-<strong>Column 6 (header cell):</strong>
-
-Existing grid property
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-propdef-item-direction"></a>
-
-[item-direction](#propdef-item-direction)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-item-track"></a>
-
-[item-track](#propdef-item-track)
-
-<strong>Column 3 (data cell):</strong>
-
-auto \| row \| column \| row-reverse \| column-reverse
-
-<strong>Column 4 (data cell):</strong>
-
-Controls whether items are placed into rows or columns, and whether within those tracks they are ordered start-to-end or end-to-start.
-
-<strong>Column 5 (data cell):</strong>
-
-flex-direction
-
-<strong>Column 6 (data cell):</strong>
-
-grid-auto-flow
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-propdef-item-wrap"></a>
-
-[item-wrap](#propdef-item-wrap)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-item-cross"></a>
-
-[item-cross](#propdef-item-cross)
-
-<strong>Column 3 (data cell):</strong>
-
-\[ auto \| nowrap \| wrap \] \|\| \[ normal \| reverse \] \| wrap-reverse
-
-<strong>Column 4 (data cell):</strong>
-
-Controls whether items are wrapped in the axis opposite to that controled by the row/column property, and if so if they are placed in start-to-end or end-to-start order.
-
-<strong>Column 5 (data cell):</strong>
-
-flex-wrap
-
-<strong>Column 6 (data cell):</strong>
-
-<a id="ref-for-propdef-grid-auto-flow③"></a>
-
-Introduced into [grid-auto-flow](https://www.w3.org/TR/css-grid-2/#propdef-grid-auto-flow) in this level.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-propdef-item-pack"></a>
-
-[item-pack](#propdef-item-pack)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-item-pack①"></a>
-
-[item-pack](#propdef-item-pack)
-
-<strong>Column 3 (data cell):</strong>
-
-normal \| dense \|\| balance
-
-<strong>Column 4 (data cell):</strong>
-
-Configures how items are packed into their tracks.
-
-<strong>Column 5 (data cell):</strong>
-
-<strong>Column 6 (data cell):</strong>
-
-<a id="ref-for-propdef-grid-auto-flow④"></a>
-
-[grid-auto-flow](https://www.w3.org/TR/css-grid-2/#propdef-grid-auto-flow)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-propdef-flow-tolerance④"></a>
-
-[flow-tolerance](#propdef-flow-tolerance)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-flow-tolerance⑤"></a>
-
-[flow-tolerance](#propdef-flow-tolerance)
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-typedef-length-percentage③"></a>
-
-normal \| [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) \| infinite
-
-<strong>Column 4 (data cell):</strong>
-
-Defines a layout-specific amount of “slack” in placement decisions.
-
-<strong>Column 5 (data cell):</strong>
-
-<strong>Column 6 (data cell):</strong>
 
 > <strong data-conversion-semantic="issue">Issue</strong>
 >
@@ -1751,105 +1480,17 @@ Defines a layout-specific amount of “slack” in placement decisions.
 
 ### <a id="item-primary-axis"></a> Item Flow Axis: [item-track](#propdef-item-track)/[item-direction](#propdef-item-direction)
 
-<strong>Table 5 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-item-direction"></a>item-direction, <a id="propdef-item-track"></a>item-track
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one④"></a>
-
-auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) row <a id="ref-for-comb-one⑤"></a>\| column <a id="ref-for-comb-one⑥"></a>\| row-reverse <a id="ref-for-comb-one⑦"></a>\| column-reverse
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-grid-lanes-container②④"></a>
-
-<a id="ref-for-grid-container②⑤"></a>
-
-<a id="ref-for-flex-container"></a>
-
-[flex containers](https://www.w3.org/TR/css-flexbox-1/#flex-container), [grid containers](https://www.w3.org/TR/css-grid-2/#grid-container), [grid lanes containers](#grid-lanes-container)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                                           |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-item-direction"></a>item-direction, <a id="propdef-item-track"></a>item-track                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one④"></a>auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) row <a id="ref-for-comb-one⑤"></a>\| column <a id="ref-for-comb-one⑥"></a>\| row-reverse <a id="ref-for-comb-one⑦"></a>\| column-reverse                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-grid-lanes-container②④"></a><a id="ref-for-grid-container②⑤"></a><a id="ref-for-flex-container"></a>[flex containers](https://www.w3.org/TR/css-flexbox-1/#flex-container), [grid containers](https://www.w3.org/TR/css-grid-2/#grid-container), [grid lanes containers](#grid-lanes-container) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | as specified                                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                             |
 
 This property controls whether items are placed as rows or columns, and whether within those tracks they are ordered start-to-end or end-to-start.
 
@@ -1930,107 +1571,17 @@ Same as [column](#valdef-item-direction-column), but using end-to-start placemen
 
 ### <a id="item-secondary-axis"></a> Item Cross Axis Placement Mode: [item-cross](#propdef-item-cross)/[item-wrap](#propdef-item-wrap)
 
-<strong>Table 6 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-item-wrap"></a>item-wrap, <a id="propdef-item-cross"></a>item-cross
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-any"></a>
-
-<a id="ref-for-comb-one⑧"></a>
-
-\[ auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) nowrap <a id="ref-for-comb-one⑨"></a>\| wrap \] [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) \[ normal <a id="ref-for-comb-one①⓪"></a>\| reverse \] <a id="ref-for-comb-one①①"></a>\| wrap-reverse
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-grid-lanes-container②⑥"></a>
-
-<a id="ref-for-grid-container②⑦"></a>
-
-<a id="ref-for-flex-container②"></a>
-
-[flex containers](https://www.w3.org/TR/css-flexbox-1/#flex-container), [grid containers](https://www.w3.org/TR/css-grid-2/#grid-container), [grid lanes containers](#grid-lanes-container)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                                                               |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-item-wrap"></a>item-wrap, <a id="propdef-item-cross"></a>item-cross                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-any"></a><a id="ref-for-comb-one⑧"></a>\[ auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) nowrap <a id="ref-for-comb-one⑨"></a>\| wrap \] [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) \[ normal <a id="ref-for-comb-one①⓪"></a>\| reverse \] <a id="ref-for-comb-one①①"></a>\| wrap-reverse |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-grid-lanes-container②⑥"></a><a id="ref-for-grid-container②⑦"></a><a id="ref-for-flex-container②"></a>[flex containers](https://www.w3.org/TR/css-flexbox-1/#flex-container), [grid containers](https://www.w3.org/TR/css-grid-2/#grid-container), [grid lanes containers](#grid-lanes-container)                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | as specified                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                 |
 
 <a id="ref-for-primary-axis"></a>
 
@@ -2110,107 +1661,17 @@ Computes to wrap reverse.
 
 ### <a id="item-pack-options"></a> Item Placement Packing Mode: the [item-pack](#propdef-item-pack) property
 
-<strong>Table 7 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-item-pack"></a>item-pack
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-any①"></a>
-
-<a id="ref-for-comb-one①②"></a>
-
-normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) dense [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) balance
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-normal
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-grid-lanes-container②⑦"></a>
-
-<a id="ref-for-grid-container②⑧"></a>
-
-<a id="ref-for-flex-container④"></a>
-
-[flex containers](https://www.w3.org/TR/css-flexbox-1/#flex-container), [grid containers](https://www.w3.org/TR/css-grid-2/#grid-container), [grid lanes containers](#grid-lanes-container)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                                           |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-item-pack"></a>item-pack                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-any①"></a><a id="ref-for-comb-one①②"></a>normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) dense [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) balance                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | normal                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-grid-lanes-container②⑦"></a><a id="ref-for-grid-container②⑧"></a><a id="ref-for-flex-container④"></a>[flex containers](https://www.w3.org/TR/css-flexbox-1/#flex-container), [grid containers](https://www.w3.org/TR/css-grid-2/#grid-container), [grid lanes containers](#grid-lanes-container) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | as specified                                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                             |
 
 This property controls how items are distributed among the tracks in a layout-specific way.
 
@@ -2235,107 +1696,17 @@ In [flex layout](https://www.w3.org/TR/css-flexbox-1/#flex-layout), this value b
 
 ### <a id="item-flow"></a> Item Placement Shorthand: the [item-flow](#propdef-item-flow) shorthand
 
-<strong>Table 8 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-item-flow"></a>item-flow
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-flow-tolerance⑥"></a>
-
-<a id="ref-for-propdef-item-pack③"></a>
-
-<a id="ref-for-propdef-item-wrap②"></a>
-
-<a id="ref-for-comb-any②"></a>
-
-<a id="ref-for-propdef-item-direction③"></a>
-
-[\<'item-direction'\>](#propdef-item-direction) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<'item-wrap'\>](#propdef-item-wrap) <a id="ref-for-comb-any③"></a>\|\| [\<'item-pack'\>](#propdef-item-pack) <a id="ref-for-comb-any④"></a>\|\| [\<'flow-tolerance'\>](#propdef-flow-tolerance)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                      |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-item-flow"></a>item-flow                                                                                                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-propdef-flow-tolerance⑥"></a><a id="ref-for-propdef-item-pack③"></a><a id="ref-for-propdef-item-wrap②"></a><a id="ref-for-comb-any②"></a><a id="ref-for-propdef-item-direction③"></a>[\<'item-direction'\>](#propdef-item-direction) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<'item-wrap'\>](#propdef-item-wrap) <a id="ref-for-comb-any③"></a>\|\| [\<'item-pack'\>](#propdef-item-pack) <a id="ref-for-comb-any④"></a>\|\| [\<'flow-tolerance'\>](#propdef-flow-tolerance) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                     |
 
 <a id="ref-for-shorthand-property①"></a>
 
@@ -2718,325 +2089,15 @@ Elika Etemad; Koji Ishii. [CSS Writing Modes Level 3](https://www.w3.org/TR/css-
 
 ## <a id="property-index"></a>Property Index
 
-<strong>Table 9 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope col):</strong>
-
-Name
-
-<strong>Column 2 (header cell; scope col):</strong>
-
-Value
-
-<strong>Column 3 (header cell; scope col):</strong>
-
-Initial
-
-<strong>Column 4 (header cell; scope col):</strong>
-
-Applies to
-
-<strong>Column 5 (header cell; scope col):</strong>
-
-Inh.
-
-<strong>Column 6 (header cell; scope col):</strong>
-
-%ages
-
-<strong>Column 7 (header cell; scope col):</strong>
-
-Anim­ation type
-
-<strong>Column 8 (header cell; scope col):</strong>
-
-Canonical order
-
-<strong>Column 9 (header cell; scope col):</strong>
-
-Com­puted value
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-flow-tolerance⑨"></a>
-
-[flow-tolerance](#propdef-flow-tolerance)
-
-<strong>Column 2 (data cell):</strong>
-
-normal \| \<length-percentage\> \| infinite
-
-<strong>Column 3 (data cell):</strong>
-
-normal
-
-<strong>Column 4 (data cell):</strong>
-
-grid lanes containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-relative to the grid-axis content box size of the grid lanes container
-
-<strong>Column 7 (data cell):</strong>
-
-as length
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-a computed \<length-percentage\> value
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-item-cross②"></a>
-
-[item-cross](#propdef-item-cross)
-
-<strong>Column 2 (data cell):</strong>
-
-\[ auto \| nowrap \| wrap \] \|\| \[ normal \| reverse \] \| wrap-reverse
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-flex containers, grid containers, grid lanes containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-item-direction④"></a>
-
-[item-direction](#propdef-item-direction)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| row \| column \| row-reverse \| column-reverse
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-flex containers, grid containers, grid lanes containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-item-flow②"></a>
-
-[item-flow](#propdef-item-flow)
-
-<strong>Column 2 (data cell):</strong>
-
-\<'item-direction'\> \|\| \<'item-wrap'\> \|\| \<'item-pack'\> \|\| \<'flow-tolerance'\>
-
-<strong>Column 3 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 4 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 5 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 6 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 7 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-item-pack④"></a>
-
-[item-pack](#propdef-item-pack)
-
-<strong>Column 2 (data cell):</strong>
-
-normal \| dense \|\| balance
-
-<strong>Column 3 (data cell):</strong>
-
-normal
-
-<strong>Column 4 (data cell):</strong>
-
-flex containers, grid containers, grid lanes containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-item-track③"></a>
-
-[item-track](#propdef-item-track)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| row \| column \| row-reverse \| column-reverse
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-flex containers, grid containers, grid lanes containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-item-wrap③"></a>
-
-[item-wrap](#propdef-item-wrap)
-
-<strong>Column 2 (data cell):</strong>
-
-\[ auto \| nowrap \| wrap \] \|\| \[ normal \| reverse \] \| wrap-reverse
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-flex containers, grid containers, grid lanes containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified
+| Name                | Value                                                                                    | Initial                   | Applies to                                              | Inh.                      | %ages                                                                  | Anim­ation type            | Canonical order | Com­puted value                         |
+|---------------------|------------------------------------------------------------------------------------------|---------------------------|---------------------------------------------------------|---------------------------|------------------------------------------------------------------------|---------------------------|-----------------|----------------------------------------|
+| <strong><span><a id="ref-for-propdef-flow-tolerance⑨"></a></span><a href="#propdef-flow-tolerance">flow-tolerance</a>&#xA;      </strong> | normal \| \<length-percentage\> \| infinite                                              | normal                    | grid lanes containers                                   | no                        | relative to the grid-axis content box size of the grid lanes container | as length                 | per grammar     | a computed \<length-percentage\> value |
+| <strong><span><a id="ref-for-propdef-item-cross②"></a></span><a href="#propdef-item-cross">item-cross</a>&#xA;      </strong> | \[ auto \| nowrap \| wrap \] \|\| \[ normal \| reverse \] \| wrap-reverse                | auto                      | flex containers, grid containers, grid lanes containers | no                        | N/A                                                                    | discrete                  | per grammar     | as specified                           |
+| <strong><span><a id="ref-for-propdef-item-direction④"></a></span><a href="#propdef-item-direction">item-direction</a>&#xA;      </strong> | auto \| row \| column \| row-reverse \| column-reverse                                   | auto                      | flex containers, grid containers, grid lanes containers | no                        | N/A                                                                    | discrete                  | per grammar     | as specified                           |
+| <strong><span><a id="ref-for-propdef-item-flow②"></a></span><a href="#propdef-item-flow">item-flow</a>&#xA;      </strong> | \<'item-direction'\> \|\| \<'item-wrap'\> \|\| \<'item-pack'\> \|\| \<'flow-tolerance'\> | see individual properties | see individual properties                               | see individual properties | see individual properties                                              | see individual properties | per grammar     | see individual properties              |
+| <strong><span><a id="ref-for-propdef-item-pack④"></a></span><a href="#propdef-item-pack">item-pack</a>&#xA;      </strong> | normal \| dense \|\| balance                                                             | normal                    | flex containers, grid containers, grid lanes containers | no                        | N/A                                                                    | discrete                  | per grammar     | as specified                           |
+| <strong><span><a id="ref-for-propdef-item-track③"></a></span><a href="#propdef-item-track">item-track</a>&#xA;      </strong> | auto \| row \| column \| row-reverse \| column-reverse                                   | auto                      | flex containers, grid containers, grid lanes containers | no                        | N/A                                                                    | discrete                  | per grammar     | as specified                           |
+| <strong><span><a id="ref-for-propdef-item-wrap③"></a></span><a href="#propdef-item-wrap">item-wrap</a>&#xA;      </strong> | \[ auto \| nowrap \| wrap \] \|\| \[ normal \| reverse \] \| wrap-reverse                | auto                      | flex containers, grid containers, grid lanes containers | no                        | N/A                                                                    | discrete                  | per grammar     | as specified                           |
 
 ## <a id="issues-index"></a>Issues Index
 

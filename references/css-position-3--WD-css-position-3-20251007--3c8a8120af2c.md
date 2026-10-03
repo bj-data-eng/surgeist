@@ -19,7 +19,8 @@ Snapshot SHA-256: 3c8a8120af2c32d9259eb2feb80506cadffb29c716dbf571b9c1154ab06079
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 6 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 8 source tables are presented as readable Markdown tables or explicit labeled layouts: 5 ordinary table conversions, 1 complex-table layout, 2 already-readable tables. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 - Existing external image/media URLs are resolved against the pinned source. Assets are not downloaded or availability-tested; image-only formulas/diagrams still require their source resources.
@@ -131,99 +132,17 @@ In addition to the property-specific values listed in their definitions, all pro
 
 ## <a id="position-property"></a>2.  Choosing A Positioning Scheme: [position](#propdef-position) property
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-position"></a>position
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one"></a>
-
-static [\|](https://www.w3.org/TR/css-values-4/#comb-one) relative <a id="ref-for-comb-one①"></a>\| absolute <a id="ref-for-comb-one②"></a>\| sticky <a id="ref-for-comb-one③"></a>\| fixed
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-static
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-all elements except table-column-group and table-column
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                    |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-position"></a>position                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one"></a>static [\|](https://www.w3.org/TR/css-values-4/#comb-one) relative <a id="ref-for-comb-one①"></a>\| absolute <a id="ref-for-comb-one②"></a>\| sticky <a id="ref-for-comb-one③"></a>\| fixed |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | static                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | all elements except table-column-group and table-column                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                      |
 
 <a id="ref-for-propdef-position②"></a>
 
@@ -718,119 +637,18 @@ The interpretation of these [inset properties](#inset-properties) varies by [pos
 
 ### <a id="insets"></a>3.1.  Box Insets: the [top](#propdef-top), [right](#propdef-right), [bottom](#propdef-bottom), [left](#propdef-left), [inset-block-start](#propdef-inset-block-start), [inset-inline-start](#propdef-inset-inline-start), [inset-block-end](#propdef-inset-block-end), and [inset-inline-end](#propdef-inset-inline-end) properties 
 
-<strong>Table 4 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-top"></a>top, <a id="propdef-right"></a>right, <a id="propdef-bottom"></a>bottom, <a id="propdef-left"></a>left, <a id="propdef-inset-block-start"></a>inset-block-start, <a id="propdef-inset-inline-start"></a>inset-inline-start, <a id="propdef-inset-block-end"></a>inset-block-end, <a id="propdef-inset-inline-end"></a>inset-inline-end
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-length-percentage"></a>
-
-<a id="ref-for-comb-one④"></a>
-
-auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-positioned elements
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-containing-block①⑥"></a>
-
-refer to size of [containing block](https://www.w3.org/TR/css-display-4/#containing-block); see prose
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-length-percentage①"></a>
-
-<a id="ref-for-valdef-top-auto①"></a>
-
-the keyword [auto](#valdef-top-auto) or a computed [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) value
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value type
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Logical property group:](https://drafts.csswg.org/css-logical-1/#logical-property-group)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-inset①"></a>
-
-[inset](#propdef-inset)
+| Field               | Definition                                                                                                                                                                                                                                                 |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-top"></a>top, <a id="propdef-right"></a>right, <a id="propdef-bottom"></a>bottom, <a id="propdef-left"></a>left, <a id="propdef-inset-block-start"></a>inset-block-start, <a id="propdef-inset-inline-start"></a>inset-inline-start, <a id="propdef-inset-block-end"></a>inset-block-end, <a id="propdef-inset-inline-end"></a>inset-inline-end |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-length-percentage"></a><a id="ref-for-comb-one④"></a>auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage)                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | positioned elements                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | <a id="ref-for-containing-block①⑥"></a>refer to size of [containing block](https://www.w3.org/TR/css-display-4/#containing-block); see prose                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-typedef-length-percentage①"></a><a id="ref-for-valdef-top-auto①"></a>the keyword [auto](#valdef-top-auto) or a computed [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) value                                                                      |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value type                                                                                                                                                                                                                                     |
+| <strong><a href="https://drafts.csswg.org/css-logical-1/#logical-property-group">Logical property group:</a>&#xA;      </strong> | <a id="ref-for-propdef-inset①"></a>[inset](#propdef-inset)                                                                                                                                                                                                                 |
 
 <a id="ref-for-inset-properties⑧"></a>
 
@@ -885,101 +703,17 @@ Represents an unconstrained inset; the exact meaning depends on the [positioning
 
 ### <a id="inset-shorthands"></a>3.2.  Box Insets Shorthands: the [inset-block](#propdef-inset-block), [inset-inline](#propdef-inset-inline), and [inset](#propdef-inset) properties
 
-<strong>Table 5 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-inset-block"></a>inset-block, <a id="propdef-inset-inline"></a>inset-inline
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-num-range"></a>
-
-<a id="ref-for-propdef-top④"></a>
-
-[\<'top'\>](#propdef-top)[{1,2}](https://www.w3.org/TR/css-values-4/#mult-num-range)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-positioned elements
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value type
+| Field               | Definition                                                                                                                 |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-inset-block"></a>inset-block, <a id="propdef-inset-inline"></a>inset-inline                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-num-range"></a><a id="ref-for-propdef-top④"></a>[\<'top'\>](#propdef-top)[{1,2}](https://www.w3.org/TR/css-values-4/#mult-num-range) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | positioned elements                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | see individual properties                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value type                                                                                                     |
 
 <a id="ref-for-propdef-inset-block②"></a>
 
@@ -1001,101 +735,17 @@ by computed value type
 
 The [inset-block](#propdef-inset-block) and [inset-inline](#propdef-inset-inline) properties are [shorthand properties](https://www.w3.org/TR/css-cascade-5/#shorthand-property) for setting [inset-block-start](#propdef-inset-block-start) + [inset-block-end](#propdef-inset-block-end) or [inset-inline-start](#propdef-inset-inline-start) + [inset-inline-end](#propdef-inset-inline-end), respectively, in a single declaration. The first component value sets the [start](https://www.w3.org/TR/css-writing-modes-4/#start) side, the second sets the [end](https://www.w3.org/TR/css-writing-modes-4/#end); if omitted, the second value defaults to the first.
 
-<strong>Table 6 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-inset"></a>inset
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-num-range①"></a>
-
-<a id="ref-for-propdef-top⑤"></a>
-
-[\<'top'\>](#propdef-top)[{1,4}](https://www.w3.org/TR/css-values-4/#mult-num-range)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-positioned elements
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value type
+| Field               | Definition                                                                                                                 |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-inset"></a>inset                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-num-range①"></a><a id="ref-for-propdef-top⑤"></a>[\<'top'\>](#propdef-top)[{1,4}](https://www.w3.org/TR/css-values-4/#mult-num-range) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | positioned elements                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | see individual properties                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value type                                                                                                     |
 
 <a id="ref-for-propdef-inset③"></a>
 
@@ -1960,139 +1610,43 @@ Otherwise, set auto values for [margin-left](https://www.w3.org/TR/css-box-4/#pr
 
 <a id="abspos-auto"></a>
 
-<strong>Table 7 — structured row/cell transcription</strong>
+**Table 7**
 
 Summary of rules for `dir=ltr` in horizontal writing modes
 
-<strong>Row 1</strong>
+Representation note: merged conditions are repeated; each Result label refers to the matching rule list below.
 
-<strong>Column 1 (header cell; column span 5):</strong>
+| Is auto? / <a id="ref-for-propdef-left①⑨"></a> [left](#propdef-left) | Is auto? / <a id="ref-for-propdef-width⑨"></a> [width](https://www.w3.org/TR/css-sizing-3/#propdef-width) | Is auto? / <a id="ref-for-propdef-right①⑨"></a> [right](#propdef-right) | Is auto? / <a id="ref-for-propdef-margin-left⑦"></a> [margin-left](https://www.w3.org/TR/css-box-4/#propdef-margin-left) | Is auto? / <a id="ref-for-propdef-margin-right⑦"></a> [margin-right](https://www.w3.org/TR/css-box-4/#propdef-margin-right) | Result |
+| --- | --- | --- | --- | --- | --- |
+| ✔ | ✔ | ✔ | any | any | Result 1 |
+| ✘ | ✘ | ✘ | ✔ | ✘ | Result 2 |
+| ✘ | ✘ | ✘ | ✘ | ✔ | Result 2 |
+| ✘ | ✘ | ✘ | ✔ | ✔ | Result 3 |
+| ✘ | ✘ | ✘ | ✘ | ✘ | Result 4 |
+| ✔ | ✘ | ✔ | any | any | Result 5 |
+| ✔ | ✔ | ✘ | any | any | Result 6 |
+| ✘ | ✔ | ✔ | any | any | Result 7 |
+| ✔ | ✘ | ✘ | any | any | Result 8 |
+| ✘ | ✘ | ✔ | any | any | Result 8 |
+| ✘ | ✔ | ✘ | any | any | Result 8 |
 
-Is auto?
-
-<strong>Column 6 (header cell; row span 2):</strong>
-
-Result
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-propdef-left①⑨"></a>
-
-[left](#propdef-left)
-
-<strong>Column 2 (header cell):</strong>
-
-<a id="ref-for-propdef-width⑨"></a>
-
-[width](https://www.w3.org/TR/css-sizing-3/#propdef-width)
-
-<strong>Column 3 (header cell):</strong>
-
-<a id="ref-for-propdef-right①⑨"></a>
-
-[right](#propdef-right)
-
-<strong>Column 4 (header cell):</strong>
-
-<a id="ref-for-propdef-margin-left⑦"></a>
-
-[margin-left](https://www.w3.org/TR/css-box-4/#propdef-margin-left)
-
-<strong>Column 5 (header cell):</strong>
-
-<a id="ref-for-propdef-margin-right⑦"></a>
-
-[margin-right](https://www.w3.org/TR/css-box-4/#propdef-margin-right)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-✔
-
-<strong>Column 2 (data cell):</strong>
-
-✔
-
-<strong>Column 3 (data cell):</strong>
-
-✔
-
-<strong>Column 4 (data cell; column span 2):</strong>
-
-any
-
-<strong>Column 6 (data cell):</strong>
+**Result 1**
 
 - auto margins → zero
 - left → static pos
 - width → shrink-to-fit
 - right → solve
 
-<strong>Row 4</strong>
-
-<strong>Column 1 (data cell; row span 4):</strong>
-
-✘
-
-<strong>Column 2 (data cell; row span 4):</strong>
-
-✘
-
-<strong>Column 3 (data cell; row span 4):</strong>
-
-✘
-
-<strong>Column 4 (data cell):</strong>
-
-✔
-
-<strong>Column 5 (data cell):</strong>
-
-✘
-
-<strong>Column 6 (data cell; row span 2):</strong>
+**Result 2**
 
 auto margin → free space
 
-<strong>Row 5</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-✘
-
-<strong>Column 5 (data cell):</strong>
-
-✔
-
-<strong>Row 6</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-✔
-
-<strong>Column 5 (data cell):</strong>
-
-✔
-
-<strong>Column 6 (data cell):</strong>
+**Result 3**
 
 - margins split positive free space
 - right margin gets negative free space
 
-<strong>Row 7</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-✘
-
-<strong>Column 5 (data cell):</strong>
-
-✘
-
-<strong>Column 6 (data cell):</strong>
+**Result 4**
 
 <a id="ref-for-valdef-top-auto②⑦"></a>
 
@@ -2100,131 +1654,31 @@ auto margin → free space
 
 treat [right](#propdef-right) as [auto](#valdef-top-auto)
 
-<strong>Row 8</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-✔
-
-<strong>Column 2 (data cell):</strong>
-
-✘
-
-<strong>Column 3 (data cell):</strong>
-
-✔
-
-<strong>Column 4 (data cell; column span 2):</strong>
-
-any
-
-<strong>Column 6 (data cell):</strong>
+**Result 5**
 
 - auto margins → zero
 - left → static pos
 - width → as specified
 - right → solve
 
-<strong>Row 9</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-✔
-
-<strong>Column 2 (data cell):</strong>
-
-✔
-
-<strong>Column 3 (data cell):</strong>
-
-✘
-
-<strong>Column 4 (data cell; column span 2):</strong>
-
-any
-
-<strong>Column 6 (data cell):</strong>
+**Result 6**
 
 - auto margins → zero
 - left → solve
 - width → shrink-to-fit
 - right → as specified
 
-<strong>Row 10</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-✘
-
-<strong>Column 2 (data cell):</strong>
-
-✔
-
-<strong>Column 3 (data cell):</strong>
-
-✔
-
-<strong>Column 4 (data cell; column span 2):</strong>
-
-any
-
-<strong>Column 6 (data cell):</strong>
+**Result 7**
 
 - auto margins → zero
 - left → as specified
 - width → shrink-to-fit
 - right → solve
 
-<strong>Row 11</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-✔
-
-<strong>Column 2 (data cell):</strong>
-
-✘
-
-<strong>Column 3 (data cell):</strong>
-
-✘
-
-<strong>Column 4 (data cell; row span 3, column span 2):</strong>
-
-any
-
-<strong>Column 6 (data cell; row span 3):</strong>
+**Result 8**
 
 - auto margins → zero
 - solve for auto
-
-<strong>Row 12</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-✘
-
-<strong>Column 2 (data cell):</strong>
-
-✘
-
-<strong>Column 3 (data cell):</strong>
-
-✔
-
-<strong>Row 13</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-✘
-
-<strong>Column 2 (data cell):</strong>
-
-✔
-
-<strong>Column 3 (data cell):</strong>
-
-✘
 
 ### <a id="abs-replaced-width"></a>6.2.  The width of absolute or fixed positioned, replaced elements
 
@@ -3233,569 +2687,20 @@ Tab Atkins Jr.. [CSS Will Change Module Level 1](https://www.w3.org/TR/css-will-
 
 ## <a id="property-index"></a>Property Index
 
-<strong>Table 8 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope col):</strong>
-
-Name
-
-<strong>Column 2 (header cell; scope col):</strong>
-
-Value
-
-<strong>Column 3 (header cell; scope col):</strong>
-
-Initial
-
-<strong>Column 4 (header cell; scope col):</strong>
-
-Applies to
-
-<strong>Column 5 (header cell; scope col):</strong>
-
-Inh.
-
-<strong>Column 6 (header cell; scope col):</strong>
-
-%ages
-
-<strong>Column 7 (header cell; scope col):</strong>
-
-Anim­ation type
-
-<strong>Column 8 (header cell; scope col):</strong>
-
-Canonical order
-
-<strong>Column 9 (header cell; scope col):</strong>
-
-Com­puted value
-
-<strong>Column 10 (header cell; scope col):</strong>
-
-Logical property group
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-bottom②⓪"></a>
-
-[bottom](#propdef-bottom)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| \<length-percentage\>
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-positioned elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-refer to size of containing block; see prose
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the keyword auto or a computed \<length-percentage\> value
-
-<strong>Column 10 (data cell):</strong>
-
-inset
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-inset⑥"></a>
-
-[inset](#propdef-inset)
-
-<strong>Column 2 (data cell):</strong>
-
-\<'top'\>{1,4}
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-positioned elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-inset-block③"></a>
-
-[inset-block](#propdef-inset-block)
-
-<strong>Column 2 (data cell):</strong>
-
-\<'top'\>{1,2}
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-positioned elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-inset-block-end③"></a>
-
-[inset-block-end](#propdef-inset-block-end)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| \<length-percentage\>
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-positioned elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-refer to size of containing block; see prose
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the keyword auto or a computed \<length-percentage\> value
-
-<strong>Column 10 (data cell):</strong>
-
-inset
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-inset-block-start③"></a>
-
-[inset-block-start](#propdef-inset-block-start)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| \<length-percentage\>
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-positioned elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-refer to size of containing block; see prose
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the keyword auto or a computed \<length-percentage\> value
-
-<strong>Column 10 (data cell):</strong>
-
-inset
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-inset-inline③"></a>
-
-[inset-inline](#propdef-inset-inline)
-
-<strong>Column 2 (data cell):</strong>
-
-\<'top'\>{1,2}
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-positioned elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-inset-inline-end③"></a>
-
-[inset-inline-end](#propdef-inset-inline-end)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| \<length-percentage\>
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-positioned elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-refer to size of containing block; see prose
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the keyword auto or a computed \<length-percentage\> value
-
-<strong>Column 10 (data cell):</strong>
-
-inset
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-inset-inline-start③"></a>
-
-[inset-inline-start](#propdef-inset-inline-start)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| \<length-percentage\>
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-positioned elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-refer to size of containing block; see prose
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the keyword auto or a computed \<length-percentage\> value
-
-<strong>Column 10 (data cell):</strong>
-
-inset
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-left②⑧"></a>
-
-[left](#propdef-left)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| \<length-percentage\>
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-positioned elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-refer to size of containing block; see prose
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the keyword auto or a computed \<length-percentage\> value
-
-<strong>Column 10 (data cell):</strong>
-
-inset
-
-<strong>Row 11</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-position①③"></a>
-
-[position](#propdef-position)
-
-<strong>Column 2 (data cell):</strong>
-
-static \| relative \| absolute \| sticky \| fixed
-
-<strong>Column 3 (data cell):</strong>
-
-static
-
-<strong>Column 4 (data cell):</strong>
-
-all elements except table-column-group and table-column
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 12</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-right②⑨"></a>
-
-[right](#propdef-right)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| \<length-percentage\>
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-positioned elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-refer to size of containing block; see prose
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the keyword auto or a computed \<length-percentage\> value
-
-<strong>Column 10 (data cell):</strong>
-
-inset
-
-<strong>Row 13</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-top②④"></a>
-
-[top](#propdef-top)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| \<length-percentage\>
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-positioned elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-refer to size of containing block; see prose
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the keyword auto or a computed \<length-percentage\> value
-
-<strong>Column 10 (data cell):</strong>
-
-inset
+| Name                | Value                                             | Initial | Applies to                                              | Inh. | %ages                                        | Anim­ation type         | Canonical order | Com­puted value                                             | Logical property group |
+|---------------------|---------------------------------------------------|---------|---------------------------------------------------------|------|----------------------------------------------|------------------------|-----------------|------------------------------------------------------------|------------------------|
+| <strong><span><a id="ref-for-propdef-bottom②⓪"></a></span><a href="#propdef-bottom">bottom</a>&#xA;      </strong> | auto \| \<length-percentage\>                     | auto    | positioned elements                                     | no   | refer to size of containing block; see prose | by computed value type | per grammar     | the keyword auto or a computed \<length-percentage\> value | inset                  |
+| <strong><span><a id="ref-for-propdef-inset⑥"></a></span><a href="#propdef-inset">inset</a>&#xA;      </strong> | \<'top'\>{1,4}                                    | auto    | positioned elements                                     | no   | see individual properties                    | by computed value type | per grammar     | see individual properties                                  |                        |
+| <strong><span><a id="ref-for-propdef-inset-block③"></a></span><a href="#propdef-inset-block">inset-block</a>&#xA;      </strong> | \<'top'\>{1,2}                                    | auto    | positioned elements                                     | no   | see individual properties                    | by computed value type | per grammar     | see individual properties                                  |                        |
+| <strong><span><a id="ref-for-propdef-inset-block-end③"></a></span><a href="#propdef-inset-block-end">inset-block-end</a>&#xA;      </strong> | auto \| \<length-percentage\>                     | auto    | positioned elements                                     | no   | refer to size of containing block; see prose | by computed value type | per grammar     | the keyword auto or a computed \<length-percentage\> value | inset                  |
+| <strong><span><a id="ref-for-propdef-inset-block-start③"></a></span><a href="#propdef-inset-block-start">inset-block-start</a>&#xA;      </strong> | auto \| \<length-percentage\>                     | auto    | positioned elements                                     | no   | refer to size of containing block; see prose | by computed value type | per grammar     | the keyword auto or a computed \<length-percentage\> value | inset                  |
+| <strong><span><a id="ref-for-propdef-inset-inline③"></a></span><a href="#propdef-inset-inline">inset-inline</a>&#xA;      </strong> | \<'top'\>{1,2}                                    | auto    | positioned elements                                     | no   | see individual properties                    | by computed value type | per grammar     | see individual properties                                  |                        |
+| <strong><span><a id="ref-for-propdef-inset-inline-end③"></a></span><a href="#propdef-inset-inline-end">inset-inline-end</a>&#xA;      </strong> | auto \| \<length-percentage\>                     | auto    | positioned elements                                     | no   | refer to size of containing block; see prose | by computed value type | per grammar     | the keyword auto or a computed \<length-percentage\> value | inset                  |
+| <strong><span><a id="ref-for-propdef-inset-inline-start③"></a></span><a href="#propdef-inset-inline-start">inset-inline-start</a>&#xA;      </strong> | auto \| \<length-percentage\>                     | auto    | positioned elements                                     | no   | refer to size of containing block; see prose | by computed value type | per grammar     | the keyword auto or a computed \<length-percentage\> value | inset                  |
+| <strong><span><a id="ref-for-propdef-left②⑧"></a></span><a href="#propdef-left">left</a>&#xA;      </strong> | auto \| \<length-percentage\>                     | auto    | positioned elements                                     | no   | refer to size of containing block; see prose | by computed value type | per grammar     | the keyword auto or a computed \<length-percentage\> value | inset                  |
+| <strong><span><a id="ref-for-propdef-position①③"></a></span><a href="#propdef-position">position</a>&#xA;      </strong> | static \| relative \| absolute \| sticky \| fixed | static  | all elements except table-column-group and table-column | no   | N/A                                          | discrete               | per grammar     | specified keyword                                          |                        |
+| <strong><span><a id="ref-for-propdef-right②⑨"></a></span><a href="#propdef-right">right</a>&#xA;      </strong> | auto \| \<length-percentage\>                     | auto    | positioned elements                                     | no   | refer to size of containing block; see prose | by computed value type | per grammar     | the keyword auto or a computed \<length-percentage\> value | inset                  |
+| <strong><span><a id="ref-for-propdef-top②④"></a></span><a href="#propdef-top">top</a>&#xA;      </strong> | auto \| \<length-percentage\>                     | auto    | positioned elements                                     | no   | refer to size of containing block; see prose | by computed value type | per grammar     | the keyword auto or a computed \<length-percentage\> value | inset                  |
 
 ## <a id="issues-index"></a>Issues Index
 

@@ -19,7 +19,8 @@ Snapshot SHA-256: 79ff953b47472ae5bc1eace14c0c470d7bd75d128e933806c97c50b6401946
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- Table 1 is a Markdown table; its first column contains row headers, shown in bold. The remaining 23 tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 24 source tables are presented as readable Markdown tables or explicit labeled layouts: 22 ordinary table conversions, 2 complex-table layouts. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 - Existing external image/media URLs are resolved against the pinned source. Assets are not downloaded or availability-tested; image-only formulas/diagrams still require their source resources.
@@ -231,127 +232,18 @@ By default, [pointer-events](https://www.w3.org/TR/SVG2/interact.html#PointerEve
 
 ### <a id="the-clip-path"></a>5.1. Clipping Shape: the [clip-path](#propdef-clip-path) property
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-clip-path"></a>clip-path
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-geometry-box"></a>
-
-<a id="ref-for-comb-any"></a>
-
-<a id="ref-for-typedef-basic-shape"></a>
-
-<a id="ref-for-comb-one"></a>
-
-<a id="ref-for-typedef-clip-source"></a>
-
-[\<clip-source\>](#typedef-clip-source) [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[ [\<basic-shape\>](https://www.w3.org/TR/css-shapes-1/#typedef-basic-shape) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<geometry-box\>](#typedef-geometry-box) \] <a id="ref-for-comb-one①"></a>\| none
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-elementdef-use①"></a>
-
-<a id="ref-for-graphics-element①"></a>
-
-<a id="ref-for-elementdef-defs"></a>
-
-<a id="ref-for-container-element"></a>
-
-All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG2/struct.html#container-element) excluding the [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs) element, all [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element) and the [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use) element
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-url-value"></a>
-
-as specified, but with [\<url\>](https://www.w3.org/TR/css-values-4/#url-value) values made absolute
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-clip-path"></a>clip-path                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-geometry-box"></a><a id="ref-for-comb-any"></a><a id="ref-for-typedef-basic-shape"></a><a id="ref-for-comb-one"></a><a id="ref-for-typedef-clip-source"></a>[\<clip-source\>](#typedef-clip-source) [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[ [\<basic-shape\>](https://www.w3.org/TR/css-shapes-1/#typedef-basic-shape) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<geometry-box\>](#typedef-geometry-box) \] <a id="ref-for-comb-one①"></a>\| none                                               |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-elementdef-use①"></a><a id="ref-for-graphics-element①"></a><a id="ref-for-elementdef-defs"></a><a id="ref-for-container-element"></a>All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG2/struct.html#container-element) excluding the [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs) element, all [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element) and the [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use) element |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-url-value"></a>as specified, but with [\<url\>](https://www.w3.org/TR/css-values-4/#url-value) values made absolute                                                                                                                                                                                                                                                                                                                            |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 <a id="ref-for-elementdef-clippath②"></a>
 
@@ -513,225 +405,37 @@ The [clip-path](#propdef-clip-path) property is a [presentation attribute](https
 
 ### <a id="ClipPathElement"></a>6.1. The [clipPath](#elementdef-clippath) element
 
-<strong>Table 3 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
+**Name:**
 
 <a id="elementdef-clippath"></a>`clipPath`
 
-<strong>Row 2</strong>
+**Categories:**
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-TermNeverRenderedElement"></a><a id="ref-for-container-element①"></a>[container elements](https://www.w3.org/TR/SVG2/struct.html#container-element), [never-rendered element](https://svgwg.org/svg2-draft/render.html#TermNeverRenderedElement)
 
-Categories:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-TermNeverRenderedElement"></a>
-
-<a id="ref-for-container-element①"></a>
-
-[container elements](https://www.w3.org/TR/SVG2/struct.html#container-element), [never-rendered element](https://svgwg.org/svg2-draft/render.html#TermNeverRenderedElement)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Content model:
-
-<strong>Column 2 (data cell):</strong>
+**Content model:**
 
 Any number of the following elements, in any order:
 
-- <a id="ref-for-elementdef-metadata"></a>
+- <a id="ref-for-elementdef-metadata"></a><a id="ref-for-elementdef-title"></a><a id="ref-for-elementdef-desc"></a>[descriptive](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermDescriptiveElement) — [desc](https://www.w3.org/TR/SVG2/struct.html#elementdef-desc), [title](https://www.w3.org/TR/SVG2/struct.html#elementdef-title), [metadata](https://www.w3.org/TR/SVG2/struct.html#elementdef-metadata)
 
-  <a id="ref-for-elementdef-title"></a>
+- <a id="ref-for-SetElement"></a><a id="ref-for-AnimateTransformElement"></a><a id="ref-for-AnimateMotionElement"></a><a id="ref-for-AnimateColorElement"></a><a id="ref-for-AnimateElement"></a>[animation](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermAnimationElement) — [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [animateColor](https://www.w3.org/TR/SVG11/animate.html#AnimateColorElement), [animateMotion](https://www.w3.org/TR/SVG11/animate.html#AnimateMotionElement), [animateTransform](https://www.w3.org/TR/SVG11/animate.html#AnimateTransformElement), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement)
 
-  <a id="ref-for-elementdef-desc"></a>
+- <a id="ref-for-elementdef-rect"></a><a id="ref-for-elementdef-polyline"></a><a id="ref-for-elementdef-polygon"></a><a id="ref-for-elementdef-path"></a><a id="ref-for-elementdef-line"></a><a id="ref-for-elementdef-ellipse"></a><a id="ref-for-elementdef-circle"></a>[shape](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermShapeElement) — [circle](https://www.w3.org/TR/SVG2/shapes.html#elementdef-circle), [ellipse](https://www.w3.org/TR/SVG2/shapes.html#elementdef-ellipse), [line](https://www.w3.org/TR/SVG2/shapes.html#elementdef-line), [path](https://www.w3.org/TR/SVG2/paths.html#elementdef-path), [polygon](https://www.w3.org/TR/SVG2/shapes.html#elementdef-polygon), [polyline](https://www.w3.org/TR/SVG2/shapes.html#elementdef-polyline), [rect](https://www.w3.org/TR/SVG2/shapes.html#elementdef-rect)
 
-  [descriptive](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermDescriptiveElement) — [desc](https://www.w3.org/TR/SVG2/struct.html#elementdef-desc), [title](https://www.w3.org/TR/SVG2/struct.html#elementdef-title), [metadata](https://www.w3.org/TR/SVG2/struct.html#elementdef-metadata)
+- <a id="ref-for-elementdef-text"></a>[text](https://www.w3.org/TR/SVG2/text.html#elementdef-text)
 
-- <a id="ref-for-SetElement"></a>
+- <a id="ref-for-elementdef-use②"></a>[use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use)
 
-  <a id="ref-for-AnimateTransformElement"></a>
+- <a id="ref-for-elementdef-script"></a>[script](https://www.w3.org/TR/SVG2/interact.html#elementdef-script)
 
-  <a id="ref-for-AnimateMotionElement"></a>
-
-  <a id="ref-for-AnimateColorElement"></a>
-
-  <a id="ref-for-AnimateElement"></a>
-
-  [animation](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermAnimationElement) — [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [animateColor](https://www.w3.org/TR/SVG11/animate.html#AnimateColorElement), [animateMotion](https://www.w3.org/TR/SVG11/animate.html#AnimateMotionElement), [animateTransform](https://www.w3.org/TR/SVG11/animate.html#AnimateTransformElement), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement)
-
-- <a id="ref-for-elementdef-rect"></a>
-
-  <a id="ref-for-elementdef-polyline"></a>
-
-  <a id="ref-for-elementdef-polygon"></a>
-
-  <a id="ref-for-elementdef-path"></a>
-
-  <a id="ref-for-elementdef-line"></a>
-
-  <a id="ref-for-elementdef-ellipse"></a>
-
-  <a id="ref-for-elementdef-circle"></a>
-
-  [shape](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermShapeElement) — [circle](https://www.w3.org/TR/SVG2/shapes.html#elementdef-circle), [ellipse](https://www.w3.org/TR/SVG2/shapes.html#elementdef-ellipse), [line](https://www.w3.org/TR/SVG2/shapes.html#elementdef-line), [path](https://www.w3.org/TR/SVG2/paths.html#elementdef-path), [polygon](https://www.w3.org/TR/SVG2/shapes.html#elementdef-polygon), [polyline](https://www.w3.org/TR/SVG2/shapes.html#elementdef-polyline), [rect](https://www.w3.org/TR/SVG2/shapes.html#elementdef-rect)
-
-- <a id="ref-for-elementdef-text"></a>
-
-  [text](https://www.w3.org/TR/SVG2/text.html#elementdef-text)
-
-- <a id="ref-for-elementdef-use②"></a>
-
-  [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use)
-
-- <a id="ref-for-elementdef-script"></a>
-
-  [script](https://www.w3.org/TR/SVG2/interact.html#elementdef-script)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Attributes:
-
-<strong>Column 2 (data cell):</strong>
+**Attributes:**
 
 - [conditional processing attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermConditionalProcessingAttribute) — [‘requiredFeatures’](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#RequiredFeaturesAttribute), [‘requiredExtensions’](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#RequiredExtensionsAttribute), [‘systemLanguage’](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#SystemLanguageAttribute)
 
 - [core attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermCoreAttributes) — [‘id’](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#IDAttribute), [‘xml:base’](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLBaseAttribute), [‘xml:lang’](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLLangAttribute), [‘xml:space’](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLSpaceAttribute)
 
-- <a id="ref-for-propdef-writing-mode"></a>
-
-  <a id="ref-for-propdef-word-spacing"></a>
-
-  <a id="ref-for-propdef-visibility"></a>
-
-  <a id="ref-for-propdef-unicode-bidi"></a>
-
-  <a id="ref-for-TextRenderingProperty"></a>
-
-  <a id="ref-for-propdef-text-decoration"></a>
-
-  <a id="ref-for-TextAnchorProperty"></a>
-
-  <a id="ref-for-StrokeWidthProperty"></a>
-
-  <a id="ref-for-StrokeOpacityProperty"></a>
-
-  <a id="ref-for-StrokeMiterlimitProperty"></a>
-
-  <a id="ref-for-StrokeLinejoinProperty"></a>
-
-  <a id="ref-for-StrokeLinecapProperty"></a>
-
-  <a id="ref-for-StrokeDashoffsetProperty"></a>
-
-  <a id="ref-for-StrokeDasharrayProperty"></a>
-
-  <a id="ref-for-StrokeProperty"></a>
-
-  <a id="ref-for-StopOpacityProperty"></a>
-
-  <a id="ref-for-StopColorProperty"></a>
-
-  <a id="ref-for-ShapeRenderingProperty"></a>
-
-  <a id="ref-for-PointerEventsProperty①"></a>
-
-  <a id="ref-for-propdef-overflow①"></a>
-
-  <a id="ref-for-propdef-opacity①"></a>
-
-  <a id="ref-for-propdef-mask①"></a>
-
-  <a id="ref-for-MarkerStartProperty"></a>
-
-  <a id="ref-for-MarkerMidProperty"></a>
-
-  <a id="ref-for-MarkerEndProperty"></a>
-
-  <a id="ref-for-MarkerProperty"></a>
-
-  <a id="ref-for-propdef-lighting-color"></a>
-
-  <a id="ref-for-propdef-letter-spacing"></a>
-
-  <a id="ref-for-KerningProperty"></a>
-
-  <a id="ref-for-propdef-image-rendering"></a>
-
-  <a id="ref-for-propdef-glyph-orientation-vertical"></a>
-
-  <a id="ref-for-GlyphOrientationHorizontalProperty"></a>
-
-  <a id="ref-for-propdef-font-weight"></a>
-
-  <a id="ref-for-propdef-font-variant"></a>
-
-  <a id="ref-for-propdef-font-style"></a>
-
-  <a id="ref-for-propdef-font-stretch"></a>
-
-  <a id="ref-for-propdef-font-size-adjust"></a>
-
-  <a id="ref-for-descdef-font-face-font-size"></a>
-
-  <a id="ref-for-propdef-font-family"></a>
-
-  <a id="ref-for-propdef-font"></a>
-
-  <a id="ref-for-propdef-flood-opacity"></a>
-
-  <a id="ref-for-propdef-flood-color"></a>
-
-  <a id="ref-for-propdef-filter"></a>
-
-  <a id="ref-for-FillRuleProperty"></a>
-
-  <a id="ref-for-FillOpacityProperty"></a>
-
-  <a id="ref-for-FillProperty"></a>
-
-  <a id="ref-for-EnableBackgroundProperty"></a>
-
-  <a id="ref-for-propdef-dominant-baseline"></a>
-
-  <a id="ref-for-propdef-display"></a>
-
-  <a id="ref-for-propdef-direction"></a>
-
-  <a id="ref-for-propdef-cursor"></a>
-
-  <a id="ref-for-ColorRenderingProperty"></a>
-
-  <a id="ref-for-ColorProfileProperty"></a>
-
-  <a id="ref-for-propdef-color-interpolation-filters"></a>
-
-  <a id="ref-for-ColorInterpolationProperty"></a>
-
-  <a id="ref-for-propdef-color"></a>
-
-  <a id="ref-for-propdef-clip-rule"></a>
-
-  <a id="ref-for-propdef-clip-path⑥"></a>
-
-  <a id="ref-for-propdef-clip①"></a>
-
-  <a id="ref-for-propdef-baseline-shift"></a>
-
-  <a id="ref-for-propdef-alignment-baseline"></a>
-
-  [presentation attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/css-inline-3/#propdef-alignment-baseline), [baseline-shift](https://www.w3.org/TR/css-inline-3/#propdef-baseline-shift), [clip](#propdef-clip), [clip-path](#propdef-clip-path), [clip-rule](#propdef-clip-rule), [color](https://www.w3.org/TR/css-color-4/#propdef-color), [color-interpolation](https://www.w3.org/TR/SVG2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](https://www.w3.org/TR/filter-effects-1/#propdef-color-interpolation-filters), [color-profile](https://www.w3.org/TR/SVG11/color.html#ColorProfileProperty), [color-rendering](https://www.w3.org/TR/SVG2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css-ui-3/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/css-inline-3/#propdef-dominant-baseline), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/SVG2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/SVG2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/SVG2/painting.html#FillRuleProperty), [filter](https://www.w3.org/TR/filter-effects-1/#propdef-filter), [flood-color](https://www.w3.org/TR/filter-effects-1/#propdef-flood-color), [flood-opacity](https://www.w3.org/TR/filter-effects-1/#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-4/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-4/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-5/#descdef-font-face-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-5/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-4/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-4/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-4/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-4/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/css-writing-modes-4/#propdef-glyph-orientation-vertical), [image-rendering](https://www.w3.org/TR/css-images-3/#propdef-image-rendering), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](https://www.w3.org/TR/filter-effects-1/#propdef-lighting-color), [marker](https://www.w3.org/TR/SVG2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/SVG2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/SVG2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/SVG2/painting.html#MarkerStartProperty), [mask](#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/SVG2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/SVG2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/SVG2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/SVG2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/SVG2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/SVG2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/SVG2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/SVG2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/SVG2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/SVG2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/SVG2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/SVG2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/SVG2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/SVG2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS2/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
+- <a id="ref-for-propdef-writing-mode"></a><a id="ref-for-propdef-word-spacing"></a><a id="ref-for-propdef-visibility"></a><a id="ref-for-propdef-unicode-bidi"></a><a id="ref-for-TextRenderingProperty"></a><a id="ref-for-propdef-text-decoration"></a><a id="ref-for-TextAnchorProperty"></a><a id="ref-for-StrokeWidthProperty"></a><a id="ref-for-StrokeOpacityProperty"></a><a id="ref-for-StrokeMiterlimitProperty"></a><a id="ref-for-StrokeLinejoinProperty"></a><a id="ref-for-StrokeLinecapProperty"></a><a id="ref-for-StrokeDashoffsetProperty"></a><a id="ref-for-StrokeDasharrayProperty"></a><a id="ref-for-StrokeProperty"></a><a id="ref-for-StopOpacityProperty"></a><a id="ref-for-StopColorProperty"></a><a id="ref-for-ShapeRenderingProperty"></a><a id="ref-for-PointerEventsProperty①"></a><a id="ref-for-propdef-overflow①"></a><a id="ref-for-propdef-opacity①"></a><a id="ref-for-propdef-mask①"></a><a id="ref-for-MarkerStartProperty"></a><a id="ref-for-MarkerMidProperty"></a><a id="ref-for-MarkerEndProperty"></a><a id="ref-for-MarkerProperty"></a><a id="ref-for-propdef-lighting-color"></a><a id="ref-for-propdef-letter-spacing"></a><a id="ref-for-KerningProperty"></a><a id="ref-for-propdef-image-rendering"></a><a id="ref-for-propdef-glyph-orientation-vertical"></a><a id="ref-for-GlyphOrientationHorizontalProperty"></a><a id="ref-for-propdef-font-weight"></a><a id="ref-for-propdef-font-variant"></a><a id="ref-for-propdef-font-style"></a><a id="ref-for-propdef-font-stretch"></a><a id="ref-for-propdef-font-size-adjust"></a><a id="ref-for-descdef-font-face-font-size"></a><a id="ref-for-propdef-font-family"></a><a id="ref-for-propdef-font"></a><a id="ref-for-propdef-flood-opacity"></a><a id="ref-for-propdef-flood-color"></a><a id="ref-for-propdef-filter"></a><a id="ref-for-FillRuleProperty"></a><a id="ref-for-FillOpacityProperty"></a><a id="ref-for-FillProperty"></a><a id="ref-for-EnableBackgroundProperty"></a><a id="ref-for-propdef-dominant-baseline"></a><a id="ref-for-propdef-display"></a><a id="ref-for-propdef-direction"></a><a id="ref-for-propdef-cursor"></a><a id="ref-for-ColorRenderingProperty"></a><a id="ref-for-ColorProfileProperty"></a><a id="ref-for-propdef-color-interpolation-filters"></a><a id="ref-for-ColorInterpolationProperty"></a><a id="ref-for-propdef-color"></a><a id="ref-for-propdef-clip-rule"></a><a id="ref-for-propdef-clip-path⑥"></a><a id="ref-for-propdef-clip①"></a><a id="ref-for-propdef-baseline-shift"></a><a id="ref-for-propdef-alignment-baseline"></a>[presentation attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/css-inline-3/#propdef-alignment-baseline), [baseline-shift](https://www.w3.org/TR/css-inline-3/#propdef-baseline-shift), [clip](#propdef-clip), [clip-path](#propdef-clip-path), [clip-rule](#propdef-clip-rule), [color](https://www.w3.org/TR/css-color-4/#propdef-color), [color-interpolation](https://www.w3.org/TR/SVG2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](https://www.w3.org/TR/filter-effects-1/#propdef-color-interpolation-filters), [color-profile](https://www.w3.org/TR/SVG11/color.html#ColorProfileProperty), [color-rendering](https://www.w3.org/TR/SVG2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css-ui-3/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/css-inline-3/#propdef-dominant-baseline), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/SVG2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/SVG2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/SVG2/painting.html#FillRuleProperty), [filter](https://www.w3.org/TR/filter-effects-1/#propdef-filter), [flood-color](https://www.w3.org/TR/filter-effects-1/#propdef-flood-color), [flood-opacity](https://www.w3.org/TR/filter-effects-1/#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-4/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-4/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-5/#descdef-font-face-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-5/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-4/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-4/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-4/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-4/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/css-writing-modes-4/#propdef-glyph-orientation-vertical), [image-rendering](https://www.w3.org/TR/css-images-3/#propdef-image-rendering), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](https://www.w3.org/TR/filter-effects-1/#propdef-lighting-color), [marker](https://www.w3.org/TR/SVG2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/SVG2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/SVG2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/SVG2/painting.html#MarkerStartProperty), [mask](#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/SVG2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/SVG2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/SVG2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/SVG2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/SVG2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/SVG2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/SVG2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/SVG2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/SVG2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/SVG2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/SVG2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/SVG2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/SVG2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/SVG2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS2/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
 
 - [‘class’](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#ClassAttribute)
 
@@ -741,17 +445,9 @@ Attributes:
 
 - [‘transform’](https://www.w3.org/TR/2011/REC-SVG11-20110816/coords.html#TransformAttribute)
 
-- <a id="ref-for-element-attrdef-clippath-clippathunits"></a>
+- <a id="ref-for-element-attrdef-clippath-clippathunits"></a>‘[clipPathUnits](#element-attrdef-clippath-clippathunits)’
 
-  ‘[clipPathUnits](#element-attrdef-clippath-clippathunits)’
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-DOM Interfaces:
-
-<strong>Column 2 (data cell):</strong>
+**DOM Interfaces:**
 
 [SVGClipPathElement](#InterfaceSVGClipPathElement)
 
@@ -871,111 +567,18 @@ A couple of additions:
 
 ### <a id="the-clip-rule"></a>6.2. Winding Rules: the [clip-rule](#propdef-clip-rule) property
 
-<strong>Table 4 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-clip-rule"></a>clip-rule
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one⑤"></a>
-
-nonzero [\|](https://www.w3.org/TR/css-values-4/#comb-one) evenodd
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-nonzero
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-graphics-element③"></a>
-
-Applies to SVG [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
+| Field               | Definition                                                                                                     |
+|---------------------|----------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-clip-rule"></a>clip-rule                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one⑤"></a>nonzero [\|](https://www.w3.org/TR/css-values-4/#comb-one) evenodd                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | nonzero                                                                                                        |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-graphics-element③"></a>Applies to SVG [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | as specified                                                                                                   |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                       |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                         |
 
 <a id="ref-for-propdef-clip-rule②"></a>
 
@@ -1072,123 +675,18 @@ The [clip-rule](#propdef-clip-rule) property is a [presentation attribute](https
 
 ### <a id="the-mask-image"></a>7.1. Mask Image Source: the [mask-image](#propdef-mask-image) property
 
-<strong>Table 5 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-mask-image"></a>mask-image
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma"></a>
-
-<a id="ref-for-typedef-mask-reference"></a>
-
-[\<mask-reference\>](#typedef-mask-reference)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-elementdef-use⑤"></a>
-
-<a id="ref-for-graphics-element⑥"></a>
-
-<a id="ref-for-elementdef-defs①"></a>
-
-<a id="ref-for-container-element②"></a>
-
-All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG2/struct.html#container-element) excluding the [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs) element, all [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element) and the [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use) element
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-url-value②"></a>
-
-<a id="ref-for-typedef-image"></a>
-
-the keyword none, a computed [\<image\>](https://www.w3.org/TR/css-images-3/#typedef-image), or a computed [\<url\>](https://www.w3.org/TR/css-values-4/#url-value)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-mask-image"></a>mask-image                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma"></a><a id="ref-for-typedef-mask-reference"></a>[\<mask-reference\>](#typedef-mask-reference)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)                                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-elementdef-use⑤"></a><a id="ref-for-graphics-element⑥"></a><a id="ref-for-elementdef-defs①"></a><a id="ref-for-container-element②"></a>All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG2/struct.html#container-element) excluding the [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs) element, all [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element) and the [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use) element |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-url-value②"></a><a id="ref-for-typedef-image"></a>the keyword none, a computed [\<image\>](https://www.w3.org/TR/css-images-3/#typedef-image), or a computed [\<url\>](https://www.w3.org/TR/css-values-4/#url-value)                                                                                                                                                                                                                                          |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 This property sets the <a id="mask-layer-image"></a>mask layer image of an element. Where:
 
@@ -1277,119 +775,18 @@ See the section [“Layering multiple mask layer images”](#layering) for how [
 
 ### <a id="the-mask-mode"></a>7.2. Mask Image Interpretation: the [mask-mode](#propdef-mask-mode) property
 
-<strong>Table 6 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-mask-mode"></a>mask-mode
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma①"></a>
-
-<a id="ref-for-typedef-masking-mode"></a>
-
-[\<masking-mode\>](#typedef-masking-mode)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-match-source
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-elementdef-use⑥"></a>
-
-<a id="ref-for-graphics-element⑦"></a>
-
-<a id="ref-for-elementdef-defs②"></a>
-
-<a id="ref-for-container-element③"></a>
-
-All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG2/struct.html#container-element) excluding the [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs) element, all [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element) and the [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use) element
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-mask-mode"></a>mask-mode                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma①"></a><a id="ref-for-typedef-masking-mode"></a>[\<masking-mode\>](#typedef-masking-mode)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)                                                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | match-source                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-elementdef-use⑥"></a><a id="ref-for-graphics-element⑦"></a><a id="ref-for-elementdef-defs②"></a><a id="ref-for-container-element③"></a>All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG2/struct.html#container-element) excluding the [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs) element, all [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element) and the [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use) element |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | as specified                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 <a id="ref-for-propdef-mask-mode①"></a>
 
@@ -1495,119 +892,18 @@ See the section [“Layering multiple mask layer images”](#layering) for how [
 
 ### <a id="the-mask-repeat"></a>7.3. Tiling Mask Images: the [mask-repeat](#propdef-mask-repeat) property
 
-<strong>Table 7 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-mask-repeat"></a>mask-repeat
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma②"></a>
-
-<a id="ref-for-typedef-repeat-style"></a>
-
-[\<repeat-style\>](https://www.w3.org/TR/css-backgrounds-3/#typedef-repeat-style)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-repeat
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-elementdef-use⑦"></a>
-
-<a id="ref-for-graphics-element⑧"></a>
-
-<a id="ref-for-elementdef-defs③"></a>
-
-<a id="ref-for-container-element④"></a>
-
-All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG2/struct.html#container-element) excluding the [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs) element, all [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element) and the [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use) element
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-Consists of: two keywords, one per dimension
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-mask-repeat"></a>mask-repeat                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma②"></a><a id="ref-for-typedef-repeat-style"></a>[\<repeat-style\>](https://www.w3.org/TR/css-backgrounds-3/#typedef-repeat-style)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | repeat                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-elementdef-use⑦"></a><a id="ref-for-graphics-element⑧"></a><a id="ref-for-elementdef-defs③"></a><a id="ref-for-container-element④"></a>All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG2/struct.html#container-element) excluding the [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs) element, all [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element) and the [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use) element |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | Consists of: two keywords, one per dimension                                                                                                                                                                                                                                                                                                                                                                                                       |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 <a id="ref-for-mask-layer-image⑤"></a>
 
@@ -1645,127 +941,18 @@ See the section [“Layering multiple mask layer images”](#layering) for how [
 
 ### <a id="the-mask-position"></a>7.4. Positioning Mask Images: the [mask-position](#propdef-mask-position) property
 
-<strong>Table 8 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-mask-position"></a>mask-position
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma③"></a>
-
-<a id="ref-for-typedef-position"></a>
-
-[\<position\>](https://www.w3.org/TR/css-values-4/#typedef-position)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-0% 0%
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-elementdef-use⑧"></a>
-
-<a id="ref-for-graphics-element⑨"></a>
-
-<a id="ref-for-elementdef-defs④"></a>
-
-<a id="ref-for-container-element⑤"></a>
-
-All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG2/struct.html#container-element) excluding the [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs) element, all [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element) and the [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use) element
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-background-position"></a>
-
-<a id="ref-for-mask-layer-image⑧"></a>
-
-<a id="ref-for-mask-painting-area②"></a>
-
-refer to size of [mask painting area](#mask-painting-area) <em>minus</em> size of [mask layer image](#mask-layer-image); see text [background-position](https://www.w3.org/TR/css-backgrounds-3/#propdef-background-position) [\[CSS3BG\]](#biblio-css3bg)
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value"></a>
-
-Consisting of: two keywords representing the origin and two offsets from that origin, each given as an absolute length (if given a [\<length\>](https://www.w3.org/TR/css-values-4/#length-value)), otherwise as a percentage.
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-repeatable list
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-mask-position"></a>mask-position                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma③"></a><a id="ref-for-typedef-position"></a>[\<position\>](https://www.w3.org/TR/css-values-4/#typedef-position)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)                                                                                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 0% 0%                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-elementdef-use⑧"></a><a id="ref-for-graphics-element⑨"></a><a id="ref-for-elementdef-defs④"></a><a id="ref-for-container-element⑤"></a>All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG2/struct.html#container-element) excluding the [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs) element, all [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element) and the [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use) element |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | <a id="ref-for-propdef-background-position"></a><a id="ref-for-mask-layer-image⑧"></a><a id="ref-for-mask-painting-area②"></a>refer to size of [mask painting area](#mask-painting-area) <em>minus</em> size of [mask layer image](#mask-layer-image); see text [background-position](https://www.w3.org/TR/css-backgrounds-3/#propdef-background-position) [\[CSS3BG\]](#biblio-css3bg)                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-length-value"></a>Consisting of: two keywords representing the origin and two offsets from that origin, each given as an absolute length (if given a [\<length\>](https://www.w3.org/TR/css-values-4/#length-value)), otherwise as a percentage.                                                                                                                                                                                                  |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | repeatable list                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 <a id="ref-for-propdef-background-position①"></a>
 
@@ -1797,121 +984,18 @@ See the section [“Layering multiple mask layer images”](#layering) for how [
 
 ### <a id="the-mask-clip"></a>7.5. Masking Area: the [mask-clip](#propdef-mask-clip) property
 
-<strong>Table 9 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-mask-clip"></a>mask-clip
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma④"></a>
-
-<a id="ref-for-comb-one①⓪"></a>
-
-<a id="ref-for-typedef-geometry-box②"></a>
-
-\[ [\<geometry-box\>](#typedef-geometry-box) [\|](https://www.w3.org/TR/css-values-4/#comb-one) no-clip \][\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-border-box
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-elementdef-use⑨"></a>
-
-<a id="ref-for-graphics-element①⓪"></a>
-
-<a id="ref-for-elementdef-defs⑤"></a>
-
-<a id="ref-for-container-element⑥"></a>
-
-All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG2/struct.html#container-element) excluding the [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs) element, all [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element) and the [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use) element
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-mask-clip"></a>mask-clip                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma④"></a><a id="ref-for-comb-one①⓪"></a><a id="ref-for-typedef-geometry-box②"></a>\[ [\<geometry-box\>](#typedef-geometry-box) [\|](https://www.w3.org/TR/css-values-4/#comb-one) no-clip \][\#](https://www.w3.org/TR/css-values-4/#mult-comma)                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | border-box                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-elementdef-use⑨"></a><a id="ref-for-graphics-element①⓪"></a><a id="ref-for-elementdef-defs⑤"></a><a id="ref-for-container-element⑥"></a>All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG2/struct.html#container-element) excluding the [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs) element, all [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element) and the [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use) element |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | as specified                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 <a id="ref-for-mask-layer-image⑨"></a>
 
@@ -2025,119 +1109,18 @@ See the section [“Layering multiple mask layer images”](#layering) for how [
 
 ### <a id="the-mask-origin"></a>7.6. Positioning Area: the [mask-origin](#propdef-mask-origin) property
 
-<strong>Table 10 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-mask-origin"></a>mask-origin
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma⑤"></a>
-
-<a id="ref-for-typedef-geometry-box③"></a>
-
-[\<geometry-box\>](#typedef-geometry-box)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-border-box
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-elementdef-use①⓪"></a>
-
-<a id="ref-for-graphics-element①①"></a>
-
-<a id="ref-for-elementdef-defs⑥"></a>
-
-<a id="ref-for-container-element⑦"></a>
-
-All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG2/struct.html#container-element) excluding the [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs) element, all [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element) and the [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use) element
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-mask-origin"></a>mask-origin                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma⑤"></a><a id="ref-for-typedef-geometry-box③"></a>[\<geometry-box\>](#typedef-geometry-box)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)                                                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | border-box                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-elementdef-use①⓪"></a><a id="ref-for-graphics-element①①"></a><a id="ref-for-elementdef-defs⑥"></a><a id="ref-for-container-element⑦"></a>All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG2/struct.html#container-element) excluding the [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs) element, all [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element) and the [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use) element |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | as specified                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 <a id="ref-for-propdef-box-decoration-break"></a>
 
@@ -2229,119 +1212,18 @@ See the section [“Layering multiple mask layer images”](#layering) for how [
 
 ### <a id="the-mask-size"></a>7.7. Sizing Mask Images: the [mask-size](#propdef-mask-size) property
 
-<strong>Table 11 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-mask-size"></a>mask-size
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma⑥"></a>
-
-<a id="ref-for-typedef-bg-size"></a>
-
-[\<bg-size\>](https://www.w3.org/TR/css-backgrounds-3/#typedef-bg-size)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-elementdef-use①①"></a>
-
-<a id="ref-for-graphics-element①②"></a>
-
-<a id="ref-for-elementdef-defs⑦"></a>
-
-<a id="ref-for-container-element⑧"></a>
-
-All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG2/struct.html#container-element) excluding the [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs) element, all [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element) and the [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use) element
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-as specified, but with lengths made absolute
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-repeatable list
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-mask-size"></a>mask-size                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma⑥"></a><a id="ref-for-typedef-bg-size"></a>[\<bg-size\>](https://www.w3.org/TR/css-backgrounds-3/#typedef-bg-size)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)                                                                                                                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-elementdef-use①①"></a><a id="ref-for-graphics-element①②"></a><a id="ref-for-elementdef-defs⑦"></a><a id="ref-for-container-element⑧"></a>All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG2/struct.html#container-element) excluding the [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs) element, all [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element) and the [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use) element |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | as specified, but with lengths made absolute                                                                                                                                                                                                                                                                                                                                                                                                       |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | repeatable list                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 <a id="ref-for-mask-layer-image①②"></a>
 
@@ -2359,117 +1241,18 @@ See the section [“Layering multiple mask layer images”](#layering) for how [
 
 ### <a id="the-mask-composite"></a>7.8. Compositing mask layers: the [mask-composite](#propdef-mask-composite) property
 
-<strong>Table 12 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-mask-composite"></a>mask-composite
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma⑦"></a>
-
-<a id="ref-for-typedef-compositing-operator"></a>
-
-[\<compositing-operator\>](#typedef-compositing-operator)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-add
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-graphics-element①③"></a>
-
-<a id="ref-for-elementdef-defs⑧"></a>
-
-<a id="ref-for-container-element⑨"></a>
-
-All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG2/struct.html#container-element) without the [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs) element and all [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                          |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-mask-composite"></a>mask-composite                                                                                                                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma⑦"></a><a id="ref-for-typedef-compositing-operator"></a>[\<compositing-operator\>](#typedef-compositing-operator)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | add                                                                                                                                                                                                                                                                                                                                                 |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-graphics-element①③"></a><a id="ref-for-elementdef-defs⑧"></a><a id="ref-for-container-element⑨"></a>All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG2/struct.html#container-element) without the [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs) element and all [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | as specified                                                                                                                                                                                                                                                                                                                                        |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                                                            |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                                                                                                                                                                                                                                              |
 
 <a id="typedef-compositing-operator"></a>
 
@@ -2618,119 +1401,18 @@ See the section [“Layering multiple mask layer images”](#layering) for how [
 
 ### <a id="the-mask"></a>7.9. Mask Shorthand: the [mask](#propdef-mask) property
 
-<strong>Table 13 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-mask"></a>mask
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma⑧"></a>
-
-<a id="ref-for-typedef-mask-layer"></a>
-
-[\<mask-layer\>](#typedef-mask-layer)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-elementdef-use①②"></a>
-
-<a id="ref-for-graphics-element①④"></a>
-
-<a id="ref-for-elementdef-defs⑨"></a>
-
-<a id="ref-for-container-element①⓪"></a>
-
-All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG2/struct.html#container-element) excluding the [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs) element, all [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element) and the [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use) element
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-mask"></a>mask                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma⑧"></a><a id="ref-for-typedef-mask-layer"></a>[\<mask-layer\>](#typedef-mask-layer)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)                                                                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-elementdef-use①②"></a><a id="ref-for-graphics-element①④"></a><a id="ref-for-elementdef-defs⑨"></a><a id="ref-for-container-element①⓪"></a>All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG2/struct.html#container-element) excluding the [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs) element, all [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element) and the [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use) element |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 <a id="typedef-mask-layer"></a>
 
@@ -2971,121 +1653,18 @@ These pieces may be sliced, scaled and stretched in various ways to fit the size
 
 ### <a id="the-mask-border-source"></a>8.1. Mask Border Image Source: the [mask-border-source](#propdef-mask-border-source) property
 
-<strong>Table 14 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-mask-border-source"></a>mask-border-source
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-image④"></a>
-
-<a id="ref-for-comb-one①⑤"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<image\>](https://www.w3.org/TR/css-images-3/#typedef-image)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-elementdef-use①③"></a>
-
-<a id="ref-for-graphics-element①⑥"></a>
-
-<a id="ref-for-elementdef-defs①⓪"></a>
-
-<a id="ref-for-container-element①①"></a>
-
-All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG2/struct.html#container-element) excluding the [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs) element, all [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element) and the [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use) element
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-image⑤"></a>
-
-they keyword none or the computed [\<image\>](https://www.w3.org/TR/css-images-3/#typedef-image)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-mask-border-source"></a>mask-border-source                                                                                                                                                                                                                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-image④"></a><a id="ref-for-comb-one①⑤"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<image\>](https://www.w3.org/TR/css-images-3/#typedef-image)                                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-elementdef-use①③"></a><a id="ref-for-graphics-element①⑥"></a><a id="ref-for-elementdef-defs①⓪"></a><a id="ref-for-container-element①①"></a>All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG2/struct.html#container-element) excluding the [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs) element, all [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element) and the [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use) element |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-typedef-image⑤"></a>they keyword none or the computed [\<image\>](https://www.w3.org/TR/css-images-3/#typedef-image)                                                                                                                                                                                                                                                                                                                                |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 Specifies an image to be used as <a id="mask-border-image"></a>mask border image.
 
@@ -3121,117 +1700,18 @@ A computed value of other than none results in the creation of a [stacking conte
 
 ### <a id="the-mask-border-mode"></a>8.2. Mask Border Image Interpretation: the [mask-border-mode](#propdef-mask-border-mode) property
 
-<strong>Table 15 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-mask-border-mode"></a>mask-border-mode
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one①⑥"></a>
-
-luminance [\|](https://www.w3.org/TR/css-values-4/#comb-one) alpha
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-alpha
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-elementdef-use①④"></a>
-
-<a id="ref-for-graphics-element①⑦"></a>
-
-<a id="ref-for-elementdef-defs①①"></a>
-
-<a id="ref-for-container-element①②"></a>
-
-All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG2/struct.html#container-element) excluding the [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs) element, all [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element) and the [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use) element
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-mask-border-mode"></a>mask-border-mode                                                                                                                                                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one①⑥"></a>luminance [\|](https://www.w3.org/TR/css-values-4/#comb-one) alpha                                                                                                                                                                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | alpha                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-elementdef-use①④"></a><a id="ref-for-graphics-element①⑦"></a><a id="ref-for-elementdef-defs①①"></a><a id="ref-for-container-element①②"></a>All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG2/struct.html#container-element) excluding the [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs) element, all [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element) and the [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use) element |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | as specified                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 <a id="ref-for-propdef-mask-border-mode①"></a>
 
@@ -3269,123 +1749,18 @@ The [mask-mode](#propdef-mask-mode) and [mask-type](#propdef-mask-type) properti
 
 ### <a id="the-mask-border-slice"></a>8.3. Mask Border Image Slicing: the [mask-border-slice](#propdef-mask-border-slice) property
 
-<strong>Table 16 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-mask-border-slice"></a>mask-border-slice
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-opt①"></a>
-
-<a id="ref-for-mult-num-range"></a>
-
-<a id="ref-for-typedef-number-percentage"></a>
-
-[\<number-percentage\>](https://www.w3.org/TR/css-values-3/#typedef-number-percentage)[{1,4}](https://www.w3.org/TR/css-values-4/#mult-num-range) fill[?](https://www.w3.org/TR/css-values-4/#mult-opt)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-0
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-elementdef-use①⑤"></a>
-
-<a id="ref-for-graphics-element①⑧"></a>
-
-<a id="ref-for-elementdef-defs①②"></a>
-
-<a id="ref-for-container-element①③"></a>
-
-All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG2/struct.html#container-element) excluding the [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs) element, all [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element) and the [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use) element
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mask-border-image⑨"></a>
-
-refer to size of the [mask border image](#mask-border-image)
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-mask-border-slice"></a>mask-border-slice                                                                                                                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-opt①"></a><a id="ref-for-mult-num-range"></a><a id="ref-for-typedef-number-percentage"></a>[\<number-percentage\>](https://www.w3.org/TR/css-values-3/#typedef-number-percentage)[{1,4}](https://www.w3.org/TR/css-values-4/#mult-num-range) fill[?](https://www.w3.org/TR/css-values-4/#mult-opt)                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 0                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-elementdef-use①⑤"></a><a id="ref-for-graphics-element①⑧"></a><a id="ref-for-elementdef-defs①②"></a><a id="ref-for-container-element①③"></a>All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG2/struct.html#container-element) excluding the [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs) element, all [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element) and the [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use) element |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | <a id="ref-for-mask-border-image⑨"></a>refer to size of the [mask border image](#mask-border-image)                                                                                                                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | as specified                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 <a id="ref-for-mask-border-image①⓪"></a>
 
@@ -3399,127 +1774,18 @@ See the [border-image-slice](https://www.w3.org/TR/css-backgrounds-3/#propdef-bo
 
 ### <a id="the-mask-border-width"></a>8.4. Masking Areas: the [mask-border-width](#propdef-mask-border-width) property
 
-<strong>Table 17 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-mask-border-width"></a>mask-border-width
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-num-range①"></a>
-
-<a id="ref-for-number-value"></a>
-
-<a id="ref-for-comb-one①⑦"></a>
-
-<a id="ref-for-typedef-length-percentage"></a>
-
-\[ [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<number\>](https://www.w3.org/TR/css-values-4/#number-value) <a id="ref-for-comb-one①⑧"></a>\| auto \][{1,4}](https://www.w3.org/TR/css-values-4/#mult-num-range)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-elementdef-use①⑥"></a>
-
-<a id="ref-for-graphics-element①⑨"></a>
-
-<a id="ref-for-elementdef-defs①③"></a>
-
-<a id="ref-for-container-element①④"></a>
-
-All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG2/struct.html#container-element) excluding the [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs) element, all [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element) and the [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use) element
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mask-border-image-area③"></a>
-
-relative to width/height of the [mask border image area](#mask-border-image-area)
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value①"></a>
-
-all [\<length\>](https://www.w3.org/TR/css-values-4/#length-value)s made absolute, otherwise as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-mask-border-width"></a>mask-border-width                                                                                                                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-num-range①"></a><a id="ref-for-number-value"></a><a id="ref-for-comb-one①⑦"></a><a id="ref-for-typedef-length-percentage"></a>\[ [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<number\>](https://www.w3.org/TR/css-values-4/#number-value) <a id="ref-for-comb-one①⑧"></a>\| auto \][{1,4}](https://www.w3.org/TR/css-values-4/#mult-num-range)                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-elementdef-use①⑥"></a><a id="ref-for-graphics-element①⑨"></a><a id="ref-for-elementdef-defs①③"></a><a id="ref-for-container-element①④"></a>All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG2/struct.html#container-element) excluding the [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs) element, all [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element) and the [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use) element |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | <a id="ref-for-mask-border-image-area③"></a>relative to width/height of the [mask border image area](#mask-border-image-area)                                                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-length-value①"></a>all [\<length\>](https://www.w3.org/TR/css-values-4/#length-value)s made absolute, otherwise as specified                                                                                                                                                                                                                                                                                                                       |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 <a id="ref-for-mask-border-image①①"></a>
 
@@ -3541,125 +1807,18 @@ See the [border-image-width](https://www.w3.org/TR/css-backgrounds-3/#propdef-bo
 
 ### <a id="the-mask-border-outset"></a>8.5. Edge Overhang: the [mask-border-outset](#propdef-mask-border-outset) property
 
-<strong>Table 18 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-mask-border-outset"></a>mask-border-outset
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-num-range②"></a>
-
-<a id="ref-for-number-value①"></a>
-
-<a id="ref-for-comb-one①⑨"></a>
-
-<a id="ref-for-length-value②"></a>
-
-\[ [\<length\>](https://www.w3.org/TR/css-values-4/#length-value) [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<number\>](https://www.w3.org/TR/css-values-4/#number-value) \][{1,4}](https://www.w3.org/TR/css-values-4/#mult-num-range)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-0
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-elementdef-use①⑦"></a>
-
-<a id="ref-for-graphics-element②⓪"></a>
-
-<a id="ref-for-elementdef-defs①④"></a>
-
-<a id="ref-for-container-element①⑤"></a>
-
-All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG2/struct.html#container-element) excluding the [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs) element, all [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element) and the [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use) element
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value③"></a>
-
-all [\<length\>](https://www.w3.org/TR/css-values-4/#length-value)s made absolute, otherwise as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-mask-border-outset"></a>mask-border-outset                                                                                                                                                                                                                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-num-range②"></a><a id="ref-for-number-value①"></a><a id="ref-for-comb-one①⑨"></a><a id="ref-for-length-value②"></a>\[ [\<length\>](https://www.w3.org/TR/css-values-4/#length-value) [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<number\>](https://www.w3.org/TR/css-values-4/#number-value) \][{1,4}](https://www.w3.org/TR/css-values-4/#mult-num-range)                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 0                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-elementdef-use①⑦"></a><a id="ref-for-graphics-element②⓪"></a><a id="ref-for-elementdef-defs①④"></a><a id="ref-for-container-element①⑤"></a>All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG2/struct.html#container-element) excluding the [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs) element, all [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element) and the [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use) element |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-length-value③"></a>all [\<length\>](https://www.w3.org/TR/css-values-4/#length-value)s made absolute, otherwise as specified                                                                                                                                                                                                                                                                                                                       |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 <a id="ref-for-mask-border-image-area④"></a>
 
@@ -3685,119 +1844,18 @@ As with [mask-border-width](#propdef-mask-border-width), a [\<number\>](https://
 
 ### <a id="the-mask-border-repeat"></a>8.6. Mask Border Image Tiling: the [mask-border-repeat](#propdef-mask-border-repeat) property
 
-<strong>Table 19 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-mask-border-repeat"></a>mask-border-repeat
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-num-range③"></a>
-
-<a id="ref-for-comb-one②⓪"></a>
-
-\[ stretch [\|](https://www.w3.org/TR/css-values-4/#comb-one) repeat <a id="ref-for-comb-one②①"></a>\| round <a id="ref-for-comb-one②②"></a>\| space \][{1,2}](https://www.w3.org/TR/css-values-4/#mult-num-range)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-stretch
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-elementdef-use①⑧"></a>
-
-<a id="ref-for-graphics-element②①"></a>
-
-<a id="ref-for-elementdef-defs①⑤"></a>
-
-<a id="ref-for-container-element①⑥"></a>
-
-All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG2/struct.html#container-element) excluding the [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs) element, all [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element) and the [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use) element
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-mask-border-repeat"></a>mask-border-repeat                                                                                                                                                                                                                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-num-range③"></a><a id="ref-for-comb-one②⓪"></a>\[ stretch [\|](https://www.w3.org/TR/css-values-4/#comb-one) repeat <a id="ref-for-comb-one②①"></a>\| round <a id="ref-for-comb-one②②"></a>\| space \][{1,2}](https://www.w3.org/TR/css-values-4/#mult-num-range)                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | stretch                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-elementdef-use①⑧"></a><a id="ref-for-graphics-element②①"></a><a id="ref-for-elementdef-defs①⑤"></a><a id="ref-for-container-element①⑥"></a>All elements. In SVG, it applies to [container elements](https://www.w3.org/TR/SVG2/struct.html#container-element) excluding the [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs) element, all [graphics elements](https://www.w3.org/TR/SVG2/struct.html#graphics-element) and the [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use) element |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | as specified                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 <a id="ref-for-mask-border-image①②"></a>
 
@@ -3815,123 +1873,18 @@ The exact process for scaling and tiling the [mask border image](#mask-border-im
 
 ### <a id="the-mask-border"></a>8.7. Mask Border Image Shorthand: the [mask-border](#propdef-mask-border) property
 
-<strong>Table 20 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-mask-border"></a>mask-border
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-mask-border-mode②"></a>
-
-<a id="ref-for-propdef-mask-border-repeat①"></a>
-
-<a id="ref-for-propdef-mask-border-outset③"></a>
-
-<a id="ref-for-mult-opt②"></a>
-
-<a id="ref-for-propdef-mask-border-width②"></a>
-
-<a id="ref-for-propdef-mask-border-slice①"></a>
-
-<a id="ref-for-comb-any⑦"></a>
-
-<a id="ref-for-propdef-mask-border-source①⓪"></a>
-
-[\<'mask-border-source'\>](#propdef-mask-border-source) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<'mask-border-slice'\>](#propdef-mask-border-slice) \[ / [\<'mask-border-width'\>](#propdef-mask-border-width)[?](https://www.w3.org/TR/css-values-4/#mult-opt) \[ / [\<'mask-border-outset'\>](#propdef-mask-border-outset) \]<a id="ref-for-mult-opt③"></a>? \]<a id="ref-for-mult-opt④"></a>? <a id="ref-for-comb-any⑧"></a>\|\| [\<'mask-border-repeat'\>](#propdef-mask-border-repeat) <a id="ref-for-comb-any⑨"></a>\|\| [\<'mask-border-mode'\>](#propdef-mask-border-mode)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-See individual properties
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-See individual properties
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-See individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-See individual properties
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-mask-border"></a>mask-border                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-propdef-mask-border-mode②"></a><a id="ref-for-propdef-mask-border-repeat①"></a><a id="ref-for-propdef-mask-border-outset③"></a><a id="ref-for-mult-opt②"></a><a id="ref-for-propdef-mask-border-width②"></a><a id="ref-for-propdef-mask-border-slice①"></a><a id="ref-for-comb-any⑦"></a><a id="ref-for-propdef-mask-border-source①⓪"></a>[\<'mask-border-source'\>](#propdef-mask-border-source) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<'mask-border-slice'\>](#propdef-mask-border-slice) \[ / [\<'mask-border-width'\>](#propdef-mask-border-width)[?](https://www.w3.org/TR/css-values-4/#mult-opt) \[ / [\<'mask-border-outset'\>](#propdef-mask-border-outset) \]<a id="ref-for-mult-opt③"></a>? \]<a id="ref-for-mult-opt④"></a>? <a id="ref-for-comb-any⑧"></a>\|\| [\<'mask-border-repeat'\>](#propdef-mask-border-repeat) <a id="ref-for-comb-any⑨"></a>\|\| [\<'mask-border-mode'\>](#propdef-mask-border-mode) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | See individual properties                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| <strong>Applies to:&#xA;      </strong> | See individual properties                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | See individual properties                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | See individual properties                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 <a id="ref-for-propdef-mask-border-source①①"></a>
 
@@ -3995,339 +1948,89 @@ The [mask-border-source](#propdef-mask-border-source) property has no effect on 
 
 ### <a id="MaskElement"></a>9.1. The [mask](#elementdef-mask) element
 
-<strong>Table 21 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
+**Name:**
 
 <a id="elementdef-mask"></a>`mask`
 
-<strong>Row 2</strong>
+**Categories:**
 
-<strong>Column 1 (header cell):</strong>
+<a id="ref-for-TermNeverRenderedElement①"></a><a id="ref-for-container-element①⑦"></a>[container elements](https://www.w3.org/TR/SVG2/struct.html#container-element), [never-rendered element](https://svgwg.org/svg2-draft/render.html#TermNeverRenderedElement)
 
-Categories:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-TermNeverRenderedElement①"></a>
-
-<a id="ref-for-container-element①⑦"></a>
-
-[container elements](https://www.w3.org/TR/SVG2/struct.html#container-element), [never-rendered element](https://svgwg.org/svg2-draft/render.html#TermNeverRenderedElement)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Content model:
-
-<strong>Column 2 (data cell):</strong>
+**Content model:**
 
 Any number of the following elements, in any order:
 
-- <a id="ref-for-SetElement①"></a>
+- <a id="ref-for-SetElement①"></a><a id="ref-for-AnimateTransformElement①"></a><a id="ref-for-AnimateMotionElement①"></a><a id="ref-for-AnimateColorElement①"></a><a id="ref-for-AnimateElement①"></a>[animation](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermAnimationElement) — [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [animateColor](https://www.w3.org/TR/SVG11/animate.html#AnimateColorElement), [animateMotion](https://www.w3.org/TR/SVG11/animate.html#AnimateMotionElement), [animateTransform](https://www.w3.org/TR/SVG11/animate.html#AnimateTransformElement), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement)
 
-  <a id="ref-for-AnimateTransformElement①"></a>
+- <a id="ref-for-elementdef-metadata①"></a><a id="ref-for-elementdef-title①"></a><a id="ref-for-elementdef-desc①"></a>[descriptive](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermDescriptiveElement) — [desc](https://www.w3.org/TR/SVG2/struct.html#elementdef-desc), [title](https://www.w3.org/TR/SVG2/struct.html#elementdef-title), [metadata](https://www.w3.org/TR/SVG2/struct.html#elementdef-metadata)
 
-  <a id="ref-for-AnimateMotionElement①"></a>
+- <a id="ref-for-elementdef-rect①"></a><a id="ref-for-elementdef-polyline①"></a><a id="ref-for-elementdef-polygon①"></a><a id="ref-for-elementdef-path④"></a><a id="ref-for-elementdef-line①"></a><a id="ref-for-elementdef-ellipse①"></a><a id="ref-for-elementdef-circle③"></a>[shape](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermShapeElement) — [circle](https://www.w3.org/TR/SVG2/shapes.html#elementdef-circle), [ellipse](https://www.w3.org/TR/SVG2/shapes.html#elementdef-ellipse), [line](https://www.w3.org/TR/SVG2/shapes.html#elementdef-line), [path](https://www.w3.org/TR/SVG2/paths.html#elementdef-path), [polygon](https://www.w3.org/TR/SVG2/shapes.html#elementdef-polygon), [polyline](https://www.w3.org/TR/SVG2/shapes.html#elementdef-polyline), [rect](https://www.w3.org/TR/SVG2/shapes.html#elementdef-rect)
 
-  <a id="ref-for-AnimateColorElement①"></a>
+- <a id="ref-for-elementdef-use①⑨"></a><a id="ref-for-elementdef-symbol"></a><a id="ref-for-elementdef-svg"></a><a id="ref-for-elementdef-g"></a><a id="ref-for-elementdef-defs①⑥"></a>[structural](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermStructuralElement) — [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs), [g](https://www.w3.org/TR/SVG2/struct.html#elementdef-g), [svg](https://www.w3.org/TR/SVG2/struct.html#elementdef-svg), [symbol](https://www.w3.org/TR/SVG2/struct.html#elementdef-symbol), [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use)
 
-  <a id="ref-for-AnimateElement①"></a>
+- <a id="ref-for-elementdef-radialGradient"></a><a id="ref-for-elementdef-linearGradient"></a>[gradient](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermGradientElement) — [linearGradient](https://www.w3.org/TR/SVG2/pservers.html#elementdef-linearGradient), [radialGradient](https://www.w3.org/TR/SVG2/pservers.html#elementdef-radialGradient)
 
-  [animation](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermAnimationElement) — [animate](https://www.w3.org/TR/SVG11/animate.html#AnimateElement), [animateColor](https://www.w3.org/TR/SVG11/animate.html#AnimateColorElement), [animateMotion](https://www.w3.org/TR/SVG11/animate.html#AnimateMotionElement), [animateTransform](https://www.w3.org/TR/SVG11/animate.html#AnimateTransformElement), [set](https://www.w3.org/TR/SVG11/animate.html#SetElement)
+- <a id="ref-for-elementdef-a"></a>[a](https://www.w3.org/TR/SVG2/linking.html#elementdef-a)
 
-- <a id="ref-for-elementdef-metadata①"></a>
+- <a id="ref-for-elementdef-clippath③⓪"></a>[clipPath](#elementdef-clippath)
 
-  <a id="ref-for-elementdef-title①"></a>
+- <a id="ref-for-ColorProfileElement"></a>[color-profile](https://www.w3.org/TR/SVG11/color.html#ColorProfileElement)
 
-  <a id="ref-for-elementdef-desc①"></a>
+- <a id="ref-for-CursorElement"></a>[cursor](https://www.w3.org/TR/SVG11/interact.html#CursorElement)
 
-  [descriptive](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermDescriptiveElement) — [desc](https://www.w3.org/TR/SVG2/struct.html#elementdef-desc), [title](https://www.w3.org/TR/SVG2/struct.html#elementdef-title), [metadata](https://www.w3.org/TR/SVG2/struct.html#elementdef-metadata)
+- <a id="ref-for-elementdef-filter"></a>[filter](https://www.w3.org/TR/filter-effects-1/#elementdef-filter)
 
-- <a id="ref-for-elementdef-rect①"></a>
+- <a id="ref-for-FontElement"></a>[font](https://www.w3.org/TR/SVG11/fonts.html#FontElement)
 
-  <a id="ref-for-elementdef-polyline①"></a>
+- <a id="ref-for-FontFaceElement"></a>[font-face](https://www.w3.org/TR/SVG11/fonts.html#FontFaceElement)
 
-  <a id="ref-for-elementdef-polygon①"></a>
+- <a id="ref-for-elementdef-foreignObject"></a>[foreignObject](https://www.w3.org/TR/SVG2/embedded.html#elementdef-foreignObject)
 
-  <a id="ref-for-elementdef-path④"></a>
+- <a id="ref-for-elementdef-image"></a>[image](https://www.w3.org/TR/SVG2/embedded.html#elementdef-image)
 
-  <a id="ref-for-elementdef-line①"></a>
+- <a id="ref-for-elementdef-marker"></a>[marker](https://www.w3.org/TR/SVG2/painting.html#elementdef-marker)
 
-  <a id="ref-for-elementdef-ellipse①"></a>
+- <a id="ref-for-elementdef-mask①④"></a>[mask](#elementdef-mask)
 
-  <a id="ref-for-elementdef-circle③"></a>
+- <a id="ref-for-elementdef-pattern"></a>[pattern](https://www.w3.org/TR/SVG2/pservers.html#elementdef-pattern)
 
-  [shape](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermShapeElement) — [circle](https://www.w3.org/TR/SVG2/shapes.html#elementdef-circle), [ellipse](https://www.w3.org/TR/SVG2/shapes.html#elementdef-ellipse), [line](https://www.w3.org/TR/SVG2/shapes.html#elementdef-line), [path](https://www.w3.org/TR/SVG2/paths.html#elementdef-path), [polygon](https://www.w3.org/TR/SVG2/shapes.html#elementdef-polygon), [polyline](https://www.w3.org/TR/SVG2/shapes.html#elementdef-polyline), [rect](https://www.w3.org/TR/SVG2/shapes.html#elementdef-rect)
+- <a id="ref-for-elementdef-script①"></a>[script](https://www.w3.org/TR/SVG2/interact.html#elementdef-script)
 
-- <a id="ref-for-elementdef-use①⑨"></a>
+- <a id="ref-for-elementdef-style"></a>[style](https://www.w3.org/TR/SVG2/styling.html#elementdef-style)
 
-  <a id="ref-for-elementdef-symbol"></a>
+- <a id="ref-for-elementdef-switch"></a>[switch](https://www.w3.org/TR/SVG2/struct.html#elementdef-switch)
 
-  <a id="ref-for-elementdef-svg"></a>
+- <a id="ref-for-elementdef-view"></a>[view](https://www.w3.org/TR/SVG2/linking.html#elementdef-view)
 
-  <a id="ref-for-elementdef-g"></a>
+- <a id="ref-for-elementdef-text④"></a>[text](https://www.w3.org/TR/SVG2/text.html#elementdef-text)
 
-  <a id="ref-for-elementdef-defs①⑥"></a>
+- <a id="ref-for-AlternateGlyphDefinitions"></a>[altGlyphDef](https://www.w3.org/TR/SVG11/text.html#AlternateGlyphDefinitions)
 
-  [structural](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermStructuralElement) — [defs](https://www.w3.org/TR/SVG2/struct.html#elementdef-defs), [g](https://www.w3.org/TR/SVG2/struct.html#elementdef-g), [svg](https://www.w3.org/TR/SVG2/struct.html#elementdef-svg), [symbol](https://www.w3.org/TR/SVG2/struct.html#elementdef-symbol), [use](https://www.w3.org/TR/SVG2/struct.html#elementdef-use)
-
-- <a id="ref-for-elementdef-radialGradient"></a>
-
-  <a id="ref-for-elementdef-linearGradient"></a>
-
-  [gradient](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermGradientElement) — [linearGradient](https://www.w3.org/TR/SVG2/pservers.html#elementdef-linearGradient), [radialGradient](https://www.w3.org/TR/SVG2/pservers.html#elementdef-radialGradient)
-
-- <a id="ref-for-elementdef-a"></a>
-
-  [a](https://www.w3.org/TR/SVG2/linking.html#elementdef-a)
-
-- <a id="ref-for-elementdef-clippath③⓪"></a>
-
-  [clipPath](#elementdef-clippath)
-
-- <a id="ref-for-ColorProfileElement"></a>
-
-  [color-profile](https://www.w3.org/TR/SVG11/color.html#ColorProfileElement)
-
-- <a id="ref-for-CursorElement"></a>
-
-  [cursor](https://www.w3.org/TR/SVG11/interact.html#CursorElement)
-
-- <a id="ref-for-elementdef-filter"></a>
-
-  [filter](https://www.w3.org/TR/filter-effects-1/#elementdef-filter)
-
-- <a id="ref-for-FontElement"></a>
-
-  [font](https://www.w3.org/TR/SVG11/fonts.html#FontElement)
-
-- <a id="ref-for-FontFaceElement"></a>
-
-  [font-face](https://www.w3.org/TR/SVG11/fonts.html#FontFaceElement)
-
-- <a id="ref-for-elementdef-foreignObject"></a>
-
-  [foreignObject](https://www.w3.org/TR/SVG2/embedded.html#elementdef-foreignObject)
-
-- <a id="ref-for-elementdef-image"></a>
-
-  [image](https://www.w3.org/TR/SVG2/embedded.html#elementdef-image)
-
-- <a id="ref-for-elementdef-marker"></a>
-
-  [marker](https://www.w3.org/TR/SVG2/painting.html#elementdef-marker)
-
-- <a id="ref-for-elementdef-mask①④"></a>
-
-  [mask](#elementdef-mask)
-
-- <a id="ref-for-elementdef-pattern"></a>
-
-  [pattern](https://www.w3.org/TR/SVG2/pservers.html#elementdef-pattern)
-
-- <a id="ref-for-elementdef-script①"></a>
-
-  [script](https://www.w3.org/TR/SVG2/interact.html#elementdef-script)
-
-- <a id="ref-for-elementdef-style"></a>
-
-  [style](https://www.w3.org/TR/SVG2/styling.html#elementdef-style)
-
-- <a id="ref-for-elementdef-switch"></a>
-
-  [switch](https://www.w3.org/TR/SVG2/struct.html#elementdef-switch)
-
-- <a id="ref-for-elementdef-view"></a>
-
-  [view](https://www.w3.org/TR/SVG2/linking.html#elementdef-view)
-
-- <a id="ref-for-elementdef-text④"></a>
-
-  [text](https://www.w3.org/TR/SVG2/text.html#elementdef-text)
-
-- <a id="ref-for-AlternateGlyphDefinitions"></a>
-
-  [altGlyphDef](https://www.w3.org/TR/SVG11/text.html#AlternateGlyphDefinitions)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Attributes:
-
-<strong>Column 2 (data cell):</strong>
+**Attributes:**
 
 - [conditional processing attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermConditionalProcessingAttribute) — [‘requiredFeatures’](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#RequiredFeaturesAttribute), [‘requiredExtensions’](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#RequiredExtensionsAttribute), [‘systemLanguage’](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#SystemLanguageAttribute)
 
 - [core attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermCoreAttributes) — [‘id’](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#IDAttribute), [‘xml:base’](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLBaseAttribute), [‘xml:lang’](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLLangAttribute), [‘xml:space’](https://www.w3.org/TR/2011/REC-SVG11-20110816/struct.html#XMLSpaceAttribute)
 
-- <a id="ref-for-propdef-writing-mode①"></a>
-
-  <a id="ref-for-propdef-word-spacing①"></a>
-
-  <a id="ref-for-propdef-visibility②"></a>
-
-  <a id="ref-for-propdef-unicode-bidi①"></a>
-
-  <a id="ref-for-TextRenderingProperty①"></a>
-
-  <a id="ref-for-propdef-text-decoration①"></a>
-
-  <a id="ref-for-TextAnchorProperty①"></a>
-
-  <a id="ref-for-StrokeWidthProperty②"></a>
-
-  <a id="ref-for-StrokeOpacityProperty①"></a>
-
-  <a id="ref-for-StrokeMiterlimitProperty①"></a>
-
-  <a id="ref-for-StrokeLinejoinProperty①"></a>
-
-  <a id="ref-for-StrokeLinecapProperty①"></a>
-
-  <a id="ref-for-StrokeDashoffsetProperty①"></a>
-
-  <a id="ref-for-StrokeDasharrayProperty①"></a>
-
-  <a id="ref-for-StrokeProperty②"></a>
-
-  <a id="ref-for-StopOpacityProperty①"></a>
-
-  <a id="ref-for-StopColorProperty①"></a>
-
-  <a id="ref-for-ShapeRenderingProperty①"></a>
-
-  <a id="ref-for-PointerEventsProperty②"></a>
-
-  <a id="ref-for-propdef-overflow②"></a>
-
-  <a id="ref-for-propdef-opacity⑥"></a>
-
-  <a id="ref-for-propdef-mask⑦"></a>
-
-  <a id="ref-for-MarkerStartProperty①"></a>
-
-  <a id="ref-for-MarkerMidProperty①"></a>
-
-  <a id="ref-for-MarkerEndProperty①"></a>
-
-  <a id="ref-for-MarkerProperty①"></a>
-
-  <a id="ref-for-propdef-lighting-color①"></a>
-
-  <a id="ref-for-propdef-letter-spacing①"></a>
-
-  <a id="ref-for-KerningProperty①"></a>
-
-  <a id="ref-for-propdef-image-rendering①"></a>
-
-  <a id="ref-for-propdef-glyph-orientation-vertical①"></a>
-
-  <a id="ref-for-GlyphOrientationHorizontalProperty①"></a>
-
-  <a id="ref-for-propdef-font-weight①"></a>
-
-  <a id="ref-for-propdef-font-variant①"></a>
-
-  <a id="ref-for-propdef-font-style①"></a>
-
-  <a id="ref-for-propdef-font-stretch①"></a>
-
-  <a id="ref-for-propdef-font-size-adjust①"></a>
-
-  <a id="ref-for-descdef-font-face-font-size①"></a>
-
-  <a id="ref-for-propdef-font-family①"></a>
-
-  <a id="ref-for-propdef-font①"></a>
-
-  <a id="ref-for-propdef-flood-opacity①"></a>
-
-  <a id="ref-for-propdef-flood-color①"></a>
-
-  <a id="ref-for-propdef-filter①"></a>
-
-  <a id="ref-for-FillRuleProperty④"></a>
-
-  <a id="ref-for-FillOpacityProperty①"></a>
-
-  <a id="ref-for-FillProperty②"></a>
-
-  <a id="ref-for-EnableBackgroundProperty①"></a>
-
-  <a id="ref-for-propdef-dominant-baseline①"></a>
-
-  <a id="ref-for-propdef-display⑤"></a>
-
-  <a id="ref-for-propdef-direction①"></a>
-
-  <a id="ref-for-propdef-cursor①"></a>
-
-  <a id="ref-for-ColorRenderingProperty①"></a>
-
-  <a id="ref-for-ColorProfileProperty①"></a>
-
-  <a id="ref-for-propdef-color-interpolation-filters①"></a>
-
-  <a id="ref-for-ColorInterpolationProperty②"></a>
-
-  <a id="ref-for-propdef-color①"></a>
-
-  <a id="ref-for-propdef-clip-rule⑨"></a>
-
-  <a id="ref-for-propdef-clip-path①⑤"></a>
-
-  <a id="ref-for-propdef-clip②"></a>
-
-  <a id="ref-for-propdef-baseline-shift①"></a>
-
-  <a id="ref-for-propdef-alignment-baseline①"></a>
-
-  [presentation attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/css-inline-3/#propdef-alignment-baseline), [baseline-shift](https://www.w3.org/TR/css-inline-3/#propdef-baseline-shift), [clip](#propdef-clip), [clip-path](#propdef-clip-path), [clip-rule](#propdef-clip-rule), [color](https://www.w3.org/TR/css-color-4/#propdef-color), [color-interpolation](https://www.w3.org/TR/SVG2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](https://www.w3.org/TR/filter-effects-1/#propdef-color-interpolation-filters), [color-profile](https://www.w3.org/TR/SVG11/color.html#ColorProfileProperty), [color-rendering](https://www.w3.org/TR/SVG2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css-ui-3/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/css-inline-3/#propdef-dominant-baseline), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/SVG2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/SVG2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/SVG2/painting.html#FillRuleProperty), [filter](https://www.w3.org/TR/filter-effects-1/#propdef-filter), [flood-color](https://www.w3.org/TR/filter-effects-1/#propdef-flood-color), [flood-opacity](https://www.w3.org/TR/filter-effects-1/#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-4/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-4/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-5/#descdef-font-face-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-5/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-4/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-4/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-4/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-4/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/css-writing-modes-4/#propdef-glyph-orientation-vertical), [image-rendering](https://www.w3.org/TR/css-images-3/#propdef-image-rendering), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](https://www.w3.org/TR/filter-effects-1/#propdef-lighting-color), [marker](https://www.w3.org/TR/SVG2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/SVG2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/SVG2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/SVG2/painting.html#MarkerStartProperty), [mask](#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/SVG2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/SVG2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/SVG2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/SVG2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/SVG2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/SVG2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/SVG2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/SVG2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/SVG2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/SVG2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/SVG2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/SVG2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/SVG2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/SVG2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS2/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
+- <a id="ref-for-propdef-writing-mode①"></a><a id="ref-for-propdef-word-spacing①"></a><a id="ref-for-propdef-visibility②"></a><a id="ref-for-propdef-unicode-bidi①"></a><a id="ref-for-TextRenderingProperty①"></a><a id="ref-for-propdef-text-decoration①"></a><a id="ref-for-TextAnchorProperty①"></a><a id="ref-for-StrokeWidthProperty②"></a><a id="ref-for-StrokeOpacityProperty①"></a><a id="ref-for-StrokeMiterlimitProperty①"></a><a id="ref-for-StrokeLinejoinProperty①"></a><a id="ref-for-StrokeLinecapProperty①"></a><a id="ref-for-StrokeDashoffsetProperty①"></a><a id="ref-for-StrokeDasharrayProperty①"></a><a id="ref-for-StrokeProperty②"></a><a id="ref-for-StopOpacityProperty①"></a><a id="ref-for-StopColorProperty①"></a><a id="ref-for-ShapeRenderingProperty①"></a><a id="ref-for-PointerEventsProperty②"></a><a id="ref-for-propdef-overflow②"></a><a id="ref-for-propdef-opacity⑥"></a><a id="ref-for-propdef-mask⑦"></a><a id="ref-for-MarkerStartProperty①"></a><a id="ref-for-MarkerMidProperty①"></a><a id="ref-for-MarkerEndProperty①"></a><a id="ref-for-MarkerProperty①"></a><a id="ref-for-propdef-lighting-color①"></a><a id="ref-for-propdef-letter-spacing①"></a><a id="ref-for-KerningProperty①"></a><a id="ref-for-propdef-image-rendering①"></a><a id="ref-for-propdef-glyph-orientation-vertical①"></a><a id="ref-for-GlyphOrientationHorizontalProperty①"></a><a id="ref-for-propdef-font-weight①"></a><a id="ref-for-propdef-font-variant①"></a><a id="ref-for-propdef-font-style①"></a><a id="ref-for-propdef-font-stretch①"></a><a id="ref-for-propdef-font-size-adjust①"></a><a id="ref-for-descdef-font-face-font-size①"></a><a id="ref-for-propdef-font-family①"></a><a id="ref-for-propdef-font①"></a><a id="ref-for-propdef-flood-opacity①"></a><a id="ref-for-propdef-flood-color①"></a><a id="ref-for-propdef-filter①"></a><a id="ref-for-FillRuleProperty④"></a><a id="ref-for-FillOpacityProperty①"></a><a id="ref-for-FillProperty②"></a><a id="ref-for-EnableBackgroundProperty①"></a><a id="ref-for-propdef-dominant-baseline①"></a><a id="ref-for-propdef-display⑤"></a><a id="ref-for-propdef-direction①"></a><a id="ref-for-propdef-cursor①"></a><a id="ref-for-ColorRenderingProperty①"></a><a id="ref-for-ColorProfileProperty①"></a><a id="ref-for-propdef-color-interpolation-filters①"></a><a id="ref-for-ColorInterpolationProperty②"></a><a id="ref-for-propdef-color①"></a><a id="ref-for-propdef-clip-rule⑨"></a><a id="ref-for-propdef-clip-path①⑤"></a><a id="ref-for-propdef-clip②"></a><a id="ref-for-propdef-baseline-shift①"></a><a id="ref-for-propdef-alignment-baseline①"></a>[presentation attributes](https://www.w3.org/TR/2011/REC-SVG11-20110816/intro.html#TermPresentationAttribute) — [alignment-baseline](https://www.w3.org/TR/css-inline-3/#propdef-alignment-baseline), [baseline-shift](https://www.w3.org/TR/css-inline-3/#propdef-baseline-shift), [clip](#propdef-clip), [clip-path](#propdef-clip-path), [clip-rule](#propdef-clip-rule), [color](https://www.w3.org/TR/css-color-4/#propdef-color), [color-interpolation](https://www.w3.org/TR/SVG2/painting.html#ColorInterpolationProperty), [color-interpolation-filters](https://www.w3.org/TR/filter-effects-1/#propdef-color-interpolation-filters), [color-profile](https://www.w3.org/TR/SVG11/color.html#ColorProfileProperty), [color-rendering](https://www.w3.org/TR/SVG2/painting.html#ColorRenderingProperty), [cursor](https://www.w3.org/TR/css-ui-3/#propdef-cursor), [direction](https://www.w3.org/TR/css-writing-modes-3/#propdef-direction), [display](https://www.w3.org/TR/css-display-3/#propdef-display), [dominant-baseline](https://www.w3.org/TR/css-inline-3/#propdef-dominant-baseline), [enable-background](https://www.w3.org/TR/SVG11/filters.html#EnableBackgroundProperty), [fill](https://www.w3.org/TR/SVG2/painting.html#FillProperty), [fill-opacity](https://www.w3.org/TR/SVG2/painting.html#FillOpacityProperty), [fill-rule](https://www.w3.org/TR/SVG2/painting.html#FillRuleProperty), [filter](https://www.w3.org/TR/filter-effects-1/#propdef-filter), [flood-color](https://www.w3.org/TR/filter-effects-1/#propdef-flood-color), [flood-opacity](https://www.w3.org/TR/filter-effects-1/#propdef-flood-opacity), [font](https://www.w3.org/TR/css-fonts-4/#propdef-font), [font-family](https://www.w3.org/TR/css-fonts-4/#propdef-font-family), [font-size](https://www.w3.org/TR/css-fonts-5/#descdef-font-face-font-size), [font-size-adjust](https://www.w3.org/TR/css-fonts-5/#propdef-font-size-adjust), [font-stretch](https://www.w3.org/TR/css-fonts-4/#propdef-font-stretch), [font-style](https://www.w3.org/TR/css-fonts-4/#propdef-font-style), [font-variant](https://www.w3.org/TR/css-fonts-4/#propdef-font-variant), [font-weight](https://www.w3.org/TR/css-fonts-4/#propdef-font-weight), [glyph-orientation-horizontal](https://www.w3.org/TR/SVG11/text.html#GlyphOrientationHorizontalProperty), [glyph-orientation-vertical](https://www.w3.org/TR/css-writing-modes-4/#propdef-glyph-orientation-vertical), [image-rendering](https://www.w3.org/TR/css-images-3/#propdef-image-rendering), [kerning](https://www.w3.org/TR/SVG11/text.html#KerningProperty), [letter-spacing](https://www.w3.org/TR/css-text-3/#propdef-letter-spacing), [lighting-color](https://www.w3.org/TR/filter-effects-1/#propdef-lighting-color), [marker](https://www.w3.org/TR/SVG2/painting.html#MarkerProperty), [marker-end](https://www.w3.org/TR/SVG2/painting.html#MarkerEndProperty), [marker-mid](https://www.w3.org/TR/SVG2/painting.html#MarkerMidProperty), [marker-start](https://www.w3.org/TR/SVG2/painting.html#MarkerStartProperty), [mask](#propdef-mask), [opacity](https://www.w3.org/TR/css-color-4/#propdef-opacity), [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow), [pointer-events](https://www.w3.org/TR/SVG2/interact.html#PointerEventsProperty), [shape-rendering](https://www.w3.org/TR/SVG2/painting.html#ShapeRenderingProperty), [stop-color](https://www.w3.org/TR/SVG2/pservers.html#StopColorProperty), [stop-opacity](https://www.w3.org/TR/SVG2/pservers.html#StopOpacityProperty), [stroke](https://www.w3.org/TR/SVG2/painting.html#StrokeProperty), [stroke-dasharray](https://www.w3.org/TR/SVG2/painting.html#StrokeDasharrayProperty), [stroke-dashoffset](https://www.w3.org/TR/SVG2/painting.html#StrokeDashoffsetProperty), [stroke-linecap](https://www.w3.org/TR/SVG2/painting.html#StrokeLinecapProperty), [stroke-linejoin](https://www.w3.org/TR/SVG2/painting.html#StrokeLinejoinProperty), [stroke-miterlimit](https://www.w3.org/TR/SVG2/painting.html#StrokeMiterlimitProperty), [stroke-opacity](https://www.w3.org/TR/SVG2/painting.html#StrokeOpacityProperty), [stroke-width](https://www.w3.org/TR/SVG2/painting.html#StrokeWidthProperty), [text-anchor](https://www.w3.org/TR/SVG2/text.html#TextAnchorProperty), [text-decoration](https://www.w3.org/TR/css-text-decor-3/#propdef-text-decoration), [text-rendering](https://www.w3.org/TR/SVG2/painting.html#TextRenderingProperty), [unicode-bidi](https://www.w3.org/TR/css-writing-modes-3/#propdef-unicode-bidi), [visibility](https://www.w3.org/TR/CSS2/visufx.html#propdef-visibility), [word-spacing](https://www.w3.org/TR/css-text-3/#propdef-word-spacing), [writing-mode](https://www.w3.org/TR/css-writing-modes-4/#propdef-writing-mode)
 
 - [‘class’](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#ClassAttribute)
 
 - [‘style’](https://www.w3.org/TR/2011/REC-SVG11-20110816/styling.html#StyleAttribute)
 
-- <a id="ref-for-element-attrdef-mask-x①"></a>
+- <a id="ref-for-element-attrdef-mask-x①"></a>‘[x](#element-attrdef-mask-x)’
 
-  ‘[x](#element-attrdef-mask-x)’
+- <a id="ref-for-element-attrdef-mask-y①"></a>‘[y](#element-attrdef-mask-y)’
 
-- <a id="ref-for-element-attrdef-mask-y①"></a>
+- <a id="ref-for-element-attrdef-mask-width①"></a>‘[width](#element-attrdef-mask-width)’
 
-  ‘[y](#element-attrdef-mask-y)’
+- <a id="ref-for-element-attrdef-mask-height①"></a>‘[height](#element-attrdef-mask-height)’
 
-- <a id="ref-for-element-attrdef-mask-width①"></a>
+- <a id="ref-for-element-attrdef-mask-maskunits①"></a>‘[maskUnits](#element-attrdef-mask-maskunits)’
 
-  ‘[width](#element-attrdef-mask-width)’
+- <a id="ref-for-element-attrdef-mask-maskcontentunits"></a>‘[maskContentUnits](#element-attrdef-mask-maskcontentunits)’
 
-- <a id="ref-for-element-attrdef-mask-height①"></a>
-
-  ‘[height](#element-attrdef-mask-height)’
-
-- <a id="ref-for-element-attrdef-mask-maskunits①"></a>
-
-  ‘[maskUnits](#element-attrdef-mask-maskunits)’
-
-- <a id="ref-for-element-attrdef-mask-maskcontentunits"></a>
-
-  ‘[maskContentUnits](#element-attrdef-mask-maskcontentunits)’
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-DOM Interfaces:
-
-<strong>Column 2 (data cell):</strong>
+**DOM Interfaces:**
 
 [SVGMaskElement](#InterfaceSVGMaskElement)
 
@@ -4511,111 +2214,18 @@ CSS properties inherit into the [mask](#elementdef-mask) element from its ancest
 
 ### <a id="the-mask-type"></a>9.2. Mask Source Interpretation: the [mask-type](#propdef-mask-type) property
 
-<strong>Table 22 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-mask-type"></a>mask-type
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one②③"></a>
-
-luminance [\|](https://www.w3.org/TR/css-values-4/#comb-one) alpha
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-luminance
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-elementdef-mask②⑧"></a>
-
-[mask](#elementdef-mask) elements
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
+| Field               | Definition                                                                            |
+|---------------------|---------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-mask-type"></a>mask-type                                                          |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one②③"></a>luminance [\|](https://www.w3.org/TR/css-values-4/#comb-one) alpha |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | luminance                                                                             |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-elementdef-mask②⑧"></a>[mask](#elementdef-mask) elements                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | as specified                                                                          |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                           |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                              |
+| <strong>Media:&#xA;      </strong> | visual                                                                                |
 
 <a id="ref-for-propdef-mask-type⑤"></a>
 
@@ -4724,117 +2334,18 @@ User agents must use the [potentially CORS-enabled fetch](https://fetch.spec.wha
 
 ## <a id="clip-property"></a>Appendix A: The deprecated [clip](#propdef-clip) property
 
-<strong>Table 23 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-clip"></a>clip
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-clip-auto"></a>
-
-<a id="ref-for-comb-one②④"></a>
-
-<a id="ref-for-funcdef-clip-rect"></a>
-
-[rect()](#funcdef-clip-rect) [\|](https://www.w3.org/TR/css-values-4/#comb-one) [auto](https://drafts.csswg.org/css2/#valdef-clip-auto)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-elementdef-mask③③"></a>
-
-<a id="ref-for-elementdef-pattern①"></a>
-
-Absolutely positioned elements. In SVG, it applies to [elements which establish a new viewport](https://www.w3.org/TR/SVG/coords.html#EstablishingANewSVGViewport), [pattern](https://www.w3.org/TR/SVG2/pservers.html#elementdef-pattern) elements and [mask](#elementdef-mask) elements.
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by [computed value](https://drafts.csswg.org/web-animations-1/#animation-type)
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
+| Field               | Definition                                                                                                                                                                                                                                                                                                                       |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-clip"></a>clip                                                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-valdef-clip-auto"></a><a id="ref-for-comb-one②④"></a><a id="ref-for-funcdef-clip-rect"></a>[rect()](#funcdef-clip-rect) [\|](https://www.w3.org/TR/css-values-4/#comb-one) [auto](https://drafts.csswg.org/css2/#valdef-clip-auto)                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                                                                                                                                                                             |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-elementdef-mask③③"></a><a id="ref-for-elementdef-pattern①"></a>Absolutely positioned elements. In SVG, it applies to [elements which establish a new viewport](https://www.w3.org/TR/SVG/coords.html#EstablishingANewSVGViewport), [pattern](https://www.w3.org/TR/SVG2/pservers.html#elementdef-pattern) elements and [mask](#elementdef-mask) elements. |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | as specified                                                                                                                                                                                                                                                                                                                     |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by [computed value](https://drafts.csswg.org/web-animations-1/#animation-type)                                                                                                                                                                                                                                                   |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                                                                                                                                                                                                                           |
 
 <a id="ref-for-propdef-clip④"></a>
 
@@ -5896,929 +3407,28 @@ Tantek Çelik; Chris Lilley; David Baron. [CSS Color Module Level 3](https://www
 
 ## <a id="property-index"></a>Property Index
 
-<strong>Table 24 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope col):</strong>
-
-Name
-
-<strong>Column 2 (header cell; scope col):</strong>
-
-Value
-
-<strong>Column 3 (header cell; scope col):</strong>
-
-Initial
-
-<strong>Column 4 (header cell; scope col):</strong>
-
-Applies to
-
-<strong>Column 5 (header cell; scope col):</strong>
-
-Inh.
-
-<strong>Column 6 (header cell; scope col):</strong>
-
-%ages
-
-<strong>Column 7 (header cell; scope col):</strong>
-
-Anim­ation type
-
-<strong>Column 8 (header cell; scope col):</strong>
-
-Canonical order
-
-<strong>Column 9 (header cell; scope col):</strong>
-
-Com­puted value
-
-<strong>Column 10 (header cell; scope col):</strong>
-
-Media
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-clip⑧"></a>
-
-[clip](#propdef-clip)
-
-<strong>Column 2 (data cell):</strong>
-
-rect() \| auto
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-Absolutely positioned elements. In SVG, it applies to elements which establish a new viewport, pattern elements and mask elements.
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified
-
-<strong>Column 10 (data cell):</strong>
-
-visual
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-clip-path①⑧"></a>
-
-[clip-path](#propdef-clip-path)
-
-<strong>Column 2 (data cell):</strong>
-
-\<clip-source\> \| \[ \<basic-shape\> \|\| \<geometry-box\> \] \| none
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-All elements. In SVG, it applies to container elements excluding the defs element, all graphics elements and the use element
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified, but with \<url\> values made absolute
-
-<strong>Column 10 (data cell):</strong>
-
-visual
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-clip-rule①①"></a>
-
-[clip-rule](#propdef-clip-rule)
-
-<strong>Column 2 (data cell):</strong>
-
-nonzero \| evenodd
-
-<strong>Column 3 (data cell):</strong>
-
-nonzero
-
-<strong>Column 4 (data cell):</strong>
-
-Applies to SVG graphics elements
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified
-
-<strong>Column 10 (data cell):</strong>
-
-visual
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-mask①⑤"></a>
-
-[mask](#propdef-mask)
-
-<strong>Column 2 (data cell):</strong>
-
-\<mask-layer\>#
-
-<strong>Column 3 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 4 (data cell):</strong>
-
-All elements. In SVG, it applies to container elements excluding the defs element, all graphics elements and the use element
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 7 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 10 (data cell):</strong>
-
-visual
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-mask-border⑨"></a>
-
-[mask-border](#propdef-mask-border)
-
-<strong>Column 2 (data cell):</strong>
-
-\<'mask-border-source'\> \|\| \<'mask-border-slice'\> \[ / \<'mask-border-width'\>? \[ / \<'mask-border-outset'\> \]? \]? \|\| \<'mask-border-repeat'\> \|\| \<'mask-border-mode'\>
-
-<strong>Column 3 (data cell):</strong>
-
-See individual properties
-
-<strong>Column 4 (data cell):</strong>
-
-See individual properties
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-See individual properties
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-See individual properties
-
-<strong>Column 10 (data cell):</strong>
-
-visual
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-mask-border-mode⑤"></a>
-
-[mask-border-mode](#propdef-mask-border-mode)
-
-<strong>Column 2 (data cell):</strong>
-
-luminance \| alpha
-
-<strong>Column 3 (data cell):</strong>
-
-alpha
-
-<strong>Column 4 (data cell):</strong>
-
-All elements. In SVG, it applies to container elements excluding the defs element, all graphics elements and the use element
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified
-
-<strong>Column 10 (data cell):</strong>
-
-visual
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-mask-border-outset⑥"></a>
-
-[mask-border-outset](#propdef-mask-border-outset)
-
-<strong>Column 2 (data cell):</strong>
-
-\[ \<length\> \| \<number\> \]{1,4}
-
-<strong>Column 3 (data cell):</strong>
-
-0
-
-<strong>Column 4 (data cell):</strong>
-
-All elements. In SVG, it applies to container elements excluding the defs element, all graphics elements and the use element
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-all \<length\>s made absolute, otherwise as specified
-
-<strong>Column 10 (data cell):</strong>
-
-visual
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-mask-border-repeat④"></a>
-
-[mask-border-repeat](#propdef-mask-border-repeat)
-
-<strong>Column 2 (data cell):</strong>
-
-\[ stretch \| repeat \| round \| space \]{1,2}
-
-<strong>Column 3 (data cell):</strong>
-
-stretch
-
-<strong>Column 4 (data cell):</strong>
-
-All elements. In SVG, it applies to container elements excluding the defs element, all graphics elements and the use element
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified
-
-<strong>Column 10 (data cell):</strong>
-
-visual
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-mask-border-slice⑥"></a>
-
-[mask-border-slice](#propdef-mask-border-slice)
-
-<strong>Column 2 (data cell):</strong>
-
-\<number-percentage\>{1,4} fill?
-
-<strong>Column 3 (data cell):</strong>
-
-0
-
-<strong>Column 4 (data cell):</strong>
-
-All elements. In SVG, it applies to container elements excluding the defs element, all graphics elements and the use element
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-refer to size of the mask border image
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified
-
-<strong>Column 10 (data cell):</strong>
-
-visual
-
-<strong>Row 11</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-mask-border-source①⑦"></a>
-
-[mask-border-source](#propdef-mask-border-source)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| \<image\>
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-All elements. In SVG, it applies to container elements excluding the defs element, all graphics elements and the use element
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-they keyword none or the computed \<image\>
-
-<strong>Column 10 (data cell):</strong>
-
-visual
-
-<strong>Row 12</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-mask-border-width⑤"></a>
-
-[mask-border-width](#propdef-mask-border-width)
-
-<strong>Column 2 (data cell):</strong>
-
-\[ \<length-percentage\> \| \<number\> \| auto \]{1,4}
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-All elements. In SVG, it applies to container elements excluding the defs element, all graphics elements and the use element
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-relative to width/height of the mask border image area
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-all \<length\>s made absolute, otherwise as specified
-
-<strong>Column 10 (data cell):</strong>
-
-visual
-
-<strong>Row 13</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-mask-clip①②"></a>
-
-[mask-clip](#propdef-mask-clip)
-
-<strong>Column 2 (data cell):</strong>
-
-\[ \<geometry-box\> \| no-clip \]#
-
-<strong>Column 3 (data cell):</strong>
-
-border-box
-
-<strong>Column 4 (data cell):</strong>
-
-All elements. In SVG, it applies to container elements excluding the defs element, all graphics elements and the use element
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified
-
-<strong>Column 10 (data cell):</strong>
-
-visual
-
-<strong>Row 14</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-mask-composite⑦"></a>
-
-[mask-composite](#propdef-mask-composite)
-
-<strong>Column 2 (data cell):</strong>
-
-\<compositing-operator\>#
-
-<strong>Column 3 (data cell):</strong>
-
-add
-
-<strong>Column 4 (data cell):</strong>
-
-All elements. In SVG, it applies to container elements without the defs element and all graphics elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified
-
-<strong>Column 10 (data cell):</strong>
-
-visual
-
-<strong>Row 15</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-mask-image①⑨"></a>
-
-[mask-image](#propdef-mask-image)
-
-<strong>Column 2 (data cell):</strong>
-
-\<mask-reference\>#
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-All elements. In SVG, it applies to container elements excluding the defs element, all graphics elements and the use element
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the keyword none, a computed \<image\>, or a computed \<url\>
-
-<strong>Column 10 (data cell):</strong>
-
-visual
-
-<strong>Row 16</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-mask-mode①⑤"></a>
-
-[mask-mode](#propdef-mask-mode)
-
-<strong>Column 2 (data cell):</strong>
-
-\<masking-mode\>#
-
-<strong>Column 3 (data cell):</strong>
-
-match-source
-
-<strong>Column 4 (data cell):</strong>
-
-All elements. In SVG, it applies to container elements excluding the defs element, all graphics elements and the use element
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified
-
-<strong>Column 10 (data cell):</strong>
-
-visual
-
-<strong>Row 17</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-mask-origin①②"></a>
-
-[mask-origin](#propdef-mask-origin)
-
-<strong>Column 2 (data cell):</strong>
-
-\<geometry-box\>#
-
-<strong>Column 3 (data cell):</strong>
-
-border-box
-
-<strong>Column 4 (data cell):</strong>
-
-All elements. In SVG, it applies to container elements excluding the defs element, all graphics elements and the use element
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified
-
-<strong>Column 10 (data cell):</strong>
-
-visual
-
-<strong>Row 18</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-mask-position①①"></a>
-
-[mask-position](#propdef-mask-position)
-
-<strong>Column 2 (data cell):</strong>
-
-\<position\>#
-
-<strong>Column 3 (data cell):</strong>
-
-0% 0%
-
-<strong>Column 4 (data cell):</strong>
-
-All elements. In SVG, it applies to container elements excluding the defs element, all graphics elements and the use element
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-refer to size of mask painting area minus size of mask layer image; see text background-position \[CSS3BG\]
-
-<strong>Column 7 (data cell):</strong>
-
-repeatable list
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-Consisting of: two keywords representing the origin and two offsets from that origin, each given as an absolute length (if given a \<length\>), otherwise as a percentage.
-
-<strong>Column 10 (data cell):</strong>
-
-visual
-
-<strong>Row 19</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-mask-repeat⑦"></a>
-
-[mask-repeat](#propdef-mask-repeat)
-
-<strong>Column 2 (data cell):</strong>
-
-\<repeat-style\>#
-
-<strong>Column 3 (data cell):</strong>
-
-repeat
-
-<strong>Column 4 (data cell):</strong>
-
-All elements. In SVG, it applies to container elements excluding the defs element, all graphics elements and the use element
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-Consists of: two keywords, one per dimension
-
-<strong>Column 10 (data cell):</strong>
-
-visual
-
-<strong>Row 20</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-mask-size⑧"></a>
-
-[mask-size](#propdef-mask-size)
-
-<strong>Column 2 (data cell):</strong>
-
-\<bg-size\>#
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-All elements. In SVG, it applies to container elements excluding the defs element, all graphics elements and the use element
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-repeatable list
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified, but with lengths made absolute
-
-<strong>Column 10 (data cell):</strong>
-
-visual
-
-<strong>Row 21</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-mask-type①①"></a>
-
-[mask-type](#propdef-mask-type)
-
-<strong>Column 2 (data cell):</strong>
-
-luminance \| alpha
-
-<strong>Column 3 (data cell):</strong>
-
-luminance
-
-<strong>Column 4 (data cell):</strong>
-
-mask elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified
-
-<strong>Column 10 (data cell):</strong>
-
-visual
+| Name                | Value                                                                                                                                                                               | Initial                   | Applies to                                                                                                                         | Inh. | %ages                                                                                                       | Anim­ation type            | Canonical order | Com­puted value                                                                                                                                                             | Media  |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------|------------------------------------------------------------------------------------------------------------------------------------|------|-------------------------------------------------------------------------------------------------------------|---------------------------|-----------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------|
+| <strong><span><a id="ref-for-propdef-clip⑧"></a></span><a href="#propdef-clip">clip</a>&#xA;      </strong> | rect() \| auto                                                                                                                                                                      | auto                      | Absolutely positioned elements. In SVG, it applies to elements which establish a new viewport, pattern elements and mask elements. | no   | n/a                                                                                                         | by computed value         | per grammar     | as specified                                                                                                                                                               | visual |
+| <strong><span><a id="ref-for-propdef-clip-path①⑧"></a></span><a href="#propdef-clip-path">clip-path</a>&#xA;      </strong> | \<clip-source\> \| \[ \<basic-shape\> \|\| \<geometry-box\> \] \| none                                                                                                              | none                      | All elements. In SVG, it applies to container elements excluding the defs element, all graphics elements and the use element       | no   | n/a                                                                                                         | by computed value         | per grammar     | as specified, but with \<url\> values made absolute                                                                                                                        | visual |
+| <strong><span><a id="ref-for-propdef-clip-rule①①"></a></span><a href="#propdef-clip-rule">clip-rule</a>&#xA;      </strong> | nonzero \| evenodd                                                                                                                                                                  | nonzero                   | Applies to SVG graphics elements                                                                                                   | yes  | n/a                                                                                                         | discrete                  | per grammar     | as specified                                                                                                                                                               | visual |
+| <strong><span><a id="ref-for-propdef-mask①⑤"></a></span><a href="#propdef-mask">mask</a>&#xA;      </strong> | \<mask-layer\>#                                                                                                                                                                     | see individual properties | All elements. In SVG, it applies to container elements excluding the defs element, all graphics elements and the use element       | no   | see individual properties                                                                                   | see individual properties | per grammar     | see individual properties                                                                                                                                                  | visual |
+| <strong><span><a id="ref-for-propdef-mask-border⑨"></a></span><a href="#propdef-mask-border">mask-border</a>&#xA;      </strong> | \<'mask-border-source'\> \|\| \<'mask-border-slice'\> \[ / \<'mask-border-width'\>? \[ / \<'mask-border-outset'\> \]? \]? \|\| \<'mask-border-repeat'\> \|\| \<'mask-border-mode'\> | See individual properties | See individual properties                                                                                                          | no   | n/a                                                                                                         | See individual properties | per grammar     | See individual properties                                                                                                                                                  | visual |
+| <strong><span><a id="ref-for-propdef-mask-border-mode⑤"></a></span><a href="#propdef-mask-border-mode">mask-border-mode</a>&#xA;      </strong> | luminance \| alpha                                                                                                                                                                  | alpha                     | All elements. In SVG, it applies to container elements excluding the defs element, all graphics elements and the use element       | no   | n/a                                                                                                         | discrete                  | per grammar     | as specified                                                                                                                                                               | visual |
+| <strong><span><a id="ref-for-propdef-mask-border-outset⑥"></a></span><a href="#propdef-mask-border-outset">mask-border-outset</a>&#xA;      </strong> | \[ \<length\> \| \<number\> \]{1,4}                                                                                                                                                 | 0                         | All elements. In SVG, it applies to container elements excluding the defs element, all graphics elements and the use element       | no   | n/a                                                                                                         | discrete                  | per grammar     | all \<length\>s made absolute, otherwise as specified                                                                                                                      | visual |
+| <strong><span><a id="ref-for-propdef-mask-border-repeat④"></a></span><a href="#propdef-mask-border-repeat">mask-border-repeat</a>&#xA;      </strong> | \[ stretch \| repeat \| round \| space \]{1,2}                                                                                                                                      | stretch                   | All elements. In SVG, it applies to container elements excluding the defs element, all graphics elements and the use element       | no   | n/a                                                                                                         | discrete                  | per grammar     | as specified                                                                                                                                                               | visual |
+| <strong><span><a id="ref-for-propdef-mask-border-slice⑥"></a></span><a href="#propdef-mask-border-slice">mask-border-slice</a>&#xA;      </strong> | \<number-percentage\>{1,4} fill?                                                                                                                                                    | 0                         | All elements. In SVG, it applies to container elements excluding the defs element, all graphics elements and the use element       | no   | refer to size of the mask border image                                                                      | discrete                  | per grammar     | as specified                                                                                                                                                               | visual |
+| <strong><span><a id="ref-for-propdef-mask-border-source①⑦"></a></span><a href="#propdef-mask-border-source">mask-border-source</a>&#xA;      </strong> | none \| \<image\>                                                                                                                                                                   | none                      | All elements. In SVG, it applies to container elements excluding the defs element, all graphics elements and the use element       | no   | n/a                                                                                                         | discrete                  | per grammar     | they keyword none or the computed \<image\>                                                                                                                                | visual |
+| <strong><span><a id="ref-for-propdef-mask-border-width⑤"></a></span><a href="#propdef-mask-border-width">mask-border-width</a>&#xA;      </strong> | \[ \<length-percentage\> \| \<number\> \| auto \]{1,4}                                                                                                                              | auto                      | All elements. In SVG, it applies to container elements excluding the defs element, all graphics elements and the use element       | no   | relative to width/height of the mask border image area                                                      | discrete                  | per grammar     | all \<length\>s made absolute, otherwise as specified                                                                                                                      | visual |
+| <strong><span><a id="ref-for-propdef-mask-clip①②"></a></span><a href="#propdef-mask-clip">mask-clip</a>&#xA;      </strong> | \[ \<geometry-box\> \| no-clip \]#                                                                                                                                                  | border-box                | All elements. In SVG, it applies to container elements excluding the defs element, all graphics elements and the use element       | no   | n/a                                                                                                         | discrete                  | per grammar     | as specified                                                                                                                                                               | visual |
+| <strong><span><a id="ref-for-propdef-mask-composite⑦"></a></span><a href="#propdef-mask-composite">mask-composite</a>&#xA;      </strong> | \<compositing-operator\>#                                                                                                                                                           | add                       | All elements. In SVG, it applies to container elements without the defs element and all graphics elements                          | no   | n/a                                                                                                         | discrete                  | per grammar     | as specified                                                                                                                                                               | visual |
+| <strong><span><a id="ref-for-propdef-mask-image①⑨"></a></span><a href="#propdef-mask-image">mask-image</a>&#xA;      </strong> | \<mask-reference\>#                                                                                                                                                                 | none                      | All elements. In SVG, it applies to container elements excluding the defs element, all graphics elements and the use element       | no   | n/a                                                                                                         | discrete                  | per grammar     | the keyword none, a computed \<image\>, or a computed \<url\>                                                                                                              | visual |
+| <strong><span><a id="ref-for-propdef-mask-mode①⑤"></a></span><a href="#propdef-mask-mode">mask-mode</a>&#xA;      </strong> | \<masking-mode\>#                                                                                                                                                                   | match-source              | All elements. In SVG, it applies to container elements excluding the defs element, all graphics elements and the use element       | no   | n/a                                                                                                         | discrete                  | per grammar     | as specified                                                                                                                                                               | visual |
+| <strong><span><a id="ref-for-propdef-mask-origin①②"></a></span><a href="#propdef-mask-origin">mask-origin</a>&#xA;      </strong> | \<geometry-box\>#                                                                                                                                                                   | border-box                | All elements. In SVG, it applies to container elements excluding the defs element, all graphics elements and the use element       | no   | n/a                                                                                                         | discrete                  | per grammar     | as specified                                                                                                                                                               | visual |
+| <strong><span><a id="ref-for-propdef-mask-position①①"></a></span><a href="#propdef-mask-position">mask-position</a>&#xA;      </strong> | \<position\>#                                                                                                                                                                       | 0% 0%                     | All elements. In SVG, it applies to container elements excluding the defs element, all graphics elements and the use element       | no   | refer to size of mask painting area minus size of mask layer image; see text background-position \[CSS3BG\] | repeatable list           | per grammar     | Consisting of: two keywords representing the origin and two offsets from that origin, each given as an absolute length (if given a \<length\>), otherwise as a percentage. | visual |
+| <strong><span><a id="ref-for-propdef-mask-repeat⑦"></a></span><a href="#propdef-mask-repeat">mask-repeat</a>&#xA;      </strong> | \<repeat-style\>#                                                                                                                                                                   | repeat                    | All elements. In SVG, it applies to container elements excluding the defs element, all graphics elements and the use element       | no   | n/a                                                                                                         | discrete                  | per grammar     | Consists of: two keywords, one per dimension                                                                                                                               | visual |
+| <strong><span><a id="ref-for-propdef-mask-size⑧"></a></span><a href="#propdef-mask-size">mask-size</a>&#xA;      </strong> | \<bg-size\>#                                                                                                                                                                        | auto                      | All elements. In SVG, it applies to container elements excluding the defs element, all graphics elements and the use element       | no   | n/a                                                                                                         | repeatable list           | per grammar     | as specified, but with lengths made absolute                                                                                                                               | visual |
+| <strong><span><a id="ref-for-propdef-mask-type①①"></a></span><a href="#propdef-mask-type">mask-type</a>&#xA;      </strong> | luminance \| alpha                                                                                                                                                                  | luminance                 | mask elements                                                                                                                      | no   | n/a                                                                                                         | discrete                  | per grammar     | as specified                                                                                                                                                               | visual |
 
 ## <a id="idl-index"></a>IDL Index
 

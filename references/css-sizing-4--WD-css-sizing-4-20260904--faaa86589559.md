@@ -19,7 +19,8 @@ Snapshot SHA-256: faaa865895590c6c523bd5faf127ba940886d5113cef822f8d08eb0aac2ea4
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 11 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 11 source tables are presented as readable Markdown tables or explicit labeled layouts: 11 ordinary table conversions. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 
@@ -124,103 +125,17 @@ In addition to the property-specific values listed in their definitions, all pro
 >
 > <a id="issue-d41d8cd9②"></a> [CSS Sizing 3 § 3.1 Sizing Properties](https://www.w3.org/TR/css-sizing-3/#sizing-properties)
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-size"></a>size
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-opt"></a>
-
-<a id="ref-for-propdef-height①"></a>
-
-<a id="ref-for-propdef-width①"></a>
-
-[\<'width'\>](https://www.w3.org/TR/css-sizing-3/#propdef-width) [\<'height'\>](https://www.w3.org/TR/css-sizing-3/#propdef-height)[?](https://www.w3.org/TR/css-values-4/#mult-opt)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                                                                                                                                    |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-size"></a>size                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-opt"></a><a id="ref-for-propdef-height①"></a><a id="ref-for-propdef-width①"></a>[\<'width'\>](https://www.w3.org/TR/css-sizing-3/#propdef-width) [\<'height'\>](https://www.w3.org/TR/css-sizing-3/#propdef-height)[?](https://www.w3.org/TR/css-values-4/#mult-opt) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                   |
 
 <a id="ref-for-propdef-size"></a>
 
@@ -248,103 +163,17 @@ The [size](#propdef-size) shorthand cannot be used in [@page](https://www.w3.org
 >
 > <a id="issue-bded40fa"></a> The [size](#propdef-size) property needs to be omitted from the <u>preferred shorthand order</u> in CSSOM, to avoid compat problems and conflicts with [@page](https://www.w3.org/TR/css-page-3/#at-ruledef-page).
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-min-size"></a>min-size
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-opt①"></a>
-
-<a id="ref-for-propdef-min-height①"></a>
-
-<a id="ref-for-propdef-min-width①"></a>
-
-[\<'min-width'\>](https://www.w3.org/TR/CSS2/visudet.html#propdef-min-width) [\<'min-height'\>](https://www.w3.org/TR/CSS2/visudet.html#propdef-min-height)[?](https://www.w3.org/TR/css-values-4/#mult-opt)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                                                                                                                                                            |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-min-size"></a>min-size                                                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-opt①"></a><a id="ref-for-propdef-min-height①"></a><a id="ref-for-propdef-min-width①"></a>[\<'min-width'\>](https://www.w3.org/TR/CSS2/visudet.html#propdef-min-width) [\<'min-height'\>](https://www.w3.org/TR/CSS2/visudet.html#propdef-min-height)[?](https://www.w3.org/TR/css-values-4/#mult-opt) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                           |
 
 <a id="ref-for-propdef-min-size"></a>
 
@@ -356,103 +185,17 @@ per grammar
 
 The [min-size](#propdef-min-size) property is a [shorthand](https://www.w3.org/TR/css-cascade-5/#shorthand-property) that sets [min-width](https://www.w3.org/TR/CSS2/visudet.html#propdef-min-width) and [min-height](https://www.w3.org/TR/CSS2/visudet.html#propdef-min-height) in a single declaration. If the second value is omitted, it is copied from the first.
 
-<strong>Table 3 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-max-size"></a>max-size
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-opt②"></a>
-
-<a id="ref-for-propdef-max-height①"></a>
-
-<a id="ref-for-propdef-max-width①"></a>
-
-[\<'max-width'\>](https://www.w3.org/TR/CSS2/visudet.html#propdef-max-width) [\<'max-height'\>](https://www.w3.org/TR/CSS2/visudet.html#propdef-max-height)[?](https://www.w3.org/TR/css-values-4/#mult-opt)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                                                                                                                                                            |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-max-size"></a>max-size                                                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-opt②"></a><a id="ref-for-propdef-max-height①"></a><a id="ref-for-propdef-max-width①"></a>[\<'max-width'\>](https://www.w3.org/TR/CSS2/visudet.html#propdef-max-width) [\<'max-height'\>](https://www.w3.org/TR/CSS2/visudet.html#propdef-max-height)[?](https://www.w3.org/TR/css-values-4/#mult-opt) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                           |
 
 <a id="ref-for-propdef-max-size"></a>
 
@@ -511,43 +254,11 @@ Level 4 adds the ability to use the [contain](#valdef-width-contain), [fit-conte
 ```text
 <box-size> = <length-percentage> | stretch | contain | min-content | max-content | fit-content | fit-content() | calc-size()
 ```
-<strong>Table 4 — structured row/cell transcription</strong>
 
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-max-height③"></a>
-
-<a id="ref-for-propdef-max-width③"></a>
-
-<a id="ref-for-propdef-min-height③"></a>
-
-<a id="ref-for-propdef-min-width③"></a>
-
-<a id="ref-for-propdef-height③"></a>
-
-<a id="ref-for-propdef-width③"></a>
-
-[width](https://www.w3.org/TR/css-sizing-3/#propdef-width), [height](https://www.w3.org/TR/css-sizing-3/#propdef-height), [min-width](https://www.w3.org/TR/CSS2/visudet.html#propdef-min-width), [min-height](https://www.w3.org/TR/CSS2/visudet.html#propdef-min-height), [max-width](https://www.w3.org/TR/CSS2/visudet.html#propdef-max-width), [max-height](https://www.w3.org/TR/CSS2/visudet.html#propdef-max-height)
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[New values:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-length-percentage①"></a>
-
-<a id="ref-for-comb-one⑦"></a>
-
-contain [\|](https://www.w3.org/TR/css-values-4/#comb-one) fit-content([\<length-percentage \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage))
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="ref-for-propdef-max-height③"></a><a id="ref-for-propdef-max-width③"></a><a id="ref-for-propdef-min-height③"></a><a id="ref-for-propdef-min-width③"></a><a id="ref-for-propdef-height③"></a><a id="ref-for-propdef-width③"></a>[width](https://www.w3.org/TR/css-sizing-3/#propdef-width), [height](https://www.w3.org/TR/css-sizing-3/#propdef-height), [min-width](https://www.w3.org/TR/CSS2/visudet.html#propdef-min-width), [min-height](https://www.w3.org/TR/CSS2/visudet.html#propdef-min-height), [max-width](https://www.w3.org/TR/CSS2/visudet.html#propdef-max-width), [max-height](https://www.w3.org/TR/CSS2/visudet.html#propdef-max-height) |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">New values:</a>&#xA;      </strong> | <a id="ref-for-typedef-length-percentage①"></a><a id="ref-for-comb-one⑦"></a>contain [\|](https://www.w3.org/TR/css-values-4/#comb-one) fit-content([\<length-percentage \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage))                                                                                                                                                                                                                                                                                                                                   |
 
 <a id="ref-for-typedef-length-percentage②"></a>
 
@@ -646,103 +357,17 @@ The [aspect-ratio](#propdef-aspect-ratio) property allows specifying this behavi
 
 ### <a id="aspect-ratio"></a>4.1.  Preferred Aspect Ratios: the [aspect-ratio](#propdef-aspect-ratio) property
 
-<strong>Table 5 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-aspect-ratio"></a>aspect-ratio
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-ratio-value"></a>
-
-<a id="ref-for-comb-any"></a>
-
-auto [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<ratio\>](https://www.w3.org/TR/css-values-4/#ratio-value)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-inline-box"></a>
-
-all elements except [inline boxes](https://www.w3.org/TR/css-display-4/#inline-box) and internal ruby or table boxes
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword or a pair of numbers
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value
+| Field               | Definition                                                                                                                                                   |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-aspect-ratio"></a>aspect-ratio                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-ratio-value"></a><a id="ref-for-comb-any"></a>auto [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<ratio\>](https://www.w3.org/TR/css-values-4/#ratio-value) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-inline-box"></a>all elements except [inline boxes](https://www.w3.org/TR/css-display-4/#inline-box) and internal ruby or table boxes                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword or a pair of numbers                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value                                                                                                                                            |
 
 Tests
 
@@ -1421,119 +1046,18 @@ Tests
 
 ### <a id="intrinsic-size-override"></a>5.2.  Overriding Contained Intrinsic Sizes: the contain-intrinsic-\* properties
 
-<strong>Table 6 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-contain-intrinsic-width"></a>contain-intrinsic-width, <a id="propdef-contain-intrinsic-height"></a>contain-intrinsic-height, <a id="propdef-contain-intrinsic-block-size"></a>contain-intrinsic-block-size, <a id="propdef-contain-intrinsic-inline-size"></a>contain-intrinsic-inline-size
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value"></a>
-
-<a id="ref-for-comb-one⑧"></a>
-
-<a id="ref-for-mult-opt③"></a>
-
-auto[?](https://www.w3.org/TR/css-values-4/#mult-opt) \[ none [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<length \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#length-value) \]
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-size-containment"></a>
-
-elements with [size containment](https://www.w3.org/TR/css-contain-2/#size-containment)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value①"></a>
-
-as specified, with [\<length\>](https://www.w3.org/TR/css-values-4/#length-value) values computed
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value type
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Logical property group:](https://drafts.csswg.org/css-logical-1/#logical-property-group)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-contain-intrinsic-size"></a>
-
-[contain-intrinsic-size](#propdef-contain-intrinsic-size)
+| Field               | Definition                                                                                                                                                                                                                                          |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-contain-intrinsic-width"></a>contain-intrinsic-width, <a id="propdef-contain-intrinsic-height"></a>contain-intrinsic-height, <a id="propdef-contain-intrinsic-block-size"></a>contain-intrinsic-block-size, <a id="propdef-contain-intrinsic-inline-size"></a>contain-intrinsic-inline-size                                                          |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-length-value"></a><a id="ref-for-comb-one⑧"></a><a id="ref-for-mult-opt③"></a>auto[?](https://www.w3.org/TR/css-values-4/#mult-opt) \[ none [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<length \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#length-value) \] |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-size-containment"></a>elements with [size containment](https://www.w3.org/TR/css-contain-2/#size-containment)                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-length-value①"></a>as specified, with [\<length\>](https://www.w3.org/TR/css-values-4/#length-value) values computed                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value type                                                                                                                                                                                                                              |
+| <strong><a href="https://drafts.csswg.org/css-logical-1/#logical-property-group">Logical property group:</a>&#xA;      </strong> | <a id="ref-for-propdef-contain-intrinsic-size"></a>[contain-intrinsic-size](#propdef-contain-intrinsic-size)                                                                                                                                                                        |
 
 Tests
 
@@ -1660,105 +1184,17 @@ These four properties are part of a [logical property group](https://www.w3.org/
 >
 > Note: An element with [size containment](https://www.w3.org/TR/css-contain-2/#size-containment) is laid out as if it had no contents [\[CSS-CONTAIN-1\]](#biblio-css-contain-1), which in many cases this will cause the element to collapse to zero inner height. This can be corrected with an explicit [height](https://www.w3.org/TR/css-sizing-3/#propdef-height) chosen to show the expected contents, but that can have unintended effects in some layout systems, such as Flex and Grid Layout, which treat an explicit <a id="ref-for-propdef-height⑥"></a>height as a stronger command than an implicit content-based height. The element thus might lay out substantially differently than it would have were it simply filled with content up to that height. Providing an [explicit intrinsic inner size](#explicit-intrinsic-inner-size) for the element preserves the performance benefits of ignoring its contents for layout while still allowing it to size as if it had content.
 
-<strong>Table 7 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-contain-intrinsic-size"></a>contain-intrinsic-size
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-num-range"></a>
-
-<a id="ref-for-length-value④"></a>
-
-<a id="ref-for-comb-one⑨"></a>
-
-<a id="ref-for-mult-opt④"></a>
-
-\[ auto[?](https://www.w3.org/TR/css-values-4/#mult-opt) \[ none [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<length \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#length-value) \] \][{1,2}](https://www.w3.org/TR/css-values-4/#mult-num-range)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                                                                                                                                                                                                                              |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-contain-intrinsic-size"></a>contain-intrinsic-size                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-num-range"></a><a id="ref-for-length-value④"></a><a id="ref-for-comb-one⑨"></a><a id="ref-for-mult-opt④"></a>\[ auto[?](https://www.w3.org/TR/css-values-4/#mult-opt) \[ none [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<length \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#length-value) \] \][{1,2}](https://www.w3.org/TR/css-values-4/#mult-num-range) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                             |
 
 Tests
 
@@ -1907,99 +1343,17 @@ However, if [contain-intrinsic-size](#propdef-contain-intrinsic-size) indicates 
 
 ### <a id="responsive-iframes"></a>5.3.  Responsively-sized iframes: the [frame-sizing](#propdef-frame-sizing) property
 
-<strong>Table 8 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-frame-sizing"></a>frame-sizing
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one①⓪"></a>
-
-auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) content-width <a id="ref-for-comb-one①①"></a>\| content-height <a id="ref-for-comb-one①②"></a>\| content-block-size <a id="ref-for-comb-one①③"></a>\| content-inline-size
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-replaced elements (but see below for details)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                       |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-frame-sizing"></a>frame-sizing                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one①⓪"></a>auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) content-width <a id="ref-for-comb-one①①"></a>\| content-height <a id="ref-for-comb-one①②"></a>\| content-block-size <a id="ref-for-comb-one①③"></a>\| content-inline-size |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | replaced elements (but see below for details)                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | as specified                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                         |
 
 <a id="ref-for-replaced-element⑦"></a>
 
@@ -2238,103 +1592,17 @@ When <a id="dom-window-requestresize"></a>`requestResize()` is invoked:
 
 ### <a id="intrinsic-contribution-override"></a>5.5.  Zeroing Min-Content Size Contributions: the [min-intrinsic-sizing](#propdef-min-intrinsic-sizing) property
 
-<strong>Table 9 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-min-intrinsic-sizing"></a>min-intrinsic-sizing
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-any①"></a>
-
-<a id="ref-for-comb-one①④"></a>
-
-legacy [\|](https://www.w3.org/TR/css-values-4/#comb-one) zero-if-scroll [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) zero-if-extrinsic
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-legacy
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-inline-box①"></a>
-
-all elements except [inline boxes](https://www.w3.org/TR/css-display-4/#inline-box)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                            |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-min-intrinsic-sizing"></a>min-intrinsic-sizing                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-any①"></a><a id="ref-for-comb-one①④"></a>legacy [\|](https://www.w3.org/TR/css-values-4/#comb-one) zero-if-scroll [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) zero-if-extrinsic |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | legacy                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-inline-box①"></a>all elements except [inline boxes](https://www.w3.org/TR/css-display-4/#inline-box)                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | as specified                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                              |
 
 > <strong data-conversion-semantic="issue">Issue</strong>
 >
@@ -2421,53 +1689,12 @@ The “compressed” [min-content contributions](https://www.w3.org/TR/css-sizin
 
 ### <a id="column-sizing"></a>5.6.  New Column Sizing Values: the [stretch](#valdef-column-width-stretch), [min-content](#valdef-column-width-min-content), [max-content](#valdef-column-width-max-content), [fit-content](#valdef-column-width-fit-content), and [fit-content()](#valdef-column-width-fit-content-length-percentage) values
 
-<strong>Table 10 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-column-width①"></a>
-
-[column-width](https://www.w3.org/TR/css-multicol-2/#propdef-column-width)
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[New values:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-box-size②"></a>
-
-[\<box-size\>](#typedef-box-size)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-length-percentage⑦"></a>
-
-as specified, with [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) values computed
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value type
+| Field               | Definition                                                                                                                                   |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="ref-for-propdef-column-width①"></a>[column-width](https://www.w3.org/TR/css-multicol-2/#propdef-column-width)                                                |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">New values:</a>&#xA;      </strong> | <a id="ref-for-typedef-box-size②"></a>[\<box-size\>](#typedef-box-size)                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-typedef-length-percentage⑦"></a>as specified, with [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) values computed |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value type                                                                                                                       |
 
 <a id="ref-for-propdef-column-width②"></a>
 
@@ -3117,519 +2344,19 @@ Elika Etemad; Tab Atkins Jr.. [CSS Positioned Layout Module Level 3](https://www
 
 ## <a id="property-index"></a>Property Index
 
-<strong>Table 11 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope col):</strong>
-
-Name
-
-<strong>Column 2 (header cell; scope col):</strong>
-
-Value
-
-<strong>Column 3 (header cell; scope col):</strong>
-
-Initial
-
-<strong>Column 4 (header cell; scope col):</strong>
-
-Applies to
-
-<strong>Column 5 (header cell; scope col):</strong>
-
-Inh.
-
-<strong>Column 6 (header cell; scope col):</strong>
-
-%ages
-
-<strong>Column 7 (header cell; scope col):</strong>
-
-Anim­ation type
-
-<strong>Column 8 (header cell; scope col):</strong>
-
-Canonical order
-
-<strong>Column 9 (header cell; scope col):</strong>
-
-Com­puted value
-
-<strong>Column 10 (header cell; scope col):</strong>
-
-Logical property group
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-aspect-ratio⑧"></a>
-
-[aspect-ratio](#propdef-aspect-ratio)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \|\| \<ratio\>
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-all elements except inline boxes and internal ruby or table boxes
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword or a pair of numbers
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-contain-intrinsic-block-size①"></a>
-
-[contain-intrinsic-block-size](#propdef-contain-intrinsic-block-size)
-
-<strong>Column 2 (data cell):</strong>
-
-auto? \[ none \| \<length \[0,∞\]\> \]
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-elements with size containment
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified, with \<length\> values computed
-
-<strong>Column 10 (data cell):</strong>
-
-contain-intrinsic-size
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-contain-intrinsic-height③"></a>
-
-[contain-intrinsic-height](#propdef-contain-intrinsic-height)
-
-<strong>Column 2 (data cell):</strong>
-
-auto? \[ none \| \<length \[0,∞\]\> \]
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-elements with size containment
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified, with \<length\> values computed
-
-<strong>Column 10 (data cell):</strong>
-
-contain-intrinsic-size
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-contain-intrinsic-inline-size①"></a>
-
-[contain-intrinsic-inline-size](#propdef-contain-intrinsic-inline-size)
-
-<strong>Column 2 (data cell):</strong>
-
-auto? \[ none \| \<length \[0,∞\]\> \]
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-elements with size containment
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified, with \<length\> values computed
-
-<strong>Column 10 (data cell):</strong>
-
-contain-intrinsic-size
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-contain-intrinsic-size①⑥"></a>
-
-[contain-intrinsic-size](#propdef-contain-intrinsic-size)
-
-<strong>Column 2 (data cell):</strong>
-
-\[ auto? \[ none \| \<length \[0,∞\]\> \] \]{1,2}
-
-<strong>Column 3 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 4 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 5 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 6 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 7 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-contain-intrinsic-width③"></a>
-
-[contain-intrinsic-width](#propdef-contain-intrinsic-width)
-
-<strong>Column 2 (data cell):</strong>
-
-auto? \[ none \| \<length \[0,∞\]\> \]
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-elements with size containment
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified, with \<length\> values computed
-
-<strong>Column 10 (data cell):</strong>
-
-contain-intrinsic-size
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-frame-sizing⑤"></a>
-
-[frame-sizing](#propdef-frame-sizing)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| content-width \| content-height \| content-block-size \| content-inline-size
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-replaced elements (but see below for details)
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-max-size②"></a>
-
-[max-size](#propdef-max-size)
-
-<strong>Column 2 (data cell):</strong>
-
-\<'max-width'\> \<'max-height'\>?
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 6 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 7 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-min-intrinsic-sizing③"></a>
-
-[min-intrinsic-sizing](#propdef-min-intrinsic-sizing)
-
-<strong>Column 2 (data cell):</strong>
-
-legacy \| zero-if-scroll \|\| zero-if-extrinsic
-
-<strong>Column 3 (data cell):</strong>
-
-legacy
-
-<strong>Column 4 (data cell):</strong>
-
-all elements except inline boxes
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 11</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-min-size②"></a>
-
-[min-size](#propdef-min-size)
-
-<strong>Column 2 (data cell):</strong>
-
-\<'min-width'\> \<'min-height'\>?
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 6 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 7 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 12</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-size④"></a>
-
-[size](#propdef-size)
-
-<strong>Column 2 (data cell):</strong>
-
-\<'width'\> \<'height'\>?
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 6 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 7 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 10 (data cell):</strong>
+| Name                | Value                                                                                | Initial                   | Applies to                                                        | Inh.                      | %ages                     | Anim­ation type            | Canonical order | Com­puted value                                | Logical property group |
+|---------------------|--------------------------------------------------------------------------------------|---------------------------|-------------------------------------------------------------------|---------------------------|---------------------------|---------------------------|-----------------|-----------------------------------------------|------------------------|
+| <strong><span><a id="ref-for-propdef-aspect-ratio⑧"></a></span><a href="#propdef-aspect-ratio">aspect-ratio</a>&#xA;      </strong> | auto \|\| \<ratio\>                                                                  | auto                      | all elements except inline boxes and internal ruby or table boxes | no                        | n/a                       | by computed value         | per grammar     | specified keyword or a pair of numbers        |                        |
+| <strong><span><a id="ref-for-propdef-contain-intrinsic-block-size①"></a></span><a href="#propdef-contain-intrinsic-block-size">contain-intrinsic-block-size</a>&#xA;      </strong> | auto? \[ none \| \<length \[0,∞\]\> \]                                               | none                      | elements with size containment                                    | no                        | n/a                       | by computed value type    | per grammar     | as specified, with \<length\> values computed | contain-intrinsic-size |
+| <strong><span><a id="ref-for-propdef-contain-intrinsic-height③"></a></span><a href="#propdef-contain-intrinsic-height">contain-intrinsic-height</a>&#xA;      </strong> | auto? \[ none \| \<length \[0,∞\]\> \]                                               | none                      | elements with size containment                                    | no                        | n/a                       | by computed value type    | per grammar     | as specified, with \<length\> values computed | contain-intrinsic-size |
+| <strong><span><a id="ref-for-propdef-contain-intrinsic-inline-size①"></a></span><a href="#propdef-contain-intrinsic-inline-size">contain-intrinsic-inline-size</a>&#xA;      </strong> | auto? \[ none \| \<length \[0,∞\]\> \]                                               | none                      | elements with size containment                                    | no                        | n/a                       | by computed value type    | per grammar     | as specified, with \<length\> values computed | contain-intrinsic-size |
+| <strong><span><a id="ref-for-propdef-contain-intrinsic-size①⑥"></a></span><a href="#propdef-contain-intrinsic-size">contain-intrinsic-size</a>&#xA;      </strong> | \[ auto? \[ none \| \<length \[0,∞\]\> \] \]{1,2}                                    | see individual properties | see individual properties                                         | see individual properties | see individual properties | see individual properties | per grammar     | see individual properties                     |                        |
+| <strong><span><a id="ref-for-propdef-contain-intrinsic-width③"></a></span><a href="#propdef-contain-intrinsic-width">contain-intrinsic-width</a>&#xA;      </strong> | auto? \[ none \| \<length \[0,∞\]\> \]                                               | none                      | elements with size containment                                    | no                        | n/a                       | by computed value type    | per grammar     | as specified, with \<length\> values computed | contain-intrinsic-size |
+| <strong><span><a id="ref-for-propdef-frame-sizing⑤"></a></span><a href="#propdef-frame-sizing">frame-sizing</a>&#xA;      </strong> | auto \| content-width \| content-height \| content-block-size \| content-inline-size | auto                      | replaced elements (but see below for details)                     | no                        | n/a                       | discrete                  | per grammar     | as specified                                  |                        |
+| <strong><span><a id="ref-for-propdef-max-size②"></a></span><a href="#propdef-max-size">max-size</a>&#xA;      </strong> | \<'max-width'\> \<'max-height'\>?                                                    | none                      | all elements                                                      | see individual properties | see individual properties | see individual properties | per grammar     | see individual properties                     |                        |
+| <strong><span><a id="ref-for-propdef-min-intrinsic-sizing③"></a></span><a href="#propdef-min-intrinsic-sizing">min-intrinsic-sizing</a>&#xA;      </strong> | legacy \| zero-if-scroll \|\| zero-if-extrinsic                                      | legacy                    | all elements except inline boxes                                  | no                        | n/a                       | discrete                  | per grammar     | as specified                                  |                        |
+| <strong><span><a id="ref-for-propdef-min-size②"></a></span><a href="#propdef-min-size">min-size</a>&#xA;      </strong> | \<'min-width'\> \<'min-height'\>?                                                    | auto                      | all elements                                                      | see individual properties | see individual properties | see individual properties | per grammar     | see individual properties                     |                        |
+| <strong><span><a id="ref-for-propdef-size④"></a></span><a href="#propdef-size">size</a>&#xA;      </strong> | \<'width'\> \<'height'\>?                                                            | auto                      | all elements                                                      | see individual properties | see individual properties | see individual properties | per grammar     | see individual properties                     |                        |
 
 ## <a id="idl-index"></a>IDL Index
 

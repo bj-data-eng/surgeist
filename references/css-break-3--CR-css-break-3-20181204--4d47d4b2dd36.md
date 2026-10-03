@@ -19,7 +19,8 @@ Snapshot SHA-256: 4d47d4b2dd36a28e2b0275833b9734b1d5a0b18299a3f278e238bed8e2ecd5
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 5 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 6 source tables are presented as readable Markdown tables or explicit labeled layouts: 5 ordinary table conversions, 1 already-readable table. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 - Existing external image/media URLs are resolved against the pinned source. Assets are not downloaded or availability-tested; image-only formulas/diagrams still require their source resources.
@@ -261,129 +262,18 @@ See the section on [rules for breaking](#breaking-rules) for the exact rules on 
 
 ### <a id="break-between"></a>3.1.  Breaks Between Boxes: the [break-before](#propdef-break-before) and [break-after](#propdef-break-after) properties
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-break-before"></a>break-before, <a id="propdef-break-after"></a>break-after
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://drafts.csswg.org/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one①⓪"></a>
-
-<a id="ref-for-comb-one⑨"></a>
-
-<a id="ref-for-comb-one⑧"></a>
-
-<a id="ref-for-comb-one⑦"></a>
-
-<a id="ref-for-comb-one⑥"></a>
-
-<a id="ref-for-comb-one⑤"></a>
-
-<a id="ref-for-comb-one④"></a>
-
-<a id="ref-for-comb-one③"></a>
-
-<a id="ref-for-comb-one②"></a>
-
-<a id="ref-for-comb-one①"></a>
-
-<a id="ref-for-comb-one"></a>
-
-auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) avoid [\|](https://www.w3.org/TR/css-values-4/#comb-one) avoid-page [\|](https://www.w3.org/TR/css-values-4/#comb-one) page [\|](https://www.w3.org/TR/css-values-4/#comb-one) left [\|](https://www.w3.org/TR/css-values-4/#comb-one) right [\|](https://www.w3.org/TR/css-values-4/#comb-one) recto [\|](https://www.w3.org/TR/css-values-4/#comb-one) verso [\|](https://www.w3.org/TR/css-values-4/#comb-one) avoid-column [\|](https://www.w3.org/TR/css-values-4/#comb-one) column [\|](https://www.w3.org/TR/css-values-4/#comb-one) avoid-region [\|](https://www.w3.org/TR/css-values-4/#comb-one) region
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://drafts.csswg.org/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-block-level boxes, grid items, flex items, table row groups, table rows (but see prose)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://drafts.csswg.org/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://drafts.csswg.org/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://drafts.csswg.org/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://drafts.csswg.org/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-break-before"></a>break-before, <a id="propdef-break-after"></a>break-after                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://drafts.csswg.org/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one①⓪"></a><a id="ref-for-comb-one⑨"></a><a id="ref-for-comb-one⑧"></a><a id="ref-for-comb-one⑦"></a><a id="ref-for-comb-one⑥"></a><a id="ref-for-comb-one⑤"></a><a id="ref-for-comb-one④"></a><a id="ref-for-comb-one③"></a><a id="ref-for-comb-one②"></a><a id="ref-for-comb-one①"></a><a id="ref-for-comb-one"></a>auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) avoid [\|](https://www.w3.org/TR/css-values-4/#comb-one) avoid-page [\|](https://www.w3.org/TR/css-values-4/#comb-one) page [\|](https://www.w3.org/TR/css-values-4/#comb-one) left [\|](https://www.w3.org/TR/css-values-4/#comb-one) right [\|](https://www.w3.org/TR/css-values-4/#comb-one) recto [\|](https://www.w3.org/TR/css-values-4/#comb-one) verso [\|](https://www.w3.org/TR/css-values-4/#comb-one) avoid-column [\|](https://www.w3.org/TR/css-values-4/#comb-one) column [\|](https://www.w3.org/TR/css-values-4/#comb-one) avoid-region [\|](https://www.w3.org/TR/css-values-4/#comb-one) region |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| <strong>Applies to:&#xA;      </strong> | block-level boxes, grid items, flex items, table row groups, table rows (but see prose)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://drafts.csswg.org/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://drafts.csswg.org/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 <a id="ref-for-valdef-break-before-left"></a>
 
@@ -501,115 +391,18 @@ Break [propagation](#propagate) does not affect [computed values](https://www.w3
 
 ### <a id="break-within"></a>3.2.  Breaks Within Boxes: the [break-inside](#propdef-break-inside) property
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-break-inside"></a>break-inside
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://drafts.csswg.org/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one①④"></a>
-
-<a id="ref-for-comb-one①③"></a>
-
-<a id="ref-for-comb-one①②"></a>
-
-<a id="ref-for-comb-one①①"></a>
-
-auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) avoid [\|](https://www.w3.org/TR/css-values-4/#comb-one) avoid-page [\|](https://www.w3.org/TR/css-values-4/#comb-one) avoid-column [\|](https://www.w3.org/TR/css-values-4/#comb-one) avoid-region
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://drafts.csswg.org/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-all elements except inline-level boxes, internal ruby boxes, table column boxes, table column group boxes, absolutely-positioned boxes
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://drafts.csswg.org/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://drafts.csswg.org/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://drafts.csswg.org/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://drafts.csswg.org/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                                                                                                                              |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-break-inside"></a>break-inside                                                                                                                                                                                                                                                                                                         |
+| <strong><a href="https://drafts.csswg.org/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one①④"></a><a id="ref-for-comb-one①③"></a><a id="ref-for-comb-one①②"></a><a id="ref-for-comb-one①①"></a>auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) avoid [\|](https://www.w3.org/TR/css-values-4/#comb-one) avoid-page [\|](https://www.w3.org/TR/css-values-4/#comb-one) avoid-column [\|](https://www.w3.org/TR/css-values-4/#comb-one) avoid-region |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                                                                                                                                                                                    |
+| <strong>Applies to:&#xA;      </strong> | all elements except inline-level boxes, internal ruby boxes, table column boxes, table column group boxes, absolutely-positioned boxes                                                                                                                                                                                                  |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                      |
+| <strong><a href="https://drafts.csswg.org/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                     |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                                                                                                                                                                                                                                  |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                                                                                                                                                                                                                                                                       |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://drafts.csswg.org/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                                                |
 
 This property specifies page/column/region break behavior within the element’s principal box. Values have the following meanings:
 
@@ -634,113 +427,18 @@ Avoid a region break within the box.
 
 ### <a id="widows-orphans"></a>3.3.  Breaks Between Lines: [orphans](#propdef-orphans), [widows](#propdef-widows)
 
-<strong>Table 3 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-orphans"></a>orphans, <a id="propdef-widows"></a>widows
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://drafts.csswg.org/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-integer-value"></a>
-
-[\<integer\>](https://www.w3.org/TR/css3-values/#integer-value)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://drafts.csswg.org/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-2
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-inline-formatting-context"></a>
-
-<a id="ref-for-block-container"></a>
-
-[block containers](https://www.w3.org/TR/css-display-3/#block-container) that establish an [inline formatting context](https://www.w3.org/TR/css-display-3/#inline-formatting-context)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://drafts.csswg.org/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://drafts.csswg.org/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://drafts.csswg.org/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified integer
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://drafts.csswg.org/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value type
+| Field               | Definition                                                                                                                                                                                                                   |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-orphans"></a>orphans, <a id="propdef-widows"></a>widows                                                                                                                                                                        |
+| <strong><a href="https://drafts.csswg.org/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-integer-value"></a>[\<integer\>](https://www.w3.org/TR/css3-values/#integer-value)                                                                                                                                           |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 2                                                                                                                                                                                                                            |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-inline-formatting-context"></a><a id="ref-for-block-container"></a>[block containers](https://www.w3.org/TR/css-display-3/#block-container) that establish an [inline formatting context](https://www.w3.org/TR/css-display-3/#inline-formatting-context) |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                                                                          |
+| <strong><a href="https://drafts.csswg.org/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                          |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                                                                                                                       |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified integer                                                                                                                                                                                                            |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                  |
+| <strong><a href="https://drafts.csswg.org/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value type                                                                                                                                                                                                       |
 
 <a id="ref-for-propdef-orphans②"></a>
 
@@ -1161,109 +859,18 @@ Illustration of filling the [remaining fragmentainer extent](#remaining-fragment
 
 ### <a id="break-decoration"></a>5.4.  Fragmented Borders and Backgrounds: the [box-decoration-break](#propdef-box-decoration-break) property
 
-<strong>Table 5 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-box-decoration-break"></a>box-decoration-break
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://drafts.csswg.org/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one①⑤"></a>
-
-slice [\|](https://www.w3.org/TR/css-values-4/#comb-one) clone
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://drafts.csswg.org/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-slice
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://drafts.csswg.org/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://drafts.csswg.org/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://drafts.csswg.org/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://drafts.csswg.org/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://drafts.csswg.org/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                        |
+|---------------------|-----------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-box-decoration-break"></a>box-decoration-break                                           |
+| <strong><a href="https://drafts.csswg.org/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one①⑤"></a>slice [\|](https://www.w3.org/TR/css-values-4/#comb-one) clone |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | slice                                                                             |
+| <strong>Applies to:&#xA;      </strong> | [all elements](https://drafts.csswg.org/css-pseudo/#generated-content)            |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                |
+| <strong><a href="https://drafts.csswg.org/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                               |
+| <strong>Media:&#xA;      </strong> | visual                                                                            |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                 |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                       |
+| <strong><a href="https://drafts.csswg.org/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                          |
 
 <a id="ref-for-propdef-box-decoration-break④"></a>
 
@@ -1797,310 +1404,12 @@ Elika Etemad; Koji Ishii. [CSS Text Module Level 3](https://www.w3.org/TR/css-te
 
 ## <a id="property-index"></a>Property Index
 
-<strong>Table 6 — structured row/cell transcription</strong>
+| Name                | Value                                                                                                                      | Initial | Applies to                                                                                                                             | Inh. | %ages | Media  | Anim­ation type         | Canonical order | Com­puted value    |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------|---------|----------------------------------------------------------------------------------------------------------------------------------------|------|-------|--------|------------------------|-----------------|-------------------|
+| <strong><span><a id="ref-for-propdef-box-decoration-break①①"></a></span><a href="#propdef-box-decoration-break">box-decoration-break</a>&#xA;      </strong> | slice \| clone                                                                                                             | slice   | all elements                                                                                                                           | no   | n/a   | visual | discrete               | per grammar     | specified keyword |
+| <strong><span><a id="ref-for-propdef-break-after⑦"></a></span><a href="#propdef-break-after">break-after</a>&#xA;      </strong> | auto \| avoid \| avoid-page \| page \| left \| right \| recto \| verso \| avoid-column \| column \| avoid-region \| region | auto    | block-level boxes, grid items, flex items, table row groups, table rows (but see prose)                                                | no   | n/a   | visual | discrete               | per grammar     | specified keyword |
+| <strong><span><a id="ref-for-propdef-break-before⑦"></a></span><a href="#propdef-break-before">break-before</a>&#xA;      </strong> | auto \| avoid \| avoid-page \| page \| left \| right \| recto \| verso \| avoid-column \| column \| avoid-region \| region | auto    | block-level boxes, grid items, flex items, table row groups, table rows (but see prose)                                                | no   | n/a   | visual | discrete               | per grammar     | specified keyword |
+| <strong><span><a id="ref-for-propdef-break-inside⑥"></a></span><a href="#propdef-break-inside">break-inside</a>&#xA;      </strong> | auto \| avoid \| avoid-page \| avoid-column \| avoid-region                                                                | auto    | all elements except inline-level boxes, internal ruby boxes, table column boxes, table column group boxes, absolutely-positioned boxes | no   | n/a   | visual | discrete               | per grammar     | specified keyword |
+| <strong><span><a id="ref-for-propdef-orphans①①"></a></span><a href="#propdef-orphans">orphans</a>&#xA;      </strong> | \<integer\>                                                                                                                | 2       | block containers that establish an inline formatting context                                                                           | yes  | n/a   | visual | by computed value type | per grammar     | specified integer |
+| <strong><span><a id="ref-for-propdef-widows①①"></a></span><a href="#propdef-widows">widows</a>&#xA;      </strong> | \<integer\>                                                                                                                | 2       | block containers that establish an inline formatting context                                                                           | yes  | n/a   | visual | by computed value type | per grammar     | specified integer |
 
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope col):</strong>
-
-Name
-
-<strong>Column 2 (header cell; scope col):</strong>
-
-Value
-
-<strong>Column 3 (header cell; scope col):</strong>
-
-Initial
-
-<strong>Column 4 (header cell; scope col):</strong>
-
-Applies to
-
-<strong>Column 5 (header cell; scope col):</strong>
-
-Inh.
-
-<strong>Column 6 (header cell; scope col):</strong>
-
-%ages
-
-<strong>Column 7 (header cell; scope col):</strong>
-
-Media
-
-<strong>Column 8 (header cell; scope col):</strong>
-
-Anim­ation type
-
-<strong>Column 9 (header cell; scope col):</strong>
-
-Canonical order
-
-<strong>Column 10 (header cell; scope col):</strong>
-
-Com­puted value
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-box-decoration-break①①"></a>
-
-[box-decoration-break](#propdef-box-decoration-break)
-
-<strong>Column 2 (data cell):</strong>
-
-slice \| clone
-
-<strong>Column 3 (data cell):</strong>
-
-slice
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-visual
-
-<strong>Column 8 (data cell):</strong>
-
-discrete
-
-<strong>Column 9 (data cell):</strong>
-
-per grammar
-
-<strong>Column 10 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-break-after⑦"></a>
-
-[break-after](#propdef-break-after)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| avoid \| avoid-page \| page \| left \| right \| recto \| verso \| avoid-column \| column \| avoid-region \| region
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-block-level boxes, grid items, flex items, table row groups, table rows (but see prose)
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-visual
-
-<strong>Column 8 (data cell):</strong>
-
-discrete
-
-<strong>Column 9 (data cell):</strong>
-
-per grammar
-
-<strong>Column 10 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-break-before⑦"></a>
-
-[break-before](#propdef-break-before)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| avoid \| avoid-page \| page \| left \| right \| recto \| verso \| avoid-column \| column \| avoid-region \| region
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-block-level boxes, grid items, flex items, table row groups, table rows (but see prose)
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-visual
-
-<strong>Column 8 (data cell):</strong>
-
-discrete
-
-<strong>Column 9 (data cell):</strong>
-
-per grammar
-
-<strong>Column 10 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-break-inside⑥"></a>
-
-[break-inside](#propdef-break-inside)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| avoid \| avoid-page \| avoid-column \| avoid-region
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-all elements except inline-level boxes, internal ruby boxes, table column boxes, table column group boxes, absolutely-positioned boxes
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-visual
-
-<strong>Column 8 (data cell):</strong>
-
-discrete
-
-<strong>Column 9 (data cell):</strong>
-
-per grammar
-
-<strong>Column 10 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-orphans①①"></a>
-
-[orphans](#propdef-orphans)
-
-<strong>Column 2 (data cell):</strong>
-
-\<integer\>
-
-<strong>Column 3 (data cell):</strong>
-
-2
-
-<strong>Column 4 (data cell):</strong>
-
-block containers that establish an inline formatting context
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-visual
-
-<strong>Column 8 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 9 (data cell):</strong>
-
-per grammar
-
-<strong>Column 10 (data cell):</strong>
-
-specified integer
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-widows①①"></a>
-
-[widows](#propdef-widows)
-
-<strong>Column 2 (data cell):</strong>
-
-\<integer\>
-
-<strong>Column 3 (data cell):</strong>
-
-2
-
-<strong>Column 4 (data cell):</strong>
-
-block containers that establish an inline formatting context
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-visual
-
-<strong>Column 8 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 9 (data cell):</strong>
-
-per grammar
-
-<strong>Column 10 (data cell):</strong>
-
-specified integer

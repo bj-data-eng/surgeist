@@ -19,7 +19,8 @@ Snapshot SHA-256: 7d697581c3eb238c3e8d18bcf0c03aa889380041fa208c8bf06c51dd07be98
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 14 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 14 source tables are presented as readable Markdown tables or explicit labeled layouts: 12 ordinary table conversions, 2 complex-table layouts. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 - Existing external image/media URLs are resolved against the pinned source. Assets are not downloaded or availability-tested; image-only formulas/diagrams still require their source resources.
@@ -236,57 +237,12 @@ This at-rule conforms with the forward-compatible parsing requirement of CSS; co
 
 ### <a id="counter-style-system"></a>3.1.  Counter algorithms: the [system](#descdef-counter-style-system) descriptor
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-counter-style-system"></a>system
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-counter-style①④"></a>
-
-[@counter-style](#at-ruledef-counter-style)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-counter-style-name③"></a>
-
-<a id="ref-for-mult-opt"></a>
-
-<a id="ref-for-integer-value"></a>
-
-<a id="ref-for-comb-one"></a>
-
-cyclic [\|](https://www.w3.org/TR/css-values-4/#comb-one) numeric <a id="ref-for-comb-one①"></a>\| alphabetic <a id="ref-for-comb-one②"></a>\| symbolic <a id="ref-for-comb-one③"></a>\| additive <a id="ref-for-comb-one④"></a>\| \[fixed [\<integer\>](https://www.w3.org/TR/css-values-4/#integer-value)[?](https://www.w3.org/TR/css-values-4/#mult-opt)\] <a id="ref-for-comb-one⑤"></a>\| \[ extends [\<counter-style-name\>](#typedef-counter-style-name) \]
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Initial:
-
-<strong>Column 2 (data cell):</strong>
-
-symbolic
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-counter-style-system"></a>system                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-counter-style①④"></a>[@counter-style](#at-ruledef-counter-style)                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-typedef-counter-style-name③"></a><a id="ref-for-mult-opt"></a><a id="ref-for-integer-value"></a><a id="ref-for-comb-one"></a>cyclic [\|](https://www.w3.org/TR/css-values-4/#comb-one) numeric <a id="ref-for-comb-one①"></a>\| alphabetic <a id="ref-for-comb-one②"></a>\| symbolic <a id="ref-for-comb-one③"></a>\| additive <a id="ref-for-comb-one④"></a>\| \[fixed [\<integer\>](https://www.w3.org/TR/css-values-4/#integer-value)[?](https://www.w3.org/TR/css-values-4/#mult-opt)\] <a id="ref-for-comb-one⑤"></a>\| \[ extends [\<counter-style-name\>](#typedef-counter-style-name) \] |
+| <strong>Initial:&#xA;      </strong> | symbolic                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
 <a id="ref-for-descdef-counter-style-system②"></a>
 
@@ -737,53 +693,12 @@ If the specified counter style name isn’t the name of any defined counter styl
 
 ### <a id="counter-style-negative"></a>3.2.  Formatting negative values: the [negative](#descdef-counter-style-negative) descriptor
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-counter-style-negative"></a>negative
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-counter-style②①"></a>
-
-[@counter-style](#at-ruledef-counter-style)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-opt①"></a>
-
-<a id="ref-for-typedef-symbol①"></a>
-
-[\<symbol\>](#typedef-symbol) <a id="ref-for-typedef-symbol②"></a>\<symbol\>[?](https://www.w3.org/TR/css-values-4/#mult-opt)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Initial:
-
-<strong>Column 2 (data cell):</strong>
-
-"&#x5C;2D" ("-" hyphen-minus)
+| Field               | Definition                                                                                                                                         |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-counter-style-negative"></a>negative                                                                                                                        |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-counter-style②①"></a>[@counter-style](#at-ruledef-counter-style)                                                                                     |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-mult-opt①"></a><a id="ref-for-typedef-symbol①"></a>[\<symbol\>](#typedef-symbol) <a id="ref-for-typedef-symbol②"></a>\<symbol\>[?](https://www.w3.org/TR/css-values-4/#mult-opt) |
+| <strong>Initial:&#xA;      </strong> | "&#x5C;2D" ("-" hyphen-minus)                                                                                                             |
 
 <a id="ref-for-descdef-counter-style-negative②"></a>
 
@@ -821,51 +736,12 @@ Not all [system](#descdef-counter-style-system) values use a negative sign. In p
 
 ### <a id="counter-style-prefix"></a>3.3.  Symbols before the marker: the [prefix](#descdef-counter-style-prefix) descriptor
 
-<strong>Table 3 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-counter-style-prefix"></a>prefix
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-counter-style②②"></a>
-
-[@counter-style](#at-ruledef-counter-style)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-symbol⑤"></a>
-
-[\<symbol\>](#typedef-symbol)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Initial:
-
-<strong>Column 2 (data cell):</strong>
-
-"" (the empty string)
+| Field               | Definition                                                     |
+|---------------------|----------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-counter-style-prefix"></a>prefix                                      |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-counter-style②②"></a>[@counter-style](#at-ruledef-counter-style) |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-typedef-symbol⑤"></a>[\<symbol\>](#typedef-symbol)               |
+| <strong>Initial:&#xA;      </strong> | "" (the empty string)                                          |
 
 <a id="ref-for-descdef-counter-style-prefix②"></a>
 
@@ -887,51 +763,12 @@ The [prefix](#descdef-counter-style-prefix) descriptor specifies a [\<symbol\>](
 
 ### <a id="counter-style-suffix"></a>3.4.  Symbols after the marker: the [suffix](#descdef-counter-style-suffix) descriptor
 
-<strong>Table 4 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-counter-style-suffix"></a>suffix
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-counter-style②③"></a>
-
-[@counter-style](#at-ruledef-counter-style)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-symbol⑦"></a>
-
-[\<symbol\>](#typedef-symbol)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Initial:
-
-<strong>Column 2 (data cell):</strong>
-
-"&#x5C;2E&#x5C;20" ("." full stop followed by a space)
+| Field               | Definition                                                               |
+|---------------------|--------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-counter-style-suffix"></a>suffix                                                |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-counter-style②③"></a>[@counter-style](#at-ruledef-counter-style)           |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-typedef-symbol⑦"></a>[\<symbol\>](#typedef-symbol)                         |
+| <strong>Initial:&#xA;      </strong> | "&#x5C;2E&#x5C;20" ("." full stop followed by a space) |
 
 <a id="ref-for-descdef-counter-style-suffix②"></a>
 
@@ -949,57 +786,12 @@ The [suffix](#descdef-counter-style-suffix) descriptor specifies a [\<symbol\>](
 
 ### <a id="counter-style-range"></a>3.5.  Limiting the counter scope: the [range](#descdef-counter-style-range) descriptor
 
-<strong>Table 5 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-counter-style-range"></a>range
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-counter-style②④"></a>
-
-[@counter-style](#at-ruledef-counter-style)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma"></a>
-
-<a id="ref-for-mult-num"></a>
-
-<a id="ref-for-comb-one⑥"></a>
-
-<a id="ref-for-integer-value①"></a>
-
-\[ \[ [\<integer\>](https://www.w3.org/TR/css-values-4/#integer-value) [\|](https://www.w3.org/TR/css-values-4/#comb-one) infinite \][{2}](https://www.w3.org/TR/css-values-4/#mult-num) \][\#](https://www.w3.org/TR/css-values-4/#mult-comma) <a id="ref-for-comb-one⑦"></a>\| auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Initial:
-
-<strong>Column 2 (data cell):</strong>
-
-auto
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                             |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-counter-style-range"></a>range                                                                                                                                                                                                                                                                                                                               |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-counter-style②④"></a>[@counter-style](#at-ruledef-counter-style)                                                                                                                                                                                                                                                                                         |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-mult-comma"></a><a id="ref-for-mult-num"></a><a id="ref-for-comb-one⑥"></a><a id="ref-for-integer-value①"></a>\[ \[ [\<integer\>](https://www.w3.org/TR/css-values-4/#integer-value) [\|](https://www.w3.org/TR/css-values-4/#comb-one) infinite \][{2}](https://www.w3.org/TR/css-values-4/#mult-num) \][\#](https://www.w3.org/TR/css-values-4/#mult-comma) <a id="ref-for-comb-one⑦"></a>\| auto |
+| <strong>Initial:&#xA;      </strong> | auto                                                                                                                                                                                                                                                                                                                                                   |
 
 <a id="ref-for-descdef-counter-style-range②"></a>
 
@@ -1047,55 +839,12 @@ Implementations must support ranges with a lower bound of at least -2<sup>15</su
 
 ### <a id="counter-style-pad"></a>3.6.  Zero-Padding and Constant-Width Representations: the [pad](#descdef-counter-style-pad) descriptor
 
-<strong>Table 6 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-counter-style-pad"></a>pad
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-counter-style②⑤"></a>
-
-[@counter-style](#at-ruledef-counter-style)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-symbol⑨"></a>
-
-<a id="ref-for-comb-all"></a>
-
-<a id="ref-for-integer-value③"></a>
-
-[\<integer \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#integer-value) [&#x26;&#x26;](https://www.w3.org/TR/css-values-4/#comb-all) [\<symbol\>](#typedef-symbol)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Initial:
-
-<strong>Column 2 (data cell):</strong>
-
-0 ""
+| Field               | Definition                                                                                                                                                                                                                                     |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-counter-style-pad"></a>pad                                                                                                                                                                                                                         |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-counter-style②⑤"></a>[@counter-style](#at-ruledef-counter-style)                                                                                                                                                                                 |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-typedef-symbol⑨"></a><a id="ref-for-comb-all"></a><a id="ref-for-integer-value③"></a>[\<integer \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#integer-value) [&#x26;&#x26;](https://www.w3.org/TR/css-values-4/#comb-all) [\<symbol\>](#typedef-symbol) |
+| <strong>Initial:&#xA;      </strong> | 0 ""                                                                                                                                                                                                                                           |
 
 <a id="ref-for-descdef-counter-style-pad③"></a>
 
@@ -1159,51 +908,12 @@ Negative [\<integer\>](https://www.w3.org/TR/css-values-4/#integer-value) values
 
 ### <a id="counter-style-fallback"></a>3.7.  Defining fallback: the [fallback](#descdef-counter-style-fallback) descriptor
 
-<strong>Table 7 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-counter-style-fallback"></a>fallback
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-counter-style②⑥"></a>
-
-[@counter-style](#at-ruledef-counter-style)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-counter-style-name⑤"></a>
-
-[\<counter-style-name\>](#typedef-counter-style-name)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Initial:
-
-<strong>Column 2 (data cell):</strong>
-
-decimal
+| Field               | Definition                                                               |
+|---------------------|--------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-counter-style-fallback"></a>fallback                                              |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-counter-style②⑥"></a>[@counter-style](#at-ruledef-counter-style)           |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-typedef-counter-style-name⑤"></a>[\<counter-style-name\>](#typedef-counter-style-name) |
+| <strong>Initial:&#xA;      </strong> | decimal                                                                  |
 
 <a id="ref-for-descdef-counter-style-fallback①"></a>
 
@@ -1225,105 +935,19 @@ If the value of the [fallback](#descdef-counter-style-fallback) descriptor isn�
 
 ### <a id="counter-style-symbols"></a>3.8.  Marker characters: the [symbols](#descdef-counter-style-symbols) and [additive-symbols](#descdef-counter-style-additive-symbols) descriptors
 
-<strong>Table 8 — structured row/cell transcription</strong>
+| Field               | Definition                                                                                                                |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-counter-style-symbols"></a>symbols                                                                                                |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-counter-style②⑦"></a>[@counter-style](#at-ruledef-counter-style)                                                            |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-mult-one-plus"></a><a id="ref-for-typedef-symbol①⑧"></a>[\<symbol\>](#typedef-symbol)[+](https://www.w3.org/TR/css-values-4/#mult-one-plus) |
+| <strong>Initial:&#xA;      </strong> | n/a                                                                                                                       |
 
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-counter-style-symbols"></a>symbols
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-counter-style②⑦"></a>
-
-[@counter-style](#at-ruledef-counter-style)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-one-plus"></a>
-
-<a id="ref-for-typedef-symbol①⑧"></a>
-
-[\<symbol\>](#typedef-symbol)[+](https://www.w3.org/TR/css-values-4/#mult-one-plus)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Initial:
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Table 9 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-counter-style-additive-symbols"></a>additive-symbols
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-counter-style②⑧"></a>
-
-[@counter-style](#at-ruledef-counter-style)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma①"></a>
-
-<a id="ref-for-typedef-symbol①⑨"></a>
-
-<a id="ref-for-comb-all①"></a>
-
-<a id="ref-for-integer-value⑧"></a>
-
-\[ [\<integer \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#integer-value) [&#x26;&#x26;](https://www.w3.org/TR/css-values-4/#comb-all) [\<symbol\>](#typedef-symbol) \][\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Initial:
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
+| Field               | Definition                                                                                                                                                                                                                                                                                                                  |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-counter-style-additive-symbols"></a>additive-symbols                                                                                                                                                                                                                                                                                         |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-counter-style②⑧"></a>[@counter-style](#at-ruledef-counter-style)                                                                                                                                                                                                                                                              |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-mult-comma①"></a><a id="ref-for-typedef-symbol①⑨"></a><a id="ref-for-comb-all①"></a><a id="ref-for-integer-value⑧"></a>\[ [\<integer \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#integer-value) [&#x26;&#x26;](https://www.w3.org/TR/css-values-4/#comb-all) [\<symbol\>](#typedef-symbol) \][\#](https://www.w3.org/TR/css-values-4/#mult-comma) |
+| <strong>Initial:&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                         |
 
 <a id="typedef-symbol"></a>
 
@@ -1410,53 +1034,12 @@ Each entry in the [symbols](#descdef-counter-style-symbols) descriptor’s value
 
 ### <a id="counter-style-speak-as"></a>3.9.  Speech Synthesis: the [speak-as](#descdef-counter-style-speak-as) descriptor
 
-<strong>Table 10 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-counter-style-speak-as"></a>speak-as
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-counter-style③②"></a>
-
-[@counter-style](#at-ruledef-counter-style)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-counter-style-name⑥"></a>
-
-<a id="ref-for-comb-one①⓪"></a>
-
-auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) bullets <a id="ref-for-comb-one①①"></a>\| numbers <a id="ref-for-comb-one①②"></a>\| words <a id="ref-for-comb-one①③"></a>\| spell-out <a id="ref-for-comb-one①④"></a>\| [\<counter-style-name\>](#typedef-counter-style-name)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Initial:
-
-<strong>Column 2 (data cell):</strong>
-
-auto
+| Field               | Definition                                                                                                                                                                                                                                                                  |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-counter-style-speak-as"></a>speak-as                                                                                                                                                                                                                                                 |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-counter-style③②"></a>[@counter-style](#at-ruledef-counter-style)                                                                                                                                                                                                              |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-typedef-counter-style-name⑥"></a><a id="ref-for-comb-one①⓪"></a>auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) bullets <a id="ref-for-comb-one①①"></a>\| numbers <a id="ref-for-comb-one①②"></a>\| words <a id="ref-for-comb-one①③"></a>\| spell-out <a id="ref-for-comb-one①④"></a>\| [\<counter-style-name\>](#typedef-counter-style-name) |
+| <strong>Initial:&#xA;      </strong> | auto                                                                                                                                                                                                                                                                        |
 
 <a id="ref-for-descdef-counter-style-speak-as①"></a>
 
@@ -2289,485 +1872,17 @@ Chinese, Japanese, and Korean have counter styles which have a “longhand” na
 >
 > <a id="example-c1039050"></a> The following table shows examples of these styles, particularly some ways in which they differ.
 >
-> <strong>Table 11 — structured row/cell transcription</strong>
->
-> <strong>Row 1</strong>
->
-> <strong>Column 1 (header cell):</strong>
->
-> Counter Style
->
-> <strong>Column 2 (header cell):</strong>
->
-> 0
->
-> <strong>Column 3 (header cell):</strong>
->
-> 1
->
-> <strong>Column 4 (header cell):</strong>
->
-> 2
->
-> <strong>Column 5 (header cell):</strong>
->
-> 3
->
-> <strong>Column 6 (header cell):</strong>
->
-> 10
->
-> <strong>Column 7 (header cell):</strong>
->
-> 11
->
-> <strong>Column 8 (header cell):</strong>
->
-> 99
->
-> <strong>Column 9 (header cell):</strong>
->
-> 100
->
-> <strong>Column 10 (header cell):</strong>
->
-> 101
->
-> <strong>Column 11 (header cell):</strong>
->
-> 6001
->
-> <strong>Row 2</strong>
->
-> <strong>Column 1 (header cell; scope row):</strong>
->
-> <a id="ref-for-japanese-informal"></a>
->
-> [japanese-informal](#japanese-informal)
->
-> <strong>Column 2 (data cell):</strong>
->
-> 〇
->
-> <strong>Column 3 (data cell):</strong>
->
-> 一
->
-> <strong>Column 4 (data cell):</strong>
->
-> 二
->
-> <strong>Column 5 (data cell):</strong>
->
-> 三
->
-> <strong>Column 6 (data cell):</strong>
->
-> 十
->
-> <strong>Column 7 (data cell):</strong>
->
-> 十一
->
-> <strong>Column 8 (data cell):</strong>
->
-> 九十九
->
-> <strong>Column 9 (data cell):</strong>
->
-> 百
->
-> <strong>Column 10 (data cell):</strong>
->
-> 百一
->
-> <strong>Column 11 (data cell):</strong>
->
-> 六千一
->
-> <strong>Row 3</strong>
->
-> <strong>Column 1 (header cell; scope row):</strong>
->
-> <a id="ref-for-japanese-formal"></a>
->
-> [japanese-formal](#japanese-formal)
->
-> <strong>Column 2 (data cell):</strong>
->
-> 零
->
-> <strong>Column 3 (data cell):</strong>
->
-> 壱
->
-> <strong>Column 4 (data cell):</strong>
->
-> 弐
->
-> <strong>Column 5 (data cell):</strong>
->
-> 参
->
-> <strong>Column 6 (data cell):</strong>
->
-> 壱拾
->
-> <strong>Column 7 (data cell):</strong>
->
-> 壱拾壱
->
-> <strong>Column 8 (data cell):</strong>
->
-> 九拾九
->
-> <strong>Column 9 (data cell):</strong>
->
-> 壱百
->
-> <strong>Column 10 (data cell):</strong>
->
-> 壱百壱
->
-> <strong>Column 11 (data cell):</strong>
->
-> 六阡壱
->
-> <strong>Row 4</strong>
->
-> <strong>Column 1 (header cell; scope row):</strong>
->
-> <a id="ref-for-korean-hangul-formal"></a>
->
-> [korean-hangul-formal](#korean-hangul-formal)
->
-> <strong>Column 2 (data cell):</strong>
->
-> 영
->
-> <strong>Column 3 (data cell):</strong>
->
-> 일
->
-> <strong>Column 4 (data cell):</strong>
->
-> 이
->
-> <strong>Column 5 (data cell):</strong>
->
-> 삼
->
-> <strong>Column 6 (data cell):</strong>
->
-> 일십
->
-> <strong>Column 7 (data cell):</strong>
->
-> 일십일
->
-> <strong>Column 8 (data cell):</strong>
->
-> 구십구
->
-> <strong>Column 9 (data cell):</strong>
->
-> 일백
->
-> <strong>Column 10 (data cell):</strong>
->
-> 일백일
->
-> <strong>Column 11 (data cell):</strong>
->
-> 육천일
->
-> <strong>Row 5</strong>
->
-> <strong>Column 1 (header cell; scope row):</strong>
->
-> <a id="ref-for-korean-hanja-informal"></a>
->
-> [korean-hanja-informal](#korean-hanja-informal)
->
-> <strong>Column 2 (data cell):</strong>
->
-> 零
->
-> <strong>Column 3 (data cell):</strong>
->
-> 一
->
-> <strong>Column 4 (data cell):</strong>
->
-> 二
->
-> <strong>Column 5 (data cell):</strong>
->
-> 三
->
-> <strong>Column 6 (data cell):</strong>
->
-> 十
->
-> <strong>Column 7 (data cell):</strong>
->
-> 十一
->
-> <strong>Column 8 (data cell):</strong>
->
-> 九十九
->
-> <strong>Column 9 (data cell):</strong>
->
-> 百
->
-> <strong>Column 10 (data cell):</strong>
->
-> 百一
->
-> <strong>Column 11 (data cell):</strong>
->
-> 六千一
->
-> <strong>Row 6</strong>
->
-> <strong>Column 1 (header cell; scope row):</strong>
->
-> <a id="ref-for-korean-hanja-formal"></a>
->
-> [korean-hanja-formal](#korean-hanja-formal)
->
-> <strong>Column 2 (data cell):</strong>
->
-> 零
->
-> <strong>Column 3 (data cell):</strong>
->
-> 壹
->
-> <strong>Column 4 (data cell):</strong>
->
-> 貳
->
-> <strong>Column 5 (data cell):</strong>
->
-> 參
->
-> <strong>Column 6 (data cell):</strong>
->
-> 壹拾
->
-> <strong>Column 7 (data cell):</strong>
->
-> 壹拾壹
->
-> <strong>Column 8 (data cell):</strong>
->
-> 九拾九
->
-> <strong>Column 9 (data cell):</strong>
->
-> 壹百
->
-> <strong>Column 10 (data cell):</strong>
->
-> 壹百壹
->
-> <strong>Column 11 (data cell):</strong>
->
-> 六仟壹
->
-> <strong>Row 7</strong>
->
-> <strong>Column 1 (header cell; scope row):</strong>
->
-> <a id="ref-for-simp-chinese-informal"></a>
->
-> [simp-chinese-informal](#simp-chinese-informal)
->
-> <strong>Column 2 (data cell):</strong>
->
-> 零
->
-> <strong>Column 3 (data cell):</strong>
->
-> 一
->
-> <strong>Column 4 (data cell):</strong>
->
-> 二
->
-> <strong>Column 5 (data cell):</strong>
->
-> 三
->
-> <strong>Column 6 (data cell):</strong>
->
-> 十
->
-> <strong>Column 7 (data cell):</strong>
->
-> 十一
->
-> <strong>Column 8 (data cell):</strong>
->
-> 九十九
->
-> <strong>Column 9 (data cell):</strong>
->
-> 一百
->
-> <strong>Column 10 (data cell):</strong>
->
-> 一百零一
->
-> <strong>Column 11 (data cell):</strong>
->
-> 六千零一
->
-> <strong>Row 8</strong>
->
-> <strong>Column 1 (header cell; scope row):</strong>
->
-> <a id="ref-for-simp-chinese-formal"></a>
->
-> [simp-chinese-formal](#simp-chinese-formal)
->
-> <strong>Column 2 (data cell):</strong>
->
-> 零
->
-> <strong>Column 3 (data cell):</strong>
->
-> 壹
->
-> <strong>Column 4 (data cell):</strong>
->
-> 贰
->
-> <strong>Column 5 (data cell):</strong>
->
-> 叁
->
-> <strong>Column 6 (data cell):</strong>
->
-> 壹拾
->
-> <strong>Column 7 (data cell):</strong>
->
-> 壹拾壹
->
-> <strong>Column 8 (data cell):</strong>
->
-> 玖拾玖
->
-> <strong>Column 9 (data cell):</strong>
->
-> 壹佰
->
-> <strong>Column 10 (data cell):</strong>
->
-> 壹佰零壹
->
-> <strong>Column 11 (data cell):</strong>
->
-> 陆仟零壹
->
-> <strong>Row 9</strong>
->
-> <strong>Column 1 (header cell; scope row):</strong>
->
-> <a id="ref-for-trad-chinese-informal"></a>
->
-> [trad-chinese-informal](#trad-chinese-informal)
->
-> <strong>Column 2 (data cell):</strong>
->
-> 零
->
-> <strong>Column 3 (data cell):</strong>
->
-> 一
->
-> <strong>Column 4 (data cell):</strong>
->
-> 二
->
-> <strong>Column 5 (data cell):</strong>
->
-> 三
->
-> <strong>Column 6 (data cell):</strong>
->
-> 十
->
-> <strong>Column 7 (data cell):</strong>
->
-> 十一
->
-> <strong>Column 8 (data cell):</strong>
->
-> 九十九
->
-> <strong>Column 9 (data cell):</strong>
->
-> 一百
->
-> <strong>Column 10 (data cell):</strong>
->
-> 一百零一
->
-> <strong>Column 11 (data cell):</strong>
->
-> 六千零一
->
-> <strong>Row 10</strong>
->
-> <strong>Column 1 (header cell; scope row):</strong>
->
-> <a id="ref-for-trad-chinese-formal"></a>
->
-> [trad-chinese-formal](#trad-chinese-formal)
->
-> <strong>Column 2 (data cell):</strong>
->
-> 零
->
-> <strong>Column 3 (data cell):</strong>
->
-> 壹
->
-> <strong>Column 4 (data cell):</strong>
->
-> 貳
->
-> <strong>Column 5 (data cell):</strong>
->
-> 參
->
-> <strong>Column 6 (data cell):</strong>
->
-> 壹拾
->
-> <strong>Column 7 (data cell):</strong>
->
-> 壹拾壹
->
-> <strong>Column 8 (data cell):</strong>
->
-> 玖拾玖
->
-> <strong>Column 9 (data cell):</strong>
->
-> 壹佰
->
-> <strong>Column 10 (data cell):</strong>
->
-> 壹佰零壹
->
-> <strong>Column 11 (data cell):</strong>
->
-> 陸仟零壹
+> | Counter Style       | 0   | 1   | 2   | 3   | 10   | 11     | 99     | 100  | 101      | 6001     |
+> |---------------------|-----|-----|-----|-----|------|--------|--------|------|----------|----------|
+> | <strong><span><a id="ref-for-japanese-informal"></a></span><a href="#japanese-informal">japanese-informal</a> &#xA;       </strong> | 〇  | 一  | 二  | 三  | 十   | 十一   | 九十九 | 百   | 百一     | 六千一   |
+> | <strong><span><a id="ref-for-japanese-formal"></a></span><a href="#japanese-formal">japanese-formal</a> &#xA;       </strong> | 零  | 壱  | 弐  | 参  | 壱拾 | 壱拾壱 | 九拾九 | 壱百 | 壱百壱   | 六阡壱   |
+> | <strong><span><a id="ref-for-korean-hangul-formal"></a></span><a href="#korean-hangul-formal">korean-hangul-formal</a> &#xA;       </strong> | 영  | 일  | 이  | 삼  | 일십 | 일십일 | 구십구 | 일백 | 일백일   | 육천일   |
+> | <strong><span><a id="ref-for-korean-hanja-informal"></a></span><a href="#korean-hanja-informal">korean-hanja-informal</a> &#xA;       </strong> | 零  | 一  | 二  | 三  | 十   | 十一   | 九十九 | 百   | 百一     | 六千一   |
+> | <strong><span><a id="ref-for-korean-hanja-formal"></a></span><a href="#korean-hanja-formal">korean-hanja-formal</a> &#xA;       </strong> | 零  | 壹  | 貳  | 參  | 壹拾 | 壹拾壹 | 九拾九 | 壹百 | 壹百壹   | 六仟壹   |
+> | <strong><span><a id="ref-for-simp-chinese-informal"></a></span><a href="#simp-chinese-informal">simp-chinese-informal</a> &#xA;       </strong> | 零  | 一  | 二  | 三  | 十   | 十一   | 九十九 | 一百 | 一百零一 | 六千零一 |
+> | <strong><span><a id="ref-for-simp-chinese-formal"></a></span><a href="#simp-chinese-formal">simp-chinese-formal</a> &#xA;       </strong> | 零  | 壹  | 贰  | 叁  | 壹拾 | 壹拾壹 | 玖拾玖 | 壹佰 | 壹佰零壹 | 陆仟零壹 |
+> | <strong><span><a id="ref-for-trad-chinese-informal"></a></span><a href="#trad-chinese-informal">trad-chinese-informal</a> &#xA;       </strong> | 零  | 一  | 二  | 三  | 十   | 十一   | 九十九 | 一百 | 一百零一 | 六千零一 |
+> | <strong><span><a id="ref-for-trad-chinese-formal"></a></span><a href="#trad-chinese-formal">trad-chinese-formal</a> &#xA;       </strong> | 零  | 壹  | 貳  | 參  | 壹拾 | 壹拾壹 | 玖拾玖 | 壹佰 | 壹佰零壹 | 陸仟零壹 |
 
 <a id="ref-for-cjk-decimal①"></a>
 
@@ -2911,343 +2026,26 @@ For all of these counter styles, the [suffix](#descdef-counter-style-suffix) is 
 
 The following tables define the characters used in these styles:
 
-<strong>Table 12 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; row span 2, scope col):</strong>
-
-Values
-
-<strong>Column 2 (header cell; column span 4, scope col):</strong>
-
-Codepoints
-
-<strong>Row 2</strong>
-
-<strong>Column 2 (header cell):</strong>
-
-simp-chinese-informal
-
-<strong>Column 3 (header cell):</strong>
-
-simp-chinese-formal
-
-<strong>Column 4 (header cell):</strong>
-
-trad-chinese-informal
-
-<strong>Column 5 (header cell):</strong>
-
-trad-chinese-formal
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-Digit 0
-
-<strong>Column 2 (data cell):</strong>
-
-零 U+96F6
-
-<strong>Column 3 (data cell):</strong>
-
-零 U+96F6
-
-<strong>Column 4 (data cell):</strong>
-
-零 U+96F6
-
-<strong>Column 5 (data cell):</strong>
-
-零 U+96F6
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-Digit 1
-
-<strong>Column 2 (data cell):</strong>
-
-一 U+4E00
-
-<strong>Column 3 (data cell):</strong>
-
-壹 U+58F9
-
-<strong>Column 4 (data cell):</strong>
-
-一 U+4E00
-
-<strong>Column 5 (data cell):</strong>
-
-壹 U+58F9
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-Digit 2
-
-<strong>Column 2 (data cell):</strong>
-
-二 U+4E8C
-
-<strong>Column 3 (data cell):</strong>
-
-贰 U+8D30
-
-<strong>Column 4 (data cell):</strong>
-
-二 U+4E8C
-
-<strong>Column 5 (data cell):</strong>
-
-貳 U+8CB3
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-Digit 3
-
-<strong>Column 2 (data cell):</strong>
-
-三 U+4E09
-
-<strong>Column 3 (data cell):</strong>
-
-叁 U+53C1
-
-<strong>Column 4 (data cell):</strong>
-
-三 U+4E09
-
-<strong>Column 5 (data cell):</strong>
-
-參 U+53C3
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-Digit 4
-
-<strong>Column 2 (data cell):</strong>
-
-四 U+56DB
-
-<strong>Column 3 (data cell):</strong>
-
-肆 U+8086
-
-<strong>Column 4 (data cell):</strong>
-
-四 U+56DB
-
-<strong>Column 5 (data cell):</strong>
-
-肆 U+8086
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-Digit 5
-
-<strong>Column 2 (data cell):</strong>
-
-五 U+4E94
-
-<strong>Column 3 (data cell):</strong>
-
-伍 U+4F0D
-
-<strong>Column 4 (data cell):</strong>
-
-五 U+4E94
-
-<strong>Column 5 (data cell):</strong>
-
-伍 U+4F0D
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-Digit 6
-
-<strong>Column 2 (data cell):</strong>
-
-六 U+516D
-
-<strong>Column 3 (data cell):</strong>
-
-陆 U+9646
-
-<strong>Column 4 (data cell):</strong>
-
-六 U+516D
-
-<strong>Column 5 (data cell):</strong>
-
-陸 U+9678
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-Digit 7
-
-<strong>Column 2 (data cell):</strong>
-
-七 U+4E03
-
-<strong>Column 3 (data cell):</strong>
-
-柒 U+67D2
-
-<strong>Column 4 (data cell):</strong>
-
-七 U+4E03
-
-<strong>Column 5 (data cell):</strong>
-
-柒 U+67D2
-
-<strong>Row 11</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-Digit 8
-
-<strong>Column 2 (data cell):</strong>
-
-八 U+516B
-
-<strong>Column 3 (data cell):</strong>
-
-捌 U+634C
-
-<strong>Column 4 (data cell):</strong>
-
-八 U+516B
-
-<strong>Column 5 (data cell):</strong>
-
-捌 U+634C
-
-<strong>Row 12</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-Digit 9
-
-<strong>Column 2 (data cell):</strong>
-
-九 U+4E5D
-
-<strong>Column 3 (data cell):</strong>
-
-玖 U+7396
-
-<strong>Column 4 (data cell):</strong>
-
-九 U+4E5D
-
-<strong>Column 5 (data cell):</strong>
-
-玖 U+7396
-
-<strong>Row 13</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-Tens Digit Marker
-
-<strong>Column 2 (data cell):</strong>
-
-十 U+5341
-
-<strong>Column 3 (data cell):</strong>
-
-拾 U+62FE
-
-<strong>Column 4 (data cell):</strong>
-
-十 U+5341
-
-<strong>Column 5 (data cell):</strong>
-
-拾 U+62FE
-
-<strong>Row 14</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-Hundreds Digit Marker
-
-<strong>Column 2 (data cell):</strong>
-
-百 U+767E
-
-<strong>Column 3 (data cell):</strong>
-
-佰 U+4F70
-
-<strong>Column 4 (data cell):</strong>
-
-百 U+767E
-
-<strong>Column 5 (data cell):</strong>
-
-佰 U+4F70
-
-<strong>Row 15</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-Thousands Digit Marker
-
-<strong>Column 2 (data cell):</strong>
-
-千 U+5343
-
-<strong>Column 3 (data cell):</strong>
-
-仟 U+4EDF
-
-<strong>Column 4 (data cell):</strong>
-
-千 U+5343
-
-<strong>Column 5 (data cell):</strong>
-
-仟 U+4EDF
-
-<strong>Row 16</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-Negative Sign
-
-<strong>Column 2 (data cell):</strong>
-
-负 U+8D1F
-
-<strong>Column 3 (data cell):</strong>
-
-负 U+8D1F
-
-<strong>Column 4 (data cell):</strong>
-
-負 U+8CA0
-
-<strong>Column 5 (data cell):</strong>
-
-負 U+8CA0
+**Table 12**
+
+Representation note: merged header paths are written explicitly; values from merged body cells are repeated wherever they apply.
+
+| Values | Codepoints / simp-chinese-informal | Codepoints / simp-chinese-formal | Codepoints / trad-chinese-informal | Codepoints / trad-chinese-formal |
+| --- | --- | --- | --- | --- |
+| Digit 0 | 零 U+96F6 | 零 U+96F6 | 零 U+96F6 | 零 U+96F6 |
+| Digit 1 | 一 U+4E00 | 壹 U+58F9 | 一 U+4E00 | 壹 U+58F9 |
+| Digit 2 | 二 U+4E8C | 贰 U+8D30 | 二 U+4E8C | 貳 U+8CB3 |
+| Digit 3 | 三 U+4E09 | 叁 U+53C1 | 三 U+4E09 | 參 U+53C3 |
+| Digit 4 | 四 U+56DB | 肆 U+8086 | 四 U+56DB | 肆 U+8086 |
+| Digit 5 | 五 U+4E94 | 伍 U+4F0D | 五 U+4E94 | 伍 U+4F0D |
+| Digit 6 | 六 U+516D | 陆 U+9646 | 六 U+516D | 陸 U+9678 |
+| Digit 7 | 七 U+4E03 | 柒 U+67D2 | 七 U+4E03 | 柒 U+67D2 |
+| Digit 8 | 八 U+516B | 捌 U+634C | 八 U+516B | 捌 U+634C |
+| Digit 9 | 九 U+4E5D | 玖 U+7396 | 九 U+4E5D | 玖 U+7396 |
+| Tens Digit Marker | 十 U+5341 | 拾 U+62FE | 十 U+5341 | 拾 U+62FE |
+| Hundreds Digit Marker | 百 U+767E | 佰 U+4F70 | 百 U+767E | 佰 U+4F70 |
+| Thousands Digit Marker | 千 U+5343 | 仟 U+4EDF | 千 U+5343 | 仟 U+4EDF |
+| Negative Sign | 负 U+8D1F | 负 U+8D1F | 負 U+8CA0 | 負 U+8CA0 |
 
 <a id="ref-for-simp-chinese-informal②"></a>
 
@@ -3308,210 +2106,33 @@ The <a id="valdef-counter-style-name-ethiopic-numeric"></a>ethiopic-numeric coun
 3.  Index each group sequentially, starting from the least significant as group number zero.
 4.  If the group has the value zero, or if the group is the most significant one and has the value 1, or if the group has an odd index (as given in the previous step) and has the value 1, then remove the digits (but leave the group, so it still has a separator appended below).
 5.  For each remaining digit, substitute the relevant ethiopic character from the list below.
-    <strong>Table 13 — structured row/cell transcription</strong>
-
-    <strong>Row 1</strong>
-
-    <strong>Column 1 (header cell; column span 3):</strong>
-
-    Tens
-    <strong>Column 4 (header cell; column span 3):</strong>
-
-    Units
-    <strong>Row 2</strong>
-
-    <strong>Column 1 (header cell):</strong>
-
-    Values
-    <strong>Column 2 (header cell; column span 2):</strong>
-
-    Codepoints
-    <strong>Column 4 (header cell):</strong>
-
-    Values
-    <strong>Column 5 (header cell; column span 2):</strong>
-
-    Codepoints
-    <strong>Row 3</strong>
-
-    <strong>Column 1 (data cell):</strong>
-
-    10
-    <strong>Column 2 (data cell):</strong>
-
-    ፲
-    <strong>Column 3 (data cell):</strong>
-
-    U+1372
-    <strong>Column 4 (data cell):</strong>
-
-    1
-    <strong>Column 5 (data cell):</strong>
-
-    ፩
-    <strong>Column 6 (data cell):</strong>
-
-    U+1369
-    <strong>Row 4</strong>
-
-    <strong>Column 1 (data cell):</strong>
-
-    20
-    <strong>Column 2 (data cell):</strong>
-
-    ፳
-    <strong>Column 3 (data cell):</strong>
-
-    U+1373
-    <strong>Column 4 (data cell):</strong>
-
-    2
-    <strong>Column 5 (data cell):</strong>
-
-    ፪
-    <strong>Column 6 (data cell):</strong>
-
-    U+136A
-    <strong>Row 5</strong>
-
-    <strong>Column 1 (data cell):</strong>
-
-    30
-    <strong>Column 2 (data cell):</strong>
-
-    ፴
-    <strong>Column 3 (data cell):</strong>
-
-    U+1374
-    <strong>Column 4 (data cell):</strong>
-
-    3
-    <strong>Column 5 (data cell):</strong>
-
-    ፫
-    <strong>Column 6 (data cell):</strong>
-
-    U+136B
-    <strong>Row 6</strong>
-
-    <strong>Column 1 (data cell):</strong>
-
-    40
-    <strong>Column 2 (data cell):</strong>
-
-    ፵
-    <strong>Column 3 (data cell):</strong>
-
-    U+1375
-    <strong>Column 4 (data cell):</strong>
-
-    4
-    <strong>Column 5 (data cell):</strong>
-
-    ፬
-    <strong>Column 6 (data cell):</strong>
-
-    U+136C
-    <strong>Row 7</strong>
-
-    <strong>Column 1 (data cell):</strong>
-
-    50
-    <strong>Column 2 (data cell):</strong>
-
-    ፶
-    <strong>Column 3 (data cell):</strong>
-
-    U+1376
-    <strong>Column 4 (data cell):</strong>
-
-    5
-    <strong>Column 5 (data cell):</strong>
-
-    ፭
-    <strong>Column 6 (data cell):</strong>
-
-    U+136D
-    <strong>Row 8</strong>
-
-    <strong>Column 1 (data cell):</strong>
-
-    60
-    <strong>Column 2 (data cell):</strong>
-
-    ፷
-    <strong>Column 3 (data cell):</strong>
-
-    U+1377
-    <strong>Column 4 (data cell):</strong>
-
-    6
-    <strong>Column 5 (data cell):</strong>
-
-    ፮
-    <strong>Column 6 (data cell):</strong>
-
-    U+136E
-    <strong>Row 9</strong>
-
-    <strong>Column 1 (data cell):</strong>
-
-    70
-    <strong>Column 2 (data cell):</strong>
-
-    ፸
-    <strong>Column 3 (data cell):</strong>
-
-    U+1378
-    <strong>Column 4 (data cell):</strong>
-
-    7
-    <strong>Column 5 (data cell):</strong>
-
-    ፯
-    <strong>Column 6 (data cell):</strong>
-
-    U+136F
-    <strong>Row 10</strong>
-
-    <strong>Column 1 (data cell):</strong>
-
-    80
-    <strong>Column 2 (data cell):</strong>
-
-    ፹
-    <strong>Column 3 (data cell):</strong>
-
-    U+1379
-    <strong>Column 4 (data cell):</strong>
-
-    8
-    <strong>Column 5 (data cell):</strong>
-
-    ፰
-    <strong>Column 6 (data cell):</strong>
-
-    U+1370
-    <strong>Row 11</strong>
-
-    <strong>Column 1 (data cell):</strong>
-
-    90
-    <strong>Column 2 (data cell):</strong>
-
-    ፺
-    <strong>Column 3 (data cell):</strong>
-
-    U+137A
-    <strong>Column 4 (data cell):</strong>
-
-    9
-    <strong>Column 5 (data cell):</strong>
-
-    ፱
-    <strong>Column 6 (data cell):</strong>
-
-    U+1371
+    **Table 13**
+
+Representation note: merged header paths are written explicitly; values from merged body cells are repeated wherever they apply.
+
+| Tens / Values | Tens / Codepoints | Tens / Codepoints |
+| --- | --- | --- |
+| 10 | ፲ | U+1372 |
+| 20 | ፳ | U+1373 |
+| 30 | ፴ | U+1374 |
+| 40 | ፵ | U+1375 |
+| 50 | ፶ | U+1376 |
+| 60 | ፷ | U+1377 |
+| 70 | ፸ | U+1378 |
+| 80 | ፹ | U+1379 |
+| 90 | ፺ | U+137A |
+
+| Units / Values | Units / Codepoints | Units / Codepoints |
+| --- | --- | --- |
+| 1 | ፩ | U+1369 |
+| 2 | ፪ | U+136A |
+| 3 | ፫ | U+136B |
+| 4 | ፬ | U+136C |
+| 5 | ፭ | U+136D |
+| 6 | ፮ | U+136E |
+| 7 | ፯ | U+136F |
+| 8 | ፰ | U+1370 |
+| 9 | ፱ | U+1371 |
 6.  For each group with an odd index (as given in the second step), except groups which originally had a value of zero, append ፻ U+137B.
 7.  For each group with an even index (as given in the second step), except the group with index 0, append ፼ U+137C.
 8.  Concatenate the groups into one string, and return it.
@@ -4171,181 +2792,18 @@ No properties defined.
 
 ### <a id="counter-style-descriptor-table"></a>[@counter-style](#at-ruledef-counter-style) Descriptors
 
-<strong>Table 14 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope col):</strong>
-
-Name
-
-<strong>Column 2 (header cell; scope col):</strong>
-
-Value
-
-<strong>Column 3 (header cell; scope col):</strong>
-
-Initial
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-counter-style-additive-symbols⑨"></a>
-
-[additive-symbols](#descdef-counter-style-additive-symbols)
-
-<strong>Column 2 (data cell):</strong>
-
-\[ \<integer \[0,∞\]\> &#x26;&#x26; \<symbol\> \]#
-
-<strong>Column 3 (data cell):</strong>
-
-n/a
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-counter-style-fallback⑦"></a>
-
-[fallback](#descdef-counter-style-fallback)
-
-<strong>Column 2 (data cell):</strong>
-
-\<counter-style-name\>
-
-<strong>Column 3 (data cell):</strong>
-
-decimal
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-counter-style-negative⑦"></a>
-
-[negative](#descdef-counter-style-negative)
-
-<strong>Column 2 (data cell):</strong>
-
-\<symbol\> \<symbol\>?
-
-<strong>Column 3 (data cell):</strong>
-
-"&#x5C;2D" ("-" hyphen-minus)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-counter-style-pad①⓪"></a>
-
-[pad](#descdef-counter-style-pad)
-
-<strong>Column 2 (data cell):</strong>
-
-\<integer \[0,∞\]\> &#x26;&#x26; \<symbol\>
-
-<strong>Column 3 (data cell):</strong>
-
-0 ""
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-counter-style-prefix④"></a>
-
-[prefix](#descdef-counter-style-prefix)
-
-<strong>Column 2 (data cell):</strong>
-
-\<symbol\>
-
-<strong>Column 3 (data cell):</strong>
-
-"" (the empty string)
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-counter-style-range⑦"></a>
-
-[range](#descdef-counter-style-range)
-
-<strong>Column 2 (data cell):</strong>
-
-\[ \[ \<integer\> \| infinite \]{2} \]# \| auto
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-counter-style-speak-as①⓪"></a>
-
-[speak-as](#descdef-counter-style-speak-as)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| bullets \| numbers \| words \| spell-out \| \<counter-style-name\>
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-counter-style-suffix⑥"></a>
-
-[suffix](#descdef-counter-style-suffix)
-
-<strong>Column 2 (data cell):</strong>
-
-\<symbol\>
-
-<strong>Column 3 (data cell):</strong>
-
-"&#x5C;2E&#x5C;20" ("." full stop followed by a space)
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-counter-style-symbols①⑧"></a>
-
-[symbols](#descdef-counter-style-symbols)
-
-<strong>Column 2 (data cell):</strong>
-
-\<symbol\>+
-
-<strong>Column 3 (data cell):</strong>
-
-n/a
-
-<strong>Row 11</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-counter-style-system①①"></a>
-
-[system](#descdef-counter-style-system)
-
-<strong>Column 2 (data cell):</strong>
-
-cyclic \| numeric \| alphabetic \| symbolic \| additive \| \[fixed \<integer\>?\] \| \[ extends \<counter-style-name\> \]
-
-<strong>Column 3 (data cell):</strong>
-
-symbolic
+| Name                | Value                                                                                                                     | Initial                                                                  |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------|
+| <strong><span><a id="ref-for-descdef-counter-style-additive-symbols⑨"></a></span><a href="#descdef-counter-style-additive-symbols">additive-symbols</a>&#xA;      </strong> | \[ \<integer \[0,∞\]\> &#x26;&#x26; \<symbol\> \]#                                                      | n/a                                                                      |
+| <strong><span><a id="ref-for-descdef-counter-style-fallback⑦"></a></span><a href="#descdef-counter-style-fallback">fallback</a>&#xA;      </strong> | \<counter-style-name\>                                                                                                    | decimal                                                                  |
+| <strong><span><a id="ref-for-descdef-counter-style-negative⑦"></a></span><a href="#descdef-counter-style-negative">negative</a>&#xA;      </strong> | \<symbol\> \<symbol\>?                                                                                                    | "&#x5C;2D" ("-" hyphen-minus)                                   |
+| <strong><span><a id="ref-for-descdef-counter-style-pad①⓪"></a></span><a href="#descdef-counter-style-pad">pad</a>&#xA;      </strong> | \<integer \[0,∞\]\> &#x26;&#x26; \<symbol\>                                                             | 0 ""                                                                     |
+| <strong><span><a id="ref-for-descdef-counter-style-prefix④"></a></span><a href="#descdef-counter-style-prefix">prefix</a>&#xA;      </strong> | \<symbol\>                                                                                                                | "" (the empty string)                                                    |
+| <strong><span><a id="ref-for-descdef-counter-style-range⑦"></a></span><a href="#descdef-counter-style-range">range</a>&#xA;      </strong> | \[ \[ \<integer\> \| infinite \]{2} \]# \| auto                                                                           | auto                                                                     |
+| <strong><span><a id="ref-for-descdef-counter-style-speak-as①⓪"></a></span><a href="#descdef-counter-style-speak-as">speak-as</a>&#xA;      </strong> | auto \| bullets \| numbers \| words \| spell-out \| \<counter-style-name\>                                                | auto                                                                     |
+| <strong><span><a id="ref-for-descdef-counter-style-suffix⑥"></a></span><a href="#descdef-counter-style-suffix">suffix</a>&#xA;      </strong> | \<symbol\>                                                                                                                | "&#x5C;2E&#x5C;20" ("." full stop followed by a space) |
+| <strong><span><a id="ref-for-descdef-counter-style-symbols①⑧"></a></span><a href="#descdef-counter-style-symbols">symbols</a>&#xA;      </strong> | \<symbol\>+                                                                                                               | n/a                                                                      |
+| <strong><span><a id="ref-for-descdef-counter-style-system①①"></a></span><a href="#descdef-counter-style-system">system</a>&#xA;      </strong> | cyclic \| numeric \| alphabetic \| symbolic \| additive \| \[fixed \<integer\>?\] \| \[ extends \<counter-style-name\> \] | symbolic                                                                 |
 
 ## <a id="idl-index"></a>IDL Index
 

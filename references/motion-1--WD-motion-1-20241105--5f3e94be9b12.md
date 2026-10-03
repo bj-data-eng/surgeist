@@ -19,7 +19,8 @@ Snapshot SHA-256: 5f3e94be9b120ab48065ecc17cf4a57b47af3fd2859a79c464c406d9996891
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 7 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 7 source tables are presented as readable Markdown tables or explicit labeled layouts: 7 ordinary table conversions. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 - Existing external image/media URLs are resolved against the pinned source. Assets are not downloaded or availability-tested; image-only formulas/diagrams still require their source resources.
@@ -122,117 +123,18 @@ In addition to the property-specific values listed in their definitions, all pro
 
 ### <a id="offset-path-property"></a>2.1. Defining A Path: the [offset-path](#propdef-offset-path) property
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-offset-path"></a>offset-path
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-coord-box①"></a>
-
-<a id="ref-for-comb-any"></a>
-
-<a id="ref-for-typedef-offset-path"></a>
-
-<a id="ref-for-comb-one"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<offset-path\>](#typedef-offset-path) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<coord-box\>](https://www.w3.org/TR/css-box-4/#typedef-coord-box)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-transformable-element"></a>
-
-[transformable elements](https://www.w3.org/TR/css-transforms-1/#transformable-element)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
+| Field               | Definition                                                                                                                                                                                                                                                                                           |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-offset-path"></a>offset-path                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-coord-box①"></a><a id="ref-for-comb-any"></a><a id="ref-for-typedef-offset-path"></a><a id="ref-for-comb-one"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<offset-path\>](#typedef-offset-path) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<coord-box\>](https://www.w3.org/TR/css-box-4/#typedef-coord-box) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-transformable-element"></a>[transformable elements](https://www.w3.org/TR/css-transforms-1/#transformable-element)                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | as specified                                                                                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value                                                                                                                                                                                                                                                                                    |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                                                                                                                                                                                               |
 
 Specifies the <a id="offset-path"></a>offset path, a geometrical path the box gets positioned on.
 
@@ -938,115 +840,18 @@ Tests
 
 ### <a id="offset-distance-property"></a>2.2. Position On The Path: the [offset-distance](#propdef-offset-distance) property
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-offset-distance"></a>offset-distance
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-length-percentage"></a>
-
-[\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-0
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-transformable-element①"></a>
-
-[transformable elements](https://www.w3.org/TR/css-transforms-1/#transformable-element)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-offset-path①③"></a>
-
-relative to the [offset path](#offset-path) length
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-length-percentage①"></a>
-
-a computed [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) value
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
+| Field               | Definition                                                                                                                 |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-offset-distance"></a>offset-distance                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-length-percentage"></a>[\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage)                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 0                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-transformable-element①"></a>[transformable elements](https://www.w3.org/TR/css-transforms-1/#transformable-element)                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | <a id="ref-for-offset-path①③"></a>relative to the [offset path](#offset-path) length                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-typedef-length-percentage①"></a>a computed [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) value |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value                                                                                                          |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                     |
 
 <a id="ref-for-offset-path①④"></a>
 
@@ -1300,119 +1105,18 @@ To determine the <a id="used-offset-distance"></a>used offset distance for a giv
 
 ### <a id="offset-position-property"></a>2.3. Starting Point Of The Path: the [offset-position](#propdef-offset-position) property
 
-<strong>Table 3 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-offset-position"></a>offset-position
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-position③"></a>
-
-<a id="ref-for-comb-one⑦"></a>
-
-normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) auto <a id="ref-for-comb-one⑧"></a>\| [\<position\>](https://www.w3.org/TR/css-values-5/#typedef-position)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-normal
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-transformable-element②"></a>
-
-[transformable elements](https://www.w3.org/TR/css-transforms-1/#transformable-element)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-Refer to the size of containing block
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-position④"></a>
-
-<a id="ref-for-valdef-offset-position-auto"></a>
-
-<a id="ref-for-valdef-offset-position-normal"></a>
-
-The [normal](#valdef-offset-position-normal) or [auto](#valdef-offset-position-auto) keywords, or a computed [\<position\>](https://www.w3.org/TR/css-values-5/#typedef-position)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
+| Field               | Definition                                                                                                                                                                                                                                 |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-offset-position"></a>offset-position                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-position③"></a><a id="ref-for-comb-one⑦"></a>normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) auto <a id="ref-for-comb-one⑧"></a>\| [\<position\>](https://www.w3.org/TR/css-values-5/#typedef-position)                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | normal                                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-transformable-element②"></a>[transformable elements](https://www.w3.org/TR/css-transforms-1/#transformable-element)                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | Refer to the size of containing block                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-typedef-position④"></a><a id="ref-for-valdef-offset-position-auto"></a><a id="ref-for-valdef-offset-position-normal"></a>The [normal](#valdef-offset-position-normal) or [auto](#valdef-offset-position-auto) keywords, or a computed [\<position\>](https://www.w3.org/TR/css-values-5/#typedef-position) |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value                                                                                                                                                                                                                          |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                                                                                                                                     |
 
 <a id="ref-for-typedef-offset-path④"></a>
 
@@ -1692,119 +1396,18 @@ Tests
 
 ### <a id="offset-anchor-property"></a>2.4. The Element’s Anchor Point: the [offset-anchor](#propdef-offset-anchor) property
 
-<strong>Table 4 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-offset-anchor"></a>offset-anchor
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-position⑦"></a>
-
-<a id="ref-for-comb-one⑨"></a>
-
-auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<position\>](https://www.w3.org/TR/css-values-5/#typedef-position)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-transformable-element③"></a>
-
-[transformable elements](https://www.w3.org/TR/css-transforms-1/#transformable-element)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-basic-shape-reference-box①"></a>
-
-relative to the width and the height of the element’s [reference box](https://www.w3.org/TR/css-shapes-1/#basic-shape-reference-box)
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-position⑧"></a>
-
-<a id="ref-for-valdef-offset-anchor-auto"></a>
-
-the [auto](#valdef-offset-anchor-auto) keyword or a computed [\<position\>](https://www.w3.org/TR/css-values-5/#typedef-position)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
+| Field               | Definition                                                                                                                                                              |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-offset-anchor"></a>offset-anchor                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-position⑦"></a><a id="ref-for-comb-one⑨"></a>auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<position\>](https://www.w3.org/TR/css-values-5/#typedef-position)      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-transformable-element③"></a>[transformable elements](https://www.w3.org/TR/css-transforms-1/#transformable-element)                                                              |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | <a id="ref-for-basic-shape-reference-box①"></a>relative to the width and the height of the element’s [reference box](https://www.w3.org/TR/css-shapes-1/#basic-shape-reference-box)                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-typedef-position⑧"></a><a id="ref-for-valdef-offset-anchor-auto"></a>the [auto](#valdef-offset-anchor-auto) keyword or a computed [\<position\>](https://www.w3.org/TR/css-values-5/#typedef-position) |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value                                                                                                                                                       |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                                                                  |
 
 <a id="ref-for-offset-position②"></a>
 
@@ -2035,115 +1638,18 @@ Tests
 
 ### <a id="offset-rotate-property"></a>2.5. Rotating To Match The Path: the [offset-rotate](#propdef-offset-rotate) property
 
-<strong>Table 5 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-offset-rotate"></a>offset-rotate
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-angle-value⑨"></a>
-
-<a id="ref-for-comb-any①"></a>
-
-<a id="ref-for-comb-one①⓪"></a>
-
-\[ auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) reverse \] [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<angle\>](https://www.w3.org/TR/css-values-4/#angle-value)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[transformable elements](https://drafts.csswg.org/css-transforms-1/#transformable-element)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-angle-value①⓪"></a>
-
-computed [\<angle\>](https://www.w3.org/TR/css-values-4/#angle-value) value, optionally preceded by auto
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
+| Field               | Definition                                                                                                                                                                                                                                       |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-offset-rotate"></a>offset-rotate                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-angle-value⑨"></a><a id="ref-for-comb-any①"></a><a id="ref-for-comb-one①⓪"></a>\[ auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) reverse \] [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<angle\>](https://www.w3.org/TR/css-values-4/#angle-value) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [transformable elements](https://drafts.csswg.org/css-transforms-1/#transformable-element)                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-angle-value①⓪"></a>computed [\<angle\>](https://www.w3.org/TR/css-values-4/#angle-value) value, optionally preceded by auto                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value                                                                                                                                                                                                                                |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                                                                                                                                                           |
 
 <a id="ref-for-offset-transform③"></a>
 
@@ -2341,115 +1847,17 @@ Tests
 
 ### <a id="offset-shorthand"></a>2.6. The [offset](#propdef-offset) Shorthand
 
-<strong>Table 6 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-offset"></a>offset
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-opt⑥"></a>
-
-<a id="ref-for-propdef-offset-anchor④"></a>
-
-<a id="ref-for-mult-req"></a>
-
-<a id="ref-for-propdef-offset-rotate⑦"></a>
-
-<a id="ref-for-comb-any②"></a>
-
-<a id="ref-for-propdef-offset-distance⑨"></a>
-
-<a id="ref-for-propdef-offset-path⑧"></a>
-
-<a id="ref-for-mult-opt③"></a>
-
-<a id="ref-for-propdef-offset-position①①"></a>
-
-\[ [\<'offset-position'\>](#propdef-offset-position)[?](https://www.w3.org/TR/css-values-4/#mult-opt) \[ [\<'offset-path'\>](#propdef-offset-path) \[ [\<'offset-distance'\>](#propdef-offset-distance) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<'offset-rotate'\>](#propdef-offset-rotate) \]<a id="ref-for-mult-opt④"></a>? \]<a id="ref-for-mult-opt⑤"></a>? \][!](https://www.w3.org/TR/css-values-4/#mult-req) \[ / [\<'offset-anchor'\>](#propdef-offset-anchor) \][?](https://www.w3.org/TR/css-values-4/#mult-opt)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[transformable elements](https://drafts.csswg.org/css-transforms-1/#transformable-element)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-offset"></a>offset                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-opt⑥"></a><a id="ref-for-propdef-offset-anchor④"></a><a id="ref-for-mult-req"></a><a id="ref-for-propdef-offset-rotate⑦"></a><a id="ref-for-comb-any②"></a><a id="ref-for-propdef-offset-distance⑨"></a><a id="ref-for-propdef-offset-path⑧"></a><a id="ref-for-mult-opt③"></a><a id="ref-for-propdef-offset-position①①"></a>\[ [\<'offset-position'\>](#propdef-offset-position)[?](https://www.w3.org/TR/css-values-4/#mult-opt) \[ [\<'offset-path'\>](#propdef-offset-path) \[ [\<'offset-distance'\>](#propdef-offset-distance) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<'offset-rotate'\>](#propdef-offset-rotate) \]<a id="ref-for-mult-opt④"></a>? \]<a id="ref-for-mult-opt⑤"></a>? \][!](https://www.w3.org/TR/css-values-4/#mult-req) \[ / [\<'offset-anchor'\>](#propdef-offset-anchor) \][?](https://www.w3.org/TR/css-values-4/#mult-opt) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [transformable elements](https://drafts.csswg.org/css-transforms-1/#transformable-element)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 Tests
 
@@ -2939,311 +2347,14 @@ Dirk Schulze; et al. [Motion Path Module Level 1](https://www.w3.org/TR/motion-1
 
 ## <a id="property-index"></a>Property Index
 
-<strong>Table 7 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope col):</strong>
-
-Name
-
-<strong>Column 2 (header cell; scope col):</strong>
-
-Value
-
-<strong>Column 3 (header cell; scope col):</strong>
-
-Initial
-
-<strong>Column 4 (header cell; scope col):</strong>
-
-Applies to
-
-<strong>Column 5 (header cell; scope col):</strong>
-
-Inh.
-
-<strong>Column 6 (header cell; scope col):</strong>
-
-%ages
-
-<strong>Column 7 (header cell; scope col):</strong>
-
-Anim­ation type
-
-<strong>Column 8 (header cell; scope col):</strong>
-
-Canonical order
-
-<strong>Column 9 (header cell; scope col):</strong>
-
-Com­puted value
-
-<strong>Column 10 (header cell; scope col):</strong>
-
-Media
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-offset③"></a>
-
-[offset](#propdef-offset)
-
-<strong>Column 2 (data cell):</strong>
-
-\[ \<'offset-position'\>? \[ \<'offset-path'\> \[ \<'offset-distance'\> \|\| \<'offset-rotate'\> \]? \]? \]! \[ / \<'offset-anchor'\> \]?
-
-<strong>Column 3 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 4 (data cell):</strong>
-
-transformable elements
-
-<strong>Column 5 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 6 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 7 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-offset-anchor⑦"></a>
-
-[offset-anchor](#propdef-offset-anchor)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| \<position\>
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-transformable elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-relative to the width and the height of the element’s reference box
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the auto keyword or a computed \<position\>
-
-<strong>Column 10 (data cell):</strong>
-
-visual
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-offset-distance①②"></a>
-
-[offset-distance](#propdef-offset-distance)
-
-<strong>Column 2 (data cell):</strong>
-
-\<length-percentage\>
-
-<strong>Column 3 (data cell):</strong>
-
-0
-
-<strong>Column 4 (data cell):</strong>
-
-transformable elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-relative to the offset path length
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-a computed \<length-percentage\> value
-
-<strong>Column 10 (data cell):</strong>
-
-visual
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-offset-path①①"></a>
-
-[offset-path](#propdef-offset-path)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| \<offset-path\> \|\| \<coord-box\>
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-transformable elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified
-
-<strong>Column 10 (data cell):</strong>
-
-visual
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-offset-position①④"></a>
-
-[offset-position](#propdef-offset-position)
-
-<strong>Column 2 (data cell):</strong>
-
-normal \| auto \| \<position\>
-
-<strong>Column 3 (data cell):</strong>
-
-normal
-
-<strong>Column 4 (data cell):</strong>
-
-transformable elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-Refer to the size of containing block
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-The normal or auto keywords, or a computed \<position\>
-
-<strong>Column 10 (data cell):</strong>
-
-visual
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-offset-rotate①②"></a>
-
-[offset-rotate](#propdef-offset-rotate)
-
-<strong>Column 2 (data cell):</strong>
-
-\[ auto \| reverse \] \|\| \<angle\>
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-transformable elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-computed \<angle\> value, optionally preceded by auto
-
-<strong>Column 10 (data cell):</strong>
-
-visual
+| Name                | Value                                                                                                                                     | Initial                   | Applies to             | Inh.                      | %ages                                                               | Anim­ation type            | Canonical order | Com­puted value                                          | Media  |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------|---------------------------|------------------------|---------------------------|---------------------------------------------------------------------|---------------------------|-----------------|---------------------------------------------------------|--------|
+| <strong><span><a id="ref-for-propdef-offset③"></a></span><a href="#propdef-offset">offset</a>&#xA;      </strong> | \[ \<'offset-position'\>? \[ \<'offset-path'\> \[ \<'offset-distance'\> \|\| \<'offset-rotate'\> \]? \]? \]! \[ / \<'offset-anchor'\> \]? | see individual properties | transformable elements | see individual properties | see individual properties                                           | see individual properties | per grammar     | see individual properties                               |        |
+| <strong><span><a id="ref-for-propdef-offset-anchor⑦"></a></span><a href="#propdef-offset-anchor">offset-anchor</a>&#xA;      </strong> | auto \| \<position\>                                                                                                                      | auto                      | transformable elements | no                        | relative to the width and the height of the element’s reference box | by computed value         | per grammar     | the auto keyword or a computed \<position\>             | visual |
+| <strong><span><a id="ref-for-propdef-offset-distance①②"></a></span><a href="#propdef-offset-distance">offset-distance</a>&#xA;      </strong> | \<length-percentage\>                                                                                                                     | 0                         | transformable elements | no                        | relative to the offset path length                                  | by computed value         | per grammar     | a computed \<length-percentage\> value                  | visual |
+| <strong><span><a id="ref-for-propdef-offset-path①①"></a></span><a href="#propdef-offset-path">offset-path</a>&#xA;      </strong> | none \| \<offset-path\> \|\| \<coord-box\>                                                                                                | none                      | transformable elements | no                        | n/a                                                                 | by computed value         | per grammar     | as specified                                            | visual |
+| <strong><span><a id="ref-for-propdef-offset-position①④"></a></span><a href="#propdef-offset-position">offset-position</a>&#xA;      </strong> | normal \| auto \| \<position\>                                                                                                            | normal                    | transformable elements | no                        | Refer to the size of containing block                               | by computed value         | per grammar     | The normal or auto keywords, or a computed \<position\> | visual |
+| <strong><span><a id="ref-for-propdef-offset-rotate①②"></a></span><a href="#propdef-offset-rotate">offset-rotate</a>&#xA;      </strong> | \[ auto \| reverse \] \|\| \<angle\>                                                                                                      | auto                      | transformable elements | no                        | n/a                                                                 | by computed value         | per grammar     | computed \<angle\> value, optionally preceded by auto   | visual |
 
 ## <a id="issues-index"></a>Issues Index
 

@@ -19,7 +19,8 @@ Snapshot SHA-256: dcce1f2ff24d66a05373696e07dda59727303a421ee4593eb433092029df00
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 3 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 5 source tables are presented as readable Markdown tables or explicit labeled layouts: 3 ordinary table conversions, 2 already-readable tables. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 - Existing external image/media URLs are resolved against the pinned source. Assets are not downloaded or availability-tested; image-only formulas/diagrams still require their source resources.
@@ -222,61 +223,11 @@ There are a small set of common ways to combine multiple independent [component 
 
 All of these can be easily expressed using simple patterns of [combinators](#component-combinators) and [multipliers](#component-multipliers):
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<strong>Column 2 (header cell):</strong>
-
-in order
-
-<strong>Column 3 (header cell):</strong>
-
-any order
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-zero or more
-
-<strong>Column 2 (data cell):</strong>
-
-`A? B? C?`
-
-<strong>Column 3 (data cell):</strong>
-
-`A? || B? || C?`
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-one or more
-
-<strong>Column 2 (data cell):</strong>
-
-`[ A? B? C? ]!`
-
-<strong>Column 3 (data cell):</strong>
-
-`A || B || C`
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-all
-
-<strong>Column 2 (data cell):</strong>
-
-` A B C  `
-
-<strong>Column 3 (data cell):</strong>
-
-`A && B && C`
+|                     | in order          | any order         |
+|---------------------|-------------------|-------------------|
+| <strong>zero or more &#xA;      </strong> | <code>A?&#x20;B?&#x20;C?</code> | <code>A?&#x20;&#x7C;&#x7C;&#x20;B?&#x20;&#x7C;&#x7C;&#x20;C?</code> |
+| <strong>one or more &#xA;      </strong> | <code><c->&#x5B;</c->&#x20;A?&#x20;B?&#x20;C?&#x20;<c->&#x5D;</c->!</code> | <code>A&#x20;&#x7C;&#x7C;&#x20;B&#x20;&#x7C;&#x7C;&#x20;C</code> |
+| <strong>all &#xA;      </strong> | <code>A&#x20;B&#x20;C&#x20;</code> | <code>A&#x20;&amp;&amp;&#x20;B&#x20;&amp;&amp;&#x20;C</code> |
 
 Note that all of the "any order" possibilities are expressed using combinators, while the "in order" possibilities are all variants on juxtaposition.
 
@@ -300,151 +251,16 @@ Below are some examples of properties with their corresponding value definition 
 >
 > <a id="propvalues"></a>
 >
-> <strong>Table 2 — structured row/cell transcription</strong>
->
-> <strong>Row 1</strong>
->
-> <strong>Column 1 (header cell):</strong>
->
-> Property
->
-> <strong>Column 2 (header cell):</strong>
->
-> Value definition field
->
-> <strong>Column 3 (header cell):</strong>
->
-> Example value
->
-> <strong>Row 2</strong>
->
-> <strong>Column 1 (data cell):</strong>
->
-> <a id="ref-for-propdef-orphans"></a>
->
-> [orphans](https://www.w3.org/TR/css-break-3/#propdef-orphans)
->
-> <strong>Column 2 (data cell):</strong>
->
-> \<integer\>
->
-> <strong>Column 3 (data cell):</strong>
->
-> 3
->
-> <strong>Row 3</strong>
->
-> <strong>Column 1 (data cell):</strong>
->
-> <a id="ref-for-propdef-text-align"></a>
->
-> [text-align](https://www.w3.org/TR/css-text-3/#propdef-text-align)
->
-> <strong>Column 2 (data cell):</strong>
->
-> left \| right \| center \| justify
->
-> <strong>Column 3 (data cell):</strong>
->
-> <a id="ref-for-valdef-text-align-center"></a>
->
-> [center](https://www.w3.org/TR/css-text-4/#valdef-text-align-center)
->
-> <strong>Row 4</strong>
->
-> <strong>Column 1 (data cell):</strong>
->
-> <a id="ref-for-propdef-padding-top"></a>
->
-> [padding-top](https://www.w3.org/TR/css-box-4/#propdef-padding-top)
->
-> <strong>Column 2 (data cell):</strong>
->
-> \<length\> \| \<percentage\>
->
-> <strong>Column 3 (data cell):</strong>
->
-> 5%
->
-> <strong>Row 5</strong>
->
-> <strong>Column 1 (data cell):</strong>
->
-> <a id="ref-for-propdef-outline-color"></a>
->
-> [outline-color](https://www.w3.org/TR/css-ui-4/#propdef-outline-color)
->
-> <strong>Column 2 (data cell):</strong>
->
-> \<color\> \| invert
->
-> <strong>Column 3 (data cell):</strong>
->
-> \#fefefe
->
-> <strong>Row 6</strong>
->
-> <strong>Column 1 (data cell):</strong>
->
-> <a id="ref-for-propdef-text-decoration"></a>
->
-> [text-decoration](https://www.w3.org/TR/css-text-decor-4/#propdef-text-decoration)
->
-> <strong>Column 2 (data cell):</strong>
->
-> none \| underline \|\| overline \|\| line-through \|\| blink
->
-> <strong>Column 3 (data cell):</strong>
->
-> overline underline
->
-> <strong>Row 7</strong>
->
-> <strong>Column 1 (data cell):</strong>
->
-> <a id="ref-for-propdef-font-family"></a>
->
-> [font-family](https://www.w3.org/TR/css-fonts-4/#propdef-font-family)
->
-> <strong>Column 2 (data cell):</strong>
->
-> \[ \<family-name\> \| \<generic-family\> \]#
->
-> <strong>Column 3 (data cell):</strong>
->
-> "Gill Sans", Futura, sans-serif
->
-> <strong>Row 8</strong>
->
-> <strong>Column 1 (data cell):</strong>
->
-> <a id="ref-for-propdef-border-width③"></a>
->
-> [border-width](https://www.w3.org/TR/css-backgrounds-3/#propdef-border-width)
->
-> <strong>Column 2 (data cell):</strong>
->
-> \[ \<length\> \| thick \| medium \| thin \]{1,4}
->
-> <strong>Column 3 (data cell):</strong>
->
-> 2px medium 4px
->
-> <strong>Row 9</strong>
->
-> <strong>Column 1 (data cell):</strong>
->
-> <a id="ref-for-propdef-box-shadow"></a>
->
-> [box-shadow](https://www.w3.org/TR/css-backgrounds-3/#propdef-box-shadow)
->
-> <strong>Column 2 (data cell):</strong>
->
-> \[ inset? &#x26;&#x26; \<length\>{2,4} &#x26;&#x26; \<color\>? \]# \| none
->
-> <strong>Column 3 (data cell):</strong>
->
-> 3px 3px rgba(50%, 50%, 50%, 50%), lemonchiffon 0 0 4px inset
+> | Property                                                                                              | Value definition field                                                                                         | Example value                                                                           |
+> |-------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------|
+> | <a id="ref-for-propdef-orphans"></a>[orphans](https://www.w3.org/TR/css-break-3/#propdef-orphans)                      | \<integer\>                                                                                                    | 3                                                                                       |
+> | <a id="ref-for-propdef-text-align"></a>[text-align](https://www.w3.org/TR/css-text-3/#propdef-text-align)                 | left \| right \| center \| justify                                                                             | <a id="ref-for-valdef-text-align-center"></a>[center](https://www.w3.org/TR/css-text-4/#valdef-text-align-center) |
+> | <a id="ref-for-propdef-padding-top"></a>[padding-top](https://www.w3.org/TR/css-box-4/#propdef-padding-top)                | \<length\> \| \<percentage\>                                                                                   | 5%                                                                                      |
+> | <a id="ref-for-propdef-outline-color"></a>[outline-color](https://www.w3.org/TR/css-ui-4/#propdef-outline-color)             | \<color\> \| invert                                                                                            | \#fefefe                                                                                |
+> | <a id="ref-for-propdef-text-decoration"></a>[text-decoration](https://www.w3.org/TR/css-text-decor-4/#propdef-text-decoration) | none \| underline \|\| overline \|\| line-through \|\| blink                                                   | overline underline                                                                      |
+> | <a id="ref-for-propdef-font-family"></a>[font-family](https://www.w3.org/TR/css-fonts-4/#propdef-font-family)              | \[ \<family-name\> \| \<generic-family\> \]#                                                                   | "Gill Sans", Futura, sans-serif                                                         |
+> | <a id="ref-for-propdef-border-width③"></a>[border-width](https://www.w3.org/TR/css-backgrounds-3/#propdef-border-width)      | \[ \<length\> \| thick \| medium \| thin \]{1,4}                                                               | 2px medium 4px                                                                          |
+> | <a id="ref-for-propdef-box-shadow"></a>[box-shadow](https://www.w3.org/TR/css-backgrounds-3/#propdef-box-shadow)          | \[ inset? &#x26;&#x26; \<length\>{2,4} &#x26;&#x26; \<color\>? \]# \| none | 3px 3px rgba(50%, 50%, 50%, 50%), lemonchiffon 0 0 4px inset                            |
 
 ## <a id="textual-values"></a>3.  Textual Data Types
 
@@ -1062,117 +878,18 @@ There are two types of length units: [relative](#relative-length) and [absolute]
 
 The relative units are:
 
-<strong>Table 3 — structured row/cell transcription</strong>
+| unit                             | relative to                                                                                                           |
+|----------------------------------|-----------------------------------------------------------------------------------------------------------------------|
+| <a id="ref-for-em①"></a>[em](#em)     | font size of the element                                                                                              |
+| <a id="ref-for-ex"></a>[ex](#ex)     | x-height of the element’s font                                                                                        |
+| <a id="ref-for-ch"></a>[ch](#ch)     | <a id="ref-for-length-advance-measure"></a>[character advance](#length-advance-measure) of the “0” (ZERO, U+0030) glyph in the element’s font |
+| <a id="ref-for-rem"></a>[rem](#rem)   | font size of the root element                                                                                         |
+| <a id="ref-for-vw"></a>[vw](#vw)     | 1% of viewport’s width                                                                                                |
+| <a id="ref-for-vh"></a>[vh](#vh)     | 1% of viewport’s height                                                                                               |
+| <a id="ref-for-vmin"></a>[vmin](#vmin) | 1% of viewport’s smaller dimension                                                                                    |
+| <a id="ref-for-vmax"></a>[vmax](#vmax) | 1% of viewport’s larger dimension                                                                                     |
 
 Informative Summary of Relative Units
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-unit
-
-<strong>Column 2 (header cell):</strong>
-
-relative to
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-em①"></a>
-
-[em](#em)
-
-<strong>Column 2 (data cell):</strong>
-
-font size of the element
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-ex"></a>
-
-[ex](#ex)
-
-<strong>Column 2 (data cell):</strong>
-
-x-height of the element’s font
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-ch"></a>
-
-[ch](#ch)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-advance-measure"></a>
-
-[character advance](#length-advance-measure) of the “0” (ZERO, U+0030) glyph in the element’s font
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-rem"></a>
-
-[rem](#rem)
-
-<strong>Column 2 (data cell):</strong>
-
-font size of the root element
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-vw"></a>
-
-[vw](#vw)
-
-<strong>Column 2 (data cell):</strong>
-
-1% of viewport’s width
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-vh"></a>
-
-[vh](#vh)
-
-<strong>Column 2 (data cell):</strong>
-
-1% of viewport’s height
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-vmin"></a>
-
-[vmin](#vmin)
-
-<strong>Column 2 (data cell):</strong>
-
-1% of viewport’s smaller dimension
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-vmax"></a>
-
-[vmax](#vmax)
-
-<strong>Column 2 (data cell):</strong>
-
-1% of viewport’s larger dimension
 
 <a id="ref-for-computed-value②"></a>
 

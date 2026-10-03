@@ -19,7 +19,8 @@ Snapshot SHA-256: 8a291792b2fd351eee443df466626d02b889d890f5d80e315bf80181b40871
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 29 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 29 source tables are presented as readable Markdown tables or explicit labeled layouts: 27 ordinary table conversions, 2 complex-table layouts. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 - Existing external image/media URLs are resolved against the pinned source. Assets are not downloaded or availability-tested; image-only formulas/diagrams still require their source resources.
@@ -202,99 +203,17 @@ The first image in the list is the [layer](#background-image-layer) closest to t
 
 ### <a id="background-color"></a>2.2.  Base Color: the [background-color](#propdef-background-color) property<a id="the-background-color"></a>
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-background-color"></a>background-color
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-color"></a>
-
-[\<color\>](https://www.w3.org/TR/css-color-5/#typedef-color)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-transparent
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-computed color
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value
+| Field               | Definition                                                                       |
+|---------------------|----------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-background-color"></a>background-color                                              |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-color"></a>[\<color\>](https://www.w3.org/TR/css-color-5/#typedef-color) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | transparent                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)              |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | computed color                                                                   |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                      |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value                                                                |
 
 This property sets the <a id="background-color-layer"></a>background color of a box. This color is drawn behind any background images.
 
@@ -317,105 +236,17 @@ The [background color](#background-color-layer) is clipped according to the [bac
 
 ### <a id="background-image"></a>2.3.  Image Sources: the [background-image](#propdef-background-image) property<a id="the-background-image"></a>
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-background-image"></a>background-image
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma"></a>
-
-<a id="ref-for-typedef-bg-image"></a>
-
-[\<bg-image\>](#typedef-bg-image)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-background-image-none①"></a>
-
-<a id="ref-for-typedef-image"></a>
-
-list, each item either an [\<image\>](https://www.w3.org/TR/css-images-3/#typedef-image) or the keyword [none](#valdef-background-image-none)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                          |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-background-image"></a>background-image                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma"></a><a id="ref-for-typedef-bg-image"></a>[\<bg-image\>](#typedef-bg-image)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-valdef-background-image-none①"></a><a id="ref-for-typedef-image"></a>list, each item either an [\<image\>](https://www.w3.org/TR/css-images-3/#typedef-image) or the keyword [none](#valdef-background-image-none) |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                            |
 
 <a id="ref-for-typedef-bg-image①"></a>
 
@@ -474,101 +305,17 @@ Implementations may optimize by not downloading and drawing images that are not 
 
 ### <a id="background-repeat"></a>2.4.  Tiling Images: the [background-repeat](#propdef-background-repeat) property<a id="the-background-repeat"></a>
 
-<strong>Table 3 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-background-repeat"></a>background-repeat
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma①"></a>
-
-<a id="ref-for-typedef-repeat-style"></a>
-
-[\<repeat-style\>](#typedef-repeat-style)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-repeat
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-list, each item a pair of keywords, one per dimension
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                          |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-background-repeat"></a>background-repeat                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma①"></a><a id="ref-for-typedef-repeat-style"></a>[\<repeat-style\>](#typedef-repeat-style)[\#](https://www.w3.org/TR/css-values-4/#mult-comma) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | repeat                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | list, each item a pair of keywords, one per dimension                                                                               |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                            |
 
 <a id="ref-for-background-images①"></a>
 
@@ -716,101 +463,17 @@ See [§ 2.1 Layering Multiple Background Images](#layering) for how [backgroun
 
 ### <a id="background-attachment"></a>2.5.  Affixing Images: the [background-attachment](#propdef-background-attachment) property<a id="the-background-attachment"></a>
 
-<strong>Table 4 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-background-attachment"></a>background-attachment
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma②"></a>
-
-<a id="ref-for-typedef-attachment"></a>
-
-[\<attachment\>](#typedef-attachment)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-scroll
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-list, each item the keyword as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                      |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-background-attachment"></a>background-attachment                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma②"></a><a id="ref-for-typedef-attachment"></a>[\<attachment\>](#typedef-attachment)[\#](https://www.w3.org/TR/css-values-4/#mult-comma) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | scroll                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | list, each item the keyword as specified                                                                                        |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                        |
 
 <a id="ref-for-background-images⑥"></a>
 
@@ -923,103 +586,17 @@ See [§ 2.1 Layering Multiple Background Images](#layering) for how [backgroun
 
 ### <a id="background-position"></a>2.6. Positioning Images: the [background-position](#propdef-background-position) property<a id="the-background-position"></a>
 
-<strong>Table 5 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-background-position"></a>background-position
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma③"></a>
-
-<a id="ref-for-typedef-bg-position"></a>
-
-[\<bg-position\>](#typedef-bg-position)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-0% 0%
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-refer to size of background positioning area <em>minus</em> size of background image; see text
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-length-percentage"></a>
-
-list, each item a pair of offsets (horizontal and vertical) from the top left origin each given as a computed [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) value
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-repeatable list
+| Field               | Definition                                                                                                                                                                                                                    |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-background-position"></a>background-position                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma③"></a><a id="ref-for-typedef-bg-position"></a>[\<bg-position\>](#typedef-bg-position)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 0% 0%                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | refer to size of background positioning area <em>minus</em> size of background image; see text                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-typedef-length-percentage"></a>list, each item a pair of offsets (horizontal and vertical) from the top left origin each given as a computed [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) value |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | repeatable list                                                                                                                                                                                                               |
 
 <a id="ref-for-background-images⑦"></a>
 
@@ -1254,101 +831,17 @@ The [specified value](https://www.w3.org/TR/css-cascade-5/#specified-value) and 
 
 ### <a id="background-clip"></a>2.7.  Painting Area: the [background-clip](#propdef-background-clip) property<a id="the-background-clip"></a>
 
-<strong>Table 6 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-background-clip"></a>background-clip
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma④"></a>
-
-<a id="ref-for-typedef-visual-box"></a>
-
-[\<visual-box\>](https://www.w3.org/TR/css-box-4/#typedef-visual-box)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-border-box
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-list, each item a keyword as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-repeatable list
+| Field               | Definition                                                                                                                                                      |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-background-clip"></a>background-clip                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma④"></a><a id="ref-for-typedef-visual-box"></a>[\<visual-box\>](https://www.w3.org/TR/css-box-4/#typedef-visual-box)[\#](https://www.w3.org/TR/css-values-4/#mult-comma) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | border-box                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | list, each item a keyword as specified                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | repeatable list                                                                                                                                                 |
 
 Determines the <a id="background-painting-area"></a>background painting area, which determines the area within which the background is painted. Values have the following meanings:
 
@@ -1395,101 +888,17 @@ See [§ 2.1 Layering Multiple Background Images](#layering) for how [backgroun
 
 ### <a id="background-origin"></a>2.8.  Positioning Area: the [background-origin](#propdef-background-origin) property<a id="the-background-origin"></a>
 
-<strong>Table 7 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-background-origin"></a>background-origin
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma⑤"></a>
-
-<a id="ref-for-typedef-visual-box①"></a>
-
-[\<visual-box\>](https://www.w3.org/TR/css-box-4/#typedef-visual-box)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-padding-box
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-list, each item a keyword as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-repeatable list
+| Field               | Definition                                                                                                                                                      |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-background-origin"></a>background-origin                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma⑤"></a><a id="ref-for-typedef-visual-box①"></a>[\<visual-box\>](https://www.w3.org/TR/css-box-4/#typedef-visual-box)[\#](https://www.w3.org/TR/css-values-4/#mult-comma) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | padding-box                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | list, each item a keyword as specified                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | repeatable list                                                                                                                                                 |
 
 <a id="ref-for-box-fragment①"></a>
 
@@ -1550,103 +959,17 @@ See [§ 2.1 Layering Multiple Background Images](#layering) for how [backgroun
 
 ### <a id="background-size"></a>2.9. Sizing Images: the [background-size](#propdef-background-size) property<a id="the-background-size"></a>
 
-<strong>Table 8 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-background-size"></a>background-size
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma⑥"></a>
-
-<a id="ref-for-typedef-bg-size"></a>
-
-[\<bg-size\>](#typedef-bg-size)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-see text
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-length-percentage①⓪"></a>
-
-list, each item a pair of sizes (one per axis) each represented as either a keyword or a computed [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) value
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-repeatable list
+| Field               | Definition                                                                                                                                                                                                        |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-background-size"></a>background-size                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma⑥"></a><a id="ref-for-typedef-bg-size"></a>[\<bg-size\>](#typedef-bg-size)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | see text                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-typedef-length-percentage①⓪"></a>list, each item a pair of sizes (one per axis) each represented as either a keyword or a computed [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) value |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | repeatable list                                                                                                                                                                                                   |
 
 <a id="ref-for-background-images①①"></a>
 
@@ -1848,107 +1171,17 @@ See [§ 2.1 Layering Multiple Background Images](#layering) for how [backgroun
 
 ### <a id="background"></a>2.10.  Backgrounds Shorthand: the [background](#propdef-background) property<a id="the-background"></a>
 
-<strong>Table 9 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-background"></a>background
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-final-bg-layer"></a>
-
-<a id="ref-for-comb-comma"></a>
-
-<a id="ref-for-mult-opt②"></a>
-
-<a id="ref-for-mult-comma⑦"></a>
-
-<a id="ref-for-typedef-bg-layer"></a>
-
-[\<bg-layer\>](#typedef-bg-layer)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)[?](https://www.w3.org/TR/css-values-4/#mult-opt) [,](https://www.w3.org/TR/css-values-4/#comb-comma) [\<final-bg-layer\>](#typedef-final-bg-layer)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
+| Field               | Definition                                                                                                                                                                                                                                                                                                                              |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-background"></a>background                                                                                                                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-final-bg-layer"></a><a id="ref-for-comb-comma"></a><a id="ref-for-mult-opt②"></a><a id="ref-for-mult-comma⑦"></a><a id="ref-for-typedef-bg-layer"></a>[\<bg-layer\>](#typedef-bg-layer)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)[?](https://www.w3.org/TR/css-values-4/#mult-opt) [,](https://www.w3.org/TR/css-values-4/#comb-comma) [\<final-bg-layer\>](#typedef-final-bg-layer) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                               |
 
 <a id="ref-for-propdef-background②"></a>
 
@@ -2243,215 +1476,30 @@ The [border](https://www.w3.org/TR/css-box-4/#border) can either be a predefined
 
 ### <a id="border-color"></a>3.1.  Line Colors: the [border-color](#propdef-border-color) properties<a id="the-border-color"></a>
 
-<strong>Table 10 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-border-top-color"></a>border-top-color, <a id="propdef-border-right-color"></a>border-right-color, <a id="propdef-border-bottom-color"></a>border-bottom-color, <a id="propdef-border-left-color"></a>border-left-color
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-color①"></a>
-
-[\<color\>](https://www.w3.org/TR/css-color-5/#typedef-color)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-[currentColor](https://www.w3.org/TR/css-color-4/#currentcolor-color)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-ruby-annotation-container-box①"></a>
-
-<a id="ref-for-ruby-base-container-box①"></a>
-
-all elements except [ruby base containers](https://www.w3.org/TR/css-ruby-1/#ruby-base-container-box) and [ruby annotation containers](https://www.w3.org/TR/css-ruby-1/#ruby-annotation-container-box)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-computed color
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Logical property group:](https://drafts.csswg.org/css-logical-1/#logical-property-group)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-border-color②"></a>
-
-[border-color](#propdef-border-color)
-
-<strong>Table 11 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-border-color"></a>border-color
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-num-range②"></a>
-
-<a id="ref-for-typedef-color②"></a>
-
-[\<color\>](https://www.w3.org/TR/css-color-5/#typedef-color)[{1,4}](https://www.w3.org/TR/css-values-4/#mult-num-range)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-(see individual properties)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-ruby-annotation-container-box②"></a>
-
-<a id="ref-for-ruby-base-container-box②"></a>
-
-all elements except [ruby base containers](https://www.w3.org/TR/css-ruby-1/#ruby-base-container-box) and [ruby annotation containers](https://www.w3.org/TR/css-ruby-1/#ruby-annotation-container-box)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
+| Field               | Definition                                                                                                                                                                                                                                    |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-border-top-color"></a>border-top-color, <a id="propdef-border-right-color"></a>border-right-color, <a id="propdef-border-bottom-color"></a>border-bottom-color, <a id="propdef-border-left-color"></a>border-left-color                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-color①"></a>[\<color\>](https://www.w3.org/TR/css-color-5/#typedef-color)                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | [currentColor](https://www.w3.org/TR/css-color-4/#currentcolor-color)                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-ruby-annotation-container-box①"></a><a id="ref-for-ruby-base-container-box①"></a>all elements except [ruby base containers](https://www.w3.org/TR/css-ruby-1/#ruby-base-container-box) and [ruby annotation containers](https://www.w3.org/TR/css-ruby-1/#ruby-annotation-container-box) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | computed color                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value                                                                                                                                                                                                                             |
+| <strong><a href="https://drafts.csswg.org/css-logical-1/#logical-property-group">Logical property group:</a>&#xA;      </strong> | <a id="ref-for-propdef-border-color②"></a>[border-color](#propdef-border-color)                                                                                                                                                                                      |
+
+| Field               | Definition                                                                                                                                                                                                                                    |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-border-color"></a>border-color                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-num-range②"></a><a id="ref-for-typedef-color②"></a>[\<color\>](https://www.w3.org/TR/css-color-5/#typedef-color)[{1,4}](https://www.w3.org/TR/css-values-4/#mult-num-range)                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | (see individual properties)                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-ruby-annotation-container-box②"></a><a id="ref-for-ruby-base-container-box②"></a>all elements except [ruby base containers](https://www.w3.org/TR/css-ruby-1/#ruby-base-container-box) and [ruby annotation containers](https://www.w3.org/TR/css-ruby-1/#ruby-annotation-container-box) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                     |
 
 <a id="ref-for-border②"></a>
 
@@ -2479,215 +1527,30 @@ If there is only one component value, it applies to all sides. If there are two 
 
 ### <a id="border-style"></a>3.2. Line Patterns: the [border-style](#propdef-border-style) properties<a id="the-border-style"></a>
 
-<strong>Table 12 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-border-top-style"></a>border-top-style, <a id="propdef-border-right-style"></a>border-right-style, <a id="propdef-border-bottom-style"></a>border-bottom-style, <a id="propdef-border-left-style"></a>border-left-style
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-line-style"></a>
-
-[\<line-style\>](#typedef-line-style)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-ruby-annotation-container-box③"></a>
-
-<a id="ref-for-ruby-base-container-box③"></a>
-
-all elements except [ruby base containers](https://www.w3.org/TR/css-ruby-1/#ruby-base-container-box) and [ruby annotation containers](https://www.w3.org/TR/css-ruby-1/#ruby-annotation-container-box)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Logical property group:](https://drafts.csswg.org/css-logical-1/#logical-property-group)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-border-style③"></a>
-
-[border-style](#propdef-border-style)
-
-<strong>Table 13 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-border-style"></a>border-style
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-num-range③"></a>
-
-<a id="ref-for-typedef-line-style①"></a>
-
-[\<line-style\>](#typedef-line-style)[{1,4}](https://www.w3.org/TR/css-values-4/#mult-num-range)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-(see individual properties)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-ruby-annotation-container-box④"></a>
-
-<a id="ref-for-ruby-base-container-box④"></a>
-
-all elements except [ruby base containers](https://www.w3.org/TR/css-ruby-1/#ruby-base-container-box) and [ruby annotation containers](https://www.w3.org/TR/css-ruby-1/#ruby-annotation-container-box)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
+| Field               | Definition                                                                                                                                                                                                                                    |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-border-top-style"></a>border-top-style, <a id="propdef-border-right-style"></a>border-right-style, <a id="propdef-border-bottom-style"></a>border-bottom-style, <a id="propdef-border-left-style"></a>border-left-style                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-line-style"></a>[\<line-style\>](#typedef-line-style)                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-ruby-annotation-container-box③"></a><a id="ref-for-ruby-base-container-box③"></a>all elements except [ruby base containers](https://www.w3.org/TR/css-ruby-1/#ruby-base-container-box) and [ruby annotation containers](https://www.w3.org/TR/css-ruby-1/#ruby-annotation-container-box) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                      |
+| <strong><a href="https://drafts.csswg.org/css-logical-1/#logical-property-group">Logical property group:</a>&#xA;      </strong> | <a id="ref-for-propdef-border-style③"></a>[border-style](#propdef-border-style)                                                                                                                                                                                      |
+
+| Field               | Definition                                                                                                                                                                                                                                    |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-border-style"></a>border-style                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-num-range③"></a><a id="ref-for-typedef-line-style①"></a>[\<line-style\>](#typedef-line-style)[{1,4}](https://www.w3.org/TR/css-values-4/#mult-num-range)                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | (see individual properties)                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-ruby-annotation-container-box④"></a><a id="ref-for-ruby-base-container-box④"></a>all elements except [ruby base containers](https://www.w3.org/TR/css-ruby-1/#ruby-base-container-box) and [ruby annotation containers](https://www.w3.org/TR/css-ruby-1/#ruby-annotation-container-box) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                     |
 
 <a id="ref-for-border③"></a>
 
@@ -2812,221 +1675,30 @@ Example renderings of the predefined border styles.
 
 ### <a id="border-width"></a>3.3.  Line Thickness: the [border-width](#propdef-border-width) properties<a id="the-border-width"></a>
 
-<strong>Table 14 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-border-top-width"></a>border-top-width, <a id="propdef-border-right-width"></a>border-right-width, <a id="propdef-border-bottom-width"></a>border-bottom-width, <a id="propdef-border-left-width"></a>border-left-width
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-line-width"></a>
-
-[\<line-width\>](#typedef-line-width)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-medium
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-ruby-annotation-container-box⑤"></a>
-
-<a id="ref-for-ruby-base-container-box⑤"></a>
-
-all elements except [ruby base containers](https://www.w3.org/TR/css-ruby-1/#ruby-base-container-box) and [ruby annotation containers](https://www.w3.org/TR/css-ruby-1/#ruby-annotation-container-box)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-line-style-hidden"></a>
-
-<a id="ref-for-valdef-line-style-none①"></a>
-
-<a id="ref-for-snap-a-length-as-a-border-width"></a>
-
-absolute length, [snapped as a border width](https://www.w3.org/TR/css-values-4/#snap-a-length-as-a-border-width); zero if the border style is [none](#valdef-line-style-none) or [hidden](#valdef-line-style-hidden)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Logical property group:](https://drafts.csswg.org/css-logical-1/#logical-property-group)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-border-width③"></a>
-
-[border-width](#propdef-border-width)
-
-<strong>Table 15 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-border-width"></a>border-width
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-num-range④"></a>
-
-<a id="ref-for-typedef-line-width①"></a>
-
-[\<line-width\>](#typedef-line-width)[{1,4}](https://www.w3.org/TR/css-values-4/#mult-num-range)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-(see individual properties)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-ruby-annotation-container-box⑥"></a>
-
-<a id="ref-for-ruby-base-container-box⑥"></a>
-
-all elements except [ruby base containers](https://www.w3.org/TR/css-ruby-1/#ruby-base-container-box) and [ruby annotation containers](https://www.w3.org/TR/css-ruby-1/#ruby-annotation-container-box)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
+| Field               | Definition                                                                                                                                                                                                                                                                     |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-border-top-width"></a>border-top-width, <a id="propdef-border-right-width"></a>border-right-width, <a id="propdef-border-bottom-width"></a>border-bottom-width, <a id="propdef-border-left-width"></a>border-left-width                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-line-width"></a>[\<line-width\>](#typedef-line-width)                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | medium                                                                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-ruby-annotation-container-box⑤"></a><a id="ref-for-ruby-base-container-box⑤"></a>all elements except [ruby base containers](https://www.w3.org/TR/css-ruby-1/#ruby-base-container-box) and [ruby annotation containers](https://www.w3.org/TR/css-ruby-1/#ruby-annotation-container-box)                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-valdef-line-style-hidden"></a><a id="ref-for-valdef-line-style-none①"></a><a id="ref-for-snap-a-length-as-a-border-width"></a>absolute length, [snapped as a border width](https://www.w3.org/TR/css-values-4/#snap-a-length-as-a-border-width); zero if the border style is [none](#valdef-line-style-none) or [hidden](#valdef-line-style-hidden) |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value                                                                                                                                                                                                                                                              |
+| <strong><a href="https://drafts.csswg.org/css-logical-1/#logical-property-group">Logical property group:</a>&#xA;      </strong> | <a id="ref-for-propdef-border-width③"></a>[border-width](#propdef-border-width)                                                                                                                                                                                                                       |
+
+| Field               | Definition                                                                                                                                                                                                                                    |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-border-width"></a>border-width                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-num-range④"></a><a id="ref-for-typedef-line-width①"></a>[\<line-width\>](#typedef-line-width)[{1,4}](https://www.w3.org/TR/css-values-4/#mult-num-range)                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | (see individual properties)                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-ruby-annotation-container-box⑥"></a><a id="ref-for-ruby-base-container-box⑥"></a>all elements except [ruby base containers](https://www.w3.org/TR/css-ruby-1/#ruby-base-container-box) and [ruby annotation containers](https://www.w3.org/TR/css-ruby-1/#ruby-annotation-container-box) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                     |
 
 <a id="ref-for-border④"></a>
 
@@ -3079,109 +1751,17 @@ If there is only one component value, it applies to all sides. If there are two 
 
 ### <a id="border-shorthands"></a>3.4.  Border Shorthand Properties<a id="the-border-shorthands"></a>
 
-<strong>Table 16 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-border-top"></a>border-top, <a id="propdef-border-right"></a>border-right, <a id="propdef-border-bottom"></a>border-bottom, <a id="propdef-border-left"></a>border-left
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-color③"></a>
-
-<a id="ref-for-typedef-line-style④"></a>
-
-<a id="ref-for-comb-any①①"></a>
-
-<a id="ref-for-typedef-line-width③"></a>
-
-[\<line-width\>](#typedef-line-width) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<line-style\>](#typedef-line-style) <a id="ref-for-comb-any①②"></a>\|\| [\<color\>](https://www.w3.org/TR/css-color-5/#typedef-color)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-See individual properties
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-ruby-annotation-container-box⑦"></a>
-
-<a id="ref-for-ruby-base-container-box⑦"></a>
-
-all elements except [ruby base containers](https://www.w3.org/TR/css-ruby-1/#ruby-base-container-box) and [ruby annotation containers](https://www.w3.org/TR/css-ruby-1/#ruby-annotation-container-box)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
+| Field               | Definition                                                                                                                                                                                                                                                                                         |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-border-top"></a>border-top, <a id="propdef-border-right"></a>border-right, <a id="propdef-border-bottom"></a>border-bottom, <a id="propdef-border-left"></a>border-left                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-color③"></a><a id="ref-for-typedef-line-style④"></a><a id="ref-for-comb-any①①"></a><a id="ref-for-typedef-line-width③"></a>[\<line-width\>](#typedef-line-width) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<line-style\>](#typedef-line-style) <a id="ref-for-comb-any①②"></a>\|\| [\<color\>](https://www.w3.org/TR/css-color-5/#typedef-color) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | See individual properties                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-ruby-annotation-container-box⑦"></a><a id="ref-for-ruby-base-container-box⑦"></a>all elements except [ruby base containers](https://www.w3.org/TR/css-ruby-1/#ruby-base-container-box) and [ruby annotation containers](https://www.w3.org/TR/css-ruby-1/#ruby-annotation-container-box)                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                          |
 
 <a id="ref-for-shorthand-property④"></a>
 
@@ -3197,109 +1777,17 @@ see individual properties
 
 These [shorthand properties](https://www.w3.org/TR/css-cascade-5/#shorthand-property) set the [border-width](#propdef-border-width), [border-color](#propdef-border-color), and [border-style](#propdef-border-style) of the top, right, bottom, and left [borders](https://www.w3.org/TR/css-box-4/#border) of a box. Omitted values are set to their [initial values](https://www.w3.org/TR/css-cascade-5/#initial-value).
 
-<strong>Table 17 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-border"></a>border
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-color④"></a>
-
-<a id="ref-for-typedef-line-style⑤"></a>
-
-<a id="ref-for-comb-any①③"></a>
-
-<a id="ref-for-typedef-line-width④"></a>
-
-[\<line-width\>](#typedef-line-width) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<line-style\>](#typedef-line-style) <a id="ref-for-comb-any①④"></a>\|\| [\<color\>](https://www.w3.org/TR/css-color-5/#typedef-color)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-See individual properties
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-ruby-annotation-container-box⑧"></a>
-
-<a id="ref-for-ruby-base-container-box⑧"></a>
-
-all elements except [ruby base containers](https://www.w3.org/TR/css-ruby-1/#ruby-base-container-box) and [ruby annotation containers](https://www.w3.org/TR/css-ruby-1/#ruby-annotation-container-box)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
+| Field               | Definition                                                                                                                                                                                                                                                                                         |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-border"></a>border                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-color④"></a><a id="ref-for-typedef-line-style⑤"></a><a id="ref-for-comb-any①③"></a><a id="ref-for-typedef-line-width④"></a>[\<line-width\>](#typedef-line-width) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<line-style\>](#typedef-line-style) <a id="ref-for-comb-any①④"></a>\|\| [\<color\>](https://www.w3.org/TR/css-color-5/#typedef-color) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | See individual properties                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-ruby-annotation-container-box⑧"></a><a id="ref-for-ruby-base-container-box⑧"></a>all elements except [ruby base containers](https://www.w3.org/TR/css-ruby-1/#ruby-base-container-box) and [ruby annotation containers](https://www.w3.org/TR/css-ruby-1/#ruby-annotation-container-box)                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                          |
 
 <a id="ref-for-propdef-border①"></a>
 
@@ -3369,217 +1857,30 @@ Since, to some extent, the properties have overlapping functionality, the order 
 
 ### <a id="border-radius"></a>4.1.  Curve Radii: the [border-radius](#propdef-border-radius) properties<a id="the-border-radius"></a>
 
-<strong>Table 18 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-border-top-left-radius"></a>border-top-left-radius, <a id="propdef-border-top-right-radius"></a>border-top-right-radius, <a id="propdef-border-bottom-right-radius"></a>border-bottom-right-radius, <a id="propdef-border-bottom-left-radius"></a>border-bottom-left-radius
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-num-range⑤"></a>
-
-<a id="ref-for-typedef-length-percentage①③"></a>
-
-[\<length-percentage \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage)[{1,2}](https://www.w3.org/TR/css-values-4/#mult-num-range)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-0
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-all elements (but see prose)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-border-box②"></a>
-
-Refer to corresponding dimension of the [border box](https://www.w3.org/TR/css-box-4/#border-box).
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-length-percentage①④"></a>
-
-pair of computed [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) values
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Logical property group:](https://drafts.csswg.org/css-logical-1/#logical-property-group)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-border-radius②"></a>
-
-[border-radius](#propdef-border-radius)
-
-<strong>Table 19 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-border-radius"></a>border-radius
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-opt⑤"></a>
-
-<a id="ref-for-mult-num-range⑥"></a>
-
-<a id="ref-for-typedef-length-percentage①⑤"></a>
-
-[\<length-percentage \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage)[{1,4}](https://www.w3.org/TR/css-values-4/#mult-num-range) \[ / <a id="ref-for-typedef-length-percentage①⑥"></a>\<length-percentage \[0,∞\]\><a id="ref-for-mult-num-range⑦"></a>{1,4} \][?](https://www.w3.org/TR/css-values-4/#mult-opt)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-all elements (but see prose)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-border-box③"></a>
-
-Refer to corresponding dimension of the [border box](https://www.w3.org/TR/css-box-4/#border-box).
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
+| Field               | Definition                                                                                                                                                                                      |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-border-top-left-radius"></a>border-top-left-radius, <a id="propdef-border-top-right-radius"></a>border-top-right-radius, <a id="propdef-border-bottom-right-radius"></a>border-bottom-right-radius, <a id="propdef-border-bottom-left-radius"></a>border-bottom-left-radius              |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-num-range⑤"></a><a id="ref-for-typedef-length-percentage①③"></a>[\<length-percentage \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage)[{1,2}](https://www.w3.org/TR/css-values-4/#mult-num-range) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 0                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | all elements (but see prose)                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | <a id="ref-for-border-box②"></a>Refer to corresponding dimension of the [border box](https://www.w3.org/TR/css-box-4/#border-box).                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-typedef-length-percentage①④"></a>pair of computed [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) values                                                               |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value                                                                                                                                                                               |
+| <strong><a href="https://drafts.csswg.org/css-logical-1/#logical-property-group">Logical property group:</a>&#xA;      </strong> | <a id="ref-for-propdef-border-radius②"></a>[border-radius](#propdef-border-radius)                                                                                                                                      |
+
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                           |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-border-radius"></a>border-radius                                                                                                                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-opt⑤"></a><a id="ref-for-mult-num-range⑥"></a><a id="ref-for-typedef-length-percentage①⑤"></a>[\<length-percentage \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage)[{1,4}](https://www.w3.org/TR/css-values-4/#mult-num-range) \[ / <a id="ref-for-typedef-length-percentage①⑥"></a>\<length-percentage \[0,∞\]\><a id="ref-for-mult-num-range⑦"></a>{1,4} \][?](https://www.w3.org/TR/css-values-4/#mult-opt) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | all elements (but see prose)                                                                                                                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | <a id="ref-for-border-box③"></a>Refer to corresponding dimension of the [border box](https://www.w3.org/TR/css-box-4/#border-box).                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                                            |
 
 <a id="ref-for-typedef-length-percentage①⑦"></a>
 
@@ -3671,18 +1972,15 @@ The effect of a rounded corner when the two borders it connects are of unequal t
 >
 > Note: If the center of a corner’s outer curve is past an opposite [padding edge](https://www.w3.org/TR/css-box-4/#padding-edge) (in the [border area](https://www.w3.org/TR/css-box-4/#border-area) of a side opposite the corner), the inner curve will not be a full quarter ellipse.
 
-<strong>Table 20 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (data cell):</strong>
+**CSS**
 
 ```text
 p { width: 70px; height: 70px; border: solid 30px;
 border-color: orange orange silver silver;
 border-top-right-radius: 100%; }
 ```
-<strong>Column 2 (data cell):</strong>
+
+**Reference image**
 
 ![The curved corner is an arc from the top left corner sweeping across the top right corner to the bottom right corner, describing a quarter-ellipse; but since the opposite sides have a border thickness the padding edge curve starts inward from the outer arc's endpoints.](https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/images/partial-curve.png)
 
@@ -3886,107 +2184,17 @@ Authors can specify an image to be used in place of the border styles. In this c
 
 ### <a id="border-image-source"></a>5.1.  Image Source: the [border-image-source](#propdef-border-image-source) property<a id="the-border-image-source"></a>
 
-<strong>Table 21 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-border-image-source"></a>border-image-source
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-image②"></a>
-
-<a id="ref-for-comb-one④⓪"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<image\>](https://www.w3.org/TR/css-images-3/#typedef-image)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-border-collapse-collapse①"></a>
-
-<a id="ref-for-propdef-border-collapse②"></a>
-
-All elements, except internal table elements when [border-collapse](https://www.w3.org/TR/CSS21/tables.html#propdef-border-collapse) is [collapse](https://drafts.csswg.org/css2/#valdef-border-collapse-collapse)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-image③"></a>
-
-the keyword none or the computed [\<image\>](https://www.w3.org/TR/css-images-3/#typedef-image)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                                               |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-border-image-source"></a>border-image-source                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-image②"></a><a id="ref-for-comb-one④⓪"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<image\>](https://www.w3.org/TR/css-images-3/#typedef-image)                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-valdef-border-collapse-collapse①"></a><a id="ref-for-propdef-border-collapse②"></a>All elements, except internal table elements when [border-collapse](https://www.w3.org/TR/CSS21/tables.html#propdef-border-collapse) is [collapse](https://drafts.csswg.org/css2/#valdef-border-collapse-collapse) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-typedef-image③"></a>the keyword none or the computed [\<image\>](https://www.w3.org/TR/css-images-3/#typedef-image)                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                 |
 
 <a id="ref-for-propdef-border-style⑧"></a>
 
@@ -4000,115 +2208,17 @@ Specifies an image to use as a border in place of the rendering specified by the
 
 ### <a id="border-image-slice"></a>5.2.  Image Slicing: the [border-image-slice](#propdef-border-image-slice) property<a id="the-border-image-slice"></a>
 
-<strong>Table 22 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-border-image-slice"></a>border-image-slice
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-opt⑥"></a>
-
-<a id="ref-for-comb-all①"></a>
-
-<a id="ref-for-mult-num-range⑧"></a>
-
-<a id="ref-for-percentage-value②"></a>
-
-<a id="ref-for-comb-one④①"></a>
-
-<a id="ref-for-number-value"></a>
-
-\[[\<number \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#number-value) [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<percentage \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#percentage-value)\][{1,4}](https://www.w3.org/TR/css-values-4/#mult-num-range) [&#x26;&#x26;](https://www.w3.org/TR/css-values-4/#comb-all) fill[?](https://www.w3.org/TR/css-values-4/#mult-opt)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-100%
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-border-collapse-collapse②"></a>
-
-<a id="ref-for-propdef-border-collapse③"></a>
-
-All elements, except internal table elements when [border-collapse](https://www.w3.org/TR/CSS21/tables.html#propdef-border-collapse) is [collapse](https://drafts.csswg.org/css2/#valdef-border-collapse-collapse)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-refer to size of the border image
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-border-image-slice-fill①"></a>
-
-four values, each either a number or percentage; plus a [fill](#border-image-slice-fill) keyword if specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-border-image-slice"></a>border-image-slice                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-opt⑥"></a><a id="ref-for-comb-all①"></a><a id="ref-for-mult-num-range⑧"></a><a id="ref-for-percentage-value②"></a><a id="ref-for-comb-one④①"></a><a id="ref-for-number-value"></a>\[[\<number \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#number-value) [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<percentage \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#percentage-value)\][{1,4}](https://www.w3.org/TR/css-values-4/#mult-num-range) [&#x26;&#x26;](https://www.w3.org/TR/css-values-4/#comb-all) fill[?](https://www.w3.org/TR/css-values-4/#mult-opt) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 100%                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-valdef-border-collapse-collapse②"></a><a id="ref-for-propdef-border-collapse③"></a>All elements, except internal table elements when [border-collapse](https://www.w3.org/TR/CSS21/tables.html#propdef-border-collapse) is [collapse](https://drafts.csswg.org/css2/#valdef-border-collapse-collapse)                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | refer to size of the border image                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-border-image-slice-fill①"></a>four values, each either a number or percentage; plus a [fill](#border-image-slice-fill) keyword if specified                                                                                                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 <a id="ref-for-border-image-slice-fill②"></a>
 
@@ -4158,115 +2268,17 @@ Diagram illustrating the cuts corresponding to the value 25% 30% 12% 20%
 
 ### <a id="border-image-width"></a>5.3.  Drawing Areas: the [border-image-width](#propdef-border-image-width) property<a id="the-border-image-width"></a>
 
-<strong>Table 23 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-border-image-width"></a>border-image-width
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-num-range⑨"></a>
-
-<a id="ref-for-number-value②"></a>
-
-<a id="ref-for-comb-one④②"></a>
-
-<a id="ref-for-typedef-length-percentage①⑧"></a>
-
-\[ [\<length-percentage \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<number \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#number-value) <a id="ref-for-comb-one④③"></a>\| auto \][{1,4}](https://www.w3.org/TR/css-values-4/#mult-num-range)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-1
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-border-collapse-collapse③"></a>
-
-<a id="ref-for-propdef-border-collapse④"></a>
-
-All elements, except internal table elements when [border-collapse](https://www.w3.org/TR/CSS21/tables.html#propdef-border-collapse) is [collapse](https://drafts.csswg.org/css2/#valdef-border-collapse-collapse)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-border-image-area③"></a>
-
-Relative to width/height of the [border image area](#border-image-area)
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-length-percentage①⑨"></a>
-
-<a id="ref-for-valdef-border-image-width-auto"></a>
-
-four values, each either a number, the keyword [auto](#valdef-border-image-width-auto), or a computed [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) value
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                       |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-border-image-width"></a>border-image-width                                                                                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-num-range⑨"></a><a id="ref-for-number-value②"></a><a id="ref-for-comb-one④②"></a><a id="ref-for-typedef-length-percentage①⑧"></a>\[ [\<length-percentage \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<number \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#number-value) <a id="ref-for-comb-one④③"></a>\| auto \][{1,4}](https://www.w3.org/TR/css-values-4/#mult-num-range) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 1                                                                                                                                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-valdef-border-collapse-collapse③"></a><a id="ref-for-propdef-border-collapse④"></a>All elements, except internal table elements when [border-collapse](https://www.w3.org/TR/CSS21/tables.html#propdef-border-collapse) is [collapse](https://drafts.csswg.org/css2/#valdef-border-collapse-collapse)                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | <a id="ref-for-border-image-area③"></a>Relative to width/height of the [border image area](#border-image-area)                                                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-typedef-length-percentage①⑨"></a><a id="ref-for-valdef-border-image-width-auto"></a>four values, each either a number, the keyword [auto](#valdef-border-image-width-auto), or a computed [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) value                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value                                                                                                                                                                                                                                                                                                                                                                                |
 
 <a id="ref-for-border-image-dfn"></a>
 
@@ -4332,109 +2344,17 @@ If two opposite [border-image-width](#propdef-border-image-width) offsets are la
 
 ### <a id="border-image-outset"></a>5.4.  Edge Overhang: the [border-image-outset](#propdef-border-image-outset) property<a id="the-border-image-outset"></a>
 
-<strong>Table 24 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-border-image-outset"></a>border-image-outset
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-num-range①⓪"></a>
-
-<a id="ref-for-number-value④"></a>
-
-<a id="ref-for-comb-one④④"></a>
-
-<a id="ref-for-length-value②"></a>
-
-\[ [\<length \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#length-value) [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<number \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#number-value) \][{1,4}](https://www.w3.org/TR/css-values-4/#mult-num-range)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-0
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-border-collapse-collapse④"></a>
-
-<a id="ref-for-propdef-border-collapse⑤"></a>
-
-All elements, except internal table elements when [border-collapse](https://www.w3.org/TR/CSS21/tables.html#propdef-border-collapse) is [collapse](https://drafts.csswg.org/css2/#valdef-border-collapse-collapse)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-four values, each a number or absolute length
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                    |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-border-image-outset"></a>border-image-outset                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-num-range①⓪"></a><a id="ref-for-number-value④"></a><a id="ref-for-comb-one④④"></a><a id="ref-for-length-value②"></a>\[ [\<length \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#length-value) [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<number \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#number-value) \][{1,4}](https://www.w3.org/TR/css-values-4/#mult-num-range) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 0                                                                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-valdef-border-collapse-collapse④"></a><a id="ref-for-propdef-border-collapse⑤"></a>All elements, except internal table elements when [border-collapse](https://www.w3.org/TR/CSS21/tables.html#propdef-border-collapse) is [collapse](https://drafts.csswg.org/css2/#valdef-border-collapse-collapse)                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | four values, each a number or absolute length                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value                                                                                                                                                                                                                                                                                                                             |
 
 <a id="ref-for-border-image-area⑦"></a>
 
@@ -4470,105 +2390,17 @@ Portions of the border-image that are rendered outside the [border box](https://
 
 ### <a id="border-image-repeat"></a>5.5.  Image Tiling: the [border-image-repeat](#propdef-border-image-repeat) property<a id="the-border-image-repeat"></a>
 
-<strong>Table 25 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-border-image-repeat"></a>border-image-repeat
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-num-range①①"></a>
-
-<a id="ref-for-comb-one④⑤"></a>
-
-\[ stretch [\|](https://www.w3.org/TR/css-values-4/#comb-one) repeat <a id="ref-for-comb-one④⑥"></a>\| round <a id="ref-for-comb-one④⑦"></a>\| space \][{1,2}](https://www.w3.org/TR/css-values-4/#mult-num-range)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-stretch
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-border-collapse-collapse⑤"></a>
-
-<a id="ref-for-propdef-border-collapse⑥"></a>
-
-All elements, except internal table elements when [border-collapse](https://www.w3.org/TR/CSS21/tables.html#propdef-border-collapse) is [collapse](https://drafts.csswg.org/css2/#valdef-border-collapse-collapse)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-two keywords, one per axis
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                                               |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-border-image-repeat"></a>border-image-repeat                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-num-range①①"></a><a id="ref-for-comb-one④⑤"></a>\[ stretch [\|](https://www.w3.org/TR/css-values-4/#comb-one) repeat <a id="ref-for-comb-one④⑥"></a>\| round <a id="ref-for-comb-one④⑦"></a>\| space \][{1,2}](https://www.w3.org/TR/css-values-4/#mult-num-range)                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | stretch                                                                                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-valdef-border-collapse-collapse⑤"></a><a id="ref-for-propdef-border-collapse⑥"></a>All elements, except internal table elements when [border-collapse](https://www.w3.org/TR/CSS21/tables.html#propdef-border-collapse) is [collapse](https://drafts.csswg.org/css2/#valdef-border-collapse-collapse) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | two keywords, one per axis                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                 |
 
 <a id="ref-for-border-image-dfn①"></a>
 
@@ -4694,113 +2526,17 @@ After the [border image](#border-image-dfn) given by [border-image-source](#prop
 
 ### <a id="border-image"></a>5.7.  Border Image Shorthand: the [border-image](#propdef-border-image) property<a id="the-border-image"></a>
 
-<strong>Table 26 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-border-image"></a>border-image
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-border-image-repeat②"></a>
-
-<a id="ref-for-propdef-border-image-outset②"></a>
-
-<a id="ref-for-mult-opt⑦"></a>
-
-<a id="ref-for-comb-one④⑧"></a>
-
-<a id="ref-for-propdef-border-image-width①⓪"></a>
-
-<a id="ref-for-propdef-border-image-slice⑥"></a>
-
-<a id="ref-for-comb-any①⑤"></a>
-
-<a id="ref-for-propdef-border-image-source⑤"></a>
-
-[\<'border-image-source'\>](#propdef-border-image-source) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<'border-image-slice'\>](#propdef-border-image-slice) \[ / [\<'border-image-width'\>](#propdef-border-image-width) [\|](https://www.w3.org/TR/css-values-4/#comb-one) / <a id="ref-for-propdef-border-image-width①①"></a>\<'border-image-width'\>[?](https://www.w3.org/TR/css-values-4/#mult-opt) / [\<'border-image-outset'\>](#propdef-border-image-outset) \]<a id="ref-for-mult-opt⑧"></a>? <a id="ref-for-comb-any①⑥"></a>\|\| [\<'border-image-repeat'\>](#propdef-border-image-repeat)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-See individual properties
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-See individual properties
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-See individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-See individual properties
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-border-image"></a>border-image                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-propdef-border-image-repeat②"></a><a id="ref-for-propdef-border-image-outset②"></a><a id="ref-for-mult-opt⑦"></a><a id="ref-for-comb-one④⑧"></a><a id="ref-for-propdef-border-image-width①⓪"></a><a id="ref-for-propdef-border-image-slice⑥"></a><a id="ref-for-comb-any①⑤"></a><a id="ref-for-propdef-border-image-source⑤"></a>[\<'border-image-source'\>](#propdef-border-image-source) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<'border-image-slice'\>](#propdef-border-image-slice) \[ / [\<'border-image-width'\>](#propdef-border-image-width) [\|](https://www.w3.org/TR/css-values-4/#comb-one) / <a id="ref-for-propdef-border-image-width①①"></a>\<'border-image-width'\>[?](https://www.w3.org/TR/css-values-4/#mult-opt) / [\<'border-image-outset'\>](#propdef-border-image-outset) \]<a id="ref-for-mult-opt⑧"></a>? <a id="ref-for-comb-any①⑥"></a>\|\| [\<'border-image-repeat'\>](#propdef-border-image-repeat) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | See individual properties                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | See individual properties                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | See individual properties                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | See individual properties                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 <a id="ref-for-propdef-border-image-source⑥"></a>
 
@@ -4840,111 +2576,17 @@ It is expected that a future specification will define the rendering. It is reco
 
 ### <a id="box-shadow"></a>6.1. Drop Shadows: the [box-shadow](#propdef-box-shadow) property<a id="the-box-shadow"></a>
 
-<strong>Table 27 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-box-shadow"></a>box-shadow
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma⑧"></a>
-
-<a id="ref-for-typedef-shadow"></a>
-
-<a id="ref-for-comb-one④⑨"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<shadow\>](#typedef-shadow)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-shadow-inset"></a>
-
-<a id="ref-for-box-shadow-none"></a>
-
-either the keyword [none](#box-shadow-none) or a list, each item consisting of four absolute lengths plus a computed color and optionally also a [inset](#shadow-inset) keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-shadow-inset①"></a>
-
-<a id="ref-for-box-shadow-none①"></a>
-
-by computed value, treating [none](#box-shadow-none) as a zero-item list and appending blank shadows (transparent 0 0 0 0) with a corresponding [inset](#shadow-inset) keyword as needed to match the longer list if the shorter list is otherwise compatible with the longer one
+| Field               | Definition                                                                                                                                                                                                                                                                                                              |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-box-shadow"></a>box-shadow                                                                                                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma⑧"></a><a id="ref-for-typedef-shadow"></a><a id="ref-for-comb-one④⑨"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<shadow\>](#typedef-shadow)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-shadow-inset"></a><a id="ref-for-box-shadow-none"></a>either the keyword [none](#box-shadow-none) or a list, each item consisting of four absolute lengths plus a computed color and optionally also a [inset](#shadow-inset) keyword                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | <a id="ref-for-shadow-inset①"></a><a id="ref-for-box-shadow-none①"></a>by computed value, treating [none](#box-shadow-none) as a zero-item list and appending blank shadows (transparent 0 0 0 0) with a corresponding [inset](#shadow-inset) keyword as needed to match the longer list if the shorter list is otherwise compatible with the longer one |
 
 <a id="ref-for-propdef-box-shadow④"></a>
 
@@ -5070,11 +2712,8 @@ If a [spread distance](#box-shadow-spread-distance) is defined, the shadow perim
 >
 > <a id="box-shadow-samples"></a>
 >
-> <strong>Table 28 — structured row/cell transcription</strong>
 >
-> <strong>Row 1</strong>
->
-> <strong>Column 1 (header cell; scope rowgroup):</strong>
+> **Shared box styling**
 >
 > ```text
 > border:5px solid blue;
@@ -5083,21 +2722,19 @@ If a [spread distance](#box-shadow-spread-distance) is defined, the shadow perim
 > height: 144px;
 > ```
 >
-> <strong>Column 2 (header cell):</strong>
+> **Rounded-corner variant**
 >
 > ```text
 > border-radius: 20px;
 > ```
 >
-> <strong>Column 3 (header cell):</strong>
+> **Square-corner variant**
 >
 > ```text
 > border-radius: 0;
 > ```
 >
-> <strong>Row 2</strong>
->
-> <strong>Column 1 (header cell):</strong>
+> **Shadow example 1**
 >
 > ```text
 > box-shadow:
@@ -5105,17 +2742,15 @@ If a [spread distance](#box-shadow-spread-distance) is defined, the shadow perim
 >   10px 10px;
 > ```
 >
-> <strong>Column 2 (data cell):</strong>
+> **Rounded-corner reference image**
 >
 > ![A round-cornered box with a light gray shadow the same shape as the border box offset 10px to the right and 10px down from directly underneath the box.](https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/images/shadow-outer-round.png)
 >
-> <strong>Column 3 (data cell):</strong>
+> **Square-corner reference image**
 >
 > ![A square-cornered box with a light gray shadow the same shape as the border box offset 10px to the right and 10px down from directly underneath the box.](https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/images/shadow-outer-square.png)
 >
-> <strong>Row 3</strong>
->
-> <strong>Column 1 (header cell):</strong>
+> **Shadow example 2**
 >
 > ```text
 > box-shadow:
@@ -5124,17 +2759,15 @@ If a [spread distance](#box-shadow-spread-distance) is defined, the shadow perim
 >   inset
 > ```
 >
-> <strong>Column 2 (data cell):</strong>
+> **Rounded-corner reference image**
 >
 > ![A round-cornered box with a light gray shadow the inverse shape of the padding box filling 10px in from the top and left edges (just inside the border).](https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/images/shadow-inner-round.png)
 >
-> <strong>Column 3 (data cell):</strong>
+> **Square-corner reference image**
 >
 > ![A square-cornered box with a light gray shadow the inverse shape of the padding box filling 10px in from the top and left edges (just inside the border).](https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/images/shadow-inner-square.png)
 >
-> <strong>Row 4</strong>
->
-> <strong>Column 1 (header cell):</strong>
+> **Shadow example 3**
 >
 > ```text
 > box-shadow:
@@ -5143,17 +2776,15 @@ If a [spread distance](#box-shadow-spread-distance) is defined, the shadow perim
 >   10px /* spread */
 > ```
 >
-> <strong>Column 2 (data cell):</strong>
+> **Rounded-corner reference image**
 >
 > ![A round-cornered box with a light gray shadow the same shape as the box but 20px taller and wider and offset so that the top and left edges of the shadow are directly underneath the top and left edges of the box.](https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/images/shadow-outer-spread-round.png)
 >
-> <strong>Column 3 (data cell):</strong>
+> **Square-corner reference image**
 >
 > ![A square-cornered box with a light gray shadow the same shape as the box but 20px taller and wider and offset so that the top and left edges of the shadow are directly underneath the top and left edges of the box.](https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/images/shadow-outer-spread-square.png)
 >
-> <strong>Row 5</strong>
->
-> <strong>Column 1 (header cell):</strong>
+> **Shadow example 4**
 >
 > ```text
 > box-shadow:
@@ -5163,13 +2794,14 @@ If a [spread distance](#box-shadow-spread-distance) is defined, the shadow perim
 >   inset
 > ```
 >
-> <strong>Column 2 (data cell):</strong>
+> **Rounded-corner reference image**
 >
 > ![A round-cornered box with a light gray shadow the inverse shape of the box but 20px narrower and shorter filling 20px in from the top and left edges (just inside the border).](https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/images/shadow-inner-spread-round.png)
 >
-> <strong>Column 3 (data cell):</strong>
+> **Square-corner reference image**
 >
 > ![A round-cornered box with a light gray shadow the inverse shape of the box but 20px narrower and shorter filling 20px in from the top and left edges (just inside the border).](https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/images/shadow-inner-spread-square.png)
+>
 
 <a id="ref-for-box-shadow-spread-distance②"></a>
 
@@ -6195,1800 +3827,47 @@ Ben Caldwell; et al. [Web Content Accessibility Guidelines (WCAG) 2.0](https://w
 
 ## <a id="property-index"></a>Property Index
 
-<strong>Table 29 — structured row/cell transcription</strong>
+| Name                | Value                                                                                                                                                                               | Initial                     | Applies to                                                                    | Inh. | %ages                                                                                 | Anim­ation type                                                                                                                                                                                                                               | Canonical order | Com­puted value                                                                                                                             | Logical property group |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------|-------------------------------------------------------------------------------|------|---------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------|--------------------------------------------------------------------------------------------------------------------------------------------|------------------------|
+| <strong><span><a id="ref-for-propdef-background⑨"></a></span><a href="#propdef-background">background</a>&#xA;      </strong> | \<bg-layer\>#? , \<final-bg-layer\>                                                                                                                                                 | see individual properties   | all elements                                                                  | no   | see individual properties                                                             | see individual properties                                                                                                                                                                                                                    | per grammar     | see individual properties                                                                                                                  |                        |
+| <strong><span><a id="ref-for-propdef-background-attachment⑦"></a></span><a href="#propdef-background-attachment">background-attachment</a>&#xA;      </strong> | \<attachment\>#                                                                                                                                                                     | scroll                      | all elements                                                                  | no   | N/A                                                                                   | discrete                                                                                                                                                                                                                                     | per grammar     | list, each item the keyword as specified                                                                                                   |                        |
+| <strong><span><a id="ref-for-propdef-background-clip①③"></a></span><a href="#propdef-background-clip">background-clip</a>&#xA;      </strong> | \<visual-box\>#                                                                                                                                                                     | border-box                  | all elements                                                                  | no   | N/A                                                                                   | repeatable list                                                                                                                                                                                                                              | per grammar     | list, each item a keyword as specified                                                                                                     |                        |
+| <strong><span><a id="ref-for-propdef-background-color①①"></a></span><a href="#propdef-background-color">background-color</a>&#xA;      </strong> | \<color\>                                                                                                                                                                           | transparent                 | all elements                                                                  | no   | N/A                                                                                   | by computed value                                                                                                                                                                                                                            | per grammar     | computed color                                                                                                                             |                        |
+| <strong><span><a id="ref-for-propdef-background-image①①"></a></span><a href="#propdef-background-image">background-image</a>&#xA;      </strong> | \<bg-image\>#                                                                                                                                                                       | none                        | all elements                                                                  | no   | N/A                                                                                   | discrete                                                                                                                                                                                                                                     | per grammar     | list, each item either an \<image\> or the keyword none                                                                                    |                        |
+| <strong><span><a id="ref-for-propdef-background-origin⑨"></a></span><a href="#propdef-background-origin">background-origin</a>&#xA;      </strong> | \<visual-box\>#                                                                                                                                                                     | padding-box                 | all elements                                                                  | no   | N/A                                                                                   | repeatable list                                                                                                                                                                                                                              | per grammar     | list, each item a keyword as specified                                                                                                     |                        |
+| <strong><span><a id="ref-for-propdef-background-position①⑦"></a></span><a href="#propdef-background-position">background-position</a>&#xA;      </strong> | \<bg-position\>#                                                                                                                                                                    | 0% 0%                       | all elements                                                                  | no   | refer to size of background positioning area minus size of background image; see text | repeatable list                                                                                                                                                                                                                              | per grammar     | list, each item a pair of offsets (horizontal and vertical) from the top left origin each given as a computed \<length-percentage\> value  |                        |
+| <strong><span><a id="ref-for-propdef-background-repeat①⓪"></a></span><a href="#propdef-background-repeat">background-repeat</a>&#xA;      </strong> | \<repeat-style\>#                                                                                                                                                                   | repeat                      | all elements                                                                  | no   | N/A                                                                                   | discrete                                                                                                                                                                                                                                     | per grammar     | list, each item a pair of keywords, one per dimension                                                                                      |                        |
+| <strong><span><a id="ref-for-propdef-background-size⑦"></a></span><a href="#propdef-background-size">background-size</a>&#xA;      </strong> | \<bg-size\>#                                                                                                                                                                        | auto                        | all elements                                                                  | no   | see text                                                                              | repeatable list                                                                                                                                                                                                                              | per grammar     | list, each item a pair of sizes (one per axis) each represented as either a keyword or a computed \<length-percentage\> value              |                        |
+| <strong><span><a id="ref-for-propdef-border①①"></a></span><a href="#propdef-border">border</a>&#xA;      </strong> | \<line-width\> \|\| \<line-style\> \|\| \<color\>                                                                                                                                   | See individual properties   | all elements except ruby base containers and ruby annotation containers       | no   | N/A                                                                                   | see individual properties                                                                                                                                                                                                                    | per grammar     | see individual properties                                                                                                                  |                        |
+| <strong><span><a id="ref-for-propdef-border-bottom②"></a></span><a href="#propdef-border-bottom">border-bottom</a>&#xA;      </strong> | \<line-width\> \|\| \<line-style\> \|\| \<color\>                                                                                                                                   | See individual properties   | all elements except ruby base containers and ruby annotation containers       | no   | N/A                                                                                   | see individual properties                                                                                                                                                                                                                    | per grammar     | see individual properties                                                                                                                  |                        |
+| <strong><span><a id="ref-for-propdef-border-bottom-color①"></a></span><a href="#propdef-border-bottom-color">border-bottom-color</a>&#xA;      </strong> | \<color\>                                                                                                                                                                           | currentColor                | all elements except ruby base containers and ruby annotation containers       | no   | N/A                                                                                   | by computed value                                                                                                                                                                                                                            | per grammar     | computed color                                                                                                                             | border-color           |
+| <strong><span><a id="ref-for-propdef-border-bottom-left-radius"></a></span><a href="#propdef-border-bottom-left-radius">border-bottom-left-radius</a>&#xA;      </strong> | \<length-percentage \[0,∞\]\>{1,2}                                                                                                                                                  | 0                           | all elements (but see prose)                                                  | no   | Refer to corresponding dimension of the border box.                                   | by computed value                                                                                                                                                                                                                            | per grammar     | pair of computed \<length-percentage\> values                                                                                              | border-radius          |
+| <strong><span><a id="ref-for-propdef-border-bottom-right-radius"></a></span><a href="#propdef-border-bottom-right-radius">border-bottom-right-radius</a>&#xA;      </strong> | \<length-percentage \[0,∞\]\>{1,2}                                                                                                                                                  | 0                           | all elements (but see prose)                                                  | no   | Refer to corresponding dimension of the border box.                                   | by computed value                                                                                                                                                                                                                            | per grammar     | pair of computed \<length-percentage\> values                                                                                              | border-radius          |
+| <strong><span><a id="ref-for-propdef-border-bottom-style①"></a></span><a href="#propdef-border-bottom-style">border-bottom-style</a>&#xA;      </strong> | \<line-style\>                                                                                                                                                                      | none                        | all elements except ruby base containers and ruby annotation containers       | no   | N/A                                                                                   | discrete                                                                                                                                                                                                                                     | per grammar     | specified keyword                                                                                                                          | border-style           |
+| <strong><span><a id="ref-for-propdef-border-bottom-width①"></a></span><a href="#propdef-border-bottom-width">border-bottom-width</a>&#xA;      </strong> | \<line-width\>                                                                                                                                                                      | medium                      | all elements except ruby base containers and ruby annotation containers       | no   | N/A                                                                                   | by computed value                                                                                                                                                                                                                            | per grammar     | absolute length, snapped as a border width; zero if the border style is none or hidden                                                     | border-width           |
+| <strong><span><a id="ref-for-propdef-border-color⑨"></a></span><a href="#propdef-border-color">border-color</a>&#xA;      </strong> | \<color\>{1,4}                                                                                                                                                                      | (see individual properties) | all elements except ruby base containers and ruby annotation containers       | no   | N/A                                                                                   | see individual properties                                                                                                                                                                                                                    | per grammar     | see individual properties                                                                                                                  |                        |
+| <strong><span><a id="ref-for-propdef-border-image①⓪"></a></span><a href="#propdef-border-image">border-image</a>&#xA;      </strong> | \<'border-image-source'\> \|\| \<'border-image-slice'\> \[ / \<'border-image-width'\> \| / \<'border-image-width'\>? / \<'border-image-outset'\> \]? \|\| \<'border-image-repeat'\> | See individual properties   | See individual properties                                                     | no   | N/A                                                                                   | See individual properties                                                                                                                                                                                                                    | per grammar     | See individual properties                                                                                                                  |                        |
+| <strong><span><a id="ref-for-propdef-border-image-outset④"></a></span><a href="#propdef-border-image-outset">border-image-outset</a>&#xA;      </strong> | \[ \<length \[0,∞\]\> \| \<number \[0,∞\]\> \]{1,4}                                                                                                                                 | 0                           | All elements, except internal table elements when border-collapse is collapse | no   | N/A                                                                                   | by computed value                                                                                                                                                                                                                            | per grammar     | four values, each a number or absolute length                                                                                              |                        |
+| <strong><span><a id="ref-for-propdef-border-image-repeat⑤"></a></span><a href="#propdef-border-image-repeat">border-image-repeat</a>&#xA;      </strong> | \[ stretch \| repeat \| round \| space \]{1,2}                                                                                                                                      | stretch                     | All elements, except internal table elements when border-collapse is collapse | no   | N/A                                                                                   | discrete                                                                                                                                                                                                                                     | per grammar     | two keywords, one per axis                                                                                                                 |                        |
+| <strong><span><a id="ref-for-propdef-border-image-slice⑧"></a></span><a href="#propdef-border-image-slice">border-image-slice</a>&#xA;      </strong> | \[\<number \[0,∞\]\> \| \<percentage \[0,∞\]\>\]{1,4} &#x26;&#x26; fill?                                                                                          | 100%                        | All elements, except internal table elements when border-collapse is collapse | no   | refer to size of the border image                                                     | by computed value                                                                                                                                                                                                                            | per grammar     | four values, each either a number or percentage; plus a fill keyword if specified                                                          |                        |
+| <strong><span><a id="ref-for-propdef-border-image-source⑦"></a></span><a href="#propdef-border-image-source">border-image-source</a>&#xA;      </strong> | none \| \<image\>                                                                                                                                                                   | none                        | All elements, except internal table elements when border-collapse is collapse | no   | N/A                                                                                   | discrete                                                                                                                                                                                                                                     | per grammar     | the keyword none or the computed \<image\>                                                                                                 |                        |
+| <strong><span><a id="ref-for-propdef-border-image-width①⑤"></a></span><a href="#propdef-border-image-width">border-image-width</a>&#xA;      </strong> | \[ \<length-percentage \[0,∞\]\> \| \<number \[0,∞\]\> \| auto \]{1,4}                                                                                                              | 1                           | All elements, except internal table elements when border-collapse is collapse | no   | Relative to width/height of the border image area                                     | by computed value                                                                                                                                                                                                                            | per grammar     | four values, each either a number, the keyword auto, or a computed \<length-percentage\> value                                             |                        |
+| <strong><span><a id="ref-for-propdef-border-left⑤"></a></span><a href="#propdef-border-left">border-left</a>&#xA;      </strong> | \<line-width\> \|\| \<line-style\> \|\| \<color\>                                                                                                                                   | See individual properties   | all elements except ruby base containers and ruby annotation containers       | no   | N/A                                                                                   | see individual properties                                                                                                                                                                                                                    | per grammar     | see individual properties                                                                                                                  |                        |
+| <strong><span><a id="ref-for-propdef-border-left-color①"></a></span><a href="#propdef-border-left-color">border-left-color</a>&#xA;      </strong> | \<color\>                                                                                                                                                                           | currentColor                | all elements except ruby base containers and ruby annotation containers       | no   | N/A                                                                                   | by computed value                                                                                                                                                                                                                            | per grammar     | computed color                                                                                                                             | border-color           |
+| <strong><span><a id="ref-for-propdef-border-left-style①"></a></span><a href="#propdef-border-left-style">border-left-style</a>&#xA;      </strong> | \<line-style\>                                                                                                                                                                      | none                        | all elements except ruby base containers and ruby annotation containers       | no   | N/A                                                                                   | discrete                                                                                                                                                                                                                                     | per grammar     | specified keyword                                                                                                                          | border-style           |
+| <strong><span><a id="ref-for-propdef-border-left-width①"></a></span><a href="#propdef-border-left-width">border-left-width</a>&#xA;      </strong> | \<line-width\>                                                                                                                                                                      | medium                      | all elements except ruby base containers and ruby annotation containers       | no   | N/A                                                                                   | by computed value                                                                                                                                                                                                                            | per grammar     | absolute length, snapped as a border width; zero if the border style is none or hidden                                                     | border-width           |
+| <strong><span><a id="ref-for-propdef-border-radius①⑥"></a></span><a href="#propdef-border-radius">border-radius</a>&#xA;      </strong> | \<length-percentage \[0,∞\]\>{1,4} \[ / \<length-percentage \[0,∞\]\>{1,4} \]?                                                                                                      | see individual properties   | all elements (but see prose)                                                  | no   | Refer to corresponding dimension of the border box.                                   | see individual properties                                                                                                                                                                                                                    | per grammar     | see individual properties                                                                                                                  |                        |
+| <strong><span><a id="ref-for-propdef-border-right②"></a></span><a href="#propdef-border-right">border-right</a>&#xA;      </strong> | \<line-width\> \|\| \<line-style\> \|\| \<color\>                                                                                                                                   | See individual properties   | all elements except ruby base containers and ruby annotation containers       | no   | N/A                                                                                   | see individual properties                                                                                                                                                                                                                    | per grammar     | see individual properties                                                                                                                  |                        |
+| <strong><span><a id="ref-for-propdef-border-right-color①"></a></span><a href="#propdef-border-right-color">border-right-color</a>&#xA;      </strong> | \<color\>                                                                                                                                                                           | currentColor                | all elements except ruby base containers and ruby annotation containers       | no   | N/A                                                                                   | by computed value                                                                                                                                                                                                                            | per grammar     | computed color                                                                                                                             | border-color           |
+| <strong><span><a id="ref-for-propdef-border-right-style①"></a></span><a href="#propdef-border-right-style">border-right-style</a>&#xA;      </strong> | \<line-style\>                                                                                                                                                                      | none                        | all elements except ruby base containers and ruby annotation containers       | no   | N/A                                                                                   | discrete                                                                                                                                                                                                                                     | per grammar     | specified keyword                                                                                                                          | border-style           |
+| <strong><span><a id="ref-for-propdef-border-right-width①"></a></span><a href="#propdef-border-right-width">border-right-width</a>&#xA;      </strong> | \<line-width\>                                                                                                                                                                      | medium                      | all elements except ruby base containers and ruby annotation containers       | no   | N/A                                                                                   | by computed value                                                                                                                                                                                                                            | per grammar     | absolute length, snapped as a border width; zero if the border style is none or hidden                                                     | border-width           |
+| <strong><span><a id="ref-for-propdef-border-style①③"></a></span><a href="#propdef-border-style">border-style</a>&#xA;      </strong> | \<line-style\>{1,4}                                                                                                                                                                 | (see individual properties) | all elements except ruby base containers and ruby annotation containers       | no   | N/A                                                                                   | see individual properties                                                                                                                                                                                                                    | per grammar     | see individual properties                                                                                                                  |                        |
+| <strong><span><a id="ref-for-propdef-border-top②"></a></span><a href="#propdef-border-top">border-top</a>&#xA;      </strong> | \<line-width\> \|\| \<line-style\> \|\| \<color\>                                                                                                                                   | See individual properties   | all elements except ruby base containers and ruby annotation containers       | no   | N/A                                                                                   | see individual properties                                                                                                                                                                                                                    | per grammar     | see individual properties                                                                                                                  |                        |
+| <strong><span><a id="ref-for-propdef-border-top-color①"></a></span><a href="#propdef-border-top-color">border-top-color</a>&#xA;      </strong> | \<color\>                                                                                                                                                                           | currentColor                | all elements except ruby base containers and ruby annotation containers       | no   | N/A                                                                                   | by computed value                                                                                                                                                                                                                            | per grammar     | computed color                                                                                                                             | border-color           |
+| <strong><span><a id="ref-for-propdef-border-top-left-radius①"></a></span><a href="#propdef-border-top-left-radius">border-top-left-radius</a>&#xA;      </strong> | \<length-percentage \[0,∞\]\>{1,2}                                                                                                                                                  | 0                           | all elements (but see prose)                                                  | no   | Refer to corresponding dimension of the border box.                                   | by computed value                                                                                                                                                                                                                            | per grammar     | pair of computed \<length-percentage\> values                                                                                              | border-radius          |
+| <strong><span><a id="ref-for-propdef-border-top-right-radius"></a></span><a href="#propdef-border-top-right-radius">border-top-right-radius</a>&#xA;      </strong> | \<length-percentage \[0,∞\]\>{1,2}                                                                                                                                                  | 0                           | all elements (but see prose)                                                  | no   | Refer to corresponding dimension of the border box.                                   | by computed value                                                                                                                                                                                                                            | per grammar     | pair of computed \<length-percentage\> values                                                                                              | border-radius          |
+| <strong><span><a id="ref-for-propdef-border-top-style①"></a></span><a href="#propdef-border-top-style">border-top-style</a>&#xA;      </strong> | \<line-style\>                                                                                                                                                                      | none                        | all elements except ruby base containers and ruby annotation containers       | no   | N/A                                                                                   | discrete                                                                                                                                                                                                                                     | per grammar     | specified keyword                                                                                                                          | border-style           |
+| <strong><span><a id="ref-for-propdef-border-top-width①"></a></span><a href="#propdef-border-top-width">border-top-width</a>&#xA;      </strong> | \<line-width\>                                                                                                                                                                      | medium                      | all elements except ruby base containers and ruby annotation containers       | no   | N/A                                                                                   | by computed value                                                                                                                                                                                                                            | per grammar     | absolute length, snapped as a border width; zero if the border style is none or hidden                                                     | border-width           |
+| <strong><span><a id="ref-for-propdef-border-width①⑥"></a></span><a href="#propdef-border-width">border-width</a>&#xA;      </strong> | \<line-width\>{1,4}                                                                                                                                                                 | (see individual properties) | all elements except ruby base containers and ruby annotation containers       | no   | see individual properties                                                             | see individual properties                                                                                                                                                                                                                    | per grammar     | see individual properties                                                                                                                  |                        |
+| <strong><span><a id="ref-for-propdef-box-shadow①⓪"></a></span><a href="#propdef-box-shadow">box-shadow</a>&#xA;      </strong> | none \| \<shadow\>#                                                                                                                                                                 | none                        | all elements                                                                  | no   | N/A                                                                                   | by computed value, treating none as a zero-item list and appending blank shadows (transparent 0 0 0 0) with a corresponding inset keyword as needed to match the longer list if the shorter list is otherwise compatible with the longer one | per grammar     | either the keyword none or a list, each item consisting of four absolute lengths plus a computed color and optionally also a inset keyword |                        |
 
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope col):</strong>
-
-Name
-
-<strong>Column 2 (header cell; scope col):</strong>
-
-Value
-
-<strong>Column 3 (header cell; scope col):</strong>
-
-Initial
-
-<strong>Column 4 (header cell; scope col):</strong>
-
-Applies to
-
-<strong>Column 5 (header cell; scope col):</strong>
-
-Inh.
-
-<strong>Column 6 (header cell; scope col):</strong>
-
-%ages
-
-<strong>Column 7 (header cell; scope col):</strong>
-
-Anim­ation type
-
-<strong>Column 8 (header cell; scope col):</strong>
-
-Canonical order
-
-<strong>Column 9 (header cell; scope col):</strong>
-
-Com­puted value
-
-<strong>Column 10 (header cell; scope col):</strong>
-
-Logical property group
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-background⑨"></a>
-
-[background](#propdef-background)
-
-<strong>Column 2 (data cell):</strong>
-
-\<bg-layer\>#? , \<final-bg-layer\>
-
-<strong>Column 3 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 7 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-background-attachment⑦"></a>
-
-[background-attachment](#propdef-background-attachment)
-
-<strong>Column 2 (data cell):</strong>
-
-\<attachment\>#
-
-<strong>Column 3 (data cell):</strong>
-
-scroll
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-list, each item the keyword as specified
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-background-clip①③"></a>
-
-[background-clip](#propdef-background-clip)
-
-<strong>Column 2 (data cell):</strong>
-
-\<visual-box\>#
-
-<strong>Column 3 (data cell):</strong>
-
-border-box
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-repeatable list
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-list, each item a keyword as specified
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-background-color①①"></a>
-
-[background-color](#propdef-background-color)
-
-<strong>Column 2 (data cell):</strong>
-
-\<color\>
-
-<strong>Column 3 (data cell):</strong>
-
-transparent
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-computed color
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-background-image①①"></a>
-
-[background-image](#propdef-background-image)
-
-<strong>Column 2 (data cell):</strong>
-
-\<bg-image\>#
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-list, each item either an \<image\> or the keyword none
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-background-origin⑨"></a>
-
-[background-origin](#propdef-background-origin)
-
-<strong>Column 2 (data cell):</strong>
-
-\<visual-box\>#
-
-<strong>Column 3 (data cell):</strong>
-
-padding-box
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-repeatable list
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-list, each item a keyword as specified
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-background-position①⑦"></a>
-
-[background-position](#propdef-background-position)
-
-<strong>Column 2 (data cell):</strong>
-
-\<bg-position\>#
-
-<strong>Column 3 (data cell):</strong>
-
-0% 0%
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-refer to size of background positioning area minus size of background image; see text
-
-<strong>Column 7 (data cell):</strong>
-
-repeatable list
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-list, each item a pair of offsets (horizontal and vertical) from the top left origin each given as a computed \<length-percentage\> value
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-background-repeat①⓪"></a>
-
-[background-repeat](#propdef-background-repeat)
-
-<strong>Column 2 (data cell):</strong>
-
-\<repeat-style\>#
-
-<strong>Column 3 (data cell):</strong>
-
-repeat
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-list, each item a pair of keywords, one per dimension
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-background-size⑦"></a>
-
-[background-size](#propdef-background-size)
-
-<strong>Column 2 (data cell):</strong>
-
-\<bg-size\>#
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-see text
-
-<strong>Column 7 (data cell):</strong>
-
-repeatable list
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-list, each item a pair of sizes (one per axis) each represented as either a keyword or a computed \<length-percentage\> value
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 11</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-border①①"></a>
-
-[border](#propdef-border)
-
-<strong>Column 2 (data cell):</strong>
-
-\<line-width\> \|\| \<line-style\> \|\| \<color\>
-
-<strong>Column 3 (data cell):</strong>
-
-See individual properties
-
-<strong>Column 4 (data cell):</strong>
-
-all elements except ruby base containers and ruby annotation containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 12</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-border-bottom②"></a>
-
-[border-bottom](#propdef-border-bottom)
-
-<strong>Column 2 (data cell):</strong>
-
-\<line-width\> \|\| \<line-style\> \|\| \<color\>
-
-<strong>Column 3 (data cell):</strong>
-
-See individual properties
-
-<strong>Column 4 (data cell):</strong>
-
-all elements except ruby base containers and ruby annotation containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 13</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-border-bottom-color①"></a>
-
-[border-bottom-color](#propdef-border-bottom-color)
-
-<strong>Column 2 (data cell):</strong>
-
-\<color\>
-
-<strong>Column 3 (data cell):</strong>
-
-currentColor
-
-<strong>Column 4 (data cell):</strong>
-
-all elements except ruby base containers and ruby annotation containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-computed color
-
-<strong>Column 10 (data cell):</strong>
-
-border-color
-
-<strong>Row 14</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-border-bottom-left-radius"></a>
-
-[border-bottom-left-radius](#propdef-border-bottom-left-radius)
-
-<strong>Column 2 (data cell):</strong>
-
-\<length-percentage \[0,∞\]\>{1,2}
-
-<strong>Column 3 (data cell):</strong>
-
-0
-
-<strong>Column 4 (data cell):</strong>
-
-all elements (but see prose)
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-Refer to corresponding dimension of the border box.
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-pair of computed \<length-percentage\> values
-
-<strong>Column 10 (data cell):</strong>
-
-border-radius
-
-<strong>Row 15</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-border-bottom-right-radius"></a>
-
-[border-bottom-right-radius](#propdef-border-bottom-right-radius)
-
-<strong>Column 2 (data cell):</strong>
-
-\<length-percentage \[0,∞\]\>{1,2}
-
-<strong>Column 3 (data cell):</strong>
-
-0
-
-<strong>Column 4 (data cell):</strong>
-
-all elements (but see prose)
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-Refer to corresponding dimension of the border box.
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-pair of computed \<length-percentage\> values
-
-<strong>Column 10 (data cell):</strong>
-
-border-radius
-
-<strong>Row 16</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-border-bottom-style①"></a>
-
-[border-bottom-style](#propdef-border-bottom-style)
-
-<strong>Column 2 (data cell):</strong>
-
-\<line-style\>
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-all elements except ruby base containers and ruby annotation containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
-
-<strong>Column 10 (data cell):</strong>
-
-border-style
-
-<strong>Row 17</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-border-bottom-width①"></a>
-
-[border-bottom-width](#propdef-border-bottom-width)
-
-<strong>Column 2 (data cell):</strong>
-
-\<line-width\>
-
-<strong>Column 3 (data cell):</strong>
-
-medium
-
-<strong>Column 4 (data cell):</strong>
-
-all elements except ruby base containers and ruby annotation containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-absolute length, snapped as a border width; zero if the border style is none or hidden
-
-<strong>Column 10 (data cell):</strong>
-
-border-width
-
-<strong>Row 18</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-border-color⑨"></a>
-
-[border-color](#propdef-border-color)
-
-<strong>Column 2 (data cell):</strong>
-
-\<color\>{1,4}
-
-<strong>Column 3 (data cell):</strong>
-
-(see individual properties)
-
-<strong>Column 4 (data cell):</strong>
-
-all elements except ruby base containers and ruby annotation containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 19</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-border-image①⓪"></a>
-
-[border-image](#propdef-border-image)
-
-<strong>Column 2 (data cell):</strong>
-
-\<'border-image-source'\> \|\| \<'border-image-slice'\> \[ / \<'border-image-width'\> \| / \<'border-image-width'\>? / \<'border-image-outset'\> \]? \|\| \<'border-image-repeat'\>
-
-<strong>Column 3 (data cell):</strong>
-
-See individual properties
-
-<strong>Column 4 (data cell):</strong>
-
-See individual properties
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-See individual properties
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-See individual properties
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 20</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-border-image-outset④"></a>
-
-[border-image-outset](#propdef-border-image-outset)
-
-<strong>Column 2 (data cell):</strong>
-
-\[ \<length \[0,∞\]\> \| \<number \[0,∞\]\> \]{1,4}
-
-<strong>Column 3 (data cell):</strong>
-
-0
-
-<strong>Column 4 (data cell):</strong>
-
-All elements, except internal table elements when border-collapse is collapse
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-four values, each a number or absolute length
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 21</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-border-image-repeat⑤"></a>
-
-[border-image-repeat](#propdef-border-image-repeat)
-
-<strong>Column 2 (data cell):</strong>
-
-\[ stretch \| repeat \| round \| space \]{1,2}
-
-<strong>Column 3 (data cell):</strong>
-
-stretch
-
-<strong>Column 4 (data cell):</strong>
-
-All elements, except internal table elements when border-collapse is collapse
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-two keywords, one per axis
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 22</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-border-image-slice⑧"></a>
-
-[border-image-slice](#propdef-border-image-slice)
-
-<strong>Column 2 (data cell):</strong>
-
-\[\<number \[0,∞\]\> \| \<percentage \[0,∞\]\>\]{1,4} &#x26;&#x26; fill?
-
-<strong>Column 3 (data cell):</strong>
-
-100%
-
-<strong>Column 4 (data cell):</strong>
-
-All elements, except internal table elements when border-collapse is collapse
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-refer to size of the border image
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-four values, each either a number or percentage; plus a fill keyword if specified
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 23</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-border-image-source⑦"></a>
-
-[border-image-source](#propdef-border-image-source)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| \<image\>
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-All elements, except internal table elements when border-collapse is collapse
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the keyword none or the computed \<image\>
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 24</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-border-image-width①⑤"></a>
-
-[border-image-width](#propdef-border-image-width)
-
-<strong>Column 2 (data cell):</strong>
-
-\[ \<length-percentage \[0,∞\]\> \| \<number \[0,∞\]\> \| auto \]{1,4}
-
-<strong>Column 3 (data cell):</strong>
-
-1
-
-<strong>Column 4 (data cell):</strong>
-
-All elements, except internal table elements when border-collapse is collapse
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-Relative to width/height of the border image area
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-four values, each either a number, the keyword auto, or a computed \<length-percentage\> value
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 25</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-border-left⑤"></a>
-
-[border-left](#propdef-border-left)
-
-<strong>Column 2 (data cell):</strong>
-
-\<line-width\> \|\| \<line-style\> \|\| \<color\>
-
-<strong>Column 3 (data cell):</strong>
-
-See individual properties
-
-<strong>Column 4 (data cell):</strong>
-
-all elements except ruby base containers and ruby annotation containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 26</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-border-left-color①"></a>
-
-[border-left-color](#propdef-border-left-color)
-
-<strong>Column 2 (data cell):</strong>
-
-\<color\>
-
-<strong>Column 3 (data cell):</strong>
-
-currentColor
-
-<strong>Column 4 (data cell):</strong>
-
-all elements except ruby base containers and ruby annotation containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-computed color
-
-<strong>Column 10 (data cell):</strong>
-
-border-color
-
-<strong>Row 27</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-border-left-style①"></a>
-
-[border-left-style](#propdef-border-left-style)
-
-<strong>Column 2 (data cell):</strong>
-
-\<line-style\>
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-all elements except ruby base containers and ruby annotation containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
-
-<strong>Column 10 (data cell):</strong>
-
-border-style
-
-<strong>Row 28</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-border-left-width①"></a>
-
-[border-left-width](#propdef-border-left-width)
-
-<strong>Column 2 (data cell):</strong>
-
-\<line-width\>
-
-<strong>Column 3 (data cell):</strong>
-
-medium
-
-<strong>Column 4 (data cell):</strong>
-
-all elements except ruby base containers and ruby annotation containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-absolute length, snapped as a border width; zero if the border style is none or hidden
-
-<strong>Column 10 (data cell):</strong>
-
-border-width
-
-<strong>Row 29</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-border-radius①⑥"></a>
-
-[border-radius](#propdef-border-radius)
-
-<strong>Column 2 (data cell):</strong>
-
-\<length-percentage \[0,∞\]\>{1,4} \[ / \<length-percentage \[0,∞\]\>{1,4} \]?
-
-<strong>Column 3 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 4 (data cell):</strong>
-
-all elements (but see prose)
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-Refer to corresponding dimension of the border box.
-
-<strong>Column 7 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 30</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-border-right②"></a>
-
-[border-right](#propdef-border-right)
-
-<strong>Column 2 (data cell):</strong>
-
-\<line-width\> \|\| \<line-style\> \|\| \<color\>
-
-<strong>Column 3 (data cell):</strong>
-
-See individual properties
-
-<strong>Column 4 (data cell):</strong>
-
-all elements except ruby base containers and ruby annotation containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 31</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-border-right-color①"></a>
-
-[border-right-color](#propdef-border-right-color)
-
-<strong>Column 2 (data cell):</strong>
-
-\<color\>
-
-<strong>Column 3 (data cell):</strong>
-
-currentColor
-
-<strong>Column 4 (data cell):</strong>
-
-all elements except ruby base containers and ruby annotation containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-computed color
-
-<strong>Column 10 (data cell):</strong>
-
-border-color
-
-<strong>Row 32</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-border-right-style①"></a>
-
-[border-right-style](#propdef-border-right-style)
-
-<strong>Column 2 (data cell):</strong>
-
-\<line-style\>
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-all elements except ruby base containers and ruby annotation containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
-
-<strong>Column 10 (data cell):</strong>
-
-border-style
-
-<strong>Row 33</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-border-right-width①"></a>
-
-[border-right-width](#propdef-border-right-width)
-
-<strong>Column 2 (data cell):</strong>
-
-\<line-width\>
-
-<strong>Column 3 (data cell):</strong>
-
-medium
-
-<strong>Column 4 (data cell):</strong>
-
-all elements except ruby base containers and ruby annotation containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-absolute length, snapped as a border width; zero if the border style is none or hidden
-
-<strong>Column 10 (data cell):</strong>
-
-border-width
-
-<strong>Row 34</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-border-style①③"></a>
-
-[border-style](#propdef-border-style)
-
-<strong>Column 2 (data cell):</strong>
-
-\<line-style\>{1,4}
-
-<strong>Column 3 (data cell):</strong>
-
-(see individual properties)
-
-<strong>Column 4 (data cell):</strong>
-
-all elements except ruby base containers and ruby annotation containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 35</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-border-top②"></a>
-
-[border-top](#propdef-border-top)
-
-<strong>Column 2 (data cell):</strong>
-
-\<line-width\> \|\| \<line-style\> \|\| \<color\>
-
-<strong>Column 3 (data cell):</strong>
-
-See individual properties
-
-<strong>Column 4 (data cell):</strong>
-
-all elements except ruby base containers and ruby annotation containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 36</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-border-top-color①"></a>
-
-[border-top-color](#propdef-border-top-color)
-
-<strong>Column 2 (data cell):</strong>
-
-\<color\>
-
-<strong>Column 3 (data cell):</strong>
-
-currentColor
-
-<strong>Column 4 (data cell):</strong>
-
-all elements except ruby base containers and ruby annotation containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-computed color
-
-<strong>Column 10 (data cell):</strong>
-
-border-color
-
-<strong>Row 37</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-border-top-left-radius①"></a>
-
-[border-top-left-radius](#propdef-border-top-left-radius)
-
-<strong>Column 2 (data cell):</strong>
-
-\<length-percentage \[0,∞\]\>{1,2}
-
-<strong>Column 3 (data cell):</strong>
-
-0
-
-<strong>Column 4 (data cell):</strong>
-
-all elements (but see prose)
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-Refer to corresponding dimension of the border box.
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-pair of computed \<length-percentage\> values
-
-<strong>Column 10 (data cell):</strong>
-
-border-radius
-
-<strong>Row 38</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-border-top-right-radius"></a>
-
-[border-top-right-radius](#propdef-border-top-right-radius)
-
-<strong>Column 2 (data cell):</strong>
-
-\<length-percentage \[0,∞\]\>{1,2}
-
-<strong>Column 3 (data cell):</strong>
-
-0
-
-<strong>Column 4 (data cell):</strong>
-
-all elements (but see prose)
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-Refer to corresponding dimension of the border box.
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-pair of computed \<length-percentage\> values
-
-<strong>Column 10 (data cell):</strong>
-
-border-radius
-
-<strong>Row 39</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-border-top-style①"></a>
-
-[border-top-style](#propdef-border-top-style)
-
-<strong>Column 2 (data cell):</strong>
-
-\<line-style\>
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-all elements except ruby base containers and ruby annotation containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
-
-<strong>Column 10 (data cell):</strong>
-
-border-style
-
-<strong>Row 40</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-border-top-width①"></a>
-
-[border-top-width](#propdef-border-top-width)
-
-<strong>Column 2 (data cell):</strong>
-
-\<line-width\>
-
-<strong>Column 3 (data cell):</strong>
-
-medium
-
-<strong>Column 4 (data cell):</strong>
-
-all elements except ruby base containers and ruby annotation containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-absolute length, snapped as a border width; zero if the border style is none or hidden
-
-<strong>Column 10 (data cell):</strong>
-
-border-width
-
-<strong>Row 41</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-border-width①⑥"></a>
-
-[border-width](#propdef-border-width)
-
-<strong>Column 2 (data cell):</strong>
-
-\<line-width\>{1,4}
-
-<strong>Column 3 (data cell):</strong>
-
-(see individual properties)
-
-<strong>Column 4 (data cell):</strong>
-
-all elements except ruby base containers and ruby annotation containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 7 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 42</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-box-shadow①⓪"></a>
-
-[box-shadow](#propdef-box-shadow)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| \<shadow\>#
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value, treating none as a zero-item list and appending blank shadows (transparent 0 0 0 0) with a corresponding inset keyword as needed to match the longer list if the shorter list is otherwise compatible with the longer one
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-either the keyword none or a list, each item consisting of four absolute lengths plus a computed color and optionally also a inset keyword
-
-<strong>Column 10 (data cell):</strong>

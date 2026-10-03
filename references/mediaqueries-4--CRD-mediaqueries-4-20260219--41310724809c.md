@@ -20,7 +20,8 @@ Conversion: offline format conversion of the exact stored HTML; not a new specif
 
 Representation notes:
 - 4 inline SVG diagrams are retained as local passive SVG assets, with original geometry and visible source diagram text. Supporting assets are not reference documents.
-- 24 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 24 source tables are presented as readable Markdown tables or explicit labeled layouts: 23 ordinary table conversions, 1 complex-table layout. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 
@@ -1207,51 +1208,12 @@ Tests
 
 ### <a id="width"></a>4.1.  Width: the [width](#descdef-media-width) feature
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-media-width"></a>width
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-media③"></a>
-
-[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value"></a>
-
-[\<length\>](https://www.w3.org/TR/css-values-4/#length-value)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Type:
-
-<strong>Column 2 (data cell):</strong>
-
-range
+| Field               | Definition                                                                             |
+|---------------------|----------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-media-width"></a>width                                                               |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-media③"></a>[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media) |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-length-value"></a>[\<length\>](https://www.w3.org/TR/css-values-4/#length-value)      |
+| <strong>Type:&#xA;      </strong> | range                                                                                  |
 
 <a id="ref-for-descdef-media-width④"></a>
 
@@ -1312,51 +1274,12 @@ Tests
 
 ### <a id="height"></a>4.2.  Height: the [height](#descdef-media-height) feature
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-media-height"></a>height
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-media④"></a>
-
-[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value②"></a>
-
-[\<length\>](https://www.w3.org/TR/css-values-4/#length-value)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Type:
-
-<strong>Column 2 (data cell):</strong>
-
-range
+| Field               | Definition                                                                             |
+|---------------------|----------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-media-height"></a>height                                                              |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-media④"></a>[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media) |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-length-value②"></a>[\<length\>](https://www.w3.org/TR/css-values-4/#length-value)      |
+| <strong>Type:&#xA;      </strong> | range                                                                                  |
 
 <a id="ref-for-descdef-media-height①"></a>
 
@@ -1380,51 +1303,12 @@ The [height](#descdef-media-height) media feature describes the height of the ta
 
 ### <a id="aspect-ratio"></a>4.3.  Aspect-Ratio: the [aspect-ratio](#descdef-media-aspect-ratio) feature
 
-<strong>Table 3 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-media-aspect-ratio"></a>aspect-ratio
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-media⑤"></a>
-
-[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-ratio-value①"></a>
-
-[\<ratio\>](https://www.w3.org/TR/css-values-4/#ratio-value)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Type:
-
-<strong>Column 2 (data cell):</strong>
-
-range
+| Field               | Definition                                                                             |
+|---------------------|----------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-media-aspect-ratio"></a>aspect-ratio                                                        |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-media⑤"></a>[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media) |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-ratio-value①"></a>[\<ratio\>](https://www.w3.org/TR/css-values-4/#ratio-value)        |
+| <strong>Type:&#xA;      </strong> | range                                                                                  |
 
 <a id="ref-for-descdef-media-aspect-ratio①"></a>
 
@@ -1448,51 +1332,12 @@ Tests
 
 ### <a id="orientation"></a>4.4.  Orientation: the [orientation](#descdef-media-orientation) feature
 
-<strong>Table 4 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-media-orientation"></a>orientation
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-media⑥"></a>
-
-[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one"></a>
-
-portrait [\|](https://www.w3.org/TR/css-values-3/#comb-one) landscape
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Type:
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                               |
+|---------------------|------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-media-orientation"></a>orientation                                                           |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-media⑥"></a>[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media)   |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-comb-one"></a>portrait [\|](https://www.w3.org/TR/css-values-3/#comb-one) landscape |
+| <strong>Type:&#xA;      </strong> | discrete                                                                                 |
 
 <a id="valdef-media-orientation-portrait"></a>portrait  
 <a id="ref-for-descdef-media-width⑦"></a>
@@ -1525,53 +1370,12 @@ Otherwise [orientation](#descdef-media-orientation) is [landscape](#valdef-media
 
 ### <a id="resolution"></a>5.1.  Display Resolution: the [resolution](#descdef-media-resolution) feature
 
-<strong>Table 5 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-media-resolution"></a>resolution
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-media⑦"></a>
-
-[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one①"></a>
-
-<a id="ref-for-resolution-value①"></a>
-
-[\<resolution\>](https://www.w3.org/TR/css-values-4/#resolution-value) [\|](https://www.w3.org/TR/css-values-3/#comb-one) infinite
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Type:
-
-<strong>Column 2 (data cell):</strong>
-
-range
+| Field               | Definition                                                                                                                                                               |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-media-resolution"></a>resolution                                                                                                                                            |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-media⑦"></a>[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media)                                                                                   |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-comb-one①"></a><a id="ref-for-resolution-value①"></a>[\<resolution\>](https://www.w3.org/TR/css-values-4/#resolution-value) [\|](https://www.w3.org/TR/css-values-3/#comb-one) infinite |
+| <strong>Type:&#xA;      </strong> | range                                                                                                                                                                    |
 
 <a id="ref-for-descdef-media-resolution②"></a>
 
@@ -1641,51 +1445,12 @@ For output mediums that have no physical constraints on resolution (such as outp
 
 ### <a id="scan"></a>5.2.  Display Type: the [scan](#descdef-media-scan) feature
 
-<strong>Table 6 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-media-scan"></a>scan
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-media⑧"></a>
-
-[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one②"></a>
-
-interlace [\|](https://www.w3.org/TR/css-values-3/#comb-one) progressive
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Type:
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                  |
+|---------------------|---------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-media-scan"></a>scan                                                                     |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-media⑧"></a>[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media)      |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-comb-one②"></a>interlace [\|](https://www.w3.org/TR/css-values-3/#comb-one) progressive |
+| <strong>Type:&#xA;      </strong> | discrete                                                                                    |
 
 <a id="ref-for-descdef-media-scan②"></a>
 
@@ -1718,51 +1483,12 @@ Most modern screens, and all computer screens, use progressive rendering.
 
 ### <a id="grid"></a>5.3.  Detecting Console Displays: the [grid](#descdef-media-grid) feature
 
-<strong>Table 7 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-media-grid"></a>grid
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-media⑨"></a>
-
-[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-mq-boolean"></a>
-
-[\<mq-boolean\>](#typedef-mq-boolean)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Type:
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                             |
+|---------------------|----------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-media-grid"></a>grid                                                                |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-media⑨"></a>[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media) |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-typedef-mq-boolean"></a>[\<mq-boolean\>](#typedef-mq-boolean)                               |
+| <strong>Type:&#xA;      </strong> | discrete                                                                               |
 
 <a id="typedef-mq-boolean"></a>
 
@@ -1804,51 +1530,12 @@ The [\<mq-boolean\>](#typedef-mq-boolean) value type is an [\<integer\>](https:/
 
 ### <a id="update"></a>5.4.  Display Update Frequency: the [update](#descdef-media-update) feature
 
-<strong>Table 8 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-media-update"></a>update
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-media①⓪"></a>
-
-[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one③"></a>
-
-none [\|](https://www.w3.org/TR/css-values-3/#comb-one) slow <a id="ref-for-comb-one④"></a>\| fast
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Type:
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                 |
+|---------------------|------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-media-update"></a>update                                                                                  |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-media①⓪"></a>[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media)                     |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-comb-one③"></a>none [\|](https://www.w3.org/TR/css-values-3/#comb-one) slow <a id="ref-for-comb-one④"></a>\| fast |
+| <strong>Type:&#xA;      </strong> | discrete                                                                                                   |
 
 <a id="ref-for-descdef-media-update②"></a>
 
@@ -1882,51 +1569,12 @@ Tests
 
 ### <a id="mf-overflow-block"></a>5.5.  Block-Axis Overflow: the [overflow-block](#descdef-media-overflow-block) feature
 
-<strong>Table 9 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-media-overflow-block"></a>overflow-block
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-media①①"></a>
-
-[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one⑤"></a>
-
-none [\|](https://www.w3.org/TR/css-values-3/#comb-one) scroll <a id="ref-for-comb-one⑥"></a>\| paged
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Type:
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                    |
+|---------------------|---------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-media-overflow-block"></a>overflow-block                                                                             |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-media①①"></a>[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media)                        |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-comb-one⑤"></a>none [\|](https://www.w3.org/TR/css-values-3/#comb-one) scroll <a id="ref-for-comb-one⑥"></a>\| paged |
+| <strong>Type:&#xA;      </strong> | discrete                                                                                                      |
 
 <a id="ref-for-descdef-media-overflow-block①"></a>
 
@@ -1973,51 +1621,12 @@ Tests
 
 ### <a id="mf-overflow-inline"></a>5.6.  Inline-Axis Overflow: the [overflow-inline](#descdef-media-overflow-inline) feature
 
-<strong>Table 10 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-media-overflow-inline"></a>overflow-inline
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-media①②"></a>
-
-[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one⑦"></a>
-
-none [\|](https://www.w3.org/TR/css-values-3/#comb-one) scroll
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Type:
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                             |
+|---------------------|----------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-media-overflow-inline"></a>overflow-inline                                                     |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-media①②"></a>[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media) |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-comb-one⑦"></a>none [\|](https://www.w3.org/TR/css-values-3/#comb-one) scroll      |
+| <strong>Type:&#xA;      </strong> | discrete                                                                               |
 
 <a id="ref-for-descdef-media-overflow-inline①"></a>
 
@@ -2049,51 +1658,12 @@ Overflowing content in the [inline axis](https://www.w3.org/TR/css-writing-modes
 
 ### <a id="color"></a>6.1.  Color Depth: the [color](#descdef-media-color) feature
 
-<strong>Table 11 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-media-color"></a>color
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-media①③"></a>
-
-[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-integer-value③"></a>
-
-[\<integer\>](https://www.w3.org/TR/css-values-4/#integer-value)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Type:
-
-<strong>Column 2 (data cell):</strong>
-
-range
+| Field               | Definition                                                                             |
+|---------------------|----------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-media-color"></a>color                                                               |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-media①③"></a>[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media) |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-integer-value③"></a>[\<integer\>](https://www.w3.org/TR/css-values-4/#integer-value)    |
+| <strong>Type:&#xA;      </strong> | range                                                                                  |
 
 <a id="ref-for-descdef-media-color④"></a>
 
@@ -2140,51 +1710,12 @@ In a device with indexed colors, the minimum number of bits per color component 
 
 ### <a id="color-index"></a>6.2.  Paletted Color Screens: the [color-index](#descdef-media-color-index) feature
 
-<strong>Table 12 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-media-color-index"></a>color-index
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-media①④"></a>
-
-[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-integer-value④"></a>
-
-[\<integer\>](https://www.w3.org/TR/css-values-4/#integer-value)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Type:
-
-<strong>Column 2 (data cell):</strong>
-
-range
+| Field               | Definition                                                                             |
+|---------------------|----------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-media-color-index"></a>color-index                                                         |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-media①④"></a>[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media) |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-integer-value④"></a>[\<integer\>](https://www.w3.org/TR/css-values-4/#integer-value)    |
+| <strong>Type:&#xA;      </strong> | range                                                                                  |
 
 <a id="ref-for-descdef-media-color-index①"></a>
 
@@ -2216,51 +1747,12 @@ The [color-index](#descdef-media-color-index) media feature describes the number
 
 ### <a id="monochrome"></a>6.3.  Monochrome Screens: the [monochrome](#descdef-media-monochrome) feature
 
-<strong>Table 13 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-media-monochrome"></a>monochrome
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-media①⑤"></a>
-
-[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-integer-value⑤"></a>
-
-[\<integer\>](https://www.w3.org/TR/css-values-4/#integer-value)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Type:
-
-<strong>Column 2 (data cell):</strong>
-
-range
+| Field               | Definition                                                                             |
+|---------------------|----------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-media-monochrome"></a>monochrome                                                          |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-media①⑤"></a>[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media) |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-integer-value⑤"></a>[\<integer\>](https://www.w3.org/TR/css-values-4/#integer-value)    |
+| <strong>Type:&#xA;      </strong> | range                                                                                  |
 
 <a id="ref-for-descdef-media-monochrome①"></a>
 
@@ -2298,51 +1790,12 @@ The [monochrome](#descdef-media-monochrome) media feature describes the number o
 
 ### <a id="color-gamut"></a>6.4.  Color Display Quality: the [color-gamut](#descdef-media-color-gamut) feature
 
-<strong>Table 14 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-media-color-gamut"></a>color-gamut
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-media①⑥"></a>
-
-[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one⑧"></a>
-
-srgb [\|](https://www.w3.org/TR/css-values-3/#comb-one) p3 <a id="ref-for-comb-one⑨"></a>\| rec2020
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Type:
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                  |
+|---------------------|-------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-media-color-gamut"></a>color-gamut                                                                              |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-media①⑥"></a>[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media)                      |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-comb-one⑧"></a>srgb [\|](https://www.w3.org/TR/css-values-3/#comb-one) p3 <a id="ref-for-comb-one⑨"></a>\| rec2020 |
+| <strong>Type:&#xA;      </strong> | discrete                                                                                                    |
 
 <a id="ref-for-descdef-media-color-gamut④"></a>
 
@@ -2383,183 +1836,33 @@ The UA and output device can support approximately the gamut specified by the IT
 
 The following table lists the primary colors of these color spaces in terms of their color space chromaticity coordinates, as defined in [\[COLORIMETRY\]](#biblio-colorimetry).
 
-<strong>Table 15 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; row span 3):</strong>
-
-Color Space
-
-<strong>Column 2 (header cell; row span 2, column span 2):</strong>
-
-White Point
-
-<strong>Column 4 (header cell; column span 6):</strong>
-
-Primaries
-
-<strong>Row 2</strong>
-
-<strong>Column 4 (header cell; column span 2):</strong>
-
-Red
-
-<strong>Column 6 (header cell; column span 2):</strong>
-
-Green
-
-<strong>Column 8 (header cell; column span 2):</strong>
-
-Blue
-
-<strong>Row 3</strong>
-
-<strong>Column 2 (header cell):</strong>
-
-x<sub>W</sub>
-
-<strong>Column 3 (header cell):</strong>
-
-y<sub>W</sub>
-
-<strong>Column 4 (header cell):</strong>
-
-x<sub>R</sub>
-
-<strong>Column 5 (header cell):</strong>
-
-y<sub>R</sub>
-
-<strong>Column 6 (header cell):</strong>
-
-x<sub>G</sub>
-
-<strong>Column 7 (header cell):</strong>
-
-y<sub>G</sub>
-
-<strong>Column 8 (header cell):</strong>
-
-x<sub>B</sub>
-
-<strong>Column 9 (header cell):</strong>
-
-y<sub>B</sub>
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-srgb
-
-<strong>Column 2 (data cell):</strong>
-
-0.3127
-
-<strong>Column 3 (data cell):</strong>
-
-0.3290
-
-<strong>Column 4 (data cell):</strong>
-
-0.640
-
-<strong>Column 5 (data cell):</strong>
-
-0.330
-
-<strong>Column 6 (data cell):</strong>
-
-0.300
-
-<strong>Column 7 (data cell):</strong>
-
-0.600
-
-<strong>Column 8 (data cell):</strong>
-
-0.150
-
-<strong>Column 9 (data cell):</strong>
-
-0.060
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-p3
-
-<strong>Column 2 (data cell):</strong>
-
-0.3127
-
-<strong>Column 3 (data cell):</strong>
-
-0.3290
-
-<strong>Column 4 (data cell):</strong>
-
-0.680
-
-<strong>Column 5 (data cell):</strong>
-
-0.320
-
-<strong>Column 6 (data cell):</strong>
-
-0.265
-
-<strong>Column 7 (data cell):</strong>
-
-0.690
-
-<strong>Column 8 (data cell):</strong>
-
-0.150
-
-<strong>Column 9 (data cell):</strong>
-
-0.060
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-rec2020
-
-<strong>Column 2 (data cell):</strong>
-
-0.3127
-
-<strong>Column 3 (data cell):</strong>
-
-0.3290
-
-<strong>Column 4 (data cell):</strong>
-
-0.708
-
-<strong>Column 5 (data cell):</strong>
-
-0.292
-
-<strong>Column 6 (data cell):</strong>
-
-0.170
-
-<strong>Column 7 (data cell):</strong>
-
-0.797
-
-<strong>Column 8 (data cell):</strong>
-
-0.131
-
-<strong>Column 9 (data cell):</strong>
-
-0.046
+**Table 15**
+
+Representation note: merged header paths are written explicitly; values from merged body cells are repeated wherever they apply.
+
+| Color Space | White Point / x<sub>W</sub> | White Point / y<sub>W</sub> |
+| --- | --- | --- |
+| srgb | 0.3127 | 0.3290 |
+| p3 | 0.3127 | 0.3290 |
+| rec2020 | 0.3127 | 0.3290 |
+
+| Color Space | Primaries / Red / x<sub>R</sub> | Primaries / Red / y<sub>R</sub> |
+| --- | --- | --- |
+| srgb | 0.640 | 0.330 |
+| p3 | 0.680 | 0.320 |
+| rec2020 | 0.708 | 0.292 |
+
+| Color Space | Primaries / Green / x<sub>G</sub> | Primaries / Green / y<sub>G</sub> |
+| --- | --- | --- |
+| srgb | 0.300 | 0.600 |
+| p3 | 0.265 | 0.690 |
+| rec2020 | 0.170 | 0.797 |
+
+| Color Space | Primaries / Blue / x<sub>B</sub> | Primaries / Blue / y<sub>B</sub> |
+| --- | --- | --- |
+| srgb | 0.150 | 0.060 |
+| p3 | 0.150 | 0.060 |
+| rec2020 | 0.131 | 0.046 |
 
 > <strong data-conversion-semantic="note">Note</strong>
 >
@@ -2602,67 +1905,10 @@ The “interaction” media features reflect various aspects of how the user int
 >
 > Typical examples of devices matching combinations of [pointer](#descdef-media-pointer) and [hover](#descdef-media-hover):
 >
-> <strong>Table 16 — structured row/cell transcription</strong>
->
-> <strong>Row 1</strong>
->
-> <strong>Column 1 (data cell):</strong>
->
-> <strong>Column 2 (header cell):</strong>
->
-> <a id="ref-for-descdef-media-pointer③"></a>
->
-> [pointer: none](#descdef-media-pointer)
->
-> <strong>Column 3 (header cell):</strong>
->
-> <a id="ref-for-descdef-media-pointer④"></a>
->
-> [pointer: coarse](#descdef-media-pointer)
->
-> <strong>Column 4 (header cell):</strong>
->
-> <a id="ref-for-descdef-media-pointer⑤"></a>
->
-> [pointer: fine](#descdef-media-pointer)
->
-> <strong>Row 2</strong>
->
-> <strong>Column 1 (header cell; scope row):</strong>
->
-> <a id="ref-for-descdef-media-hover①"></a>
->
-> [hover: none](#descdef-media-hover)
->
-> <strong>Column 2 (data cell):</strong>
->
-> keyboard-only controls, sequential/spatial (d-pad) focus navigation
->
-> <strong>Column 3 (data cell):</strong>
->
-> smartphones, touch screens
->
-> <strong>Column 4 (data cell):</strong>
->
-> basic stylus digitizers (Cintiq, Wacom, etc)
->
-> <strong>Row 3</strong>
->
-> <strong>Column 1 (header cell; scope row):</strong>
->
-> <a id="ref-for-descdef-media-hover②"></a>
->
-> [hover: hover](#descdef-media-hover)
->
-> <strong>Column 2 (data cell):</strong>
->
-> <strong>Column 3 (data cell):</strong>
->
-> Nintendo Wii controller, Kinect
->
-> <strong>Column 4 (data cell):</strong>
->
-> mouse, touch pad, advanced stylus digitizers (Surface, Samsung Note, Wacom Intuos Pro, etc)
+> |                     | <a id="ref-for-descdef-media-pointer③"></a>[pointer: none](#descdef-media-pointer)          | <a id="ref-for-descdef-media-pointer④"></a>[pointer: coarse](#descdef-media-pointer) | <a id="ref-for-descdef-media-pointer⑤"></a>[pointer: fine](#descdef-media-pointer)                                  |
+> |---------------------|---------------------------------------------------------------------|--------------------------------------------------------------|---------------------------------------------------------------------------------------------|
+> | <strong><span><a id="ref-for-descdef-media-hover①"></a></span><a href="#descdef-media-hover">hover: none</a> &#xA;       </strong> | keyboard-only controls, sequential/spatial (d-pad) focus navigation | smartphones, touch screens                                   | basic stylus digitizers (Cintiq, Wacom, etc)                                                |
+> | <strong><span><a id="ref-for-descdef-media-hover②"></a></span><a href="#descdef-media-hover">hover: hover</a> &#xA;       </strong> |                                                                     | Nintendo Wii controller, Kinect                              | mouse, touch pad, advanced stylus digitizers (Surface, Samsung Note, Wacom Intuos Pro, etc) |
 
 <a id="ref-for-descdef-media-pointer⑥"></a>
 
@@ -2708,51 +1954,12 @@ The [pointer](#descdef-media-pointer) and [hover](#descdef-media-hover) features
 
 ### <a id="pointer"></a>7.1.  Pointing Device Quality: the [pointer](#descdef-media-pointer) feature
 
-<strong>Table 17 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-media-pointer"></a>pointer
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-media①⑦"></a>
-
-[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one①⓪"></a>
-
-none [\|](https://www.w3.org/TR/css-values-3/#comb-one) coarse <a id="ref-for-comb-one①①"></a>\| fine
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Type:
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                   |
+|---------------------|--------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-media-pointer"></a>pointer                                                                                   |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-media①⑦"></a>[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media)                       |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-comb-one①⓪"></a>none [\|](https://www.w3.org/TR/css-values-3/#comb-one) coarse <a id="ref-for-comb-one①①"></a>\| fine |
+| <strong>Type:&#xA;      </strong> | discrete                                                                                                     |
 
 <a id="ref-for-descdef-media-pointer①①"></a>
 
@@ -2809,51 +2016,12 @@ For accessibility reasons, even on devices whose pointing device can be describe
 
 ### <a id="hover"></a>7.2.  Hover Capability: the [hover](#descdef-media-hover) feature
 
-<strong>Table 18 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-media-hover"></a>hover
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-media①⑧"></a>
-
-[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one①②"></a>
-
-none [\|](https://www.w3.org/TR/css-values-3/#comb-one) hover
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Type:
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                             |
+|---------------------|----------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-media-hover"></a>hover                                                               |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-media①⑧"></a>[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media) |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-comb-one①②"></a>none [\|](https://www.w3.org/TR/css-values-3/#comb-one) hover       |
+| <strong>Type:&#xA;      </strong> | discrete                                                                               |
 
 <a id="ref-for-descdef-media-hover⑦"></a>
 
@@ -2910,97 +2078,19 @@ For accessibility reasons, even on devices that do support hovering, the UA may 
 
 ### <a id="@media/any-input"></a>7.3.  All Available Interaction Capabilities: the [any-pointer](#descdef-media-any-pointer) and [any-hover](#descdef-media-any-hover) features
 
-<strong>Table 19 — structured row/cell transcription</strong>
+| Field               | Definition                                                                                                   |
+|---------------------|--------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-media-any-pointer"></a>any-pointer                                                                               |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-media①⑨"></a>[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media)                       |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-comb-one①③"></a>none [\|](https://www.w3.org/TR/css-values-3/#comb-one) coarse <a id="ref-for-comb-one①④"></a>\| fine |
+| <strong>Type:&#xA;      </strong> | discrete                                                                                                     |
 
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-media-any-pointer"></a>any-pointer
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-media①⑨"></a>
-
-[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one①③"></a>
-
-none [\|](https://www.w3.org/TR/css-values-3/#comb-one) coarse <a id="ref-for-comb-one①④"></a>\| fine
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Type:
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
-
-<strong>Table 20 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-media-any-hover"></a>any-hover
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-media②⓪"></a>
-
-[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one①⑤"></a>
-
-none [\|](https://www.w3.org/TR/css-values-3/#comb-one) hover
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Type:
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                             |
+|---------------------|----------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-media-any-hover"></a>any-hover                                                           |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-media②⓪"></a>[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media) |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-comb-one①⑤"></a>none [\|](https://www.w3.org/TR/css-values-3/#comb-one) hover       |
+| <strong>Type:&#xA;      </strong> | discrete                                                                               |
 
 <a id="ref-for-descdef-media-any-pointer⑥"></a>
 
@@ -3104,51 +2194,12 @@ The following [media features](#media-feature) are <strong>deprecated</strong>. 
 
 ### <a id="device-width"></a> device-width
 
-<strong>Table 21 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-media-device-width"></a>device-width
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-media②①"></a>
-
-[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value④"></a>
-
-[\<length\>](https://www.w3.org/TR/css-values-4/#length-value)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Type:
-
-<strong>Column 2 (data cell):</strong>
-
-range
+| Field               | Definition                                                                             |
+|---------------------|----------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-media-device-width"></a>device-width                                                        |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-media②①"></a>[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media) |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-length-value④"></a>[\<length\>](https://www.w3.org/TR/css-values-4/#length-value)      |
+| <strong>Type:&#xA;      </strong> | range                                                                                  |
 
 <a id="ref-for-descdef-media-device-width①"></a>
 
@@ -3184,51 +2235,12 @@ The [device-width](#descdef-media-device-width) media feature describes the widt
 
 ### <a id="device-height"></a> device-height
 
-<strong>Table 22 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-media-device-height"></a>device-height
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-media②②"></a>
-
-[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value⑤"></a>
-
-[\<length\>](https://www.w3.org/TR/css-values-4/#length-value)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Type:
-
-<strong>Column 2 (data cell):</strong>
-
-range
+| Field               | Definition                                                                             |
+|---------------------|----------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-media-device-height"></a>device-height                                                       |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-media②②"></a>[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media) |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-length-value⑤"></a>[\<length\>](https://www.w3.org/TR/css-values-4/#length-value)      |
+| <strong>Type:&#xA;      </strong> | range                                                                                  |
 
 <a id="ref-for-descdef-media-device-height①"></a>
 
@@ -3260,51 +2272,12 @@ The [device-height](#descdef-media-device-height) media feature describes the he
 
 ### <a id="device-aspect-ratio"></a> device-aspect-ratio
 
-<strong>Table 23 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-media-device-aspect-ratio"></a>device-aspect-ratio
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-media②③"></a>
-
-[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-ratio-value②"></a>
-
-[\<ratio\>](https://www.w3.org/TR/css-values-4/#ratio-value)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Type:
-
-<strong>Column 2 (data cell):</strong>
-
-range
+| Field               | Definition                                                                             |
+|---------------------|----------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-media-device-aspect-ratio"></a>device-aspect-ratio                                                 |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-media②③"></a>[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media) |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-ratio-value②"></a>[\<ratio\>](https://www.w3.org/TR/css-values-4/#ratio-value)        |
+| <strong>Type:&#xA;      </strong> | range                                                                                  |
 
 <a id="ref-for-descdef-media-device-aspect-ratio①"></a>
 
@@ -3861,400 +2834,27 @@ No properties defined.
 
 ### <a id="media-descriptor-table"></a>[@media](https://www.w3.org/TR/css-conditional-3/#at-ruledef-media) Descriptors
 
-<strong>Table 24 — structured row/cell transcription</strong>
+| Name                | Value                      | Initial | Type     |
+|---------------------|----------------------------|---------|----------|
+| <strong><span><a id="ref-for-descdef-media-any-hover①③"></a></span><a href="#descdef-media-any-hover">any-hover</a>&#xA;      </strong> | none \| hover              |         | discrete |
+| <strong><span><a id="ref-for-descdef-media-any-pointer①⑦"></a></span><a href="#descdef-media-any-pointer">any-pointer</a>&#xA;      </strong> | none \| coarse \| fine     |         | discrete |
+| <strong><span><a id="ref-for-descdef-media-aspect-ratio③"></a></span><a href="#descdef-media-aspect-ratio">aspect-ratio</a>&#xA;      </strong> | \<ratio\>                  |         | range    |
+| <strong><span><a id="ref-for-descdef-media-color⑦"></a></span><a href="#descdef-media-color">color</a>&#xA;      </strong> | \<integer\>                |         | range    |
+| <strong><span><a id="ref-for-descdef-media-color-gamut⑦"></a></span><a href="#descdef-media-color-gamut">color-gamut</a>&#xA;      </strong> | srgb \| p3 \| rec2020      |         | discrete |
+| <strong><span><a id="ref-for-descdef-media-color-index③"></a></span><a href="#descdef-media-color-index">color-index</a>&#xA;      </strong> | \<integer\>                |         | range    |
+| <strong><span><a id="ref-for-descdef-media-device-aspect-ratio④"></a></span><a href="#descdef-media-device-aspect-ratio">device-aspect-ratio</a>&#xA;      </strong> | \<ratio\>                  |         | range    |
+| <strong><span><a id="ref-for-descdef-media-device-height⑥"></a></span><a href="#descdef-media-device-height">device-height</a>&#xA;      </strong> | \<length\>                 |         | range    |
+| <strong><span><a id="ref-for-descdef-media-device-width⑥"></a></span><a href="#descdef-media-device-width">device-width</a>&#xA;      </strong> | \<length\>                 |         | range    |
+| <strong><span><a id="ref-for-descdef-media-grid⑤"></a></span><a href="#descdef-media-grid">grid</a>&#xA;      </strong> | \<mq-boolean\>             |         | discrete |
+| <strong><span><a id="ref-for-descdef-media-height⑥"></a></span><a href="#descdef-media-height">height</a>&#xA;      </strong> | \<length\>                 |         | range    |
+| <strong><span><a id="ref-for-descdef-media-hover①⑧"></a></span><a href="#descdef-media-hover">hover</a>&#xA;      </strong> | none \| hover              |         | discrete |
+| <strong><span><a id="ref-for-descdef-media-monochrome③"></a></span><a href="#descdef-media-monochrome">monochrome</a>&#xA;      </strong> | \<integer\>                |         | range    |
+| <strong><span><a id="ref-for-descdef-media-orientation④"></a></span><a href="#descdef-media-orientation">orientation</a>&#xA;      </strong> | portrait \| landscape      |         | discrete |
+| <strong><span><a id="ref-for-descdef-media-overflow-block④"></a></span><a href="#descdef-media-overflow-block">overflow-block</a>&#xA;      </strong> | none \| scroll \| paged    |         | discrete |
+| <strong><span><a id="ref-for-descdef-media-overflow-inline④"></a></span><a href="#descdef-media-overflow-inline">overflow-inline</a>&#xA;      </strong> | none \| scroll             |         | discrete |
+| <strong><span><a id="ref-for-descdef-media-pointer①⑧"></a></span><a href="#descdef-media-pointer">pointer</a>&#xA;      </strong> | none \| coarse \| fine     |         | discrete |
+| <strong><span><a id="ref-for-descdef-media-resolution⑤"></a></span><a href="#descdef-media-resolution">resolution</a>&#xA;      </strong> | \<resolution\> \| infinite |         | range    |
+| <strong><span><a id="ref-for-descdef-media-scan④"></a></span><a href="#descdef-media-scan">scan</a>&#xA;      </strong> | interlace \| progressive   |         | discrete |
+| <strong><span><a id="ref-for-descdef-media-update⑤"></a></span><a href="#descdef-media-update">update</a>&#xA;      </strong> | none \| slow \| fast       |         | discrete |
+| <strong><span><a id="ref-for-descdef-media-width⑨"></a></span><a href="#descdef-media-width">width</a>&#xA;      </strong> | \<length\>                 |         | range    |
 
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope col):</strong>
-
-Name
-
-<strong>Column 2 (header cell; scope col):</strong>
-
-Value
-
-<strong>Column 3 (header cell; scope col):</strong>
-
-Initial
-
-<strong>Column 4 (header cell; scope col):</strong>
-
-Type
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-media-any-hover①③"></a>
-
-[any-hover](#descdef-media-any-hover)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| hover
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-discrete
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-media-any-pointer①⑦"></a>
-
-[any-pointer](#descdef-media-any-pointer)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| coarse \| fine
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-discrete
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-media-aspect-ratio③"></a>
-
-[aspect-ratio](#descdef-media-aspect-ratio)
-
-<strong>Column 2 (data cell):</strong>
-
-\<ratio\>
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-range
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-media-color⑦"></a>
-
-[color](#descdef-media-color)
-
-<strong>Column 2 (data cell):</strong>
-
-\<integer\>
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-range
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-media-color-gamut⑦"></a>
-
-[color-gamut](#descdef-media-color-gamut)
-
-<strong>Column 2 (data cell):</strong>
-
-srgb \| p3 \| rec2020
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-discrete
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-media-color-index③"></a>
-
-[color-index](#descdef-media-color-index)
-
-<strong>Column 2 (data cell):</strong>
-
-\<integer\>
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-range
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-media-device-aspect-ratio④"></a>
-
-[device-aspect-ratio](#descdef-media-device-aspect-ratio)
-
-<strong>Column 2 (data cell):</strong>
-
-\<ratio\>
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-range
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-media-device-height⑥"></a>
-
-[device-height](#descdef-media-device-height)
-
-<strong>Column 2 (data cell):</strong>
-
-\<length\>
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-range
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-media-device-width⑥"></a>
-
-[device-width](#descdef-media-device-width)
-
-<strong>Column 2 (data cell):</strong>
-
-\<length\>
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-range
-
-<strong>Row 11</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-media-grid⑤"></a>
-
-[grid](#descdef-media-grid)
-
-<strong>Column 2 (data cell):</strong>
-
-\<mq-boolean\>
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-discrete
-
-<strong>Row 12</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-media-height⑥"></a>
-
-[height](#descdef-media-height)
-
-<strong>Column 2 (data cell):</strong>
-
-\<length\>
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-range
-
-<strong>Row 13</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-media-hover①⑧"></a>
-
-[hover](#descdef-media-hover)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| hover
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-discrete
-
-<strong>Row 14</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-media-monochrome③"></a>
-
-[monochrome](#descdef-media-monochrome)
-
-<strong>Column 2 (data cell):</strong>
-
-\<integer\>
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-range
-
-<strong>Row 15</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-media-orientation④"></a>
-
-[orientation](#descdef-media-orientation)
-
-<strong>Column 2 (data cell):</strong>
-
-portrait \| landscape
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-discrete
-
-<strong>Row 16</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-media-overflow-block④"></a>
-
-[overflow-block](#descdef-media-overflow-block)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| scroll \| paged
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-discrete
-
-<strong>Row 17</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-media-overflow-inline④"></a>
-
-[overflow-inline](#descdef-media-overflow-inline)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| scroll
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-discrete
-
-<strong>Row 18</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-media-pointer①⑧"></a>
-
-[pointer](#descdef-media-pointer)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| coarse \| fine
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-discrete
-
-<strong>Row 19</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-media-resolution⑤"></a>
-
-[resolution](#descdef-media-resolution)
-
-<strong>Column 2 (data cell):</strong>
-
-\<resolution\> \| infinite
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-range
-
-<strong>Row 20</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-media-scan④"></a>
-
-[scan](#descdef-media-scan)
-
-<strong>Column 2 (data cell):</strong>
-
-interlace \| progressive
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-discrete
-
-<strong>Row 21</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-media-update⑤"></a>
-
-[update](#descdef-media-update)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| slow \| fast
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-discrete
-
-<strong>Row 22</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-media-width⑨"></a>
-
-[width](#descdef-media-width)
-
-<strong>Column 2 (data cell):</strong>
-
-\<length\>
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-range

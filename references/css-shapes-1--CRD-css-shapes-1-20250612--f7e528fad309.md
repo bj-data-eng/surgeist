@@ -19,7 +19,8 @@ Snapshot SHA-256: f7e528fad3094f91fb9591ba6f849e2453353d50d0f136ca9e0749371fc317
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 4 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 4 source tables are presented as readable Markdown tables or explicit labeled layouts: 4 ordinary table conversions. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 - Existing external image/media URLs are resolved against the pinned source. Assets are not downloaded or availability-tested; image-only formulas/diagrams still require their source resources.
@@ -1845,117 +1846,17 @@ Shapes are declared with the [shape-outside](#propdef-shape-outside) property, w
 
 ### <a id="shape-outside-property"></a>6.1.  Float Area Shape: the [shape-outside](#propdef-shape-outside) property
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-shape-outside"></a>shape-outside
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-image①"></a>
-
-<a id="ref-for-typedef-shape-box②"></a>
-
-<a id="ref-for-comb-any"></a>
-
-<a id="ref-for-typedef-basic-shape④"></a>
-
-<a id="ref-for-comb-one③①"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[ [\<basic-shape\>](#typedef-basic-shape) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<shape-box\>](#typedef-shape-box) \] <a id="ref-for-comb-one③②"></a>\| [\<image\>](https://www.w3.org/TR/css-images-3/#typedef-image)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-initial-letter"></a>
-
-floats and [initial letter boxes](https://www.w3.org/TR/css-inline-3/#initial-letter)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-image②"></a>
-
-<a id="ref-for-typedef-shape-box③"></a>
-
-<a id="ref-for-typedef-basic-shape⑤"></a>
-
-as [defined](#basic-shape-computed-values) for [\<basic-shape\>](#typedef-basic-shape) (with [\<shape-box\>](#typedef-shape-box) following, if supplied); else the computed [\<image\>](https://www.w3.org/TR/css-images-3/#typedef-image); else the keyword as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-basic-shape⑥"></a>
-
-as [defined](#basic-shape-interpolation) for [\<basic-shape\>](#typedef-basic-shape), otherwise discrete
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                         |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-shape-outside"></a>shape-outside                                                                                                                                                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-image①"></a><a id="ref-for-typedef-shape-box②"></a><a id="ref-for-comb-any"></a><a id="ref-for-typedef-basic-shape④"></a><a id="ref-for-comb-one③①"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[ [\<basic-shape\>](#typedef-basic-shape) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<shape-box\>](#typedef-shape-box) \] <a id="ref-for-comb-one③②"></a>\| [\<image\>](https://www.w3.org/TR/css-images-3/#typedef-image) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-initial-letter"></a>floats and [initial letter boxes](https://www.w3.org/TR/css-inline-3/#initial-letter)                                                                                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-typedef-image②"></a><a id="ref-for-typedef-shape-box③"></a><a id="ref-for-typedef-basic-shape⑤"></a>as [defined](#basic-shape-computed-values) for [\<basic-shape\>](#typedef-basic-shape) (with [\<shape-box\>](#typedef-shape-box) following, if supplied); else the computed [\<image\>](https://www.w3.org/TR/css-images-3/#typedef-image); else the keyword as specified                                                 |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | <a id="ref-for-typedef-basic-shape⑥"></a>as [defined](#basic-shape-interpolation) for [\<basic-shape\>](#typedef-basic-shape), otherwise discrete                                                                                                                                                                                                                                                        |
 
 The values of this property have the following meanings:
 
@@ -2340,99 +2241,17 @@ Tests
 
 The [shape-image-threshold](#propdef-shape-image-threshold) defines the alpha channel threshold used to extract the shape using an image. A value of 0.5 means that the shape will enclose all the pixels that are more than 50% opaque.
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-shape-image-threshold"></a>shape-image-threshold
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-opacity-opacity-value"></a>
-
-[\<opacity-value\>](https://www.w3.org/TR/css-color-4/#typedef-opacity-opacity-value)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-0
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-floats
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified number, clamped to the range \[0,1\]
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value
+| Field               | Definition                                                                                               |
+|---------------------|----------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-shape-image-threshold"></a>shape-image-threshold                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-opacity-opacity-value"></a>[\<opacity-value\>](https://www.w3.org/TR/css-color-4/#typedef-opacity-opacity-value) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 0                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | floats                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified number, clamped to the range \[0,1\]                                                           |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                              |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value                                                                                        |
 
 The values of this property have the following meanings:
 
@@ -2478,105 +2297,17 @@ The new shape produced by applying [shape-outside](#propdef-shape-outside) is wh
 
 This property takes only non-negative values.
 
-<strong>Table 3 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-shape-margin"></a>shape-margin
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-length-percentage③③"></a>
-
-[\<length-percentage \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-0
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-initial-letter①"></a>
-
-floats and [initial letter boxes](https://www.w3.org/TR/css-inline-3/#initial-letter)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-inline-size"></a>
-
-refer to the [inline size](https://www.w3.org/TR/css-writing-modes-4/#inline-size) of the containing block
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-length-percentage③④"></a>
-
-computed [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) value
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value
+| Field               | Definition                                                                                                                    |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-shape-margin"></a>shape-margin                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-length-percentage③③"></a>[\<length-percentage \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage)             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 0                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-initial-letter①"></a>floats and [initial letter boxes](https://www.w3.org/TR/css-inline-3/#initial-letter)                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | <a id="ref-for-inline-size"></a>refer to the [inline size](https://www.w3.org/TR/css-writing-modes-4/#inline-size) of the containing block |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-typedef-length-percentage③④"></a>computed [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) value      |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value                                                                                                             |
 
 <a id="ref-for-typedef-length-percentage③⑤"></a>
 
@@ -3106,162 +2837,9 @@ Rossen Atanassov; Vincent Hardy; Alan Stearns. [CSS Exclusions Module Level 1](h
 
 ## <a id="property-index"></a>Property Index
 
-<strong>Table 4 — structured row/cell transcription</strong>
+| Name                | Value                                                         | Initial | Applies to                      | Inh. | %ages                                            | Anim­ation type                                     | Canonical order | Com­puted value                                                                                                                         |
+|---------------------|---------------------------------------------------------------|---------|---------------------------------|------|--------------------------------------------------|----------------------------------------------------|-----------------|----------------------------------------------------------------------------------------------------------------------------------------|
+| <strong><span><a id="ref-for-propdef-shape-image-threshold⑥"></a></span><a href="#propdef-shape-image-threshold">shape-image-threshold</a>&#xA;      </strong> | \<opacity-value\>                                             | 0       | floats                          | no   | n/a                                              | by computed value                                  | per grammar     | specified number, clamped to the range \[0,1\]                                                                                         |
+| <strong><span><a id="ref-for-propdef-shape-margin①⓪"></a></span><a href="#propdef-shape-margin">shape-margin</a>&#xA;      </strong> | \<length-percentage \[0,∞\]\>                                 | 0       | floats and initial letter boxes | no   | refer to the inline size of the containing block | by computed value                                  | per grammar     | computed \<length-percentage\> value                                                                                                   |
+| <strong><span><a id="ref-for-propdef-shape-outside①⑧"></a></span><a href="#propdef-shape-outside">shape-outside</a>&#xA;      </strong> | none \| \[ \<basic-shape\> \|\| \<shape-box\> \] \| \<image\> | none    | floats and initial letter boxes | no   | n/a                                              | as defined for \<basic-shape\>, otherwise discrete | per grammar     | as defined for \<basic-shape\> (with \<shape-box\> following, if supplied); else the computed \<image\>; else the keyword as specified |
 
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope col):</strong>
-
-Name
-
-<strong>Column 2 (header cell; scope col):</strong>
-
-Value
-
-<strong>Column 3 (header cell; scope col):</strong>
-
-Initial
-
-<strong>Column 4 (header cell; scope col):</strong>
-
-Applies to
-
-<strong>Column 5 (header cell; scope col):</strong>
-
-Inh.
-
-<strong>Column 6 (header cell; scope col):</strong>
-
-%ages
-
-<strong>Column 7 (header cell; scope col):</strong>
-
-Anim­ation type
-
-<strong>Column 8 (header cell; scope col):</strong>
-
-Canonical order
-
-<strong>Column 9 (header cell; scope col):</strong>
-
-Com­puted value
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-shape-image-threshold⑥"></a>
-
-[shape-image-threshold](#propdef-shape-image-threshold)
-
-<strong>Column 2 (data cell):</strong>
-
-\<opacity-value\>
-
-<strong>Column 3 (data cell):</strong>
-
-0
-
-<strong>Column 4 (data cell):</strong>
-
-floats
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified number, clamped to the range \[0,1\]
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-shape-margin①⓪"></a>
-
-[shape-margin](#propdef-shape-margin)
-
-<strong>Column 2 (data cell):</strong>
-
-\<length-percentage \[0,∞\]\>
-
-<strong>Column 3 (data cell):</strong>
-
-0
-
-<strong>Column 4 (data cell):</strong>
-
-floats and initial letter boxes
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-refer to the inline size of the containing block
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-computed \<length-percentage\> value
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-shape-outside①⑧"></a>
-
-[shape-outside](#propdef-shape-outside)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| \[ \<basic-shape\> \|\| \<shape-box\> \] \| \<image\>
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-floats and initial letter boxes
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-as defined for \<basic-shape\>, otherwise discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as defined for \<basic-shape\> (with \<shape-box\> following, if supplied); else the computed \<image\>; else the keyword as specified

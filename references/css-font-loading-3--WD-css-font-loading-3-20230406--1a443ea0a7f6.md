@@ -19,7 +19,8 @@ Snapshot SHA-256: 1a443ea0a7f67bab99daac264808df5268d652f0abbd63989c2a31b1d489a3
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 1 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 1 source tables are presented as readable Markdown tables or explicit labeled layouts: 1 ordinary table conversion. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 
@@ -1231,59 +1232,11 @@ The following are the event handlers (and their corresponding event handler even
 
 <a id="eventhandlers"></a>
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Event handler
-
-<strong>Column 2 (header cell):</strong>
-
-Event handler event type
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-dom-fontfaceset-onloading"></a>
-
-<code><a href="#dom-fontfaceset-onloading">onloading</a></code>
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-eventdef-fontfaceset-loading"></a>
-
-<code><a href="#eventdef-fontfaceset-loading">loading</a></code>
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-dom-fontfaceset-onloadingdone"></a>
-
-<code><a href="#dom-fontfaceset-onloadingdone">onloadingdone</a></code>
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-eventdef-fontfaceset-loadingdone"></a>
-
-<code><a href="#eventdef-fontfaceset-loadingdone">loadingdone</a></code>
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-dom-fontfaceset-onloadingerror"></a>
-
-<code><a href="#dom-fontfaceset-onloadingerror">onloadingerror</a></code>
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-eventdef-fontfaceset-loadingerror"></a>
-
-<code><a href="#eventdef-fontfaceset-loadingerror">loadingerror</a></code>
+| Event handler       | Event handler event type             |
+|---------------------|--------------------------------------|
+| <strong><span><a id="ref-for-dom-fontfaceset-onloading"></a></span><span><code><a href="#dom-fontfaceset-onloading">onloading</a></code></span> &#xA;      </strong> | <a id="ref-for-eventdef-fontfaceset-loading"></a><code><a href="#eventdef-fontfaceset-loading">loading</a></code> |
+| <strong><span><a id="ref-for-dom-fontfaceset-onloadingdone"></a></span><span><code><a href="#dom-fontfaceset-onloadingdone">onloadingdone</a></code></span> &#xA;      </strong> | <a id="ref-for-eventdef-fontfaceset-loadingdone"></a><code><a href="#eventdef-fontfaceset-loadingdone">loadingdone</a></code> |
+| <strong><span><a id="ref-for-dom-fontfaceset-onloadingerror"></a></span><span><code><a href="#dom-fontfaceset-onloadingerror">onloadingerror</a></code></span> &#xA;      </strong> | <a id="ref-for-eventdef-fontfaceset-loadingerror"></a><code><a href="#eventdef-fontfaceset-loadingerror">loadingerror</a></code> |
 
 <a id="ref-for-fontfaceset③⑤"></a>
 

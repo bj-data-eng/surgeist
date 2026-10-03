@@ -20,7 +20,8 @@ Conversion: offline format conversion of the exact stored HTML; not a new specif
 
 Representation notes:
 - 11 inline SVG diagrams are retained as local passive SVG assets, with original geometry and visible source diagram text. Supporting assets are not reference documents.
-- 6 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 6 source tables are presented as readable Markdown tables or explicit labeled layouts: 6 ordinary table conversions. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 - Existing external image/media URLs are resolved against the pinned source. Assets are not downloaded or availability-tested; image-only formulas/diagrams still require their source resources.
@@ -459,105 +460,17 @@ For elements whose layout is governed by the CSS box model, any value other than
 
 A transformation is applied to the coordinate system an element renders into through the [transform](#propdef-transform) property. This property contains a list of [transform functions](#transform-functions). The final transformation value for a coordinate system is obtained by converting each function in the list to its corresponding matrix like defined in [Mathematical Description of Transform Functions](#mathematical-description), then multiplying the matrices.
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-transform"></a>transform
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://drafts.csswg.org/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-transform-list"></a>
-
-<a id="ref-for-comb-one"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<transform-list\>](#typedef-transform-list)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://drafts.csswg.org/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-transformable-element①"></a>
-
-[transformable elements](#transformable-element)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://drafts.csswg.org/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://drafts.csswg.org/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-reference-box①"></a>
-
-refer to the size of [reference box](#reference-box)
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://drafts.csswg.org/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-as specified, but with lengths made absolute
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://drafts.csswg.org/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-transform list, see [interpolation rules](#interpolation-of-transforms)
+| Field               | Definition                                                                                                                                  |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-transform"></a>transform                                                                                                                |
+| <strong><a href="https://drafts.csswg.org/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-transform-list"></a><a id="ref-for-comb-one"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<transform-list\>](#typedef-transform-list) |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                        |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-transformable-element①"></a>[transformable elements](#transformable-element)                                                                         |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                          |
+| <strong><a href="https://drafts.csswg.org/css-values/#percentages">Percentages:</a>&#xA;      </strong> | <a id="ref-for-reference-box①"></a>refer to the size of [reference box](#reference-box)                                                                     |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | as specified, but with lengths made absolute                                                                                                |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                 |
+| <strong><a href="https://drafts.csswg.org/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | transform list, see [interpolation rules](#interpolation-of-transforms)                                                                     |
 
 Any computed value other than none for the transform affects containing block and stacking context, as described in [§3 The Transform Rendering Model](#transform-rendering).
 
@@ -606,118 +519,17 @@ A [\<transform-list\>](#typedef-transform-list) for the computed value is serial
 
 ## <a id="transform-origin-property"></a>5. The [transform-origin](#propdef-transform-origin) Property
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-transform-origin"></a>transform-origin
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://drafts.csswg.org/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-all"></a>
-
-<a id="ref-for-mult-opt"></a>
-
-<a id="ref-for-length-value"></a>
-
-<a id="ref-for-typedef-length-percentage"></a>
-
-<a id="ref-for-comb-one①"></a>
-
-  \[ left [\|](https://www.w3.org/TR/css-values-4/#comb-one) center <a id="ref-for-comb-one②"></a>\| right <a id="ref-for-comb-one③"></a>\| top <a id="ref-for-comb-one④"></a>\| bottom <a id="ref-for-comb-one⑤"></a>\| [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) \]  
-<a id="ref-for-comb-one⑥"></a>\|  
-  \[ left <a id="ref-for-comb-one⑦"></a>\| center <a id="ref-for-comb-one⑧"></a>\| right <a id="ref-for-comb-one⑨"></a>\| <a id="ref-for-typedef-length-percentage①"></a>\<length-percentage\> \]  
-  \[ top <a id="ref-for-comb-one①⓪"></a>\| center <a id="ref-for-comb-one①①"></a>\| bottom <a id="ref-for-comb-one①②"></a>\| <a id="ref-for-typedef-length-percentage②"></a>\<length-percentage\> \] [\<length\>](https://www.w3.org/TR/css3-values/#length-value)[?](https://www.w3.org/TR/css-values-4/#mult-opt)  
-<a id="ref-for-comb-one①③"></a>\|  
-  \[\[ center <a id="ref-for-comb-one①④"></a>\| left <a id="ref-for-comb-one①⑤"></a>\| right \] [&#x26;&#x26;](https://www.w3.org/TR/css-values-4/#comb-all) \[ center <a id="ref-for-comb-one①⑥"></a>\| top <a id="ref-for-comb-one①⑦"></a>\| bottom \]\] <a id="ref-for-length-value①"></a>\<length\><a id="ref-for-mult-opt①"></a>?
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://drafts.csswg.org/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-50% 50%
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-transformable-element②"></a>
-
-[transformable elements](#transformable-element)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://drafts.csswg.org/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://drafts.csswg.org/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-reference-box②"></a>
-
-refer to the size of [reference box](#reference-box)
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://drafts.csswg.org/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-background-position"></a>
-
-see [background-position](https://www.w3.org/TR/css-backgrounds-3/#propdef-background-position)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://drafts.csswg.org/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-transform-origin"></a>transform-origin                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://drafts.csswg.org/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-all"></a><a id="ref-for-mult-opt"></a><a id="ref-for-length-value"></a><a id="ref-for-typedef-length-percentage"></a><a id="ref-for-comb-one①"></a>  \[ left [\|](https://www.w3.org/TR/css-values-4/#comb-one) center <a id="ref-for-comb-one②"></a>\| right <a id="ref-for-comb-one③"></a>\| top <a id="ref-for-comb-one④"></a>\| bottom <a id="ref-for-comb-one⑤"></a>\| [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) \]<br> <a id="ref-for-comb-one⑥"></a>\| <br>  \[ left <a id="ref-for-comb-one⑦"></a>\| center <a id="ref-for-comb-one⑧"></a>\| right <a id="ref-for-comb-one⑨"></a>\| <a id="ref-for-typedef-length-percentage①"></a>\<length-percentage\> \]<br>  \[ top <a id="ref-for-comb-one①⓪"></a>\| center <a id="ref-for-comb-one①①"></a>\| bottom <a id="ref-for-comb-one①②"></a>\| <a id="ref-for-typedef-length-percentage②"></a>\<length-percentage\> \] [\<length\>](https://www.w3.org/TR/css3-values/#length-value)[?](https://www.w3.org/TR/css-values-4/#mult-opt)<br> <a id="ref-for-comb-one①③"></a>\|<br>  \[\[ center <a id="ref-for-comb-one①④"></a>\| left <a id="ref-for-comb-one①⑤"></a>\| right \] [&#x26;&#x26;](https://www.w3.org/TR/css-values-4/#comb-all) \[ center <a id="ref-for-comb-one①⑥"></a>\| top <a id="ref-for-comb-one①⑦"></a>\| bottom \]\] <a id="ref-for-length-value①"></a>\<length\><a id="ref-for-mult-opt①"></a>? |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 50% 50%                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-transformable-element②"></a>[transformable elements](#transformable-element)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| <strong><a href="https://drafts.csswg.org/css-values/#percentages">Percentages:</a>&#xA;      </strong> | <a id="ref-for-reference-box②"></a>refer to the size of [reference box](#reference-box)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-propdef-background-position"></a>see [background-position](https://www.w3.org/TR/css-backgrounds-3/#propdef-background-position)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| <strong><a href="https://drafts.csswg.org/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 <a id="ref-for-propdef-transform①②"></a>
 
@@ -794,101 +606,17 @@ The [transform-origin](#propdef-transform-origin) property is a [resolved value 
 
 ## <a id="transform-box"></a>6. Transform reference box: the [transform-box](#propdef-transform-box) property
 
-<strong>Table 3 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-transform-box"></a>transform-box
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://drafts.csswg.org/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one①⑧"></a>
-
-content-box [\|](https://www.w3.org/TR/css-values-4/#comb-one) border-box <a id="ref-for-comb-one①⑨"></a>\| fill-box <a id="ref-for-comb-one②⓪"></a>\| stroke-box <a id="ref-for-comb-one②①"></a>\| view-box
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://drafts.csswg.org/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-view-box
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-transformable-element③"></a>
-
-[transformable elements](#transformable-element)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://drafts.csswg.org/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://drafts.csswg.org/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://drafts.csswg.org/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://drafts.csswg.org/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                  |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-transform-box"></a>transform-box                                                                                                                                                            |
+| <strong><a href="https://drafts.csswg.org/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one①⑧"></a>content-box [\|](https://www.w3.org/TR/css-values-4/#comb-one) border-box <a id="ref-for-comb-one①⑨"></a>\| fill-box <a id="ref-for-comb-one②⓪"></a>\| stroke-box <a id="ref-for-comb-one②①"></a>\| view-box |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | view-box                                                                                                                                                                                    |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-transformable-element③"></a>[transformable elements](#transformable-element)                                                                                                                         |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                          |
+| <strong><a href="https://drafts.csswg.org/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                         |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                                                                                                                           |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                 |
+| <strong><a href="https://drafts.csswg.org/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                    |
 
 <a id="ref-for-propdef-transform①③"></a>
 
@@ -1216,131 +944,14 @@ SVG transform functions of the [transform](https://www.w3.org/TR/SVG11/coords.ht
 
 <a id="term-matching"></a>
 
-<strong>Table 4 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-SVG transform function
-
-<strong>Column 2 (header cell):</strong>
-
-<a id="ref-for-typedef-transform-function⑧"></a>
-
-CSS [\<transform-function\>](#typedef-transform-function)
-
-<strong>Column 3 (header cell):</strong>
-
-Additional notes
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[translate](#svg-translate)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-funcdef-transform-translate①"></a>
-
-[\<translate()\>](#funcdef-transform-translate)
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-px"></a>
-
-<a id="ref-for-length-value④"></a>
-
-Number values interpreted as CSS [\<length\>](https://www.w3.org/TR/css3-values/#length-value) types with [px](https://www.w3.org/TR/css-values-4/#px) units.
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[scale](#svg-scale)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-funcdef-transform-scale①"></a>
-
-[\<scale()\>](#funcdef-transform-scale)
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[rotate](#svg-rotate)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-funcdef-transform-rotate①"></a>
-
-[\<rotate()\>](#funcdef-transform-rotate)
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-deg"></a>
-
-<a id="ref-for-angle-value"></a>
-
-Only single value version. Number value interpreted as CSS [\<angle\>](https://www.w3.org/TR/css3-values/#angle-value) type with [deg](https://www.w3.org/TR/css-values-4/#deg) unit.
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[skewX](#svg-skewX)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-funcdef-transform-skewx"></a>
-
-[\<skewX()\>](#funcdef-transform-skewx)
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-deg①"></a>
-
-<a id="ref-for-angle-value①"></a>
-
-Number value interpreted as CSS [\<angle\>](https://www.w3.org/TR/css3-values/#angle-value) type with [deg](https://www.w3.org/TR/css-values-4/#deg) unit.
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[skewY](#svg-skewY)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-funcdef-transform-skewy"></a>
-
-[\<skewY()\>](#funcdef-transform-skewy)
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-deg②"></a>
-
-<a id="ref-for-angle-value②"></a>
-
-Number value interpreted as CSS [\<angle\>](https://www.w3.org/TR/css3-values/#angle-value) type with [deg](https://www.w3.org/TR/css-values-4/#deg) unit.
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[matrix](#svg-matrix)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-funcdef-transform-matrix②"></a>
-
-[\<matrix()\>](#funcdef-transform-matrix)
-
-<strong>Column 3 (data cell):</strong>
+| SVG transform function | <a id="ref-for-typedef-transform-function⑧"></a>CSS [\<transform-function\>](#typedef-transform-function) | Additional notes                                                                                                                                                                                                            |
+|------------------------|------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong><a href="#svg-translate">translate</a>&#xA;      </strong>    | <a id="ref-for-funcdef-transform-translate①"></a>[\<translate()\>](#funcdef-transform-translate)           | <a id="ref-for-px"></a><a id="ref-for-length-value④"></a>Number values interpreted as CSS [\<length\>](https://www.w3.org/TR/css3-values/#length-value) types with [px](https://www.w3.org/TR/css-values-4/#px) units.                         |
+| <strong><a href="#svg-scale">scale</a>&#xA;      </strong>    | <a id="ref-for-funcdef-transform-scale①"></a>[\<scale()\>](#funcdef-transform-scale)                   |                                                                                                                                                                                                                             |
+| <strong><a href="#svg-rotate">rotate</a>&#xA;      </strong>    | <a id="ref-for-funcdef-transform-rotate①"></a>[\<rotate()\>](#funcdef-transform-rotate)                 | <a id="ref-for-deg"></a><a id="ref-for-angle-value"></a>Only single value version. Number value interpreted as CSS [\<angle\>](https://www.w3.org/TR/css3-values/#angle-value) type with [deg](https://www.w3.org/TR/css-values-4/#deg) unit. |
+| <strong><a href="#svg-skewX">skewX</a>&#xA;      </strong>    | <a id="ref-for-funcdef-transform-skewx"></a>[\<skewX()\>](#funcdef-transform-skewx)                   | <a id="ref-for-deg①"></a><a id="ref-for-angle-value①"></a>Number value interpreted as CSS [\<angle\>](https://www.w3.org/TR/css3-values/#angle-value) type with [deg](https://www.w3.org/TR/css-values-4/#deg) unit.                            |
+| <strong><a href="#svg-skewY">skewY</a>&#xA;      </strong>    | <a id="ref-for-funcdef-transform-skewy"></a>[\<skewY()\>](#funcdef-transform-skewy)                   | <a id="ref-for-deg②"></a><a id="ref-for-angle-value②"></a>Number value interpreted as CSS [\<angle\>](https://www.w3.org/TR/css3-values/#angle-value) type with [deg](https://www.w3.org/TR/css-values-4/#deg) unit.                            |
+| <strong><a href="#svg-matrix">matrix</a>&#xA;      </strong>    | <a id="ref-for-funcdef-transform-matrix②"></a>[\<matrix()\>](#funcdef-transform-matrix)                 |                                                                                                                                                                                                                             |
 
 <a id="ref-for-typedef-transform-function⑨"></a>
 
@@ -1537,83 +1148,11 @@ The introduced presentation attributes [transform](https://www.w3.org/TR/SVG11/c
 
 With this specification the SVG basic data type [\<transform-list\>](#typedef-transform-list) is equivalent to a list of [\<transform-function\>](#typedef-transform-function)s. <a id="ref-for-typedef-transform-list⑨"></a>\<transform-list\> is animatable and additive. The data type can be animated using the SVG <code><a href="https://www.w3.org/TR/SVG11/animate.html#AnimateElement">animate</a></code> element and the SVG <code><a href="https://www.w3.org/TR/SVG11/animate.html#SetElement">set</a></code> element. SVG animations must run the same animation steps as described in section [Transitions and Animations between Transform Values](#interpolation-of-transforms).
 
-<strong>Table 5 — structured row/cell transcription</strong>
+| Data type           | Additive? | <a id="ref-for-AnimateElement⑦"></a><code><a href="https://www.w3.org/TR/SVG11/animate.html#AnimateElement">animate</a></code> | <a id="ref-for-SetElement③"></a><code><a href="https://www.w3.org/TR/SVG11/animate.html#SetElement">set</a></code> | <a id="ref-for-AnimateColorElement"></a><code><a href="https://www.w3.org/TR/SVG11/animate.html#AnimateColorElement">animateColor</a></code> | <a id="ref-for-AnimateTransformElement"></a><code><a href="https://www.w3.org/TR/SVG11/animate.html#AnimateTransformElement">animateTransform</a></code> | Notes                                                                                                                                                                       |
+|---------------------|-----------|--------------------------------------|--------------------------------------|--------------------------------------|--------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong><span><a id="ref-for-typedef-transform-list①⓪"></a></span><a href="#typedef-transform-list">&lt;transform-list&gt;</a>&#xA;      </strong> | yes       | yes                                  | yes                                  | no                                   | yes                                  | <a id="ref-for-post-multiplied⑤"></a><a id="ref-for-AnimateTransformElement①"></a>Additive for <code><a href="https://www.w3.org/TR/SVG11/animate.html#AnimateTransformElement">animateTransform</a></code> means that a transformation is [post-multiplied](#post-multiplied) to the base set of transformations. |
 
 Animatable data types
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Data type
-
-<strong>Column 2 (header cell):</strong>
-
-Additive?
-
-<strong>Column 3 (header cell):</strong>
-
-<a id="ref-for-AnimateElement⑦"></a>
-
-<code><a href="https://www.w3.org/TR/SVG11/animate.html#AnimateElement">animate</a></code>
-
-<strong>Column 4 (header cell):</strong>
-
-<a id="ref-for-SetElement③"></a>
-
-<code><a href="https://www.w3.org/TR/SVG11/animate.html#SetElement">set</a></code>
-
-<strong>Column 5 (header cell):</strong>
-
-<a id="ref-for-AnimateColorElement"></a>
-
-<code><a href="https://www.w3.org/TR/SVG11/animate.html#AnimateColorElement">animateColor</a></code>
-
-<strong>Column 6 (header cell):</strong>
-
-<a id="ref-for-AnimateTransformElement"></a>
-
-<code><a href="https://www.w3.org/TR/SVG11/animate.html#AnimateTransformElement">animateTransform</a></code>
-
-<strong>Column 7 (header cell):</strong>
-
-Notes
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-typedef-transform-list①⓪"></a>
-
-[\<transform-list\>](#typedef-transform-list)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Column 3 (data cell):</strong>
-
-yes
-
-<strong>Column 4 (data cell):</strong>
-
-yes
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-yes
-
-<strong>Column 7 (data cell):</strong>
-
-<a id="ref-for-post-multiplied⑤"></a>
-
-<a id="ref-for-AnimateTransformElement①"></a>
-
-Additive for <code><a href="https://www.w3.org/TR/SVG11/animate.html#AnimateTransformElement">animateTransform</a></code> means that a transformation is [post-multiplied](#post-multiplied) to the base set of transformations.
 
 ### <a id="neutral-element"></a>8.2. Neutral element for addition
 
@@ -2612,162 +2151,9 @@ Dick Bulterman. [Synchronized Multimedia Integration Language (SMIL 3.0)](https:
 
 ## <a id="property-index"></a>Property Index
 
-<strong>Table 6 — structured row/cell transcription</strong>
+| Name                | Value                                                                                                                                                                                                                                                                                                                  | Initial  | Applies to             | Inh. | %ages                              | Anim­ation type                          | Canonical order | Com­puted value                               |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|------------------------|------|------------------------------------|-----------------------------------------|-----------------|----------------------------------------------|
+| <strong><span><a id="ref-for-propdef-transform③②"></a></span><a href="#propdef-transform">transform</a>&#xA;      </strong> | none \| \<transform-list\>                                                                                                                                                                                                                                                                                             | none     | transformable elements | no   | refer to the size of reference box | transform list, see interpolation rules | per grammar     | as specified, but with lengths made absolute |
+| <strong><span><a id="ref-for-propdef-transform-box③"></a></span><a href="#propdef-transform-box">transform-box</a>&#xA;      </strong> | content-box \| border-box \| fill-box \| stroke-box \| view-box                                                                                                                                                                                                                                                        | view-box | transformable elements | no   | N/A                                | discrete                                | per grammar     | specified keyword                            |
+| <strong><span><a id="ref-for-propdef-transform-origin①⑥"></a></span><a href="#propdef-transform-origin">transform-origin</a>&#xA;      </strong> | \[ left \| center \| right \| top \| bottom \| \<length-percentage\> \] \|   \[ left \| center \| right \| \<length-percentage\> \]  \[ top \| center \| bottom \| \<length-percentage\> \] \<length\>? \|  \[\[ center \| left \| right \] &#x26;&#x26; \[ center \| top \| bottom \]\] \<length\>? | 50% 50%  | transformable elements | no   | refer to the size of reference box | by computed value                       | per grammar     | see background-position                      |
 
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope col):</strong>
-
-Name
-
-<strong>Column 2 (header cell; scope col):</strong>
-
-Value
-
-<strong>Column 3 (header cell; scope col):</strong>
-
-Initial
-
-<strong>Column 4 (header cell; scope col):</strong>
-
-Applies to
-
-<strong>Column 5 (header cell; scope col):</strong>
-
-Inh.
-
-<strong>Column 6 (header cell; scope col):</strong>
-
-%ages
-
-<strong>Column 7 (header cell; scope col):</strong>
-
-Anim­ation type
-
-<strong>Column 8 (header cell; scope col):</strong>
-
-Canonical order
-
-<strong>Column 9 (header cell; scope col):</strong>
-
-Com­puted value
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-transform③②"></a>
-
-[transform](#propdef-transform)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| \<transform-list\>
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-transformable elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-refer to the size of reference box
-
-<strong>Column 7 (data cell):</strong>
-
-transform list, see interpolation rules
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified, but with lengths made absolute
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-transform-box③"></a>
-
-[transform-box](#propdef-transform-box)
-
-<strong>Column 2 (data cell):</strong>
-
-content-box \| border-box \| fill-box \| stroke-box \| view-box
-
-<strong>Column 3 (data cell):</strong>
-
-view-box
-
-<strong>Column 4 (data cell):</strong>
-
-transformable elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-transform-origin①⑥"></a>
-
-[transform-origin](#propdef-transform-origin)
-
-<strong>Column 2 (data cell):</strong>
-
-\[ left \| center \| right \| top \| bottom \| \<length-percentage\> \] \|   \[ left \| center \| right \| \<length-percentage\> \]  \[ top \| center \| bottom \| \<length-percentage\> \] \<length\>? \|  \[\[ center \| left \| right \] &#x26;&#x26; \[ center \| top \| bottom \]\] \<length\>?
-
-<strong>Column 3 (data cell):</strong>
-
-50% 50%
-
-<strong>Column 4 (data cell):</strong>
-
-transformable elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-refer to the size of reference box
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see background-position

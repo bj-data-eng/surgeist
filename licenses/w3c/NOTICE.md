@@ -12,74 +12,11 @@ This material accompanies the Surgeist software source checkout as implementatio
 
 The [official 5 February 2015 W3C announcement](https://www.w3.org/news/2015/w3c-updates-general-document-license/) makes the updated document license available for existing publications. The [official 2015 FAQ](https://www.w3.org/Consortium/Legal/IPR-FAQ-20000620-new.html#2015published) expressly covers all technical reports published under previous versions, whose original notices were not edited in place. Its [reformatting guidance](https://www.w3.org/Consortium/Legal/IPR-FAQ-20000620-new.html#format) points to the implementation-support derivative permission. The 2015 and 2023 document licenses permit supporting materials accompanying software while expressly prohibiting derivative works for use as a technical specification. The required derived-material notices appear in the prominent wrappers of the corresponding converted documents.
 
-The five uncompiled Bikeshed witnesses retain the [byte-identical CSSWG repository license declaration](csswg-drafts/LICENSE.md), verified at each exact selected commit. Its named license link resolves to the current software/document license. The repository declaration supplies no copyright year; none is invented. The declaration is identical at `034f50a78495b619478342d71117cd7ca7e76de7`, `23abdab4aba7521d84efc6428466618222de1bd6`, `22ffbbc3fb252a43a6ba991942b05c478f71a6fd`, `f971255463f01fb740e2a3a7ecfe83e319cddab9`, and `d2ed7a98bb7e499f3b04e6688941bb1a9823d396`.
+The five readable renderings of pinned Bikeshed sources retain the [byte-identical CSSWG repository license declaration](csswg-drafts/LICENSE.md), verified at each exact selected commit. Its named license link resolves to the current software/document license. The repository declaration supplies no copyright year; none is invented. The 28 additional railroad SVGs were generated from the pinned CSS Syntax 3 source with Bikeshed 7.1.3; each retains a source/hash/compiler/license attribution comment. The verbatim source railroad grammar accompanies each diagram. No external graphics were added. These generated diagrams carry the same source attribution; they do not establish a historical rendered publication. The declaration is identical at `034f50a78495b619478342d71117cd7ca7e76de7`, `23abdab4aba7521d84efc6428466618222de1bd6`, `22ffbbc3fb252a43a6ba991942b05c478f71a6fd`, `f971255463f01fb740e2a3a7ecfe83e319cddab9`, and `d2ed7a98bb7e499f3b04e6688941bb1a9823d396`.
 
 ## Covered exact documents and copyright notices
 
-The [source catalog](../../references/SOURCE-CATALOG.md) identifies the exact body hashes, titles, representations and source URLs. This section covers the 131 W3C full-body or source-text witnesses in this bundle and their 52 extracted passive SVG figures. Each entry's original copyright statement is copied from its exact source or the identified edition title page; no copyright range is synthesized. The per-document wrapper records the format changes separately from original source content.
-
-### CSS Box Model Module Level 3
-
-* Bundled copy: [box-property-foundation-audit-css-box-3--be3732bfdaa6.md](../../references/box-property-foundation-audit-css-box-3--be3732bfdaa6.md)
-* Original: [CSS Box Model Module Level 3](https://www.w3.org/TR/2024/REC-css-box-3-20240411/)
-* License: [software-license-2023](software-license-2023.txt)
-* Notice source: matching exact HTML edition
-
-Copyright © 2024 World Wide Web Consortium. W3C® liability, trademark and permissive document license rules apply.
-
-### CSS Display Module Level 3
-
-* Bundled copy: [box-property-foundation-audit-css-display-3--3cdbd7b19539.md](../../references/box-property-foundation-audit-css-display-3--3cdbd7b19539.md)
-* Original: [CSS Display Module Level 3](https://www.w3.org/TR/2026/CRD-css-display-3-20260605/)
-* License: [software-license-2023](software-license-2023.txt)
-* Notice source: matching exact HTML edition
-
-Copyright © 2026 World Wide Web Consortium. W3C® liability, trademark and permissive document license rules apply.
-
-### CSS Logical Properties and Values Module Level 1
-
-* Bundled copy: [box-property-foundation-audit-css-logical-1--a387e513984b.md](../../references/box-property-foundation-audit-css-logical-1--a387e513984b.md)
-* Original: [CSS Logical Properties and Values Module Level 1](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/)
-* License: [software-license-2023](software-license-2023.txt)
-* Notice source: matching exact HTML edition
-
-Copyright © 2025 World Wide Web Consortium. W3C® liability, trademark and permissive document license rules apply.
-
-### CSS Overflow Module Level 3
-
-* Bundled copy: [box-property-foundation-audit-css-overflow-3--090d7d316c74.md](../../references/box-property-foundation-audit-css-overflow-3--090d7d316c74.md)
-* Original: [CSS Overflow Module Level 3](https://www.w3.org/TR/2025/WD-css-overflow-3-20251007/)
-* License: [software-license-2023](software-license-2023.txt)
-* Notice source: matching exact HTML edition
-
-Copyright © 2025 World Wide Web Consortium. W3C® liability, trademark and permissive document license rules apply.
-
-### CSS Positioned Layout Module Level 3
-
-* Bundled copy: [box-property-foundation-audit-css-position-3--b75e4eb4bbe4.md](../../references/box-property-foundation-audit-css-position-3--b75e4eb4bbe4.md)
-* Original: [CSS Positioned Layout Module Level 3](https://www.w3.org/TR/2025/WD-css-position-3-20251007/)
-* License: [software-license-2023](software-license-2023.txt)
-* Notice source: matching exact HTML edition
-
-Copyright © 2025 World Wide Web Consortium. W3C® liability, trademark and permissive document license rules apply.
-
-### CSS Box Sizing Module Level 3
-
-* Bundled copy: [box-property-foundation-audit-css-sizing-3--1148df7072bc.md](../../references/box-property-foundation-audit-css-sizing-3--1148df7072bc.md)
-* Original: [CSS Box Sizing Module Level 3](https://www.w3.org/TR/2026/WD-css-sizing-3-20260904/)
-* License: [software-license-2023](software-license-2023.txt)
-* Notice source: matching exact HTML edition
-
-Copyright © 2026 World Wide Web Consortium. W3C® liability, trademark and permissive document license rules apply.
-
-### CSS Box Sizing Module Level 4
-
-* Bundled copy: [box-property-foundation-audit-css-sizing-4--2d0d9f08da5e.md](../../references/box-property-foundation-audit-css-sizing-4--2d0d9f08da5e.md)
-* Original: [CSS Box Sizing Module Level 4](https://www.w3.org/TR/2026/WD-css-sizing-4-20260904/)
-* License: [software-license-2023](software-license-2023.txt)
-* Notice source: matching exact HTML edition
-
-Copyright © 2026 World Wide Web Consortium. W3C® liability, trademark and permissive document license rules apply.
+The [source catalog](../../references/SOURCE-CATALOG.md) identifies the exact body hashes, titles, representations and source URLs. This section covers the 123 retained W3C source-based references in this bundle and their 80 passive SVG figures: 52 source-extracted figures and 28 generated railroad diagrams. Each entry's original copyright statement is copied from its exact source or the identified edition title page; no copyright range is synthesized. The per-document wrapper records the format changes separately from original source content.
 
 ### Compositing and Blending Level 1
 
@@ -978,15 +915,6 @@ Copyright © 2021 W3C® (MIT, ERCIM, Keio, Beihang). W3C liability, trademark an
 * License: [software-license-2023](software-license-2023.txt)
 
 Copyright © 2025 World Wide Web Consortium. W3C® liability, trademark and permissive document license rules apply.
-
-### CSS Grid Layout Module Level 3
-
-* Bundled copy: [display-grid-effective-grammar-audit-grid3--56617abd29a3.md](../../references/display-grid-effective-grammar-audit-grid3--56617abd29a3.md)
-* Original: [CSS Grid Layout Module Level 3](https://www.w3.org/TR/2026/WD-css-grid-3-20260121/)
-* License: [software-license-2023](software-license-2023.txt)
-* Notice source: matching exact HTML edition
-
-Copyright © 2026 World Wide Web Consortium. W3C® liability, trademark and permissive document license rules apply.
 
 ### Filter Effects Module Level 1
 

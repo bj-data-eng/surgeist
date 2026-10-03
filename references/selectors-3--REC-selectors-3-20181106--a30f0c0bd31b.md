@@ -19,7 +19,8 @@ Snapshot SHA-256: a30f0c0bd31b599b3163f8759b66536b7cc274fdc0b27e14046122afe34181
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 4 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 4 source tables are presented as readable Markdown tables or explicit labeled layouts: 1 ordinary table conversion, 3 complex-table layouts. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 - Existing external image/media URLs are resolved against the pinned source. Assets are not downloaded or availability-tested; image-only formulas/diagrams still require their source resources.
@@ -112,713 +113,46 @@ Selectors may range from simple element names to rich contextual representations
 
 The following table summarizes the Selector syntax:
 
-**Table 1 — structured row/cell transcription**
-
-**Row 1**
-
-**Column 1 (header cell):**
-
-Pattern
-
-**Column 2 (header cell):**
-
-Represents
-
-**Column 3 (header cell):**
-
-Description
-
-**Column 4 (header cell):**
-
-Level
-
-**Row 2**
-
-**Column 1 (data cell):**
-
-\*
-
-**Column 2 (data cell):**
-
-any element
-
-**Column 3 (data cell):**
-
-[Universal selector](#universal-selector)
-
-**Column 4 (data cell):**
-
-2
-
-**Row 3**
-
-**Column 1 (data cell):**
-
-E
-
-**Column 2 (data cell):**
-
-an element of type E
-
-**Column 3 (data cell):**
-
-[Type selector](#type-selectors)
-
-**Column 4 (data cell):**
-
-1
-
-**Row 4**
-
-**Column 1 (data cell):**
-
-E\[foo\]
-
-**Column 2 (data cell):**
-
-an E element with a "foo" attribute
-
-**Column 3 (data cell):**
-
-[Attribute selectors](#attribute-selectors)
-
-**Column 4 (data cell):**
-
-2
-
-**Row 5**
-
-**Column 1 (data cell):**
-
-E\[foo="bar"\]
-
-**Column 2 (data cell):**
-
-an E element whose "foo" attribute value is exactly equal to "bar"
-
-**Column 3 (data cell):**
-
-[Attribute selectors](#attribute-selectors)
-
-**Column 4 (data cell):**
-
-2
-
-**Row 6**
-
-**Column 1 (data cell):**
-
-E\[foo~="bar"\]
-
-**Column 2 (data cell):**
-
-an E element whose "foo" attribute value is a list of whitespace-separated values, one of which is exactly equal to "bar"
-
-**Column 3 (data cell):**
-
-[Attribute selectors](#attribute-selectors)
-
-**Column 4 (data cell):**
-
-2
-
-**Row 7**
-
-**Column 1 (data cell):**
-
-E\[foo^="bar"\]
-
-**Column 2 (data cell):**
-
-an E element whose "foo" attribute value begins exactly with the string "bar"
-
-**Column 3 (data cell):**
-
-[Attribute selectors](#attribute-selectors)
-
-**Column 4 (data cell):**
-
-3
-
-**Row 8**
-
-**Column 1 (data cell):**
-
-E\[foo\$="bar"\]
-
-**Column 2 (data cell):**
-
-an E element whose "foo" attribute value ends exactly with the string "bar"
-
-**Column 3 (data cell):**
-
-[Attribute selectors](#attribute-selectors)
-
-**Column 4 (data cell):**
-
-3
-
-**Row 9**
-
-**Column 1 (data cell):**
-
-E\[foo\*="bar"\]
-
-**Column 2 (data cell):**
-
-an E element whose "foo" attribute value contains the substring "bar"
-
-**Column 3 (data cell):**
-
-[Attribute selectors](#attribute-selectors)
-
-**Column 4 (data cell):**
-
-3
-
-**Row 10**
-
-**Column 1 (data cell):**
-
-E\[foo\|="en"\]
-
-**Column 2 (data cell):**
-
-an E element whose "foo" attribute has a hyphen-separated list of values beginning (from the left) with "en"
-
-**Column 3 (data cell):**
-
-[Attribute selectors](#attribute-selectors)
-
-**Column 4 (data cell):**
-
-2
-
-**Row 11**
-
-**Column 1 (data cell):**
-
-E:root
-
-**Column 2 (data cell):**
-
-an E element, root of the document
-
-**Column 3 (data cell):**
-
-[Structural pseudo-classes](#structural-pseudos)
-
-**Column 4 (data cell):**
-
-3
-
-**Row 12**
-
-**Column 1 (data cell):**
-
-E:nth-child(n)
-
-**Column 2 (data cell):**
-
-an E element, the n-th child of its parent
-
-**Column 3 (data cell):**
-
-[Structural pseudo-classes](#structural-pseudos)
-
-**Column 4 (data cell):**
-
-3
-
-**Row 13**
-
-**Column 1 (data cell):**
-
-E:nth-last-child(n)
-
-**Column 2 (data cell):**
-
-an E element, the n-th child of its parent, counting from the last one
-
-**Column 3 (data cell):**
-
-[Structural pseudo-classes](#structural-pseudos)
-
-**Column 4 (data cell):**
-
-3
-
-**Row 14**
-
-**Column 1 (data cell):**
-
-E:nth-of-type(n)
-
-**Column 2 (data cell):**
-
-an E element, the n-th sibling of its type
-
-**Column 3 (data cell):**
-
-[Structural pseudo-classes](#structural-pseudos)
-
-**Column 4 (data cell):**
-
-3
-
-**Row 15**
-
-**Column 1 (data cell):**
-
-E:nth-last-of-type(n)
-
-**Column 2 (data cell):**
-
-an E element, the n-th sibling of its type, counting from the last one
-
-**Column 3 (data cell):**
-
-[Structural pseudo-classes](#structural-pseudos)
-
-**Column 4 (data cell):**
-
-3
-
-**Row 16**
-
-**Column 1 (data cell):**
-
-E:first-child
-
-**Column 2 (data cell):**
-
-an E element, first child of its parent
-
-**Column 3 (data cell):**
-
-[Structural pseudo-classes](#structural-pseudos)
-
-**Column 4 (data cell):**
-
-2
-
-**Row 17**
-
-**Column 1 (data cell):**
-
-E:last-child
-
-**Column 2 (data cell):**
-
-an E element, last child of its parent
-
-**Column 3 (data cell):**
-
-[Structural pseudo-classes](#structural-pseudos)
-
-**Column 4 (data cell):**
-
-3
-
-**Row 18**
-
-**Column 1 (data cell):**
-
-E:first-of-type
-
-**Column 2 (data cell):**
-
-an E element, first sibling of its type
-
-**Column 3 (data cell):**
-
-[Structural pseudo-classes](#structural-pseudos)
-
-**Column 4 (data cell):**
-
-3
-
-**Row 19**
-
-**Column 1 (data cell):**
-
-E:last-of-type
-
-**Column 2 (data cell):**
-
-an E element, last sibling of its type
-
-**Column 3 (data cell):**
-
-[Structural pseudo-classes](#structural-pseudos)
-
-**Column 4 (data cell):**
-
-3
-
-**Row 20**
-
-**Column 1 (data cell):**
-
-E:only-child
-
-**Column 2 (data cell):**
-
-an E element, only child of its parent
-
-**Column 3 (data cell):**
-
-[Structural pseudo-classes](#structural-pseudos)
-
-**Column 4 (data cell):**
-
-3
-
-**Row 21**
-
-**Column 1 (data cell):**
-
-E:only-of-type
-
-**Column 2 (data cell):**
-
-an E element, only sibling of its type
-
-**Column 3 (data cell):**
-
-[Structural pseudo-classes](#structural-pseudos)
-
-**Column 4 (data cell):**
-
-3
-
-**Row 22**
-
-**Column 1 (data cell):**
-
-E:empty
-
-**Column 2 (data cell):**
-
-an E element that has no children (including text nodes)
-
-**Column 3 (data cell):**
-
-[Structural pseudo-classes](#structural-pseudos)
-
-**Column 4 (data cell):**
-
-3
-
-**Row 23**
-
-**Column 1 (data cell):**
-
-E:link  
-E:visited
-
-**Column 2 (data cell):**
-
-an E element being the source anchor of a hyperlink of which the target is not yet visited (:link) or already visited (:visited)
-
-**Column 3 (data cell):**
-
-[The link pseudo-classes](#link)
-
-**Column 4 (data cell):**
-
-1
-
-**Row 24**
-
-**Column 1 (data cell):**
-
-E:active  
-E:hover  
-E:focus
-
-**Column 2 (data cell):**
-
-an E element during certain user actions
-
-**Column 3 (data cell):**
-
-[The user action pseudo-classes](#useraction-pseudos)
-
-**Column 4 (data cell):**
-
-1 and 2
-
-**Row 25**
-
-**Column 1 (data cell):**
-
-E:target
-
-**Column 2 (data cell):**
-
-an E element being the target of the referring URI
-
-**Column 3 (data cell):**
-
-[The target pseudo-class](#target-pseudo)
-
-**Column 4 (data cell):**
-
-3
-
-**Row 26**
-
-**Column 1 (data cell):**
-
-E:lang(fr)
-
-**Column 2 (data cell):**
-
-an element of type E in language "fr" (the document language specifies how language is determined)
-
-**Column 3 (data cell):**
-
-[The :lang() pseudo-class](#lang-pseudo)
-
-**Column 4 (data cell):**
-
-2
-
-**Row 27**
-
-**Column 1 (data cell):**
-
-E:enabled  
-E:disabled
-
-**Column 2 (data cell):**
-
-a user interface element E which is enabled or disabled
-
-**Column 3 (data cell):**
-
-[The UI element states pseudo-classes](#UIstates)
-
-**Column 4 (data cell):**
-
-3
-
-**Row 28**
-
-**Column 1 (data cell):**
-
-E:checked
-
-**Column 2 (data cell):**
-
-a user interface element E which is checked (for instance a radio-button or checkbox)
-
-**Column 3 (data cell):**
-
-[The UI element states pseudo-classes](#UIstates)
-
-**Column 4 (data cell):**
-
-3
-
-**Row 29**
-
-**Column 1 (data cell):**
-
-E::first-line
-
-**Column 2 (data cell):**
-
-the first formatted line of an E element
-
-**Column 3 (data cell):**
-
-[The ::first-line pseudo-element](#first-line)
-
-**Column 4 (data cell):**
-
-1
-
-**Row 30**
-
-**Column 1 (data cell):**
-
-E::first-letter
-
-**Column 2 (data cell):**
-
-the first formatted letter of an E element
-
-**Column 3 (data cell):**
-
-[The ::first-letter pseudo-element](#first-letter)
-
-**Column 4 (data cell):**
-
-1
-
-**Row 31**
-
-**Column 1 (data cell):**
-
-E::before
-
-**Column 2 (data cell):**
-
-generated content before an E element
-
-**Column 3 (data cell):**
-
-[The ::before pseudo-element](#gen-content)
-
-**Column 4 (data cell):**
-
-2
-
-**Row 32**
-
-**Column 1 (data cell):**
-
-E::after
-
-**Column 2 (data cell):**
-
-generated content after an E element
-
-**Column 3 (data cell):**
-
-[The ::after pseudo-element](#gen-content)
-
-**Column 4 (data cell):**
-
-2
-
-**Row 33**
-
-**Column 1 (data cell):**
-
-E.warning
-
-**Column 2 (data cell):**
-
-an E element whose class is "warning" (the document language specifies how class is determined).
-
-**Column 3 (data cell):**
-
-[Class selectors](#class-html)
-
-**Column 4 (data cell):**
-
-1
-
-**Row 34**
-
-**Column 1 (data cell):**
-
-E#myid
-
-**Column 2 (data cell):**
-
-an E element with ID equal to "myid".
-
-**Column 3 (data cell):**
-
-[ID selectors](#id-selectors)
-
-**Column 4 (data cell):**
-
-1
-
-**Row 35**
-
-**Column 1 (data cell):**
-
-E:not(s)
-
-**Column 2 (data cell):**
-
-an E element that does not match simple selector s
-
-**Column 3 (data cell):**
-
-[Negation pseudo-class](#negation)
-
-**Column 4 (data cell):**
-
-3
-
-**Row 36**
-
-**Column 1 (data cell):**
-
-E F
-
-**Column 2 (data cell):**
-
-an F element descendant of an E element
-
-**Column 3 (data cell):**
-
-[Descendant combinator](#descendant-combinators)
-
-**Column 4 (data cell):**
-
-1
-
-**Row 37**
-
-**Column 1 (data cell):**
-
-E \> F
-
-**Column 2 (data cell):**
-
-an F element child of an E element
-
-**Column 3 (data cell):**
-
-[Child combinator](#child-combinators)
-
-**Column 4 (data cell):**
-
-2
-
-**Row 38**
-
-**Column 1 (data cell):**
-
-E + F
-
-**Column 2 (data cell):**
-
-an F element immediately preceded by an E element
-
-**Column 3 (data cell):**
-
-[Next-sibling combinator](#adjacent-sibling-combinators)
-
-**Column 4 (data cell):**
-
-2
-
-**Row 39**
-
-**Column 1 (data cell):**
-
-E ~ F
-
-**Column 2 (data cell):**
-
-an F element preceded by an E element
-
-**Column 3 (data cell):**
-
-[Subsequent-sibling combinator](#general-sibling-combinators)
-
-**Column 4 (data cell):**
-
-3
+| Pattern                                                    | Represents                                                                                                                       | Description                                                   | Level   |
+|------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------|---------|
+| \*                                                         | any element                                                                                                                      | [Universal selector](#universal-selector)                     | 2       |
+| E                                                          | an element of type E                                                                                                             | [Type selector](#type-selectors)                              | 1       |
+| E\[foo\]                                                   | an E element with a "foo" attribute                                                                                              | [Attribute selectors](#attribute-selectors)                   | 2       |
+| E\[foo="bar"\]                                             | an E element whose "foo" attribute value is exactly equal to "bar"                                                               | [Attribute selectors](#attribute-selectors)                   | 2       |
+| E\[foo~="bar"\]                                            | an E element whose "foo" attribute value is a list of whitespace-separated values, one of which is exactly equal to "bar"        | [Attribute selectors](#attribute-selectors)                   | 2       |
+| E\[foo^="bar"\]                                            | an E element whose "foo" attribute value begins exactly with the string "bar"                                                    | [Attribute selectors](#attribute-selectors)                   | 3       |
+| E\[foo\$="bar"\]                                           | an E element whose "foo" attribute value ends exactly with the string "bar"                                                      | [Attribute selectors](#attribute-selectors)                   | 3       |
+| E\[foo\*="bar"\]                                           | an E element whose "foo" attribute value contains the substring "bar"                                                            | [Attribute selectors](#attribute-selectors)                   | 3       |
+| E\[foo\|="en"\]                                            | an E element whose "foo" attribute has a hyphen-separated list of values beginning (from the left) with "en"                     | [Attribute selectors](#attribute-selectors)                   | 2       |
+| E:root                                                     | an E element, root of the document                                                                                               | [Structural pseudo-classes](#structural-pseudos)              | 3       |
+| E:nth-child(n)                                             | an E element, the n-th child of its parent                                                                                       | [Structural pseudo-classes](#structural-pseudos)              | 3       |
+| E:nth-last-child(n)                                        | an E element, the n-th child of its parent, counting from the last one                                                           | [Structural pseudo-classes](#structural-pseudos)              | 3       |
+| E:nth-of-type(n)                                           | an E element, the n-th sibling of its type                                                                                       | [Structural pseudo-classes](#structural-pseudos)              | 3       |
+| E:nth-last-of-type(n)                                      | an E element, the n-th sibling of its type, counting from the last one                                                           | [Structural pseudo-classes](#structural-pseudos)              | 3       |
+| E:first-child                                              | an E element, first child of its parent                                                                                          | [Structural pseudo-classes](#structural-pseudos)              | 2       |
+| E:last-child                                               | an E element, last child of its parent                                                                                           | [Structural pseudo-classes](#structural-pseudos)              | 3       |
+| E:first-of-type                                            | an E element, first sibling of its type                                                                                          | [Structural pseudo-classes](#structural-pseudos)              | 3       |
+| E:last-of-type                                             | an E element, last sibling of its type                                                                                           | [Structural pseudo-classes](#structural-pseudos)              | 3       |
+| E:only-child                                               | an E element, only child of its parent                                                                                           | [Structural pseudo-classes](#structural-pseudos)              | 3       |
+| E:only-of-type                                             | an E element, only sibling of its type                                                                                           | [Structural pseudo-classes](#structural-pseudos)              | 3       |
+| E:empty                                                    | an E element that has no children (including text nodes)                                                                         | [Structural pseudo-classes](#structural-pseudos)              | 3       |
+| E:link<br> E:visited                          | an E element being the source anchor of a hyperlink of which the target is not yet visited (:link) or already visited (:visited) | [The link pseudo-classes](#link)                              | 1       |
+| E:active<br> E:hover<br> E:focus | an E element during certain user actions                                                                                         | [The user action pseudo-classes](#useraction-pseudos)         | 1 and 2 |
+| E:target                                                   | an E element being the target of the referring URI                                                                               | [The target pseudo-class](#target-pseudo)                     | 3       |
+| E:lang(fr)                                                 | an element of type E in language "fr" (the document language specifies how language is determined)                               | [The :lang() pseudo-class](#lang-pseudo)                      | 2       |
+| E:enabled<br> E:disabled                      | a user interface element E which is enabled or disabled                                                                          | [The UI element states pseudo-classes](#UIstates)             | 3       |
+| E:checked                                                  | a user interface element E which is checked (for instance a radio-button or checkbox)                                            | [The UI element states pseudo-classes](#UIstates)             | 3       |
+| E::first-line                                              | the first formatted line of an E element                                                                                         | [The ::first-line pseudo-element](#first-line)                | 1       |
+| E::first-letter                                            | the first formatted letter of an E element                                                                                       | [The ::first-letter pseudo-element](#first-letter)            | 1       |
+| E::before                                                  | generated content before an E element                                                                                            | [The ::before pseudo-element](#gen-content)                   | 2       |
+| E::after                                                   | generated content after an E element                                                                                             | [The ::after pseudo-element](#gen-content)                    | 2       |
+| E.warning                                                  | an E element whose class is "warning" (the document language specifies how class is determined).                                 | [Class selectors](#class-html)                                | 1       |
+| E#myid                                                     | an E element with ID equal to "myid".                                                                                            | [ID selectors](#id-selectors)                                 | 1       |
+| E:not(s)                                                   | an E element that does not match simple selector s                                                                               | [Negation pseudo-class](#negation)                            | 3       |
+| E F                                                        | an F element descendant of an E element                                                                                          | [Descendant combinator](#descendant-combinators)              | 1       |
+| E \> F                                                     | an F element child of an E element                                                                                               | [Child combinator](#child-combinators)                        | 2       |
+| E + F                                                      | an F element immediately preceded by an E element                                                                                | [Next-sibling combinator](#adjacent-sibling-combinators)      | 2       |
+| E ~ F                                                      | an F element preceded by an E element                                                                                            | [Subsequent-sibling combinator](#general-sibling-combinators) | 3       |
 
 ## <a id="casesens"></a>3. Case sensitivity
 
@@ -2387,136 +1721,74 @@ Each specification using Selectors must define the subset of Selectors it allows
 
 Non normative examples:
 
-<strong>Table 2 — structured row/cell transcription</strong>
+**Selectors profile**
 
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; column span 2):</strong>
-
-Selectors profile
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Specification
-
-<strong>Column 2 (data cell):</strong>
+**Specification**
 
 CSS level 1
 
-<strong>Row 3</strong>
+**Accepts**
 
-<strong>Column 1 (header cell):</strong>
+- type selectors
+- class selectors
+- ID selectors
+- :link, :visited and :active pseudo-classes
+- descendant combinator
+- ::first-line and ::first-letter pseudo-elements
 
-Accepts
+**Excludes**
 
-<strong>Column 2 (data cell):</strong>
+- universal selector
+- attribute selectors
+- :hover and :focus pseudo-classes
+- :target pseudo-class
+- :lang() pseudo-class
+- all UI element states pseudo-classes
+- all structural pseudo-classes
+- negation pseudo-class
+- ::before and ::after pseudo-elements
+- child combinators
+- sibling combinators
+- namespaces
 
-type selectors  
-class selectors  
-ID selectors  
-:link, :visited and :active pseudo-classes  
-descendant combinator  
-::first-line and ::first-letter pseudo-elements
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Excludes
-
-<strong>Column 2 (data cell):</strong>
-
-universal selector  
-attribute selectors  
-:hover and :focus pseudo-classes  
-:target pseudo-class  
-:lang() pseudo-class  
-all UI element states pseudo-classes  
-all structural pseudo-classes  
-negation pseudo-class  
-::before and ::after pseudo-elements  
-child combinators  
-sibling combinators
-
-namespaces
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Extra constraints
-
-<strong>Column 2 (data cell):</strong>
+**Extra constraints**
 
 only one class selector allowed per sequence of simple selectors
 
   
   
 
-<strong>Table 3 — structured row/cell transcription</strong>
+**Selectors profile**
 
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; column span 2):</strong>
-
-Selectors profile
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Specification
-
-<strong>Column 2 (data cell):</strong>
+**Specification**
 
 CSS level 2
 
-<strong>Row 3</strong>
+**Accepts**
 
-<strong>Column 1 (header cell):</strong>
+- type selectors
+- universal selector
+- attribute presence and values selectors
+- class selectors
+- ID selectors
+- :link, :visited, :active, :hover, :focus, :lang() and :first-child pseudo-classes
+- descendant combinator
+- child combinator
+- next-sibling combinator
+- ::first-line and ::first-letter pseudo-elements
+- ::before and ::after pseudo-elements
 
-Accepts
+**Excludes**
 
-<strong>Column 2 (data cell):</strong>
+- substring matching attribute selectors
+- :target pseudo-classes
+- all UI element states pseudo-classes
+- all structural pseudo-classes other than :first-child
+- negation pseudo-class
+- subsequent-sibling combinators
+- namespaces
 
-type selectors  
-universal selector  
-attribute presence and values selectors  
-class selectors  
-ID selectors  
-:link, :visited, :active, :hover, :focus, :lang() and :first-child pseudo-classes  
-descendant combinator  
-child combinator  
-next-sibling combinator  
-::first-line and ::first-letter pseudo-elements  
-::before and ::after pseudo-elements
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Excludes
-
-<strong>Column 2 (data cell):</strong>
-
-substring matching attribute selectors  
-:target pseudo-classes  
-all UI element states pseudo-classes  
-all structural pseudo-classes other than :first-child  
-negation pseudo-class  
-subsequent-sibling combinators
-
-namespaces
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Extra constraints
-
-<strong>Column 2 (data cell):</strong>
+**Extra constraints**
 
 more than one class selector per sequence of simple selectors (CSS1 constraint) allowed
 
@@ -2529,60 +1801,29 @@ h1 a[name]
 ```
 All CSS declarations attached to such a selector are applied to elements matching it.
 
-<strong>Table 4 — structured row/cell transcription</strong>
+**Selectors profile**
 
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; column span 2):</strong>
-
-Selectors profile
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Specification
-
-<strong>Column 2 (data cell):</strong>
+**Specification**
 
 STTS 3
 
-<strong>Row 3</strong>
+**Accepts**
 
-<strong>Column 1 (header cell):</strong>
+- type selectors
+- universal selectors
+- attribute selectors
+- class selectors
+- ID selectors
+- all structural pseudo-classes
+- all combinators
+- namespaces
 
-Accepts
+**Excludes**
 
-<strong>Column 2 (data cell):</strong>
+- non-accepted pseudo-classes
+- pseudo-elements
 
-type selectors  
-universal selectors  
-attribute selectors  
-class selectors  
-ID selectors  
-all structural pseudo-classes  
-all combinators
-
-namespaces
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Excludes
-
-<strong>Column 2 (data cell):</strong>
-
-non-accepted pseudo-classes  
-pseudo-elements  
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Extra constraints
-
-<strong>Column 2 (data cell):</strong>
+**Extra constraints**
 
 some selectors and combinators are not allowed in fragment descriptions on the right side of STTS declarations.
 

@@ -1,8 +1,8 @@
 # Consolidated specification references
 
-The [source catalog](SOURCE-CATALOG.md) links every exact snapshot and states its representation. Read the [conversion report](CONVERSION-REPORT.md) for checks, link policy and explicit limitations.
+The [source catalog](SOURCE-CATALOG.md) links all 126 retained source snapshots and states their representations: 125 full documents/source witnesses and one Unicode metadata-only exception. Read the [conversion report](CONVERSION-REPORT.md) for checks, link policy and explicit limitations.
 
-The references are format conversions, not summaries or replacement standards. Dated editions and differing hashes remain distinct. Source copyright/licensing notices, normative/informative classifications, literal code, definitions and published fragment IDs are retained where present.
+The references are format conversions, not summaries or replacement standards. Distinct specification editions remain separate. Eight redundant plain-text extractions were removed after comparison with the exact HTML editions already represented by structured Markdown. Source copyright/licensing notices, normative/informative classifications, literal code, definitions and published fragment IDs are retained where present.
 
 ## Coverage exception
 
@@ -12,9 +12,9 @@ The separate [Unicode 17 grapheme implementation companion](unicode-17-grapheme-
 
 ## Supporting resources
 
-The assets subdirectory contains passive SVG figures extracted from the exact stored sources. Other source images, PNG equations, videos and interactive figures remain external resources. The bundle is not fully self-contained for those figures.
+The assets subdirectory contains 80 passive SVG figures: 52 extracted from the exact stored HTML sources and 28 railroad diagrams generated from the pinned CSS Syntax 3 Bikeshed source. The original railroad grammars remain beside the generated diagrams. Other source images, PNG equations, videos and interactive figures remain external resources. The bundle is not fully self-contained for those figures.
 
-Bikeshed source, extracted-text and source-history captures are clearly marked supporting witnesses; they are not presented as published HTML specifications.
+Five pinned Bikeshed sources are presented as readable, generated Markdown renderings, with the original source hashes and compiler/support-data provenance retained. They are not official publications or captured historical HTML renderings. The separate JSON source-history capture remains a supporting provenance witness.
 
 ## Link policy
 

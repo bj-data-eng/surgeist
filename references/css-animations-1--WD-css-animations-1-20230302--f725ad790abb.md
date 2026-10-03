@@ -19,7 +19,8 @@ Snapshot SHA-256: f725ad790abbf87f7f53b00f383b8c206a95decb27cd5c257a9725646abb4d
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 11 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 11 source tables are presented as readable Markdown tables or explicit labeled layouts: 11 ordinary table conversions. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 - Existing external image/media URLs are resolved against the pinned source. Assets are not downloaded or availability-tested; image-only formulas/diagrams still require their source resources.
@@ -440,107 +441,17 @@ Each animation listed by name should have a corresponding value for the other an
 >
 > Note: This is analogous to the behavior of the background-\* properties, with [background-image](https://www.w3.org/TR/css-backgrounds-3/#propdef-background-image) analogous to [animation-name](#propdef-animation-name).
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-animation-name"></a>animation-name
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma"></a>
-
-<a id="ref-for-typedef-keyframes-name①"></a>
-
-<a id="ref-for-comb-one"></a>
-
-\[ none [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<keyframes-name\>](#typedef-keyframes-name) \][\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-animation-name-none①"></a>
-
-<a id="ref-for-css-css-identifier"></a>
-
-list, each item either a case-sensitive [css identifier](https://www.w3.org/TR/css-values-4/#css-css-identifier) or the keyword [none](#valdef-animation-name-none)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-not animatable
+| Field               | Definition                                                                                                                                                                                                               |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-animation-name"></a>animation-name                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma"></a><a id="ref-for-typedef-keyframes-name①"></a><a id="ref-for-comb-one"></a>\[ none [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<keyframes-name\>](#typedef-keyframes-name) \][\#](https://www.w3.org/TR/css-values-4/#mult-comma) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-valdef-animation-name-none①"></a><a id="ref-for-css-css-identifier"></a>list, each item either a case-sensitive [css identifier](https://www.w3.org/TR/css-values-4/#css-css-identifier) or the keyword [none](#valdef-animation-name-none)                |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | not animatable                                                                                                                                                                                                           |
 
 <a id="ref-for-propdef-animation-name①③"></a>
 
@@ -568,101 +479,17 @@ The animation will use the keyframes with the name specified by the [\<keyframes
 
 The [animation-duration](#propdef-animation-duration) property defines duration of a single animation cycle.
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-animation-duration"></a>animation-duration
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma①"></a>
-
-<a id="ref-for-time-value"></a>
-
-[\<time \[0s,∞\]\>](https://www.w3.org/TR/css-values-3/#time-value)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-0s
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-list, each item a duration
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-not animatable
+| Field               | Definition                                                                                                                                                    |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-animation-duration"></a>animation-duration                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma①"></a><a id="ref-for-time-value"></a>[\<time \[0s,∞\]\>](https://www.w3.org/TR/css-values-3/#time-value)[\#](https://www.w3.org/TR/css-values-4/#mult-comma) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 0s                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | list, each item a duration                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | not animatable                                                                                                                                                |
 
 <a id="ref-for-time-value①"></a>
 
@@ -724,103 +551,17 @@ During the [animation-delay](#propdef-animation-delay), the [animation-timing-fu
 
 The [output progress value](https://www.w3.org/TR/css-easing-1/#output-progress-value) is used as the <var>p</var> value when interpolating the property values between the current and next keyframe.
 
-<strong>Table 3 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-animation-timing-function"></a>animation-timing-function
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma②"></a>
-
-<a id="ref-for-typedef-easing-function"></a>
-
-[\<easing-function\>](https://www.w3.org/TR/css-easing-1/#typedef-easing-function)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-ease
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-easing-function①"></a>
-
-list, each item a computed [\<easing-function\>](https://www.w3.org/TR/css-easing-1/#typedef-easing-function)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-not animatable
+| Field               | Definition                                                                                                                                                                   |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-animation-timing-function"></a>animation-timing-function                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma②"></a><a id="ref-for-typedef-easing-function"></a>[\<easing-function\>](https://www.w3.org/TR/css-easing-1/#typedef-easing-function)[\#](https://www.w3.org/TR/css-values-4/#mult-comma) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | ease                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-typedef-easing-function①"></a>list, each item a computed [\<easing-function\>](https://www.w3.org/TR/css-easing-1/#typedef-easing-function)                                             |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | not animatable                                                                                                                                                               |
 
 <a id="ref-for-propdef-animation-timing-function⑥"></a>
 
@@ -840,103 +581,17 @@ The [animation-iteration-count](#propdef-animation-iteration-count) property spe
 
 The time window during which the animation is active (`duration` x `iteration-count`) is known as the <a id="active-duration"></a>active duration.
 
-<strong>Table 4 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-animation-iteration-count"></a>animation-iteration-count
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma③"></a>
-
-<a id="ref-for-typedef-single-animation-iteration-count"></a>
-
-[\<single-animation-iteration-count\>](#typedef-single-animation-iteration-count)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-1
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-animation-iteration-count-infinite"></a>
-
-list, each item either a number or the keyword [infinite](#valdef-animation-iteration-count-infinite)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-not animatable
+| Field               | Definition                                                                                                                                                                  |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-animation-iteration-count"></a>animation-iteration-count                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma③"></a><a id="ref-for-typedef-single-animation-iteration-count"></a>[\<single-animation-iteration-count\>](#typedef-single-animation-iteration-count)[\#](https://www.w3.org/TR/css-values-4/#mult-comma) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 1                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-valdef-animation-iteration-count-infinite"></a>list, each item either a number or the keyword [infinite](#valdef-animation-iteration-count-infinite)                                                    |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | not animatable                                                                                                                                                              |
 
 <a id="ref-for-comb-one①"></a>
 
@@ -976,101 +631,17 @@ If the animation has a duration of 0s, it will occur instantaneously for any val
 
 The [animation-direction](#propdef-animation-direction) property defines whether or not the animation should play in reverse on some or all cycles. When an animation is played in reverse the timing functions are also reversed. For example, when played in reverse an [ease-in](https://www.w3.org/TR/css-easing-1/#valdef-cubic-bezier-easing-function-ease-in) animation would appear to be an [ease-out](https://www.w3.org/TR/css-easing-1/#valdef-cubic-bezier-easing-function-ease-out) animation.
 
-<strong>Table 5 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-animation-direction"></a>animation-direction
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma④"></a>
-
-<a id="ref-for-typedef-single-animation-direction"></a>
-
-[\<single-animation-direction\>](#typedef-single-animation-direction)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-normal
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-list, each item a keyword as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-not animatable
+| Field               | Definition                                                                                                                                                      |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-animation-direction"></a>animation-direction                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma④"></a><a id="ref-for-typedef-single-animation-direction"></a>[\<single-animation-direction\>](#typedef-single-animation-direction)[\#](https://www.w3.org/TR/css-values-4/#mult-comma) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | normal                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | list, each item a keyword as specified                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | not animatable                                                                                                                                                  |
 
 <a id="ref-for-comb-one②"></a>
 
@@ -1100,101 +671,17 @@ The animation cycle iterations that are odd counts are played in the reverse dir
 
 The [animation-play-state](#propdef-animation-play-state) property defines whether the animation is running or paused.
 
-<strong>Table 6 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-animation-play-state"></a>animation-play-state
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma⑤"></a>
-
-<a id="ref-for-typedef-single-animation-play-state"></a>
-
-[\<single-animation-play-state\>](#typedef-single-animation-play-state)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-running
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-list, each item a keyword as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-not animatable
+| Field               | Definition                                                                                                                                                        |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-animation-play-state"></a>animation-play-state                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma⑤"></a><a id="ref-for-typedef-single-animation-play-state"></a>[\<single-animation-play-state\>](#typedef-single-animation-play-state)[\#](https://www.w3.org/TR/css-values-4/#mult-comma) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | running                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | list, each item a keyword as specified                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | not animatable                                                                                                                                                    |
 
 <a id="ref-for-comb-one⑤"></a>
 
@@ -1228,101 +715,17 @@ If the property is set to [paused](#valdef-animation-play-state-paused) during t
 
 The [animation-delay](#propdef-animation-delay) property defines when the animation will start. It allows an animation to begin execution some time after it is applied, or to appear to have begun execution some time <em>before</em> it is applied.
 
-<strong>Table 7 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-animation-delay"></a>animation-delay
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma⑥"></a>
-
-<a id="ref-for-time-value⑤"></a>
-
-[\<time\>](https://www.w3.org/TR/css-values-3/#time-value)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-0s
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-list, each item a duration
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-not animatable
+| Field               | Definition                                                                                                                                           |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-animation-delay"></a>animation-delay                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma⑥"></a><a id="ref-for-time-value⑤"></a>[\<time\>](https://www.w3.org/TR/css-values-3/#time-value)[\#](https://www.w3.org/TR/css-values-4/#mult-comma) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 0s                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | list, each item a duration                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | not animatable                                                                                                                                       |
 
 <a id="ref-for-time-value⑥"></a>
 
@@ -1350,101 +753,17 @@ A negative delay is <strong>valid</strong>. Similar to a delay of 0s, it means t
 
 The [animation-fill-mode](#propdef-animation-fill-mode) property defines what values are applied by the animation outside the time it is executing. By default, an animation will not affect property values between the time it is applied (the [animation-name](#propdef-animation-name) property is set on an element) and the time it begins execution (which is determined by the [animation-delay](#propdef-animation-delay) property). Also, by default an animation does not affect property values after the animation ends (determined by the [animation-duration](#propdef-animation-duration) and [animation-iteration-count](#propdef-animation-iteration-count) properties). The <a id="ref-for-propdef-animation-fill-mode⑦"></a>animation-fill-mode property can override this behavior. Dynamic updates to the property will be reflected by property values as needed, whether during the animation delay or after the animation ends.
 
-<strong>Table 8 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-animation-fill-mode"></a>animation-fill-mode
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma⑦"></a>
-
-<a id="ref-for-typedef-single-animation-fill-mode"></a>
-
-[\<single-animation-fill-mode\>](#typedef-single-animation-fill-mode)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-list, each item a keyword as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-not animatable
+| Field               | Definition                                                                                                                                                      |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-animation-fill-mode"></a>animation-fill-mode                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma⑦"></a><a id="ref-for-typedef-single-animation-fill-mode"></a>[\<single-animation-fill-mode\>](#typedef-single-animation-fill-mode)[\#](https://www.w3.org/TR/css-values-4/#mult-comma) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | list, each item a keyword as specified                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | not animatable                                                                                                                                                  |
 
 <a id="ref-for-comb-one⑥"></a>
 
@@ -1496,101 +815,17 @@ The effects of both [forwards](#valdef-animation-fill-mode-forwards) and [backwa
 
 The [animation](#propdef-animation) shorthand property is a comma-separated list of animation definitions. Each item in the list gives one item of the value for all of the subproperties of the shorthand, which are known as the animation properties. (See the definition of [animation-name](#propdef-animation-name) for what happens when these properties have lists of different lengths, a problem that cannot occur when they are defined using only the <a id="ref-for-propdef-animation②"></a>animation shorthand.)
 
-<strong>Table 9 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-animation"></a>animation
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma⑧"></a>
-
-<a id="ref-for-typedef-single-animation"></a>
-
-[\<single-animation\>](#typedef-single-animation)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-not animatable
+| Field               | Definition                                                                                                                                  |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-animation"></a>animation                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma⑧"></a><a id="ref-for-typedef-single-animation"></a>[\<single-animation\>](#typedef-single-animation)[\#](https://www.w3.org/TR/css-values-4/#mult-comma) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | see individual properties                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | not animatable                                                                                                                              |
 
 <a id="ref-for-time-value⑧"></a>
 
@@ -1846,69 +1081,12 @@ The <code><a href="#dom-animationevent-elapsedtime">elapsedTime</a></code> membe
 
 The following are the [event handlers](https://html.spec.whatwg.org/multipage/webappapis.html#event-handlers) (and their corresponding [event handler event types](https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-event-type)) that must be supported by all [HTML elements](https://html.spec.whatwg.org/multipage/infrastructure.html#html-elements), as both [event handler content attributes](https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-content-attributes) and [event handler IDL attributes](https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-idl-attributes); and that must be supported by all <code><a href="https://dom.spec.whatwg.org/#document">Document</a></code> and <code><a href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#window">Window</a></code> objects, as <a id="ref-for-event-handler-idl-attributes①"></a>event handler IDL attributes:
 
-<strong>Table 10 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-event-handlers①"></a>
-
-[Event handler](https://html.spec.whatwg.org/multipage/webappapis.html#event-handlers)
-
-<strong>Column 2 (header cell):</strong>
-
-<a id="ref-for-event-handler-event-type①"></a>
-
-[Event handler event type](https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-event-type)
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="dom-document-onanimationstart"></a>`onanimationstart`
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-eventdef-globaleventhandlers-animationstart②"></a>
-
-<code><a href="#eventdef-globaleventhandlers-animationstart">animationstart</a></code>
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="dom-document-onanimationiteration"></a>`onanimationiteration`
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-eventdef-globaleventhandlers-animationiteration①"></a>
-
-<code><a href="#eventdef-globaleventhandlers-animationiteration">animationiteration</a></code>
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="dom-document-onanimationend"></a>`onanimationend`
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-eventdef-globaleventhandlers-animationend③"></a>
-
-<code><a href="#eventdef-globaleventhandlers-animationend">animationend</a></code>
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="dom-document-onanimationcancel"></a>`onanimationcancel`
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-eventdef-globaleventhandlers-animationcancel①"></a>
-
-<code><a href="#eventdef-globaleventhandlers-animationcancel">animationcancel</a></code>
+| <a id="ref-for-event-handlers①"></a>[Event handler](https://html.spec.whatwg.org/multipage/webappapis.html#event-handlers) | <a id="ref-for-event-handler-event-type①"></a>[Event handler event type](https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-event-type) |
+|-----------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------|
+| <a id="dom-document-onanimationstart"></a><code>onanimationstart</code>                                                                      | <a id="ref-for-eventdef-globaleventhandlers-animationstart②"></a><code><a href="#eventdef-globaleventhandlers-animationstart">animationstart</a></code>                                                                                           |
+| <a id="dom-document-onanimationiteration"></a><code>onanimationiteration</code>                                                                      | <a id="ref-for-eventdef-globaleventhandlers-animationiteration①"></a><code><a href="#eventdef-globaleventhandlers-animationiteration">animationiteration</a></code>                                                                                           |
+| <a id="dom-document-onanimationend"></a><code>onanimationend</code>                                                                      | <a id="ref-for-eventdef-globaleventhandlers-animationend③"></a><code><a href="#eventdef-globaleventhandlers-animationend">animationend</a></code>                                                                                           |
+| <a id="dom-document-onanimationcancel"></a><code>onanimationcancel</code>                                                                      | <a id="ref-for-eventdef-globaleventhandlers-animationcancel①"></a><code><a href="#eventdef-globaleventhandlers-animationcancel">animationcancel</a></code>                                                                                           |
 
 ## <a id="interface-dom"></a>5.  DOM Interfaces
 
@@ -2675,405 +1853,17 @@ David Baron; et al. [CSS Transitions](https://www.w3.org/TR/css-transitions-1/).
 
 ## <a id="property-index"></a>Property Index
 
-<strong>Table 11 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope col):</strong>
-
-Name
-
-<strong>Column 2 (header cell; scope col):</strong>
-
-Value
-
-<strong>Column 3 (header cell; scope col):</strong>
-
-Initial
-
-<strong>Column 4 (header cell; scope col):</strong>
-
-Applies to
-
-<strong>Column 5 (header cell; scope col):</strong>
-
-Inh.
-
-<strong>Column 6 (header cell; scope col):</strong>
-
-%ages
-
-<strong>Column 7 (header cell; scope col):</strong>
-
-Anim­ation type
-
-<strong>Column 8 (header cell; scope col):</strong>
-
-Canonical order
-
-<strong>Column 9 (header cell; scope col):</strong>
-
-Com­puted value
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-animation⑤"></a>
-
-[animation](#propdef-animation)
-
-<strong>Column 2 (data cell):</strong>
-
-\<single-animation\>#
-
-<strong>Column 3 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-not animatable
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-animation-delay①⑥"></a>
-
-[animation-delay](#propdef-animation-delay)
-
-<strong>Column 2 (data cell):</strong>
-
-\<time\>#
-
-<strong>Column 3 (data cell):</strong>
-
-0s
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-not animatable
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-list, each item a duration
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-animation-direction⑧"></a>
-
-[animation-direction](#propdef-animation-direction)
-
-<strong>Column 2 (data cell):</strong>
-
-\<single-animation-direction\>#
-
-<strong>Column 3 (data cell):</strong>
-
-normal
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-not animatable
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-list, each item a keyword as specified
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-animation-duration⑥"></a>
-
-[animation-duration](#propdef-animation-duration)
-
-<strong>Column 2 (data cell):</strong>
-
-\<time \[0s,∞\]\>#
-
-<strong>Column 3 (data cell):</strong>
-
-0s
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-not animatable
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-list, each item a duration
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-animation-fill-mode①①"></a>
-
-[animation-fill-mode](#propdef-animation-fill-mode)
-
-<strong>Column 2 (data cell):</strong>
-
-\<single-animation-fill-mode\>#
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-not animatable
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-list, each item a keyword as specified
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-animation-iteration-count⑦"></a>
-
-[animation-iteration-count](#propdef-animation-iteration-count)
-
-<strong>Column 2 (data cell):</strong>
-
-\<single-animation-iteration-count\>#
-
-<strong>Column 3 (data cell):</strong>
-
-1
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-not animatable
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-list, each item either a number or the keyword infinite
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-animation-name②⑧"></a>
-
-[animation-name](#propdef-animation-name)
-
-<strong>Column 2 (data cell):</strong>
-
-\[ none \| \<keyframes-name\> \]#
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-not animatable
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-list, each item either a case-sensitive css identifier or the keyword none
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-animation-play-state④"></a>
-
-[animation-play-state](#propdef-animation-play-state)
-
-<strong>Column 2 (data cell):</strong>
-
-\<single-animation-play-state\>#
-
-<strong>Column 3 (data cell):</strong>
-
-running
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-not animatable
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-list, each item a keyword as specified
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-animation-timing-function⑦"></a>
-
-[animation-timing-function](#propdef-animation-timing-function)
-
-<strong>Column 2 (data cell):</strong>
-
-\<easing-function\>#
-
-<strong>Column 3 (data cell):</strong>
-
-ease
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-not animatable
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-list, each item a computed \<easing-function\>
+| Name                | Value                                 | Initial                   | Applies to   | Inh. | %ages | Anim­ation type | Canonical order | Com­puted value                                                             |
+|---------------------|---------------------------------------|---------------------------|--------------|------|-------|----------------|-----------------|----------------------------------------------------------------------------|
+| <strong><span><a id="ref-for-propdef-animation⑤"></a></span><a href="#propdef-animation">animation</a>&#xA;      </strong> | \<single-animation\>#                 | see individual properties | all elements | no   | N/A   | not animatable | per grammar     | see individual properties                                                  |
+| <strong><span><a id="ref-for-propdef-animation-delay①⑥"></a></span><a href="#propdef-animation-delay">animation-delay</a>&#xA;      </strong> | \<time\>#                             | 0s                        | all elements | no   | N/A   | not animatable | per grammar     | list, each item a duration                                                 |
+| <strong><span><a id="ref-for-propdef-animation-direction⑧"></a></span><a href="#propdef-animation-direction">animation-direction</a>&#xA;      </strong> | \<single-animation-direction\>#       | normal                    | all elements | no   | N/A   | not animatable | per grammar     | list, each item a keyword as specified                                     |
+| <strong><span><a id="ref-for-propdef-animation-duration⑥"></a></span><a href="#propdef-animation-duration">animation-duration</a>&#xA;      </strong> | \<time \[0s,∞\]\>#                    | 0s                        | all elements | no   | N/A   | not animatable | per grammar     | list, each item a duration                                                 |
+| <strong><span><a id="ref-for-propdef-animation-fill-mode①①"></a></span><a href="#propdef-animation-fill-mode">animation-fill-mode</a>&#xA;      </strong> | \<single-animation-fill-mode\>#       | none                      | all elements | no   | N/A   | not animatable | per grammar     | list, each item a keyword as specified                                     |
+| <strong><span><a id="ref-for-propdef-animation-iteration-count⑦"></a></span><a href="#propdef-animation-iteration-count">animation-iteration-count</a>&#xA;      </strong> | \<single-animation-iteration-count\># | 1                         | all elements | no   | N/A   | not animatable | per grammar     | list, each item either a number or the keyword infinite                    |
+| <strong><span><a id="ref-for-propdef-animation-name②⑧"></a></span><a href="#propdef-animation-name">animation-name</a>&#xA;      </strong> | \[ none \| \<keyframes-name\> \]#     | none                      | all elements | no   | N/A   | not animatable | per grammar     | list, each item either a case-sensitive css identifier or the keyword none |
+| <strong><span><a id="ref-for-propdef-animation-play-state④"></a></span><a href="#propdef-animation-play-state">animation-play-state</a>&#xA;      </strong> | \<single-animation-play-state\>#      | running                   | all elements | no   | N/A   | not animatable | per grammar     | list, each item a keyword as specified                                     |
+| <strong><span><a id="ref-for-propdef-animation-timing-function⑦"></a></span><a href="#propdef-animation-timing-function">animation-timing-function</a>&#xA;      </strong> | \<easing-function\>#                  | ease                      | all elements | no   | N/A   | not animatable | per grammar     | list, each item a computed \<easing-function\>                             |
 
 ## <a id="idl-index"></a>IDL Index
 

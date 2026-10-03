@@ -19,7 +19,8 @@ Snapshot SHA-256: 02e71c159e14aae772a52b552b4fd8dbdcd4ea5716a0004bfff5cb8897ac80
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 2 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 4 source tables are presented as readable Markdown tables or explicit labeled layouts: 2 complex-table layouts, 2 already-readable tables. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 - Existing external image/media URLs are resolved against the pinned source. Assets are not downloaded or availability-tested; image-only formulas/diagrams still require their source resources.
@@ -56,553 +57,74 @@ All levels of CSS — level 1, level 2, and any future levels — use the same c
 
 At the lexical level, CSS style sheets consist of a sequence of tokens. The list of tokens for CSS is as follows. The definitions use Lex-style regular expressions. Octal codes refer to ISO 10646 ([\[ISO10646\]](css2--refs.html--f208d881d0b7.md#ref-ISO10646)). As in Lex, in case of multiple matches, the longest match determines the token.
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Token
-
-<strong>Column 2 (header cell):</strong>
-
-Definition
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (data cell; column span 2):</strong>
-
-------------------------------------------------------------------------
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-IDENT
-
-<strong>Column 2 (data cell):</strong>
-
-<code><var>{ident}</var></code>
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-ATKEYWORD
-
-<strong>Column 2 (data cell):</strong>
-
-<code>@<var>{ident}</var></code>
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-STRING
-
-<strong>Column 2 (data cell):</strong>
-
-<code><var>{string}</var></code>
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-BAD_STRING
-
-<strong>Column 2 (data cell):</strong>
-
-<code><var>{badstring}</var></code>
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-BAD_URI
-
-<strong>Column 2 (data cell):</strong>
-
-<code><var>{baduri}</var></code>
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-BAD_COMMENT
-
-<strong>Column 2 (data cell):</strong>
-
-<code><var>{badcomment}</var></code>
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-HASH
-
-<strong>Column 2 (data cell):</strong>
-
-<code>#<var>{name}</var></code>
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-NUMBER
-
-<strong>Column 2 (data cell):</strong>
-
-<code><var>{num}</var></code>
-
-<strong>Row 11</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-PERCENTAGE
-
-<strong>Column 2 (data cell):</strong>
-
-<code><var>{num}</var>%</code>
-
-<strong>Row 12</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-DIMENSION
-
-<strong>Column 2 (data cell):</strong>
-
-<code><var>{num}{ident}</var></code>
-
-<strong>Row 13</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-URI
-
-<strong>Column 2 (data cell):</strong>
-
-<code>url&#x5C;(<var>{w}{string}{w}</var>&#x5C;)<br>&#xA;&#x9;&#x9;|url&#x5C;(<var>{w}</var>(&#x5B;!#$%&amp;&#x2A;-&#x5C;&#x5B;&#x5C;&#x5D;-&#x7E;&#x5D;|<var>{nonascii}</var>|<var>{escape}</var>)&#x2A;<var>{w}</var>&#x5C;)</code>
-
-<strong>Row 14</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-UNICODE-RANGE
-
-<strong>Column 2 (data cell):</strong>
-
-`u\+[0-9a-f?]{1,6}(-[0-9a-f]{1,6})?`
-
-<strong>Row 15</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-CDO
-
-<strong>Column 2 (data cell):</strong>
-
-`<!--`
-
-<strong>Row 16</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-CDC
-
-<strong>Column 2 (data cell):</strong>
-
-`-->`
-
-<strong>Row 17</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-:
-
-<strong>Column 2 (data cell):</strong>
-
-`:`
-
-<strong>Row 18</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-;
-
-<strong>Column 2 (data cell):</strong>
-
-`;`
-
-<strong>Row 19</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-{
-
-<strong>Column 2 (data cell):</strong>
-
-`\{`
-
-<strong>Row 20</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-}
-
-<strong>Column 2 (data cell):</strong>
-
-`\}`
-
-<strong>Row 21</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-(
-
-<strong>Column 2 (data cell):</strong>
-
-`\(`
-
-<strong>Row 22</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-)
-
-<strong>Column 2 (data cell):</strong>
-
-`\)`
-
-<strong>Row 23</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-\[
-
-<strong>Column 2 (data cell):</strong>
-
-`\[`
-
-<strong>Row 24</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-\]
-
-<strong>Column 2 (data cell):</strong>
-
-`\]`
-
-<strong>Row 25</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-S
-
-<strong>Column 2 (data cell):</strong>
-
-`[ \t\r\n\f]+`
-
-<strong>Row 26</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-COMMENT
-
-<strong>Column 2 (data cell):</strong>
-
-`\/\*[^*]*\*+([^/*][^*]*\*+)*\/`
-
-<strong>Row 27</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-FUNCTION
-
-<strong>Column 2 (data cell):</strong>
-
-<code><var>{ident}</var>&#x5C;(</code>
-
-<strong>Row 28</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-INCLUDES
-
-<strong>Column 2 (data cell):</strong>
-
-`~=`
-
-<strong>Row 29</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-DASHMATCH
-
-<strong>Column 2 (data cell):</strong>
-
-`|=`
-
-<strong>Row 30</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-DELIM
-
-<strong>Column 2 (data cell):</strong>
-
-<var>any other character not matched by&#xA;the above rules, and neither a single nor a double quote</var>
+**Table 1**
+
+Representation note: merged header paths are written explicitly; values from merged body cells are repeated wherever they apply.
+
+| Token | Definition |
+| --- | --- |
+|  |  |
+| IDENT | <code><var>{ident}</var></code> |
+| ATKEYWORD | <code>@<var>{ident}</var></code> |
+| STRING | <code><var>{string}</var></code> |
+| BAD_STRING | <code><var>{badstring}</var></code> |
+| BAD_URI | <code><var>{baduri}</var></code> |
+| BAD_COMMENT | <code><var>{badcomment}</var></code> |
+| HASH | <code>#<var>{name}</var></code> |
+| NUMBER | <code><var>{num}</var></code> |
+| PERCENTAGE | <code><var>{num}</var>%</code> |
+| DIMENSION | <code><var>{num}{ident}</var></code> |
+| URI | <code>url&#x5C;(<var>{w}{string}{w}</var>&#x5C;)<br>&#xA;&#x9;&#x9;\|url&#x5C;(<var>{w}</var>(&#x5B;!#$%&amp;&#x2A;-&#x5C;&#x5B;&#x5C;&#x5D;-&#x7E;&#x5D;\|<var>{nonascii}</var>\|<var>{escape}</var>)&#x2A;<var>{w}</var>&#x5C;)</code> |
+| UNICODE-RANGE | `u\+[0-9a-f?]{1,6}(-[0-9a-f]{1,6})?` |
+| CDO | `<!--` |
+| CDC | `-->` |
+| : | `:` |
+| ; | `;` |
+| { | `\{` |
+| } | `\}` |
+| ( | `\(` |
+| ) | `\)` |
+| \[ | `\[` |
+| \] | `\]` |
+| S | `[ \t\r\n\f]+` |
+| COMMENT | `\/\*[^*]*\*+([^/*][^*]*\*+)*\/` |
+| FUNCTION | <code><var>{ident}</var>&#x5C;(</code> |
+| INCLUDES | `~=` |
+| DASHMATCH | `\|=` |
+| DELIM | <var>any other character not matched by&#xA;the above rules, and neither a single nor a double quote</var> |
 
 The macros in curly braces ({}) above are defined as follows:
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Macro
-
-<strong>Column 2 (header cell):</strong>
-
-Definition
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (data cell; column span 2):</strong>
-
-------------------------------------------------------------------------
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-ident
-
-<strong>Column 2 (data cell):</strong>
-
-<code>&#x5B;-&#x5D;?<var>{nmstart}</var><var>{nmchar}&#x2A;</var></code>
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-name
-
-<strong>Column 2 (data cell):</strong>
-
-<code><var>{nmchar}+</var></code>
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-nmstart
-
-<strong>Column 2 (data cell):</strong>
-
-<code>&#x5B;&#x5F;a-z&#x5D;|<var>{nonascii}</var>|<var>{escape}</var></code>
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-nonascii
-
-<strong>Column 2 (data cell):</strong>
-
-`[^\0-\237]`
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-unicode
-
-<strong>Column 2 (data cell):</strong>
-
-`\\[0-9a-f]{1,6}(\r\n|[ \n\r\t\f])?`
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-escape
-
-<strong>Column 2 (data cell):</strong>
-
-<code><var>{unicode}</var>|&#x5C;&#x5C;&#x5B;^&#x5C;n&#x5C;r&#x5C;f0-9a-f&#x5D;</code>
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-nmchar
-
-<strong>Column 2 (data cell):</strong>
-
-<code>&#x5B;&#x5F;a-z0-9-&#x5D;|<var>{nonascii}</var>|<var>{escape}</var></code>
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-num
-
-<strong>Column 2 (data cell):</strong>
-
-`[0-9]+|[0-9]*\.[0-9]+`
-
-<strong>Row 11</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-string
-
-<strong>Column 2 (data cell):</strong>
-
-<code><var>{string1}</var>|<var>{string2}</var></code>
-
-<strong>Row 12</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-string1
-
-<strong>Column 2 (data cell):</strong>
-
-<code>&#x5C;"(&#x5B;^&#x5C;n&#x5C;r&#x5C;f&#x5C;&#x5C;"&#x5D;|&#x5C;&#x5C;{nl}|<var>{escape}</var>)&#x2A;&#x5C;"</code>
-
-<strong>Row 13</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-string2
-
-<strong>Column 2 (data cell):</strong>
-
-<code>&#x5C;'(&#x5B;^&#x5C;n&#x5C;r&#x5C;f&#x5C;&#x5C;'&#x5D;|&#x5C;&#x5C;{nl}|<var>{escape}</var>)&#x2A;&#x5C;'</code>
-
-<strong>Row 14</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-badstring
-
-<strong>Column 2 (data cell):</strong>
-
-<code><var>{badstring1}</var>|<var>{badstring2}</var></code>
-
-<strong>Row 15</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-badstring1
-
-<strong>Column 2 (data cell):</strong>
-
-<code>&#x5C;"(&#x5B;^&#x5C;n&#x5C;r&#x5C;f&#x5C;&#x5C;"&#x5D;|&#x5C;&#x5C;{nl}|<var>{escape}</var>)&#x2A;&#x5C;&#x5C;?</code>
-
-<strong>Row 16</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-badstring2
-
-<strong>Column 2 (data cell):</strong>
-
-<code>&#x5C;'(&#x5B;^&#x5C;n&#x5C;r&#x5C;f&#x5C;&#x5C;'&#x5D;|&#x5C;&#x5C;{nl}|<var>{escape}</var>)&#x2A;&#x5C;&#x5C;?</code>
-
-<strong>Row 17</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-badcomment
-
-<strong>Column 2 (data cell):</strong>
-
-<code><var>{badcomment1}</var>|<var>{badcomment2}</var></code>
-
-<strong>Row 18</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-badcomment1
-
-<strong>Column 2 (data cell):</strong>
-
-`\/\*[^*]*\*+([^/*][^*]*\*+)*`
-
-<strong>Row 19</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-badcomment2
-
-<strong>Column 2 (data cell):</strong>
-
-`\/\*[^*]*(\*+[^/*][^*]*)*`
-
-<strong>Row 20</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-baduri
-
-<strong>Column 2 (data cell):</strong>
-
-<code><var>{baduri1}</var>|<var>{baduri2}</var>|<var>{baduri3}</var></code>
-
-<strong>Row 21</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-baduri1
-
-<strong>Column 2 (data cell):</strong>
-
-<code>url&#x5C;(<var>{w}</var>(&#x5B;!#$%&amp;&#x2A;-&#x7E;&#x5D;|<var>{nonascii}</var>|<var>{escape}</var>)&#x2A;<var>{w}</var></code>
-
-<strong>Row 22</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-baduri2
-
-<strong>Column 2 (data cell):</strong>
-
-<code>url&#x5C;(<var>{w}</var><var>{string}</var><var>{w}</var></code>
-
-<strong>Row 23</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-baduri3
-
-<strong>Column 2 (data cell):</strong>
-
-<code>url&#x5C;(<var>{w}</var><var>{badstring}</var></code>
-
-<strong>Row 24</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-nl
-
-<strong>Column 2 (data cell):</strong>
-
-`\n|\r\n|\r|\f`
-
-<strong>Row 25</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-w
-
-<strong>Column 2 (data cell):</strong>
-
-`[ \t\r\n\f]*`
+**Table 2**
+
+Representation note: merged header paths are written explicitly; values from merged body cells are repeated wherever they apply.
+
+| Macro | Definition |
+| --- | --- |
+|  |  |
+| ident | <code>&#x5B;-&#x5D;?<var>{nmstart}</var><var>{nmchar}&#x2A;</var></code> |
+| name | <code><var>{nmchar}+</var></code> |
+| nmstart | <code>&#x5B;&#x5F;a-z&#x5D;\|<var>{nonascii}</var>\|<var>{escape}</var></code> |
+| nonascii | `[^\0-\237]` |
+| unicode | `\\[0-9a-f]{1,6}(\r\n\|[ \n\r\t\f])?` |
+| escape | <code><var>{unicode}</var>\|&#x5C;&#x5C;&#x5B;^&#x5C;n&#x5C;r&#x5C;f0-9a-f&#x5D;</code> |
+| nmchar | <code>&#x5B;&#x5F;a-z0-9-&#x5D;\|<var>{nonascii}</var>\|<var>{escape}</var></code> |
+| num | `[0-9]+\|[0-9]*\.[0-9]+` |
+| string | <code><var>{string1}</var>\|<var>{string2}</var></code> |
+| string1 | <code>&#x5C;"(&#x5B;^&#x5C;n&#x5C;r&#x5C;f&#x5C;&#x5C;"&#x5D;\|&#x5C;&#x5C;{nl}\|<var>{escape}</var>)&#x2A;&#x5C;"</code> |
+| string2 | <code>&#x5C;'(&#x5B;^&#x5C;n&#x5C;r&#x5C;f&#x5C;&#x5C;'&#x5D;\|&#x5C;&#x5C;{nl}\|<var>{escape}</var>)&#x2A;&#x5C;'</code> |
+| badstring | <code><var>{badstring1}</var>\|<var>{badstring2}</var></code> |
+| badstring1 | <code>&#x5C;"(&#x5B;^&#x5C;n&#x5C;r&#x5C;f&#x5C;&#x5C;"&#x5D;\|&#x5C;&#x5C;{nl}\|<var>{escape}</var>)&#x2A;&#x5C;&#x5C;?</code> |
+| badstring2 | <code>&#x5C;'(&#x5B;^&#x5C;n&#x5C;r&#x5C;f&#x5C;&#x5C;'&#x5D;\|&#x5C;&#x5C;{nl}\|<var>{escape}</var>)&#x2A;&#x5C;&#x5C;?</code> |
+| badcomment | <code><var>{badcomment1}</var>\|<var>{badcomment2}</var></code> |
+| badcomment1 | `\/\*[^*]*\*+([^/*][^*]*\*+)*` |
+| badcomment2 | `\/\*[^*]*(\*+[^/*][^*]*)*` |
+| baduri | <code><var>{baduri1}</var>\|<var>{baduri2}</var>\|<var>{baduri3}</var></code> |
+| baduri1 | <code>url&#x5C;(<var>{w}</var>(&#x5B;!#$%&amp;&#x2A;-&#x7E;&#x5D;\|<var>{nonascii}</var>\|<var>{escape}</var>)&#x2A;<var>{w}</var></code> |
+| baduri2 | <code>url&#x5C;(<var>{w}</var><var>{string}</var><var>{w}</var></code> |
+| baduri3 | <code>url&#x5C;(<var>{w}</var><var>{badstring}</var></code> |
+| nl | `\n\|\r\n\|\r\|\f` |
+| w | `[ \t\r\n\f]*` |
 
 > <strong data-conversion-semantic="example">Example</strong>
 >

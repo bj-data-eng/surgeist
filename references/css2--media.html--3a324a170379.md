@@ -19,7 +19,8 @@ Snapshot SHA-256: 3a324a17037934085cc012d6730d86fdfd9beae5f02a0df9f97dd49696c988
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 1 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 1 source tables are presented as readable Markdown tables or explicit labeled layouts: 1 complex-table layout. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 
 ---
@@ -223,236 +224,20 @@ CSS 2.1 defines the following media groups:
 
 The following table shows the relationships between media groups and media types:
 
-<strong>Table 1 — structured row/cell transcription</strong>
+**Table 1**
 
 Relationship between media groups and media types
 
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media Types
-
-<strong>Column 2 (header cell; column span 4):</strong>
-
-Media Groups
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
- 
-
-<strong>Column 2 (header cell):</strong>
-
-continuous/paged
-
-<strong>Column 3 (header cell):</strong>
-
-visual/audio/speech/tactile
-
-<strong>Column 4 (header cell):</strong>
-
-grid/bitmap
-
-<strong>Column 5 (header cell):</strong>
-
-interactive/static
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-braille
-
-<strong>Column 2 (data cell):</strong>
-
-continuous
-
-<strong>Column 3 (data cell):</strong>
-
-tactile
-
-<strong>Column 4 (data cell):</strong>
-
-grid
-
-<strong>Column 5 (data cell):</strong>
-
-both
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-embossed
-
-<strong>Column 2 (data cell):</strong>
-
-paged
-
-<strong>Column 3 (data cell):</strong>
-
-tactile
-
-<strong>Column 4 (data cell):</strong>
-
-grid
-
-<strong>Column 5 (data cell):</strong>
-
-static
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-handheld
-
-<strong>Column 2 (data cell):</strong>
-
-both
-
-<strong>Column 3 (data cell):</strong>
-
-visual, audio, speech
-
-<strong>Column 4 (data cell):</strong>
-
-both
-
-<strong>Column 5 (data cell):</strong>
-
-both
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-print
-
-<strong>Column 2 (data cell):</strong>
-
-paged
-
-<strong>Column 3 (data cell):</strong>
-
-visual
-
-<strong>Column 4 (data cell):</strong>
-
-bitmap
-
-<strong>Column 5 (data cell):</strong>
-
-static
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-projection
-
-<strong>Column 2 (data cell):</strong>
-
-paged
-
-<strong>Column 3 (data cell):</strong>
-
-visual
-
-<strong>Column 4 (data cell):</strong>
-
-bitmap
-
-<strong>Column 5 (data cell):</strong>
-
-interactive
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-screen
-
-<strong>Column 2 (data cell):</strong>
-
-continuous
-
-<strong>Column 3 (data cell):</strong>
-
-visual, audio
-
-<strong>Column 4 (data cell):</strong>
-
-bitmap
-
-<strong>Column 5 (data cell):</strong>
-
-both
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-speech
-
-<strong>Column 2 (data cell):</strong>
-
-continuous
-
-<strong>Column 3 (data cell):</strong>
-
-speech
-
-<strong>Column 4 (data cell):</strong>
-
-N/A
-
-<strong>Column 5 (data cell):</strong>
-
-both
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-tty
-
-<strong>Column 2 (data cell):</strong>
-
-continuous
-
-<strong>Column 3 (data cell):</strong>
-
-visual
-
-<strong>Column 4 (data cell):</strong>
-
-grid
-
-<strong>Column 5 (data cell):</strong>
-
-both
-
-<strong>Row 11</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-tv
-
-<strong>Column 2 (data cell):</strong>
-
-both
-
-<strong>Column 3 (data cell):</strong>
-
-visual, audio
-
-<strong>Column 4 (data cell):</strong>
-
-bitmap
-
-<strong>Column 5 (data cell):</strong>
-
-both
+Representation note: merged header paths are written explicitly; values from merged body cells are repeated wherever they apply.
+
+| Media Types | Media Groups / continuous/paged | Media Groups / visual/audio/speech/tactile | Media Groups / grid/bitmap | Media Groups / interactive/static |
+| --- | --- | --- | --- | --- |
+| braille | continuous | tactile | grid | both |
+| embossed | paged | tactile | grid | static |
+| handheld | both | visual, audio, speech | both | both |
+| print | paged | visual | bitmap | static |
+| projection | paged | visual | bitmap | interactive |
+| screen | continuous | visual, audio | bitmap | both |
+| speech | continuous | speech | N/A | both |
+| tty | continuous | visual | grid | both |
+| tv | both | visual, audio | bitmap | both |

@@ -19,7 +19,8 @@ Snapshot SHA-256: bd8e7b9789962497a6b2ca2b8012a4f824905a89b40beaa3b29cc9eabf5d6f
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 10 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 10 source tables are presented as readable Markdown tables or explicit labeled layouts: 10 ordinary table conversions. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Existing external image/media URLs are resolved against the pinned source. Assets are not downloaded or availability-tested; image-only formulas/diagrams still require their source resources.
 
@@ -100,15 +101,12 @@ Example triangle01 specifies a path in the shape of a triangle. (The <strong>M</
         fill="red" stroke="blue" stroke-width="3" />
 </svg>
 ```
-**Table 1 — structured row/cell transcription**
+
+| Column 1                                                                                                                      |
+|-------------------------------------------------------------------------------------------------------------------------------|
+| ![Example triangle01 — simple example of a 'path'](https://www.w3.org/TR/2011/REC-SVG11-20110816/images/paths/triangle01.png) |
 
 Example triangle01
-
-**Row 1**
-
-**Column 1 (data cell):**
-
-![Example triangle01 — simple example of a 'path'](https://www.w3.org/TR/2011/REC-SVG11-20110816/images/paths/triangle01.png)
 
 [View this example as SVG (SVG-enabled browsers only)](https://www.w3.org/TR/2011/REC-SVG11-20110816/images/paths/triangle01.svg)
 
@@ -138,44 +136,9 @@ The following sections list the commands.
 
 The "moveto" commands (<strong>M</strong> or <strong>m</strong>) establish a new current point. The effect is as if the "pen" were lifted and moved to a new location. A path data segment (if there is one) must begin with a "moveto" command. Subsequent "moveto" commands (i.e., when the "moveto" is not the first command) represent the start of a new <em>subpath</em>:
 
-**Table 2 — structured row/cell transcription**
-
-**Row 1**
-
-**Column 1 (header cell):**
-
-Command
-
-**Column 2 (header cell):**
-
-Name
-
-**Column 3 (header cell):**
-
-Parameters
-
-**Column 4 (header cell):**
-
-Description
-
-**Row 2**
-
-**Column 1 (data cell):**
-
-<strong>M</strong> (absolute)  
-<strong>m</strong> (relative)
-
-**Column 2 (data cell):**
-
-moveto
-
-**Column 3 (data cell):**
-
-(x y)+
-
-**Column 4 (data cell):**
-
-Start a new sub-path at the given (x,y) coordinate. <strong>M</strong> (uppercase) indicates that absolute coordinates will follow; <strong>m</strong> (lowercase) indicates that relative coordinates will follow. If a moveto is followed by multiple pairs of coordinates, the subsequent pairs are treated as implicit lineto commands. Hence, implicit lineto commands will be relative if the moveto is relative, and absolute if the moveto is absolute. If a relative moveto (<strong>m</strong>) appears as the first element of the path, then it is treated as a pair of absolute coordinates. In this case, subsequent pairs of coordinates are treated as relative even though the initial moveto is interpreted as an absolute moveto.
+| Command                                                                        | Name   | Parameters | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+|--------------------------------------------------------------------------------|--------|------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>M</strong> (absolute)<br> <strong>m</strong> (relative) | moveto | (x y)+     | Start a new sub-path at the given (x,y) coordinate. <strong>M</strong> (uppercase) indicates that absolute coordinates will follow; <strong>m</strong> (lowercase) indicates that relative coordinates will follow. If a moveto is followed by multiple pairs of coordinates, the subsequent pairs are treated as implicit lineto commands. Hence, implicit lineto commands will be relative if the moveto is relative, and absolute if the moveto is absolute. If a relative moveto (<strong>m</strong>) appears as the first element of the path, then it is treated as a pair of absolute coordinates. In this case, subsequent pairs of coordinates are treated as relative even though the initial moveto is interpreted as an absolute moveto. |
 
 ### <a id="PathDataClosePathCommand"></a>8.3.3 The <strong>"closepath"</strong> command
 
@@ -183,125 +146,19 @@ The "closepath" (<strong>Z</strong> or <strong>z</strong>) ends the current subp
 
 When a subpath ends in a "closepath," it differs in behavior from what happens when "manually" closing a subpath via a "lineto" command in how [‘stroke-linejoin’](https://www.w3.org/TR/2011/REC-SVG11-20110816/painting.html#StrokeLinejoinProperty) and [‘stroke-linecap’](https://www.w3.org/TR/2011/REC-SVG11-20110816/painting.html#StrokeLinecapProperty) are implemented. With "closepath", the end of the final segment of the subpath is "joined" with the start of the initial segment of the subpath using the current value of [‘stroke-linejoin’](https://www.w3.org/TR/2011/REC-SVG11-20110816/painting.html#StrokeLinejoinProperty). If you instead "manually" close the subpath via a "lineto" command, the start of the first segment and the end of the last segment are not joined but instead are each capped using the current value of [‘stroke-linecap’](https://www.w3.org/TR/2011/REC-SVG11-20110816/painting.html#StrokeLinecapProperty). At the end of the command, the new current point is set to the initial point of the current subpath.
 
-**Table 3 — structured row/cell transcription**
-
-**Row 1**
-
-**Column 1 (header cell):**
-
-Command
-
-**Column 2 (header cell):**
-
-Name
-
-**Column 3 (header cell):**
-
-Parameters
-
-**Column 4 (header cell):**
-
-Description
-
-**Row 2**
-
-**Column 1 (data cell):**
-
-<strong>Z</strong> or  
-<strong>z</strong>
-
-**Column 2 (data cell):**
-
-closepath
-
-**Column 3 (data cell):**
-
-(none)
-
-**Column 4 (data cell):**
-
-Close the current subpath by drawing a straight line from the current point to current subpath's initial point. Since the Z and z commands take no parameters, they have an identical effect.
+| Command                                                     | Name      | Parameters | Description                                                                                                                                                                                   |
+|-------------------------------------------------------------|-----------|------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Z</strong> or<br> <strong>z</strong> | closepath | (none)     | Close the current subpath by drawing a straight line from the current point to current subpath's initial point. Since the Z and z commands take no parameters, they have an identical effect. |
 
 ### <a id="PathDataLinetoCommands"></a>8.3.4 The <strong>"lineto"</strong> commands
 
 The various "lineto" commands draw straight lines from the current point to a new point:
 
-**Table 4 — structured row/cell transcription**
-
-**Row 1**
-
-**Column 1 (header cell):**
-
-Command
-
-**Column 2 (header cell):**
-
-Name
-
-**Column 3 (header cell):**
-
-Parameters
-
-**Column 4 (header cell):**
-
-Description
-
-**Row 2**
-
-**Column 1 (data cell):**
-
-<strong>L</strong> (absolute)  
-<strong>l</strong> (relative)
-
-**Column 2 (data cell):**
-
-lineto
-
-**Column 3 (data cell):**
-
-(x y)+
-
-**Column 4 (data cell):**
-
-Draw a line from the current point to the given (x,y) coordinate which becomes the new current point. <strong>L</strong> (uppercase) indicates that absolute coordinates will follow; <strong>l</strong> (lowercase) indicates that relative coordinates will follow. A number of coordinates pairs may be specified to draw a polyline. At the end of the command, the new current point is set to the final set of coordinates provided.
-
-**Row 3**
-
-**Column 1 (data cell):**
-
-<strong>H</strong> (absolute)  
-<strong>h</strong> (relative)
-
-**Column 2 (data cell):**
-
-horizontal lineto
-
-**Column 3 (data cell):**
-
-x+
-
-**Column 4 (data cell):**
-
-Draws a horizontal line from the current point (cpx, cpy) to (x, cpy). <strong>H</strong> (uppercase) indicates that absolute coordinates will follow; <strong>h</strong> (lowercase) indicates that relative coordinates will follow. Multiple x values can be provided (although usually this doesn't make sense). At the end of the command, the new current point becomes (x, cpy) for the final value of x.
-
-**Row 4**
-
-**Column 1 (data cell):**
-
-<strong>V</strong> (absolute)  
-<strong>v</strong> (relative)
-
-**Column 2 (data cell):**
-
-vertical lineto
-
-**Column 3 (data cell):**
-
-y+
-
-**Column 4 (data cell):**
-
-Draws a vertical line from the current point (cpx, cpy) to (cpx, y). <strong>V</strong> (uppercase) indicates that absolute coordinates will follow; <strong>v</strong> (lowercase) indicates that relative coordinates will follow. Multiple y values can be provided (although usually this doesn't make sense). At the end of the command, the new current point becomes (cpx, y) for the final value of y.
+| Command                                                                        | Name              | Parameters | Description                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+|--------------------------------------------------------------------------------|-------------------|------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>L</strong> (absolute)<br> <strong>l</strong> (relative) | lineto            | (x y)+     | Draw a line from the current point to the given (x,y) coordinate which becomes the new current point. <strong>L</strong> (uppercase) indicates that absolute coordinates will follow; <strong>l</strong> (lowercase) indicates that relative coordinates will follow. A number of coordinates pairs may be specified to draw a polyline. At the end of the command, the new current point is set to the final set of coordinates provided. |
+| <strong>H</strong> (absolute)<br> <strong>h</strong> (relative) | horizontal lineto | x+         | Draws a horizontal line from the current point (cpx, cpy) to (x, cpy). <strong>H</strong> (uppercase) indicates that absolute coordinates will follow; <strong>h</strong> (lowercase) indicates that relative coordinates will follow. Multiple x values can be provided (although usually this doesn't make sense). At the end of the command, the new current point becomes (x, cpy) for the final value of x.                           |
+| <strong>V</strong> (absolute)<br> <strong>v</strong> (relative) | vertical lineto   | y+         | Draws a vertical line from the current point (cpx, cpy) to (cpx, y). <strong>V</strong> (uppercase) indicates that absolute coordinates will follow; <strong>v</strong> (lowercase) indicates that relative coordinates will follow. Multiple y values can be provided (although usually this doesn't make sense). At the end of the command, the new current point becomes (cpx, y) for the final value of y.                             |
 
 ### <a id="PathDataCurveCommands"></a>8.3.5 The curve commands
 
@@ -315,63 +172,10 @@ These three groups of commands draw curves:
 
 The cubic Bézier commands are as follows:
 
-**Table 5 — structured row/cell transcription**
-
-**Row 1**
-
-**Column 1 (header cell):**
-
-Command
-
-**Column 2 (header cell):**
-
-Name
-
-**Column 3 (header cell):**
-
-Parameters
-
-**Column 4 (header cell):**
-
-Description
-
-**Row 2**
-
-**Column 1 (data cell):**
-
-<strong>C</strong> (absolute)  
-<strong>c</strong> (relative)
-
-**Column 2 (data cell):**
-
-curveto
-
-**Column 3 (data cell):**
-
-(x1 y1 x2 y2 x y)+
-
-**Column 4 (data cell):**
-
-Draws a cubic Bézier curve from the current point to (x,y) using (x1,y1) as the control point at the beginning of the curve and (x2,y2) as the control point at the end of the curve. <strong>C</strong> (uppercase) indicates that absolute coordinates will follow; <strong>c</strong> (lowercase) indicates that relative coordinates will follow. Multiple sets of coordinates may be specified to draw a polybézier. At the end of the command, the new current point becomes the final (x,y) coordinate pair used in the polybézier.
-
-**Row 3**
-
-**Column 1 (data cell):**
-
-<strong>S</strong> (absolute)  
-<strong>s</strong> (relative)
-
-**Column 2 (data cell):**
-
-shorthand/smooth curveto
-
-**Column 3 (data cell):**
-
-(x2 y2 x y)+
-
-**Column 4 (data cell):**
-
-Draws a cubic Bézier curve from the current point to (x,y). The first control point is assumed to be the reflection of the second control point on the previous command relative to the current point. (If there is no previous command or if the previous command was not an C, c, S or s, assume the first control point is coincident with the current point.) (x2,y2) is the second control point (i.e., the control point at the end of the curve). <strong>S</strong> (uppercase) indicates that absolute coordinates will follow; <strong>s</strong> (lowercase) indicates that relative coordinates will follow. Multiple sets of coordinates may be specified to draw a polybézier. At the end of the command, the new current point becomes the final (x,y) coordinate pair used in the polybézier.
+| Command                                                                        | Name                     | Parameters         | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+|--------------------------------------------------------------------------------|--------------------------|--------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>C</strong> (absolute)<br> <strong>c</strong> (relative) | curveto                  | (x1 y1 x2 y2 x y)+ | Draws a cubic Bézier curve from the current point to (x,y) using (x1,y1) as the control point at the beginning of the curve and (x2,y2) as the control point at the end of the curve. <strong>C</strong> (uppercase) indicates that absolute coordinates will follow; <strong>c</strong> (lowercase) indicates that relative coordinates will follow. Multiple sets of coordinates may be specified to draw a polybézier. At the end of the command, the new current point becomes the final (x,y) coordinate pair used in the polybézier.                                                                                                                                                                                                                                                                    |
+| <strong>S</strong> (absolute)<br> <strong>s</strong> (relative) | shorthand/smooth curveto | (x2 y2 x y)+       | Draws a cubic Bézier curve from the current point to (x,y). The first control point is assumed to be the reflection of the second control point on the previous command relative to the current point. (If there is no previous command or if the previous command was not an C, c, S or s, assume the first control point is coincident with the current point.) (x2,y2) is the second control point (i.e., the control point at the end of the curve). <strong>S</strong> (uppercase) indicates that absolute coordinates will follow; <strong>s</strong> (lowercase) indicates that relative coordinates will follow. Multiple sets of coordinates may be specified to draw a polybézier. At the end of the command, the new current point becomes the final (x,y) coordinate pair used in the polybézier. |
 
 Example cubic01 shows some simple uses of cubic Bézier commands within a path. The example uses an internal CSS style sheet to assign styling properties. Note that the control point for the "S" command is computed automatically as the reflection of the control point for the previous "C" command relative to the start point of the "S" command.
 
@@ -416,15 +220,12 @@ Example cubic01 shows some simple uses of cubic Bézier commands within a path. 
         style="text-anchor:middle">S400,300 400,200</text>
 </svg>
 ```
-**Table 6 — structured row/cell transcription**
+
+| Column 1                                                                                                                        |
+|---------------------------------------------------------------------------------------------------------------------------------|
+| ![Example cubic01 — cubic Bézier comamnds in path data](https://www.w3.org/TR/2011/REC-SVG11-20110816/images/paths/cubic01.png) |
 
 Example cubic01
-
-**Row 1**
-
-**Column 1 (data cell):**
-
-![Example cubic01 — cubic Bézier comamnds in path data](https://www.w3.org/TR/2011/REC-SVG11-20110816/images/paths/cubic01.png)
 
 [View this example as SVG (SVG-enabled browsers only)](https://www.w3.org/TR/2011/REC-SVG11-20110816/images/paths/cubic01.svg)
 
@@ -439,63 +240,10 @@ The following picture shows some how cubic Bézier curves change their shape dep
 
 The quadratic Bézier commands are as follows:
 
-**Table 7 — structured row/cell transcription**
-
-**Row 1**
-
-**Column 1 (header cell):**
-
-Command
-
-**Column 2 (header cell):**
-
-Name
-
-**Column 3 (header cell):**
-
-Parameters
-
-**Column 4 (header cell):**
-
-Description
-
-**Row 2**
-
-**Column 1 (data cell):**
-
-<strong>Q</strong> (absolute)  
-<strong>q</strong> (relative)
-
-**Column 2 (data cell):**
-
-quadratic Bézier curveto
-
-**Column 3 (data cell):**
-
-(x1 y1 x y)+
-
-**Column 4 (data cell):**
-
-Draws a quadratic Bézier curve from the current point to (x,y) using (x1,y1) as the control point. <strong>Q</strong> (uppercase) indicates that absolute coordinates will follow; <strong>q</strong> (lowercase) indicates that relative coordinates will follow. Multiple sets of coordinates may be specified to draw a polybézier. At the end of the command, the new current point becomes the final (x,y) coordinate pair used in the polybézier.
-
-**Row 3**
-
-**Column 1 (data cell):**
-
-<strong>T</strong> (absolute)  
-<strong>t</strong> (relative)
-
-**Column 2 (data cell):**
-
-Shorthand/smooth quadratic Bézier curveto
-
-**Column 3 (data cell):**
-
-(x y)+
-
-**Column 4 (data cell):**
-
-Draws a quadratic Bézier curve from the current point to (x,y). The control point is assumed to be the reflection of the control point on the previous command relative to the current point. (If there is no previous command or if the previous command was not a Q, q, T or t, assume the control point is coincident with the current point.) <strong>T</strong> (uppercase) indicates that absolute coordinates will follow; <strong>t</strong> (lowercase) indicates that relative coordinates will follow. At the end of the command, the new current point becomes the final (x,y) coordinate pair used in the polybézier.
+| Command                                                                        | Name                                      | Parameters   | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+|--------------------------------------------------------------------------------|-------------------------------------------|--------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Q</strong> (absolute)<br> <strong>q</strong> (relative) | quadratic Bézier curveto                  | (x1 y1 x y)+ | Draws a quadratic Bézier curve from the current point to (x,y) using (x1,y1) as the control point. <strong>Q</strong> (uppercase) indicates that absolute coordinates will follow; <strong>q</strong> (lowercase) indicates that relative coordinates will follow. Multiple sets of coordinates may be specified to draw a polybézier. At the end of the command, the new current point becomes the final (x,y) coordinate pair used in the polybézier.                                                                                                                                                                            |
+| <strong>T</strong> (absolute)<br> <strong>t</strong> (relative) | Shorthand/smooth quadratic Bézier curveto | (x y)+       | Draws a quadratic Bézier curve from the current point to (x,y). The control point is assumed to be the reflection of the control point on the previous command relative to the current point. (If there is no previous command or if the previous command was not a Q, q, T or t, assume the control point is coincident with the current point.) <strong>T</strong> (uppercase) indicates that absolute coordinates will follow; <strong>t</strong> (lowercase) indicates that relative coordinates will follow. At the end of the command, the new current point becomes the final (x,y) coordinate pair used in the polybézier. |
 
 Example quad01 shows some simple uses of quadratic Bézier commands within a path. Note that the control point for the "T" command is computed automatically as the reflection of the control point for the previous "Q" command relative to the start point of the "T" command.
 
@@ -530,15 +278,12 @@ Example quad01 shows some simple uses of quadratic Bézier commands within a pat
         fill="none" stroke="#888888" stroke-width="2" />
 </svg>
 ```
-**Table 8 — structured row/cell transcription**
+
+| Column 1                                                                                                                          |
+|-----------------------------------------------------------------------------------------------------------------------------------|
+| ![Example quad01 — quadratic Bézier commands in path data](https://www.w3.org/TR/2011/REC-SVG11-20110816/images/paths/quad01.png) |
 
 Example quad01
-
-**Row 1**
-
-**Column 1 (data cell):**
-
-![Example quad01 — quadratic Bézier commands in path data](https://www.w3.org/TR/2011/REC-SVG11-20110816/images/paths/quad01.png)
 
 [View this example as SVG (SVG-enabled browsers only)](https://www.w3.org/TR/2011/REC-SVG11-20110816/images/paths/quad01.svg)
 
@@ -546,44 +291,9 @@ Example quad01
 
 The elliptical arc commands are as follows:
 
-**Table 9 — structured row/cell transcription**
-
-**Row 1**
-
-**Column 1 (header cell):**
-
-Command
-
-**Column 2 (header cell):**
-
-Name
-
-**Column 3 (header cell):**
-
-Parameters
-
-**Column 4 (header cell):**
-
-Description
-
-**Row 2**
-
-**Column 1 (data cell):**
-
-<strong>A</strong> (absolute)  
-<strong>a</strong> (relative)
-
-**Column 2 (data cell):**
-
-elliptical arc
-
-**Column 3 (data cell):**
-
-(rx ry x-axis-rotation large-arc-flag sweep-flag x y)+
-
-**Column 4 (data cell):**
-
-Draws an elliptical arc from the current point to (<strong>x</strong>, <strong>y</strong>). The size and orientation of the ellipse are defined by two radii (<strong>rx</strong>, <strong>ry</strong>) and an <strong>x-axis-rotation</strong>, which indicates how the ellipse as a whole is rotated relative to the current coordinate system. The center (<strong>cx</strong>, <strong>cy</strong>) of the ellipse is calculated automatically to satisfy the constraints imposed by the other parameters. <strong>large-arc-flag</strong> and <strong>sweep-flag</strong> contribute to the automatic calculations and help determine how the arc is drawn.
+| Command                                                                        | Name           | Parameters                                             | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+|--------------------------------------------------------------------------------|----------------|--------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>A</strong> (absolute)<br> <strong>a</strong> (relative) | elliptical arc | (rx ry x-axis-rotation large-arc-flag sweep-flag x y)+ | Draws an elliptical arc from the current point to (<strong>x</strong>, <strong>y</strong>). The size and orientation of the ellipse are defined by two radii (<strong>rx</strong>, <strong>ry</strong>) and an <strong>x-axis-rotation</strong>, which indicates how the ellipse as a whole is rotated relative to the current coordinate system. The center (<strong>cx</strong>, <strong>cy</strong>) of the ellipse is calculated automatically to satisfy the constraints imposed by the other parameters. <strong>large-arc-flag</strong> and <strong>sweep-flag</strong> contribute to the automatic calculations and help determine how the arc is drawn. |
 
 Example arcs01 shows some simple uses of arc commands within a path.
 
@@ -612,15 +322,12 @@ Example arcs01 shows some simple uses of arc commands within a path.
         fill="none" stroke="red" stroke-width="5"  />
 </svg>
 ```
-**Table 10 — structured row/cell transcription**
+
+| Column 1                                                                                                             |
+|----------------------------------------------------------------------------------------------------------------------|
+| ![Example arcs01 — arc commands in path data](https://www.w3.org/TR/2011/REC-SVG11-20110816/images/paths/arcs01.png) |
 
 Example arcs01
-
-**Row 1**
-
-**Column 1 (data cell):**
-
-![Example arcs01 — arc commands in path data](https://www.w3.org/TR/2011/REC-SVG11-20110816/images/paths/arcs01.png)
 
 [View this example as SVG (SVG-enabled browsers only)](https://www.w3.org/TR/2011/REC-SVG11-20110816/images/paths/arcs01.svg)
 

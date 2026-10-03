@@ -19,7 +19,8 @@ Snapshot SHA-256: b0e3b097bc6db0688d4712968c290cda280f8f750eb998bc358c28df490ff3
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 21 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 22 source tables are presented as readable Markdown tables or explicit labeled layouts: 16 ordinary table conversions, 5 complex-table layouts, 1 already-readable table. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 - Existing external image/media URLs are resolved against the pinned source. Assets are not downloaded or availability-tested; image-only formulas/diagrams still require their source resources.
@@ -362,31 +363,10 @@ Tests
 
 ## <a id="flex-containers"></a>3.  Flex Containers: the [flex](#valdef-display-flex) and [inline-flex](#valdef-display-inline-flex) [display](https://www.w3.org/TR/css-display-4/#propdef-display) values
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-display③"></a>
-
-[display](https://www.w3.org/TR/css-display-4/#propdef-display)
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[New values:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one"></a>
-
-flex [\|](https://www.w3.org/TR/css-values-4/#comb-one) inline-flex
+| Field               | Definition                                                                             |
+|---------------------|----------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;       </strong> | <a id="ref-for-propdef-display③"></a>[display](https://www.w3.org/TR/css-display-4/#propdef-display)     |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">New values:</a>&#xA;       </strong> | <a id="ref-for-comb-one"></a>flex [\|](https://www.w3.org/TR/css-values-4/#comb-one) inline-flex |
 
 Tests
 
@@ -1438,101 +1418,17 @@ The contents of a flex container can be laid out in any direction and in any ord
 
 ### <a id="flex-direction-property"></a>5.1.  Flex Flow Direction: the [flex-direction](#propdef-flex-direction) property
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-flex-direction"></a>flex-direction
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one①"></a>
-
-row [\|](https://www.w3.org/TR/css-values-4/#comb-one) row-reverse <a id="ref-for-comb-one②"></a>\| column <a id="ref-for-comb-one③"></a>\| column-reverse
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-row
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-flex-container①⑨"></a>
-
-[flex containers](#flex-container)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                              |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-flex-direction"></a>flex-direction                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one①"></a>row [\|](https://www.w3.org/TR/css-values-4/#comb-one) row-reverse <a id="ref-for-comb-one②"></a>\| column <a id="ref-for-comb-one③"></a>\| column-reverse |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | row                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-flex-container①⑨"></a>[flex containers](#flex-container)                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                |
 
 <a id="ref-for-propdef-flex-direction③"></a>
 
@@ -1703,101 +1599,17 @@ Tests
 
 ### <a id="flex-wrap-property"></a>5.2.  Flex Line Wrapping: the [flex-wrap](#propdef-flex-wrap) property
 
-<strong>Table 3 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-flex-wrap"></a>flex-wrap
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one④"></a>
-
-nowrap [\|](https://www.w3.org/TR/css-values-4/#comb-one) wrap <a id="ref-for-comb-one⑤"></a>\| wrap-reverse
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-nowrap
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-flex-container②①"></a>
-
-[flex containers](#flex-container)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                           |
+|---------------------|----------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-flex-wrap"></a>flex-wrap                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one④"></a>nowrap [\|](https://www.w3.org/TR/css-values-4/#comb-one) wrap <a id="ref-for-comb-one⑤"></a>\| wrap-reverse |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | nowrap                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-flex-container②①"></a>[flex containers](#flex-container)                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                             |
 
 <a id="ref-for-propdef-flex-wrap②"></a>
 
@@ -1891,103 +1703,17 @@ Tests
 
 ### <a id="flex-flow-property"></a>5.3.  Flex Direction and Wrap: the [flex-flow](#propdef-flex-flow) shorthand
 
-<strong>Table 4 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-flex-flow"></a>flex-flow
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-flex-wrap⑤"></a>
-
-<a id="ref-for-comb-any"></a>
-
-<a id="ref-for-propdef-flex-direction⑤"></a>
-
-[\<'flex-direction'\>](#propdef-flex-direction) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<'flex-wrap'\>](#propdef-flex-wrap)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                                                                                          |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-flex-flow"></a>flex-flow                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-propdef-flex-wrap⑤"></a><a id="ref-for-comb-any"></a><a id="ref-for-propdef-flex-direction⑤"></a>[\<'flex-direction'\>](#propdef-flex-direction) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<'flex-wrap'\>](#propdef-flex-wrap) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                         |
 
 Tests
 
@@ -2089,11 +1815,8 @@ The [flex-flow](#propdef-flex-flow) property is a shorthand for setting the [fle
 >
 > <a id="example-c226b82c"></a> Some examples of valid flows in an English (left-to-right, horizontal writing mode) document:
 >
-> <strong>Table 5 — structured row/cell transcription</strong>
 >
-> <strong>Row 1</strong>
->
-> <strong>Column 1 (data cell):</strong>
+> **Example 1**
 >
 > ```css
 > div { flex-flow: row; }
@@ -2101,13 +1824,9 @@ The [flex-flow](#propdef-flex-flow) property is a shorthand for setting the [fle
 >    (Items will either shrink to fit or overflow.) */
 > ```
 >
-> <strong>Column 2 (data cell):</strong>
->
 > ![](https://www.w3.org/TR/2025/CRD-css-flexbox-1-20251014/images/flex-flow1.svg)
 >
-> <strong>Row 2</strong>
->
-> <strong>Column 1 (data cell):</strong>
+> **Example 2**
 >
 > ```css
 > div { flex-flow: column wrap; }
@@ -2115,13 +1834,9 @@ The [flex-flow](#propdef-flex-flow) property is a shorthand for setting the [fle
 >    and lines wrap in the inline direction (rightwards). */
 > ```
 >
-> <strong>Column 2 (data cell):</strong>
->
 > ![](https://www.w3.org/TR/2025/CRD-css-flexbox-1-20251014/images/flex-flow2.svg)
 >
-> <strong>Row 3</strong>
->
-> <strong>Column 1 (data cell):</strong>
+> **Example 3**
 >
 > ```css
 > div { flex-flow: row-reverse wrap-reverse; }
@@ -2129,9 +1844,8 @@ The [flex-flow](#propdef-flex-flow) property is a shorthand for setting the [fle
 >    (right to left). New lines wrap upwards. */
 > ```
 >
-> <strong>Column 2 (data cell):</strong>
->
 > ![](https://www.w3.org/TR/2025/CRD-css-flexbox-1-20251014/images/flex-flow3.svg)
+>
 
 <a id="ref-for-propdef-flex-flow④"></a>
 
@@ -2143,41 +1857,23 @@ The [flex-flow](#propdef-flex-flow) property is a shorthand for setting the [fle
 >
 > Note that the [flex-flow](#propdef-flex-flow) directions are [writing mode](https://www.w3.org/TR/css-writing-modes-4/#writing-mode) sensitive. In vertical Japanese, for example, a [row](#valdef-flex-direction-row) flex container lays out its contents from top to bottom, as seen in this example:
 >
-> <strong>Table 6 — structured row/cell transcription</strong>
 >
-> <strong>Row 1</strong>
->
-> <strong>Column 1 (header cell):</strong>
->
-> English
->
-> <strong>Column 2 (header cell):</strong>
->
-> Japanese
->
-> <strong>Row 2</strong>
->
-> <strong>Column 1 (data cell):</strong>
+> **English**
 >
 > ```css
 > flex-flow: row wrap;        writing-mode: horizontal-tb;
 > ```
 >
-> <strong>Column 2 (data cell):</strong>
+> ![](https://www.w3.org/TR/2025/CRD-css-flexbox-1-20251014/images/flex-flow-english.svg)
+>
+> **Japanese**
 >
 > ```css
 > flex-flow: row wrap;        writing-mode: vertical-rl;
 > ```
 >
-> <strong>Row 3</strong>
->
-> <strong>Column 1 (data cell):</strong>
->
-> ![](https://www.w3.org/TR/2025/CRD-css-flexbox-1-20251014/images/flex-flow-english.svg)
->
-> <strong>Column 2 (data cell):</strong>
->
 > ![](https://www.w3.org/TR/2025/CRD-css-flexbox-1-20251014/images/flex-flow-japanese.svg)
+>
 
 <a id="ref-for-propdef-order④"></a>
 
@@ -2386,111 +2082,17 @@ Tests
 
 ### <a id="flex-property"></a>7.1.  The [flex](#propdef-flex) Shorthand
 
-<strong>Table 7 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-flex"></a>flex
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-flex-basis"></a>
-
-<a id="ref-for-comb-any①"></a>
-
-<a id="ref-for-mult-opt"></a>
-
-<a id="ref-for-propdef-flex-shrink①"></a>
-
-<a id="ref-for-propdef-flex-grow①"></a>
-
-<a id="ref-for-comb-one⑥"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[ [\<'flex-grow'\>](#propdef-flex-grow) [\<'flex-shrink'\>](#propdef-flex-shrink)[?](https://www.w3.org/TR/css-values-4/#mult-opt) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<'flex-basis'\>](#propdef-flex-basis) \]
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-0 1 auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-flex-item③①"></a>
-
-[flex items](#flex-item)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value type
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                    |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-flex"></a>flex                                                                                                                                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-propdef-flex-basis"></a><a id="ref-for-comb-any①"></a><a id="ref-for-mult-opt"></a><a id="ref-for-propdef-flex-shrink①"></a><a id="ref-for-propdef-flex-grow①"></a><a id="ref-for-comb-one⑥"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[ [\<'flex-grow'\>](#propdef-flex-grow) [\<'flex-shrink'\>](#propdef-flex-shrink)[?](https://www.w3.org/TR/css-values-4/#mult-opt) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<'flex-basis'\>](#propdef-flex-basis) \] |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 0 1 auto                                                                                                                                                                                                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-flex-item③①"></a>[flex items](#flex-item)                                                                                                                                                                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value type                                                                                                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                   |
 
 Tests
 
@@ -2874,101 +2476,17 @@ Individual components of flexibility can be controlled by independent longhand p
 
 #### <a id="flex-grow-property"></a>7.2.1.  The [flex-grow](#propdef-flex-grow) property
 
-<strong>Table 8 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-flex-grow"></a>flex-grow
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-number-value②"></a>
-
-[\<number \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#number-value)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-0
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-flex-item④①"></a>
-
-[flex items](#flex-item)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified number
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value type
+| Field               | Definition                                                                                |
+|---------------------|-------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-flex-grow"></a>flex-grow                                                              |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-number-value②"></a>[\<number \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#number-value) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 0                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-flex-item④①"></a>[flex items](#flex-item)                                               |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified number                                                                          |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                               |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value type                                                                    |
 
 Tests
 
@@ -3012,101 +2530,17 @@ The [flex-grow](#propdef-flex-grow) property sets the [flex grow factor](#flex-f
 
 #### <a id="flex-shrink-property"></a>7.2.2.  The [flex-shrink](#propdef-flex-shrink) property
 
-<strong>Table 9 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-flex-shrink"></a>flex-shrink
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-number-value④"></a>
-
-[\<number \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#number-value)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-1
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-flex-item④②"></a>
-
-[flex items](#flex-item)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified value
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-number
+| Field               | Definition                                                                                |
+|---------------------|-------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-flex-shrink"></a>flex-shrink                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-number-value④"></a>[\<number \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#number-value) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 1                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-flex-item④②"></a>[flex items](#flex-item)                                               |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified value                                                                           |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                               |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | number                                                                                    |
 
 Tests
 
@@ -3152,109 +2586,17 @@ The [flex-shrink](#propdef-flex-shrink) property sets the [flex shrink factor](#
 
 #### <a id="flex-basis-property"></a>7.2.3.  The [flex-basis](#propdef-flex-basis) property
 
-<strong>Table 10 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-flex-basis"></a>flex-basis
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-width①①"></a>
-
-<a id="ref-for-comb-one⑦"></a>
-
-content [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<'width'\>](https://www.w3.org/TR/css-sizing-3/#propdef-width)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-flex-item④③"></a>
-
-[flex items](#flex-item)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-main-size⑨"></a>
-
-<a id="ref-for-flex-container②⑥"></a>
-
-relative to the [flex container’s](#flex-container) inner [main size](#main-size)
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-length-percentage"></a>
-
-specified keyword or a computed [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) value
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value type
+| Field               | Definition                                                                                                                                                        |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-flex-basis"></a>flex-basis                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-propdef-width①①"></a><a id="ref-for-comb-one⑦"></a>content [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<'width'\>](https://www.w3.org/TR/css-sizing-3/#propdef-width) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-flex-item④③"></a>[flex items](#flex-item)                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | <a id="ref-for-main-size⑨"></a><a id="ref-for-flex-container②⑥"></a>relative to the [flex container’s](#flex-container) inner [main size](#main-size)                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-typedef-length-percentage"></a>specified keyword or a computed [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) value                   |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value type                                                                                                                                            |
 
 Tests
 
@@ -3456,101 +2798,17 @@ Tests
 
 ### <a id="justify-content-property"></a>8.2.  Axis Alignment: the [justify-content](#propdef-justify-content) property
 
-<strong>Table 11 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-justify-content"></a>justify-content
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one⑧"></a>
-
-flex-start [\|](https://www.w3.org/TR/css-values-4/#comb-one) flex-end <a id="ref-for-comb-one⑨"></a>\| center <a id="ref-for-comb-one①⓪"></a>\| space-between <a id="ref-for-comb-one①①"></a>\| space-around
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-flex-start
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-flex-container②⑧"></a>
-
-[flex containers](#flex-container)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                    |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-justify-content"></a>justify-content                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one⑧"></a>flex-start [\|](https://www.w3.org/TR/css-values-4/#comb-one) flex-end <a id="ref-for-comb-one⑨"></a>\| center <a id="ref-for-comb-one①⓪"></a>\| space-between <a id="ref-for-comb-one①①"></a>\| space-around |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | flex-start                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-flex-container②⑧"></a>[flex containers](#flex-container)                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                      |
 
 Tests
 
@@ -3715,101 +2973,17 @@ An illustration of the five [justify-content](#propdef-justify-content) keywords
 
 ### <a id="align-items-property"></a>8.3.  Cross-axis Alignment: the [align-items](#propdef-align-items) and [align-self](#propdef-align-self) properties
 
-<strong>Table 12 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-align-items"></a>align-items
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one①②"></a>
-
-flex-start [\|](https://www.w3.org/TR/css-values-4/#comb-one) flex-end <a id="ref-for-comb-one①③"></a>\| center <a id="ref-for-comb-one①④"></a>\| baseline <a id="ref-for-comb-one①⑤"></a>\| stretch
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-stretch
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-flex-container③⓪"></a>
-
-[flex containers](#flex-container)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                          |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-align-items"></a>align-items                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one①②"></a>flex-start [\|](https://www.w3.org/TR/css-values-4/#comb-one) flex-end <a id="ref-for-comb-one①③"></a>\| center <a id="ref-for-comb-one①④"></a>\| baseline <a id="ref-for-comb-one①⑤"></a>\| stretch |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | stretch                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-flex-container③⓪"></a>[flex containers](#flex-container)                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                            |
 
 Tests
 
@@ -3871,101 +3045,17 @@ Tests
 - [table-as-item-stretch-cross-size-5.html](https://wpt.fyi/results/css/css-flexbox/table-as-item-stretch-cross-size-5.html) [(live test)](http://wpt.live/css/css-flexbox/table-as-item-stretch-cross-size-5.html) [(source)](https://github.com/web-platform-tests/wpt/blob/master/css/css-flexbox/table-as-item-stretch-cross-size-5.html)
 - [table-as-item-stretch-cross-size.html](https://wpt.fyi/results/css/css-flexbox/table-as-item-stretch-cross-size.html) [(live test)](http://wpt.live/css/css-flexbox/table-as-item-stretch-cross-size.html) [(source)](https://github.com/web-platform-tests/wpt/blob/master/css/css-flexbox/table-as-item-stretch-cross-size.html)
 
-<strong>Table 13 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-align-self"></a>align-self
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one①⑥"></a>
-
-auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) flex-start <a id="ref-for-comb-one①⑦"></a>\| flex-end <a id="ref-for-comb-one①⑧"></a>\| center <a id="ref-for-comb-one①⑨"></a>\| baseline <a id="ref-for-comb-one②⓪"></a>\| stretch
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-flex-item⑥⑦"></a>
-
-[flex items](#flex-item)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                     |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-align-self"></a>align-self                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one①⑥"></a>auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) flex-start <a id="ref-for-comb-one①⑦"></a>\| flex-end <a id="ref-for-comb-one①⑧"></a>\| center <a id="ref-for-comb-one①⑨"></a>\| baseline <a id="ref-for-comb-one②⓪"></a>\| stretch |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-flex-item⑥⑦"></a>[flex items](#flex-item)                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                       |
 
 Tests
 
@@ -4157,103 +3247,17 @@ An illustration of the five [align-items](#propdef-align-items) keywords and the
 
 ### <a id="align-content-property"></a>8.4.  Packing Flex Lines: the [align-content](#propdef-align-content) property
 
-<strong>Table 14 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-align-content"></a>align-content
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one②①"></a>
-
-flex-start [\|](https://www.w3.org/TR/css-values-4/#comb-one) flex-end <a id="ref-for-comb-one②②"></a>\| center <a id="ref-for-comb-one②③"></a>\| space-between <a id="ref-for-comb-one②④"></a>\| space-around <a id="ref-for-comb-one②⑤"></a>\| stretch
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-stretch
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-flex-container③①"></a>
-
-<a id="ref-for-multi-line-flex-container⑤"></a>
-
-[multi-line](#multi-line-flex-container) [flex containers](#flex-container)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                  |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-align-content"></a>align-content                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one②①"></a>flex-start [\|](https://www.w3.org/TR/css-values-4/#comb-one) flex-end <a id="ref-for-comb-one②②"></a>\| center <a id="ref-for-comb-one②③"></a>\| space-between <a id="ref-for-comb-one②④"></a>\| space-around <a id="ref-for-comb-one②⑤"></a>\| stretch |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | stretch                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-flex-container③①"></a><a id="ref-for-multi-line-flex-container⑤"></a>[multi-line](#multi-line-flex-container) [flex containers](#flex-container)                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                    |
 
 <a id="ref-for-propdef-align-content⑤"></a>
 
@@ -5835,253 +4839,22 @@ This informative section presents a possible fragmentation algorithm for flex co
 
 <a id="ref-for-writing-mode①⓪"></a>
 
-<strong>Table 15 — structured row/cell transcription</strong>
+**Table 15**
 
 Axis Mappings for [ltr](https://www.w3.org/TR/css-writing-modes-4/#valdef-direction-ltr) + [horizontal-tb](https://www.w3.org/TR/css-writing-modes-4/#valdef-writing-mode-horizontal-tb) [Writing Mode](https://www.w3.org/TR/css-writing-modes-4/#writing-mode) (e.g. English)
 
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-propdef-flex-flow⑥"></a>
-
-[flex-flow](#propdef-flex-flow)
-
-<strong>Column 2 (header cell):</strong>
-
-<a id="ref-for-main-axis①⑥"></a>
-
-[main axis](#main-axis)
-
-<strong>Column 3 (header cell):</strong>
-
-<a id="ref-for-start"></a>
-
-[start](https://www.w3.org/TR/css-writing-modes-3/#start)
-
-<strong>Column 4 (header cell):</strong>
-
-<a id="ref-for-end①"></a>
-
-[end](https://www.w3.org/TR/css-writing-modes-3/#end)
-
-<strong>Column 5 (header cell):</strong>
-
-<a id="ref-for-cross-axis①⑨"></a>
-
-[cross axis](#cross-axis)
-
-<strong>Column 6 (header cell):</strong>
-
-<a id="ref-for-start①"></a>
-
-[start](https://www.w3.org/TR/css-writing-modes-3/#start)
-
-<strong>Column 7 (header cell):</strong>
-
-<a id="ref-for-end②"></a>
-
-[end](https://www.w3.org/TR/css-writing-modes-3/#end)
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-flex-wrap-wrap②"></a>
-
-<a id="ref-for-valdef-flex-wrap-nowrap"></a>
-
-<a id="ref-for-valdef-flex-direction-row④"></a>
-
-[row](#valdef-flex-direction-row) + [nowrap](#valdef-flex-wrap-nowrap)/[wrap](#valdef-flex-wrap-wrap)
-
-<strong>Column 2 (data cell; row span 4):</strong>
-
-horizontal
-
-<strong>Column 3 (data cell):</strong>
-
-left
-
-<strong>Column 4 (data cell):</strong>
-
-right
-
-<strong>Column 5 (data cell; row span 4):</strong>
-
-vertical
-
-<strong>Column 6 (data cell; row span 2):</strong>
-
-top
-
-<strong>Column 7 (data cell; row span 2):</strong>
-
-bottom
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-flex-wrap-wrap③"></a>
-
-<a id="ref-for-valdef-flex-wrap-nowrap①"></a>
-
-<a id="ref-for-valdef-flex-direction-row-reverse①"></a>
-
-[row-reverse](#valdef-flex-direction-row-reverse) + [nowrap](#valdef-flex-wrap-nowrap)/[wrap](#valdef-flex-wrap-wrap)
-
-<strong>Column 3 (data cell):</strong>
-
-right
-
-<strong>Column 4 (data cell):</strong>
-
-left
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-flex-wrap-wrap-reverse③"></a>
-
-<a id="ref-for-valdef-flex-direction-row⑤"></a>
-
-[row](#valdef-flex-direction-row) + [wrap-reverse](#valdef-flex-wrap-wrap-reverse)
-
-<strong>Column 3 (data cell):</strong>
-
-left
-
-<strong>Column 4 (data cell):</strong>
-
-right
-
-<strong>Column 6 (data cell; row span 2):</strong>
-
-bottom
-
-<strong>Column 7 (data cell; row span 2):</strong>
-
-top
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-flex-wrap-wrap-reverse④"></a>
-
-<a id="ref-for-valdef-flex-direction-row-reverse②"></a>
-
-[row-reverse](#valdef-flex-direction-row-reverse) + [wrap-reverse](#valdef-flex-wrap-wrap-reverse)
-
-<strong>Column 3 (data cell):</strong>
-
-right
-
-<strong>Column 4 (data cell):</strong>
-
-left
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-flex-wrap-wrap④"></a>
-
-<a id="ref-for-valdef-flex-wrap-nowrap②"></a>
-
-<a id="ref-for-valdef-flex-direction-column②"></a>
-
-[column](#valdef-flex-direction-column) + [nowrap](#valdef-flex-wrap-nowrap)/[wrap](#valdef-flex-wrap-wrap)
-
-<strong>Column 2 (data cell; row span 4):</strong>
-
-vertical
-
-<strong>Column 3 (data cell):</strong>
-
-top
-
-<strong>Column 4 (data cell):</strong>
-
-bottom
-
-<strong>Column 5 (data cell; row span 4):</strong>
-
-horizontal
-
-<strong>Column 6 (data cell; row span 2):</strong>
-
-left
-
-<strong>Column 7 (data cell; row span 2):</strong>
-
-right
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-flex-wrap-wrap⑤"></a>
-
-<a id="ref-for-valdef-flex-wrap-nowrap③"></a>
-
-<a id="ref-for-valdef-flex-direction-column-reverse"></a>
-
-[column-reverse](#valdef-flex-direction-column-reverse) + [nowrap](#valdef-flex-wrap-nowrap)/[wrap](#valdef-flex-wrap-wrap)
-
-<strong>Column 3 (data cell):</strong>
-
-bottom
-
-<strong>Column 4 (data cell):</strong>
-
-top
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-flex-wrap-wrap-reverse⑤"></a>
-
-<a id="ref-for-valdef-flex-direction-column③"></a>
-
-[column](#valdef-flex-direction-column) + [wrap-reverse](#valdef-flex-wrap-wrap-reverse)
-
-<strong>Column 3 (data cell):</strong>
-
-top
-
-<strong>Column 4 (data cell):</strong>
-
-bottom
-
-<strong>Column 6 (data cell; row span 2):</strong>
-
-right
-
-<strong>Column 7 (data cell; row span 2):</strong>
-
-left
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-flex-wrap-wrap-reverse⑥"></a>
-
-<a id="ref-for-valdef-flex-direction-column-reverse①"></a>
-
-[column-reverse](#valdef-flex-direction-column-reverse) + [wrap-reverse](#valdef-flex-wrap-wrap-reverse)
-
-<strong>Column 3 (data cell):</strong>
-
-bottom
-
-<strong>Column 4 (data cell):</strong>
-
-top
+Representation note: merged header paths are written explicitly; values from merged body cells are repeated wherever they apply.
+
+| <a id="ref-for-propdef-flex-flow⑥"></a> [flex-flow](#propdef-flex-flow) | <a id="ref-for-main-axis①⑥"></a> [main axis](#main-axis) | main axis / <a id="ref-for-start"></a> [start](https://www.w3.org/TR/css-writing-modes-3/#start) | main axis / <a id="ref-for-end①"></a> [end](https://www.w3.org/TR/css-writing-modes-3/#end) | <a id="ref-for-cross-axis①⑨"></a> [cross axis](#cross-axis) | cross axis / <a id="ref-for-start①"></a> [start](https://www.w3.org/TR/css-writing-modes-3/#start) | cross axis / <a id="ref-for-end②"></a> [end](https://www.w3.org/TR/css-writing-modes-3/#end) |
+| --- | --- | --- | --- | --- | --- | --- |
+| <a id="ref-for-valdef-flex-wrap-wrap②"></a> <a id="ref-for-valdef-flex-wrap-nowrap"></a> <a id="ref-for-valdef-flex-direction-row④"></a> [row](#valdef-flex-direction-row) + [nowrap](#valdef-flex-wrap-nowrap)/[wrap](#valdef-flex-wrap-wrap) | horizontal | left | right | vertical | top | bottom |
+| <a id="ref-for-valdef-flex-wrap-wrap③"></a> <a id="ref-for-valdef-flex-wrap-nowrap①"></a> <a id="ref-for-valdef-flex-direction-row-reverse①"></a> [row-reverse](#valdef-flex-direction-row-reverse) + [nowrap](#valdef-flex-wrap-nowrap)/[wrap](#valdef-flex-wrap-wrap) | horizontal | right | left | vertical | top | bottom |
+| <a id="ref-for-valdef-flex-wrap-wrap-reverse③"></a> <a id="ref-for-valdef-flex-direction-row⑤"></a> [row](#valdef-flex-direction-row) + [wrap-reverse](#valdef-flex-wrap-wrap-reverse) | horizontal | left | right | vertical | bottom | top |
+| <a id="ref-for-valdef-flex-wrap-wrap-reverse④"></a> <a id="ref-for-valdef-flex-direction-row-reverse②"></a> [row-reverse](#valdef-flex-direction-row-reverse) + [wrap-reverse](#valdef-flex-wrap-wrap-reverse) | horizontal | right | left | vertical | bottom | top |
+| <a id="ref-for-valdef-flex-wrap-wrap④"></a> <a id="ref-for-valdef-flex-wrap-nowrap②"></a> <a id="ref-for-valdef-flex-direction-column②"></a> [column](#valdef-flex-direction-column) + [nowrap](#valdef-flex-wrap-nowrap)/[wrap](#valdef-flex-wrap-wrap) | vertical | top | bottom | horizontal | left | right |
+| <a id="ref-for-valdef-flex-wrap-wrap⑤"></a> <a id="ref-for-valdef-flex-wrap-nowrap③"></a> <a id="ref-for-valdef-flex-direction-column-reverse"></a> [column-reverse](#valdef-flex-direction-column-reverse) + [nowrap](#valdef-flex-wrap-nowrap)/[wrap](#valdef-flex-wrap-wrap) | vertical | bottom | top | horizontal | left | right |
+| <a id="ref-for-valdef-flex-wrap-wrap-reverse⑤"></a> <a id="ref-for-valdef-flex-direction-column③"></a> [column](#valdef-flex-direction-column) + [wrap-reverse](#valdef-flex-wrap-wrap-reverse) | vertical | top | bottom | horizontal | right | left |
+| <a id="ref-for-valdef-flex-wrap-wrap-reverse⑥"></a> <a id="ref-for-valdef-flex-direction-column-reverse①"></a> [column-reverse](#valdef-flex-direction-column-reverse) + [wrap-reverse](#valdef-flex-wrap-wrap-reverse) | vertical | bottom | top | horizontal | right | left |
 
 <a id="axis-mapping-table-fa"></a>
 
@@ -6091,253 +4864,22 @@ top
 
 <a id="ref-for-writing-mode①①"></a>
 
-<strong>Table 16 — structured row/cell transcription</strong>
+**Table 16**
 
 Axis Mappings for [rtl](https://www.w3.org/TR/css-writing-modes-4/#valdef-direction-rtl) + [horizontal-tb](https://www.w3.org/TR/css-writing-modes-4/#valdef-writing-mode-horizontal-tb) [Writing Mode](https://www.w3.org/TR/css-writing-modes-4/#writing-mode) (e.g. Farsi)
 
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-propdef-flex-flow⑦"></a>
-
-[flex-flow](#propdef-flex-flow)
-
-<strong>Column 2 (header cell):</strong>
-
-<a id="ref-for-main-axis①⑦"></a>
-
-[main axis](#main-axis)
-
-<strong>Column 3 (header cell):</strong>
-
-<a id="ref-for-main-start⑨"></a>
-
-[main-start](#main-start)
-
-<strong>Column 4 (header cell):</strong>
-
-<a id="ref-for-main-end⑨"></a>
-
-[main-end](#main-end)
-
-<strong>Column 5 (header cell):</strong>
-
-<a id="ref-for-cross-axis②⓪"></a>
-
-[cross axis](#cross-axis)
-
-<strong>Column 6 (header cell):</strong>
-
-<a id="ref-for-cross-start①④"></a>
-
-[cross-start](#cross-start)
-
-<strong>Column 7 (header cell):</strong>
-
-<a id="ref-for-cross-end⑨"></a>
-
-[cross-end](#cross-end)
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-flex-wrap-wrap⑥"></a>
-
-<a id="ref-for-valdef-flex-wrap-nowrap④"></a>
-
-<a id="ref-for-valdef-flex-direction-row⑥"></a>
-
-[row](#valdef-flex-direction-row) + [nowrap](#valdef-flex-wrap-nowrap)/[wrap](#valdef-flex-wrap-wrap)
-
-<strong>Column 2 (data cell; row span 4):</strong>
-
-horizontal
-
-<strong>Column 3 (data cell):</strong>
-
-right
-
-<strong>Column 4 (data cell):</strong>
-
-left
-
-<strong>Column 5 (data cell; row span 4):</strong>
-
-vertical
-
-<strong>Column 6 (data cell; row span 2):</strong>
-
-top
-
-<strong>Column 7 (data cell; row span 2):</strong>
-
-bottom
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-flex-wrap-wrap⑦"></a>
-
-<a id="ref-for-valdef-flex-wrap-nowrap⑤"></a>
-
-<a id="ref-for-valdef-flex-direction-row-reverse③"></a>
-
-[row-reverse](#valdef-flex-direction-row-reverse) + [nowrap](#valdef-flex-wrap-nowrap)/[wrap](#valdef-flex-wrap-wrap)
-
-<strong>Column 3 (data cell):</strong>
-
-left
-
-<strong>Column 4 (data cell):</strong>
-
-right
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-flex-wrap-wrap-reverse⑦"></a>
-
-<a id="ref-for-valdef-flex-direction-row⑦"></a>
-
-[row](#valdef-flex-direction-row) + [wrap-reverse](#valdef-flex-wrap-wrap-reverse)
-
-<strong>Column 3 (data cell):</strong>
-
-right
-
-<strong>Column 4 (data cell):</strong>
-
-left
-
-<strong>Column 6 (data cell; row span 2):</strong>
-
-bottom
-
-<strong>Column 7 (data cell; row span 2):</strong>
-
-top
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-flex-wrap-wrap-reverse⑧"></a>
-
-<a id="ref-for-valdef-flex-direction-row-reverse④"></a>
-
-[row-reverse](#valdef-flex-direction-row-reverse) + [wrap-reverse](#valdef-flex-wrap-wrap-reverse)
-
-<strong>Column 3 (data cell):</strong>
-
-left
-
-<strong>Column 4 (data cell):</strong>
-
-right
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-flex-wrap-wrap⑧"></a>
-
-<a id="ref-for-valdef-flex-wrap-nowrap⑥"></a>
-
-<a id="ref-for-valdef-flex-direction-column④"></a>
-
-[column](#valdef-flex-direction-column) + [nowrap](#valdef-flex-wrap-nowrap)/[wrap](#valdef-flex-wrap-wrap)
-
-<strong>Column 2 (data cell; row span 4):</strong>
-
-vertical
-
-<strong>Column 3 (data cell):</strong>
-
-top
-
-<strong>Column 4 (data cell):</strong>
-
-bottom
-
-<strong>Column 5 (data cell; row span 4):</strong>
-
-horizontal
-
-<strong>Column 6 (data cell; row span 2):</strong>
-
-right
-
-<strong>Column 7 (data cell; row span 2):</strong>
-
-left
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-flex-wrap-wrap⑨"></a>
-
-<a id="ref-for-valdef-flex-wrap-nowrap⑦"></a>
-
-<a id="ref-for-valdef-flex-direction-column-reverse②"></a>
-
-[column-reverse](#valdef-flex-direction-column-reverse) + [nowrap](#valdef-flex-wrap-nowrap)/[wrap](#valdef-flex-wrap-wrap)
-
-<strong>Column 3 (data cell):</strong>
-
-bottom
-
-<strong>Column 4 (data cell):</strong>
-
-top
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-flex-wrap-wrap-reverse⑨"></a>
-
-<a id="ref-for-valdef-flex-direction-column⑤"></a>
-
-[column](#valdef-flex-direction-column) + [wrap-reverse](#valdef-flex-wrap-wrap-reverse)
-
-<strong>Column 3 (data cell):</strong>
-
-top
-
-<strong>Column 4 (data cell):</strong>
-
-bottom
-
-<strong>Column 6 (data cell; row span 2):</strong>
-
-left
-
-<strong>Column 7 (data cell; row span 2):</strong>
-
-right
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-flex-wrap-wrap-reverse①⓪"></a>
-
-<a id="ref-for-valdef-flex-direction-column-reverse③"></a>
-
-[column-reverse](#valdef-flex-direction-column-reverse) + [wrap-reverse](#valdef-flex-wrap-wrap-reverse)
-
-<strong>Column 3 (data cell):</strong>
-
-bottom
-
-<strong>Column 4 (data cell):</strong>
-
-top
+Representation note: merged header paths are written explicitly; values from merged body cells are repeated wherever they apply.
+
+| <a id="ref-for-propdef-flex-flow⑦"></a> [flex-flow](#propdef-flex-flow) | <a id="ref-for-main-axis①⑦"></a> [main axis](#main-axis) | main axis / <a id="ref-for-main-start⑨"></a> [main-start](#main-start) | main axis / <a id="ref-for-main-end⑨"></a> [main-end](#main-end) | <a id="ref-for-cross-axis②⓪"></a> [cross axis](#cross-axis) | cross axis / <a id="ref-for-cross-start①④"></a> [cross-start](#cross-start) | cross axis / <a id="ref-for-cross-end⑨"></a> [cross-end](#cross-end) |
+| --- | --- | --- | --- | --- | --- | --- |
+| <a id="ref-for-valdef-flex-wrap-wrap⑥"></a> <a id="ref-for-valdef-flex-wrap-nowrap④"></a> <a id="ref-for-valdef-flex-direction-row⑥"></a> [row](#valdef-flex-direction-row) + [nowrap](#valdef-flex-wrap-nowrap)/[wrap](#valdef-flex-wrap-wrap) | horizontal | right | left | vertical | top | bottom |
+| <a id="ref-for-valdef-flex-wrap-wrap⑦"></a> <a id="ref-for-valdef-flex-wrap-nowrap⑤"></a> <a id="ref-for-valdef-flex-direction-row-reverse③"></a> [row-reverse](#valdef-flex-direction-row-reverse) + [nowrap](#valdef-flex-wrap-nowrap)/[wrap](#valdef-flex-wrap-wrap) | horizontal | left | right | vertical | top | bottom |
+| <a id="ref-for-valdef-flex-wrap-wrap-reverse⑦"></a> <a id="ref-for-valdef-flex-direction-row⑦"></a> [row](#valdef-flex-direction-row) + [wrap-reverse](#valdef-flex-wrap-wrap-reverse) | horizontal | right | left | vertical | bottom | top |
+| <a id="ref-for-valdef-flex-wrap-wrap-reverse⑧"></a> <a id="ref-for-valdef-flex-direction-row-reverse④"></a> [row-reverse](#valdef-flex-direction-row-reverse) + [wrap-reverse](#valdef-flex-wrap-wrap-reverse) | horizontal | left | right | vertical | bottom | top |
+| <a id="ref-for-valdef-flex-wrap-wrap⑧"></a> <a id="ref-for-valdef-flex-wrap-nowrap⑥"></a> <a id="ref-for-valdef-flex-direction-column④"></a> [column](#valdef-flex-direction-column) + [nowrap](#valdef-flex-wrap-nowrap)/[wrap](#valdef-flex-wrap-wrap) | vertical | top | bottom | horizontal | right | left |
+| <a id="ref-for-valdef-flex-wrap-wrap⑨"></a> <a id="ref-for-valdef-flex-wrap-nowrap⑦"></a> <a id="ref-for-valdef-flex-direction-column-reverse②"></a> [column-reverse](#valdef-flex-direction-column-reverse) + [nowrap](#valdef-flex-wrap-nowrap)/[wrap](#valdef-flex-wrap-wrap) | vertical | bottom | top | horizontal | right | left |
+| <a id="ref-for-valdef-flex-wrap-wrap-reverse⑨"></a> <a id="ref-for-valdef-flex-direction-column⑤"></a> [column](#valdef-flex-direction-column) + [wrap-reverse](#valdef-flex-wrap-wrap-reverse) | vertical | top | bottom | horizontal | left | right |
+| <a id="ref-for-valdef-flex-wrap-wrap-reverse①⓪"></a> <a id="ref-for-valdef-flex-direction-column-reverse③"></a> [column-reverse](#valdef-flex-direction-column-reverse) + [wrap-reverse](#valdef-flex-wrap-wrap-reverse) | vertical | bottom | top | horizontal | left | right |
 
 <a id="axis-mapping-table-ja"></a>
 
@@ -6347,253 +4889,22 @@ top
 
 <a id="ref-for-writing-mode①②"></a>
 
-<strong>Table 17 — structured row/cell transcription</strong>
+**Table 17**
 
 Axis Mappings for [ltr](https://www.w3.org/TR/css-writing-modes-4/#valdef-direction-ltr) + [vertical-rl](https://www.w3.org/TR/css-writing-modes-4/#valdef-writing-mode-vertical-rl) [Writing Mode](https://www.w3.org/TR/css-writing-modes-4/#writing-mode) (e.g. Japanese)
 
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-propdef-flex-flow⑧"></a>
-
-[flex-flow](#propdef-flex-flow)
-
-<strong>Column 2 (header cell):</strong>
-
-<a id="ref-for-main-axis①⑧"></a>
-
-[main axis](#main-axis)
-
-<strong>Column 3 (header cell):</strong>
-
-<a id="ref-for-main-start①⓪"></a>
-
-[start](#main-start)
-
-<strong>Column 4 (header cell):</strong>
-
-<a id="ref-for-main-end①⓪"></a>
-
-[end](#main-end)
-
-<strong>Column 5 (header cell):</strong>
-
-<a id="ref-for-cross-axis②①"></a>
-
-[cross axis](#cross-axis)
-
-<strong>Column 6 (header cell):</strong>
-
-<a id="ref-for-cross-start①⑤"></a>
-
-[start](#cross-start)
-
-<strong>Column 7 (header cell):</strong>
-
-<a id="ref-for-cross-end①⓪"></a>
-
-[end](#cross-end)
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-flex-wrap-wrap①⓪"></a>
-
-<a id="ref-for-valdef-flex-wrap-nowrap⑧"></a>
-
-<a id="ref-for-valdef-flex-direction-row⑧"></a>
-
-[row](#valdef-flex-direction-row) + [nowrap](#valdef-flex-wrap-nowrap)/[wrap](#valdef-flex-wrap-wrap)
-
-<strong>Column 2 (data cell; row span 4):</strong>
-
-vertical
-
-<strong>Column 3 (data cell):</strong>
-
-top
-
-<strong>Column 4 (data cell):</strong>
-
-bottom
-
-<strong>Column 5 (data cell; row span 4):</strong>
-
-horizontal
-
-<strong>Column 6 (data cell; row span 2):</strong>
-
-right
-
-<strong>Column 7 (data cell; row span 2):</strong>
-
-left
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-flex-wrap-wrap①①"></a>
-
-<a id="ref-for-valdef-flex-wrap-nowrap⑨"></a>
-
-<a id="ref-for-valdef-flex-direction-row-reverse⑤"></a>
-
-[row-reverse](#valdef-flex-direction-row-reverse) + [nowrap](#valdef-flex-wrap-nowrap)/[wrap](#valdef-flex-wrap-wrap)
-
-<strong>Column 3 (data cell):</strong>
-
-bottom
-
-<strong>Column 4 (data cell):</strong>
-
-top
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-flex-wrap-wrap-reverse①①"></a>
-
-<a id="ref-for-valdef-flex-direction-row⑨"></a>
-
-[row](#valdef-flex-direction-row) + [wrap-reverse](#valdef-flex-wrap-wrap-reverse)
-
-<strong>Column 3 (data cell):</strong>
-
-top
-
-<strong>Column 4 (data cell):</strong>
-
-bottom
-
-<strong>Column 6 (data cell; row span 2):</strong>
-
-left
-
-<strong>Column 7 (data cell; row span 2):</strong>
-
-right
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-flex-wrap-wrap-reverse①②"></a>
-
-<a id="ref-for-valdef-flex-direction-row-reverse⑥"></a>
-
-[row-reverse](#valdef-flex-direction-row-reverse) + [wrap-reverse](#valdef-flex-wrap-wrap-reverse)
-
-<strong>Column 3 (data cell):</strong>
-
-bottom
-
-<strong>Column 4 (data cell):</strong>
-
-top
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-flex-wrap-wrap①②"></a>
-
-<a id="ref-for-valdef-flex-wrap-nowrap①⓪"></a>
-
-<a id="ref-for-valdef-flex-direction-column⑥"></a>
-
-[column](#valdef-flex-direction-column) + [nowrap](#valdef-flex-wrap-nowrap)/[wrap](#valdef-flex-wrap-wrap)
-
-<strong>Column 2 (data cell; row span 4):</strong>
-
-vertical
-
-<strong>Column 3 (data cell):</strong>
-
-right
-
-<strong>Column 4 (data cell):</strong>
-
-left
-
-<strong>Column 5 (data cell; row span 4):</strong>
-
-horizontal
-
-<strong>Column 6 (data cell; row span 2):</strong>
-
-top
-
-<strong>Column 7 (data cell; row span 2):</strong>
-
-bottom
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-flex-wrap-wrap①③"></a>
-
-<a id="ref-for-valdef-flex-wrap-nowrap①①"></a>
-
-<a id="ref-for-valdef-flex-direction-column-reverse④"></a>
-
-[column-reverse](#valdef-flex-direction-column-reverse) + [nowrap](#valdef-flex-wrap-nowrap)/[wrap](#valdef-flex-wrap-wrap)
-
-<strong>Column 3 (data cell):</strong>
-
-left
-
-<strong>Column 4 (data cell):</strong>
-
-right
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-flex-wrap-wrap-reverse①③"></a>
-
-<a id="ref-for-valdef-flex-direction-column⑦"></a>
-
-[column](#valdef-flex-direction-column) + [wrap-reverse](#valdef-flex-wrap-wrap-reverse)
-
-<strong>Column 3 (data cell):</strong>
-
-right
-
-<strong>Column 4 (data cell):</strong>
-
-left
-
-<strong>Column 6 (data cell; row span 2):</strong>
-
-bottom
-
-<strong>Column 7 (data cell; row span 2):</strong>
-
-top
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-valdef-flex-wrap-wrap-reverse①④"></a>
-
-<a id="ref-for-valdef-flex-direction-column-reverse⑤"></a>
-
-[column-reverse](#valdef-flex-direction-column-reverse) + [wrap-reverse](#valdef-flex-wrap-wrap-reverse)
-
-<strong>Column 3 (data cell):</strong>
-
-left
-
-<strong>Column 4 (data cell):</strong>
-
-right
+Representation note: merged header paths are written explicitly; values from merged body cells are repeated wherever they apply.
+
+| <a id="ref-for-propdef-flex-flow⑧"></a> [flex-flow](#propdef-flex-flow) | <a id="ref-for-main-axis①⑧"></a> [main axis](#main-axis) | main axis / <a id="ref-for-main-start①⓪"></a> [start](#main-start) | main axis / <a id="ref-for-main-end①⓪"></a> [end](#main-end) | <a id="ref-for-cross-axis②①"></a> [cross axis](#cross-axis) | cross axis / <a id="ref-for-cross-start①⑤"></a> [start](#cross-start) | cross axis / <a id="ref-for-cross-end①⓪"></a> [end](#cross-end) |
+| --- | --- | --- | --- | --- | --- | --- |
+| <a id="ref-for-valdef-flex-wrap-wrap①⓪"></a> <a id="ref-for-valdef-flex-wrap-nowrap⑧"></a> <a id="ref-for-valdef-flex-direction-row⑧"></a> [row](#valdef-flex-direction-row) + [nowrap](#valdef-flex-wrap-nowrap)/[wrap](#valdef-flex-wrap-wrap) | vertical | top | bottom | horizontal | right | left |
+| <a id="ref-for-valdef-flex-wrap-wrap①①"></a> <a id="ref-for-valdef-flex-wrap-nowrap⑨"></a> <a id="ref-for-valdef-flex-direction-row-reverse⑤"></a> [row-reverse](#valdef-flex-direction-row-reverse) + [nowrap](#valdef-flex-wrap-nowrap)/[wrap](#valdef-flex-wrap-wrap) | vertical | bottom | top | horizontal | right | left |
+| <a id="ref-for-valdef-flex-wrap-wrap-reverse①①"></a> <a id="ref-for-valdef-flex-direction-row⑨"></a> [row](#valdef-flex-direction-row) + [wrap-reverse](#valdef-flex-wrap-wrap-reverse) | vertical | top | bottom | horizontal | left | right |
+| <a id="ref-for-valdef-flex-wrap-wrap-reverse①②"></a> <a id="ref-for-valdef-flex-direction-row-reverse⑥"></a> [row-reverse](#valdef-flex-direction-row-reverse) + [wrap-reverse](#valdef-flex-wrap-wrap-reverse) | vertical | bottom | top | horizontal | left | right |
+| <a id="ref-for-valdef-flex-wrap-wrap①②"></a> <a id="ref-for-valdef-flex-wrap-nowrap①⓪"></a> <a id="ref-for-valdef-flex-direction-column⑥"></a> [column](#valdef-flex-direction-column) + [nowrap](#valdef-flex-wrap-nowrap)/[wrap](#valdef-flex-wrap-wrap) | vertical | right | left | horizontal | top | bottom |
+| <a id="ref-for-valdef-flex-wrap-wrap①③"></a> <a id="ref-for-valdef-flex-wrap-nowrap①①"></a> <a id="ref-for-valdef-flex-direction-column-reverse④"></a> [column-reverse](#valdef-flex-direction-column-reverse) + [nowrap](#valdef-flex-wrap-nowrap)/[wrap](#valdef-flex-wrap-wrap) | vertical | left | right | horizontal | top | bottom |
+| <a id="ref-for-valdef-flex-wrap-wrap-reverse①③"></a> <a id="ref-for-valdef-flex-direction-column⑦"></a> [column](#valdef-flex-direction-column) + [wrap-reverse](#valdef-flex-wrap-wrap-reverse) | vertical | right | left | horizontal | bottom | top |
+| <a id="ref-for-valdef-flex-wrap-wrap-reverse①④"></a> <a id="ref-for-valdef-flex-direction-column-reverse⑤"></a> [column-reverse](#valdef-flex-direction-column-reverse) + [wrap-reverse](#valdef-flex-wrap-wrap-reverse) | vertical | left | right | horizontal | bottom | top |
 
 ## <a id="webkit-aliases"></a> Appendix B: `-webkit-` Legacy Properties
 
@@ -7095,20 +5406,10 @@ A [Disposition of Comments](https://drafts.csswg.org/css-flexbox-1/issues-cr-201
 
   <a id="change-2016-align-self-as-specified"></a> For ease of implementation, [auto](#valdef-align-items-auto) value of [align-self](#propdef-align-self) now computes to itself always. See [related previous change](#change-2015-align-self-auto) requiring this computation for absolutely-positioned elements. ([Issue 440](https://github.com/w3c/csswg-drafts/issues/440), [Issue 644](https://github.com/w3c/csswg-drafts/issues/644))
 
-  > <strong>Table 19 — structured row/cell transcription</strong>
+  > | Field               | Definition                                                                                                                                                         |
+  > |---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+  > | <strong>Computed value: &#xA;         </strong> | <a id="ref-for-propdef-align-items⑦"></a><a id="ref-for-valdef-align-items-auto③"></a> ~~[auto](#valdef-align-items-auto) computes to parent’s [align-items](#propdef-align-items) value; otherwise~~ as specified |
   >
-  > <strong>Row 1</strong>
-  >
-  > <strong>Column 1 (header cell):</strong>
-  >
-  > Computed value:
-  > <strong>Column 2 (data cell):</strong>
-  >
-  > <a id="ref-for-propdef-align-items⑦"></a>
-  >
-  > <a id="ref-for-valdef-align-items-auto③"></a>
-  >
-  > ~~[auto](#valdef-align-items-auto) computes to parent’s [align-items](#propdef-align-items) value; otherwise~~ as specified
   > …
   >
   > <a id="ref-for-valdef-align-items-auto④"></a>
@@ -7181,20 +5482,10 @@ A [Disposition of Comments](https://drafts.csswg.org/css-flexbox-1/issues-cr-201
 
   <a id="change-2016-abspos-no-order-fix"></a> Added missing edits for [change](#change-2016-abspos-no-order) that made [order](https://www.w3.org/TR/css-flexbox-1/#propdef-order) not apply to absolutely-positioned children of a flex container. ([Issue 1439](https://github.com/w3c/csswg-drafts/issues/1439))
 
-  > <strong>Table 20 — structured row/cell transcription</strong>
-  >
-  > <strong>Row 1</strong>
-  >
-  > <strong>Column 1 (header cell):</strong>
-  >
-  > Applies to:
-  > <strong>Column 2 (data cell):</strong>
-  >
-  > <a id="ref-for-flex-container⑧②"></a>
-  >
-  > <a id="ref-for-flex-item①④③"></a>
-  >
-  > [flex items](#flex-item) ~~and absolutely-positioned children of [flex containers](#flex-container)~~
+  > | Field               | Definition                                                                                                                                   |
+  > |---------------------|----------------------------------------------------------------------------------------------------------------------------------------------|
+  > | <strong>Applies to: &#xA;         </strong> | <a id="ref-for-flex-container⑧②"></a><a id="ref-for-flex-item①④③"></a> [flex items](#flex-item) ~~and absolutely-positioned children of [flex containers](#flex-container)~~ |
+
   > <a id="ref-for-propdef-order①③"></a>
   >
   > The [order](https://www.w3.org/TR/css-flexbox-1/#propdef-order) property controls the order in which ~~children of a flex container~~ <u>flex items</u> appear within the flex container, by assigning them to ordinal groups. …
@@ -8507,28 +6798,10 @@ The following significant clarifications were also made:
 
 - <a id="clarify-2012-abspos-items"></a> Absolutely positioned children of a flex container are no longer called "flex items" (to avoid terminology confusion). (??)
 
-  > <strong>Table 21 — structured row/cell transcription</strong>
-  >
-  > <strong>Row 1</strong>
-  >
-  > <strong>Column 1 (header cell):</strong>
-  >
-  > Name:
-  > <strong>Column 2 (data cell):</strong>
-  >
-  > order
-  > <strong>Row 2</strong>
-  >
-  > <strong>Column 1 (header cell):</strong>
-  >
-  > Applies to:
-  > <strong>Column 2 (data cell):</strong>
-  >
-  > <a id="ref-for-flex-container①②⓪"></a>
-  >
-  > <a id="ref-for-flex-item②⓪③"></a>
-  >
-  > [flex items](#flex-item) <u>and absolutely-positioned children of [flex containers](#flex-container)</u>
+  > | Field               | Definition                                                                                                                                      |
+  > |---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------|
+  > | <strong>Name: &#xA;         </strong> | order                                                                                                                                           |
+  > | <strong>Applies to: &#xA;         </strong> | <a id="ref-for-flex-container①②⓪"></a><a id="ref-for-flex-item②⓪③"></a> [flex items](#flex-item) <u>and absolutely-positioned children of [flex containers](#flex-container)</u> |
 
   > <a id="ref-for-propdef-order③⓪"></a>
   >
@@ -9193,485 +7466,19 @@ Anne van Kesteren; et al. [HTML Standard](https://html.spec.whatwg.org/multipage
 
 ## <a id="property-index"></a>Property Index
 
-<strong>Table 22 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope col):</strong>
-
-Name
-
-<strong>Column 2 (header cell; scope col):</strong>
-
-Value
-
-<strong>Column 3 (header cell; scope col):</strong>
-
-Initial
-
-<strong>Column 4 (header cell; scope col):</strong>
-
-Applies to
-
-<strong>Column 5 (header cell; scope col):</strong>
-
-Inh.
-
-<strong>Column 6 (header cell; scope col):</strong>
-
-%ages
-
-<strong>Column 7 (header cell; scope col):</strong>
-
-Anim­ation type
-
-<strong>Column 8 (header cell; scope col):</strong>
-
-Canonical order
-
-<strong>Column 9 (header cell; scope col):</strong>
-
-Com­puted value
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-align-content①⑤"></a>
-
-[align-content](#propdef-align-content)
-
-<strong>Column 2 (data cell):</strong>
-
-flex-start \| flex-end \| center \| space-between \| space-around \| stretch
-
-<strong>Column 3 (data cell):</strong>
-
-stretch
-
-<strong>Column 4 (data cell):</strong>
-
-multi-line flex containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-align-items①⓪"></a>
-
-[align-items](#propdef-align-items)
-
-<strong>Column 2 (data cell):</strong>
-
-flex-start \| flex-end \| center \| baseline \| stretch
-
-<strong>Column 3 (data cell):</strong>
-
-stretch
-
-<strong>Column 4 (data cell):</strong>
-
-flex containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-align-self③④"></a>
-
-[align-self](#propdef-align-self)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| flex-start \| flex-end \| center \| baseline \| stretch
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-flex items
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-flex④②"></a>
-
-[flex](#propdef-flex)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| \[ \<'flex-grow'\> \<'flex-shrink'\>? \|\| \<'flex-basis'\> \]
-
-<strong>Column 3 (data cell):</strong>
-
-0 1 auto
-
-<strong>Column 4 (data cell):</strong>
-
-flex items
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-flex-basis②⑧"></a>
-
-[flex-basis](#propdef-flex-basis)
-
-<strong>Column 2 (data cell):</strong>
-
-content \| \<'width'\>
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-flex items
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-relative to the flex container’s inner main size
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword or a computed \<length-percentage\> value
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-flex-direction①⓪"></a>
-
-[flex-direction](#propdef-flex-direction)
-
-<strong>Column 2 (data cell):</strong>
-
-row \| row-reverse \| column \| column-reverse
-
-<strong>Column 3 (data cell):</strong>
-
-row
-
-<strong>Column 4 (data cell):</strong>
-
-flex containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-flex-flow①⓪"></a>
-
-[flex-flow](#propdef-flex-flow)
-
-<strong>Column 2 (data cell):</strong>
-
-\<'flex-direction'\> \|\| \<'flex-wrap'\>
-
-<strong>Column 3 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 4 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 5 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 6 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 7 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-flex-grow②①"></a>
-
-[flex-grow](#propdef-flex-grow)
-
-<strong>Column 2 (data cell):</strong>
-
-\<number \[0,∞\]\>
-
-<strong>Column 3 (data cell):</strong>
-
-0
-
-<strong>Column 4 (data cell):</strong>
-
-flex items
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified number
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-flex-shrink⑧"></a>
-
-[flex-shrink](#propdef-flex-shrink)
-
-<strong>Column 2 (data cell):</strong>
-
-\<number \[0,∞\]\>
-
-<strong>Column 3 (data cell):</strong>
-
-1
-
-<strong>Column 4 (data cell):</strong>
-
-flex items
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-number
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified value
-
-<strong>Row 11</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-flex-wrap①②"></a>
-
-[flex-wrap](#propdef-flex-wrap)
-
-<strong>Column 2 (data cell):</strong>
-
-nowrap \| wrap \| wrap-reverse
-
-<strong>Column 3 (data cell):</strong>
-
-nowrap
-
-<strong>Column 4 (data cell):</strong>
-
-flex containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 12</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-justify-content①⑤"></a>
-
-[justify-content](#propdef-justify-content)
-
-<strong>Column 2 (data cell):</strong>
-
-flex-start \| flex-end \| center \| space-between \| space-around
-
-<strong>Column 3 (data cell):</strong>
-
-flex-start
-
-<strong>Column 4 (data cell):</strong>
-
-flex containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
+| Name                | Value                                                                        | Initial                   | Applies to                 | Inh.                      | %ages                                            | Anim­ation type            | Canonical order | Com­puted value                                              |
+|---------------------|------------------------------------------------------------------------------|---------------------------|----------------------------|---------------------------|--------------------------------------------------|---------------------------|-----------------|-------------------------------------------------------------|
+| <strong><span><a id="ref-for-propdef-align-content①⑤"></a></span><a href="#propdef-align-content">align-content</a>&#xA;      </strong> | flex-start \| flex-end \| center \| space-between \| space-around \| stretch | stretch                   | multi-line flex containers | no                        | n/a                                              | discrete                  | per grammar     | specified keyword                                           |
+| <strong><span><a id="ref-for-propdef-align-items①⓪"></a></span><a href="#propdef-align-items">align-items</a>&#xA;      </strong> | flex-start \| flex-end \| center \| baseline \| stretch                      | stretch                   | flex containers            | no                        | n/a                                              | discrete                  | per grammar     | specified keyword                                           |
+| <strong><span><a id="ref-for-propdef-align-self③④"></a></span><a href="#propdef-align-self">align-self</a>&#xA;      </strong> | auto \| flex-start \| flex-end \| center \| baseline \| stretch              | auto                      | flex items                 | no                        | n/a                                              | discrete                  | per grammar     | specified keyword                                           |
+| <strong><span><a id="ref-for-propdef-flex④②"></a></span><a href="#propdef-flex">flex</a>&#xA;      </strong> | none \| \[ \<'flex-grow'\> \<'flex-shrink'\>? \|\| \<'flex-basis'\> \]       | 0 1 auto                  | flex items                 | no                        | see individual properties                        | by computed value type    | per grammar     | see individual properties                                   |
+| <strong><span><a id="ref-for-propdef-flex-basis②⑧"></a></span><a href="#propdef-flex-basis">flex-basis</a>&#xA;      </strong> | content \| \<'width'\>                                                       | auto                      | flex items                 | no                        | relative to the flex container’s inner main size | by computed value type    | per grammar     | specified keyword or a computed \<length-percentage\> value |
+| <strong><span><a id="ref-for-propdef-flex-direction①⓪"></a></span><a href="#propdef-flex-direction">flex-direction</a>&#xA;      </strong> | row \| row-reverse \| column \| column-reverse                               | row                       | flex containers            | no                        | n/a                                              | discrete                  | per grammar     | specified keyword                                           |
+| <strong><span><a id="ref-for-propdef-flex-flow①⓪"></a></span><a href="#propdef-flex-flow">flex-flow</a>&#xA;      </strong> | \<'flex-direction'\> \|\| \<'flex-wrap'\>                                    | see individual properties | see individual properties  | see individual properties | see individual properties                        | see individual properties | per grammar     | see individual properties                                   |
+| <strong><span><a id="ref-for-propdef-flex-grow②①"></a></span><a href="#propdef-flex-grow">flex-grow</a>&#xA;      </strong> | \<number \[0,∞\]\>                                                           | 0                         | flex items                 | no                        | n/a                                              | by computed value type    | per grammar     | specified number                                            |
+| <strong><span><a id="ref-for-propdef-flex-shrink⑧"></a></span><a href="#propdef-flex-shrink">flex-shrink</a>&#xA;      </strong> | \<number \[0,∞\]\>                                                           | 1                         | flex items                 | no                        | n/a                                              | number                    | per grammar     | specified value                                             |
+| <strong><span><a id="ref-for-propdef-flex-wrap①②"></a></span><a href="#propdef-flex-wrap">flex-wrap</a>&#xA;      </strong> | nowrap \| wrap \| wrap-reverse                                               | nowrap                    | flex containers            | no                        | n/a                                              | discrete                  | per grammar     | specified keyword                                           |
+| <strong><span><a id="ref-for-propdef-justify-content①⑤"></a></span><a href="#propdef-justify-content">justify-content</a>&#xA;      </strong> | flex-start \| flex-end \| center \| space-between \| space-around            | flex-start                | flex containers            | no                        | n/a                                              | discrete                  | per grammar     | specified keyword                                           |
 
 ## <a id="issues-index"></a>Issues Index
 

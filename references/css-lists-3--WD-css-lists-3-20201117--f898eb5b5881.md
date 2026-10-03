@@ -19,7 +19,8 @@ Snapshot SHA-256: f898eb5b58818862a598d23d225da2ca3a58396b7bb32c9515c2cc8e31470c
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 10 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 10 source tables are presented as readable Markdown tables or explicit labeled layouts: 9 ordinary table conversions, 1 complex-table layout. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 
@@ -411,107 +412,17 @@ Additionally, the UA may transform into spaces or discard any preserved [forced 
 
 ### <a id="image-markers"></a>3.3.  Image Markers: the [list-style-image](#propdef-list-style-image) property
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-list-style-image"></a>list-style-image
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one"></a>
-
-<a id="ref-for-typedef-image"></a>
-
-[\<image\>](https://www.w3.org/TR/css-images-3/#typedef-image) [\|](https://www.w3.org/TR/css-values-4/#comb-one) none
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-list-item①⓪"></a>
-
-[list items](#list-item)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-image①"></a>
-
-<a id="ref-for-valdef-list-style-image-none"></a>
-
-the keyword [none](#valdef-list-style-image-none)or the computed [\<image\>](https://www.w3.org/TR/css-images-3/#typedef-image)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                            |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-list-style-image"></a>list-style-image                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one"></a><a id="ref-for-typedef-image"></a>[\<image\>](https://www.w3.org/TR/css-images-3/#typedef-image) [\|](https://www.w3.org/TR/css-values-4/#comb-one) none          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                  |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-list-item①⓪"></a>[list items](#list-item)                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-typedef-image①"></a><a id="ref-for-valdef-list-style-image-none"></a>the keyword [none](#valdef-list-style-image-none)or the computed [\<image\>](https://www.w3.org/TR/css-images-3/#typedef-image) |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                              |
 
 <a id="ref-for-list-item①①"></a>
 
@@ -552,105 +463,17 @@ The element has no [marker image](#marker-image).
 
 ### <a id="text-markers"></a>3.4.  Text-based Markers: the [list-style-type](#propdef-list-style-type) property
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-list-style-type"></a>list-style-type
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-string-value"></a>
-
-<a id="ref-for-comb-one①"></a>
-
-<a id="ref-for-typedef-counter-style"></a>
-
-[\<counter-style\>](https://www.w3.org/TR/css-counter-styles-3/#typedef-counter-style) [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<string\>](https://www.w3.org/TR/css-values-3/#string-value) <a id="ref-for-comb-one②"></a>\| none
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-disc
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-list-item①②"></a>
-
-[list items](#list-item)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified value
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                                                                                   |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-list-style-type"></a>list-style-type                                                                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-string-value"></a><a id="ref-for-comb-one①"></a><a id="ref-for-typedef-counter-style"></a>[\<counter-style\>](https://www.w3.org/TR/css-counter-styles-3/#typedef-counter-style) [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<string\>](https://www.w3.org/TR/css-values-3/#string-value) <a id="ref-for-comb-one②"></a>\| none |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | disc                                                                                                                                                                                                                                                                                         |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-list-item①②"></a>[list items](#list-item)                                                                                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified value                                                                                                                                                                                                                                                                              |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                     |
 
 <a id="ref-for-list-item①③"></a>
 
@@ -739,101 +562,17 @@ The element has no [marker string](#marker-string).
 
 ### <a id="list-style-position-property"></a>3.5.  Positioning Markers: The [list-style-position](#propdef-list-style-position) property
 
-<strong>Table 3 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-list-style-position"></a>list-style-position
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one③"></a>
-
-inside [\|](https://www.w3.org/TR/css-values-4/#comb-one) outside
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-outside
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-list-item①④"></a>
-
-[list items](#list-item)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-keyword, but see prose
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                           |
+|---------------------|--------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-list-style-position"></a>list-style-position                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one③"></a>inside [\|](https://www.w3.org/TR/css-values-4/#comb-one) outside |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | outside                                                                              |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-list-item①④"></a>[list items](#list-item)                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | keyword, but see prose                                                               |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                          |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                             |
 
 <a id="ref-for-selectordef-marker①⑥"></a>
 
@@ -924,107 +663,17 @@ If the [list item](#list-item) is an [inline box](https://www.w3.org/TR/css-disp
 
 ### <a id="list-style-property"></a>3.6.  Styling Markers: the [list-style](#propdef-list-style) shorthand property
 
-<strong>Table 4 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-list-style"></a>list-style
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-list-style-type③"></a>
-
-<a id="ref-for-propdef-list-style-image③"></a>
-
-<a id="ref-for-comb-any"></a>
-
-<a id="ref-for-propdef-list-style-position①"></a>
-
-[\<'list-style-position'\>](#propdef-list-style-position) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<'list-style-image'\>](#propdef-list-style-image) <a id="ref-for-comb-any①"></a>\|\| [\<'list-style-type'\>](#propdef-list-style-type)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-list-item①⑨"></a>
-
-[list items](#list-item)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                                                                                                                                                                                                               |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-list-style"></a>list-style                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-propdef-list-style-type③"></a><a id="ref-for-propdef-list-style-image③"></a><a id="ref-for-comb-any"></a><a id="ref-for-propdef-list-style-position①"></a>[\<'list-style-position'\>](#propdef-list-style-position) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<'list-style-image'\>](#propdef-list-style-image) <a id="ref-for-comb-any①"></a>\|\| [\<'list-style-type'\>](#propdef-list-style-type) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-list-item①⑨"></a>[list items](#list-item)                                                                                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                              |
 
 <a id="ref-for-propdef-list-style①"></a>
 
@@ -1118,101 +767,17 @@ Using a value of none in the shorthand is potentially ambiguous, as none is a va
 
 ### <a id="marker-side"></a>3.7.  The [marker-side](#propdef-marker-side) property
 
-<strong>Table 5 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-marker-side"></a>marker-side
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one④"></a>
-
-match-self [\|](https://www.w3.org/TR/css-values-4/#comb-one) match-parent
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-match-self
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-list-item②⓪"></a>
-
-[list items](#list-item)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                    |
+|---------------------|-----------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-marker-side"></a>marker-side                                                                |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one④"></a>match-self [\|](https://www.w3.org/TR/css-values-4/#comb-one) match-parent |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | match-self                                                                                    |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-list-item②⓪"></a>[list items](#list-item)                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                             |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                   |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                      |
 
 <a id="ref-for-propdef-marker-side②"></a>
 
@@ -1261,25 +826,8 @@ The [marker box](#marker) is positioned using the directionality of the [::marke
 > </ul>
 > ```
 >
-> <strong>Table 6 — structured row/cell transcription</strong>
 >
-> <strong>Row 1</strong>
->
-> <strong>Column 1 (header cell):</strong>
->
-> <a id="ref-for-valdef-marker-side-match-self"></a>
->
-> [match-self](#valdef-marker-side-match-self)
->
-> <strong>Column 2 (header cell):</strong>
->
-> <a id="ref-for-valdef-marker-side-match-parent"></a>
->
-> [match-parent](#valdef-marker-side-match-parent)
->
-> <strong>Row 2</strong>
->
-> <strong>Column 1 (data cell):</strong>
+> <a id="ref-for-valdef-marker-side-match-self"></a>**[match-self](#valdef-marker-side-match-self)**
 >
 > ```text
 > * english one
@@ -1288,7 +836,7 @@ The [marker box](#marker) is positioned using the directionality of the [::marke
 >     RUOF WERBEH *
 > ```
 >
-> <strong>Column 2 (data cell):</strong>
+> <a id="ref-for-valdef-marker-side-match-parent"></a>**[match-parent](#valdef-marker-side-match-parent)**
 >
 > ```text
 > * english one
@@ -1296,6 +844,7 @@ The [marker box](#marker) is positioned using the directionality of the [::marke
 > * english three
 > *   RUOF WERBEH
 > ```
+>
 <a id="ref-for-propdef-direction①"></a>
 
 > <strong data-conversion-semantic="issue">Issue</strong>
@@ -1370,109 +919,17 @@ UAs may have implementation-specific limits on the maximum or minimum value of a
 
 ### <a id="counter-reset"></a>4.1.  Creating Counters: the [counter-reset](#propdef-counter-reset) property
 
-<strong>Table 7 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-counter-reset"></a>counter-reset
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one⑤"></a>
-
-<a id="ref-for-mult-one-plus"></a>
-
-<a id="ref-for-mult-opt"></a>
-
-<a id="ref-for-integer-value"></a>
-
-<a id="ref-for-typedef-counter-name③"></a>
-
-\[ [\<counter-name\>](#typedef-counter-name) [\<integer\>](https://www.w3.org/TR/css-values-3/#integer-value)[?](https://www.w3.org/TR/css-values-4/#mult-opt) \][+](https://www.w3.org/TR/css-values-4/#mult-one-plus) [\|](https://www.w3.org/TR/css-values-4/#comb-one) none
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-counter-reset-none①"></a>
-
-the keyword [none](#valdef-counter-reset-none) or a list, each item an identifier paired with an integer
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value type
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                     |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-counter-reset"></a>counter-reset                                                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one⑤"></a><a id="ref-for-mult-one-plus"></a><a id="ref-for-mult-opt"></a><a id="ref-for-integer-value"></a><a id="ref-for-typedef-counter-name③"></a>\[ [\<counter-name\>](#typedef-counter-name) [\<integer\>](https://www.w3.org/TR/css-values-3/#integer-value)[?](https://www.w3.org/TR/css-values-4/#mult-opt) \][+](https://www.w3.org/TR/css-values-4/#mult-one-plus) [\|](https://www.w3.org/TR/css-values-4/#comb-one) none |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                                                                                                                                                                                                           |
+| <strong>Applies to:&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-valdef-counter-reset-none①"></a>the keyword [none](#valdef-counter-reset-none) or a list, each item an identifier paired with an integer                                                                                                                                                                                                                                                    |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value type                                                                                                                                                                                                                                                                                                                                                         |
 
 User Agents are expected to support this property on all media, including non-visual ones.
 
@@ -1535,215 +992,31 @@ If multiple instances of the same [\<counter-name\>](#typedef-counter-name) occu
 
 ### <a id="increment-set"></a>4.2.  Manipulating Counter Values: the [counter-increment](#propdef-counter-increment) and [counter-set](#propdef-counter-set) properties
 
-<strong>Table 8 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-counter-increment"></a>counter-increment
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one⑥"></a>
-
-<a id="ref-for-mult-one-plus①"></a>
-
-<a id="ref-for-mult-opt①"></a>
-
-<a id="ref-for-integer-value③"></a>
-
-<a id="ref-for-typedef-counter-name⑦"></a>
-
-\[ [\<counter-name\>](#typedef-counter-name) [\<integer\>](https://www.w3.org/TR/css-values-3/#integer-value)[?](https://www.w3.org/TR/css-values-4/#mult-opt) \][+](https://www.w3.org/TR/css-values-4/#mult-one-plus) [\|](https://www.w3.org/TR/css-values-4/#comb-one) none
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-counter-reset-none②"></a>
-
-the keyword [none](#valdef-counter-reset-none) or a list, each item an identifier paired with an integer
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value type
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                     |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-counter-increment"></a>counter-increment                                                                                                                                                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one⑥"></a><a id="ref-for-mult-one-plus①"></a><a id="ref-for-mult-opt①"></a><a id="ref-for-integer-value③"></a><a id="ref-for-typedef-counter-name⑦"></a>\[ [\<counter-name\>](#typedef-counter-name) [\<integer\>](https://www.w3.org/TR/css-values-3/#integer-value)[?](https://www.w3.org/TR/css-values-4/#mult-opt) \][+](https://www.w3.org/TR/css-values-4/#mult-one-plus) [\|](https://www.w3.org/TR/css-values-4/#comb-one) none |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                                                                                                                                                                                                           |
+| <strong>Applies to:&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-valdef-counter-reset-none②"></a>the keyword [none](#valdef-counter-reset-none) or a list, each item an identifier paired with an integer                                                                                                                                                                                                                                                    |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value type                                                                                                                                                                                                                                                                                                                                                         |
 
 User Agents are expected to support this property on all media, including non-visual ones.
 
-<strong>Table 9 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-counter-set"></a>counter-set
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one⑦"></a>
-
-<a id="ref-for-mult-one-plus②"></a>
-
-<a id="ref-for-mult-opt②"></a>
-
-<a id="ref-for-integer-value④"></a>
-
-<a id="ref-for-typedef-counter-name⑧"></a>
-
-\[ [\<counter-name\>](#typedef-counter-name) [\<integer\>](https://www.w3.org/TR/css-values-3/#integer-value)[?](https://www.w3.org/TR/css-values-4/#mult-opt) \][+](https://www.w3.org/TR/css-values-4/#mult-one-plus) [\|](https://www.w3.org/TR/css-values-4/#comb-one) none
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-counter-reset-none③"></a>
-
-the keyword [none](#valdef-counter-reset-none) or a list, each item an identifier paired with an integer
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value type
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                     |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-counter-set"></a>counter-set                                                                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one⑦"></a><a id="ref-for-mult-one-plus②"></a><a id="ref-for-mult-opt②"></a><a id="ref-for-integer-value④"></a><a id="ref-for-typedef-counter-name⑧"></a>\[ [\<counter-name\>](#typedef-counter-name) [\<integer\>](https://www.w3.org/TR/css-values-3/#integer-value)[?](https://www.w3.org/TR/css-values-4/#mult-opt) \][+](https://www.w3.org/TR/css-values-4/#mult-one-plus) [\|](https://www.w3.org/TR/css-values-4/#comb-one) none |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                                                                                                                                                                                                           |
+| <strong>Applies to:&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-valdef-counter-reset-none③"></a>the keyword [none](#valdef-counter-reset-none) or a list, each item an identifier paired with an integer                                                                                                                                                                                                                                                    |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value type                                                                                                                                                                                                                                                                                                                                                         |
 
 User Agents are expected to support this property on all media, including non-visual ones.
 
@@ -2920,365 +2193,16 @@ David Baron; et al. [CSS Transitions](https://www.w3.org/TR/css-transitions-1/).
 
 ## <a id="property-index"></a>Property Index
 
-<strong>Table 10 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope col):</strong>
-
-Name
-
-<strong>Column 2 (header cell; scope col):</strong>
-
-Value
-
-<strong>Column 3 (header cell; scope col):</strong>
-
-Initial
-
-<strong>Column 4 (header cell; scope col):</strong>
-
-Applies to
-
-<strong>Column 5 (header cell; scope col):</strong>
-
-Inh.
-
-<strong>Column 6 (header cell; scope col):</strong>
-
-%ages
-
-<strong>Column 7 (header cell; scope col):</strong>
-
-Anim­ation type
-
-<strong>Column 8 (header cell; scope col):</strong>
-
-Canonical order
-
-<strong>Column 9 (header cell; scope col):</strong>
-
-Com­puted value
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-counter-increment①⑥"></a>
-
-[counter-increment](#propdef-counter-increment)
-
-<strong>Column 2 (data cell):</strong>
-
-\[ \<counter-name\> \<integer\>? \]+ \| none
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the keyword none or a list, each item an identifier paired with an integer
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-counter-reset⑥"></a>
-
-[counter-reset](#propdef-counter-reset)
-
-<strong>Column 2 (data cell):</strong>
-
-\[ \<counter-name\> \<integer\>? \]+ \| none
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the keyword none or a list, each item an identifier paired with an integer
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-counter-set①⓪"></a>
-
-[counter-set](#propdef-counter-set)
-
-<strong>Column 2 (data cell):</strong>
-
-\[ \<counter-name\> \<integer\>? \]+ \| none
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the keyword none or a list, each item an identifier paired with an integer
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-list-style⑥"></a>
-
-[list-style](#propdef-list-style)
-
-<strong>Column 2 (data cell):</strong>
-
-\<'list-style-position'\> \|\| \<'list-style-image'\> \|\| \<'list-style-type'\>
-
-<strong>Column 3 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 4 (data cell):</strong>
-
-list items
-
-<strong>Column 5 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 6 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 7 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-list-style-image⑥"></a>
-
-[list-style-image](#propdef-list-style-image)
-
-<strong>Column 2 (data cell):</strong>
-
-\<image\> \| none
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-list items
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the keyword noneor the computed \<image\>
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-list-style-position③"></a>
-
-[list-style-position](#propdef-list-style-position)
-
-<strong>Column 2 (data cell):</strong>
-
-inside \| outside
-
-<strong>Column 3 (data cell):</strong>
-
-outside
-
-<strong>Column 4 (data cell):</strong>
-
-list items
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-keyword, but see prose
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-list-style-type①①"></a>
-
-[list-style-type](#propdef-list-style-type)
-
-<strong>Column 2 (data cell):</strong>
-
-\<counter-style\> \| \<string\> \| none
-
-<strong>Column 3 (data cell):</strong>
-
-disc
-
-<strong>Column 4 (data cell):</strong>
-
-list items
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified value
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-marker-side⑤"></a>
-
-[marker-side](#propdef-marker-side)
-
-<strong>Column 2 (data cell):</strong>
-
-match-self \| match-parent
-
-<strong>Column 3 (data cell):</strong>
-
-match-self
-
-<strong>Column 4 (data cell):</strong>
-
-list items
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
+| Name                | Value                                                                            | Initial                   | Applies to   | Inh.                      | %ages                     | Anim­ation type            | Canonical order | Com­puted value                                                             |
+|---------------------|----------------------------------------------------------------------------------|---------------------------|--------------|---------------------------|---------------------------|---------------------------|-----------------|----------------------------------------------------------------------------|
+| <strong><span><a id="ref-for-propdef-counter-increment①⑥"></a></span><a href="#propdef-counter-increment">counter-increment</a>&#xA;      </strong> | \[ \<counter-name\> \<integer\>? \]+ \| none                                     | none                      | all elements | no                        | n/a                       | by computed value type    | per grammar     | the keyword none or a list, each item an identifier paired with an integer |
+| <strong><span><a id="ref-for-propdef-counter-reset⑥"></a></span><a href="#propdef-counter-reset">counter-reset</a>&#xA;      </strong> | \[ \<counter-name\> \<integer\>? \]+ \| none                                     | none                      | all elements | no                        | n/a                       | by computed value type    | per grammar     | the keyword none or a list, each item an identifier paired with an integer |
+| <strong><span><a id="ref-for-propdef-counter-set①⓪"></a></span><a href="#propdef-counter-set">counter-set</a>&#xA;      </strong> | \[ \<counter-name\> \<integer\>? \]+ \| none                                     | none                      | all elements | no                        | n/a                       | by computed value type    | per grammar     | the keyword none or a list, each item an identifier paired with an integer |
+| <strong><span><a id="ref-for-propdef-list-style⑥"></a></span><a href="#propdef-list-style">list-style</a>&#xA;      </strong> | \<'list-style-position'\> \|\| \<'list-style-image'\> \|\| \<'list-style-type'\> | see individual properties | list items   | see individual properties | see individual properties | see individual properties | per grammar     | see individual properties                                                  |
+| <strong><span><a id="ref-for-propdef-list-style-image⑥"></a></span><a href="#propdef-list-style-image">list-style-image</a>&#xA;      </strong> | \<image\> \| none                                                                | none                      | list items   | yes                       | n/a                       | discrete                  | per grammar     | the keyword noneor the computed \<image\>                                  |
+| <strong><span><a id="ref-for-propdef-list-style-position③"></a></span><a href="#propdef-list-style-position">list-style-position</a>&#xA;      </strong> | inside \| outside                                                                | outside                   | list items   | yes                       | n/a                       | discrete                  | per grammar     | keyword, but see prose                                                     |
+| <strong><span><a id="ref-for-propdef-list-style-type①①"></a></span><a href="#propdef-list-style-type">list-style-type</a>&#xA;      </strong> | \<counter-style\> \| \<string\> \| none                                          | disc                      | list items   | yes                       | n/a                       | discrete                  | per grammar     | specified value                                                            |
+| <strong><span><a id="ref-for-propdef-marker-side⑤"></a></span><a href="#propdef-marker-side">marker-side</a>&#xA;      </strong> | match-self \| match-parent                                                       | match-self                | list items   | yes                       | n/a                       | discrete                  | per grammar     | specified keyword                                                          |
 
 ## <a id="issues-index"></a>Issues Index
 

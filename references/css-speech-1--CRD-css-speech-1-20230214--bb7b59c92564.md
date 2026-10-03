@@ -19,7 +19,8 @@ Snapshot SHA-256: bb7b59c925640f089f19196a9d72f0c381bdcb10cec8ec411ba99cb9bc9b5c
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 17 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 17 source tables are presented as readable Markdown tables or explicit labeled layouts: 17 ordinary table conversions. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 - Existing external image/media URLs are resolved against the pinned source. Assets are not downloaded or availability-tested; image-only formulas/diagrams still require their source resources.
@@ -181,95 +182,16 @@ The following diagram illustrates the equivalence between properties of the visu
 
 ### <a id="mixing-props-voice-volume"></a>6.1.  The [voice-volume](#propdef-voice-volume) property
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-voice-volume"></a>voice-volume
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-voice-volume-decibel"></a>
-
-<a id="ref-for-comb-any"></a>
-
-<a id="ref-for-comb-one"></a>
-
-silent [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[\[x-soft <a id="ref-for-comb-one①"></a>\| soft <a id="ref-for-comb-one②"></a>\| medium <a id="ref-for-comb-one③"></a>\| loud <a id="ref-for-comb-one④"></a>\| x-loud\] [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<decibel\>](#typedef-voice-volume-decibel)\]
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-medium
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-voice-volume-silent"></a>
-
-[silent](#valdef-voice-volume-silent), or a keyword value and optionally also a decibel offset (if not zero)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                          |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-voice-volume"></a>voice-volume                                                                                                                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-voice-volume-decibel"></a><a id="ref-for-comb-any"></a><a id="ref-for-comb-one"></a>silent [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[\[x-soft <a id="ref-for-comb-one①"></a>\| soft <a id="ref-for-comb-one②"></a>\| medium <a id="ref-for-comb-one③"></a>\| loud <a id="ref-for-comb-one④"></a>\| x-loud\] [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<decibel\>](#typedef-voice-volume-decibel)\] |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | medium                                                                                                                                                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-valdef-voice-volume-silent"></a>[silent](#valdef-voice-volume-silent), or a keyword value and optionally also a decibel offset (if not zero)                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                         |
 
 <a id="ref-for-propdef-voice-volume①"></a>
 
@@ -345,91 +267,16 @@ The <a id="typedef-voice-volume-decibel"></a>[\<decibel\>](#typedef-voice-volume
 
 ### <a id="mixing-props-voice-balance"></a>6.2.  The [voice-balance](#propdef-voice-balance) property
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-voice-balance"></a>voice-balance
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one⑤"></a>
-
-<a id="ref-for-number-value"></a>
-
-[\<number\>](https://www.w3.org/TR/css-values-4/#number-value) [\|](https://www.w3.org/TR/css-values-4/#comb-one) left <a id="ref-for-comb-one⑥"></a>\| center <a id="ref-for-comb-one⑦"></a>\| right <a id="ref-for-comb-one⑧"></a>\| leftwards <a id="ref-for-comb-one⑨"></a>\| rightwards
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-center
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-the specified value resolved to a \<number\> between -100 and 100 (inclusive)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                                                                                                                                                                             |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-voice-balance"></a>voice-balance                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one⑤"></a><a id="ref-for-number-value"></a>[\<number\>](https://www.w3.org/TR/css-values-4/#number-value) [\|](https://www.w3.org/TR/css-values-4/#comb-one) left <a id="ref-for-comb-one⑥"></a>\| center <a id="ref-for-comb-one⑦"></a>\| right <a id="ref-for-comb-one⑧"></a>\| leftwards <a id="ref-for-comb-one⑨"></a>\| rightwards |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | center                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | the specified value resolved to a \<number\> between -100 and 100 (inclusive)                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                            |
 
 <a id="ref-for-propdef-voice-balance②"></a>
 
@@ -523,89 +370,16 @@ Future revisions of the CSS Speech module may include support for three-dimensio
 
 ### <a id="speaking-props-speak"></a>7.1.  The [speak](#propdef-speak) property
 
-<strong>Table 3 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-speak"></a>speak
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one①⓪"></a>
-
-auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) never <a id="ref-for-comb-one①①"></a>\| always
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified value
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                    |
+|---------------------|---------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-speak"></a>speak                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one①⓪"></a>auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) never <a id="ref-for-comb-one①①"></a>\| always |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified value                                                                                               |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                   |
 
 <a id="ref-for-propdef-speak③"></a>
 
@@ -672,91 +446,16 @@ The element is rendered aurally (regardless of its [display](https://www.w3.org/
 
 ### <a id="speaking-props-speak-as"></a>7.2.  The [speak-as](#propdef-speak-as) property
 
-<strong>Table 4 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-speak-as"></a>speak-as
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-any①"></a>
-
-<a id="ref-for-comb-one①②"></a>
-
-normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) spell-out [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) digits <a id="ref-for-comb-any②"></a>\|\| \[ literal-punctuation <a id="ref-for-comb-one①③"></a>\| no-punctuation \]
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-normal
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified value
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                                                                                                                                                   |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-speak-as"></a>speak-as                                                                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-any①"></a><a id="ref-for-comb-one①②"></a>normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) spell-out [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) digits <a id="ref-for-comb-any②"></a>\|\| \[ literal-punctuation <a id="ref-for-comb-one①③"></a>\| no-punctuation \] |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | normal                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified value                                                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                  |
 
 <a id="ref-for-propdef-speak-as①"></a>
 
@@ -795,89 +494,16 @@ Punctuation is not rendered: neither spoken nor rendered as pauses.
 
 ### <a id="pause-props-pause-before-after"></a>8.1.  The [pause-before](#propdef-pause-before) and [pause-after](#propdef-pause-after) properties
 
-<strong>Table 5 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-pause-before"></a>pause-before, <a id="propdef-pause-after"></a>pause-after
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one①④"></a>
-
-\<time\> [\|](https://www.w3.org/TR/css-values-4/#comb-one) none <a id="ref-for-comb-one①⑤"></a>\| x-weak <a id="ref-for-comb-one①⑥"></a>\| weak <a id="ref-for-comb-one①⑦"></a>\| medium <a id="ref-for-comb-one①⑧"></a>\| strong <a id="ref-for-comb-one①⑨"></a>\| x-strong
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified value
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                                                                                                                           |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-pause-before"></a>pause-before, <a id="propdef-pause-after"></a>pause-after                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one①④"></a>\<time\> [\|](https://www.w3.org/TR/css-values-4/#comb-one) none <a id="ref-for-comb-one①⑤"></a>\| x-weak <a id="ref-for-comb-one①⑥"></a>\| weak <a id="ref-for-comb-one①⑦"></a>\| medium <a id="ref-for-comb-one①⑧"></a>\| strong <a id="ref-for-comb-one①⑨"></a>\| x-strong |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified value                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                          |
 
 <a id="ref-for-propdef-pause-before①"></a>
 
@@ -926,93 +552,16 @@ Expresses the pause by the strength of the prosodic break in speech output. The 
 
 ### <a id="pause-props-pause"></a>8.2.  The [pause](#propdef-pause) shorthand property
 
-<strong>Table 6 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-pause"></a>pause
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-opt"></a>
-
-<a id="ref-for-propdef-pause-after②"></a>
-
-<a id="ref-for-propdef-pause-before②"></a>
-
-[\<'pause-before'\>](#propdef-pause-before) [\<'pause-after'\>](#propdef-pause-after)[?](https://www.w3.org/TR/css-values-4/#mult-opt)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A (see individual properties)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A (see individual properties)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                                                                                      |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-pause"></a>pause                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-opt"></a><a id="ref-for-propdef-pause-after②"></a><a id="ref-for-propdef-pause-before②"></a>[\<'pause-before'\>](#propdef-pause-before) [\<'pause-after'\>](#propdef-pause-after)[?](https://www.w3.org/TR/css-values-4/#mult-opt) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | N/A (see individual properties)                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | N/A (see individual properties)                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                     |
 
 <a id="ref-for-propdef-pause③"></a>
 
@@ -1097,91 +646,16 @@ A collapsed pause is considered adjoining to another pause if any of its compone
 
 ### <a id="rest-props-rest-before-after"></a>9.1.  The [rest-before](#propdef-rest-before) and [rest-after](#propdef-rest-after) properties
 
-<strong>Table 7 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-rest-before"></a>rest-before, <a id="propdef-rest-after"></a>rest-after
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one②⓪"></a>
-
-<a id="ref-for-time-value①"></a>
-
-[\<time\>](https://www.w3.org/TR/css-values-4/#time-value) [\|](https://www.w3.org/TR/css-values-4/#comb-one) none <a id="ref-for-comb-one②①"></a>\| x-weak <a id="ref-for-comb-one②②"></a>\| weak <a id="ref-for-comb-one②③"></a>\| medium <a id="ref-for-comb-one②④"></a>\| strong <a id="ref-for-comb-one②⑤"></a>\| x-strong
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified value
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                                                                                                                                                                                                |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-rest-before"></a>rest-before, <a id="propdef-rest-after"></a>rest-after                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one②⓪"></a><a id="ref-for-time-value①"></a>[\<time\>](https://www.w3.org/TR/css-values-4/#time-value) [\|](https://www.w3.org/TR/css-values-4/#comb-one) none <a id="ref-for-comb-one②①"></a>\| x-weak <a id="ref-for-comb-one②②"></a>\| weak <a id="ref-for-comb-one②③"></a>\| medium <a id="ref-for-comb-one②④"></a>\| strong <a id="ref-for-comb-one②⑤"></a>\| x-strong |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified value                                                                                                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                               |
 
 <a id="ref-for-propdef-rest-before③"></a>
 
@@ -1223,93 +697,16 @@ As opposed to [pause properties](#pause-props), the rest is inserted between the
 
 ### <a id="rest-props-rest"></a>9.2.  The [rest](#propdef-rest) shorthand property
 
-<strong>Table 8 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-rest"></a>rest
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-opt①"></a>
-
-<a id="ref-for-propdef-rest-after④"></a>
-
-<a id="ref-for-propdef-rest-before④"></a>
-
-[\<'rest-before'\>](#propdef-rest-before) [\<'rest-after'\>](#propdef-rest-after)[?](https://www.w3.org/TR/css-values-4/#mult-opt)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A (see individual properties)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A (see individual properties)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                                                                                  |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-rest"></a>rest                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-opt①"></a><a id="ref-for-propdef-rest-after④"></a><a id="ref-for-propdef-rest-before④"></a>[\<'rest-before'\>](#propdef-rest-before) [\<'rest-after'\>](#propdef-rest-after)[?](https://www.w3.org/TR/css-values-4/#mult-opt) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | N/A (see individual properties)                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | N/A (see individual properties)                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                 |
 
 <a id="ref-for-propdef-rest④"></a>
 
@@ -1327,95 +724,16 @@ The [rest](#propdef-rest) property is a shorthand for [rest-before](#propdef-res
 
 ### <a id="cue-props-cue-before-after"></a>10.1.  The [cue-before](#propdef-cue-before) and [cue-after](#propdef-cue-after) properties
 
-<strong>Table 9 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-cue-before"></a>cue-before, <a id="propdef-cue-after"></a>cue-after
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one②⑥"></a>
-
-<a id="ref-for-mult-opt②"></a>
-
-<a id="ref-for-typedef-voice-volume-decibel④"></a>
-
-<a id="ref-for-value-def-uri"></a>
-
-[\<uri\>](https://drafts.csswg.org/css2/#value-def-uri) [\<decibel\>](#typedef-voice-volume-decibel)[?](https://www.w3.org/TR/css-values-4/#mult-opt) [\|](https://www.w3.org/TR/css-values-4/#comb-one) none
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified value
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                                                                                                                                                                                |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-cue-before"></a>cue-before, <a id="propdef-cue-after"></a>cue-after                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one②⑥"></a><a id="ref-for-mult-opt②"></a><a id="ref-for-typedef-voice-volume-decibel④"></a><a id="ref-for-value-def-uri"></a>[\<uri\>](https://drafts.csswg.org/css2/#value-def-uri) [\<decibel\>](#typedef-voice-volume-decibel)[?](https://www.w3.org/TR/css-values-4/#mult-opt) [\|](https://www.w3.org/TR/css-values-4/#comb-one) none |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified value                                                                                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                               |
 
 <a id="ref-for-propdef-cue-before⑤"></a>
 
@@ -1510,93 +828,16 @@ Due to the complex relationship between perceived audio characteristics (e.g. lo
 
 ### <a id="cue-props-cue"></a>10.3.  The [cue](#propdef-cue) shorthand property
 
-<strong>Table 10 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-cue"></a>cue
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-opt③"></a>
-
-<a id="ref-for-propdef-cue-after⑥"></a>
-
-<a id="ref-for-propdef-cue-before⑥"></a>
-
-[\<'cue-before'\>](#propdef-cue-before) [\<'cue-after'\>](#propdef-cue-after)[?](https://www.w3.org/TR/css-values-4/#mult-opt)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A (see individual properties)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A (see individual properties)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                                                                              |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-cue"></a>cue                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-opt③"></a><a id="ref-for-propdef-cue-after⑥"></a><a id="ref-for-propdef-cue-before⑥"></a>[\<'cue-before'\>](#propdef-cue-before) [\<'cue-after'\>](#propdef-cue-after)[?](https://www.w3.org/TR/css-values-4/#mult-opt) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | N/A (see individual properties)                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | N/A (see individual properties)                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                             |
 
 <a id="ref-for-propdef-cue④"></a>
 
@@ -1630,93 +871,16 @@ The [cue](#propdef-cue) property is a shorthand for [cue-before](#propdef-cue-be
 
 ### <a id="voice-props-voice-family"></a>11.1.  The [voice-family](#propdef-voice-family) property
 
-<strong>Table 11 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-voice-family"></a>voice-family
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-zero-plus"></a>
-
-<a id="ref-for-comb-comma"></a>
-
-<a id="ref-for-comb-one②⑦"></a>
-
-\[\[\<family-name\> [\|](https://www.w3.org/TR/css-values-4/#comb-one) \<generic-voice\>\][,](https://www.w3.org/TR/css-values-4/#comb-comma)\][\*](https://www.w3.org/TR/css-values-4/#mult-zero-plus) \[\<family-name\> <a id="ref-for-comb-one②⑧"></a>\| \<generic-voice\>\] <a id="ref-for-comb-one②⑨"></a>\| preserve
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-implementation-dependent
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified value
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                  |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-voice-family"></a>voice-family                                                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-zero-plus"></a><a id="ref-for-comb-comma"></a><a id="ref-for-comb-one②⑦"></a>\[\[\<family-name\> [\|](https://www.w3.org/TR/css-values-4/#comb-one) \<generic-voice\>\][,](https://www.w3.org/TR/css-values-4/#comb-comma)\][\*](https://www.w3.org/TR/css-values-4/#mult-zero-plus) \[\<family-name\> <a id="ref-for-comb-one②⑧"></a>\| \<generic-voice\>\] <a id="ref-for-comb-one②⑨"></a>\| preserve |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | implementation-dependent                                                                                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified value                                                                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                 |
 
 <a id="ref-for-propdef-voice-family②"></a>
 
@@ -1887,93 +1051,16 @@ The speech synthesizer voice must be re-evaluated (i.e. the selection process mu
 
 ### <a id="voice-props-voice-rate"></a>11.2.  The [voice-rate](#propdef-voice-rate) property
 
-<strong>Table 12 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-voice-rate"></a>voice-rate
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-percentage-value"></a>
-
-<a id="ref-for-comb-any③"></a>
-
-<a id="ref-for-comb-one③⓪"></a>
-
-\[normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) x-slow <a id="ref-for-comb-one③①"></a>\| slow <a id="ref-for-comb-one③②"></a>\| medium <a id="ref-for-comb-one③③"></a>\| fast <a id="ref-for-comb-one③④"></a>\| x-fast\] [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<percentage\>](https://www.w3.org/TR/css-values-4/#percentage-value)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-normal
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-refer to default value
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-a keyword value, and optionally also a percentage relative to the keyword (if not 100%)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-voice-rate"></a>voice-rate                                                                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-percentage-value"></a><a id="ref-for-comb-any③"></a><a id="ref-for-comb-one③⓪"></a>\[normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) x-slow <a id="ref-for-comb-one③①"></a>\| slow <a id="ref-for-comb-one③②"></a>\| medium <a id="ref-for-comb-one③③"></a>\| fast <a id="ref-for-comb-one③④"></a>\| x-fast\] [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<percentage\>](https://www.w3.org/TR/css-values-4/#percentage-value) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | normal                                                                                                                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | refer to default value                                                                                                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | a keyword value, and optionally also a percentage relative to the keyword (if not 100%)                                                                                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                               |
 
 <a id="ref-for-propdef-voice-rate①"></a>
 
@@ -2041,99 +1128,16 @@ Only non-negative [percentage](https://www.w3.org/TR/css-values-4/#percentage) v
 
 ### <a id="voice-props-voice-pitch"></a>11.3.  The [voice-pitch](#propdef-voice-pitch) property
 
-<strong>Table 13 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-voice-pitch"></a>voice-pitch
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-percentage-value②"></a>
-
-<a id="ref-for-typedef-voice-pitch-semitones"></a>
-
-<a id="ref-for-comb-any④"></a>
-
-<a id="ref-for-comb-one③⑤"></a>
-
-<a id="ref-for-comb-all"></a>
-
-<a id="ref-for-frequency-value"></a>
-
-[\<frequency\>](https://www.w3.org/TR/css-values-4/#frequency-value) [&#x26;&#x26;](https://www.w3.org/TR/css-values-4/#comb-all) absolute [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[\[x-low <a id="ref-for-comb-one③⑥"></a>\| low <a id="ref-for-comb-one③⑦"></a>\| medium <a id="ref-for-comb-one③⑧"></a>\| high <a id="ref-for-comb-one③⑨"></a>\| x-high\] [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) \[<a id="ref-for-frequency-value①"></a>\<frequency\> <a id="ref-for-comb-one④⓪"></a>\| [\<semitones\>](#typedef-voice-pitch-semitones) <a id="ref-for-comb-one④①"></a>\| [\<percentage\>](https://www.w3.org/TR/css-values-4/#percentage-value)\]\]
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-medium
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-refer to inherited value
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-one of the predefined pitch keywords if only the keyword is specified by itself, otherwise an absolute frequency calculated by converting the keyword value (if any) to a fixed frequency based on the current voice-family and by applying the specified relative offset (if any)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-voice-pitch"></a>voice-pitch                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-percentage-value②"></a><a id="ref-for-typedef-voice-pitch-semitones"></a><a id="ref-for-comb-any④"></a><a id="ref-for-comb-one③⑤"></a><a id="ref-for-comb-all"></a><a id="ref-for-frequency-value"></a>[\<frequency\>](https://www.w3.org/TR/css-values-4/#frequency-value) [&#x26;&#x26;](https://www.w3.org/TR/css-values-4/#comb-all) absolute [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[\[x-low <a id="ref-for-comb-one③⑥"></a>\| low <a id="ref-for-comb-one③⑦"></a>\| medium <a id="ref-for-comb-one③⑧"></a>\| high <a id="ref-for-comb-one③⑨"></a>\| x-high\] [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) \[<a id="ref-for-frequency-value①"></a>\<frequency\> <a id="ref-for-comb-one④⓪"></a>\| [\<semitones\>](#typedef-voice-pitch-semitones) <a id="ref-for-comb-one④①"></a>\| [\<percentage\>](https://www.w3.org/TR/css-values-4/#percentage-value)\]\] |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | medium                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | refer to inherited value                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | one of the predefined pitch keywords if only the keyword is specified by itself, otherwise an absolute frequency calculated by converting the keyword value (if any) to a fixed frequency based on the current voice-family and by applying the specified relative offset (if any)                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
 <a id="ref-for-propdef-voice-pitch②"></a>
 
@@ -2204,99 +1208,16 @@ Computed absolute frequencies that are negative are clamped to zero Hertz. Speec
 
 ### <a id="voice-props-voice-range"></a>11.4.  The [voice-range](#propdef-voice-range) property
 
-<strong>Table 14 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-voice-range"></a>voice-range
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-percentage-value④"></a>
-
-<a id="ref-for-typedef-voice-pitch-semitones③"></a>
-
-<a id="ref-for-comb-any⑤"></a>
-
-<a id="ref-for-comb-one④②"></a>
-
-<a id="ref-for-comb-all①"></a>
-
-<a id="ref-for-frequency-value③"></a>
-
-[\<frequency\>](https://www.w3.org/TR/css-values-4/#frequency-value) [&#x26;&#x26;](https://www.w3.org/TR/css-values-4/#comb-all) absolute [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[\[x-low <a id="ref-for-comb-one④③"></a>\| low <a id="ref-for-comb-one④④"></a>\| medium <a id="ref-for-comb-one④⑤"></a>\| high <a id="ref-for-comb-one④⑥"></a>\| x-high\] [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) \[<a id="ref-for-frequency-value④"></a>\<frequency\> <a id="ref-for-comb-one④⑦"></a>\| [\<semitones\>](#typedef-voice-pitch-semitones) <a id="ref-for-comb-one④⑧"></a>\| [\<percentage\>](https://www.w3.org/TR/css-values-4/#percentage-value)\]\]
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-medium
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-refer to inherited value
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-one of the predefined pitch keywords if only the keyword is specified by itself, otherwise an absolute frequency calculated by converting the keyword value (if any) to a fixed frequency based on the current voice-family and by applying the specified relative offset (if any)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-voice-range"></a>voice-range                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-percentage-value④"></a><a id="ref-for-typedef-voice-pitch-semitones③"></a><a id="ref-for-comb-any⑤"></a><a id="ref-for-comb-one④②"></a><a id="ref-for-comb-all①"></a><a id="ref-for-frequency-value③"></a>[\<frequency\>](https://www.w3.org/TR/css-values-4/#frequency-value) [&#x26;&#x26;](https://www.w3.org/TR/css-values-4/#comb-all) absolute [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[\[x-low <a id="ref-for-comb-one④③"></a>\| low <a id="ref-for-comb-one④④"></a>\| medium <a id="ref-for-comb-one④⑤"></a>\| high <a id="ref-for-comb-one④⑥"></a>\| x-high\] [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) \[<a id="ref-for-frequency-value④"></a>\<frequency\> <a id="ref-for-comb-one④⑦"></a>\| [\<semitones\>](#typedef-voice-pitch-semitones) <a id="ref-for-comb-one④⑧"></a>\| [\<percentage\>](https://www.w3.org/TR/css-values-4/#percentage-value)\]\] |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | medium                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | refer to inherited value                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | one of the predefined pitch keywords if only the keyword is specified by itself, otherwise an absolute frequency calculated by converting the keyword value (if any) to a fixed frequency based on the current voice-family and by applying the specified relative offset (if any)                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
 <a id="ref-for-propdef-voice-range②"></a>
 
@@ -2412,89 +1333,16 @@ Computed absolute frequencies that are negative are clamped to zero Hertz. Speec
 
 ### <a id="voice-props-voice-stress"></a>11.5.  The [voice-stress](#propdef-voice-stress) property
 
-<strong>Table 15 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-voice-stress"></a>voice-stress
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one④⑨"></a>
-
-normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) strong <a id="ref-for-comb-one⑤⓪"></a>\| moderate <a id="ref-for-comb-one⑤①"></a>\| none <a id="ref-for-comb-one⑤②"></a>\| reduced
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-normal
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified value
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                                                                  |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-voice-stress"></a>voice-stress                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one④⑨"></a>normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) strong <a id="ref-for-comb-one⑤⓪"></a>\| moderate <a id="ref-for-comb-one⑤①"></a>\| none <a id="ref-for-comb-one⑤②"></a>\| reduced |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | normal                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified value                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                 |
 
 <a id="ref-for-propdef-voice-stress②"></a>
 
@@ -2551,89 +1399,16 @@ Effectively the opposite of emphasizing a word.
 
 ### <a id="mixing-props-voice-duration"></a>12.1.  The [voice-duration](#propdef-voice-duration) property
 
-<strong>Table 16 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-voice-duration"></a>voice-duration
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one⑤③"></a>
-
-auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) \<time\>
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified value
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                          |
+|---------------------|-------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-voice-duration"></a>voice-duration                                                   |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one⑤③"></a>auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) \<time\> |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified value                                                                     |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                         |
 
 <a id="ref-for-propdef-voice-duration③"></a>
 
@@ -3169,722 +1944,25 @@ Daniel Burnett; et al. [SSML 1.0 say-as attribute values](https://www.w3.org/TR/
 
 ## <a id="property-index"></a>Property Index
 
-<strong>Table 17 — structured row/cell transcription</strong>
+| Name                | Value                                                                                                                                                               | Initial                         | Applies to   | Inh. | %ages                    | Canonical order | Com­puted value                                                                                                                                                                                                                                                                     |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------|--------------|------|--------------------------|-----------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong><span><a id="ref-for-propdef-cue⑤"></a></span><a href="#propdef-cue">cue</a>&#xA;      </strong> | \<'cue-before'\> \<'cue-after'\>?                                                                                                                                   | N/A (see individual properties) | all elements | no   | N/A                      | per grammar     | N/A (see individual properties)                                                                                                                                                                                                                                                    |
+| <strong><span><a id="ref-for-propdef-cue-after⑨"></a></span><a href="#propdef-cue-after">cue-after</a>&#xA;      </strong> | \<uri\> \<decibel\>? \| none                                                                                                                                        | none                            | all elements | no   | N/A                      | per grammar     | specified value                                                                                                                                                                                                                                                                    |
+| <strong><span><a id="ref-for-propdef-cue-before⑨"></a></span><a href="#propdef-cue-before">cue-before</a>&#xA;      </strong> | \<uri\> \<decibel\>? \| none                                                                                                                                        | none                            | all elements | no   | N/A                      | per grammar     | specified value                                                                                                                                                                                                                                                                    |
+| <strong><span><a id="ref-for-propdef-pause⑤"></a></span><a href="#propdef-pause">pause</a>&#xA;      </strong> | \<'pause-before'\> \<'pause-after'\>?                                                                                                                               | N/A (see individual properties) | all elements | no   | N/A                      | per grammar     | N/A (see individual properties)                                                                                                                                                                                                                                                    |
+| <strong><span><a id="ref-for-propdef-pause-after⑨"></a></span><a href="#propdef-pause-after">pause-after</a>&#xA;      </strong> | \<time\> \| none \| x-weak \| weak \| medium \| strong \| x-strong                                                                                                  | none                            | all elements | no   | N/A                      | per grammar     | specified value                                                                                                                                                                                                                                                                    |
+| <strong><span><a id="ref-for-propdef-pause-before⑨"></a></span><a href="#propdef-pause-before">pause-before</a>&#xA;      </strong> | \<time\> \| none \| x-weak \| weak \| medium \| strong \| x-strong                                                                                                  | none                            | all elements | no   | N/A                      | per grammar     | specified value                                                                                                                                                                                                                                                                    |
+| <strong><span><a id="ref-for-propdef-rest⑤"></a></span><a href="#propdef-rest">rest</a>&#xA;      </strong> | \<'rest-before'\> \<'rest-after'\>?                                                                                                                                 | N/A (see individual properties) | all elements | no   | N/A                      | per grammar     | N/A (see individual properties)                                                                                                                                                                                                                                                    |
+| <strong><span><a id="ref-for-propdef-rest-after⑦"></a></span><a href="#propdef-rest-after">rest-after</a>&#xA;      </strong> | \<time\> \| none \| x-weak \| weak \| medium \| strong \| x-strong                                                                                                  | none                            | all elements | no   | N/A                      | per grammar     | specified value                                                                                                                                                                                                                                                                    |
+| <strong><span><a id="ref-for-propdef-rest-before⑦"></a></span><a href="#propdef-rest-before">rest-before</a>&#xA;      </strong> | \<time\> \| none \| x-weak \| weak \| medium \| strong \| x-strong                                                                                                  | none                            | all elements | no   | N/A                      | per grammar     | specified value                                                                                                                                                                                                                                                                    |
+| <strong><span><a id="ref-for-propdef-speak⑨"></a></span><a href="#propdef-speak">speak</a>&#xA;      </strong> | auto \| never \| always                                                                                                                                             | auto                            | all elements | yes  | N/A                      | per grammar     | specified value                                                                                                                                                                                                                                                                    |
+| <strong><span><a id="ref-for-propdef-speak-as③"></a></span><a href="#propdef-speak-as">speak-as</a>&#xA;      </strong> | normal \| spell-out \|\| digits \|\| \[ literal-punctuation \| no-punctuation \]                                                                                    | normal                          | all elements | yes  | N/A                      | per grammar     | specified value                                                                                                                                                                                                                                                                    |
+| <strong><span><a id="ref-for-propdef-voice-balance①②"></a></span><a href="#propdef-voice-balance">voice-balance</a>&#xA;      </strong> | \<number\> \| left \| center \| right \| leftwards \| rightwards                                                                                                    | center                          | all elements | yes  | N/A                      | per grammar     | the specified value resolved to a \<number\> between -100 and 100 (inclusive)                                                                                                                                                                                                      |
+| <strong><span><a id="ref-for-propdef-voice-duration⑦"></a></span><a href="#propdef-voice-duration">voice-duration</a>&#xA;      </strong> | auto \| \<time\>                                                                                                                                                    | auto                            | all elements | no   | N/A                      | per grammar     | specified value                                                                                                                                                                                                                                                                    |
+| <strong><span><a id="ref-for-propdef-voice-family⑨"></a></span><a href="#propdef-voice-family">voice-family</a>&#xA;      </strong> | \[\[\<family-name\> \| \<generic-voice\>\],\]\* \[\<family-name\> \| \<generic-voice\>\] \| preserve                                                                | implementation-dependent        | all elements | yes  | N/A                      | per grammar     | specified value                                                                                                                                                                                                                                                                    |
+| <strong><span><a id="ref-for-propdef-voice-pitch③"></a></span><a href="#propdef-voice-pitch">voice-pitch</a>&#xA;      </strong> | \<frequency\> &#x26;&#x26; absolute \| \[\[x-low \| low \| medium \| high \| x-high\] \|\| \[\<frequency\> \| \<semitones\> \| \<percentage\>\]\] | medium                          | all elements | yes  | refer to inherited value | per grammar     | one of the predefined pitch keywords if only the keyword is specified by itself, otherwise an absolute frequency calculated by converting the keyword value (if any) to a fixed frequency based on the current voice-family and by applying the specified relative offset (if any) |
+| <strong><span><a id="ref-for-propdef-voice-range③"></a></span><a href="#propdef-voice-range">voice-range</a>&#xA;      </strong> | \<frequency\> &#x26;&#x26; absolute \| \[\[x-low \| low \| medium \| high \| x-high\] \|\| \[\<frequency\> \| \<semitones\> \| \<percentage\>\]\] | medium                          | all elements | yes  | refer to inherited value | per grammar     | one of the predefined pitch keywords if only the keyword is specified by itself, otherwise an absolute frequency calculated by converting the keyword value (if any) to a fixed frequency based on the current voice-family and by applying the specified relative offset (if any) |
+| <strong><span><a id="ref-for-propdef-voice-rate⑤"></a></span><a href="#propdef-voice-rate">voice-rate</a>&#xA;      </strong> | \[normal \| x-slow \| slow \| medium \| fast \| x-fast\] \|\| \<percentage\>                                                                                        | normal                          | all elements | yes  | refer to default value   | per grammar     | a keyword value, and optionally also a percentage relative to the keyword (if not 100%)                                                                                                                                                                                            |
+| <strong><span><a id="ref-for-propdef-voice-stress③"></a></span><a href="#propdef-voice-stress">voice-stress</a>&#xA;      </strong> | normal \| strong \| moderate \| none \| reduced                                                                                                                     | normal                          | all elements | yes  | N/A                      | per grammar     | specified value                                                                                                                                                                                                                                                                    |
+| <strong><span><a id="ref-for-propdef-voice-volume①⑤"></a></span><a href="#propdef-voice-volume">voice-volume</a>&#xA;      </strong> | silent \| \[\[x-soft \| soft \| medium \| loud \| x-loud\] \|\| \<decibel\>\]                                                                                       | medium                          | all elements | yes  | N/A                      | per grammar     | silent, or a keyword value and optionally also a decibel offset (if not zero)                                                                                                                                                                                                      |
 
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope col):</strong>
-
-Name
-
-<strong>Column 2 (header cell; scope col):</strong>
-
-Value
-
-<strong>Column 3 (header cell; scope col):</strong>
-
-Initial
-
-<strong>Column 4 (header cell; scope col):</strong>
-
-Applies to
-
-<strong>Column 5 (header cell; scope col):</strong>
-
-Inh.
-
-<strong>Column 6 (header cell; scope col):</strong>
-
-%ages
-
-<strong>Column 7 (header cell; scope col):</strong>
-
-Canonical order
-
-<strong>Column 8 (header cell; scope col):</strong>
-
-Com­puted value
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-cue⑤"></a>
-
-[cue](#propdef-cue)
-
-<strong>Column 2 (data cell):</strong>
-
-\<'cue-before'\> \<'cue-after'\>?
-
-<strong>Column 3 (data cell):</strong>
-
-N/A (see individual properties)
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-per grammar
-
-<strong>Column 8 (data cell):</strong>
-
-N/A (see individual properties)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-cue-after⑨"></a>
-
-[cue-after](#propdef-cue-after)
-
-<strong>Column 2 (data cell):</strong>
-
-\<uri\> \<decibel\>? \| none
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-per grammar
-
-<strong>Column 8 (data cell):</strong>
-
-specified value
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-cue-before⑨"></a>
-
-[cue-before](#propdef-cue-before)
-
-<strong>Column 2 (data cell):</strong>
-
-\<uri\> \<decibel\>? \| none
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-per grammar
-
-<strong>Column 8 (data cell):</strong>
-
-specified value
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-pause⑤"></a>
-
-[pause](#propdef-pause)
-
-<strong>Column 2 (data cell):</strong>
-
-\<'pause-before'\> \<'pause-after'\>?
-
-<strong>Column 3 (data cell):</strong>
-
-N/A (see individual properties)
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-per grammar
-
-<strong>Column 8 (data cell):</strong>
-
-N/A (see individual properties)
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-pause-after⑨"></a>
-
-[pause-after](#propdef-pause-after)
-
-<strong>Column 2 (data cell):</strong>
-
-\<time\> \| none \| x-weak \| weak \| medium \| strong \| x-strong
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-per grammar
-
-<strong>Column 8 (data cell):</strong>
-
-specified value
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-pause-before⑨"></a>
-
-[pause-before](#propdef-pause-before)
-
-<strong>Column 2 (data cell):</strong>
-
-\<time\> \| none \| x-weak \| weak \| medium \| strong \| x-strong
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-per grammar
-
-<strong>Column 8 (data cell):</strong>
-
-specified value
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-rest⑤"></a>
-
-[rest](#propdef-rest)
-
-<strong>Column 2 (data cell):</strong>
-
-\<'rest-before'\> \<'rest-after'\>?
-
-<strong>Column 3 (data cell):</strong>
-
-N/A (see individual properties)
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-per grammar
-
-<strong>Column 8 (data cell):</strong>
-
-N/A (see individual properties)
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-rest-after⑦"></a>
-
-[rest-after](#propdef-rest-after)
-
-<strong>Column 2 (data cell):</strong>
-
-\<time\> \| none \| x-weak \| weak \| medium \| strong \| x-strong
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-per grammar
-
-<strong>Column 8 (data cell):</strong>
-
-specified value
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-rest-before⑦"></a>
-
-[rest-before](#propdef-rest-before)
-
-<strong>Column 2 (data cell):</strong>
-
-\<time\> \| none \| x-weak \| weak \| medium \| strong \| x-strong
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-per grammar
-
-<strong>Column 8 (data cell):</strong>
-
-specified value
-
-<strong>Row 11</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-speak⑨"></a>
-
-[speak](#propdef-speak)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| never \| always
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-per grammar
-
-<strong>Column 8 (data cell):</strong>
-
-specified value
-
-<strong>Row 12</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-speak-as③"></a>
-
-[speak-as](#propdef-speak-as)
-
-<strong>Column 2 (data cell):</strong>
-
-normal \| spell-out \|\| digits \|\| \[ literal-punctuation \| no-punctuation \]
-
-<strong>Column 3 (data cell):</strong>
-
-normal
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-per grammar
-
-<strong>Column 8 (data cell):</strong>
-
-specified value
-
-<strong>Row 13</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-voice-balance①②"></a>
-
-[voice-balance](#propdef-voice-balance)
-
-<strong>Column 2 (data cell):</strong>
-
-\<number\> \| left \| center \| right \| leftwards \| rightwards
-
-<strong>Column 3 (data cell):</strong>
-
-center
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-per grammar
-
-<strong>Column 8 (data cell):</strong>
-
-the specified value resolved to a \<number\> between -100 and 100 (inclusive)
-
-<strong>Row 14</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-voice-duration⑦"></a>
-
-[voice-duration](#propdef-voice-duration)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| \<time\>
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-per grammar
-
-<strong>Column 8 (data cell):</strong>
-
-specified value
-
-<strong>Row 15</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-voice-family⑨"></a>
-
-[voice-family](#propdef-voice-family)
-
-<strong>Column 2 (data cell):</strong>
-
-\[\[\<family-name\> \| \<generic-voice\>\],\]\* \[\<family-name\> \| \<generic-voice\>\] \| preserve
-
-<strong>Column 3 (data cell):</strong>
-
-implementation-dependent
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-per grammar
-
-<strong>Column 8 (data cell):</strong>
-
-specified value
-
-<strong>Row 16</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-voice-pitch③"></a>
-
-[voice-pitch](#propdef-voice-pitch)
-
-<strong>Column 2 (data cell):</strong>
-
-\<frequency\> &#x26;&#x26; absolute \| \[\[x-low \| low \| medium \| high \| x-high\] \|\| \[\<frequency\> \| \<semitones\> \| \<percentage\>\]\]
-
-<strong>Column 3 (data cell):</strong>
-
-medium
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-refer to inherited value
-
-<strong>Column 7 (data cell):</strong>
-
-per grammar
-
-<strong>Column 8 (data cell):</strong>
-
-one of the predefined pitch keywords if only the keyword is specified by itself, otherwise an absolute frequency calculated by converting the keyword value (if any) to a fixed frequency based on the current voice-family and by applying the specified relative offset (if any)
-
-<strong>Row 17</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-voice-range③"></a>
-
-[voice-range](#propdef-voice-range)
-
-<strong>Column 2 (data cell):</strong>
-
-\<frequency\> &#x26;&#x26; absolute \| \[\[x-low \| low \| medium \| high \| x-high\] \|\| \[\<frequency\> \| \<semitones\> \| \<percentage\>\]\]
-
-<strong>Column 3 (data cell):</strong>
-
-medium
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-refer to inherited value
-
-<strong>Column 7 (data cell):</strong>
-
-per grammar
-
-<strong>Column 8 (data cell):</strong>
-
-one of the predefined pitch keywords if only the keyword is specified by itself, otherwise an absolute frequency calculated by converting the keyword value (if any) to a fixed frequency based on the current voice-family and by applying the specified relative offset (if any)
-
-<strong>Row 18</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-voice-rate⑤"></a>
-
-[voice-rate](#propdef-voice-rate)
-
-<strong>Column 2 (data cell):</strong>
-
-\[normal \| x-slow \| slow \| medium \| fast \| x-fast\] \|\| \<percentage\>
-
-<strong>Column 3 (data cell):</strong>
-
-normal
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-refer to default value
-
-<strong>Column 7 (data cell):</strong>
-
-per grammar
-
-<strong>Column 8 (data cell):</strong>
-
-a keyword value, and optionally also a percentage relative to the keyword (if not 100%)
-
-<strong>Row 19</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-voice-stress③"></a>
-
-[voice-stress](#propdef-voice-stress)
-
-<strong>Column 2 (data cell):</strong>
-
-normal \| strong \| moderate \| none \| reduced
-
-<strong>Column 3 (data cell):</strong>
-
-normal
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-per grammar
-
-<strong>Column 8 (data cell):</strong>
-
-specified value
-
-<strong>Row 20</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-voice-volume①⑤"></a>
-
-[voice-volume](#propdef-voice-volume)
-
-<strong>Column 2 (data cell):</strong>
-
-silent \| \[\[x-soft \| soft \| medium \| loud \| x-loud\] \|\| \<decibel\>\]
-
-<strong>Column 3 (data cell):</strong>
-
-medium
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-per grammar
-
-<strong>Column 8 (data cell):</strong>
-
-silent, or a keyword value and optionally also a decibel offset (if not zero)

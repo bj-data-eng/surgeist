@@ -19,7 +19,8 @@ Snapshot SHA-256: f1ada25106706968fc7b12ecb83bebc437de6ef309ee9dce1d990bd5fe8eea
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 8 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 8 source tables are presented as readable Markdown tables or explicit labeled layouts: 8 ordinary table conversions. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 - Existing external image/media URLs are resolved against the pinned source. Assets are not downloaded or availability-tested; image-only formulas/diagrams still require their source resources.
@@ -788,115 +789,17 @@ If <var>w</var> \< 0 for one to three corners of the transformed box, the box mu
 
 The [translate](#propdef-translate), [rotate](#propdef-rotate), and [scale](#propdef-scale) properties allow authors to specify simple transforms independently, in a way that maps to typical user interface usage, rather than having to remember the order in [transform](https://www.w3.org/TR/css-transforms-1/#propdef-transform) that keeps the actions of [translate()](https://www.w3.org/TR/css-transforms-1/#funcdef-transform-translate), [rotate()](https://www.w3.org/TR/css-transforms-1/#funcdef-transform-rotate) and [scale()](#funcdef-scale) independent and acting in screen coordinates.
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-translate"></a>translate
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-opt"></a>
-
-<a id="ref-for-length-value"></a>
-
-<a id="ref-for-typedef-length-percentage"></a>
-
-<a id="ref-for-comb-one"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) \[ <a id="ref-for-typedef-length-percentage①"></a>\<length-percentage\> [\<length\>](https://www.w3.org/TR/css-values-4/#length-value)[?](https://www.w3.org/TR/css-values-4/#mult-opt) \]<a id="ref-for-mult-opt①"></a>?
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-transformable-element①"></a>
-
-[transformable elements](https://www.w3.org/TR/css-transforms-1/#transformable-element)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-reference-box"></a>
-
-relative to the width of the [reference box](https://www.w3.org/TR/css-transforms-1/#reference-box) (for the first value) or the height (for the second value)
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-length-percentage②"></a>
-
-<a id="ref-for-valdef-translate-none"></a>
-
-the keyword [none](#valdef-translate-none) or a pair of computed [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) values and an absolute length
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-translate-none①"></a>
-
-by computed value, but see below for [none](#valdef-translate-none)
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                    |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-translate"></a>translate                                                                                                                                                                                                                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-opt"></a><a id="ref-for-length-value"></a><a id="ref-for-typedef-length-percentage"></a><a id="ref-for-comb-one"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) \[ <a id="ref-for-typedef-length-percentage①"></a>\<length-percentage\> [\<length\>](https://www.w3.org/TR/css-values-4/#length-value)[?](https://www.w3.org/TR/css-values-4/#mult-opt) \]<a id="ref-for-mult-opt①"></a>? |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-transformable-element①"></a>[transformable elements](https://www.w3.org/TR/css-transforms-1/#transformable-element)                                                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | <a id="ref-for-reference-box"></a>relative to the width of the [reference box](https://www.w3.org/TR/css-transforms-1/#reference-box) (for the first value) or the height (for the second value)                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-typedef-length-percentage②"></a><a id="ref-for-valdef-translate-none"></a>the keyword [none](#valdef-translate-none) or a pair of computed [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) values and an absolute length                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | <a id="ref-for-valdef-translate-none①"></a>by computed value, but see below for [none](#valdef-translate-none)                                                                                                                                                                                                                                                                                                                        |
 
 <a id="ref-for-propdef-translate③"></a>
 
@@ -920,117 +823,17 @@ If the third value is omitted or zero, this specifies a 2d translation, equivale
 >
 > Note: The [resolved value](https://www.w3.org/TR/cssom-1/#resolved-value) of the [translate](#propdef-translate) property is the [computed value](https://www.w3.org/TR/css-cascade-5/#computed-value), and thus <code><a href="https://www.w3.org/TR/cssom-1/#dom-window-getcomputedstyle">getComputedStyle()</a></code> includes percentage values in its results.
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-rotate"></a>rotate
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-all"></a>
-
-<a id="ref-for-mult-num"></a>
-
-<a id="ref-for-number-value"></a>
-
-<a id="ref-for-angle-value"></a>
-
-<a id="ref-for-comb-one①"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<angle\>](https://www.w3.org/TR/css-values-4/#angle-value) <a id="ref-for-comb-one②"></a>\| \[ x <a id="ref-for-comb-one③"></a>\| y <a id="ref-for-comb-one④"></a>\| z <a id="ref-for-comb-one⑤"></a>\| [\<number\>](https://www.w3.org/TR/css-values-4/#number-value)[{3}](https://www.w3.org/TR/css-values-4/#mult-num) \] [&#x26;&#x26;](https://www.w3.org/TR/css-values-4/#comb-all) <a id="ref-for-angle-value①"></a>\<angle\>
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-transformable-element②"></a>
-
-[transformable elements](https://www.w3.org/TR/css-transforms-1/#transformable-element)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-number-value①"></a>
-
-<a id="ref-for-angle-value②"></a>
-
-<a id="ref-for-valdef-translate-none②"></a>
-
-the keyword [none](#valdef-translate-none), or an [\<angle\>](https://www.w3.org/TR/css-values-4/#angle-value) with an axis consisting of a list of three [\<number\>](https://www.w3.org/TR/css-values-4/#number-value)s
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-translate-none③"></a>
-
-as SLERP, but see below for [none](#valdef-translate-none)
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-rotate"></a>rotate                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-all"></a><a id="ref-for-mult-num"></a><a id="ref-for-number-value"></a><a id="ref-for-angle-value"></a><a id="ref-for-comb-one①"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<angle\>](https://www.w3.org/TR/css-values-4/#angle-value) <a id="ref-for-comb-one②"></a>\| \[ x <a id="ref-for-comb-one③"></a>\| y <a id="ref-for-comb-one④"></a>\| z <a id="ref-for-comb-one⑤"></a>\| [\<number\>](https://www.w3.org/TR/css-values-4/#number-value)[{3}](https://www.w3.org/TR/css-values-4/#mult-num) \] [&#x26;&#x26;](https://www.w3.org/TR/css-values-4/#comb-all) <a id="ref-for-angle-value①"></a>\<angle\> |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-transformable-element②"></a>[transformable elements](https://www.w3.org/TR/css-transforms-1/#transformable-element)                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-number-value①"></a><a id="ref-for-angle-value②"></a><a id="ref-for-valdef-translate-none②"></a>the keyword [none](#valdef-translate-none), or an [\<angle\>](https://www.w3.org/TR/css-values-4/#angle-value) with an axis consisting of a list of three [\<number\>](https://www.w3.org/TR/css-values-4/#number-value)s                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | <a id="ref-for-valdef-translate-none③"></a>as SLERP, but see below for [none](#valdef-translate-none)                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 
 <a id="ref-for-propdef-rotate③"></a>
 
@@ -1056,113 +859,17 @@ The axis can be specified with either the <a id="valdef-rotate-x"></a>x, <a id="
 
 There is no difference in behavior between a rotation specified as an [\<angle\>](https://www.w3.org/TR/css-values-4/#angle-value) alone and a rotation specified as being around the z-axis (whether by the [z](#valdef-rotate-z) keyword or by a vector whose first two components are zero and third component is positive); they are all 2d rotations equivalent to the [rotate()](https://www.w3.org/TR/css-transforms-1/#funcdef-transform-rotate) function. For example, [rotate: 30deg](#propdef-rotate), <a id="ref-for-propdef-rotate⑤"></a>rotate: z 30deg, and <a id="ref-for-propdef-rotate⑥"></a>rotate: 0 0 1 30deg are equivalent.
 
-<strong>Table 3 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-scale"></a>scale
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-num-range"></a>
-
-<a id="ref-for-percentage-value"></a>
-
-<a id="ref-for-number-value②"></a>
-
-<a id="ref-for-comb-one⑥"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[ [\<number\>](https://www.w3.org/TR/css-values-4/#number-value) <a id="ref-for-comb-one⑦"></a>\| [\<percentage\>](https://www.w3.org/TR/css-values-4/#percentage-value) \][{1,3}](https://www.w3.org/TR/css-values-4/#mult-num-range)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-transformable-element③"></a>
-
-[transformable elements](https://www.w3.org/TR/css-transforms-1/#transformable-element)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-number-value③"></a>
-
-<a id="ref-for-valdef-translate-none④"></a>
-
-the keyword [none](#valdef-translate-none), or a list of 3 [\<number\>](https://www.w3.org/TR/css-values-4/#number-value)s
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-translate-none⑤"></a>
-
-by computed value, but see below for [none](#valdef-translate-none)
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                       |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-scale"></a>scale                                                                                                                                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-num-range"></a><a id="ref-for-percentage-value"></a><a id="ref-for-number-value②"></a><a id="ref-for-comb-one⑥"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[ [\<number\>](https://www.w3.org/TR/css-values-4/#number-value) <a id="ref-for-comb-one⑦"></a>\| [\<percentage\>](https://www.w3.org/TR/css-values-4/#percentage-value) \][{1,3}](https://www.w3.org/TR/css-values-4/#mult-num-range) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-transformable-element③"></a>[transformable elements](https://www.w3.org/TR/css-transforms-1/#transformable-element)                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-number-value③"></a><a id="ref-for-valdef-translate-none④"></a>the keyword [none](#valdef-translate-none), or a list of 3 [\<number\>](https://www.w3.org/TR/css-values-4/#number-value)s                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | <a id="ref-for-valdef-translate-none⑤"></a>by computed value, but see below for [none](#valdef-translate-none)                                                                                                                                                                                                                                                                           |
 
 <a id="ref-for-propdef-scale③"></a>
 
@@ -1300,111 +1007,18 @@ The transformation matrix is computed from the [transform](https://www.w3.org/TR
 
 ## <a id="transform-style-property"></a>7. The [transform-style](#propdef-transform-style) Property
 
-<strong>Table 4 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-transform-style"></a>transform-style
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one⑧"></a>
-
-flat [\|](https://www.w3.org/TR/css-values-4/#comb-one) preserve-3d
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-flat
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-transformable-element④"></a>
-
-[transformable elements](https://www.w3.org/TR/css-transforms-1/#transformable-element)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Used value:
-
-<strong>Column 2 (data cell):</strong>
-
-flat if a [grouping property](#grouping-property-values) is present, specified keyword otherwise
+| Field               | Definition                                                                                                 |
+|---------------------|------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-transform-style"></a>transform-style                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one⑧"></a>flat [\|](https://www.w3.org/TR/css-values-4/#comb-one) preserve-3d                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | flat                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-transformable-element④"></a>[transformable elements](https://www.w3.org/TR/css-transforms-1/#transformable-element) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                                          |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                   |
+| <strong>Used value:&#xA;      </strong> | flat if a [grouping property](#grouping-property-values) is present, specified keyword otherwise           |
 
 <a id="ref-for-propdef-transform-style⑦"></a>
 
@@ -1480,105 +1094,17 @@ The following CSS property values require the user agent to create a flattened r
 
 ## <a id="perspective-property"></a>8. The [perspective](#propdef-perspective) Property
 
-<strong>Table 5 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-perspective"></a>perspective
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value①"></a>
-
-<a id="ref-for-comb-one⑨"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<length \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#length-value)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-transformable-element⑥"></a>
-
-[transformable elements](https://www.w3.org/TR/css-transforms-1/#transformable-element)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-perspective-none①"></a>
-
-the keyword [none](#valdef-perspective-none) or an absolute length
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value
+| Field               | Definition                                                                                                                                                           |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-perspective"></a>perspective                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-length-value①"></a><a id="ref-for-comb-one⑨"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<length \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#length-value) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-transformable-element⑥"></a>[transformable elements](https://www.w3.org/TR/css-transforms-1/#transformable-element)                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-valdef-perspective-none①"></a>the keyword [none](#valdef-perspective-none) or an absolute length                                                                                |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value                                                                                                                                                    |
 
 <a id="ref-for-length-value②"></a>
 
@@ -1632,105 +1158,17 @@ The values of the [perspective](#propdef-perspective) and [perspective-origin](#
 
 The [perspective-origin](#propdef-perspective-origin) property establishes the origin for the [perspective](#propdef-perspective) property. It effectively sets the X and Y position at which the viewer appears to be looking at the children of the element.
 
-<strong>Table 6 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-perspective-origin"></a>perspective-origin
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-position"></a>
-
-[\<position\>](https://www.w3.org/TR/css-values-4/#typedef-position)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-50% 50%
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-transformable-element⑦"></a>
-
-[transformable elements](https://www.w3.org/TR/css-transforms-1/#transformable-element)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-reference-box①"></a>
-
-refer to the size of the [reference box](https://www.w3.org/TR/css-transforms-1/#reference-box)
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-background-position"></a>
-
-see [background-position](https://www.w3.org/TR/css-backgrounds-3/#propdef-background-position)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value
+| Field               | Definition                                                                                                         |
+|---------------------|--------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-perspective-origin"></a>perspective-origin                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-position"></a>[\<position\>](https://www.w3.org/TR/css-values-4/#typedef-position)                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 50% 50%                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-transformable-element⑦"></a>[transformable elements](https://www.w3.org/TR/css-transforms-1/#transformable-element)         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | <a id="ref-for-reference-box①"></a>refer to the size of the [reference box](https://www.w3.org/TR/css-transforms-1/#reference-box) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-propdef-background-position"></a>see [background-position](https://www.w3.org/TR/css-backgrounds-3/#propdef-background-position) |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value                                                                                                  |
 
 <a id="ref-for-propdef-perspective①④"></a>
 
@@ -1792,101 +1230,17 @@ The [perspective-origin](#propdef-perspective-origin) property is a [resolved va
 
 ## <a id="backface-visibility-property"></a>10. The [backface-visibility](#propdef-backface-visibility) Property
 
-<strong>Table 7 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-backface-visibility"></a>backface-visibility
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one①⓪"></a>
-
-visible [\|](https://www.w3.org/TR/css-values-4/#comb-one) hidden
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-visible
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-transformable-element⑧"></a>
-
-[transformable elements](https://www.w3.org/TR/css-transforms-1/#transformable-element)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                 |
+|---------------------|------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-backface-visibility"></a>backface-visibility                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one①⓪"></a>visible [\|](https://www.w3.org/TR/css-values-4/#comb-one) hidden                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | visible                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-transformable-element⑧"></a>[transformable elements](https://www.w3.org/TR/css-transforms-1/#transformable-element) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                                          |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                   |
 
 <a id="ref-for-propdef-backface-visibility⑥"></a>
 
@@ -2952,345 +2306,15 @@ Tab Atkins Jr.; Florian Rivoal; Vladimir Levin. [CSS Containment Module Level 2]
 
 ## <a id="property-index"></a>Property Index
 
-<strong>Table 8 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope col):</strong>
-
-Name
-
-<strong>Column 2 (header cell; scope col):</strong>
-
-Value
-
-<strong>Column 3 (header cell; scope col):</strong>
-
-Initial
-
-<strong>Column 4 (header cell; scope col):</strong>
-
-Applies to
-
-<strong>Column 5 (header cell; scope col):</strong>
-
-Inh.
-
-<strong>Column 6 (header cell; scope col):</strong>
-
-%ages
-
-<strong>Column 7 (header cell; scope col):</strong>
-
-Anim­ation type
-
-<strong>Column 8 (header cell; scope col):</strong>
-
-Canonical order
-
-<strong>Column 9 (header cell; scope col):</strong>
-
-Com­puted value
-
-<strong>Column 10 (header cell; scope col):</strong>
-
-Used value
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-backface-visibility①①"></a>
-
-[backface-visibility](#propdef-backface-visibility)
-
-<strong>Column 2 (data cell):</strong>
-
-visible \| hidden
-
-<strong>Column 3 (data cell):</strong>
-
-visible
-
-<strong>Column 4 (data cell):</strong>
-
-transformable elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-perspective①⑨"></a>
-
-[perspective](#propdef-perspective)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| \<length \[0,∞\]\>
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-transformable elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the keyword none or an absolute length
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-perspective-origin①⑥"></a>
-
-[perspective-origin](#propdef-perspective-origin)
-
-<strong>Column 2 (data cell):</strong>
-
-\<position\>
-
-<strong>Column 3 (data cell):</strong>
-
-50% 50%
-
-<strong>Column 4 (data cell):</strong>
-
-transformable elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-refer to the size of the reference box
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see background-position
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-rotate①①"></a>
-
-[rotate](#propdef-rotate)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| \<angle\> \| \[ x \| y \| z \| \<number\>{3} \] &#x26;&#x26; \<angle\>
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-transformable elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-as SLERP, but see below for none
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the keyword none, or an \<angle\> with an axis consisting of a list of three \<number\>s
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-scale①①"></a>
-
-[scale](#propdef-scale)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| \[ \<number\> \| \<percentage\> \]{1,3}
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-transformable elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value, but see below for none
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the keyword none, or a list of 3 \<number\>s
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-transform-style①③"></a>
-
-[transform-style](#propdef-transform-style)
-
-<strong>Column 2 (data cell):</strong>
-
-flat \| preserve-3d
-
-<strong>Column 3 (data cell):</strong>
-
-flat
-
-<strong>Column 4 (data cell):</strong>
-
-transformable elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
-
-<strong>Column 10 (data cell):</strong>
-
-flat if a grouping property is present, specified keyword otherwise
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-translate①①"></a>
-
-[translate](#propdef-translate)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| \<length-percentage\> \[ \<length-percentage\> \<length\>? \]?
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-transformable elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-relative to the width of the reference box (for the first value) or the height (for the second value)
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value, but see below for none
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the keyword none or a pair of computed \<length-percentage\> values and an absolute length
-
-<strong>Column 10 (data cell):</strong>
+| Name                | Value                                                                                            | Initial | Applies to             | Inh. | %ages                                                                                                 | Anim­ation type                            | Canonical order | Com­puted value                                                                             | Used value                                                          |
+|---------------------|--------------------------------------------------------------------------------------------------|---------|------------------------|------|-------------------------------------------------------------------------------------------------------|-------------------------------------------|-----------------|--------------------------------------------------------------------------------------------|---------------------------------------------------------------------|
+| <strong><span><a id="ref-for-propdef-backface-visibility①①"></a></span><a href="#propdef-backface-visibility">backface-visibility</a>&#xA;      </strong> | visible \| hidden                                                                                | visible | transformable elements | no   | N/A                                                                                                   | discrete                                  | per grammar     | specified keyword                                                                          |                                                                     |
+| <strong><span><a id="ref-for-propdef-perspective①⑨"></a></span><a href="#propdef-perspective">perspective</a>&#xA;      </strong> | none \| \<length \[0,∞\]\>                                                                       | none    | transformable elements | no   | N/A                                                                                                   | by computed value                         | per grammar     | the keyword none or an absolute length                                                     |                                                                     |
+| <strong><span><a id="ref-for-propdef-perspective-origin①⑥"></a></span><a href="#propdef-perspective-origin">perspective-origin</a>&#xA;      </strong> | \<position\>                                                                                     | 50% 50% | transformable elements | no   | refer to the size of the reference box                                                                | by computed value                         | per grammar     | see background-position                                                                    |                                                                     |
+| <strong><span><a id="ref-for-propdef-rotate①①"></a></span><a href="#propdef-rotate">rotate</a>&#xA;      </strong> | none \| \<angle\> \| \[ x \| y \| z \| \<number\>{3} \] &#x26;&#x26; \<angle\> | none    | transformable elements | no   | n/a                                                                                                   | as SLERP, but see below for none          | per grammar     | the keyword none, or an \<angle\> with an axis consisting of a list of three \<number\>s   |                                                                     |
+| <strong><span><a id="ref-for-propdef-scale①①"></a></span><a href="#propdef-scale">scale</a>&#xA;      </strong> | none \| \[ \<number\> \| \<percentage\> \]{1,3}                                                  | none    | transformable elements | no   | n/a                                                                                                   | by computed value, but see below for none | per grammar     | the keyword none, or a list of 3 \<number\>s                                               |                                                                     |
+| <strong><span><a id="ref-for-propdef-transform-style①③"></a></span><a href="#propdef-transform-style">transform-style</a>&#xA;      </strong> | flat \| preserve-3d                                                                              | flat    | transformable elements | no   | N/A                                                                                                   | discrete                                  | per grammar     | specified keyword                                                                          | flat if a grouping property is present, specified keyword otherwise |
+| <strong><span><a id="ref-for-propdef-translate①①"></a></span><a href="#propdef-translate">translate</a>&#xA;      </strong> | none \| \<length-percentage\> \[ \<length-percentage\> \<length\>? \]?                           | none    | transformable elements | no   | relative to the width of the reference box (for the first value) or the height (for the second value) | by computed value, but see below for none | per grammar     | the keyword none or a pair of computed \<length-percentage\> values and an absolute length |                                                                     |
 
 ## <a id="issues-index"></a>Issues Index
 

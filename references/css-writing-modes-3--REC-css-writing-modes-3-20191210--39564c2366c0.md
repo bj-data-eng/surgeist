@@ -19,7 +19,8 @@ Snapshot SHA-256: 39564c2366c0d46ad5cb4bf9363f232667e2d0b6833ac79931117baa24873a
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 14 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 15 source tables are presented as readable Markdown tables or explicit labeled layouts: 10 ordinary table conversions, 4 complex-table layouts, 1 already-readable table. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 - Existing external image/media URLs are resolved against the pinned source. Assets are not downloaded or availability-tested; image-only formulas/diagrams still require their source resources.
@@ -185,99 +186,17 @@ Two CSS properties, [direction](#propdef-direction) and [unicode-bidi](#propdef-
 
 ### <a id="direction"></a>2.1.  Specifying Directionality: the [direction](#propdef-direction) property
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-direction"></a>direction
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://drafts.csswg.org/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one"></a>
-
-ltr [\|](https://www.w3.org/TR/css-values-4/#comb-one) rtl
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://drafts.csswg.org/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-ltr
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://drafts.csswg.org/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://drafts.csswg.org/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://drafts.csswg.org/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://drafts.csswg.org/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified value
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://drafts.csswg.org/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-not animatable
+| Field               | Definition                                                                    |
+|---------------------|-------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-direction"></a>direction                                                  |
+| <strong><a href="https://drafts.csswg.org/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one"></a>ltr [\|](https://www.w3.org/TR/css-values-4/#comb-one) rtl |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | ltr                                                                           |
+| <strong>Applies to:&#xA;      </strong> | [all elements](https://drafts.csswg.org/css-pseudo/#generated-content)        |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                           |
+| <strong><a href="https://drafts.csswg.org/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                           |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified value                                                               |
+| <strong>Canonical order:&#xA;      </strong> | n/a                                                                           |
+| <strong><a href="https://drafts.csswg.org/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | not animatable                                                                |
 
 <a id="ref-for-propdef-direction⑦"></a>
 
@@ -331,99 +250,17 @@ This value sets [inline base direction](#inline-base-direction) (bidi directiona
 
 ### <a id="unicode-bidi"></a>2.2.  Embeddings and Overrides: the [unicode-bidi](#propdef-unicode-bidi) property
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-unicode-bidi"></a>unicode-bidi
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://drafts.csswg.org/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one①"></a>
-
-normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) embed <a id="ref-for-comb-one②"></a>\| isolate <a id="ref-for-comb-one③"></a>\| bidi-override <a id="ref-for-comb-one④"></a>\| isolate-override <a id="ref-for-comb-one⑤"></a>\| plaintext
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://drafts.csswg.org/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-normal
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-all elements, but see prose
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://drafts.csswg.org/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://drafts.csswg.org/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://drafts.csswg.org/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified value
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://drafts.csswg.org/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-not animatable
+| Field               | Definition                                                                                                                                                                                                                  |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-unicode-bidi"></a>unicode-bidi                                                                                                                                                                                             |
+| <strong><a href="https://drafts.csswg.org/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one①"></a>normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) embed <a id="ref-for-comb-one②"></a>\| isolate <a id="ref-for-comb-one③"></a>\| bidi-override <a id="ref-for-comb-one④"></a>\| isolate-override <a id="ref-for-comb-one⑤"></a>\| plaintext |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | normal                                                                                                                                                                                                                      |
+| <strong>Applies to:&#xA;      </strong> | all elements, but see prose                                                                                                                                                                                                 |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                          |
+| <strong><a href="https://drafts.csswg.org/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                         |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified value                                                                                                                                                                                                             |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                 |
+| <strong><a href="https://drafts.csswg.org/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | not animatable                                                                                                                                                                                                              |
 
 <a id="ref-for-propdef-unicode-bidi⑦"></a>
 
@@ -446,83 +283,17 @@ The following informative table summarizes the box-internal and box-external eff
 
 <a id="ref-for-propdef-unicode-bidi①①"></a>
 
-<strong>Table 3 — structured row/cell transcription</strong>
+**Table 3**
 
 Effect of non-[normal](#valdef-unicode-bidi-normal) values of [unicode-bidi](#propdef-unicode-bidi) on inline boxes
 
-<strong>Row 1</strong>
+Representation note: merged header paths are written explicitly; values from merged body cells are repeated wherever they apply.
 
-<strong>Column 1 (header cell; row span 2, column span 2):</strong>
-
-<strong>Column 3 (header cell; column span 2, scope rowgroup):</strong>
-
-Outside
-
-<strong>Row 2</strong>
-
-<strong>Column 3 (header cell):</strong>
-
-strong
-
-<strong>Column 4 (header cell):</strong>
-
-neutral
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; row span 3, scope colgroup):</strong>
-
-Inside
-
-<strong>Column 2 (header cell):</strong>
-
-scoped
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-valdef-unicode-bidi-embed"></a>
-
-[embed](#valdef-unicode-bidi-embed)
-
-<strong>Column 4 (data cell):</strong>
-
-<a id="ref-for-valdef-unicode-bidi-isolate"></a>
-
-[isolate](#valdef-unicode-bidi-isolate)
-
-<strong>Row 4</strong>
-
-<strong>Column 2 (header cell):</strong>
-
-override
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-valdef-unicode-bidi-bidi-override"></a>
-
-[bidi-override](#valdef-unicode-bidi-bidi-override)
-
-<strong>Column 4 (data cell):</strong>
-
-<a id="ref-for-valdef-unicode-bidi-isolate-override"></a>
-
-[isolate-override](#valdef-unicode-bidi-isolate-override)
-
-<strong>Row 5</strong>
-
-<strong>Column 2 (header cell):</strong>
-
-plaintext
-
-<strong>Column 3 (data cell):</strong>
-
-—
-
-<strong>Column 4 (data cell):</strong>
-
-<a id="ref-for-valdef-unicode-bidi-plaintext"></a>
-
-[plaintext](#valdef-unicode-bidi-plaintext)
+| Inside | Outside / strong | Outside / neutral |
+| --- | --- | --- |
+| scoped | <a id="ref-for-valdef-unicode-bidi-embed"></a> [embed](#valdef-unicode-bidi-embed) | <a id="ref-for-valdef-unicode-bidi-isolate"></a> [isolate](#valdef-unicode-bidi-isolate) |
+| override | <a id="ref-for-valdef-unicode-bidi-bidi-override"></a> [bidi-override](#valdef-unicode-bidi-bidi-override) | <a id="ref-for-valdef-unicode-bidi-isolate-override"></a> [isolate-override](#valdef-unicode-bidi-isolate-override) |
+| plaintext | — | <a id="ref-for-valdef-unicode-bidi-plaintext"></a> [plaintext](#valdef-unicode-bidi-plaintext) |
 
 Values for this property have the following (normative) meanings:
 
@@ -596,203 +367,20 @@ Following Unicode Bidirectional Algorithm clause HL3 [\[UAX9\]](#biblio-uax9), v
 
 <a id="ref-for-propdef-display"></a>
 
-<strong>Table 4 — structured row/cell transcription</strong>
+**Table 4**
 
 Bidi control codes injected by [unicode-bidi](#propdef-unicode-bidi) at the start/end of [display: inline](https://www.w3.org/TR/CSS21/visuren.html#propdef-display) boxes
 
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; row span 3, scope col):</strong>
-
-<a id="ref-for-propdef-unicode-bidi①③"></a>
-
-[unicode-bidi](#propdef-unicode-bidi) value
-
-<strong>Column 2 (header cell; column span 4):</strong>
-
-<a id="ref-for-propdef-direction①④"></a>
-
-[direction](#propdef-direction) value
-
-<strong>Row 2</strong>
-
-<strong>Column 2 (header cell; column span 2):</strong>
-
-<a id="ref-for-valdef-direction-ltr"></a>
-
-[ltr](#valdef-direction-ltr)
-
-<strong>Column 4 (header cell; column span 2):</strong>
-
-<a id="ref-for-valdef-direction-rtl"></a>
-
-[rtl](#valdef-direction-rtl)
-
-<strong>Row 3</strong>
-
-<strong>Column 2 (header cell):</strong>
-
-start
-
-<strong>Column 3 (header cell):</strong>
-
-end
-
-<strong>Column 4 (header cell):</strong>
-
-start
-
-<strong>Column 5 (header cell):</strong>
-
-end
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-valdef-unicode-bidi-normal④"></a>
-
-[normal](#valdef-unicode-bidi-normal)
-
-<strong>Column 2 (data cell):</strong>
-
-—
-
-<strong>Column 3 (data cell):</strong>
-
-—
-
-<strong>Column 4 (data cell):</strong>
-
-—
-
-<strong>Column 5 (data cell):</strong>
-
-—
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-valdef-unicode-bidi-embed①"></a>
-
-[embed](#valdef-unicode-bidi-embed)
-
-<strong>Column 2 (data cell):</strong>
-
-LRE (U+202A)
-
-<strong>Column 3 (data cell):</strong>
-
-PDF (U+202C)
-
-<strong>Column 4 (data cell):</strong>
-
-RLE (U+202B)
-
-<strong>Column 5 (data cell):</strong>
-
-PDF (U+202C)
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-valdef-unicode-bidi-isolate④"></a>
-
-[isolate](#valdef-unicode-bidi-isolate)
-
-<strong>Column 2 (data cell):</strong>
-
-LRI (U+2066)
-
-<strong>Column 3 (data cell):</strong>
-
-PDI (U+2069)
-
-<strong>Column 4 (data cell):</strong>
-
-RLI (U+2067)
-
-<strong>Column 5 (data cell):</strong>
-
-PDI (U+2069)
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-valdef-unicode-bidi-bidi-override③"></a>
-
-[bidi-override](#valdef-unicode-bidi-bidi-override)\*
-
-<strong>Column 2 (data cell):</strong>
-
-LRO (U+202D)
-
-<strong>Column 3 (data cell):</strong>
-
-PDF (U+202C)
-
-<strong>Column 4 (data cell):</strong>
-
-RLO (U+202E)
-
-<strong>Column 5 (data cell):</strong>
-
-PDF (U+202C)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-valdef-unicode-bidi-isolate-override①"></a>
-
-[isolate-override](#valdef-unicode-bidi-isolate-override)\*
-
-<strong>Column 2 (data cell):</strong>
-
-FSI,LRO (U+2068,U+202D)
-
-<strong>Column 3 (data cell):</strong>
-
-PDF,PDI (U+202C,U+2069)
-
-<strong>Column 4 (data cell):</strong>
-
-FSI,RLO (U+2068,U+202E)
-
-<strong>Column 5 (data cell):</strong>
-
-PDF,PDI (U+202C,U+2069)
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-valdef-unicode-bidi-plaintext①"></a>
-
-[plaintext](#valdef-unicode-bidi-plaintext)
-
-<strong>Column 2 (data cell):</strong>
-
-FSI (U+2068)
-
-<strong>Column 3 (data cell):</strong>
-
-PDI (U+2069)
-
-<strong>Column 4 (data cell):</strong>
-
-FSI (U+2068)
-
-<strong>Column 5 (data cell):</strong>
-
-PDI (U+2069)
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (data cell; column span 5):</strong>
+Representation note: merged header paths are written explicitly; values from merged body cells are repeated wherever they apply.
+
+| <a id="ref-for-propdef-unicode-bidi①③"></a> [unicode-bidi](#propdef-unicode-bidi) value | <a id="ref-for-propdef-direction①④"></a> [direction](#propdef-direction) value / <a id="ref-for-valdef-direction-ltr"></a> [ltr](#valdef-direction-ltr) / start | [direction](#propdef-direction) value / [ltr](#valdef-direction-ltr) / end | [direction](#propdef-direction) value / <a id="ref-for-valdef-direction-rtl"></a> [rtl](#valdef-direction-rtl) / start | [direction](#propdef-direction) value / [rtl](#valdef-direction-rtl) / end |
+| --- | --- | --- | --- | --- |
+| <a id="ref-for-valdef-unicode-bidi-normal④"></a> [normal](#valdef-unicode-bidi-normal) | — | — | — | — |
+| <a id="ref-for-valdef-unicode-bidi-embed①"></a> [embed](#valdef-unicode-bidi-embed) | LRE (U+202A) | PDF (U+202C) | RLE (U+202B) | PDF (U+202C) |
+| <a id="ref-for-valdef-unicode-bidi-isolate④"></a> [isolate](#valdef-unicode-bidi-isolate) | LRI (U+2066) | PDI (U+2069) | RLI (U+2067) | PDI (U+2069) |
+| <a id="ref-for-valdef-unicode-bidi-bidi-override③"></a> [bidi-override](#valdef-unicode-bidi-bidi-override)\* | LRO (U+202D) | PDF (U+202C) | RLO (U+202E) | PDF (U+202C) |
+| <a id="ref-for-valdef-unicode-bidi-isolate-override①"></a> [isolate-override](#valdef-unicode-bidi-isolate-override)\* | FSI,LRO (U+2068,U+202D) | PDF,PDI (U+202C,U+2069) | FSI,RLO (U+2068,U+202E) | PDF,PDI (U+202C,U+2069) |
+| <a id="ref-for-valdef-unicode-bidi-plaintext①"></a> [plaintext](#valdef-unicode-bidi-plaintext) | FSI (U+2068) | PDI (U+2069) | FSI (U+2068) | PDI (U+2069) |
 
 <a id="ref-for-propdef-unicode-bidi①④"></a>
 
@@ -1082,99 +670,17 @@ Vertical text layouts also need to handle bidirectional text layout; clockwise-r
 
 ### <a id="block-flow"></a>3.2.  Block Flow Direction: the [writing-mode](#propdef-writing-mode) property
 
-<strong>Table 5 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-writing-mode"></a>writing-mode
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://drafts.csswg.org/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one⑥"></a>
-
-horizontal-tb [\|](https://www.w3.org/TR/css-values-4/#comb-one) vertical-rl <a id="ref-for-comb-one⑦"></a>\| vertical-lr
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://drafts.csswg.org/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-horizontal-tb
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-All elements except table row groups, table column groups, table rows, table columns, ruby base container, ruby annotation container
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://drafts.csswg.org/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://drafts.csswg.org/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://drafts.csswg.org/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified value
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://drafts.csswg.org/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-not animatable
+| Field               | Definition                                                                                                                           |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-writing-mode"></a>writing-mode                                                                                                      |
+| <strong><a href="https://drafts.csswg.org/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one⑥"></a>horizontal-tb [\|](https://www.w3.org/TR/css-values-4/#comb-one) vertical-rl <a id="ref-for-comb-one⑦"></a>\| vertical-lr    |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | horizontal-tb                                                                                                                        |
+| <strong>Applies to:&#xA;      </strong> | All elements except table row groups, table column groups, table rows, table columns, ruby base container, ruby annotation container |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                  |
+| <strong><a href="https://drafts.csswg.org/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                  |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified value                                                                                                                      |
+| <strong>Canonical order:&#xA;      </strong> | n/a                                                                                                                                  |
+| <strong><a href="https://drafts.csswg.org/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | not animatable                                                                                                                       |
 
 This property specifies whether lines of text are laid out horizontally or vertically and the direction in which blocks progress. Possible values:
 
@@ -1329,67 +835,20 @@ UAs that wish to support these values in the context of CSS must compute them as
 
 <a id="ref-for-propdef-writing-mode①⓪"></a>
 
-<strong>Table 6 — structured row/cell transcription</strong>
+**Table 6**
 
 Mapping of Obsolete SVG1.1 [writing-mode](#propdef-writing-mode) values to modern CSS
 
-<strong>Row 1</strong>
+Representation note: merged header paths are written explicitly; values from merged body cells are repeated wherever they apply.
 
-<strong>Column 1 (header cell):</strong>
-
-Specified
-
-<strong>Column 2 (header cell):</strong>
-
-Computed
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-lr
-
-<strong>Column 2 (data cell; row span 4):</strong>
-
-<a id="ref-for-valdef-writing-mode-horizontal-tb①"></a>
-
-[horizontal-tb](#valdef-writing-mode-horizontal-tb)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-lr-tb
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-rl
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-rl-tb
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-tb
-
-<strong>Column 2 (data cell; row span 2):</strong>
-
-<a id="ref-for-valdef-writing-mode-vertical-rl①"></a>
-
-[vertical-rl](#valdef-writing-mode-vertical-rl)
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-tb-rl
+| Specified | Computed |
+| --- | --- |
+| lr | <a id="ref-for-valdef-writing-mode-horizontal-tb①"></a> [horizontal-tb](#valdef-writing-mode-horizontal-tb) |
+| lr-tb | [horizontal-tb](#valdef-writing-mode-horizontal-tb) |
+| rl | [horizontal-tb](#valdef-writing-mode-horizontal-tb) |
+| rl-tb | [horizontal-tb](#valdef-writing-mode-horizontal-tb) |
+| tb | <a id="ref-for-valdef-writing-mode-vertical-rl①"></a> [vertical-rl](#valdef-writing-mode-vertical-rl) |
+| tb-rl | [vertical-rl](#valdef-writing-mode-vertical-rl) |
 
 <a id="ref-for-propdef-writing-mode①①"></a>
 
@@ -1607,99 +1066,17 @@ Scripts without a native vertical orientation can be either rotated (set sideway
 
 ### <a id="text-orientation"></a>5.1.  Orienting Text: the [text-orientation](#propdef-text-orientation) property
 
-<strong>Table 7 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-text-orientation"></a>text-orientation
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://drafts.csswg.org/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one⑧"></a>
-
-mixed [\|](https://www.w3.org/TR/css-values-4/#comb-one) upright <a id="ref-for-comb-one⑨"></a>\| sideways
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://drafts.csswg.org/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-mixed
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-all elements except table row groups, rows, column groups, and columns
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://drafts.csswg.org/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://drafts.csswg.org/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://drafts.csswg.org/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified value
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://drafts.csswg.org/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-not animatable
+| Field               | Definition                                                                                                         |
+|---------------------|--------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-text-orientation"></a>text-orientation                                                                                |
+| <strong><a href="https://drafts.csswg.org/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one⑧"></a>mixed [\|](https://www.w3.org/TR/css-values-4/#comb-one) upright <a id="ref-for-comb-one⑨"></a>\| sideways |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | mixed                                                                                                              |
+| <strong>Applies to:&#xA;      </strong> | all elements except table row groups, rows, column groups, and columns                                             |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                |
+| <strong><a href="https://drafts.csswg.org/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified value                                                                                                    |
+| <strong>Canonical order:&#xA;      </strong> | n/a                                                                                                                |
+| <strong><a href="https://drafts.csswg.org/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | not animatable                                                                                                     |
 
 <a id="ref-for-typographic-mode⑥"></a>
 
@@ -1746,41 +1123,10 @@ In vertical writing modes, this causes all text to be [typeset sideways](#typese
 
 <a id="fig-text-orientation"></a>
 
-<strong>Table 8 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-![text-orientation: mixed](https://www.w3.org/TR/2019/REC-css-writing-modes-3-20191210/images/text-orientation-vr.png)
-
-<strong>Column 2 (data cell):</strong>
-
-![text-orientation: upright](https://www.w3.org/TR/2019/REC-css-writing-modes-3-20191210/images/text-orientation-up.png)
-
-<strong>Column 3 (data cell):</strong>
-
-![text-orientation: sideways](https://www.w3.org/TR/2019/REC-css-writing-modes-3-20191210/images/text-orientation-sr.png)
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-text-orientation-mixed②"></a>
-
-[mixed](#valdef-text-orientation-mixed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-text-orientation-upright②"></a>
-
-[upright](#valdef-text-orientation-upright)
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-valdef-text-orientation-sideways"></a>
-
-[sideways](#valdef-text-orientation-sideways)
+| Column 1                                                                                                               | Column 2                                                                                                                 | Column 3                                                                                                                  |
+|------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|
+| ![text-orientation: mixed](https://www.w3.org/TR/2019/REC-css-writing-modes-3-20191210/images/text-orientation-vr.png) | ![text-orientation: upright](https://www.w3.org/TR/2019/REC-css-writing-modes-3-20191210/images/text-orientation-up.png) | ![text-orientation: sideways](https://www.w3.org/TR/2019/REC-css-writing-modes-3-20191210/images/text-orientation-sr.png) |
+| <a id="ref-for-valdef-text-orientation-mixed②"></a>[mixed](#valdef-text-orientation-mixed)                                                             | <a id="ref-for-valdef-text-orientation-upright②"></a>[upright](#valdef-text-orientation-upright)                                                           | <a id="ref-for-valdef-text-orientation-sideways"></a>[sideways](#valdef-text-orientation-sideways)                                                          |
 
 <a id="ref-for-propdef-text-orientation⑦"></a>
 
@@ -1872,99 +1218,17 @@ When typesetting text in [vertical-rl](#valdef-writing-mode-vertical-rl) and [ve
 
 #### <a id="glyph-orientation"></a>5.1.3.  Obsolete: the SVG1.1 [glyph-orientation-vertical](#propdef-glyph-orientation-vertical) property
 
-<strong>Table 9 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-glyph-orientation-vertical"></a>glyph-orientation-vertical
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://drafts.csswg.org/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one①⓪"></a>
-
-auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) 0deg <a id="ref-for-comb-one①①"></a>\| 90deg <a id="ref-for-comb-one①②"></a>\| 0 <a id="ref-for-comb-one①③"></a>\| 90
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://drafts.csswg.org/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://drafts.csswg.org/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://drafts.csswg.org/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://drafts.csswg.org/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animatable:](https://drafts.csswg.org/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
+| Field               | Definition                                                                                                                                                   |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-glyph-orientation-vertical"></a>glyph-orientation-vertical                                                                                                                |
+| <strong><a href="https://drafts.csswg.org/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one①⓪"></a>auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) 0deg <a id="ref-for-comb-one①①"></a>\| 90deg <a id="ref-for-comb-one①②"></a>\| 0 <a id="ref-for-comb-one①③"></a>\| 90 |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | n/a                                                                                                                                                          |
+| <strong>Applies to:&#xA;      </strong> | n/a                                                                                                                                                          |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | n/a                                                                                                                                                          |
+| <strong><a href="https://drafts.csswg.org/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                          |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | n/a                                                                                                                                                          |
+| <strong>Canonical order:&#xA;      </strong> | n/a                                                                                                                                                          |
+| <strong><a href="https://drafts.csswg.org/web-animations/#animation-type">Animatable:</a>&#xA;      </strong> | n/a                                                                                                                                                          |
 
 <a id="ref-for-propdef-glyph-orientation-vertical①"></a>
 
@@ -1976,81 +1240,13 @@ n/a
 
 Some SVG user agents will need to process documents containing the obsolete SVG [glyph-orientation-vertical](#propdef-glyph-orientation-vertical) property, which was defined to accept an auto keyword as well as [\<angle\>](https://www.w3.org/TR/css3-values/#angle-value) and [\<integer\>](https://www.w3.org/TR/css3-values/#integer-value) values representing multiples of 90°. While supporting this property is <em>optional</em>, UAs that do so must alias <a id="ref-for-propdef-glyph-orientation-vertical②"></a>glyph-orientation-vertical as a shorthand of [text-orientation](#propdef-text-orientation) as follows:
 
-<strong>Table 10 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-propdef-glyph-orientation-vertical③"></a>
-
-Shorthand [glyph-orientation-vertical](#propdef-glyph-orientation-vertical) value
-
-<strong>Column 2 (header cell):</strong>
-
-<a id="ref-for-propdef-text-orientation①⓪"></a>
-
-Longhand [text-orientation](#propdef-text-orientation) value
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-auto
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-text-orientation-mixed⑤"></a>
-
-[mixed](#valdef-text-orientation-mixed)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-0deg
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-text-orientation-upright④"></a>
-
-[upright](#valdef-text-orientation-upright)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-0
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-text-orientation-upright⑤"></a>
-
-[upright](#valdef-text-orientation-upright)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-90deg
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-text-orientation-sideways②"></a>
-
-[sideways](#valdef-text-orientation-sideways)
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-90
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-text-orientation-sideways③"></a>
-
-[sideways](#valdef-text-orientation-sideways)
+| <a id="ref-for-propdef-glyph-orientation-vertical③"></a>Shorthand [glyph-orientation-vertical](#propdef-glyph-orientation-vertical) value | <a id="ref-for-propdef-text-orientation①⓪"></a>Longhand [text-orientation](#propdef-text-orientation) value |
+|------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------|
+| auto                                                                                                 | <a id="ref-for-valdef-text-orientation-mixed⑤"></a>[mixed](#valdef-text-orientation-mixed)                      |
+| 0deg                                                                                                 | <a id="ref-for-valdef-text-orientation-upright④"></a>[upright](#valdef-text-orientation-upright)                  |
+| 0                                                                                                    | <a id="ref-for-valdef-text-orientation-upright⑤"></a>[upright](#valdef-text-orientation-upright)                  |
+| 90deg                                                                                                | <a id="ref-for-valdef-text-orientation-sideways②"></a>[sideways](#valdef-text-orientation-sideways)                |
+| 90                                                                                                   | <a id="ref-for-valdef-text-orientation-sideways③"></a>[sideways](#valdef-text-orientation-sideways)                |
 
 <a id="ref-for-propdef-glyph-orientation-vertical④"></a>
 
@@ -2327,259 +1523,24 @@ Line orientation in [vertical-rl](#valdef-writing-mode-vertical-rl) and [vertica
 
 The following table summarizes the abstract-to-physical mappings (based on the <em>used</em> [direction](#propdef-direction) and [writing-mode](#propdef-writing-mode)):
 
-<strong>Table 11 — structured row/cell transcription</strong>
+**Table 11**
 
 Abstract-Physical Mapping
 
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-writing-mode②⓪"></a>
-
-[writing-mode](#propdef-writing-mode)
-
-<strong>Column 2 (header cell; column span 2):</strong>
-
-<a id="ref-for-valdef-writing-mode-horizontal-tb⑦"></a>
-
-[horizontal-tb](#valdef-writing-mode-horizontal-tb)
-
-<strong>Column 4 (header cell; column span 2):</strong>
-
-<a id="ref-for-valdef-writing-mode-vertical-rl⑥"></a>
-
-[vertical-rl](#valdef-writing-mode-vertical-rl)
-
-<strong>Column 6 (header cell; column span 2):</strong>
-
-<a id="ref-for-valdef-writing-mode-vertical-lr⑤"></a>
-
-[vertical-lr](#valdef-writing-mode-vertical-lr)
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-direction②⑨"></a>
-
-[direction](#propdef-direction)
-
-<strong>Column 2 (header cell):</strong>
-
-<a id="ref-for-valdef-direction-ltr④"></a>
-
-[ltr](#valdef-direction-ltr)
-
-<strong>Column 3 (header cell):</strong>
-
-<a id="ref-for-valdef-direction-rtl④"></a>
-
-[rtl](#valdef-direction-rtl)
-
-<strong>Column 4 (header cell):</strong>
-
-<a id="ref-for-valdef-direction-ltr⑤"></a>
-
-[ltr](#valdef-direction-ltr)
-
-<strong>Column 5 (header cell):</strong>
-
-<a id="ref-for-valdef-direction-rtl⑤"></a>
-
-[rtl](#valdef-direction-rtl)
-
-<strong>Column 6 (header cell):</strong>
-
-<a id="ref-for-valdef-direction-ltr⑥"></a>
-
-[ltr](#valdef-direction-ltr)
-
-<strong>Column 7 (header cell):</strong>
-
-<a id="ref-for-valdef-direction-rtl⑥"></a>
-
-[rtl](#valdef-direction-rtl)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-block-size
-
-<strong>Column 2 (data cell; column span 2):</strong>
-
-height
-
-<strong>Column 4 (data cell; column span 4):</strong>
-
-width
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-inline-size
-
-<strong>Column 2 (data cell; column span 2):</strong>
-
-width
-
-<strong>Column 4 (data cell; column span 4):</strong>
-
-height
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-block-start
-
-<strong>Column 2 (data cell; column span 2):</strong>
-
-top
-
-<strong>Column 4 (data cell; column span 2):</strong>
-
-right
-
-<strong>Column 6 (data cell; column span 2):</strong>
-
-left
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-block-end
-
-<strong>Column 2 (data cell; column span 2):</strong>
-
-bottom
-
-<strong>Column 4 (data cell; column span 2):</strong>
-
-left
-
-<strong>Column 6 (data cell; column span 2):</strong>
-
-right
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-inline-start
-
-<strong>Column 2 (data cell):</strong>
-
-left
-
-<strong>Column 3 (data cell):</strong>
-
-right
-
-<strong>Column 4 (data cell):</strong>
-
-top
-
-<strong>Column 5 (data cell):</strong>
-
-bottom
-
-<strong>Column 6 (data cell):</strong>
-
-top
-
-<strong>Column 7 (data cell):</strong>
-
-bottom
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-inline-end
-
-<strong>Column 2 (data cell):</strong>
-
-right
-
-<strong>Column 3 (data cell):</strong>
-
-left
-
-<strong>Column 4 (data cell):</strong>
-
-bottom
-
-<strong>Column 5 (data cell):</strong>
-
-top
-
-<strong>Column 6 (data cell):</strong>
-
-bottom
-
-<strong>Column 7 (data cell):</strong>
-
-top
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-over
-
-<strong>Column 2 (data cell; column span 2):</strong>
-
-top
-
-<strong>Column 4 (data cell; column span 4):</strong>
-
-right
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-under
-
-<strong>Column 2 (data cell; column span 2):</strong>
-
-bottom
-
-<strong>Column 4 (data cell; column span 4):</strong>
-
-left
-
-<strong>Row 11</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-line-left
-
-<strong>Column 2 (data cell; column span 2):</strong>
-
-left
-
-<strong>Column 4 (data cell; column span 4):</strong>
-
-top
-
-<strong>Row 12</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-line-right
-
-<strong>Column 2 (data cell; column span 2):</strong>
-
-right
-
-<strong>Column 4 (data cell; column span 4):</strong>
-
-bottom
+Representation note: merged header paths are written explicitly; values from merged body cells are repeated wherever they apply.
+
+| <a id="ref-for-propdef-writing-mode②⓪"></a> [writing-mode](#propdef-writing-mode) / <a id="ref-for-propdef-direction②⑨"></a> [direction](#propdef-direction) | <a id="ref-for-valdef-writing-mode-horizontal-tb⑦"></a> [horizontal-tb](#valdef-writing-mode-horizontal-tb) / <a id="ref-for-valdef-direction-ltr④"></a> [ltr](#valdef-direction-ltr) | [horizontal-tb](#valdef-writing-mode-horizontal-tb) / <a id="ref-for-valdef-direction-rtl④"></a> [rtl](#valdef-direction-rtl) | <a id="ref-for-valdef-writing-mode-vertical-rl⑥"></a> [vertical-rl](#valdef-writing-mode-vertical-rl) / <a id="ref-for-valdef-direction-ltr⑤"></a> [ltr](#valdef-direction-ltr) | [vertical-rl](#valdef-writing-mode-vertical-rl) / <a id="ref-for-valdef-direction-rtl⑤"></a> [rtl](#valdef-direction-rtl) | <a id="ref-for-valdef-writing-mode-vertical-lr⑤"></a> [vertical-lr](#valdef-writing-mode-vertical-lr) / <a id="ref-for-valdef-direction-ltr⑥"></a> [ltr](#valdef-direction-ltr) | [vertical-lr](#valdef-writing-mode-vertical-lr) / <a id="ref-for-valdef-direction-rtl⑥"></a> [rtl](#valdef-direction-rtl) |
+| --- | --- | --- | --- | --- | --- | --- |
+| block-size | height | height | width | width | width | width |
+| inline-size | width | width | height | height | height | height |
+| block-start | top | top | right | right | left | left |
+| block-end | bottom | bottom | left | left | right | right |
+| inline-start | left | right | top | bottom | top | bottom |
+| inline-end | right | left | bottom | top | bottom | top |
+| over | top | top | right | right | right | right |
+| under | bottom | bottom | left | left | left | left |
+| line-left | left | left | top | top | top | top |
+| line-right | right | right | bottom | bottom | bottom | bottom |
 
 <a id="ref-for-used-value②"></a>
 
@@ -3095,73 +2056,12 @@ The [principal writing mode](#principal-writing-mode) is propagated to the [init
 
 In paged media CSS classifies all pages as either left or right pages. The [page progression](https://www.w3.org/TR/css3-page/#page-progression) direction (see [\[CSS3PAGE\]](#biblio-css3page)), which determines whether the left or right page in a spread is first in the flow and whether the first page is by default a left or right page, depends on the [principal writing mode](#principal-writing-mode) as follows:
 
-<strong>Table 12 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-principal-writing-mode②"></a>
-
-[principal writing mode](#principal-writing-mode)
-
-<strong>Column 2 (header cell):</strong>
-
-<a id="ref-for-page-progression②"></a>
-
-[page progression](https://www.w3.org/TR/css3-page/#page-progression)
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-direction-ltr⑧"></a>
-
-<a id="ref-for-valdef-writing-mode-horizontal-tb①⓪"></a>
-
-[horizontal-tb](#valdef-writing-mode-horizontal-tb) and [ltr](#valdef-direction-ltr)
-
-<strong>Column 2 (data cell):</strong>
-
-left-to-right
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-direction-rtl⑧"></a>
-
-<a id="ref-for-valdef-writing-mode-horizontal-tb①①"></a>
-
-[horizontal-tb](#valdef-writing-mode-horizontal-tb) and [rtl](#valdef-direction-rtl)
-
-<strong>Column 2 (data cell):</strong>
-
-right-to-left
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-writing-mode-vertical-rl①②"></a>
-
-[vertical-rl](#valdef-writing-mode-vertical-rl)
-
-<strong>Column 2 (data cell):</strong>
-
-right-to-left
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-writing-mode-vertical-lr⑦"></a>
-
-[vertical-lr](#valdef-writing-mode-vertical-lr)
-
-<strong>Column 2 (data cell):</strong>
-
-left-to-right
+| <a id="ref-for-principal-writing-mode②"></a>[principal writing mode](#principal-writing-mode)                                                       | <a id="ref-for-page-progression②"></a>[page progression](https://www.w3.org/TR/css3-page/#page-progression) |
+|----------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------|
+| <a id="ref-for-valdef-direction-ltr⑧"></a><a id="ref-for-valdef-writing-mode-horizontal-tb①⓪"></a>[horizontal-tb](#valdef-writing-mode-horizontal-tb) and [ltr](#valdef-direction-ltr) | left-to-right                                                                            |
+| <a id="ref-for-valdef-direction-rtl⑧"></a><a id="ref-for-valdef-writing-mode-horizontal-tb①①"></a>[horizontal-tb](#valdef-writing-mode-horizontal-tb) and [rtl](#valdef-direction-rtl) | right-to-left                                                                            |
+| <a id="ref-for-valdef-writing-mode-vertical-rl①②"></a>[vertical-rl](#valdef-writing-mode-vertical-rl)                                                         | right-to-left                                                                            |
+| <a id="ref-for-valdef-writing-mode-vertical-lr⑦"></a>[vertical-lr](#valdef-writing-mode-vertical-lr)                                                         | left-to-right                                                                            |
 
 > <strong data-conversion-semantic="note">Note</strong>
 >
@@ -3175,99 +2075,17 @@ left-to-right
 
 ### <a id="text-combine-upright"></a>9.1.  Horizontal-in-Vertical Composition: the [text-combine-upright](#propdef-text-combine-upright) property
 
-<strong>Table 13 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-text-combine-upright"></a>text-combine-upright
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://drafts.csswg.org/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one①④"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) all
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://drafts.csswg.org/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-non-replaced inline elements
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://drafts.csswg.org/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://drafts.csswg.org/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://drafts.csswg.org/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://drafts.csswg.org/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-not animatable
+| Field               | Definition                                                                     |
+|---------------------|--------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-text-combine-upright"></a>text-combine-upright                                        |
+| <strong><a href="https://drafts.csswg.org/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one①④"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) all |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                           |
+| <strong>Applies to:&#xA;      </strong> | non-replaced inline elements                                                   |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                            |
+| <strong><a href="https://drafts.csswg.org/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                            |
+| <strong><a href="https://drafts.csswg.org/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                              |
+| <strong>Canonical order:&#xA;      </strong> | n/a                                                                            |
+| <strong><a href="https://drafts.csswg.org/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | not animatable                                                                 |
 
 <a id="ref-for-typographic-character-unit⑧"></a>
 
@@ -4000,298 +2818,12 @@ Elika J. Etemad. [Robust Vertical Text Layout](https://unicode.org/notes/tn22/).
 
 ## <a id="property-index"></a>Property Index
 
-<strong>Table 15 — structured row/cell transcription</strong>
+| Name                | Value                                                                        | Initial       | Applies to                                                                                                                           | Inh. | %ages | Ani­mat­able | Anim­ation type | Canonical order | Com­puted value    |
+|---------------------|------------------------------------------------------------------------------|---------------|--------------------------------------------------------------------------------------------------------------------------------------|------|-------|------------|----------------|-----------------|-------------------|
+| <strong><span><a id="ref-for-propdef-direction③⑧"></a></span><a href="#propdef-direction">direction</a>&#xA;      </strong> | ltr \| rtl                                                                   | ltr           | all elements                                                                                                                         | yes  | n/a   |            | not animatable | n/a             | specified value   |
+| <strong><span><a id="ref-for-propdef-glyph-orientation-vertical⑦"></a></span><a href="#propdef-glyph-orientation-vertical">glyph-orientation-vertical</a>&#xA;      </strong> | auto \| 0deg \| 90deg \| 0 \| 90                                             | n/a           | n/a                                                                                                                                  | n/a  | n/a   | n/a        |                | n/a             | n/a               |
+| <strong><span><a id="ref-for-propdef-text-combine-upright⑧"></a></span><a href="#propdef-text-combine-upright">text-combine-upright</a>&#xA;      </strong> | none \| all                                                                  | none          | non-replaced inline elements                                                                                                         | yes  | n/a   |            | not animatable | n/a             | specified keyword |
+| <strong><span><a id="ref-for-propdef-text-orientation②②"></a></span><a href="#propdef-text-orientation">text-orientation</a>&#xA;      </strong> | mixed \| upright \| sideways                                                 | mixed         | all elements except table row groups, rows, column groups, and columns                                                               | yes  | n/a   |            | not animatable | n/a             | specified value   |
+| <strong><span><a id="ref-for-propdef-unicode-bidi②⑤"></a></span><a href="#propdef-unicode-bidi">unicode-bidi</a>&#xA;      </strong> | normal \| embed \| isolate \| bidi-override \| isolate-override \| plaintext | normal        | all elements, but see prose                                                                                                          | no   | n/a   |            | not animatable | per grammar     | specified value   |
+| <strong><span><a id="ref-for-propdef-writing-mode③②"></a></span><a href="#propdef-writing-mode">writing-mode</a>&#xA;      </strong> | horizontal-tb \| vertical-rl \| vertical-lr                                  | horizontal-tb | All elements except table row groups, table column groups, table rows, table columns, ruby base container, ruby annotation container | yes  | n/a   |            | not animatable | n/a             | specified value   |
 
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope col):</strong>
-
-Name
-
-<strong>Column 2 (header cell; scope col):</strong>
-
-Value
-
-<strong>Column 3 (header cell; scope col):</strong>
-
-Initial
-
-<strong>Column 4 (header cell; scope col):</strong>
-
-Applies to
-
-<strong>Column 5 (header cell; scope col):</strong>
-
-Inh.
-
-<strong>Column 6 (header cell; scope col):</strong>
-
-%ages
-
-<strong>Column 7 (header cell; scope col):</strong>
-
-Ani­mat­able
-
-<strong>Column 8 (header cell; scope col):</strong>
-
-Anim­ation type
-
-<strong>Column 9 (header cell; scope col):</strong>
-
-Canonical order
-
-<strong>Column 10 (header cell; scope col):</strong>
-
-Com­puted value
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-direction③⑧"></a>
-
-[direction](#propdef-direction)
-
-<strong>Column 2 (data cell):</strong>
-
-ltr \| rtl
-
-<strong>Column 3 (data cell):</strong>
-
-ltr
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-<strong>Column 8 (data cell):</strong>
-
-not animatable
-
-<strong>Column 9 (data cell):</strong>
-
-n/a
-
-<strong>Column 10 (data cell):</strong>
-
-specified value
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-glyph-orientation-vertical⑦"></a>
-
-[glyph-orientation-vertical](#propdef-glyph-orientation-vertical)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| 0deg \| 90deg \| 0 \| 90
-
-<strong>Column 3 (data cell):</strong>
-
-n/a
-
-<strong>Column 4 (data cell):</strong>
-
-n/a
-
-<strong>Column 5 (data cell):</strong>
-
-n/a
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-n/a
-
-<strong>Column 8 (data cell):</strong>
-
-<strong>Column 9 (data cell):</strong>
-
-n/a
-
-<strong>Column 10 (data cell):</strong>
-
-n/a
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-text-combine-upright⑧"></a>
-
-[text-combine-upright](#propdef-text-combine-upright)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| all
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-non-replaced inline elements
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-<strong>Column 8 (data cell):</strong>
-
-not animatable
-
-<strong>Column 9 (data cell):</strong>
-
-n/a
-
-<strong>Column 10 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-text-orientation②②"></a>
-
-[text-orientation](#propdef-text-orientation)
-
-<strong>Column 2 (data cell):</strong>
-
-mixed \| upright \| sideways
-
-<strong>Column 3 (data cell):</strong>
-
-mixed
-
-<strong>Column 4 (data cell):</strong>
-
-all elements except table row groups, rows, column groups, and columns
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-<strong>Column 8 (data cell):</strong>
-
-not animatable
-
-<strong>Column 9 (data cell):</strong>
-
-n/a
-
-<strong>Column 10 (data cell):</strong>
-
-specified value
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-unicode-bidi②⑤"></a>
-
-[unicode-bidi](#propdef-unicode-bidi)
-
-<strong>Column 2 (data cell):</strong>
-
-normal \| embed \| isolate \| bidi-override \| isolate-override \| plaintext
-
-<strong>Column 3 (data cell):</strong>
-
-normal
-
-<strong>Column 4 (data cell):</strong>
-
-all elements, but see prose
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-<strong>Column 8 (data cell):</strong>
-
-not animatable
-
-<strong>Column 9 (data cell):</strong>
-
-per grammar
-
-<strong>Column 10 (data cell):</strong>
-
-specified value
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-writing-mode③②"></a>
-
-[writing-mode](#propdef-writing-mode)
-
-<strong>Column 2 (data cell):</strong>
-
-horizontal-tb \| vertical-rl \| vertical-lr
-
-<strong>Column 3 (data cell):</strong>
-
-horizontal-tb
-
-<strong>Column 4 (data cell):</strong>
-
-All elements except table row groups, table column groups, table rows, table columns, ruby base container, ruby annotation container
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-<strong>Column 8 (data cell):</strong>
-
-not animatable
-
-<strong>Column 9 (data cell):</strong>
-
-n/a
-
-<strong>Column 10 (data cell):</strong>
-
-specified value

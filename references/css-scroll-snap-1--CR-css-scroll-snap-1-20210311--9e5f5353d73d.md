@@ -19,7 +19,8 @@ Snapshot SHA-256: 9e5f5353d73d6df89aedafb11258fb44b8e00cd2b37332a658f417093a3b1e
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 12 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 12 source tables are presented as readable Markdown tables or explicit labeled layouts: 12 ordinary table conversions. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 - Existing external image/media URLs are resolved against the pinned source. Assets are not downloaded or availability-tested; image-only formulas/diagrams still require their source resources.
@@ -247,101 +248,17 @@ The act of adjusting the scroll position of a scroll container’s scrollport su
 
 ### <a id="scroll-snap-type"></a>4.1. Scroll Snapping Rules: the [scroll-snap-type](#propdef-scroll-snap-type) property
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-scroll-snap-type"></a>scroll-snap-type
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-opt"></a>
-
-<a id="ref-for-comb-one"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[ x <a id="ref-for-comb-one①"></a>\| y <a id="ref-for-comb-one②"></a>\| block <a id="ref-for-comb-one③"></a>\| inline <a id="ref-for-comb-one④"></a>\| both \] \[ mandatory <a id="ref-for-comb-one⑤"></a>\| proximity \][?](https://www.w3.org/TR/css-values-4/#mult-opt)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword(s)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                                                                                                         |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-scroll-snap-type"></a>scroll-snap-type                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-opt"></a><a id="ref-for-comb-one"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[ x <a id="ref-for-comb-one①"></a>\| y <a id="ref-for-comb-one②"></a>\| block <a id="ref-for-comb-one③"></a>\| inline <a id="ref-for-comb-one④"></a>\| both \] \[ mandatory <a id="ref-for-comb-one⑤"></a>\| proximity \][?](https://www.w3.org/TR/css-values-4/#mult-opt) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                                                                                                                                               |
+| <strong>Applies to:&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword(s)                                                                                                                                                                                                                                                                                               |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                           |
 
 <a id="ref-for-propdef-scroll-snap-type③"></a>
 
@@ -551,109 +468,17 @@ Scrolling required by a re-snap operation to a new or different box must behave 
 
 ### <a id="scroll-padding"></a>4.2. Scroll Snapport: the [scroll-padding](#propdef-scroll-padding) property
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-scroll-padding"></a>scroll-padding
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-num-range"></a>
-
-<a id="ref-for-typedef-length-percentage"></a>
-
-<a id="ref-for-comb-one⑥"></a>
-
-\[ auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) \][{1,4}](https://www.w3.org/TR/css-values-4/#mult-num-range)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-scroll-container②⑨"></a>
-
-[scroll containers](https://www.w3.org/TR/css-overflow-3/#scroll-container)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-relative to the corresponding dimension of the scroll container’s scrollport
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-length-percentage①"></a>
-
-<a id="ref-for-valdef-scroll-padding-auto"></a>
-
-per side, either the keyword [auto](#valdef-scroll-padding-auto) or a computed [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) value
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value type
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                                                                                                                                                               |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-scroll-padding"></a>scroll-padding                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-num-range"></a><a id="ref-for-typedef-length-percentage"></a><a id="ref-for-comb-one⑥"></a>\[ auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) \][{1,4}](https://www.w3.org/TR/css-values-4/#mult-num-range) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                                                                                                                     |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-scroll-container②⑨"></a>[scroll containers](https://www.w3.org/TR/css-overflow-3/#scroll-container)                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | relative to the corresponding dimension of the scroll container’s scrollport                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-typedef-length-percentage①"></a><a id="ref-for-valdef-scroll-padding-auto"></a>per side, either the keyword [auto](#valdef-scroll-padding-auto) or a computed [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) value                                                        |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value type                                                                                                                                                                                                                                                   |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                              |
 
 <a id="ref-for-scroll-container③⓪"></a>
 
@@ -748,101 +573,17 @@ UAs must apply the [scroll-padding](#propdef-scroll-padding) values set on the r
 
 ### <a id="scroll-margin"></a>5.1. Scroll Snapping Area: the [scroll-margin](#propdef-scroll-margin) property
 
-<strong>Table 3 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-scroll-margin"></a>scroll-margin
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-num-range①"></a>
-
-<a id="ref-for-length-value"></a>
-
-[\<length\>](https://www.w3.org/TR/css-values-3/#length-value)[{1,4}](https://www.w3.org/TR/css-values-4/#mult-num-range)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-0
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-per side, an absolute length
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value type
+| Field               | Definition                                                                                                                                                      |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-scroll-margin"></a>scroll-margin                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-num-range①"></a><a id="ref-for-length-value"></a>[\<length\>](https://www.w3.org/TR/css-values-3/#length-value)[{1,4}](https://www.w3.org/TR/css-values-4/#mult-num-range) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 0                                                                                                                                                               |
+| <strong>Applies to:&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | per side, an absolute length                                                                                                                                    |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value type                                                                                                                                          |
 
 <a id="ref-for-shorthand-property①"></a>
 
@@ -879,101 +620,17 @@ If a page is navigated to a fragment that defines a target element (one that wou
 
 ### <a id="scroll-snap-align"></a>5.2. Scroll Snapping Alignment: the [scroll-snap-align](#propdef-scroll-snap-align) property
 
-<strong>Table 4 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-scroll-snap-align"></a>scroll-snap-align
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-num-range②"></a>
-
-<a id="ref-for-comb-one⑦"></a>
-
-\[ none [\|](https://www.w3.org/TR/css-values-4/#comb-one) start <a id="ref-for-comb-one⑧"></a>\| end <a id="ref-for-comb-one⑨"></a>\| center \][{1,2}](https://www.w3.org/TR/css-values-4/#mult-num-range)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-two keywords
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                  |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-scroll-snap-align"></a>scroll-snap-align                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-num-range②"></a><a id="ref-for-comb-one⑦"></a>\[ none [\|](https://www.w3.org/TR/css-values-4/#comb-one) start <a id="ref-for-comb-one⑧"></a>\| end <a id="ref-for-comb-one⑨"></a>\| center \][{1,2}](https://www.w3.org/TR/css-values-4/#mult-num-range) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                                                        |
+| <strong>Applies to:&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | two keywords                                                                                                                                                                                                                |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                    |
 
 <a id="ref-for-propdef-scroll-snap-align②"></a>
 
@@ -1183,99 +840,17 @@ If a [snap position](#scroll-snap-position) is unreachable as specified, such th
 
 ### <a id="scroll-snap-stop"></a>5.3. Scroll Snap Limits: the [scroll-snap-stop](#propdef-scroll-snap-stop) property
 
-<strong>Table 5 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-scroll-snap-stop"></a>scroll-snap-stop
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one①⓪"></a>
-
-normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) always
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-normal
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                          |
+|---------------------|-------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-scroll-snap-stop"></a>scroll-snap-stop                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one①⓪"></a>normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) always |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | normal                                                                              |
+| <strong>Applies to:&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                   |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                         |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                            |
 
 <a id="ref-for-scroll-container③⑧"></a>
 
@@ -1445,107 +1020,17 @@ The physical and logical longhands (and their shorthands) interact as defined in
 
 ### <a id="padding-longhands-physical"></a>Physical Longhands for [scroll-padding](#propdef-scroll-padding)
 
-<strong>Table 6 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-scroll-padding-top"></a>scroll-padding-top, <a id="propdef-scroll-padding-right"></a>scroll-padding-right, <a id="propdef-scroll-padding-bottom"></a>scroll-padding-bottom, <a id="propdef-scroll-padding-left"></a>scroll-padding-left
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-length-percentage③"></a>
-
-<a id="ref-for-comb-one①①"></a>
-
-auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-scroll-container④⑤"></a>
-
-[scroll containers](https://www.w3.org/TR/css-overflow-3/#scroll-container)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-relative to the scroll container’s scrollport
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-length-percentage④"></a>
-
-<a id="ref-for-valdef-scroll-padding-auto①"></a>
-
-the keyword [auto](#valdef-scroll-padding-auto) or a computed [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) value
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value type
+| Field               | Definition                                                                                                                                                                                       |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-scroll-padding-top"></a>scroll-padding-top, <a id="propdef-scroll-padding-right"></a>scroll-padding-right, <a id="propdef-scroll-padding-bottom"></a>scroll-padding-bottom, <a id="propdef-scroll-padding-left"></a>scroll-padding-left                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-length-percentage③"></a><a id="ref-for-comb-one①①"></a>auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage)             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                                             |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-scroll-container④⑤"></a>[scroll containers](https://www.w3.org/TR/css-overflow-3/#scroll-container)                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | relative to the scroll container’s scrollport                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-typedef-length-percentage④"></a><a id="ref-for-valdef-scroll-padding-auto①"></a>the keyword [auto](#valdef-scroll-padding-auto) or a computed [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) value |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value type                                                                                                                                                                           |
 
 <a id="ref-for-longhand"></a>
 
@@ -1559,107 +1044,17 @@ These [longhands](https://www.w3.org/TR/css-cascade-5/#longhand) of [scroll-padd
 
 ### <a id="padding-longhands-logical"></a>Flow-relative Longhands for [scroll-padding](#propdef-scroll-padding)
 
-<strong>Table 7 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-scroll-padding-inline-start"></a>scroll-padding-inline-start, <a id="propdef-scroll-padding-block-start"></a>scroll-padding-block-start, <a id="propdef-scroll-padding-inline-end"></a>scroll-padding-inline-end, <a id="propdef-scroll-padding-block-end"></a>scroll-padding-block-end
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-length-percentage⑤"></a>
-
-<a id="ref-for-comb-one①②"></a>
-
-auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-scroll-container④⑥"></a>
-
-[scroll containers](https://www.w3.org/TR/css-overflow-3/#scroll-container)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-relative to the scroll container’s scrollport
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-length-percentage⑥"></a>
-
-<a id="ref-for-valdef-scroll-padding-auto②"></a>
-
-the keyword [auto](#valdef-scroll-padding-auto) or a computed [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) value
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value type
+| Field               | Definition                                                                                                                                                                                       |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-scroll-padding-inline-start"></a>scroll-padding-inline-start, <a id="propdef-scroll-padding-block-start"></a>scroll-padding-block-start, <a id="propdef-scroll-padding-inline-end"></a>scroll-padding-inline-end, <a id="propdef-scroll-padding-block-end"></a>scroll-padding-block-end         |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-length-percentage⑤"></a><a id="ref-for-comb-one①②"></a>auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage)             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                                             |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-scroll-container④⑥"></a>[scroll containers](https://www.w3.org/TR/css-overflow-3/#scroll-container)                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | relative to the scroll container’s scrollport                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-typedef-length-percentage⑥"></a><a id="ref-for-valdef-scroll-padding-auto②"></a>the keyword [auto](#valdef-scroll-padding-auto) or a computed [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) value |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value type                                                                                                                                                                           |
 
 <a id="ref-for-longhand①"></a>
 
@@ -1669,105 +1064,17 @@ by computed value type
 
 These [longhands](https://www.w3.org/TR/css-cascade-5/#longhand) of [scroll-padding](#propdef-scroll-padding) specify the block-start, inline-start, block-end, and inline-end edges of the [snapport](#scroll-snapport), respectively. Negative values are invalid.
 
-<strong>Table 8 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-scroll-padding-block"></a>scroll-padding-block, <a id="propdef-scroll-padding-inline"></a>scroll-padding-inline
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-num-range③"></a>
-
-<a id="ref-for-typedef-length-percentage⑦"></a>
-
-<a id="ref-for-comb-one①③"></a>
-
-\[ auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) \][{1,2}](https://www.w3.org/TR/css-values-4/#mult-num-range)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-scroll-container④⑦"></a>
-
-[scroll containers](https://www.w3.org/TR/css-overflow-3/#scroll-container)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-relative to the scroll container’s scrollport
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                                                                                                                                                               |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-scroll-padding-block"></a>scroll-padding-block, <a id="propdef-scroll-padding-inline"></a>scroll-padding-inline                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-num-range③"></a><a id="ref-for-typedef-length-percentage⑦"></a><a id="ref-for-comb-one①③"></a>\[ auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<length-percentage\>](https://www.w3.org/TR/css-values-4/#typedef-length-percentage) \][{1,2}](https://www.w3.org/TR/css-values-4/#mult-num-range) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                                                                                                                     |
+| <strong>Applies to:&#xA;      </strong> | <a id="ref-for-scroll-container④⑦"></a>[scroll containers](https://www.w3.org/TR/css-overflow-3/#scroll-container)                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | relative to the scroll container’s scrollport                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value                                                                                                                                                                                                                                                        |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                              |
 
 <a id="ref-for-shorthand-property②"></a>
 
@@ -1793,99 +1100,17 @@ If two values are specified, the first gives the start value and the second give
 
 ### <a id="margin-longhands-physical"></a>Physical Longhands for [scroll-margin](#propdef-scroll-margin)
 
-<strong>Table 9 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-scroll-margin-top"></a>scroll-margin-top, <a id="propdef-scroll-margin-right"></a>scroll-margin-right, <a id="propdef-scroll-margin-bottom"></a>scroll-margin-bottom, <a id="propdef-scroll-margin-left"></a>scroll-margin-left
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value①"></a>
-
-[\<length\>](https://www.w3.org/TR/css-values-3/#length-value)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-0
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-absolute length
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value type
+| Field               | Definition                                                                                                                                                   |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-scroll-margin-top"></a>scroll-margin-top, <a id="propdef-scroll-margin-right"></a>scroll-margin-right, <a id="propdef-scroll-margin-bottom"></a>scroll-margin-bottom, <a id="propdef-scroll-margin-left"></a>scroll-margin-left |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-length-value①"></a>[\<length\>](https://www.w3.org/TR/css-values-3/#length-value)                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 0                                                                                                                                                            |
+| <strong>Applies to:&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | absolute length                                                                                                                                              |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value type                                                                                                                                       |
 
 <a id="ref-for-longhand③"></a>
 
@@ -1899,99 +1124,17 @@ These [longhands](https://www.w3.org/TR/css-cascade-5/#longhand) of [scroll-marg
 
 ### <a id="margin-longhands-logical"></a>Flow-relative Longhands for [scroll-margin](#propdef-scroll-margin)
 
-<strong>Table 10 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-scroll-margin-block-start"></a>scroll-margin-block-start, <a id="propdef-scroll-margin-inline-start"></a>scroll-margin-inline-start, <a id="propdef-scroll-margin-block-end"></a>scroll-margin-block-end, <a id="propdef-scroll-margin-inline-end"></a>scroll-margin-inline-end
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value②"></a>
-
-[\<length\>](https://www.w3.org/TR/css-values-3/#length-value)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-0
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-absolute length
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value type
+| Field               | Definition                                                                                                                                                                           |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-scroll-margin-block-start"></a>scroll-margin-block-start, <a id="propdef-scroll-margin-inline-start"></a>scroll-margin-inline-start, <a id="propdef-scroll-margin-block-end"></a>scroll-margin-block-end, <a id="propdef-scroll-margin-inline-end"></a>scroll-margin-inline-end |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-length-value②"></a>[\<length\>](https://www.w3.org/TR/css-values-3/#length-value)                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 0                                                                                                                                                                                    |
+| <strong>Applies to:&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | absolute length                                                                                                                                                                      |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value type                                                                                                                                                               |
 
 <a id="ref-for-longhand④"></a>
 
@@ -2001,101 +1144,17 @@ by computed value type
 
 These [longhands](https://www.w3.org/TR/css-cascade-5/#longhand) of [scroll-margin](#propdef-scroll-margin) specify the block-start, inline-start, block-end, and inline-end edges of the [scroll snap area](#scroll-snap-area), respectively.
 
-<strong>Table 11 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-scroll-margin-block"></a>scroll-margin-block, <a id="propdef-scroll-margin-inline"></a>scroll-margin-inline
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-num-range④"></a>
-
-<a id="ref-for-length-value③"></a>
-
-[\<length\>](https://www.w3.org/TR/css-values-3/#length-value)[{1,2}](https://www.w3.org/TR/css-values-4/#mult-num-range)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-0
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Applies to:
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value type
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Canonical order:
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                                                      |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-scroll-margin-block"></a>scroll-margin-block, <a id="propdef-scroll-margin-inline"></a>scroll-margin-inline                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-num-range④"></a><a id="ref-for-length-value③"></a>[\<length\>](https://www.w3.org/TR/css-values-3/#length-value)[{1,2}](https://www.w3.org/TR/css-values-4/#mult-num-range) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 0                                                                                                                                                               |
+| <strong>Applies to:&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value type                                                                                                                                          |
+| <strong>Canonical order:&#xA;      </strong> | per grammar                                                                                                                                                     |
 
 <a id="ref-for-shorthand-property③"></a>
 
@@ -2653,1042 +1712,31 @@ Elika Etemad; Tab Atkins Jr.. [Selectors Level 4](https://www.w3.org/TR/selector
 
 ## <a id="property-index"></a>Property Index
 
-<strong>Table 12 — structured row/cell transcription</strong>
+| Name                | Value                                                                         | Initial | Applies to        | Inh. | %ages                                                                        | Anim­ation type         | Canonical order | Com­puted value                                                              |
+|---------------------|-------------------------------------------------------------------------------|---------|-------------------|------|------------------------------------------------------------------------------|------------------------|-----------------|-----------------------------------------------------------------------------|
+| <strong><span><a id="ref-for-propdef-scroll-margin①④"></a></span><a href="#propdef-scroll-margin">scroll-margin</a>&#xA;      </strong> | \<length\>{1,4}                                                               | 0       | all elements      | no   | n/a                                                                          | by computed value type | per grammar     | per side, an absolute length                                                |
+| <strong><span><a id="ref-for-propdef-scroll-margin-block"></a></span><a href="#propdef-scroll-margin-block">scroll-margin-block</a>&#xA;      </strong> | \<length\>{1,2}                                                               | 0       | all elements      | no   | n/a                                                                          | by computed value type | per grammar     | see individual properties                                                   |
+| <strong><span><a id="ref-for-propdef-scroll-margin-block-end①"></a></span><a href="#propdef-scroll-margin-block-end">scroll-margin-block-end</a>&#xA;      </strong> | \<length\>                                                                    | 0       | all elements      | no   | n/a                                                                          | by computed value type | per grammar     | absolute length                                                             |
+| <strong><span><a id="ref-for-propdef-scroll-margin-block-start①"></a></span><a href="#propdef-scroll-margin-block-start">scroll-margin-block-start</a>&#xA;      </strong> | \<length\>                                                                    | 0       | all elements      | no   | n/a                                                                          | by computed value type | per grammar     | absolute length                                                             |
+| <strong><span><a id="ref-for-propdef-scroll-margin-bottom"></a></span><a href="#propdef-scroll-margin-bottom">scroll-margin-bottom</a>&#xA;      </strong> | \<length\>                                                                    | 0       | all elements      | no   | n/a                                                                          | by computed value type | per grammar     | absolute length                                                             |
+| <strong><span><a id="ref-for-propdef-scroll-margin-inline"></a></span><a href="#propdef-scroll-margin-inline">scroll-margin-inline</a>&#xA;      </strong> | \<length\>{1,2}                                                               | 0       | all elements      | no   | n/a                                                                          | by computed value type | per grammar     | see individual properties                                                   |
+| <strong><span><a id="ref-for-propdef-scroll-margin-inline-end①"></a></span><a href="#propdef-scroll-margin-inline-end">scroll-margin-inline-end</a>&#xA;      </strong> | \<length\>                                                                    | 0       | all elements      | no   | n/a                                                                          | by computed value type | per grammar     | absolute length                                                             |
+| <strong><span><a id="ref-for-propdef-scroll-margin-inline-start①"></a></span><a href="#propdef-scroll-margin-inline-start">scroll-margin-inline-start</a>&#xA;      </strong> | \<length\>                                                                    | 0       | all elements      | no   | n/a                                                                          | by computed value type | per grammar     | absolute length                                                             |
+| <strong><span><a id="ref-for-propdef-scroll-margin-left"></a></span><a href="#propdef-scroll-margin-left">scroll-margin-left</a>&#xA;      </strong> | \<length\>                                                                    | 0       | all elements      | no   | n/a                                                                          | by computed value type | per grammar     | absolute length                                                             |
+| <strong><span><a id="ref-for-propdef-scroll-margin-right"></a></span><a href="#propdef-scroll-margin-right">scroll-margin-right</a>&#xA;      </strong> | \<length\>                                                                    | 0       | all elements      | no   | n/a                                                                          | by computed value type | per grammar     | absolute length                                                             |
+| <strong><span><a id="ref-for-propdef-scroll-margin-top"></a></span><a href="#propdef-scroll-margin-top">scroll-margin-top</a>&#xA;      </strong> | \<length\>                                                                    | 0       | all elements      | no   | n/a                                                                          | by computed value type | per grammar     | absolute length                                                             |
+| <strong><span><a id="ref-for-propdef-scroll-padding②②"></a></span><a href="#propdef-scroll-padding">scroll-padding</a>&#xA;      </strong> | \[ auto \| \<length-percentage\> \]{1,4}                                      | auto    | scroll containers | no   | relative to the corresponding dimension of the scroll container’s scrollport | by computed value type | per grammar     | per side, either the keyword auto or a computed \<length-percentage\> value |
+| <strong><span><a id="ref-for-propdef-scroll-padding-block①"></a></span><a href="#propdef-scroll-padding-block">scroll-padding-block</a>&#xA;      </strong> | \[ auto \| \<length-percentage\> \]{1,2}                                      | auto    | scroll containers | no   | relative to the scroll container’s scrollport                                | by computed value      | per grammar     | see individual properties                                                   |
+| <strong><span><a id="ref-for-propdef-scroll-padding-block-end①"></a></span><a href="#propdef-scroll-padding-block-end">scroll-padding-block-end</a>&#xA;      </strong> | auto \| \<length-percentage\>                                                 | auto    | scroll containers | no   | relative to the scroll container’s scrollport                                | by computed value type | per grammar     | the keyword auto or a computed \<length-percentage\> value                  |
+| <strong><span><a id="ref-for-propdef-scroll-padding-block-start①"></a></span><a href="#propdef-scroll-padding-block-start">scroll-padding-block-start</a>&#xA;      </strong> | auto \| \<length-percentage\>                                                 | auto    | scroll containers | no   | relative to the scroll container’s scrollport                                | by computed value type | per grammar     | the keyword auto or a computed \<length-percentage\> value                  |
+| <strong><span><a id="ref-for-propdef-scroll-padding-bottom"></a></span><a href="#propdef-scroll-padding-bottom">scroll-padding-bottom</a>&#xA;      </strong> | auto \| \<length-percentage\>                                                 | auto    | scroll containers | no   | relative to the scroll container’s scrollport                                | by computed value type | per grammar     | the keyword auto or a computed \<length-percentage\> value                  |
+| <strong><span><a id="ref-for-propdef-scroll-padding-inline①"></a></span><a href="#propdef-scroll-padding-inline">scroll-padding-inline</a>&#xA;      </strong> | \[ auto \| \<length-percentage\> \]{1,2}                                      | auto    | scroll containers | no   | relative to the scroll container’s scrollport                                | by computed value      | per grammar     | see individual properties                                                   |
+| <strong><span><a id="ref-for-propdef-scroll-padding-inline-end①"></a></span><a href="#propdef-scroll-padding-inline-end">scroll-padding-inline-end</a>&#xA;      </strong> | auto \| \<length-percentage\>                                                 | auto    | scroll containers | no   | relative to the scroll container’s scrollport                                | by computed value type | per grammar     | the keyword auto or a computed \<length-percentage\> value                  |
+| <strong><span><a id="ref-for-propdef-scroll-padding-inline-start①"></a></span><a href="#propdef-scroll-padding-inline-start">scroll-padding-inline-start</a>&#xA;      </strong> | auto \| \<length-percentage\>                                                 | auto    | scroll containers | no   | relative to the scroll container’s scrollport                                | by computed value type | per grammar     | the keyword auto or a computed \<length-percentage\> value                  |
+| <strong><span><a id="ref-for-propdef-scroll-padding-left"></a></span><a href="#propdef-scroll-padding-left">scroll-padding-left</a>&#xA;      </strong> | auto \| \<length-percentage\>                                                 | auto    | scroll containers | no   | relative to the scroll container’s scrollport                                | by computed value type | per grammar     | the keyword auto or a computed \<length-percentage\> value                  |
+| <strong><span><a id="ref-for-propdef-scroll-padding-right"></a></span><a href="#propdef-scroll-padding-right">scroll-padding-right</a>&#xA;      </strong> | auto \| \<length-percentage\>                                                 | auto    | scroll containers | no   | relative to the scroll container’s scrollport                                | by computed value type | per grammar     | the keyword auto or a computed \<length-percentage\> value                  |
+| <strong><span><a id="ref-for-propdef-scroll-padding-top"></a></span><a href="#propdef-scroll-padding-top">scroll-padding-top</a>&#xA;      </strong> | auto \| \<length-percentage\>                                                 | auto    | scroll containers | no   | relative to the scroll container’s scrollport                                | by computed value type | per grammar     | the keyword auto or a computed \<length-percentage\> value                  |
+| <strong><span><a id="ref-for-propdef-scroll-snap-align⑤"></a></span><a href="#propdef-scroll-snap-align">scroll-snap-align</a>&#xA;      </strong> | \[ none \| start \| end \| center \]{1,2}                                     | none    | all elements      | no   | n/a                                                                          | discrete               | per grammar     | two keywords                                                                |
+| <strong><span><a id="ref-for-propdef-scroll-snap-stop⑤"></a></span><a href="#propdef-scroll-snap-stop">scroll-snap-stop</a>&#xA;      </strong> | normal \| always                                                              | normal  | all elements      | no   | n/a                                                                          | discrete               | per grammar     | specified keyword                                                           |
+| <strong><span><a id="ref-for-propdef-scroll-snap-type①⑧"></a></span><a href="#propdef-scroll-snap-type">scroll-snap-type</a>&#xA;      </strong> | none \| \[ x \| y \| block \| inline \| both \] \[ mandatory \| proximity \]? | none    | all elements      | no   | n/a                                                                          | discrete               | per grammar     | specified keyword(s)                                                        |
 
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope col):</strong>
-
-Name
-
-<strong>Column 2 (header cell; scope col):</strong>
-
-Value
-
-<strong>Column 3 (header cell; scope col):</strong>
-
-Initial
-
-<strong>Column 4 (header cell; scope col):</strong>
-
-Applies to
-
-<strong>Column 5 (header cell; scope col):</strong>
-
-Inh.
-
-<strong>Column 6 (header cell; scope col):</strong>
-
-%ages
-
-<strong>Column 7 (header cell; scope col):</strong>
-
-Anim­ation type
-
-<strong>Column 8 (header cell; scope col):</strong>
-
-Canonical order
-
-<strong>Column 9 (header cell; scope col):</strong>
-
-Com­puted value
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-scroll-margin①④"></a>
-
-[scroll-margin](#propdef-scroll-margin)
-
-<strong>Column 2 (data cell):</strong>
-
-\<length\>{1,4}
-
-<strong>Column 3 (data cell):</strong>
-
-0
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-per side, an absolute length
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-scroll-margin-block"></a>
-
-[scroll-margin-block](#propdef-scroll-margin-block)
-
-<strong>Column 2 (data cell):</strong>
-
-\<length\>{1,2}
-
-<strong>Column 3 (data cell):</strong>
-
-0
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-scroll-margin-block-end①"></a>
-
-[scroll-margin-block-end](#propdef-scroll-margin-block-end)
-
-<strong>Column 2 (data cell):</strong>
-
-\<length\>
-
-<strong>Column 3 (data cell):</strong>
-
-0
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-absolute length
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-scroll-margin-block-start①"></a>
-
-[scroll-margin-block-start](#propdef-scroll-margin-block-start)
-
-<strong>Column 2 (data cell):</strong>
-
-\<length\>
-
-<strong>Column 3 (data cell):</strong>
-
-0
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-absolute length
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-scroll-margin-bottom"></a>
-
-[scroll-margin-bottom](#propdef-scroll-margin-bottom)
-
-<strong>Column 2 (data cell):</strong>
-
-\<length\>
-
-<strong>Column 3 (data cell):</strong>
-
-0
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-absolute length
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-scroll-margin-inline"></a>
-
-[scroll-margin-inline](#propdef-scroll-margin-inline)
-
-<strong>Column 2 (data cell):</strong>
-
-\<length\>{1,2}
-
-<strong>Column 3 (data cell):</strong>
-
-0
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-scroll-margin-inline-end①"></a>
-
-[scroll-margin-inline-end](#propdef-scroll-margin-inline-end)
-
-<strong>Column 2 (data cell):</strong>
-
-\<length\>
-
-<strong>Column 3 (data cell):</strong>
-
-0
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-absolute length
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-scroll-margin-inline-start①"></a>
-
-[scroll-margin-inline-start](#propdef-scroll-margin-inline-start)
-
-<strong>Column 2 (data cell):</strong>
-
-\<length\>
-
-<strong>Column 3 (data cell):</strong>
-
-0
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-absolute length
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-scroll-margin-left"></a>
-
-[scroll-margin-left](#propdef-scroll-margin-left)
-
-<strong>Column 2 (data cell):</strong>
-
-\<length\>
-
-<strong>Column 3 (data cell):</strong>
-
-0
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-absolute length
-
-<strong>Row 11</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-scroll-margin-right"></a>
-
-[scroll-margin-right](#propdef-scroll-margin-right)
-
-<strong>Column 2 (data cell):</strong>
-
-\<length\>
-
-<strong>Column 3 (data cell):</strong>
-
-0
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-absolute length
-
-<strong>Row 12</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-scroll-margin-top"></a>
-
-[scroll-margin-top](#propdef-scroll-margin-top)
-
-<strong>Column 2 (data cell):</strong>
-
-\<length\>
-
-<strong>Column 3 (data cell):</strong>
-
-0
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-absolute length
-
-<strong>Row 13</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-scroll-padding②②"></a>
-
-[scroll-padding](#propdef-scroll-padding)
-
-<strong>Column 2 (data cell):</strong>
-
-\[ auto \| \<length-percentage\> \]{1,4}
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-scroll containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-relative to the corresponding dimension of the scroll container’s scrollport
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-per side, either the keyword auto or a computed \<length-percentage\> value
-
-<strong>Row 14</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-scroll-padding-block①"></a>
-
-[scroll-padding-block](#propdef-scroll-padding-block)
-
-<strong>Column 2 (data cell):</strong>
-
-\[ auto \| \<length-percentage\> \]{1,2}
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-scroll containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-relative to the scroll container’s scrollport
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 15</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-scroll-padding-block-end①"></a>
-
-[scroll-padding-block-end](#propdef-scroll-padding-block-end)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| \<length-percentage\>
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-scroll containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-relative to the scroll container’s scrollport
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the keyword auto or a computed \<length-percentage\> value
-
-<strong>Row 16</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-scroll-padding-block-start①"></a>
-
-[scroll-padding-block-start](#propdef-scroll-padding-block-start)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| \<length-percentage\>
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-scroll containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-relative to the scroll container’s scrollport
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the keyword auto or a computed \<length-percentage\> value
-
-<strong>Row 17</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-scroll-padding-bottom"></a>
-
-[scroll-padding-bottom](#propdef-scroll-padding-bottom)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| \<length-percentage\>
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-scroll containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-relative to the scroll container’s scrollport
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the keyword auto or a computed \<length-percentage\> value
-
-<strong>Row 18</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-scroll-padding-inline①"></a>
-
-[scroll-padding-inline](#propdef-scroll-padding-inline)
-
-<strong>Column 2 (data cell):</strong>
-
-\[ auto \| \<length-percentage\> \]{1,2}
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-scroll containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-relative to the scroll container’s scrollport
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 19</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-scroll-padding-inline-end①"></a>
-
-[scroll-padding-inline-end](#propdef-scroll-padding-inline-end)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| \<length-percentage\>
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-scroll containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-relative to the scroll container’s scrollport
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the keyword auto or a computed \<length-percentage\> value
-
-<strong>Row 20</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-scroll-padding-inline-start①"></a>
-
-[scroll-padding-inline-start](#propdef-scroll-padding-inline-start)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| \<length-percentage\>
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-scroll containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-relative to the scroll container’s scrollport
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the keyword auto or a computed \<length-percentage\> value
-
-<strong>Row 21</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-scroll-padding-left"></a>
-
-[scroll-padding-left](#propdef-scroll-padding-left)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| \<length-percentage\>
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-scroll containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-relative to the scroll container’s scrollport
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the keyword auto or a computed \<length-percentage\> value
-
-<strong>Row 22</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-scroll-padding-right"></a>
-
-[scroll-padding-right](#propdef-scroll-padding-right)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| \<length-percentage\>
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-scroll containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-relative to the scroll container’s scrollport
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the keyword auto or a computed \<length-percentage\> value
-
-<strong>Row 23</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-scroll-padding-top"></a>
-
-[scroll-padding-top](#propdef-scroll-padding-top)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| \<length-percentage\>
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-scroll containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-relative to the scroll container’s scrollport
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the keyword auto or a computed \<length-percentage\> value
-
-<strong>Row 24</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-scroll-snap-align⑤"></a>
-
-[scroll-snap-align](#propdef-scroll-snap-align)
-
-<strong>Column 2 (data cell):</strong>
-
-\[ none \| start \| end \| center \]{1,2}
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-two keywords
-
-<strong>Row 25</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-scroll-snap-stop⑤"></a>
-
-[scroll-snap-stop](#propdef-scroll-snap-stop)
-
-<strong>Column 2 (data cell):</strong>
-
-normal \| always
-
-<strong>Column 3 (data cell):</strong>
-
-normal
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 26</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-scroll-snap-type①⑧"></a>
-
-[scroll-snap-type](#propdef-scroll-snap-type)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| \[ x \| y \| block \| inline \| both \] \[ mandatory \| proximity \]?
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword(s)

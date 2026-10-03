@@ -20,7 +20,8 @@ Conversion: offline format conversion of the exact stored HTML; not a new specif
 
 Representation notes:
 - 30 inline SVG diagrams are retained as local passive SVG assets, with original geometry and visible source diagram text. Supporting assets are not reference documents.
-- 1 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 2 source tables are presented as readable Markdown tables or explicit labeled layouts: 1 ordinary table conversion, 1 already-readable table. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 
@@ -3465,169 +3466,12 @@ Finally, the <a id="typedef-stylesheet"></a>\<stylesheet\> production represents
 >
 > All four of these productions are pretty similar to each other, so this table summarizes what they accept and lists some example instances of each:
 >
-> <strong>Table 1 — structured row/cell transcription</strong>
->
-> <strong>Row 1</strong>
->
-> <strong>Column 1 (data cell):</strong>
->
-> <strong>Column 2 (header cell):</strong>
->
-> <a id="ref-for-declaration"></a>
->
-> Allows [declarations](#declaration)
->
-> <strong>Column 3 (header cell):</strong>
->
-> <a id="ref-for-nested-style-rule"></a>
->
-> Allows [nested style rules](https://www.w3.org/TR/css-nesting-1/#nested-style-rule)
->
-> <strong>Column 4 (header cell):</strong>
->
-> <a id="ref-for-qualified-rule⑤"></a>
->
-> Allow arbitrary [qualified rules](#qualified-rule)
->
-> <strong>Column 5 (header cell):</strong>
->
-> <a id="ref-for-at-rule①⑤"></a>
->
-> Allows [at-rules](#at-rule)
->
-> <strong>Column 6 (header cell):</strong>
->
-> Examples
->
-> <strong>Row 2</strong>
->
-> <strong>Column 1 (header cell):</strong>
->
-> <a id="ref-for-typedef-style-block"></a>
->
-> [\<style-block\>](#typedef-style-block)
->
-> <strong>Column 2 (data cell):</strong>
->
-> ✓
->
-> <strong>Column 3 (data cell):</strong>
->
-> ✓
->
-> <strong>Column 4 (data cell):</strong>
->
-> ✗
->
-> <strong>Column 5 (data cell):</strong>
->
-> ✓
->
-> <strong>Column 6 (data cell):</strong>
->
-> <a id="ref-for-nested-conditional-group-rules"></a>
->
-> <a id="ref-for-at-ruledef-nest"></a>
->
-> <a id="ref-for-style-rule⑥"></a>
->
-> [style rules](#style-rule), [@nest](https://www.w3.org/TR/css-nesting-1/#at-ruledef-nest), [nested conditional group rules](https://www.w3.org/TR/css-nesting-1/#nested-conditional-group-rules)
->
-> <strong>Row 3</strong>
->
-> <strong>Column 1 (header cell):</strong>
->
-> <a id="ref-for-typedef-declaration-list②"></a>
->
-> [\<declaration-list\>](#typedef-declaration-list)
->
-> <strong>Column 2 (data cell):</strong>
->
-> ✓
->
-> <strong>Column 3 (data cell):</strong>
->
-> ✗
->
-> <strong>Column 4 (data cell):</strong>
->
-> ✗
->
-> <strong>Column 5 (data cell):</strong>
->
-> ✓
->
-> <strong>Column 6 (data cell):</strong>
->
-> <a id="ref-for-at-ruledef-keyframes①"></a>
->
-> <a id="ref-for-at-ruledef-page③"></a>
->
-> <a id="ref-for-at-ruledef-counter-style"></a>
->
-> @font, [@counter-style](https://www.w3.org/TR/css-counter-styles-3/#at-ruledef-counter-style), [@page](https://www.w3.org/TR/css-page-3/#at-ruledef-page), [@keyframes](https://www.w3.org/TR/css-animations-1/#at-ruledef-keyframes) child rules
->
-> <strong>Row 4</strong>
->
-> <strong>Column 1 (header cell):</strong>
->
-> <a id="ref-for-typedef-rule-list③"></a>
->
-> [\<rule-list\>](#typedef-rule-list)
->
-> <strong>Column 2 (data cell):</strong>
->
-> ✗
->
-> <strong>Column 3 (data cell):</strong>
->
-> ✗
->
-> <strong>Column 4 (data cell):</strong>
->
-> ✓
->
-> <strong>Column 5 (data cell):</strong>
->
-> ✓
->
-> <strong>Column 6 (data cell):</strong>
->
-> <a id="ref-for-at-ruledef-font-feature-values"></a>
->
-> <a id="ref-for-at-ruledef-keyframes②"></a>
->
-> [@keyframes](https://www.w3.org/TR/css-animations-1/#at-ruledef-keyframes), [@font-feature-values](https://www.w3.org/TR/css-fonts-4/#at-ruledef-font-feature-values)
->
-> <strong>Row 5</strong>
->
-> <strong>Column 1 (header cell):</strong>
->
-> <a id="ref-for-typedef-stylesheet②"></a>
->
-> [\<stylesheet\>](#typedef-stylesheet)
->
-> <strong>Column 2 (data cell):</strong>
->
-> ✗
->
-> <strong>Column 3 (data cell):</strong>
->
-> ✗
->
-> <strong>Column 4 (data cell):</strong>
->
-> ✓
->
-> <strong>Column 5 (data cell):</strong>
->
-> ✓
->
-> <strong>Column 6 (data cell):</strong>
->
-> <a id="ref-for-conditional-group-rule"></a>
->
-> stylesheets, non-nested [conditional group rules](https://www.w3.org/TR/css3-conditional/#conditional-group-rule)
+> |                     | <a id="ref-for-declaration"></a>Allows [declarations](#declaration) | <a id="ref-for-nested-style-rule"></a>Allows [nested style rules](https://www.w3.org/TR/css-nesting-1/#nested-style-rule) | <a id="ref-for-qualified-rule⑤"></a>Allow arbitrary [qualified rules](#qualified-rule) | <a id="ref-for-at-rule①⑤"></a>Allows [at-rules](#at-rule) | Examples                                                                                                                                                                                                                                                                                                   |
+> |---------------------|--------------------------------------------------------|--------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------|------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+> | <strong><span><a id="ref-for-typedef-style-block"></a></span><a href="#typedef-style-block">&lt;style-block&gt;</a> &#xA;       </strong> | ✓                                                      | ✓                                                                                                      | ✗                                                                     | ✓                                              | <a id="ref-for-nested-conditional-group-rules"></a><a id="ref-for-at-ruledef-nest"></a><a id="ref-for-style-rule⑥"></a>[style rules](#style-rule), [@nest](https://www.w3.org/TR/css-nesting-1/#at-ruledef-nest), [nested conditional group rules](https://www.w3.org/TR/css-nesting-1/#nested-conditional-group-rules)                                                  |
+> | <strong><span><a id="ref-for-typedef-declaration-list②"></a></span><a href="#typedef-declaration-list">&lt;declaration-list&gt;</a> &#xA;       </strong> | ✓                                                      | ✗                                                                                                      | ✗                                                                     | ✓                                              | <a id="ref-for-at-ruledef-keyframes①"></a><a id="ref-for-at-ruledef-page③"></a><a id="ref-for-at-ruledef-counter-style"></a>@font, [@counter-style](https://www.w3.org/TR/css-counter-styles-3/#at-ruledef-counter-style), [@page](https://www.w3.org/TR/css-page-3/#at-ruledef-page), [@keyframes](https://www.w3.org/TR/css-animations-1/#at-ruledef-keyframes) child rules |
+> | <strong><span><a id="ref-for-typedef-rule-list③"></a></span><a href="#typedef-rule-list">&lt;rule-list&gt;</a> &#xA;       </strong> | ✗                                                      | ✗                                                                                                      | ✓                                                                     | ✓                                              | <a id="ref-for-at-ruledef-font-feature-values"></a><a id="ref-for-at-ruledef-keyframes②"></a>[@keyframes](https://www.w3.org/TR/css-animations-1/#at-ruledef-keyframes), [@font-feature-values](https://www.w3.org/TR/css-fonts-4/#at-ruledef-font-feature-values)                                                                                                |
+> | <strong><span><a id="ref-for-typedef-stylesheet②"></a></span><a href="#typedef-stylesheet">&lt;stylesheet&gt;</a> &#xA;       </strong> | ✗                                                      | ✗                                                                                                      | ✓                                                                     | ✓                                              | <a id="ref-for-conditional-group-rule"></a>stylesheets, non-nested [conditional group rules](https://www.w3.org/TR/css3-conditional/#conditional-group-rule)                                                                                                                                                                       |
 >
 > <a id="ref-for-at-rule①⑥"></a>
 >

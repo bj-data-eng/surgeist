@@ -35,8 +35,8 @@ complete source checkout; a separately packaged subset needs its own valid
 notice and license layout.
 
 The checkout also includes the bounded [reference collection](references/README.md):
-134 exact source identities, represented by 133 full document/source witnesses
-and one Unicode URL/hash-only exception, plus 52 passive SVG figures, an
+126 retained source identities, represented by 125 full document/source witnesses
+and one Unicode URL/hash-only exception, plus 80 passive SVG figures, an
 informative Unicode rule-data companion, and navigation/index material. The
 reference entries below cover this added collection only; they do not expand
 or re-audit the dependency inventories above. Source notices remain in the
@@ -249,13 +249,15 @@ and normative citations remain upstream.
 
 ### W3C reference documents and CSSWG source witnesses
 
-The checkout includes reformatted W3C documents and five uncompiled CSSWG source
-witnesses as software implementation support, distributed by the World Wide Web
-Consortium and the contributors identified in the exact originals. The 131
-full-body/source-text witnesses and 52 passive SVG figures are bounded by the
+The checkout includes reformatted W3C documents and readable generated renderings
+of five pinned CSSWG sources as software implementation support, distributed by the World Wide Web
+Consortium and the contributors identified in the exact originals. The 123
+source-based references and 80 passive SVG figures are bounded by the
 [source catalog](references/SOURCE-CATALOG.md). The collection also preserves a
 factual GitHub source-history metadata capture as a supporting provenance
-witness, not as a separate specification or copied source-code component.
+witness, not as a separate specification or copied source-code component. The figures
+comprise 52 source-extracted SVGs and 28 railroad diagrams generated from the pinned
+CSS Syntax 3 source; the corresponding source grammars and attribution are retained.
 
 * Licenses: [W3C Software and Document License, 2023](licenses/w3c/software-license-2023.txt) and [2015](licenses/w3c/software-license-2015.txt), and [W3C Document License, 2023](licenses/w3c/document-license-2023.txt) and [2015](licenses/w3c/document-license-2015.txt), as identified per document
 * Historical legal material: [W3C Document License, 2002](licenses/w3c/document-license-2002.txt)

@@ -19,7 +19,9 @@ Snapshot SHA-256: 1b59ae503fd88cdaeb07ae2a1c6b5ff344baead236ce4e1b55425f880eed85
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 10 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 10 source tables are presented as readable Markdown tables or explicit labeled layouts: 7 ordinary table conversions, 3 complex-table layouts. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
+- Live HTML/CSS demonstrations are represented by static source code and text, not equivalent browser appearance. Incidental whitespace in sample-display elements may collapse as in HTML; exact source markup is retained, and true preformatted/code blocks stay literal.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 - Existing external image/media URLs are resolved against the pinned source. Assets are not downloaded or availability-tested; image-only formulas/diagrams still require their source resources.
@@ -404,113 +406,18 @@ The root viewport, which scrolls the page [canvas](https://www.w3.org/TR/CSS2/in
 
 These properties specify whether a box’s [overflow](#overflow) is clipped, and if so, whether it is a [scroll container](#scroll-container).
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-overflow-x"></a>overflow-x, <a id="propdef-overflow-y"></a>overflow-y, <a id="propdef-overflow-block"></a>overflow-block, <a id="propdef-overflow-inline"></a>overflow-inline
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one"></a>
-
-visible [\|](https://www.w3.org/TR/css-values-4/#comb-one) hidden <a id="ref-for-comb-one①"></a>\| clip <a id="ref-for-comb-one②"></a>\| scroll <a id="ref-for-comb-one③"></a>\| auto
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-overflow-visible"></a>
-
-[visible](#valdef-overflow-visible)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-block containers [\[CSS2\]](#biblio-css2), flex containers [\[CSS3-FLEXBOX\]](#biblio-css3-flexbox), grid containers [\[CSS3-GRID-LAYOUT\]](#biblio-css3-grid-layout)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-usually specified value, but see text
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Logical property group:](https://drafts.csswg.org/css-logical-1/#logical-property-group)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-overflow⑦"></a>
-
-[overflow](#propdef-overflow)
+| Field               | Definition                                                                                                                                                              |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-overflow-x"></a>overflow-x, <a id="propdef-overflow-y"></a>overflow-y, <a id="propdef-overflow-block"></a>overflow-block, <a id="propdef-overflow-inline"></a>overflow-inline                                     |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one"></a>visible [\|](https://www.w3.org/TR/css-values-4/#comb-one) hidden <a id="ref-for-comb-one①"></a>\| clip <a id="ref-for-comb-one②"></a>\| scroll <a id="ref-for-comb-one③"></a>\| auto |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | <a id="ref-for-valdef-overflow-visible"></a>[visible](#valdef-overflow-visible)                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | block containers [\[CSS2\]](#biblio-css2), flex containers [\[CSS3-FLEXBOX\]](#biblio-css3-flexbox), grid containers [\[CSS3-GRID-LAYOUT\]](#biblio-css3-grid-layout)   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | usually specified value, but see text                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                |
+| <strong><a href="https://drafts.csswg.org/css-logical-1/#logical-property-group">Logical property group:</a>&#xA;      </strong> | <a id="ref-for-propdef-overflow⑦"></a>[overflow](#propdef-overflow)                                                                                                                        |
 
 <a id="ref-for-propdef-overflow-x②"></a>
 
@@ -540,101 +447,17 @@ The [overflow-block](#propdef-overflow-block) and [overflow-inline](#propdef-ove
 
 These four properties form a [logical property group](https://www.w3.org/TR/css-logical-1/#logical-property-group) together with the [overflow](#propdef-overflow) [shorthand](https://www.w3.org/TR/css-cascade-5/#shorthand-property), and interact as defined in [CSS Logical Properties 1 § 4 Flow-Relative Box Model Properties](https://www.w3.org/TR/css-logical-1/#box).
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-overflow"></a>overflow
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-num-range"></a>
-
-<a id="ref-for-propdef-overflow-block①"></a>
-
-[\<'overflow-block'\>](#propdef-overflow-block)[{1,2}](https://www.w3.org/TR/css-values-4/#mult-num-range)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-visible
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-block containers [\[CSS2\]](#biblio-css2), flex containers [\[CSS3-FLEXBOX\]](#biblio-css3-flexbox), and grid containers [\[CSS3-GRID-LAYOUT\]](#biblio-css3-grid-layout)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                                                                |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-overflow"></a>overflow                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-num-range"></a><a id="ref-for-propdef-overflow-block①"></a>[\<'overflow-block'\>](#propdef-overflow-block)[{1,2}](https://www.w3.org/TR/css-values-4/#mult-num-range)                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | visible                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | block containers [\[CSS2\]](#biblio-css2), flex containers [\[CSS3-FLEXBOX\]](#biblio-css3-flexbox), and grid containers [\[CSS3-GRID-LAYOUT\]](#biblio-css3-grid-layout) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                               |
 
 <a id="ref-for-propdef-overflow⑨"></a>
 
@@ -855,111 +678,17 @@ On [scroll containers](#scroll-container) in non-interactive media with an [over
 
 ### <a id="overflow-clip-margin"></a>3.2.  Expanding Clipping Bounds: the [overflow-clip-margin](#propdef-overflow-clip-margin) property
 
-<strong>Table 3 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-overflow-clip-margin"></a>overflow-clip-margin
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value"></a>
-
-<a id="ref-for-comb-any"></a>
-
-<a id="ref-for-typedef-visual-box"></a>
-
-[\<visual-box\>](https://www.w3.org/TR/css-box-4/#typedef-visual-box) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<length \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#length-value)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-0px
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-overflow②②"></a>
-
-boxes to which [overflow](#propdef-overflow) applies
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-visual-box①"></a>
-
-<a id="ref-for-length-value①"></a>
-
-the computed [\<length\>](https://www.w3.org/TR/css-values-4/#length-value) and a [\<visual-box\>](https://www.w3.org/TR/css-box-4/#typedef-visual-box) keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-visual-box②"></a>
-
-per computed value if the [\<visual-box\>](https://www.w3.org/TR/css-box-4/#typedef-visual-box) values match; otherwise discrete
+| Field               | Definition                                                                                                                                                                                                                                                 |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-overflow-clip-margin"></a>overflow-clip-margin                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-length-value"></a><a id="ref-for-comb-any"></a><a id="ref-for-typedef-visual-box"></a>[\<visual-box\>](https://www.w3.org/TR/css-box-4/#typedef-visual-box) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<length \[0,∞\]\>](https://www.w3.org/TR/css-values-4/#length-value) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 0px                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-propdef-overflow②②"></a>boxes to which [overflow](#propdef-overflow) applies                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-typedef-visual-box①"></a><a id="ref-for-length-value①"></a>the computed [\<length\>](https://www.w3.org/TR/css-values-4/#length-value) and a [\<visual-box\>](https://www.w3.org/TR/css-box-4/#typedef-visual-box) keyword                                                      |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | <a id="ref-for-typedef-visual-box②"></a>per computed value if the [\<visual-box\>](https://www.w3.org/TR/css-box-4/#typedef-visual-box) values match; otherwise discrete                                                                                                        |
 
 <a id="ref-for-propdef-overflow②③"></a>
 
@@ -1055,101 +784,17 @@ If [visible](#valdef-overflow-visible) is applied to the viewport, it must be in
 
 ### <a id="smooth-scrolling"></a>3.4.  Smooth Scrolling: the [scroll-behavior](#propdef-scroll-behavior) Property
 
-<strong>Table 4 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-scroll-behavior"></a>scroll-behavior
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one④"></a>
-
-auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) smooth
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-scroll-container①⑥"></a>
-
-[scroll containers](#scroll-container)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified value
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-not animatable
+| Field               | Definition                                                                        |
+|---------------------|-----------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-scroll-behavior"></a>scroll-behavior                                                |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one④"></a>auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) smooth |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-scroll-container①⑥"></a>[scroll containers](#scroll-container)                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified value                                                                   |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                       |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | not animatable                                                                    |
 
 <a id="ref-for-propdef-scroll-behavior①"></a>
 
@@ -1258,105 +903,17 @@ The space between the inner border edge and the outer padding edge which user ag
 
 The [scrollbar-gutter](#propdef-scrollbar-gutter) property gives control to the author over the presence of [scrollbar gutters](#scrollbar-gutter) separately from the ability to control the presence of scrollbars provided by the [overflow](#propdef-overflow) property.
 
-<strong>Table 5 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-scrollbar-gutter"></a>scrollbar-gutter
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-opt"></a>
-
-<a id="ref-for-comb-all"></a>
-
-<a id="ref-for-comb-one⑤"></a>
-
-auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) stable [&#x26;&#x26;](https://www.w3.org/TR/css-values-4/#comb-all) both-edges[?](https://www.w3.org/TR/css-values-4/#mult-opt)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-scroll-container②⓪"></a>
-
-[scroll containers](#scroll-container)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword(s)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                                                         |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-scrollbar-gutter"></a>scrollbar-gutter                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-opt"></a><a id="ref-for-comb-all"></a><a id="ref-for-comb-one⑤"></a>auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) stable [&#x26;&#x26;](https://www.w3.org/TR/css-values-4/#comb-all) both-edges[?](https://www.w3.org/TR/css-values-4/#mult-opt) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-scroll-container②⓪"></a>[scroll containers](#scroll-container)                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword(s)                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                           |
 
 <a id="ref-for-scrollbar-gutter①"></a>
 
@@ -1489,171 +1046,22 @@ As for the [overflow](#propdef-overflow) property, when [scrollbar-gutter](#prop
 >
 > <a id="ref-for-scrollbar-gutter①⑦"></a>
 >
-> <strong>Table 6 — structured row/cell transcription</strong>
+> **Table 6**
 >
 > Should a [classic scrollbar](#classic-scrollbars)’s [scrollbar gutter](#scrollbar-gutter) be present?
 >
-> <strong>Row 1</strong>
->
-> <strong>Column 1 (header cell):</strong>
->
-> <a id="ref-for-propdef-overflow③⑥"></a>
->
-> [overflow](#propdef-overflow)
->
-> <strong>Column 2 (header cell):</strong>
->
-> <a id="ref-for-propdef-scrollbar-gutter⑦"></a>
->
-> [scrollbar-gutter](#propdef-scrollbar-gutter)
->
-> <strong>Column 3 (header cell):</strong>
->
-> Overflowing
->
-> <strong>Column 4 (header cell):</strong>
->
-> Not overflowing
->
-> <strong>Row 2</strong>
->
-> <strong>Column 1 (header cell; row span 2):</strong>
->
-> <a id="ref-for-valdef-overflow-scroll⑦"></a>
->
-> [scroll](#valdef-overflow-scroll)
->
-> <strong>Column 2 (header cell):</strong>
->
-> <a id="ref-for-valdef-scrollbar-gutter-auto①"></a>
->
-> [auto](#valdef-scrollbar-gutter-auto)
->
-> <strong>Column 3 (data cell):</strong>
->
-> yes
->
-> <strong>Column 4 (data cell):</strong>
->
-> yes
->
-> <strong>Row 3</strong>
->
-> <strong>Column 2 (header cell):</strong>
->
-> <a id="ref-for-valdef-scrollbar-gutter-stable"></a>
->
-> [stable](#valdef-scrollbar-gutter-stable)
->
-> <strong>Column 3 (data cell):</strong>
->
-> yes
->
-> <strong>Column 4 (data cell):</strong>
->
-> yes
->
-> <strong>Row 4</strong>
->
-> <strong>Column 1 (header cell; row span 2):</strong>
->
-> <a id="ref-for-valdef-overflow-auto⑨"></a>
->
-> [auto](#valdef-overflow-auto)
->
-> <strong>Column 2 (header cell):</strong>
->
-> <a id="ref-for-valdef-scrollbar-gutter-auto②"></a>
->
-> [auto](#valdef-scrollbar-gutter-auto)
->
-> <strong>Column 3 (data cell):</strong>
->
-> yes
->
-> <strong>Column 4 (data cell):</strong>
->
-> <strong>Row 5</strong>
->
-> <strong>Column 2 (header cell):</strong>
->
-> <a id="ref-for-valdef-scrollbar-gutter-stable①"></a>
->
-> [stable](#valdef-scrollbar-gutter-stable)
->
-> <strong>Column 3 (data cell):</strong>
->
-> yes
->
-> <strong>Column 4 (data cell):</strong>
->
-> yes
->
-> <strong>Row 6</strong>
->
-> <strong>Column 1 (header cell; row span 2):</strong>
->
-> <a id="ref-for-valdef-overflow-hidden⑨"></a>
->
-> [hidden](#valdef-overflow-hidden)
->
-> <strong>Column 2 (header cell):</strong>
->
-> <a id="ref-for-valdef-scrollbar-gutter-auto③"></a>
->
-> [auto](#valdef-scrollbar-gutter-auto)
->
-> <strong>Column 3 (data cell):</strong>
->
-> <strong>Column 4 (data cell):</strong>
->
-> <strong>Row 7</strong>
->
-> <strong>Column 2 (header cell):</strong>
->
-> <a id="ref-for-valdef-scrollbar-gutter-stable②"></a>
->
-> [stable](#valdef-scrollbar-gutter-stable)
->
-> <strong>Column 3 (data cell):</strong>
->
-> yes
->
-> <strong>Column 4 (data cell):</strong>
->
-> yes
->
-> <strong>Row 8</strong>
->
-> <strong>Column 1 (header cell; row span 2):</strong>
->
-> <a id="ref-for-valdef-overflow-clip⑨"></a>
->
-> <a id="ref-for-valdef-overflow-visible⑨"></a>
->
-> [visible](#valdef-overflow-visible), [clip](#valdef-overflow-clip)
->
-> <strong>Column 2 (header cell):</strong>
->
-> <a id="ref-for-valdef-scrollbar-gutter-auto④"></a>
->
-> [auto](#valdef-scrollbar-gutter-auto)
->
-> <strong>Column 3 (data cell):</strong>
->
-> <strong>Column 4 (data cell):</strong>
->
-> <strong>Row 9</strong>
->
-> <strong>Column 2 (header cell):</strong>
->
-> <a id="ref-for-valdef-scrollbar-gutter-stable③"></a>
->
-> [stable](#valdef-scrollbar-gutter-stable)
->
-> <strong>Column 3 (data cell):</strong>
->
-> <strong>Column 4 (data cell):</strong>
+> Representation note: merged header paths are written explicitly; values from merged body cells are repeated wherever they apply.
+>
+> | <a id="ref-for-propdef-overflow③⑥"></a> [overflow](#propdef-overflow) | <a id="ref-for-propdef-scrollbar-gutter⑦"></a> [scrollbar-gutter](#propdef-scrollbar-gutter) | Overflowing | Not overflowing |
+> | --- | --- | --- | --- |
+> | <a id="ref-for-valdef-overflow-scroll⑦"></a> [scroll](#valdef-overflow-scroll) | <a id="ref-for-valdef-scrollbar-gutter-auto①"></a> [auto](#valdef-scrollbar-gutter-auto) | yes | yes |
+> | [scroll](#valdef-overflow-scroll) | <a id="ref-for-valdef-scrollbar-gutter-stable"></a> [stable](#valdef-scrollbar-gutter-stable) | yes | yes |
+> | <a id="ref-for-valdef-overflow-auto⑨"></a> [auto](#valdef-overflow-auto) | <a id="ref-for-valdef-scrollbar-gutter-auto②"></a> [auto](#valdef-scrollbar-gutter-auto) | yes |  |
+> | [auto](#valdef-overflow-auto) | <a id="ref-for-valdef-scrollbar-gutter-stable①"></a> [stable](#valdef-scrollbar-gutter-stable) | yes | yes |
+> | <a id="ref-for-valdef-overflow-hidden⑨"></a> [hidden](#valdef-overflow-hidden) | <a id="ref-for-valdef-scrollbar-gutter-auto③"></a> [auto](#valdef-scrollbar-gutter-auto) |  |  |
+> | [hidden](#valdef-overflow-hidden) | <a id="ref-for-valdef-scrollbar-gutter-stable②"></a> [stable](#valdef-scrollbar-gutter-stable) | yes | yes |
+> | <a id="ref-for-valdef-overflow-clip⑨"></a> <a id="ref-for-valdef-overflow-visible⑨"></a> [visible](#valdef-overflow-visible), [clip](#valdef-overflow-clip) | <a id="ref-for-valdef-scrollbar-gutter-auto④"></a> [auto](#valdef-scrollbar-gutter-auto) |  |  |
+> | [visible](#valdef-overflow-visible), [clip](#valdef-overflow-clip) | <a id="ref-for-valdef-scrollbar-gutter-stable③"></a> [stable](#valdef-scrollbar-gutter-stable) |  |  |
 
 ## <a id="auto-ellipsis"></a>5.  Automatic Ellipses
 
@@ -1661,99 +1069,17 @@ As for the [overflow](#propdef-overflow) property, when [scrollbar-gutter](#prop
 
 ### <a id="text-overflow"></a>5.1.  Overflow Ellipsis: the [text-overflow](#propdef-text-overflow) property
 
-<strong>Table 7 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-text-overflow"></a>text-overflow
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one⑥"></a>
-
-clip [\|](https://www.w3.org/TR/css-values-4/#comb-one) ellipsis
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-clip
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-block containers
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                          |
+|---------------------|-------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-text-overflow"></a>text-overflow                                                    |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one⑥"></a>clip [\|](https://www.w3.org/TR/css-values-4/#comb-one) ellipsis |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | clip                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | block containers                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                   |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                         |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                            |
 
 <a id="ref-for-end"></a>
 
@@ -1799,49 +1125,72 @@ For the ellipsis value implementations must hide characters and [atomic inline-l
 >
 > Sample HTML fragments, renderings, and your browser:
 >
-> <strong>Table 8 — structured row/cell transcription</strong>
 >
-> <strong>Row 1</strong>
+> These are static transcriptions of the source’s live browser demonstration. The “browser” text below is the source content, not a measured rendering. Original demonstration HTML/CSS is included so clipping, direction, and line-breaking are not lost. See the [source demonstration](https://www.w3.org/TR/2025/WD-css-overflow-3-20251007/#example-7153ff61).
 >
-> <strong>Column 1 (header cell):</strong>
+> **Demonstration stylesheet from the source**
 >
-> HTML
+> ```css
+> .awesome-table td { padding: 5px; }
+> .awesome-table {
+> 	color: #000;
+> 	background: #fff;
+> 	margin: auto;
+> }
+> ```
 >
-> <strong>Column 2 (header cell):</strong>
+> **Example 1**
 >
-> Reference rendering
->
-> <strong>Column 3 (header cell):</strong>
->
-> Your Browser
->
-> <strong>Row 2</strong>
->
-> <strong>Column 1 (data cell):</strong>
+> **HTML**
 >
 > `<div>שלום 123456</div>`
 >
-> <strong>Column 2 (data cell):</strong>
+> **Reference rendering**
 >
 > 123456 ם…
 >
-> <strong>Column 3 (data cell):</strong>
+> **Original browser-demonstration HTML**
+>
+> ```html
+> <div style="font-family:monospace">123456 ם…</div>
+> ```
+>
+> **Your Browser**
 >
 > שלום 123456
 >
-> <strong>Row 3</strong>
+> **Original browser-demonstration HTML**
 >
-> <strong>Column 1 (data cell):</strong>
+> ```html
+> <div style="font-family: monospace; white-space: pre; overflow: hidden; width: 9ch; text-overflow: ellipsis">שלום 123456</div>
+> ```
+>
+> **Example 2**
+>
+> **HTML**
 >
 > `<div dir=rtl>שלום 123456</div>`
 >
-> <strong>Column 2 (data cell):</strong>
+> **Reference rendering**
 >
 > …456 שלום
 >
-> <strong>Column 3 (data cell):</strong>
+> **Original browser-demonstration HTML**
+>
+> ```html
+> <div style="font-family:monospace">…456 שלום</div>
+> ```
+>
+> **Your Browser**
 >
 > שלום 123456
+>
+> **Original browser-demonstration HTML**
+>
+> ```html
+> <div dir="rtl" style="font-family: monospace; white-space: pre; overflow: hidden; width: 9ch; text-overflow: ellipsis">שלום 123456</div>
+> ```
+>
 
 #### <a id="ellipsing-details"></a> ellipsing details
 
@@ -1884,25 +1233,23 @@ For the ellipsis value implementations must hide characters and [atomic inline-l
 >
 > sample HTML fragments, renderings, and your browser:
 >
-> <strong>Table 9 — structured row/cell transcription</strong>
 >
-> <strong>Row 1</strong>
+> These are static transcriptions of the source’s live browser demonstration. The “browser” text below is the source content, not a measured rendering. Original demonstration HTML/CSS is included so clipping, direction, and line-breaking are not lost. See the [source demonstration](https://www.w3.org/TR/2025/WD-css-overflow-3-20251007/#example-cb85f151).
 >
-> <strong>Column 1 (header cell):</strong>
+> **Demonstration stylesheet from the source**
 >
-> HTML
+> ```css
+> .awesome-table td { padding: 5px; }
+> .awesome-table {
+> 	color: #000;
+> 	background: #fff;
+> 	margin: auto;
+> }
+> ```
 >
-> <strong>Column 2 (header cell):</strong>
+> **Example 1**
 >
-> sample rendering
->
-> <strong>Column 3 (header cell):</strong>
->
-> your browser
->
-> <strong>Row 2</strong>
->
-> <strong>Column 1 (data cell):</strong>
+> **HTML**
 >
 > ```text
 > <div>
@@ -1910,19 +1257,25 @@ For the ellipsis value implementations must hide characters and [atomic inline-l
 > </div>
 > ```
 >
-> <strong>Column 2 (data cell):</strong>
+> **sample rendering**
 >
 > First, a box with text drawing outside of it.
 >
 > ![First, a box with text drawing outside of it.](https://www.w3.org/TR/2025/WD-css-overflow-3-20251007/images/cssisawesome.png)
 >
-> <strong>Column 3 (data cell):</strong>
+> **your browser**
 >
 > CSS IS AWESOME, YES
 >
-> <strong>Row 3</strong>
+> **Original browser-demonstration HTML**
 >
-> <strong>Column 1 (data cell):</strong>
+> ```html
+> <div style="width:3.1em; border:solid .1em black; margin:1em 0; padding:.2em; font-family:Helvetica,sans-serif; line-height:1.1;">CSS IS AWESOME, YES</div>
+> ```
+>
+> **Example 2**
+>
+> **HTML**
 >
 > ```text
 > <div style="text-overflow:clip; overflow:hidden">
@@ -1930,19 +1283,25 @@ For the ellipsis value implementations must hide characters and [atomic inline-l
 > </div>
 > ```
 >
-> <strong>Column 2 (data cell):</strong>
+> **sample rendering**
 >
 > Second, a similar box with the text clipped outside the box.
 >
 > ![Second, a similar box with the text clipped outside the box.](https://www.w3.org/TR/2025/WD-css-overflow-3-20251007/images/cssisaweso.png)
 >
-> <strong>Column 3 (data cell):</strong>
+> **your browser**
 >
 > CSS IS AWESOME, YES
 >
-> <strong>Row 4</strong>
+> **Original browser-demonstration HTML**
 >
-> <strong>Column 1 (data cell):</strong>
+> ```html
+> <div style="width:3.1em; border:solid .1em black; margin:1em 0; padding:.2em; font-family:Helvetica,sans-serif; line-height:1.1; overflow:hidden;text-overflow:clip;">CSS IS AWESOME, YES</div>
+> ```
+>
+> **Example 3**
+>
+> **HTML**
 >
 > ```text
 > <div style="text-overflow:ellipsis; overflow:hidden">
@@ -1950,19 +1309,25 @@ For the ellipsis value implementations must hide characters and [atomic inline-l
 > </div>
 > ```
 >
-> <strong>Column 2 (data cell):</strong>
+> **sample rendering**
 >
 > Third, a similar box with an ellipsis representing the clipped text.
 >
 > ![Third, a similar box with an ellipsis representing the clipped text.](https://www.w3.org/TR/2025/WD-css-overflow-3-20251007/images/cssisaw.png)
 >
-> <strong>Column 3 (data cell):</strong>
+> **your browser**
 >
 > CSS IS AWESOME, YES
 >
-> <strong>Row 5</strong>
+> **Original browser-demonstration HTML**
 >
-> <strong>Column 1 (data cell):</strong>
+> ```html
+> <div style="width:3.1em; border:solid .1em black; margin:1em 0; padding:.2em;  font-family:Helvetica,sans-serif; line-height:1.1; overflow:hidden;text-overflow:ellipsis;">CSS IS AWESOME, YES</div>
+> ```
+>
+> **Example 4**
+>
+> **HTML**
 >
 > ```text
 > <div style="text-overflow:ellipsis; overflow:hidden">
@@ -1972,19 +1337,32 @@ For the ellipsis value implementations must hide characters and [atomic inline-l
 > </div>
 > ```
 >
-> <strong>Column 2 (data cell):</strong>
+> **sample rendering**
 >
 > Fourth, a box with a nested paragraph demonstrating anonymous block boxes equivalency and non-inheritance into a nested element.
 >
 > ![Fourth, a box with a nested paragraph demonstrating anonymous block boxes equivalency and non-inheritance into a nested element.](https://www.w3.org/TR/2025/WD-css-overflow-3-20251007/images/nes.png)
 >
-> <strong>Column 3 (data cell):</strong>
+> **your browser**
 >
 > NESTED
 >
 > PARAGRAPH
 >
 > WON’T ELLIPSE.
+>
+> **Original browser-demonstration HTML**
+>
+> ```html
+> <div style="width:3.1em; border:solid .1em black; margin:1em 0; padding:.2em;  font-family:Helvetica,sans-serif; line-height:1.1; overflow:hidden;text-overflow:ellipsis;">
+>          NESTED
+> 						
+>          <p>PARAGRAPH</p>
+>          
+> 						WON’T ELLIPSE.
+>         </div>
+> ```
+>
 
 <a id="ref-for-propdef-direction"></a>
 
@@ -2409,435 +1787,17 @@ Dean Jackson; et al. [Media Queries Level 5](https://www.w3.org/TR/mediaqueries-
 
 ## <a id="property-index"></a>Property Index
 
-<strong>Table 10 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope col):</strong>
-
-Name
-
-<strong>Column 2 (header cell; scope col):</strong>
-
-Value
-
-<strong>Column 3 (header cell; scope col):</strong>
-
-Initial
-
-<strong>Column 4 (header cell; scope col):</strong>
-
-Applies to
-
-<strong>Column 5 (header cell; scope col):</strong>
-
-Inh.
-
-<strong>Column 6 (header cell; scope col):</strong>
-
-%ages
-
-<strong>Column 7 (header cell; scope col):</strong>
-
-Anim­ation type
-
-<strong>Column 8 (header cell; scope col):</strong>
-
-Canonical order
-
-<strong>Column 9 (header cell; scope col):</strong>
-
-Com­puted value
-
-<strong>Column 10 (header cell; scope col):</strong>
-
-Logical property group
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-overflow④⓪"></a>
-
-[overflow](#propdef-overflow)
-
-<strong>Column 2 (data cell):</strong>
-
-\<'overflow-block'\>{1,2}
-
-<strong>Column 3 (data cell):</strong>
-
-visible
-
-<strong>Column 4 (data cell):</strong>
-
-block containers \[CSS2\], flex containers \[CSS3-FLEXBOX\], and grid containers \[CSS3-GRID-LAYOUT\]
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-overflow-block②"></a>
-
-[overflow-block](#propdef-overflow-block)
-
-<strong>Column 2 (data cell):</strong>
-
-visible \| hidden \| clip \| scroll \| auto
-
-<strong>Column 3 (data cell):</strong>
-
-visible
-
-<strong>Column 4 (data cell):</strong>
-
-block containers \[CSS2\], flex containers \[CSS3-FLEXBOX\], grid containers \[CSS3-GRID-LAYOUT\]
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-usually specified value, but see text
-
-<strong>Column 10 (data cell):</strong>
-
-overflow
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-overflow-clip-margin③"></a>
-
-[overflow-clip-margin](#propdef-overflow-clip-margin)
-
-<strong>Column 2 (data cell):</strong>
-
-\<visual-box\> \|\| \<length \[0,∞\]\>
-
-<strong>Column 3 (data cell):</strong>
-
-0px
-
-<strong>Column 4 (data cell):</strong>
-
-boxes to which overflow applies
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-per computed value if the \<visual-box\> values match; otherwise discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the computed \<length\> and a \<visual-box\> keyword
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-overflow-inline①"></a>
-
-[overflow-inline](#propdef-overflow-inline)
-
-<strong>Column 2 (data cell):</strong>
-
-visible \| hidden \| clip \| scroll \| auto
-
-<strong>Column 3 (data cell):</strong>
-
-visible
-
-<strong>Column 4 (data cell):</strong>
-
-block containers \[CSS2\], flex containers \[CSS3-FLEXBOX\], grid containers \[CSS3-GRID-LAYOUT\]
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-usually specified value, but see text
-
-<strong>Column 10 (data cell):</strong>
-
-overflow
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-overflow-x⑧"></a>
-
-[overflow-x](#propdef-overflow-x)
-
-<strong>Column 2 (data cell):</strong>
-
-visible \| hidden \| clip \| scroll \| auto
-
-<strong>Column 3 (data cell):</strong>
-
-visible
-
-<strong>Column 4 (data cell):</strong>
-
-block containers \[CSS2\], flex containers \[CSS3-FLEXBOX\], grid containers \[CSS3-GRID-LAYOUT\]
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-usually specified value, but see text
-
-<strong>Column 10 (data cell):</strong>
-
-overflow
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-overflow-y⑧"></a>
-
-[overflow-y](#propdef-overflow-y)
-
-<strong>Column 2 (data cell):</strong>
-
-visible \| hidden \| clip \| scroll \| auto
-
-<strong>Column 3 (data cell):</strong>
-
-visible
-
-<strong>Column 4 (data cell):</strong>
-
-block containers \[CSS2\], flex containers \[CSS3-FLEXBOX\], grid containers \[CSS3-GRID-LAYOUT\]
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-usually specified value, but see text
-
-<strong>Column 10 (data cell):</strong>
-
-overflow
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-scroll-behavior③"></a>
-
-[scroll-behavior](#propdef-scroll-behavior)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| smooth
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-scroll containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-not animatable
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified value
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-scrollbar-gutter⑧"></a>
-
-[scrollbar-gutter](#propdef-scrollbar-gutter)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| stable &#x26;&#x26; both-edges?
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-scroll containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword(s)
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-text-overflow⑧"></a>
-
-[text-overflow](#propdef-text-overflow)
-
-<strong>Column 2 (data cell):</strong>
-
-clip \| ellipsis
-
-<strong>Column 3 (data cell):</strong>
-
-clip
-
-<strong>Column 4 (data cell):</strong>
-
-block containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
-
-<strong>Column 10 (data cell):</strong>
+| Name                | Value                                                     | Initial | Applies to                                                                                            | Inh. | %ages | Anim­ation type                                                            | Canonical order | Com­puted value                                       | Logical property group |
+|---------------------|-----------------------------------------------------------|---------|-------------------------------------------------------------------------------------------------------|------|-------|---------------------------------------------------------------------------|-----------------|------------------------------------------------------|------------------------|
+| <strong><span><a id="ref-for-propdef-overflow④⓪"></a></span><a href="#propdef-overflow">overflow</a>&#xA;      </strong> | \<'overflow-block'\>{1,2}                                 | visible | block containers \[CSS2\], flex containers \[CSS3-FLEXBOX\], and grid containers \[CSS3-GRID-LAYOUT\] | no   | N/A   | discrete                                                                  | per grammar     | see individual properties                            |                        |
+| <strong><span><a id="ref-for-propdef-overflow-block②"></a></span><a href="#propdef-overflow-block">overflow-block</a>&#xA;      </strong> | visible \| hidden \| clip \| scroll \| auto               | visible | block containers \[CSS2\], flex containers \[CSS3-FLEXBOX\], grid containers \[CSS3-GRID-LAYOUT\]     | no   | N/A   | discrete                                                                  | per grammar     | usually specified value, but see text                | overflow               |
+| <strong><span><a id="ref-for-propdef-overflow-clip-margin③"></a></span><a href="#propdef-overflow-clip-margin">overflow-clip-margin</a>&#xA;      </strong> | \<visual-box\> \|\| \<length \[0,∞\]\>                    | 0px     | boxes to which overflow applies                                                                       | no   | n/a   | per computed value if the \<visual-box\> values match; otherwise discrete | per grammar     | the computed \<length\> and a \<visual-box\> keyword |                        |
+| <strong><span><a id="ref-for-propdef-overflow-inline①"></a></span><a href="#propdef-overflow-inline">overflow-inline</a>&#xA;      </strong> | visible \| hidden \| clip \| scroll \| auto               | visible | block containers \[CSS2\], flex containers \[CSS3-FLEXBOX\], grid containers \[CSS3-GRID-LAYOUT\]     | no   | N/A   | discrete                                                                  | per grammar     | usually specified value, but see text                | overflow               |
+| <strong><span><a id="ref-for-propdef-overflow-x⑧"></a></span><a href="#propdef-overflow-x">overflow-x</a>&#xA;      </strong> | visible \| hidden \| clip \| scroll \| auto               | visible | block containers \[CSS2\], flex containers \[CSS3-FLEXBOX\], grid containers \[CSS3-GRID-LAYOUT\]     | no   | N/A   | discrete                                                                  | per grammar     | usually specified value, but see text                | overflow               |
+| <strong><span><a id="ref-for-propdef-overflow-y⑧"></a></span><a href="#propdef-overflow-y">overflow-y</a>&#xA;      </strong> | visible \| hidden \| clip \| scroll \| auto               | visible | block containers \[CSS2\], flex containers \[CSS3-FLEXBOX\], grid containers \[CSS3-GRID-LAYOUT\]     | no   | N/A   | discrete                                                                  | per grammar     | usually specified value, but see text                | overflow               |
+| <strong><span><a id="ref-for-propdef-scroll-behavior③"></a></span><a href="#propdef-scroll-behavior">scroll-behavior</a>&#xA;      </strong> | auto \| smooth                                            | auto    | scroll containers                                                                                     | no   | n/a   | not animatable                                                            | per grammar     | specified value                                      |                        |
+| <strong><span><a id="ref-for-propdef-scrollbar-gutter⑧"></a></span><a href="#propdef-scrollbar-gutter">scrollbar-gutter</a>&#xA;      </strong> | auto \| stable &#x26;&#x26; both-edges? | auto    | scroll containers                                                                                     | no   | n/a   | discrete                                                                  | per grammar     | specified keyword(s)                                 |                        |
+| <strong><span><a id="ref-for-propdef-text-overflow⑧"></a></span><a href="#propdef-text-overflow">text-overflow</a>&#xA;      </strong> | clip \| ellipsis                                          | clip    | block containers                                                                                      | no   | N/A   | discrete                                                                  | per grammar     | specified keyword                                    |                        |
 
 ## <a id="issues-index"></a>Issues Index
 

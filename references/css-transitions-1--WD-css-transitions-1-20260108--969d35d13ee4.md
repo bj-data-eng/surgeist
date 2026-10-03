@@ -19,7 +19,8 @@ Snapshot SHA-256: 969d35d13ee4e4248421ebf991156a1af6b577d17a1be2565ffeaa94a012ec
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 7 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 7 source tables are presented as readable Markdown tables or explicit labeled layouts: 7 ordinary table conversions. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 - Existing external image/media URLs are resolved against the pinned source. Assets are not downloaded or availability-tested; image-only formulas/diagrams still require their source resources.
@@ -207,105 +208,17 @@ Tests
 
 The [transition-property](#propdef-transition-property) property specifies the name of the CSS property to which the transition is applied.
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-transition-property"></a>transition-property
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma"></a>
-
-<a id="ref-for-single-transition-property"></a>
-
-<a id="ref-for-comb-one"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<single-transition-property\>](#single-transition-property)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-all
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-transition-property-none"></a>
-
-the keyword [none](#valdef-transition-property-none) else a list of identifiers
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-not animatable
+| Field               | Definition                                                                                                                                                                                                                         |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-transition-property"></a>transition-property                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma"></a><a id="ref-for-single-transition-property"></a><a id="ref-for-comb-one"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<single-transition-property\>](#single-transition-property)[\#](https://www.w3.org/TR/css-values-4/#mult-comma) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | all                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-valdef-transition-property-none"></a>the keyword [none](#valdef-transition-property-none) else a list of identifiers                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | not animatable                                                                                                                                                                                                                     |
 
 Tests
 
@@ -422,101 +335,17 @@ If a property is specified multiple times in the value of [transition-property](
 
 The [transition-duration](#propdef-transition-duration) property defines the length of time that a transition takes.
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-transition-duration"></a>transition-duration
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma①"></a>
-
-<a id="ref-for-time-value"></a>
-
-[\<time \[0s,∞\]\>](https://www.w3.org/TR/css-values-3/#time-value)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-0s
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-list, each item a duration
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-not animatable
+| Field               | Definition                                                                                                                                                    |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-transition-duration"></a>transition-duration                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma①"></a><a id="ref-for-time-value"></a>[\<time \[0s,∞\]\>](https://www.w3.org/TR/css-values-3/#time-value)[\#](https://www.w3.org/TR/css-values-4/#mult-comma) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 0s                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | list, each item a duration                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | not animatable                                                                                                                                                |
 
 Tests
 
@@ -550,101 +379,17 @@ The [transition-timing-function](#propdef-transition-timing-function) property d
 
 Timing functions are defined in the separate CSS Easing Functions module [\[css-easing-1\]](#biblio-css-easing-1). The [input progress value](https://www.w3.org/TR/css-easing-2/#input-progress-value) used is the percentage of the transition duration, and the [output progress value](https://www.w3.org/TR/css-easing-2/#output-progress-value) is used as the <var>p</var> value when [interpolating](https://www.w3.org/TR/css-values-4/#interpolation) the property value (see [§ 4 Application of transitions](#application)).
 
-<strong>Table 3 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-transition-timing-function"></a>transition-timing-function
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma②"></a>
-
-<a id="ref-for-typedef-easing-function"></a>
-
-[\<easing-function\>](https://www.w3.org/TR/css-easing-2/#typedef-easing-function)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-ease
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-not animatable
+| Field               | Definition                                                                                                                                                                   |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-transition-timing-function"></a>transition-timing-function                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma②"></a><a id="ref-for-typedef-easing-function"></a>[\<easing-function\>](https://www.w3.org/TR/css-easing-2/#typedef-easing-function)[\#](https://www.w3.org/TR/css-values-4/#mult-comma) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | ease                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | as specified                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | not animatable                                                                                                                                                               |
 
 Tests
 
@@ -671,101 +416,17 @@ The [transition-delay](#propdef-transition-delay) property defines when the tran
 
 If the value for [transition-delay](#propdef-transition-delay) is a negative time offset then the transition will execute the moment the property is changed, but will appear to have begun execution at the specified offset. That is, the transition will appear to begin part-way through its play cycle. In the case where a transition has implied starting values and a negative <a id="ref-for-propdef-transition-delay⑤"></a>transition-delay, the starting values are taken from the moment the property is changed.
 
-<strong>Table 4 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-transition-delay"></a>transition-delay
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma③"></a>
-
-<a id="ref-for-time-value①"></a>
-
-[\<time\>](https://www.w3.org/TR/css-values-3/#time-value)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-0s
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-list, each item a duration
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-not animatable
+| Field               | Definition                                                                                                                                           |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-transition-delay"></a>transition-delay                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma③"></a><a id="ref-for-time-value①"></a>[\<time\>](https://www.w3.org/TR/css-values-3/#time-value)[\#](https://www.w3.org/TR/css-values-4/#mult-comma) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 0s                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | list, each item a duration                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | not animatable                                                                                                                                       |
 
 Tests
 
@@ -785,101 +446,17 @@ Tests
 
 The [transition](#propdef-transition) shorthand property combines the four properties described above into a single property.
 
-<strong>Table 5 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-transition"></a>transition
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma④"></a>
-
-<a id="ref-for-single-transition"></a>
-
-[\<single-transition\>](#single-transition)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-not animatable
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                            |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-transition"></a>transition                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma④"></a><a id="ref-for-single-transition"></a>[\<single-transition\>](#single-transition)[\#](https://www.w3.org/TR/css-values-4/#mult-comma) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | see individual properties                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | not animatable                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                           |
 
 Tests
 
@@ -1711,77 +1288,12 @@ Tests
 
 The following are the [event handlers](https://html.spec.whatwg.org/multipage/webappapis.html#event-handlers) (and their corresponding [event handler event types](https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-event-type)) that must be supported by all [HTML elements](https://html.spec.whatwg.org/multipage/infrastructure.html#html-elements), as both [event handler content attributes](https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-content-attributes) and [event handler IDL attributes](https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-idl-attributes); and that must be supported by all <code><a href="https://html.spec.whatwg.org/#document">Document</a></code> and <code><a href="https://html.spec.whatwg.org/multipage/nav-history-apis.html#window">Window</a></code> objects, as <a id="ref-for-event-handler-idl-attributes①"></a>event handler IDL attributes:
 
-<strong>Table 6 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-event-handlers①"></a>
-
-[Event handler](https://html.spec.whatwg.org/multipage/webappapis.html#event-handlers)
-
-<strong>Column 2 (header cell):</strong>
-
-<a id="ref-for-event-handler-event-type①"></a>
-
-[Event handler event type](https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-event-type)
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-dom-globaleventhandlers-ontransitionrun"></a>
-
-<code><a href="#dom-globaleventhandlers-ontransitionrun">ontransitionrun</a></code>
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-transitionrun②"></a>
-
-[transitionrun](#transitionrun)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-dom-globaleventhandlers-ontransitionstart"></a>
-
-<code><a href="#dom-globaleventhandlers-ontransitionstart">ontransitionstart</a></code>
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-transitionstart②"></a>
-
-[transitionstart](#transitionstart)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-dom-globaleventhandlers-ontransitionend"></a>
-
-<code><a href="#dom-globaleventhandlers-ontransitionend">ontransitionend</a></code>
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-transitionend①"></a>
-
-[transitionend](#transitionend)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-dom-globaleventhandlers-ontransitioncancel"></a>
-
-<code><a href="#dom-globaleventhandlers-ontransitioncancel">ontransitioncancel</a></code>
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-transitioncancel②"></a>
-
-[transitioncancel](#transitioncancel)
+| <a id="ref-for-event-handlers①"></a>[Event handler](https://html.spec.whatwg.org/multipage/webappapis.html#event-handlers) | <a id="ref-for-event-handler-event-type①"></a>[Event handler event type](https://html.spec.whatwg.org/multipage/webappapis.html#event-handler-event-type) |
+|-----------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------|
+| <a id="ref-for-dom-globaleventhandlers-ontransitionrun"></a><code><a href="#dom-globaleventhandlers-ontransitionrun">ontransitionrun</a></code>                                                                      | <a id="ref-for-transitionrun②"></a>[transitionrun](#transitionrun)                                                                             |
+| <a id="ref-for-dom-globaleventhandlers-ontransitionstart"></a><code><a href="#dom-globaleventhandlers-ontransitionstart">ontransitionstart</a></code>                                                                      | <a id="ref-for-transitionstart②"></a>[transitionstart](#transitionstart)                                                                         |
+| <a id="ref-for-dom-globaleventhandlers-ontransitionend"></a><code><a href="#dom-globaleventhandlers-ontransitionend">ontransitionend</a></code>                                                                      | <a id="ref-for-transitionend①"></a>[transitionend](#transitionend)                                                                             |
+| <a id="ref-for-dom-globaleventhandlers-ontransitioncancel"></a><code><a href="#dom-globaleventhandlers-ontransitioncancel">ontransitioncancel</a></code>                                                                      | <a id="ref-for-transitioncancel②"></a>[transitioncancel](#transitioncancel)                                                                       |
 
 ## <a id="interface-dom"></a>7. DOM Interfaces
 
@@ -2200,245 +1712,13 @@ Ben Caldwell; et al. [Web Content Accessibility Guidelines (WCAG) 2.0](https://w
 
 ## <a id="property-index"></a>Property Index
 
-<strong>Table 7 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope col):</strong>
-
-Name
-
-<strong>Column 2 (header cell; scope col):</strong>
-
-Value
-
-<strong>Column 3 (header cell; scope col):</strong>
-
-Initial
-
-<strong>Column 4 (header cell; scope col):</strong>
-
-Applies to
-
-<strong>Column 5 (header cell; scope col):</strong>
-
-Inh.
-
-<strong>Column 6 (header cell; scope col):</strong>
-
-%ages
-
-<strong>Column 7 (header cell; scope col):</strong>
-
-Anim­ation type
-
-<strong>Column 8 (header cell; scope col):</strong>
-
-Canonical order
-
-<strong>Column 9 (header cell; scope col):</strong>
-
-Com­puted value
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-transition④"></a>
-
-[transition](#propdef-transition)
-
-<strong>Column 2 (data cell):</strong>
-
-\<single-transition\>#
-
-<strong>Column 3 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-not animatable
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-transition-delay①⑤"></a>
-
-[transition-delay](#propdef-transition-delay)
-
-<strong>Column 2 (data cell):</strong>
-
-\<time\>#
-
-<strong>Column 3 (data cell):</strong>
-
-0s
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-not animatable
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-list, each item a duration
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-transition-duration①②"></a>
-
-[transition-duration](#propdef-transition-duration)
-
-<strong>Column 2 (data cell):</strong>
-
-\<time \[0s,∞\]\>#
-
-<strong>Column 3 (data cell):</strong>
-
-0s
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-not animatable
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-list, each item a duration
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-transition-property①②"></a>
-
-[transition-property](#propdef-transition-property)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| \<single-transition-property\>#
-
-<strong>Column 3 (data cell):</strong>
-
-all
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-not animatable
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the keyword none else a list of identifiers
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-transition-timing-function⑦"></a>
-
-[transition-timing-function](#propdef-transition-timing-function)
-
-<strong>Column 2 (data cell):</strong>
-
-\<easing-function\>#
-
-<strong>Column 3 (data cell):</strong>
-
-ease
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-not animatable
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified
+| Name                | Value                                   | Initial                   | Applies to   | Inh. | %ages | Anim­ation type | Canonical order | Com­puted value                              |
+|---------------------|-----------------------------------------|---------------------------|--------------|------|-------|----------------|-----------------|---------------------------------------------|
+| <strong><span><a id="ref-for-propdef-transition④"></a></span><a href="#propdef-transition">transition</a>&#xA;      </strong> | \<single-transition\>#                  | see individual properties | all elements | no   | N/A   | not animatable | per grammar     | see individual properties                   |
+| <strong><span><a id="ref-for-propdef-transition-delay①⑤"></a></span><a href="#propdef-transition-delay">transition-delay</a>&#xA;      </strong> | \<time\>#                               | 0s                        | all elements | no   | N/A   | not animatable | per grammar     | list, each item a duration                  |
+| <strong><span><a id="ref-for-propdef-transition-duration①②"></a></span><a href="#propdef-transition-duration">transition-duration</a>&#xA;      </strong> | \<time \[0s,∞\]\>#                      | 0s                        | all elements | no   | N/A   | not animatable | per grammar     | list, each item a duration                  |
+| <strong><span><a id="ref-for-propdef-transition-property①②"></a></span><a href="#propdef-transition-property">transition-property</a>&#xA;      </strong> | none \| \<single-transition-property\># | all                       | all elements | no   | N/A   | not animatable | per grammar     | the keyword none else a list of identifiers |
+| <strong><span><a id="ref-for-propdef-transition-timing-function⑦"></a></span><a href="#propdef-transition-timing-function">transition-timing-function</a>&#xA;      </strong> | \<easing-function\>#                    | ease                      | all elements | no   | N/A   | not animatable | per grammar     | as specified                                |
 
 ## <a id="idl-index"></a>IDL Index
 

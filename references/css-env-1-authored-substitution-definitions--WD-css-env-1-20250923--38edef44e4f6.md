@@ -19,7 +19,8 @@ Snapshot SHA-256: 38edef44e4f698039cebdfca3614dd3aec0ed15e1d61ded3383b88796d4c10
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 4 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 4 source tables are presented as readable Markdown tables or explicit labeled layouts: 4 ordinary table conversions. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 
@@ -136,85 +137,12 @@ The following UA-defined [environment variables](#css-environment-variable) are 
 
 ### <a id="safe-area-insets"></a>2.1. Safe area inset variables
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name
-
-<strong>Column 2 (header cell):</strong>
-
-Value
-
-<strong>Column 3 (header cell):</strong>
-
-Number of dimensions
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="valdef-env-safe-area-inset-top"></a>safe-area-inset-top
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value"></a>
-
-[\<length\>](https://www.w3.org/TR/css-values-4/#length-value)
-
-<strong>Column 3 (data cell):</strong>
-
-0 (scalar)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="valdef-env-safe-area-inset-right"></a>safe-area-inset-right
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value①"></a>
-
-[\<length\>](https://www.w3.org/TR/css-values-4/#length-value)
-
-<strong>Column 3 (data cell):</strong>
-
-0 (scalar)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="valdef-env-safe-area-inset-bottom"></a>safe-area-inset-bottom
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value②"></a>
-
-[\<length\>](https://www.w3.org/TR/css-values-4/#length-value)
-
-<strong>Column 3 (data cell):</strong>
-
-0 (scalar)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="valdef-env-safe-area-inset-left"></a>safe-area-inset-left
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value③"></a>
-
-[\<length\>](https://www.w3.org/TR/css-values-4/#length-value)
-
-<strong>Column 3 (data cell):</strong>
-
-0 (scalar)
+| Name                                      | Value                                                                             | Number of dimensions |
+|-------------------------------------------|-----------------------------------------------------------------------------------|----------------------|
+| <a id="valdef-env-safe-area-inset-top"></a>safe-area-inset-top    | <a id="ref-for-length-value"></a>[\<length\>](https://www.w3.org/TR/css-values-4/#length-value) | 0 (scalar)           |
+| <a id="valdef-env-safe-area-inset-right"></a>safe-area-inset-right  | <a id="ref-for-length-value①"></a>[\<length\>](https://www.w3.org/TR/css-values-4/#length-value) | 0 (scalar)           |
+| <a id="valdef-env-safe-area-inset-bottom"></a>safe-area-inset-bottom | <a id="ref-for-length-value②"></a>[\<length\>](https://www.w3.org/TR/css-values-4/#length-value) | 0 (scalar)           |
+| <a id="valdef-env-safe-area-inset-left"></a>safe-area-inset-left   | <a id="ref-for-length-value③"></a>[\<length\>](https://www.w3.org/TR/css-values-4/#length-value) | 0 (scalar)           |
 
 <a id="ref-for-css-environment-variable①①"></a>
 
@@ -222,85 +150,12 @@ The safe area insets are four [environment variables](#css-environment-variable)
 
 ### <a id="safe-area-max-insets"></a>2.2. Safe area maximum inset variables
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name
-
-<strong>Column 2 (header cell):</strong>
-
-Value
-
-<strong>Column 3 (header cell):</strong>
-
-Number of dimensions
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="valdef-env-safe-area-max-inset-top"></a>safe-area-max-inset-top
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value④"></a>
-
-[\<length\>](https://www.w3.org/TR/css-values-4/#length-value)
-
-<strong>Column 3 (data cell):</strong>
-
-0 (scalar)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="valdef-env-safe-area-max-inset-right"></a>safe-area-max-inset-right
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value⑤"></a>
-
-[\<length\>](https://www.w3.org/TR/css-values-4/#length-value)
-
-<strong>Column 3 (data cell):</strong>
-
-0 (scalar)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="valdef-env-safe-area-max-inset-bottom"></a>safe-area-max-inset-bottom
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value⑥"></a>
-
-[\<length\>](https://www.w3.org/TR/css-values-4/#length-value)
-
-<strong>Column 3 (data cell):</strong>
-
-0 (scalar)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="valdef-env-safe-area-max-inset-left"></a>safe-area-max-inset-left
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value⑦"></a>
-
-[\<length\>](https://www.w3.org/TR/css-values-4/#length-value)
-
-<strong>Column 3 (data cell):</strong>
-
-0 (scalar)
+| Name                                          | Value                                                                             | Number of dimensions |
+|-----------------------------------------------|-----------------------------------------------------------------------------------|----------------------|
+| <a id="valdef-env-safe-area-max-inset-top"></a>safe-area-max-inset-top    | <a id="ref-for-length-value④"></a>[\<length\>](https://www.w3.org/TR/css-values-4/#length-value) | 0 (scalar)           |
+| <a id="valdef-env-safe-area-max-inset-right"></a>safe-area-max-inset-right  | <a id="ref-for-length-value⑤"></a>[\<length\>](https://www.w3.org/TR/css-values-4/#length-value) | 0 (scalar)           |
+| <a id="valdef-env-safe-area-max-inset-bottom"></a>safe-area-max-inset-bottom | <a id="ref-for-length-value⑥"></a>[\<length\>](https://www.w3.org/TR/css-values-4/#length-value) | 0 (scalar)           |
+| <a id="valdef-env-safe-area-max-inset-left"></a>safe-area-max-inset-left   | <a id="ref-for-length-value⑦"></a>[\<length\>](https://www.w3.org/TR/css-values-4/#length-value) | 0 (scalar)           |
 
 <a id="ref-for-css-environment-variable①②"></a>
 
@@ -312,117 +167,14 @@ The safe area maximum insets are four [environment variables](#css-environment-v
 
 ### <a id="viewport-segments"></a>2.3. Viewport segment variables
 
-<strong>Table 3 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name
-
-<strong>Column 2 (header cell):</strong>
-
-Value
-
-<strong>Column 3 (header cell):</strong>
-
-Number of dimensions
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="valdef-env-viewport-segment-width"></a>viewport-segment-width
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value⑧"></a>
-
-[\<length\>](https://www.w3.org/TR/css-values-4/#length-value)
-
-<strong>Column 3 (data cell):</strong>
-
-2
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="valdef-env-viewport-segment-height"></a>viewport-segment-height
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value⑨"></a>
-
-[\<length\>](https://www.w3.org/TR/css-values-4/#length-value)
-
-<strong>Column 3 (data cell):</strong>
-
-2
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="valdef-env-viewport-segment-top"></a>viewport-segment-top
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value①⓪"></a>
-
-[\<length\>](https://www.w3.org/TR/css-values-4/#length-value)
-
-<strong>Column 3 (data cell):</strong>
-
-2
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="valdef-env-viewport-segment-left"></a>viewport-segment-left
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value①①"></a>
-
-[\<length\>](https://www.w3.org/TR/css-values-4/#length-value)
-
-<strong>Column 3 (data cell):</strong>
-
-2
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="valdef-env-viewport-segment-bottom"></a>viewport-segment-bottom
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value①②"></a>
-
-[\<length\>](https://www.w3.org/TR/css-values-4/#length-value)
-
-<strong>Column 3 (data cell):</strong>
-
-2
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="valdef-env-viewport-segment-right"></a>viewport-segment-right
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value①③"></a>
-
-[\<length\>](https://www.w3.org/TR/css-values-4/#length-value)
-
-<strong>Column 3 (data cell):</strong>
-
-2
+| Name                                       | Value                                                                             | Number of dimensions |
+|--------------------------------------------|-----------------------------------------------------------------------------------|----------------------|
+| <a id="valdef-env-viewport-segment-width"></a>viewport-segment-width  | <a id="ref-for-length-value⑧"></a>[\<length\>](https://www.w3.org/TR/css-values-4/#length-value) | 2                    |
+| <a id="valdef-env-viewport-segment-height"></a>viewport-segment-height | <a id="ref-for-length-value⑨"></a>[\<length\>](https://www.w3.org/TR/css-values-4/#length-value) | 2                    |
+| <a id="valdef-env-viewport-segment-top"></a>viewport-segment-top    | <a id="ref-for-length-value①⓪"></a>[\<length\>](https://www.w3.org/TR/css-values-4/#length-value) | 2                    |
+| <a id="valdef-env-viewport-segment-left"></a>viewport-segment-left   | <a id="ref-for-length-value①①"></a>[\<length\>](https://www.w3.org/TR/css-values-4/#length-value) | 2                    |
+| <a id="valdef-env-viewport-segment-bottom"></a>viewport-segment-bottom | <a id="ref-for-length-value①②"></a>[\<length\>](https://www.w3.org/TR/css-values-4/#length-value) | 2                    |
+| <a id="valdef-env-viewport-segment-right"></a>viewport-segment-right  | <a id="ref-for-length-value①③"></a>[\<length\>](https://www.w3.org/TR/css-values-4/#length-value) | 2                    |
 
 <a id="ref-for-css-environment-variable①③"></a>
 
@@ -444,37 +196,9 @@ These variables are only defined when there are at least two such segments. View
 
 ### <a id="text-zoom"></a>2.4. Preferred Text Zoom
 
-<strong>Table 4 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name
-
-<strong>Column 2 (header cell):</strong>
-
-Value
-
-<strong>Column 3 (header cell):</strong>
-
-Number of dimensions
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="valdef-env-preferred-text-scale"></a>preferred-text-scale
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-number-value"></a>
-
-[\<number\>](https://www.w3.org/TR/css-values-4/#number-value)
-
-<strong>Column 3 (data cell):</strong>
-
-0 (scalar)
+| Name                                    | Value                                                                             | Number of dimensions |
+|-----------------------------------------|-----------------------------------------------------------------------------------|----------------------|
+| <a id="valdef-env-preferred-text-scale"></a>preferred-text-scale | <a id="ref-for-number-value"></a>[\<number\>](https://www.w3.org/TR/css-values-4/#number-value) | 0 (scalar)           |
 
 <a id="ref-for-valdef-env-preferred-text-scale"></a>
 

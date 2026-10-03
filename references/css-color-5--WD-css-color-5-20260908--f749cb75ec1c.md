@@ -19,7 +19,8 @@ Snapshot SHA-256: f749cb75ec1c0faca7d2443546c88be4e22750526dd45f9fefcfcdd079ed3c
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 5 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 9 source tables are presented as readable Markdown tables or explicit labeled layouts: 5 ordinary table conversions, 4 already-readable tables. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 - Existing external image/media URLs are resolved against the pinned source. Assets are not downloaded or availability-tested; image-only formulas/diagrams still require their source resources.
@@ -2328,51 +2329,12 @@ The [\<dashed-ident\>](https://www.w3.org/TR/css-values-4/#typedef-dashed-ident)
 
 The [@color-profile](#at-ruledef-profile) rule accepts the descriptors defined in this specification.
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-color-profile-src"></a>src
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-profile⑤"></a>
-
-[@color-profile](#at-ruledef-profile)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-url-value"></a>
-
-[\<url\>](https://www.w3.org/TR/css-values-4/#url-value)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Initial:
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
+| Field               | Definition                                                                  |
+|---------------------|-----------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-color-profile-src"></a>src                                                      |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-profile⑤"></a>[@color-profile](#at-ruledef-profile)                    |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-url-value"></a>[\<url\>](https://www.w3.org/TR/css-values-4/#url-value) |
+| <strong>Initial:&#xA;      </strong> | n/a                                                                         |
 
 <a id="ref-for-descdef-color-profile-src"></a>
 
@@ -2404,51 +2366,12 @@ To <a id="fetch-an-external-color-profile"></a>fetch an external color profile, 
 >
 > Note: The Internet Media Type ("MIME type") for ICC profiles is [application/vnd.iccprofile](https://www.iana.org/assignments/media-types/application/vnd.iccprofile).
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-color-profile-rendering-intent"></a>rendering-intent
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-profile⑧"></a>
-
-[@color-profile](#at-ruledef-profile)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one⑧⑥"></a>
-
-relative-colorimetric [\|](https://www.w3.org/TR/css-values-4/#comb-one) absolute-colorimetric <a id="ref-for-comb-one⑧⑦"></a>\| perceptual <a id="ref-for-comb-one⑧⑧"></a>\| saturation
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Initial:
-
-<strong>Column 2 (data cell):</strong>
-
-relative-colorimetric
+| Field               | Definition                                                                                                                                                                          |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-color-profile-rendering-intent"></a>rendering-intent                                                                                                                                                 |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-profile⑧"></a>[@color-profile](#at-ruledef-profile)                                                                                                                            |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-comb-one⑧⑥"></a>relative-colorimetric [\|](https://www.w3.org/TR/css-values-4/#comb-one) absolute-colorimetric <a id="ref-for-comb-one⑧⑦"></a>\| perceptual <a id="ref-for-comb-one⑧⑧"></a>\| saturation |
+| <strong>Initial:&#xA;      </strong> | relative-colorimetric                                                                                                                                                               |
 
 <a id="ref-for-css-color-profile②"></a>
 
@@ -2480,53 +2403,12 @@ This method should maintain relative color values among the pixels as they are m
 <a id="valdef-color-profile-rendering-intent-saturation"></a>saturation  
 This option was created to preserve the relative saturation (chroma) of the original, and to keep solid colors pure. However, it experienced interoperability problems like the perceptual intent, and as solid color preservation is not amenable to a reference medium solution using v4 profiles does not solve the problem. Use of this rendering intent is not recommended unless the specific source and destination profiles to be used have been checked to ensure the combination produces the desired result. This option should preserve the relative saturation (chroma) values of the original pixels. Out of gamut colors should be converted to colors that have the same saturation but fall just inside the gamut.
 
-<strong>Table 3 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-color-profile-components"></a>components
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-profile⑨"></a>
-
-[@color-profile](#at-ruledef-profile)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma①"></a>
-
-<a id="ref-for-typedef-ident③"></a>
-
-[\<ident\>](https://www.w3.org/TR/css-values-4/#typedef-ident)[\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Initial:
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
+| Field               | Definition                                                                                                                                               |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-color-profile-components"></a>components                                                                                                                            |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-profile⑨"></a>[@color-profile](#at-ruledef-profile)                                                                                                 |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-mult-comma①"></a><a id="ref-for-typedef-ident③"></a>[\<ident\>](https://www.w3.org/TR/css-values-4/#typedef-ident)[\#](https://www.w3.org/TR/css-values-4/#mult-comma) |
+| <strong>Initial:&#xA;      </strong> | n/a                                                                                                                                                      |
 
 Color profiles can define color spaces which contain a varying number of components. For example, a Cyan, Magenta, Yellow and Black (CMYK) profile has four components named c, m, y and k While a four-component additive screen profile might use four components named r, g, y and b.
 
@@ -3683,169 +3565,23 @@ The serialization of the result of a relative color function depends on whether 
 
 The form used depends on the [relative color processing space](#relative-color-processing-space):
 
-<strong>Table 8 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-relative-color-processing-space⑦"></a>
-
-[relative color processing space](#relative-color-processing-space)
-
-<strong>Column 2 (header cell):</strong>
-
-form
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-srgb
-
-<strong>Column 2 (data cell):</strong>
-
-color(srgb r g b)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-srgb-linear
-
-<strong>Column 2 (data cell):</strong>
-
-color(srgb-linear r g b)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-display-p3
-
-<strong>Column 2 (data cell):</strong>
-
-color(display-p3 r g b)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-a98-rgb
-
-<strong>Column 2 (data cell):</strong>
-
-color(a98-rgb r g b)
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-prophoto-rgb
-
-<strong>Column 2 (data cell):</strong>
-
-color(prophoto-rgb r g b)
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-rec2020
-
-<strong>Column 2 (data cell):</strong>
-
-color(rec2020 r g b)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-hsl
-
-<strong>Column 2 (data cell):</strong>
-
-color(srgb r g b)
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-hwb
-
-<strong>Column 2 (data cell):</strong>
-
-color(srgb r g b)
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-xyz-d65
-
-<strong>Column 2 (data cell):</strong>
-
-color(xyz-d65 x y z)
-
-<strong>Row 11</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-xyz-d50
-
-<strong>Column 2 (data cell):</strong>
-
-color(xyz-d50 x y z)
-
-<strong>Row 12</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-xyz
-
-<strong>Column 2 (data cell):</strong>
-
-color(xyz-d65 x y z)
-
-<strong>Row 13</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-lab
-
-<strong>Column 2 (data cell):</strong>
-
-lab(l a b)
-
-<strong>Row 14</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-lch
-
-<strong>Column 2 (data cell):</strong>
-
-lch(l c h)
-
-<strong>Row 15</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-oklab
-
-<strong>Column 2 (data cell):</strong>
-
-oklab(l a b)
-
-<strong>Row 16</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-oklch
-
-<strong>Column 2 (data cell):</strong>
-
-oklch(l c h)
+| <a id="ref-for-relative-color-processing-space⑦"></a>[relative color processing space](#relative-color-processing-space) | form                      |
+|----------------------------------------------------------------------------------------|---------------------------|
+| srgb                                                                                   | color(srgb r g b)         |
+| srgb-linear                                                                            | color(srgb-linear r g b)  |
+| display-p3                                                                             | color(display-p3 r g b)   |
+| a98-rgb                                                                                | color(a98-rgb r g b)      |
+| prophoto-rgb                                                                           | color(prophoto-rgb r g b) |
+| rec2020                                                                                | color(rec2020 r g b)      |
+| hsl                                                                                    | color(srgb r g b)         |
+| hwb                                                                                    | color(srgb r g b)         |
+| xyz-d65                                                                                | color(xyz-d65 x y z)      |
+| xyz-d50                                                                                | color(xyz-d50 x y z)      |
+| xyz                                                                                    | color(xyz-d65 x y z)      |
+| lab                                                                                    | lab(l a b)                |
+| lch                                                                                    | lch(l c h)                |
+| oklab                                                                                  | oklab(l a b)              |
+| oklch                                                                                  | oklch(l c h)              |
 
 <a id="ref-for-funcdef-hsl①④"></a>
 
@@ -4799,69 +4535,11 @@ No properties defined.
 
 ### <a id="color-profile-descriptor-table"></a>[@color-profile](#at-ruledef-profile) Descriptors
 
-<strong>Table 9 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope col):</strong>
-
-Name
-
-<strong>Column 2 (header cell; scope col):</strong>
-
-Value
-
-<strong>Column 3 (header cell; scope col):</strong>
-
-Initial
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-color-profile-components①"></a>
-
-[components](#descdef-color-profile-components)
-
-<strong>Column 2 (data cell):</strong>
-
-\<ident\>#
-
-<strong>Column 3 (data cell):</strong>
-
-n/a
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-color-profile-rendering-intent①"></a>
-
-[rendering-intent](#descdef-color-profile-rendering-intent)
-
-<strong>Column 2 (data cell):</strong>
-
-relative-colorimetric \| absolute-colorimetric \| perceptual \| saturation
-
-<strong>Column 3 (data cell):</strong>
-
-relative-colorimetric
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-color-profile-src①"></a>
-
-[src](#descdef-color-profile-src)
-
-<strong>Column 2 (data cell):</strong>
-
-\<url\>
-
-<strong>Column 3 (data cell):</strong>
-
-n/a
+| Name                | Value                                                                      | Initial               |
+|---------------------|----------------------------------------------------------------------------|-----------------------|
+| <strong><span><a id="ref-for-descdef-color-profile-components①"></a></span><a href="#descdef-color-profile-components">components</a>&#xA;      </strong> | \<ident\>#                                                                 | n/a                   |
+| <strong><span><a id="ref-for-descdef-color-profile-rendering-intent①"></a></span><a href="#descdef-color-profile-rendering-intent">rendering-intent</a>&#xA;      </strong> | relative-colorimetric \| absolute-colorimetric \| perceptual \| saturation | relative-colorimetric |
+| <strong><span><a id="ref-for-descdef-color-profile-src①"></a></span><a href="#descdef-color-profile-src">src</a>&#xA;      </strong> | \<url\>                                                                    | n/a                   |
 
 ## <a id="idl-index"></a>IDL Index
 

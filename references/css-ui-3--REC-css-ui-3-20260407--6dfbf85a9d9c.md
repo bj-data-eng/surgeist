@@ -19,7 +19,9 @@ Snapshot SHA-256: 6dfbf85a9d9c6d682d9c0621872021e8a57216737acacd5dee31c2936d7da6
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 14 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 14 source tables are presented as readable Markdown tables or explicit labeled layouts: 12 ordinary table conversions, 2 complex-table layouts. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
+- Live HTML/CSS demonstrations are represented by static source code and text, not equivalent browser appearance. Incidental whitespace in sample-display elements may collapse as in HTML; exact source markup is retained, and true preformatted/code blocks stay literal.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 - Existing external image/media URLs are resolved against the pinned source. Assets are not downloaded or availability-tested; image-only formulas/diagrams still require their source resources.
@@ -101,99 +103,17 @@ In addition to the property-specific values listed in their definitions, all pro
 
 ### <a id="box-sizing"></a>3.1. Changing the Box Model: the [box-sizing](#propdef-box-sizing) property
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-box-sizing"></a>box-sizing
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one"></a>
-
-content-box [\|](https://www.w3.org/TR/css-values-4/#comb-one) border-box
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-content-box
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-all elements that accept width or height
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified value
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-<u>discrete</u>
+| Field               | Definition                                                                                   |
+|---------------------|----------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-box-sizing"></a>box-sizing                                                                |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one"></a>content-box [\|](https://www.w3.org/TR/css-values-4/#comb-one) border-box |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | content-box                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | all elements that accept width or height                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified value                                                                              |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                  |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | <u>discrete</u>                                                                              |
 
 <a id="valdef-box-sizing-content-box"></a>content-box  
 This is the behavior of width and height as specified by CSS2.1. The specified width and height (and respective min/max properties) apply to the width and height respectively of the content box of the element. The padding and border of the element are laid out and drawn outside the specified width and height.
@@ -227,127 +147,12 @@ Length and percentages values for width and height (and respective min/max prope
 
 The following terms, whose definitions vary based on the computed value of [box-sizing](#propdef-box-sizing) are introduced:
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<strong>Column 2 (header cell):</strong>
-
-<a id="ref-for-propdef-box-sizing③"></a>
-
-[box-sizing: content-box](#propdef-box-sizing)
-
-<strong>Column 3 (header cell):</strong>
-
-<a id="ref-for-propdef-box-sizing④"></a>
-
-[box-sizing: border-box](#propdef-box-sizing)
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="min-inner-width"></a>min inner width
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-min-width"></a>
-
-[min-width](https://www.w3.org/TR/CSS2/visudet.html#propdef-min-width)
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-propdef-border-right-width"></a>
-
-<a id="ref-for-propdef-border-left-width"></a>
-
-<a id="ref-for-propdef-padding-right"></a>
-
-<a id="ref-for-propdef-padding-left"></a>
-
-<a id="ref-for-propdef-min-width①"></a>
-
-max(0, [min-width](https://www.w3.org/TR/CSS2/visudet.html#propdef-min-width) − [padding-left](https://www.w3.org/TR/CSS2/box.html#propdef-padding-left) − [padding-right](https://www.w3.org/TR/CSS2/box.html#propdef-padding-right) − [border-left-width](https://www.w3.org/TR/css-backgrounds-3/#propdef-border-left-width) − [border-right-width](https://www.w3.org/TR/css-backgrounds-3/#propdef-border-right-width))
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="max-inner-width"></a>max inner width
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-max-width"></a>
-
-[max-width](https://www.w3.org/TR/CSS2/visudet.html#propdef-max-width)
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-propdef-border-right-width①"></a>
-
-<a id="ref-for-propdef-border-left-width①"></a>
-
-<a id="ref-for-propdef-padding-right①"></a>
-
-<a id="ref-for-propdef-padding-left①"></a>
-
-<a id="ref-for-propdef-max-width①"></a>
-
-max(0, [max-width](https://www.w3.org/TR/CSS2/visudet.html#propdef-max-width) − [padding-left](https://www.w3.org/TR/CSS2/box.html#propdef-padding-left) − [padding-right](https://www.w3.org/TR/CSS2/box.html#propdef-padding-right) − [border-left-width](https://www.w3.org/TR/css-backgrounds-3/#propdef-border-left-width) − [border-right-width](https://www.w3.org/TR/css-backgrounds-3/#propdef-border-right-width))
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="min-inner-height"></a>min inner height
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-min-height"></a>
-
-[min-height](https://www.w3.org/TR/CSS2/visudet.html#propdef-min-height)
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-propdef-border-bottom-width"></a>
-
-<a id="ref-for-propdef-border-top-width"></a>
-
-<a id="ref-for-propdef-padding-bottom"></a>
-
-<a id="ref-for-propdef-padding-top"></a>
-
-<a id="ref-for-propdef-min-height①"></a>
-
-max(0, [min-height](https://www.w3.org/TR/CSS2/visudet.html#propdef-min-height) − [padding-top](https://www.w3.org/TR/CSS2/box.html#propdef-padding-top) − [padding-bottom](https://www.w3.org/TR/CSS2/box.html#propdef-padding-bottom) − [border-top-width](https://www.w3.org/TR/css-backgrounds-3/#propdef-border-top-width) − [border-bottom-width](https://www.w3.org/TR/css-backgrounds-3/#propdef-border-bottom-width))
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="max-inner-height"></a>max inner height
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-max-height"></a>
-
-[max-height](https://www.w3.org/TR/CSS2/visudet.html#propdef-max-height)
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-propdef-border-bottom-width①"></a>
-
-<a id="ref-for-propdef-border-top-width①"></a>
-
-<a id="ref-for-propdef-padding-bottom①"></a>
-
-<a id="ref-for-propdef-padding-top①"></a>
-
-<a id="ref-for-propdef-max-height①"></a>
-
-max(0, [max-height](https://www.w3.org/TR/CSS2/visudet.html#propdef-max-height) − [padding-top](https://www.w3.org/TR/CSS2/box.html#propdef-padding-top) − [padding-bottom](https://www.w3.org/TR/CSS2/box.html#propdef-padding-bottom) − [border-top-width](https://www.w3.org/TR/css-backgrounds-3/#propdef-border-top-width) − [border-bottom-width](https://www.w3.org/TR/css-backgrounds-3/#propdef-border-bottom-width))
+|                     | <a id="ref-for-propdef-box-sizing③"></a>[box-sizing: content-box](#propdef-box-sizing)                           | <a id="ref-for-propdef-box-sizing④"></a>[box-sizing: border-box](#propdef-box-sizing)                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+|---------------------|---------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong><dfn><span><a id="min-inner-width"></a></span>min inner width</dfn>&#xA;      </strong> | <a id="ref-for-propdef-min-width"></a>[min-width](https://www.w3.org/TR/CSS2/visudet.html#propdef-min-width)   | <a id="ref-for-propdef-border-right-width"></a><a id="ref-for-propdef-border-left-width"></a><a id="ref-for-propdef-padding-right"></a><a id="ref-for-propdef-padding-left"></a><a id="ref-for-propdef-min-width①"></a>max(0, [min-width](https://www.w3.org/TR/CSS2/visudet.html#propdef-min-width) − [padding-left](https://www.w3.org/TR/CSS2/box.html#propdef-padding-left) − [padding-right](https://www.w3.org/TR/CSS2/box.html#propdef-padding-right) − [border-left-width](https://www.w3.org/TR/css-backgrounds-3/#propdef-border-left-width) − [border-right-width](https://www.w3.org/TR/css-backgrounds-3/#propdef-border-right-width))   |
+| <strong><dfn><span><a id="max-inner-width"></a></span>max inner width</dfn>&#xA;      </strong> | <a id="ref-for-propdef-max-width"></a>[max-width](https://www.w3.org/TR/CSS2/visudet.html#propdef-max-width)   | <a id="ref-for-propdef-border-right-width①"></a><a id="ref-for-propdef-border-left-width①"></a><a id="ref-for-propdef-padding-right①"></a><a id="ref-for-propdef-padding-left①"></a><a id="ref-for-propdef-max-width①"></a>max(0, [max-width](https://www.w3.org/TR/CSS2/visudet.html#propdef-max-width) − [padding-left](https://www.w3.org/TR/CSS2/box.html#propdef-padding-left) − [padding-right](https://www.w3.org/TR/CSS2/box.html#propdef-padding-right) − [border-left-width](https://www.w3.org/TR/css-backgrounds-3/#propdef-border-left-width) − [border-right-width](https://www.w3.org/TR/css-backgrounds-3/#propdef-border-right-width))   |
+| <strong><dfn><span><a id="min-inner-height"></a></span>min inner height</dfn>&#xA;      </strong> | <a id="ref-for-propdef-min-height"></a>[min-height](https://www.w3.org/TR/CSS2/visudet.html#propdef-min-height) | <a id="ref-for-propdef-border-bottom-width"></a><a id="ref-for-propdef-border-top-width"></a><a id="ref-for-propdef-padding-bottom"></a><a id="ref-for-propdef-padding-top"></a><a id="ref-for-propdef-min-height①"></a>max(0, [min-height](https://www.w3.org/TR/CSS2/visudet.html#propdef-min-height) − [padding-top](https://www.w3.org/TR/CSS2/box.html#propdef-padding-top) − [padding-bottom](https://www.w3.org/TR/CSS2/box.html#propdef-padding-bottom) − [border-top-width](https://www.w3.org/TR/css-backgrounds-3/#propdef-border-top-width) − [border-bottom-width](https://www.w3.org/TR/css-backgrounds-3/#propdef-border-bottom-width)) |
+| <strong><dfn><span><a id="max-inner-height"></a></span>max inner height</dfn>&#xA;      </strong> | <a id="ref-for-propdef-max-height"></a>[max-height](https://www.w3.org/TR/CSS2/visudet.html#propdef-max-height) | <a id="ref-for-propdef-border-bottom-width①"></a><a id="ref-for-propdef-border-top-width①"></a><a id="ref-for-propdef-padding-bottom①"></a><a id="ref-for-propdef-padding-top①"></a><a id="ref-for-propdef-max-height①"></a>max(0, [max-height](https://www.w3.org/TR/CSS2/visudet.html#propdef-max-height) − [padding-top](https://www.w3.org/TR/CSS2/box.html#propdef-padding-top) − [padding-bottom](https://www.w3.org/TR/CSS2/box.html#propdef-padding-bottom) − [border-top-width](https://www.w3.org/TR/css-backgrounds-3/#propdef-border-top-width) − [border-bottom-width](https://www.w3.org/TR/css-backgrounds-3/#propdef-border-bottom-width)) |
 
 <a id="ref-for-propdef-box-sizing⑤"></a>
 
@@ -528,105 +333,17 @@ The rendering of applying transforms to outlines is left explicitly undefined in
 
 ### <a id="outline"></a>4.1. Outlines Shorthand: the [outline](#propdef-outline) property
 
-<strong>Table 3 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-outline"></a>outline
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-outline-width"></a>
-
-<a id="ref-for-propdef-outline-style"></a>
-
-<a id="ref-for-comb-any"></a>
-
-<a id="ref-for-propdef-outline-color"></a>
-
-\[ [\<'outline-color'\>](#propdef-outline-color) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<'outline-style'\>](#propdef-outline-style) <a id="ref-for-comb-any①"></a>\|\| [\<'outline-width'\>](#propdef-outline-width) \]
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                                                                                                                                                                                               |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-outline"></a>outline                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-propdef-outline-width"></a><a id="ref-for-propdef-outline-style"></a><a id="ref-for-comb-any"></a><a id="ref-for-propdef-outline-color"></a>\[ [\<'outline-color'\>](#propdef-outline-color) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<'outline-style'\>](#propdef-outline-style) <a id="ref-for-comb-any①"></a>\|\| [\<'outline-width'\>](#propdef-outline-width) \] |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                              |
 
 <a id="ref-for-propdef-outline-width①"></a>
 
@@ -648,311 +365,49 @@ per grammar
 
 <a id="c4"></a> Candidate Correction 4: Remove the special-case where [outline-width](#propdef-outline-width) computes to 0 based on [outline-style: none](#propdef-outline-style), keeping things consistent with a similar change being applied to [column-rule-width](https://www.w3.org/TR/css-gaps-1/#propdef-column-rule-width) and [border-width](https://www.w3.org/TR/css-backgrounds-3/#propdef-border-width). (See [Issue 11494](https://github.com/w3c/csswg-drafts/issues/11494).)
 
-<strong>Table 4 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-outline-width"></a>outline-width
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-line-width"></a>
-
-[\<line-width\>](https://www.w3.org/TR/css-backgrounds-3/#typedef-line-width)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-medium
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-line-style-none"></a>
-
-<a id="ref-for-snap-a-length-as-a-border-width①"></a>
-
-absolute length <u>, [snapped as a border width](https://www.w3.org/TR/css-values-4/#snap-a-length-as-a-border-width)</u> ~~; 0 if the outline style is [none](https://www.w3.org/TR/css-backgrounds-3/#valdef-line-style-none).~~
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-~~length~~ <u>by computed value</u>
+| Field               | Definition                                                                                                                                                                                                                                                                |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-outline-width"></a>outline-width                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-line-width"></a>[\<line-width\>](https://www.w3.org/TR/css-backgrounds-3/#typedef-line-width)                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | medium                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-valdef-line-style-none"></a><a id="ref-for-snap-a-length-as-a-border-width①"></a> absolute length <u>, [snapped as a border width](https://www.w3.org/TR/css-values-4/#snap-a-length-as-a-border-width)</u> ~~; 0 if the outline style is [none](https://www.w3.org/TR/css-backgrounds-3/#valdef-line-style-none).~~ |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | ~~length~~ <u>by computed value</u>                                                                                                                                                                                                                                       |
 
 <a id="ref-for-propdef-outline-style②"></a>
 
 ### <a id="outline-style"></a>4.3. Outline Patterns: the [outline-style](#propdef-outline-style) property
 
-<strong>Table 5 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-outline-style"></a>outline-style
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-border-style"></a>
-
-<a id="ref-for-comb-one①"></a>
-
-auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) \<[border-style](https://www.w3.org/TR/css-backgrounds-3/#propdef-border-style)\>
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-<u>discrete</u>
+| Field               | Definition                                                                                                                                                                      |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-outline-style"></a>outline-style                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-propdef-border-style"></a><a id="ref-for-comb-one①"></a>auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) \<[border-style](https://www.w3.org/TR/css-backgrounds-3/#propdef-border-style)\> |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | as specified                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | <u>discrete</u>                                                                                                                                                                 |
 
 <a id="ref-for-propdef-outline-color①"></a>
 
 ### <a id="outline-color"></a>4.4. Outline Colors: the [outline-color](#propdef-outline-color) property
 
-<strong>Table 6 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-outline-color"></a>outline-color
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one②"></a>
-
-<a id="ref-for-typedef-color"></a>
-
-[\<color\>](https://www.w3.org/TR/css-color-5/#typedef-color) [\|](https://www.w3.org/TR/css-values-4/#comb-one) invert
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-invert
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-color①"></a>
-
-<a id="ref-for-propdef-color"></a>
-
-<a id="ref-for-valdef-color-currentcolor"></a>
-
-<a id="ref-for-valdef-outline-color-invert"></a>
-
-The computed value for [invert](#valdef-outline-color-invert) is <a id="ref-for-valdef-outline-color-invert①"></a>invert; the computed value of currentColor is currentColor (See [currentcolor](https://www.w3.org/TR/css-color-4/#valdef-color-currentcolor)); see the [color](https://www.w3.org/TR/css-color-4/#propdef-color) property for other [\<color\>](https://www.w3.org/TR/css-color-5/#typedef-color) values.
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-~~color~~ <u>by computed value</u>
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-outline-color"></a>outline-color                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one②"></a><a id="ref-for-typedef-color"></a>[\<color\>](https://www.w3.org/TR/css-color-5/#typedef-color) [\|](https://www.w3.org/TR/css-values-4/#comb-one) invert                                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | invert                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-typedef-color①"></a><a id="ref-for-propdef-color"></a><a id="ref-for-valdef-color-currentcolor"></a><a id="ref-for-valdef-outline-color-invert"></a>The computed value for [invert](#valdef-outline-color-invert) is <a id="ref-for-valdef-outline-color-invert①"></a>invert; the computed value of currentColor is currentColor (See [currentcolor](https://www.w3.org/TR/css-color-4/#valdef-color-currentcolor)); see the [color](https://www.w3.org/TR/css-color-4/#propdef-color) property for other [\<color\>](https://www.w3.org/TR/css-color-5/#typedef-color) values. |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | ~~color~~ <u>by computed value</u>                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 The outline created with the outline properties is drawn "over" a box, i.e., the outline is always on top, and doesn’t influence the position or size of the box, or of any other boxes. Therefore, displaying or suppressing outlines does not cause reflow.
 
@@ -1057,101 +512,17 @@ Graphical user interfaces may use outlines around elements to tell the user whic
 
 By default, the outline is drawn starting just outside the [border edge](https://www.w3.org/TR/CSS2/box.html#border-edge). However, it is possible to offset the outline and draw it beyond the <a id="ref-for-border-edge②"></a>border edge.
 
-<strong>Table 7 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-outline-offset"></a>outline-offset
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value"></a>
-
-[\<length\>](https://www.w3.org/TR/css-values-4/#length-value)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-0
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value①"></a>
-
-~~[\<length\>](https://www.w3.org/TR/css-values-4/#length-value) value in absolute units (px or physical).~~ <u>absolute length</u>
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-~~length~~ <u>by computed value</u>
+| Field               | Definition                                                                                                                                              |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-outline-offset"></a>outline-offset                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-length-value"></a>[\<length\>](https://www.w3.org/TR/css-values-4/#length-value)                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 0                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-length-value①"></a> ~~[\<length\>](https://www.w3.org/TR/css-values-4/#length-value) value in absolute units (px or physical).~~ <u>absolute length</u> |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | ~~length~~ <u>by computed value</u>                                                                                                                     |
 
 <a id="ref-for-propdef-outline-offset①"></a>
 
@@ -1194,103 +565,17 @@ The [resize](#propdef-resize) property allows the author to specify whether or n
 
 <a id="c1"></a> Candidate Correction 1: Now that [overflow: visible](https://www.w3.org/TR/css-overflow-3/#propdef-overflow) is no longer the only value of the <a id="ref-for-propdef-overflow①"></a>overflow property which doesn’t cause the element to become a [scroll container](https://www.w3.org/TR/css-overflow-3/#scroll-container), adjust what elements to which the [resize](#propdef-resize) property applies to to match the original intent, rather than the literal text.
 
-<strong>Table 8 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-resize"></a>resize
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one③"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) both <a id="ref-for-comb-one④"></a>\| horizontal <a id="ref-for-comb-one⑤"></a>\| vertical
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-scroll-container①"></a>
-
-<a id="ref-for-propdef-overflow②"></a>
-
-elements ~~with [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow) other than visible,~~ <u>that are [scroll containers](https://www.w3.org/TR/css-overflow-3/#scroll-container)</u> and optionally replaced elements such as images, videos, and iframes
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-~~as~~ specified <u>keyword</u>
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-<u>discrete</u>
+| Field               | Definition                                                                                                                                                                                                                                                                                                       |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-resize"></a>resize                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one③"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) both <a id="ref-for-comb-one④"></a>\| horizontal <a id="ref-for-comb-one⑤"></a>\| vertical                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-scroll-container①"></a><a id="ref-for-propdef-overflow②"></a> elements ~~with [overflow](https://www.w3.org/TR/css-overflow-3/#propdef-overflow) other than visible,~~ <u>that are [scroll containers](https://www.w3.org/TR/css-overflow-3/#scroll-container)</u> and optionally replaced elements such as images, videos, and iframes |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | ~~as~~ specified <u>keyword</u>                                                                                                                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | <u>discrete</u>                                                                                                                                                                                                                                                                                                  |
 
 none  
 The UA does not present a resizing mechanism on the element, and the user is given no direct manipulation mechanism to resize the element.
@@ -1409,99 +694,17 @@ Changes to the computed value of an element’s [resize](#propdef-resize) proper
 
 ### <a id="text-overflow"></a>5.2.  Overflow Ellipsis: the [text-overflow](#propdef-text-overflow) property
 
-<strong>Table 9 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-text-overflow"></a>text-overflow
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one⑥"></a>
-
-clip [\|](https://www.w3.org/TR/css-values-4/#comb-one) ellipsis
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-clip
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-block containers
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-~~as~~ specified <u>keyword</u>
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-<u>discrete</u>
+| Field               | Definition                                                                          |
+|---------------------|-------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-text-overflow"></a>text-overflow                                                    |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one⑥"></a>clip [\|](https://www.w3.org/TR/css-values-4/#comb-one) ellipsis |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | clip                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | block containers                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | ~~as~~ specified <u>keyword</u>                                                     |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                         |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | <u>discrete</u>                                                                     |
 
 <a id="ref-for-end"></a>
 
@@ -1547,49 +750,68 @@ For the ellipsis value implementations must hide characters and [atomic inline-l
 >
 > Sample HTML fragments, renderings, and your browser:
 >
-> <strong>Table 10 — structured row/cell transcription</strong>
 >
-> <strong>Row 1</strong>
+> These are static transcriptions of the source’s live browser demonstration. The “browser” text below is the source content, not a measured rendering. Original demonstration HTML/CSS is included so clipping, direction, and line-breaking are not lost. See the [source demonstration](https://www.w3.org/TR/2026/REC-css-ui-3-20260407/#example-7153ff61).
 >
-> <strong>Column 1 (header cell):</strong>
+> **Demonstration stylesheet from the source**
 >
-> HTML
+> ```css
+> .awesome-table td {padding:5px}
+> .awesome-table {color:#000;background:#fff;margin: auto;}
+> ```
 >
-> <strong>Column 2 (header cell):</strong>
+> **Example 1**
 >
-> Reference rendering
->
-> <strong>Column 3 (header cell):</strong>
->
-> Your Browser
->
-> <strong>Row 2</strong>
->
-> <strong>Column 1 (data cell):</strong>
+> **HTML**
 >
 > `<div>שלום 123456</div>`
 >
-> <strong>Column 2 (data cell):</strong>
+> **Reference rendering**
 >
 > 123456 ם…
 >
-> <strong>Column 3 (data cell):</strong>
+> **Original browser-demonstration HTML**
+>
+> ```html
+> <div style="font-family:monospace">123456 ם…</div>
+> ```
+>
+> **Your Browser**
 >
 > שלום 123456
 >
-> <strong>Row 3</strong>
+> **Original browser-demonstration HTML**
 >
-> <strong>Column 1 (data cell):</strong>
+> ```html
+> <div style="font-family: monospace; white-space: pre; overflow: hidden; width: 9ch; text-overflow: ellipsis">שלום 123456</div>
+> ```
+>
+> **Example 2**
+>
+> **HTML**
 >
 > `<div dir=rtl>שלום 123456</div>`
 >
-> <strong>Column 2 (data cell):</strong>
+> **Reference rendering**
 >
 > …456 שלום
 >
-> <strong>Column 3 (data cell):</strong>
+> **Original browser-demonstration HTML**
+>
+> ```html
+> <div style="font-family:monospace">…456 שלום</div>
+> ```
+>
+> **Your Browser**
 >
 > שלום 123456
+>
+> **Original browser-demonstration HTML**
+>
+> ```html
+> <div dir="rtl" style="font-family: monospace; white-space: pre; overflow: hidden; width: 9ch; text-overflow: ellipsis">שלום 123456</div>
+> ```
+>
 
 #### <a id="ellipsing-details"></a>ellipsing details
 
@@ -1632,25 +854,19 @@ For the ellipsis value implementations must hide characters and [atomic inline-l
 >
 > sample HTML fragments, renderings, and your browser:
 >
-> <strong>Table 11 — structured row/cell transcription</strong>
 >
-> <strong>Row 1</strong>
+> These are static transcriptions of the source’s live browser demonstration. The “browser” text below is the source content, not a measured rendering. Original demonstration HTML/CSS is included so clipping, direction, and line-breaking are not lost. See the [source demonstration](https://www.w3.org/TR/2026/REC-css-ui-3-20260407/#example-d8da6cec).
 >
-> <strong>Column 1 (header cell):</strong>
+> **Demonstration stylesheet from the source**
 >
-> HTML
+> ```css
+> .awesome-table td {padding:5px}
+> .awesome-table {color:#000;background:#fff;margin: auto;}
+> ```
 >
-> <strong>Column 2 (header cell):</strong>
+> **Example 1**
 >
-> sample rendering
->
-> <strong>Column 3 (header cell):</strong>
->
-> your browser
->
-> <strong>Row 2</strong>
->
-> <strong>Column 1 (data cell):</strong>
+> **HTML**
 >
 > ```text
 > <div>
@@ -1658,19 +874,25 @@ For the ellipsis value implementations must hide characters and [atomic inline-l
 > </div>
 > ```
 >
-> <strong>Column 2 (data cell):</strong>
+> **sample rendering**
 >
 > First, a box with text drawing outside of it.
 >
 > ![First, a box with text drawing outside of it.](https://www.w3.org/TR/2026/REC-css-ui-3-20260407/images/cssisawesome.png)
 >
-> <strong>Column 3 (data cell):</strong>
+> **your browser**
 >
 > CSS IS AWESOME, YES
 >
-> <strong>Row 3</strong>
+> **Original browser-demonstration HTML**
 >
-> <strong>Column 1 (data cell):</strong>
+> ```html
+> <div style="width:3.1em; border:solid .1em black; margin:1em 0; padding:.2em; font-family:Helvetica,sans-serif; line-height:1.1;">CSS IS AWESOME, YES</div>
+> ```
+>
+> **Example 2**
+>
+> **HTML**
 >
 > ```text
 > <div style="text-overflow:clip; overflow:hidden">
@@ -1678,19 +900,25 @@ For the ellipsis value implementations must hide characters and [atomic inline-l
 > </div>
 > ```
 >
-> <strong>Column 2 (data cell):</strong>
+> **sample rendering**
 >
 > Second, a similar box with the text clipped outside the box.
 >
 > ![Second, a similar box with the text clipped outside the box.](https://www.w3.org/TR/2026/REC-css-ui-3-20260407/images/cssisaweso.png)
 >
-> <strong>Column 3 (data cell):</strong>
+> **your browser**
 >
 > CSS IS AWESOME, YES
 >
-> <strong>Row 4</strong>
+> **Original browser-demonstration HTML**
 >
-> <strong>Column 1 (data cell):</strong>
+> ```html
+> <div style="width:3.1em; border:solid .1em black; margin:1em 0; padding:.2em; font-family:Helvetica,sans-serif; line-height:1.1; overflow:hidden;text-overflow:clip;">CSS IS AWESOME, YES</div>
+> ```
+>
+> **Example 3**
+>
+> **HTML**
 >
 > ```text
 > <div style="text-overflow:ellipsis; overflow:hidden">
@@ -1698,19 +926,25 @@ For the ellipsis value implementations must hide characters and [atomic inline-l
 > </div>
 > ```
 >
-> <strong>Column 2 (data cell):</strong>
+> **sample rendering**
 >
 > Third, a similar box with an ellipsis representing the clipped text.
 >
 > ![Third, a similar box with an ellipsis representing the clipped text.](https://www.w3.org/TR/2026/REC-css-ui-3-20260407/images/cssisaw.png)
 >
-> <strong>Column 3 (data cell):</strong>
+> **your browser**
 >
 > CSS IS AWESOME, YES
 >
-> <strong>Row 5</strong>
+> **Original browser-demonstration HTML**
 >
-> <strong>Column 1 (data cell):</strong>
+> ```html
+> <div style="width:3.1em; border:solid .1em black; margin:1em 0; padding:.2em;  font-family:Helvetica,sans-serif; line-height:1.1; overflow:hidden;text-overflow:ellipsis;">CSS IS AWESOME, YES</div>
+> ```
+>
+> **Example 4**
+>
+> **HTML**
 >
 > ```text
 > <div style="text-overflow:ellipsis; overflow:hidden">
@@ -1720,19 +954,32 @@ For the ellipsis value implementations must hide characters and [atomic inline-l
 > </div>
 > ```
 >
-> <strong>Column 2 (data cell):</strong>
+> **sample rendering**
 >
 > Fourth, a box with a nested paragraph demonstrating anonymous block boxes equivalency and non-inheritance into a nested element.
 >
 > ![Fourth, a box with a nested paragraph demonstrating anonymous block boxes equivalency and non-inheritance into a nested element.](https://www.w3.org/TR/2026/REC-css-ui-3-20260407/images/nes.png)
 >
-> <strong>Column 3 (data cell):</strong>
+> **your browser**
 >
 > NESTED
 >
 > PARAGRAPH
 >
 > WON’T ELLIPSE.
+>
+> **Original browser-demonstration HTML**
+>
+> ```html
+> <div style="width:3.1em; border:solid .1em black; margin:1em 0; padding:.2em;  font-family:Helvetica,sans-serif; line-height:1.1; overflow:hidden;text-overflow:ellipsis;">
+>          NESTED
+> 	
+>          <p>PARAGRAPH</p>
+>          
+> WON’T ELLIPSE.
+>         </div>
+> ```
+>
 
 <a id="ref-for-propdef-direction"></a>
 
@@ -1795,105 +1042,17 @@ While the content is being scrolled, implementations may adjust their rendering 
 
 #### <a id="cursor"></a>6.1.1. Styling the Cursor: the [cursor](#propdef-cursor) property
 
-<strong>Table 12 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-cursor"></a>cursor
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-cursor-predefined"></a>
-
-<a id="ref-for-mult-zero-plus"></a>
-
-<a id="ref-for-comb-comma"></a>
-
-<a id="ref-for-typedef-cursor-cursor-image"></a>
-
-\[[\<cursor-image\>](#typedef-cursor-cursor-image)[,](https://www.w3.org/TR/css-values-4/#comb-comma)\][\*](https://www.w3.org/TR/css-values-4/#mult-zero-plus) [\<cursor-predefined\>](#typedef-cursor-predefined)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-as specified, except with any relative URLs converted to absolute
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-<u>discrete</u>
+| Field               | Definition                                                                                                                                                                                                                                                                                      |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-cursor"></a>cursor                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-cursor-predefined"></a><a id="ref-for-mult-zero-plus"></a><a id="ref-for-comb-comma"></a><a id="ref-for-typedef-cursor-cursor-image"></a>\[[\<cursor-image\>](#typedef-cursor-cursor-image)[,](https://www.w3.org/TR/css-values-4/#comb-comma)\][\*](https://www.w3.org/TR/css-values-4/#mult-zero-plus) [\<cursor-predefined\>](#typedef-cursor-predefined) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | as specified, except with any relative URLs converted to absolute                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | <u>discrete</u>                                                                                                                                                                                                                                                                                 |
 
 <a id="ref-for-border-edge④"></a>
 
@@ -2274,109 +1433,17 @@ The document [canvas](https://www.w3.org/TR/CSS2/intro.html#the-canvas) is the i
 
 #### <a id="caret-color"></a>6.2.1. Coloring the Insertion Caret: the [caret-color](#propdef-caret-color) property
 
-<strong>Table 13 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-caret-color"></a>caret-color
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-color②"></a>
-
-<a id="ref-for-comb-one④②"></a>
-
-auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<color\>](https://www.w3.org/TR/css-color-5/#typedef-color)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-color③"></a>
-
-<a id="ref-for-propdef-color①"></a>
-
-<a id="ref-for-valdef-color-currentcolor①"></a>
-
-<a id="ref-for-valdef-caret-color-auto"></a>
-
-The computed value for [auto](#valdef-caret-color-auto) is <a id="ref-for-valdef-caret-color-auto①"></a>auto; the computed value of currentColor is currentColor (See [currentcolor](https://www.w3.org/TR/css-color-4/#valdef-color-currentcolor)); see the [color](https://www.w3.org/TR/css-color-4/#propdef-color) property for other [\<color\>](https://www.w3.org/TR/css-color-5/#typedef-color) values.
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-~~color~~ <u>by computed value</u>
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-caret-color"></a>caret-color                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-color②"></a><a id="ref-for-comb-one④②"></a>auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<color\>](https://www.w3.org/TR/css-color-5/#typedef-color)                                                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-typedef-color③"></a><a id="ref-for-propdef-color①"></a><a id="ref-for-valdef-color-currentcolor①"></a><a id="ref-for-valdef-caret-color-auto"></a>The computed value for [auto](#valdef-caret-color-auto) is <a id="ref-for-valdef-caret-color-auto①"></a>auto; the computed value of currentColor is currentColor (See [currentcolor](https://www.w3.org/TR/css-color-4/#valdef-color-currentcolor)); see the [color](https://www.w3.org/TR/css-color-4/#propdef-color) property for other [\<color\>](https://www.w3.org/TR/css-color-5/#typedef-color) values. |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | ~~color~~ <u>by computed value</u>                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 <a id="valdef-caret-color-auto"></a>auto
 
@@ -3035,442 +2102,16 @@ Elika Etemad; Tab Atkins Jr.; Lea Verou. [CSS Images Module Level 4](https://www
 
 ## <a id="property-index"></a>Property Index
 
-<strong>Table 14 — structured row/cell transcription</strong>
+| Name                | Value                                                                       | Initial                   | Applies to                                                                                                                                | Inh. | %ages | Anim­ation type            | Canonical order | Com­puted value                                                                                                                                                     |
+|---------------------|-----------------------------------------------------------------------------|---------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|------|-------|---------------------------|-----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong><span><a id="ref-for-propdef-box-sizing⑨"></a></span><a href="#propdef-box-sizing">box-sizing</a>&#xA;      </strong> | content-box \| border-box                                                   | content-box               | all elements that accept width or height                                                                                                  | no   | N/A   | discrete                  | per grammar     | specified value                                                                                                                                                    |
+| <strong><span><a id="ref-for-propdef-caret-color②"></a></span><a href="#propdef-caret-color">caret-color</a>&#xA;      </strong> | auto \| \<color\>                                                           | auto                      | all elements                                                                                                                              | yes  | N/A   | colorby computed value    | per grammar     | The computed value for auto is auto; the computed value of currentColor is currentColor (See currentcolor); see the color property for other \<color\> values.     |
+| <strong><span><a id="ref-for-propdef-cursor①⓪"></a></span><a href="#propdef-cursor">cursor</a>&#xA;      </strong> | \[\<cursor-image\>,\]\* \<cursor-predefined\>                               | auto                      | all elements                                                                                                                              | yes  | N/A   | discrete                  | per grammar     | as specified, except with any relative URLs converted to absolute                                                                                                  |
+| <strong><span><a id="ref-for-propdef-outline③"></a></span><a href="#propdef-outline">outline</a>&#xA;      </strong> | \[ \<'outline-color'\> \|\| \<'outline-style'\> \|\| \<'outline-width'\> \] | see individual properties | all elements                                                                                                                              | no   | N/A   | see individual properties | per grammar     | see individual properties                                                                                                                                          |
+| <strong><span><a id="ref-for-propdef-outline-color⑥"></a></span><a href="#propdef-outline-color">outline-color</a>&#xA;      </strong> | \<color\> \| invert                                                         | invert                    | all elements                                                                                                                              | no   | N/A   | colorby computed value    | per grammar     | The computed value for invert is invert; the computed value of currentColor is currentColor (See currentcolor); see the color property for other \<color\> values. |
+| <strong><span><a id="ref-for-propdef-outline-offset②"></a></span><a href="#propdef-outline-offset">outline-offset</a>&#xA;      </strong> | \<length\>                                                                  | 0                         | all elements                                                                                                                              | no   | N/A   | lengthby computed value   | per grammar     | \<length\> value in absolute units (px or physical).absolute length                                                                                                |
+| <strong><span><a id="ref-for-propdef-outline-style⑧"></a></span><a href="#propdef-outline-style">outline-style</a>&#xA;      </strong> | auto \| \<border-style\>                                                    | none                      | all elements                                                                                                                              | no   | N/A   | discrete                  | per grammar     | as specified                                                                                                                                                       |
+| <strong><span><a id="ref-for-propdef-outline-width⑨"></a></span><a href="#propdef-outline-width">outline-width</a>&#xA;      </strong> | \<line-width\>                                                              | medium                    | all elements                                                                                                                              | no   | N/A   | lengthby computed value   | per grammar     | absolute length, snapped as a border width; 0 if the outline style is none.                                                                                        |
+| <strong><span><a id="ref-for-propdef-resize⑨"></a></span><a href="#propdef-resize">resize</a>&#xA;      </strong> | none \| both \| horizontal \| vertical                                      | none                      | elements with overflow other than visible,that are scroll containers and optionally replaced elements such as images, videos, and iframes | no   | N/A   | discrete                  | per grammar     | as specified keyword                                                                                                                                               |
+| <strong><span><a id="ref-for-propdef-text-overflow④"></a></span><a href="#propdef-text-overflow">text-overflow</a>&#xA;      </strong> | clip \| ellipsis                                                            | clip                      | block containers                                                                                                                          | no   | N/A   | discrete                  | per grammar     | as specified keyword                                                                                                                                               |
 
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope col):</strong>
-
-Name
-
-<strong>Column 2 (header cell; scope col):</strong>
-
-Value
-
-<strong>Column 3 (header cell; scope col):</strong>
-
-Initial
-
-<strong>Column 4 (header cell; scope col):</strong>
-
-Applies to
-
-<strong>Column 5 (header cell; scope col):</strong>
-
-Inh.
-
-<strong>Column 6 (header cell; scope col):</strong>
-
-%ages
-
-<strong>Column 7 (header cell; scope col):</strong>
-
-Anim­ation type
-
-<strong>Column 8 (header cell; scope col):</strong>
-
-Canonical order
-
-<strong>Column 9 (header cell; scope col):</strong>
-
-Com­puted value
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-box-sizing⑨"></a>
-
-[box-sizing](#propdef-box-sizing)
-
-<strong>Column 2 (data cell):</strong>
-
-content-box \| border-box
-
-<strong>Column 3 (data cell):</strong>
-
-content-box
-
-<strong>Column 4 (data cell):</strong>
-
-all elements that accept width or height
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified value
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-caret-color②"></a>
-
-[caret-color](#propdef-caret-color)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| \<color\>
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-colorby computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-The computed value for auto is auto; the computed value of currentColor is currentColor (See currentcolor); see the color property for other \<color\> values.
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-cursor①⓪"></a>
-
-[cursor](#propdef-cursor)
-
-<strong>Column 2 (data cell):</strong>
-
-\[\<cursor-image\>,\]\* \<cursor-predefined\>
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified, except with any relative URLs converted to absolute
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-outline③"></a>
-
-[outline](#propdef-outline)
-
-<strong>Column 2 (data cell):</strong>
-
-\[ \<'outline-color'\> \|\| \<'outline-style'\> \|\| \<'outline-width'\> \]
-
-<strong>Column 3 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-outline-color⑥"></a>
-
-[outline-color](#propdef-outline-color)
-
-<strong>Column 2 (data cell):</strong>
-
-\<color\> \| invert
-
-<strong>Column 3 (data cell):</strong>
-
-invert
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-colorby computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-The computed value for invert is invert; the computed value of currentColor is currentColor (See currentcolor); see the color property for other \<color\> values.
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-outline-offset②"></a>
-
-[outline-offset](#propdef-outline-offset)
-
-<strong>Column 2 (data cell):</strong>
-
-\<length\>
-
-<strong>Column 3 (data cell):</strong>
-
-0
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-lengthby computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-\<length\> value in absolute units (px or physical).absolute length
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-outline-style⑧"></a>
-
-[outline-style](#propdef-outline-style)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| \<border-style\>
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-outline-width⑨"></a>
-
-[outline-width](#propdef-outline-width)
-
-<strong>Column 2 (data cell):</strong>
-
-\<line-width\>
-
-<strong>Column 3 (data cell):</strong>
-
-medium
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-lengthby computed value
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-absolute length, snapped as a border width; 0 if the outline style is none.
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-resize⑨"></a>
-
-[resize](#propdef-resize)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| both \| horizontal \| vertical
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-elements with overflow other than visible,that are scroll containers and optionally replaced elements such as images, videos, and iframes
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified keyword
-
-<strong>Row 11</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-text-overflow④"></a>
-
-[text-overflow](#propdef-text-overflow)
-
-<strong>Column 2 (data cell):</strong>
-
-clip \| ellipsis
-
-<strong>Column 3 (data cell):</strong>
-
-clip
-
-<strong>Column 4 (data cell):</strong>
-
-block containers
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified keyword

@@ -19,7 +19,8 @@ Snapshot SHA-256: 272548f0468544b6834bce6b5bbdb1203d3dade2b3480edfc7aed40b066d0f
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 16 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 16 source tables are presented as readable Markdown tables or explicit labeled layouts: 16 ordinary table conversions. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 
@@ -579,101 +580,17 @@ For the [::part()](https://www.w3.org/TR/css-shadow-parts-1/#selectordef-part) a
 
 ### <a id="container-type"></a>5.1.  Creating Query Containers: the [container-type](#propdef-container-type) property
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-container-type"></a>container-type
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-any"></a>
-
-<a id="ref-for-comb-one⑦"></a>
-
-normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[ \[ size <a id="ref-for-comb-one⑧"></a>\| inline-size \] [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) scroll-state \]
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-normal
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-not animatable
+| Field               | Definition                                                                                                                                                                                                           |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-container-type"></a>container-type                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-any"></a><a id="ref-for-comb-one⑦"></a>normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[ \[ size <a id="ref-for-comb-one⑧"></a>\| inline-size \] [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) scroll-state \] |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | normal                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | not animatable                                                                                                                                                                                                       |
 
 <a id="ref-for-propdef-container-type②"></a>
 
@@ -801,107 +718,17 @@ The element is not a [query container](#query-container) for any [container size
 
 ### <a id="container-name"></a>5.2.  Naming Query Containers: the [container-name](#propdef-container-name) property
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-container-name"></a>container-name
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-one-plus"></a>
-
-<a id="ref-for-identifier-value"></a>
-
-<a id="ref-for-comb-one⑨"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<custom-ident\>](https://www.w3.org/TR/css-values-4/#identifier-value)[+](https://www.w3.org/TR/css-values-4/#mult-one-plus)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-css-css-identifier"></a>
-
-<a id="ref-for-valdef-container-name-none"></a>
-
-the keyword [none](#valdef-container-name-none), or an ordered list of [identifiers](https://www.w3.org/TR/css-values-4/#css-css-identifier)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-not animatable
+| Field               | Definition                                                                                                                                                                                                                                      |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-container-name"></a>container-name                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-one-plus"></a><a id="ref-for-identifier-value"></a><a id="ref-for-comb-one⑨"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<custom-ident\>](https://www.w3.org/TR/css-values-4/#identifier-value)[+](https://www.w3.org/TR/css-values-4/#mult-one-plus) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-css-css-identifier"></a><a id="ref-for-valdef-container-name-none"></a>the keyword [none](#valdef-container-name-none), or an ordered list of [identifiers](https://www.w3.org/TR/css-values-4/#css-css-identifier)                                                              |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | not animatable                                                                                                                                                                                                                                  |
 
 Tests
 
@@ -977,103 +804,17 @@ Specifies a [query container name](#query-container-name) as an [identifier](htt
 
 ### <a id="container-shorthand"></a>5.3.  Creating Named Containers: the [container](#propdef-container) shorthand
 
-<strong>Table 3 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-container"></a>container
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-opt①"></a>
-
-<a id="ref-for-propdef-container-type③"></a>
-
-<a id="ref-for-propdef-container-name②"></a>
-
-[\<'container-name'\>](#propdef-container-name) \[ / [\<'container-type'\>](#propdef-container-type) \][?](https://www.w3.org/TR/css-values-4/#mult-opt)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                                                                                                        |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-container"></a>container                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-opt①"></a><a id="ref-for-propdef-container-type③"></a><a id="ref-for-propdef-container-name②"></a>[\<'container-name'\>](#propdef-container-name) \[ / [\<'container-type'\>](#propdef-container-type) \][?](https://www.w3.org/TR/css-values-4/#mult-opt) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                       |
 
 Tests
 
@@ -1996,51 +1737,12 @@ Tree counting functions ([CSS Values 5 § 9 Tree Counting Functions: the sibli
 
 #### <a id="width"></a>6.1.1.  Width: the [width](#descdef-container-width) feature
 
-<strong>Table 4 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-container-width"></a>width
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-container⑤"></a>
-
-[@container](#at-ruledef-container)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value"></a>
-
-[\<length\>](https://www.w3.org/TR/css-values-4/#length-value)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Type:
-
-<strong>Column 2 (data cell):</strong>
-
-range
+| Field               | Definition                                                                        |
+|---------------------|-----------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-container-width"></a>width                                                          |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-container⑤"></a>[@container](#at-ruledef-container)                            |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-length-value"></a>[\<length\>](https://www.w3.org/TR/css-values-4/#length-value) |
+| <strong>Type:&#xA;      </strong> | range                                                                             |
 
 <a id="ref-for-descdef-container-width①"></a>
 
@@ -2058,51 +1760,12 @@ The [width](#descdef-container-width) [container feature](#container-feature) qu
 
 #### <a id="height"></a>6.1.2.  Height: the [height](#descdef-container-height) feature
 
-<strong>Table 5 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-container-height"></a>height
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-container⑥"></a>
-
-[@container](#at-ruledef-container)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value①"></a>
-
-[\<length\>](https://www.w3.org/TR/css-values-4/#length-value)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Type:
-
-<strong>Column 2 (data cell):</strong>
-
-range
+| Field               | Definition                                                                        |
+|---------------------|-----------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-container-height"></a>height                                                         |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-container⑥"></a>[@container](#at-ruledef-container)                            |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-length-value①"></a>[\<length\>](https://www.w3.org/TR/css-values-4/#length-value) |
+| <strong>Type:&#xA;      </strong> | range                                                                             |
 
 <a id="ref-for-descdef-container-height①"></a>
 
@@ -2120,51 +1783,12 @@ The [height](#descdef-container-height) [container feature](#container-feature) 
 
 #### <a id="inline-size"></a>6.1.3.  Inline-size: the [inline-size](#descdef-container-inline-size) feature
 
-<strong>Table 6 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-container-inline-size"></a>inline-size
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-container⑦"></a>
-
-[@container](#at-ruledef-container)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value②"></a>
-
-[\<length\>](https://www.w3.org/TR/css-values-4/#length-value)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Type:
-
-<strong>Column 2 (data cell):</strong>
-
-range
+| Field               | Definition                                                                        |
+|---------------------|-----------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-container-inline-size"></a>inline-size                                                    |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-container⑦"></a>[@container](#at-ruledef-container)                            |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-length-value②"></a>[\<length\>](https://www.w3.org/TR/css-values-4/#length-value) |
+| <strong>Type:&#xA;      </strong> | range                                                                             |
 
 <a id="ref-for-descdef-container-inline-size⑤"></a>
 
@@ -2184,51 +1808,12 @@ The [inline-size](#descdef-container-inline-size) [container feature](#container
 
 #### <a id="block-size"></a>6.1.4.  Block-size: the [block-size](#descdef-container-block-size) feature
 
-<strong>Table 7 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-container-block-size"></a>block-size
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-container⑧"></a>
-
-[@container](#at-ruledef-container)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-length-value③"></a>
-
-[\<length\>](https://www.w3.org/TR/css-values-4/#length-value)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Type:
-
-<strong>Column 2 (data cell):</strong>
-
-range
+| Field               | Definition                                                                        |
+|---------------------|-----------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-container-block-size"></a>block-size                                                     |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-container⑧"></a>[@container](#at-ruledef-container)                            |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-length-value③"></a>[\<length\>](https://www.w3.org/TR/css-values-4/#length-value) |
+| <strong>Type:&#xA;      </strong> | range                                                                             |
 
 <a id="ref-for-descdef-container-block-size①"></a>
 
@@ -2248,51 +1833,12 @@ The [block-size](#descdef-container-block-size) [container feature](#container-f
 
 #### <a id="aspect-ratio"></a>6.1.5.  Aspect-ratio: the [aspect-ratio](#descdef-container-aspect-ratio) feature
 
-<strong>Table 8 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-container-aspect-ratio"></a>aspect-ratio
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-container⑨"></a>
-
-[@container](#at-ruledef-container)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-ratio-value"></a>
-
-[\<ratio\>](https://www.w3.org/TR/css-values-4/#ratio-value)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Type:
-
-<strong>Column 2 (data cell):</strong>
-
-range
+| Field               | Definition                                                                      |
+|---------------------|---------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-container-aspect-ratio"></a>aspect-ratio                                                 |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-container⑨"></a>[@container](#at-ruledef-container)                          |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-ratio-value"></a>[\<ratio\>](https://www.w3.org/TR/css-values-4/#ratio-value) |
+| <strong>Type:&#xA;      </strong> | range                                                                           |
 
 <a id="ref-for-descdef-container-aspect-ratio①"></a>
 
@@ -2308,51 +1854,12 @@ The [aspect-ratio](#descdef-container-aspect-ratio) [container feature](#contain
 
 #### <a id="orientation"></a>6.1.6.  Orientation: the [orientation](#descdef-container-orientation) feature
 
-<strong>Table 9 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-container-orientation"></a>orientation
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-container①⓪"></a>
-
-[@container](#at-ruledef-container)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one③①"></a>
-
-portrait [\|](https://www.w3.org/TR/css-values-4/#comb-one) landscape
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Type:
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                               |
+|---------------------|------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-container-orientation"></a>orientation                                                           |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-container①⓪"></a>[@container](#at-ruledef-container)                                   |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-comb-one③①"></a>portrait [\|](https://www.w3.org/TR/css-values-4/#comb-one) landscape |
+| <strong>Type:&#xA;      </strong> | discrete                                                                                 |
 
 <a id="valdef-container-orientation-portrait"></a>portrait  
 <a id="ref-for-descdef-container-width③"></a>
@@ -2561,51 +2068,12 @@ When asked to [run snapshot post-layout state steps](https://www.w3.org/TR/cssom
 
 #### <a id="stuck"></a>6.3.2.  Sticky positioning: the [stuck](#descdef-container-stuck) feature
 
-<strong>Table 10 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-container-stuck"></a>stuck
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-container①①"></a>
-
-[@container](#at-ruledef-container)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one③②"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) top <a id="ref-for-comb-one③③"></a>\| right <a id="ref-for-comb-one③④"></a>\| bottom <a id="ref-for-comb-one③⑤"></a>\| left <a id="ref-for-comb-one③⑥"></a>\| block-start <a id="ref-for-comb-one③⑦"></a>\| inline-start <a id="ref-for-comb-one③⑧"></a>\| block-end <a id="ref-for-comb-one③⑨"></a>\| inline-end
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Type:
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                                                                                               |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-container-stuck"></a>stuck                                                                                                                                                                                                                                                                                 |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-container①①"></a>[@container](#at-ruledef-container)                                                                                                                                                                                                                                                   |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-comb-one③②"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) top <a id="ref-for-comb-one③③"></a>\| right <a id="ref-for-comb-one③④"></a>\| bottom <a id="ref-for-comb-one③⑤"></a>\| left <a id="ref-for-comb-one③⑥"></a>\| block-start <a id="ref-for-comb-one③⑦"></a>\| inline-start <a id="ref-for-comb-one③⑧"></a>\| block-end <a id="ref-for-comb-one③⑨"></a>\| inline-end |
+| <strong>Type:&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                 |
 
 Tests
 
@@ -2697,51 +2165,12 @@ The [sticky](https://www.w3.org/TR/css-position-3/#valdef-position-sticky) conta
 
 #### <a id="snapped"></a>6.3.3.  Scroll snapping: the [snapped](#descdef-container-snapped) feature
 
-<strong>Table 11 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-container-snapped"></a>snapped
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-container①②"></a>
-
-[@container](#at-ruledef-container)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one④⓪"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) x <a id="ref-for-comb-one④①"></a>\| y <a id="ref-for-comb-one④②"></a>\| block <a id="ref-for-comb-one④③"></a>\| inline <a id="ref-for-comb-one④④"></a>\| both
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Type:
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                               |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-container-snapped"></a>snapped                                                                                                                                                               |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-container①②"></a>[@container](#at-ruledef-container)                                                                                                                                   |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-comb-one④⓪"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) x <a id="ref-for-comb-one④①"></a>\| y <a id="ref-for-comb-one④②"></a>\| block <a id="ref-for-comb-one④③"></a>\| inline <a id="ref-for-comb-one④④"></a>\| both |
+| <strong>Type:&#xA;      </strong> | discrete                                                                                                                                                                                 |
 
 Tests
 
@@ -2852,51 +2281,12 @@ The [query container](#query-container) is not a [snap target](https://www.w3.or
 
 #### <a id="scrollable"></a>6.3.4.  Scrollable: the [scrollable](#descdef-container-scrollable) feature
 
-<strong>Table 12 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-container-scrollable"></a>scrollable
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-container①③"></a>
-
-[@container](#at-ruledef-container)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one④⑤"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) top <a id="ref-for-comb-one④⑥"></a>\| right <a id="ref-for-comb-one④⑦"></a>\| bottom <a id="ref-for-comb-one④⑧"></a>\| left <a id="ref-for-comb-one④⑨"></a>\| block-start <a id="ref-for-comb-one⑤⓪"></a>\| inline-start <a id="ref-for-comb-one⑤①"></a>\| block-end <a id="ref-for-comb-one⑤②"></a>\| inline-end <a id="ref-for-comb-one⑤③"></a>\| x <a id="ref-for-comb-one⑤④"></a>\| y <a id="ref-for-comb-one⑤⑤"></a>\| block <a id="ref-for-comb-one⑤⑥"></a>\| inline
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Type:
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                        |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-container-scrollable"></a>scrollable                                                                                                                                                                                                                                                                                                                                                                                     |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-container①③"></a>[@container](#at-ruledef-container)                                                                                                                                                                                                                                                                                                                                                            |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-comb-one④⑤"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) top <a id="ref-for-comb-one④⑥"></a>\| right <a id="ref-for-comb-one④⑦"></a>\| bottom <a id="ref-for-comb-one④⑧"></a>\| left <a id="ref-for-comb-one④⑨"></a>\| block-start <a id="ref-for-comb-one⑤⓪"></a>\| inline-start <a id="ref-for-comb-one⑤①"></a>\| block-end <a id="ref-for-comb-one⑤②"></a>\| inline-end <a id="ref-for-comb-one⑤③"></a>\| x <a id="ref-for-comb-one⑤④"></a>\| y <a id="ref-for-comb-one⑤⑤"></a>\| block <a id="ref-for-comb-one⑤⑥"></a>\| inline |
+| <strong>Type:&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 Tests
 
@@ -3028,51 +2418,12 @@ The [scroll container](https://www.w3.org/TR/css-overflow-3/#scroll-container) h
 
 #### <a id="scrolled"></a>6.3.5.  Scrolled: the [scrolled](#descdef-container-scrolled) feature
 
-<strong>Table 13 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="descdef-container-scrolled"></a>scrolled
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-For:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-at-ruledef-container①④"></a>
-
-[@container](#at-ruledef-container)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Value:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one⑤⑦"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) top <a id="ref-for-comb-one⑤⑧"></a>\| right <a id="ref-for-comb-one⑤⑨"></a>\| bottom <a id="ref-for-comb-one⑥⓪"></a>\| left <a id="ref-for-comb-one⑥①"></a>\| block-start <a id="ref-for-comb-one⑥②"></a>\| inline-start <a id="ref-for-comb-one⑥③"></a>\| block-end <a id="ref-for-comb-one⑥④"></a>\| inline-end <a id="ref-for-comb-one⑥⑤"></a>\| x <a id="ref-for-comb-one⑥⑥"></a>\| y <a id="ref-for-comb-one⑥⑦"></a>\| block <a id="ref-for-comb-one⑥⑧"></a>\| inline
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Type:
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                        |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="descdef-container-scrolled"></a>scrolled                                                                                                                                                                                                                                                                                                                                                                                       |
+| <strong>For:&#xA;      </strong> | <a id="ref-for-at-ruledef-container①④"></a>[@container](#at-ruledef-container)                                                                                                                                                                                                                                                                                                                                                            |
+| <strong>Value:&#xA;      </strong> | <a id="ref-for-comb-one⑤⑦"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) top <a id="ref-for-comb-one⑤⑧"></a>\| right <a id="ref-for-comb-one⑤⑨"></a>\| bottom <a id="ref-for-comb-one⑥⓪"></a>\| left <a id="ref-for-comb-one⑥①"></a>\| block-start <a id="ref-for-comb-one⑥②"></a>\| inline-start <a id="ref-for-comb-one⑥③"></a>\| block-end <a id="ref-for-comb-one⑥④"></a>\| inline-end <a id="ref-for-comb-one⑥⑤"></a>\| x <a id="ref-for-comb-one⑥⑥"></a>\| y <a id="ref-for-comb-one⑥⑦"></a>\| block <a id="ref-for-comb-one⑥⑧"></a>\| inline |
+| <strong>Type:&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 Tests
 
@@ -3194,95 +2545,16 @@ The most recent [relative scroll](https://drafts.csswg.org/css-scroll-snap-1/#re
 
 The [container query length](#container-query-length) units are:
 
-<strong>Table 14 — structured row/cell transcription</strong>
+| unit  | relative to                                                                                                                                               |
+|-------|-----------------------------------------------------------------------------------------------------------------------------------------------------------|
+| cqw   | <a id="ref-for-width①"></a><a id="ref-for-query-container⑥⑤"></a>1% of a [query container](#query-container)’s [width](https://www.w3.org/TR/css-sizing-3/#width)                    |
+| cqh   | <a id="ref-for-height①"></a><a id="ref-for-query-container⑥⑥"></a>1% of a [query container](#query-container)’s [height](https://www.w3.org/TR/css-sizing-3/#height)                  |
+| cqi   | <a id="ref-for-inline-size"></a><a id="ref-for-query-container⑥⑦"></a>1% of a [query container](#query-container)’s [inline size](https://www.w3.org/TR/css-writing-modes-4/#inline-size) |
+| cqb   | <a id="ref-for-block-size"></a><a id="ref-for-query-container⑥⑧"></a>1% of a [query container](#query-container)’s [block size](https://www.w3.org/TR/css-writing-modes-4/#block-size)   |
+| cqmin | The smaller value of cqi or cqb                                                                                                                           |
+| cqmax | The larger value of cqi or cqb                                                                                                                            |
 
 Informative Summary of Container Units
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-unit
-
-<strong>Column 2 (header cell):</strong>
-
-relative to
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-cqw
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-width①"></a>
-
-<a id="ref-for-query-container⑥⑤"></a>
-
-1% of a [query container](#query-container)’s [width](https://www.w3.org/TR/css-sizing-3/#width)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-cqh
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-height①"></a>
-
-<a id="ref-for-query-container⑥⑥"></a>
-
-1% of a [query container](#query-container)’s [height](https://www.w3.org/TR/css-sizing-3/#height)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-cqi
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-inline-size"></a>
-
-<a id="ref-for-query-container⑥⑦"></a>
-
-1% of a [query container](#query-container)’s [inline size](https://www.w3.org/TR/css-writing-modes-4/#inline-size)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-cqb
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-block-size"></a>
-
-<a id="ref-for-query-container⑥⑧"></a>
-
-1% of a [query container](#query-container)’s [block size](https://www.w3.org/TR/css-writing-modes-4/#block-size)
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-cqmin
-
-<strong>Column 2 (data cell):</strong>
-
-The smaller value of cqi or cqb
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-cqmax
-
-<strong>Column 2 (data cell):</strong>
-
-The larger value of cqi or cqb
 
 Tests
 
@@ -4126,369 +3398,28 @@ Bert Bos; et al. [Cascading Style Sheets Level 2 Revision 1 (CSS 2.1) Specificat
 
 ## <a id="property-index"></a>Property Index
 
-<strong>Table 15 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope col):</strong>
-
-Name
-
-<strong>Column 2 (header cell; scope col):</strong>
-
-Value
-
-<strong>Column 3 (header cell; scope col):</strong>
-
-Initial
-
-<strong>Column 4 (header cell; scope col):</strong>
-
-Applies to
-
-<strong>Column 5 (header cell; scope col):</strong>
-
-Inh.
-
-<strong>Column 6 (header cell; scope col):</strong>
-
-%ages
-
-<strong>Column 7 (header cell; scope col):</strong>
-
-Anim­ation type
-
-<strong>Column 8 (header cell; scope col):</strong>
-
-Canonical order
-
-<strong>Column 9 (header cell; scope col):</strong>
-
-Com­puted value
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-container③"></a>
-
-[container](#propdef-container)
-
-<strong>Column 2 (data cell):</strong>
-
-\<'container-name'\> \[ / \<'container-type'\> \]?
-
-<strong>Column 3 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 4 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 5 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 6 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 7 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-container-name⑤"></a>
-
-[container-name](#propdef-container-name)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| \<custom-ident\>+
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-not animatable
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the keyword none, or an ordered list of identifiers
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-container-type⑦"></a>
-
-[container-type](#propdef-container-type)
-
-<strong>Column 2 (data cell):</strong>
-
-normal \| \[ \[ size \| inline-size \] \|\| scroll-state \]
-
-<strong>Column 3 (data cell):</strong>
-
-normal
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-not animatable
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
+| Name                | Value                                                       | Initial                   | Applies to                | Inh.                      | %ages                     | Anim­ation type            | Canonical order | Com­puted value                                      |
+|---------------------|-------------------------------------------------------------|---------------------------|---------------------------|---------------------------|---------------------------|---------------------------|-----------------|-----------------------------------------------------|
+| <strong><span><a id="ref-for-propdef-container③"></a></span><a href="#propdef-container">container</a>&#xA;      </strong> | \<'container-name'\> \[ / \<'container-type'\> \]?          | see individual properties | see individual properties | see individual properties | see individual properties | see individual properties | per grammar     | see individual properties                           |
+| <strong><span><a id="ref-for-propdef-container-name⑤"></a></span><a href="#propdef-container-name">container-name</a>&#xA;      </strong> | none \| \<custom-ident\>+                                   | none                      | all elements              | no                        | n/a                       | not animatable            | per grammar     | the keyword none, or an ordered list of identifiers |
+| <strong><span><a id="ref-for-propdef-container-type⑦"></a></span><a href="#propdef-container-type">container-type</a>&#xA;      </strong> | normal \| \[ \[ size \| inline-size \] \|\| scroll-state \] | normal                    | all elements              | no                        | n/a                       | not animatable            | per grammar     | specified keyword                                   |
 
 <a id="ref-for-at-ruledef-container①⑧"></a>
 
 ### <a id="container-descriptor-table"></a>[@container](#at-ruledef-container) Descriptors
 
-<strong>Table 16 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope col):</strong>
-
-Name
-
-<strong>Column 2 (header cell; scope col):</strong>
-
-Value
-
-<strong>Column 3 (header cell; scope col):</strong>
-
-Initial
-
-<strong>Column 4 (header cell; scope col):</strong>
-
-Type
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-container-aspect-ratio②"></a>
-
-[aspect-ratio](#descdef-container-aspect-ratio)
-
-<strong>Column 2 (data cell):</strong>
-
-\<ratio\>
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-range
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-container-block-size②"></a>
-
-[block-size](#descdef-container-block-size)
-
-<strong>Column 2 (data cell):</strong>
-
-\<length\>
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-range
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-container-height④"></a>
-
-[height](#descdef-container-height)
-
-<strong>Column 2 (data cell):</strong>
-
-\<length\>
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-range
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-container-inline-size⑥"></a>
-
-[inline-size](#descdef-container-inline-size)
-
-<strong>Column 2 (data cell):</strong>
-
-\<length\>
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-range
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-container-orientation③"></a>
-
-[orientation](#descdef-container-orientation)
-
-<strong>Column 2 (data cell):</strong>
-
-portrait \| landscape
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-discrete
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-container-scrollable③"></a>
-
-[scrollable](#descdef-container-scrollable)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| top \| right \| bottom \| left \| block-start \| inline-start \| block-end \| inline-end \| x \| y \| block \| inline
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-discrete
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-container-scrolled②"></a>
-
-[scrolled](#descdef-container-scrolled)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| top \| right \| bottom \| left \| block-start \| inline-start \| block-end \| inline-end \| x \| y \| block \| inline
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-discrete
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-container-snapped⑦"></a>
-
-[snapped](#descdef-container-snapped)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| x \| y \| block \| inline \| both
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-discrete
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-container-stuck②"></a>
-
-[stuck](#descdef-container-stuck)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| top \| right \| bottom \| left \| block-start \| inline-start \| block-end \| inline-end
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-discrete
-
-<strong>Row 11</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-descdef-container-width④"></a>
-
-[width](#descdef-container-width)
-
-<strong>Column 2 (data cell):</strong>
-
-\<length\>
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Column 4 (data cell):</strong>
-
-range
+| Name                | Value                                                                                                                         | Initial | Type     |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------|---------|----------|
+| <strong><span><a id="ref-for-descdef-container-aspect-ratio②"></a></span><a href="#descdef-container-aspect-ratio">aspect-ratio</a>&#xA;      </strong> | \<ratio\>                                                                                                                     |         | range    |
+| <strong><span><a id="ref-for-descdef-container-block-size②"></a></span><a href="#descdef-container-block-size">block-size</a>&#xA;      </strong> | \<length\>                                                                                                                    |         | range    |
+| <strong><span><a id="ref-for-descdef-container-height④"></a></span><a href="#descdef-container-height">height</a>&#xA;      </strong> | \<length\>                                                                                                                    |         | range    |
+| <strong><span><a id="ref-for-descdef-container-inline-size⑥"></a></span><a href="#descdef-container-inline-size">inline-size</a>&#xA;      </strong> | \<length\>                                                                                                                    |         | range    |
+| <strong><span><a id="ref-for-descdef-container-orientation③"></a></span><a href="#descdef-container-orientation">orientation</a>&#xA;      </strong> | portrait \| landscape                                                                                                         |         | discrete |
+| <strong><span><a id="ref-for-descdef-container-scrollable③"></a></span><a href="#descdef-container-scrollable">scrollable</a>&#xA;      </strong> | none \| top \| right \| bottom \| left \| block-start \| inline-start \| block-end \| inline-end \| x \| y \| block \| inline |         | discrete |
+| <strong><span><a id="ref-for-descdef-container-scrolled②"></a></span><a href="#descdef-container-scrolled">scrolled</a>&#xA;      </strong> | none \| top \| right \| bottom \| left \| block-start \| inline-start \| block-end \| inline-end \| x \| y \| block \| inline |         | discrete |
+| <strong><span><a id="ref-for-descdef-container-snapped⑦"></a></span><a href="#descdef-container-snapped">snapped</a>&#xA;      </strong> | none \| x \| y \| block \| inline \| both                                                                                     |         | discrete |
+| <strong><span><a id="ref-for-descdef-container-stuck②"></a></span><a href="#descdef-container-stuck">stuck</a>&#xA;      </strong> | none \| top \| right \| bottom \| left \| block-start \| inline-start \| block-end \| inline-end                              |         | discrete |
+| <strong><span><a id="ref-for-descdef-container-width④"></a></span><a href="#descdef-container-width">width</a>&#xA;      </strong> | \<length\>                                                                                                                    |         | range    |
 
 ## <a id="idl-index"></a>IDL Index
 

@@ -19,7 +19,8 @@ Snapshot SHA-256: 872cdd7c49fdbfba1ff7ea5b6689145c168b17d09542f11af717a55bc16ab9
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 5 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 5 source tables are presented as readable Markdown tables or explicit labeled layouts: 5 ordinary table conversions. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 - Existing external image/media URLs are resolved against the pinned source. Assets are not downloaded or availability-tested; image-only formulas/diagrams still require their source resources.
@@ -223,123 +224,17 @@ In addition to the property-specific values listed in their definitions, all pro
 
 ## <a id="the-display-properties"></a>2.  Box Layout Modes: the [display](#propdef-display) property
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-display"></a>display
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-display-legacy"></a>
-
-<a id="ref-for-typedef-display-box"></a>
-
-<a id="ref-for-typedef-display-internal"></a>
-
-<a id="ref-for-typedef-display-listitem"></a>
-
-<a id="ref-for-comb-one"></a>
-
-<a id="ref-for-typedef-display-inside"></a>
-
-<a id="ref-for-comb-any"></a>
-
-<a id="ref-for-typedef-display-outside"></a>
-
-\[ [\<display-outside\>](#typedef-display-outside) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<display-inside\>](#typedef-display-inside) \] [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<display-listitem\>](#typedef-display-listitem) <a id="ref-for-comb-one①"></a>\| [\<display-internal\>](#typedef-display-internal) <a id="ref-for-comb-one②"></a>\| [\<display-box\>](#typedef-display-box) <a id="ref-for-comb-one③"></a>\| [\<display-legacy\>](#typedef-display-legacy)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-inline
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-display-box①"></a>
-
-<a id="ref-for-typedef-display-internal①"></a>
-
-<a id="ref-for-valdef-display-list-item"></a>
-
-<a id="ref-for-outer-display-type"></a>
-
-<a id="ref-for-inner-display-type"></a>
-
-a pair of keywords representing the [inner](#inner-display-type) and [outer](#outer-display-type) display types plus optional [list-item](#valdef-display-list-item) flag, or a [\<display-internal\>](#typedef-display-internal) or [\<display-box\>](#typedef-display-box) keyword; see prose in a variety of specs for computation rules
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-not animatable
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-display"></a>display                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-display-legacy"></a><a id="ref-for-typedef-display-box"></a><a id="ref-for-typedef-display-internal"></a><a id="ref-for-typedef-display-listitem"></a><a id="ref-for-comb-one"></a><a id="ref-for-typedef-display-inside"></a><a id="ref-for-comb-any"></a><a id="ref-for-typedef-display-outside"></a>\[ [\<display-outside\>](#typedef-display-outside) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<display-inside\>](#typedef-display-inside) \] [\|](https://www.w3.org/TR/css-values-4/#comb-one) [\<display-listitem\>](#typedef-display-listitem) <a id="ref-for-comb-one①"></a>\| [\<display-internal\>](#typedef-display-internal) <a id="ref-for-comb-one②"></a>\| [\<display-box\>](#typedef-display-box) <a id="ref-for-comb-one③"></a>\| [\<display-legacy\>](#typedef-display-legacy) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | inline                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-typedef-display-box①"></a><a id="ref-for-typedef-display-internal①"></a><a id="ref-for-valdef-display-list-item"></a><a id="ref-for-outer-display-type"></a><a id="ref-for-inner-display-type"></a>a pair of keywords representing the [inner](#inner-display-type) and [outer](#outer-display-type) display types plus optional [list-item](#valdef-display-list-item) flag, or a [\<display-internal\>](#typedef-display-internal) or [\<display-box\>](#typedef-display-box) keyword; see prose in a variety of specs for computation rules                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | not animatable                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 
 <a id="ref-for-propdef-display①①"></a>
 
@@ -471,377 +366,26 @@ The following informative table summarizes the values of [display](#propdef-disp
 
 <a id="display-value-summary"></a>
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-propdef-display①⑥"></a>
-
-Short [display](#propdef-display)
-
-<strong>Column 2 (header cell):</strong>
-
-<a id="ref-for-propdef-display①⑦"></a>
-
-Full [display](#propdef-display)
-
-<strong>Column 3 (header cell):</strong>
-
-Generated box
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-display-none③"></a>
-
-[none](#valdef-display-none)
-
-<strong>Column 2 (data cell):</strong>
-
-—
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-box-tree⑦"></a>
-
-subtree omitted from [box tree](#box-tree)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-display-contents①"></a>
-
-[contents](#valdef-display-contents)
-
-<strong>Column 2 (data cell):</strong>
-
-—
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-box-tree⑧"></a>
-
-element replaced by contents in [box tree](#box-tree)
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-display-block"></a>
-
-[block](#valdef-display-block)
-
-<strong>Column 2 (data cell):</strong>
-
-block flow
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-block-box①"></a>
-
-<a id="ref-for-block-container"></a>
-
-<a id="ref-for-block-level"></a>
-
-[block-level](#block-level) [block container](#block-container) aka [block box](#block-box)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-display-flow-root"></a>
-
-[flow-root](#valdef-display-flow-root)
-
-<strong>Column 2 (data cell):</strong>
-
-block flow-root
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-bfc"></a>
-
-<a id="ref-for-block-formatting-context"></a>
-
-<a id="ref-for-block-container①"></a>
-
-<a id="ref-for-block-level①"></a>
-
-[block-level](#block-level) [block container](#block-container) that establishes a new [block formatting context](#block-formatting-context) ([BFC](#bfc))
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-display-inline"></a>
-
-[inline](#valdef-display-inline)
-
-<strong>Column 2 (data cell):</strong>
-
-inline flow
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-inline-box①"></a>
-
-[inline box](#inline-box)
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-display-inline-block"></a>
-
-[inline-block](#valdef-display-inline-block)
-
-<strong>Column 2 (data cell):</strong>
-
-inline flow-root
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-block-container②"></a>
-
-<a id="ref-for-inline-level"></a>
-
-[inline-level](#inline-level) [block container](#block-container) aka <a id="inline-block"></a>inline block
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-display-run-in①"></a>
-
-[run-in](#valdef-display-run-in)
-
-<strong>Column 2 (data cell):</strong>
-
-run-in flow
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-inline-box②"></a>
-
-<a id="ref-for-run-in"></a>
-
-[run-in box](#run-in) ([inline box](#inline-box) with special box-tree-munging rules)
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-display-list-item②"></a>
-
-[list-item](#valdef-display-list-item)
-
-<strong>Column 2 (data cell):</strong>
-
-block flow list-item
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-block-box②"></a>
-
-[block box](#block-box) with additional [marker box](https://www.w3.org/TR/CSS2/generate.html#lists)
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-inline list-item
-
-<strong>Column 2 (data cell):</strong>
-
-inline flow list-item
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-inline-box③"></a>
-
-[inline box](#inline-box) with additional [marker box](https://www.w3.org/TR/CSS2/generate.html#lists)
-
-<strong>Row 11</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-display-flex"></a>
-
-[flex](#valdef-display-flex)
-
-<strong>Column 2 (data cell):</strong>
-
-block flex
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-flex-container"></a>
-
-<a id="ref-for-block-level②"></a>
-
-[block-level](#block-level) [flex container](https://www.w3.org/TR/css-flexbox-1/#flex-container)
-
-<strong>Row 12</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-display-inline-flex"></a>
-
-[inline-flex](#valdef-display-inline-flex)
-
-<strong>Column 2 (data cell):</strong>
-
-inline flex
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-flex-container①"></a>
-
-<a id="ref-for-inline-level①"></a>
-
-[inline-level](#inline-level) [flex container](https://www.w3.org/TR/css-flexbox-1/#flex-container)
-
-<strong>Row 13</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-display-grid"></a>
-
-[grid](#valdef-display-grid)
-
-<strong>Column 2 (data cell):</strong>
-
-block grid
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-grid-container"></a>
-
-<a id="ref-for-block-level③"></a>
-
-[block-level](#block-level) [grid container](https://www.w3.org/TR/css-grid-2/#grid-container)
-
-<strong>Row 14</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-display-inline-grid"></a>
-
-[inline-grid](#valdef-display-inline-grid)
-
-<strong>Column 2 (data cell):</strong>
-
-inline grid
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-grid-container①"></a>
-
-<a id="ref-for-inline-level②"></a>
-
-[inline-level](#inline-level) [grid container](https://www.w3.org/TR/css-grid-2/#grid-container)
-
-<strong>Row 15</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-display-ruby"></a>
-
-[ruby](#valdef-display-ruby)
-
-<strong>Column 2 (data cell):</strong>
-
-inline ruby
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-ruby-container"></a>
-
-<a id="ref-for-inline-level③"></a>
-
-[inline-level](#inline-level) [ruby container](https://www.w3.org/TR/css-ruby-1/#ruby-container)
-
-<strong>Row 16</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-block ruby
-
-<strong>Column 2 (data cell):</strong>
-
-block ruby
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-ruby-container①"></a>
-
-<a id="ref-for-block-box③"></a>
-
-[block box](#block-box) containing [ruby container](https://www.w3.org/TR/css-ruby-1/#ruby-container)
-
-<strong>Row 17</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-display-table"></a>
-
-[table](#valdef-display-table)
-
-<strong>Column 2 (data cell):</strong>
-
-block table
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-table-grid-box①"></a>
-
-<a id="ref-for-table-wrapper-box①"></a>
-
-<a id="ref-for-block-level④"></a>
-
-[block-level](#block-level) [table wrapper box](https://www.w3.org/TR/css-tables-3/#table-wrapper-box) containing [table grid box](https://www.w3.org/TR/css-tables-3/#table-grid-box)
-
-<strong>Row 18</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-display-inline-table"></a>
-
-[inline-table](#valdef-display-inline-table)
-
-<strong>Column 2 (data cell):</strong>
-
-inline table
-
-<strong>Column 3 (data cell):</strong>
-
-<a id="ref-for-table-grid-box②"></a>
-
-<a id="ref-for-table-wrapper-box②"></a>
-
-<a id="ref-for-inline-level④"></a>
-
-[inline-level](#inline-level) [table wrapper box](https://www.w3.org/TR/css-tables-3/#table-wrapper-box) containing [table grid box](https://www.w3.org/TR/css-tables-3/#table-grid-box)
-
-<strong>Row 19</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-typedef-display-internal②"></a>
-
-[\<display-internal\>](#typedef-display-internal) types
-
-<strong>Column 2 (data cell):</strong>
-
-—
-
-<strong>Column 3 (data cell):</strong>
-
-[layout-specific internal box](#layout-specific-display)
+| <a id="ref-for-propdef-display①⑥"></a>Short [display](#propdef-display)                       | <a id="ref-for-propdef-display①⑦"></a>Full [display](#propdef-display) | Generated box                                                                                                                                                                                                                                     |
+|----------------------------------------------------------------------------|-----------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <a id="ref-for-valdef-display-none③"></a>[none](#valdef-display-none)                            | —                                                   | <a id="ref-for-box-tree⑦"></a>subtree omitted from [box tree](#box-tree)                                                                                                                                                                                     |
+| <a id="ref-for-valdef-display-contents①"></a>[contents](#valdef-display-contents)                    | —                                                   | <a id="ref-for-box-tree⑧"></a>element replaced by contents in [box tree](#box-tree)                                                                                                                                                                          |
+| <a id="ref-for-valdef-display-block"></a>[block](#valdef-display-block)                          | block flow                                          | <a id="ref-for-block-box①"></a><a id="ref-for-block-container"></a><a id="ref-for-block-level"></a>[block-level](#block-level) [block container](#block-container) aka [block box](#block-box)                                                                                              |
+| <a id="ref-for-valdef-display-flow-root"></a>[flow-root](#valdef-display-flow-root)                  | block flow-root                                     | <a id="ref-for-bfc"></a><a id="ref-for-block-formatting-context"></a><a id="ref-for-block-container①"></a><a id="ref-for-block-level①"></a>[block-level](#block-level) [block container](#block-container) that establishes a new [block formatting context](#block-formatting-context) ([BFC](#bfc))            |
+| <a id="ref-for-valdef-display-inline"></a>[inline](#valdef-display-inline)                        | inline flow                                         | <a id="ref-for-inline-box①"></a>[inline box](#inline-box)                                                                                                                                                                                                      |
+| <a id="ref-for-valdef-display-inline-block"></a>[inline-block](#valdef-display-inline-block)            | inline flow-root                                    | <a id="ref-for-block-container②"></a><a id="ref-for-inline-level"></a>[inline-level](#inline-level) [block container](#block-container) aka <a id="inline-block"></a>inline block                                                                                                       |
+| <a id="ref-for-valdef-display-run-in①"></a>[run-in](#valdef-display-run-in)                        | run-in flow                                         | <a id="ref-for-inline-box②"></a><a id="ref-for-run-in"></a>[run-in box](#run-in) ([inline box](#inline-box) with special box-tree-munging rules)                                                                                                                       |
+| <a id="ref-for-valdef-display-list-item②"></a>[list-item](#valdef-display-list-item)                  | block flow list-item                                | <a id="ref-for-block-box②"></a>[block box](#block-box) with additional [marker box](https://www.w3.org/TR/CSS2/generate.html#lists)                                                                                                                           |
+| inline list-item                                                           | inline flow list-item                               | <a id="ref-for-inline-box③"></a>[inline box](#inline-box) with additional [marker box](https://www.w3.org/TR/CSS2/generate.html#lists)                                                                                                                         |
+| <a id="ref-for-valdef-display-flex"></a>[flex](#valdef-display-flex)                            | block flex                                          | <a id="ref-for-flex-container"></a><a id="ref-for-block-level②"></a>[block-level](#block-level) [flex container](https://www.w3.org/TR/css-flexbox-1/#flex-container)                                                                                                           |
+| <a id="ref-for-valdef-display-inline-flex"></a>[inline-flex](#valdef-display-inline-flex)              | inline flex                                         | <a id="ref-for-flex-container①"></a><a id="ref-for-inline-level①"></a>[inline-level](#inline-level) [flex container](https://www.w3.org/TR/css-flexbox-1/#flex-container)                                                                                                         |
+| <a id="ref-for-valdef-display-grid"></a>[grid](#valdef-display-grid)                            | block grid                                          | <a id="ref-for-grid-container"></a><a id="ref-for-block-level③"></a>[block-level](#block-level) [grid container](https://www.w3.org/TR/css-grid-2/#grid-container)                                                                                                              |
+| <a id="ref-for-valdef-display-inline-grid"></a>[inline-grid](#valdef-display-inline-grid)              | inline grid                                         | <a id="ref-for-grid-container①"></a><a id="ref-for-inline-level②"></a>[inline-level](#inline-level) [grid container](https://www.w3.org/TR/css-grid-2/#grid-container)                                                                                                            |
+| <a id="ref-for-valdef-display-ruby"></a>[ruby](#valdef-display-ruby)                            | inline ruby                                         | <a id="ref-for-ruby-container"></a><a id="ref-for-inline-level③"></a>[inline-level](#inline-level) [ruby container](https://www.w3.org/TR/css-ruby-1/#ruby-container)                                                                                                            |
+| block ruby                                                                 | block ruby                                          | <a id="ref-for-ruby-container①"></a><a id="ref-for-block-box③"></a>[block box](#block-box) containing [ruby container](https://www.w3.org/TR/css-ruby-1/#ruby-container)                                                                                                       |
+| <a id="ref-for-valdef-display-table"></a>[table](#valdef-display-table)                          | block table                                         | <a id="ref-for-table-grid-box①"></a><a id="ref-for-table-wrapper-box①"></a><a id="ref-for-block-level④"></a>[block-level](#block-level) [table wrapper box](https://www.w3.org/TR/css-tables-3/#table-wrapper-box) containing [table grid box](https://www.w3.org/TR/css-tables-3/#table-grid-box)   |
+| <a id="ref-for-valdef-display-inline-table"></a>[inline-table](#valdef-display-inline-table)            | inline table                                        | <a id="ref-for-table-grid-box②"></a><a id="ref-for-table-wrapper-box②"></a><a id="ref-for-inline-level④"></a>[inline-level](#inline-level) [table wrapper box](https://www.w3.org/TR/css-tables-3/#table-wrapper-box) containing [table grid box](https://www.w3.org/TR/css-tables-3/#table-grid-box) |
+| <a id="ref-for-typedef-display-internal②"></a>[\<display-internal\>](#typedef-display-internal) types | —                                                   | [layout-specific internal box](#layout-specific-display)                                                                                                                                                                                          |
 
 <a id="ref-for-propdef-display①⑧"></a>
 
@@ -1774,103 +1318,17 @@ Additionally, a [display](#propdef-display) of [contents](#valdef-display-conten
 
 ## <a id="order-property"></a>3.  Display Order: the [order](#propdef-order) property
 
-<strong>Table 3 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-order"></a>order
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-integer-value"></a>
-
-[\<integer\>](https://www.w3.org/TR/css-values-4/#integer-value)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-0
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-grid-item"></a>
-
-<a id="ref-for-flex-item"></a>
-
-[flex items](https://www.w3.org/TR/css-flexbox-1/#flex-item) and [grid items](https://www.w3.org/TR/css-grid-2/#grid-item)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified integer
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value type
+| Field               | Definition                                                                                                                                                       |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-order"></a>order                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-integer-value"></a>[\<integer\>](https://www.w3.org/TR/css-values-4/#integer-value)                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | 0                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | <a id="ref-for-grid-item"></a><a id="ref-for-flex-item"></a>[flex items](https://www.w3.org/TR/css-flexbox-1/#flex-item) and [grid items](https://www.w3.org/TR/css-grid-2/#grid-item) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified integer                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value type                                                                                                                                           |
 
 Tests
 
@@ -2000,109 +1458,18 @@ In order to preserve the author’s intended ordering in all presentation modes,
 
 ## <a id="visibility"></a>4.  Invisibility: the [visibility](#propdef-visibility) property
 
-<strong>Table 4 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-visibility"></a>visibility
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one②⑦"></a>
-
-visible [\|](https://www.w3.org/TR/css-values-4/#comb-one) hidden <a id="ref-for-comb-one②⑧"></a>\| collapse
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-visible
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Media:
-
-<strong>Column 2 (data cell):</strong>
-
-visual
+| Field               | Definition                                                                                                          |
+|---------------------|---------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-visibility"></a>visibility                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one②⑦"></a>visible [\|](https://www.w3.org/TR/css-values-4/#comb-one) hidden <a id="ref-for-comb-one②⑧"></a>\| collapse |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | visible                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | as specified                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                            |
+| <strong>Media:&#xA;      </strong> | visual                                                                                                              |
 
 <a id="ref-for-propdef-visibility①"></a>
 
@@ -3814,174 +3181,9 @@ Rossen Atanassov; Vincent Hardy; Alan Stearns. [CSS Exclusions Module Level 1](h
 
 ## <a id="property-index"></a>Property Index
 
-<strong>Table 5 — structured row/cell transcription</strong>
+| Name                | Value                                                                                                                                      | Initial | Applies to                | Inh. | %ages | Anim­ation type         | Canonical order | Com­puted value                                                                                                                                                                                              | Media  |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------|---------|---------------------------|------|-------|------------------------|-----------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------|
+| <strong><span><a id="ref-for-propdef-display⑦④"></a></span><a href="#propdef-display">display</a>&#xA;      </strong> | \[ \<display-outside\> \|\| \<display-inside\> \] \| \<display-listitem\> \| \<display-internal\> \| \<display-box\> \| \<display-legacy\> | inline  | all elements              | no   | n/a   | not animatable         | per grammar     | a pair of keywords representing the inner and outer display types plus optional list-item flag, or a \<display-internal\> or \<display-box\> keyword; see prose in a variety of specs for computation rules |        |
+| <strong><span><a id="ref-for-propdef-order①⑦"></a></span><a href="#propdef-order">order</a>&#xA;      </strong> | \<integer\>                                                                                                                                | 0       | flex items and grid items | no   | n/a   | by computed value type | per grammar     | specified integer                                                                                                                                                                                           |        |
+| <strong><span><a id="ref-for-propdef-visibility⑥"></a></span><a href="#propdef-visibility">visibility</a>&#xA;      </strong> | visible \| hidden \| collapse                                                                                                              | visible | all elements              | yes  | N/A   | discrete               | per grammar     | as specified                                                                                                                                                                                                | visual |
 
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope col):</strong>
-
-Name
-
-<strong>Column 2 (header cell; scope col):</strong>
-
-Value
-
-<strong>Column 3 (header cell; scope col):</strong>
-
-Initial
-
-<strong>Column 4 (header cell; scope col):</strong>
-
-Applies to
-
-<strong>Column 5 (header cell; scope col):</strong>
-
-Inh.
-
-<strong>Column 6 (header cell; scope col):</strong>
-
-%ages
-
-<strong>Column 7 (header cell; scope col):</strong>
-
-Anim­ation type
-
-<strong>Column 8 (header cell; scope col):</strong>
-
-Canonical order
-
-<strong>Column 9 (header cell; scope col):</strong>
-
-Com­puted value
-
-<strong>Column 10 (header cell; scope col):</strong>
-
-Media
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-display⑦④"></a>
-
-[display](#propdef-display)
-
-<strong>Column 2 (data cell):</strong>
-
-\[ \<display-outside\> \|\| \<display-inside\> \] \| \<display-listitem\> \| \<display-internal\> \| \<display-box\> \| \<display-legacy\>
-
-<strong>Column 3 (data cell):</strong>
-
-inline
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-not animatable
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-a pair of keywords representing the inner and outer display types plus optional list-item flag, or a \<display-internal\> or \<display-box\> keyword; see prose in a variety of specs for computation rules
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-order①⑦"></a>
-
-[order](#propdef-order)
-
-<strong>Column 2 (data cell):</strong>
-
-\<integer\>
-
-<strong>Column 3 (data cell):</strong>
-
-0
-
-<strong>Column 4 (data cell):</strong>
-
-flex items and grid items
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified integer
-
-<strong>Column 10 (data cell):</strong>
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-visibility⑥"></a>
-
-[visibility](#propdef-visibility)
-
-<strong>Column 2 (data cell):</strong>
-
-visible \| hidden \| collapse
-
-<strong>Column 3 (data cell):</strong>
-
-visible
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified
-
-<strong>Column 10 (data cell):</strong>
-
-visual

@@ -19,7 +19,8 @@ Snapshot SHA-256: feebf9327271a19fdffe0d6e70fb8d01e3f3c1fca78abd3b7f223646ac3b6b
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 13 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 14 source tables are presented as readable Markdown tables or explicit labeled layouts: 12 ordinary table conversions, 1 complex-table layout, 1 already-readable table. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 - Existing external image/media URLs are resolved against the pinned source. Assets are not downloaded or availability-tested; image-only formulas/diagrams still require their source resources.
@@ -194,101 +195,17 @@ Relatively positioning a descendant moves all text decorations applied to it alo
 
 ### <a id="text-decoration-line-property"></a>2.1.  Text Decoration Lines: the [text-decoration-line](#propdef-text-decoration-line) property
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-text-decoration-line"></a>text-decoration-line
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-any"></a>
-
-<a id="ref-for-comb-one"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[ underline [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) overline <a id="ref-for-comb-any①"></a>\|\| line-through <a id="ref-for-comb-any②"></a>\|\| blink \]
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no (but see prose, above)
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword(s)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                                     |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-text-decoration-line"></a>text-decoration-line                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-any"></a><a id="ref-for-comb-one"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[ underline [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) overline <a id="ref-for-comb-any①"></a>\|\| line-through <a id="ref-for-comb-any②"></a>\|\| blink \] |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no (but see prose, above)                                                                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword(s)                                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                       |
 
 Specifies what line decorations, if any, are added to the element. Values have the following meanings:
 
@@ -319,99 +236,17 @@ The text blinks (alternates between visible and invisible). Conforming user agen
 
 ### <a id="text-decoration-style-property"></a>2.2.  Text Decoration Style: the [text-decoration-style](#propdef-text-decoration-style) property
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-text-decoration-style"></a>text-decoration-style
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one①"></a>
-
-solid [\|](https://www.w3.org/TR/css-values-4/#comb-one) double <a id="ref-for-comb-one②"></a>\| dotted <a id="ref-for-comb-one③"></a>\| dashed <a id="ref-for-comb-one④"></a>\| wavy
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-solid
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                              |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-text-decoration-style"></a>text-decoration-style                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one①"></a>solid [\|](https://www.w3.org/TR/css-values-4/#comb-one) double <a id="ref-for-comb-one②"></a>\| dotted <a id="ref-for-comb-one③"></a>\| dashed <a id="ref-for-comb-one④"></a>\| wavy |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | solid                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                                                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                |
 
 <a id="ref-for-valdef-text-decoration-style-wavy"></a>
 
@@ -423,99 +258,17 @@ The style of text decorations must remain the same on all decorations originatin
 
 ### <a id="text-decoration-color-property"></a>2.3.  Text Decoration Color: the [text-decoration-color](#propdef-text-decoration-color) property
 
-<strong>Table 3 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-text-decoration-color"></a>text-decoration-color
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-color"></a>
-
-[\<color\>](https://www.w3.org/TR/css-color-4/#typedef-color)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-currentcolor
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-no
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-computed color
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value type
+| Field               | Definition                                                                       |
+|---------------------|----------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-text-decoration-color"></a>text-decoration-color                                         |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-color"></a>[\<color\>](https://www.w3.org/TR/css-color-4/#typedef-color) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | currentcolor                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)              |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | no                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | computed color                                                                   |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                      |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value type                                                           |
 
 <a id="ref-for-propdef-text-decoration-line①"></a>
 
@@ -527,105 +280,17 @@ The color of text decorations must remain the same on all decorations originatin
 
 ### <a id="text-decoration-property"></a>2.4.  Text Decoration Shorthand: the [text-decoration](#propdef-text-decoration) property
 
-<strong>Table 4 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-text-decoration"></a>text-decoration
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-text-decoration-color①"></a>
-
-<a id="ref-for-propdef-text-decoration-style①"></a>
-
-<a id="ref-for-comb-any③"></a>
-
-<a id="ref-for-propdef-text-decoration-line②"></a>
-
-[\<'text-decoration-line'\>](#propdef-text-decoration-line) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<'text-decoration-style'\>](#propdef-text-decoration-style) <a id="ref-for-comb-any④"></a>\|\| [\<'text-decoration-color'\>](#propdef-text-decoration-color)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                       |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-text-decoration"></a>text-decoration                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-propdef-text-decoration-color①"></a><a id="ref-for-propdef-text-decoration-style①"></a><a id="ref-for-comb-any③"></a><a id="ref-for-propdef-text-decoration-line②"></a>[\<'text-decoration-line'\>](#propdef-text-decoration-line) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<'text-decoration-style'\>](#propdef-text-decoration-style) <a id="ref-for-comb-any④"></a>\|\| [\<'text-decoration-color'\>](#propdef-text-decoration-color) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                      |
 
 <a id="ref-for-propdef-text-decoration-line③"></a>
 
@@ -668,101 +333,17 @@ This property is a shorthand for setting [text-decoration-line](#propdef-text-de
 
 ### <a id="text-underline-position-property"></a>2.5.  Text Underline Position: the [text-underline-position](#propdef-text-underline-position) property
 
-<strong>Table 5 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-text-underline-position"></a>text-underline-position
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-any⑤"></a>
-
-<a id="ref-for-comb-one⑤"></a>
-
-auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[ under [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) \[ left <a id="ref-for-comb-one⑥"></a>\| right \] \]
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword(s)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                            |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-text-underline-position"></a>text-underline-position                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-any⑤"></a><a id="ref-for-comb-one⑤"></a>auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[ under [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) \[ left <a id="ref-for-comb-one⑥"></a>\| right \] \] |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                   |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword(s)                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                              |
 
 <a id="ref-for-underline-left"></a>
 
@@ -844,31 +425,10 @@ In vertical [typographic modes](https://www.w3.org/TR/css-writing-modes-4/#typog
 
 <a id="fig-text-underline-position"></a>
 
-<strong>Table 6 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-![In mixed Japanese-Latin vertical text, 'text-underline-position: left' places the underline on the left side of the text.](https://www.w3.org/TR/2022/CRD-css-text-decor-3-20220505/images/underline-position-left.png "text-underline-position: left")
-
-<strong>Column 2 (data cell):</strong>
-
-![In mixed Japanese-Latin vertical text, 'text-underline-position: right' places the underline on the right side of the text.](https://www.w3.org/TR/2022/CRD-css-text-decor-3-20220505/images/underline-position-right.png "text-underline-position: right")
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-underline-left②"></a>
-
-[left](#underline-left)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-underline-right②"></a>
-
-[right](#underline-right)
+| Column 1                                                                                                                                                                                                                                                  | Column 2                                                                                                                                                                                                                                                      |
+|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| ![In mixed Japanese-Latin vertical text, 'text-underline-position: left' places the underline on the left side of the text.](https://www.w3.org/TR/2022/CRD-css-text-decor-3-20220505/images/underline-position-left.png "text-underline-position: left") | ![In mixed Japanese-Latin vertical text, 'text-underline-position: right' places the underline on the right side of the text.](https://www.w3.org/TR/2022/CRD-css-text-decor-3-20220505/images/underline-position-right.png "text-underline-position: right") |
+| <a id="ref-for-underline-left②"></a>[left](#underline-left)                                                                                                                                                                                                                | <a id="ref-for-underline-right②"></a>[right](#underline-right)                                                                                                                                                                                                                  |
 
 <a id="ref-for-typographic-mode③"></a>
 
@@ -942,105 +502,17 @@ The [text-emphasis](#propdef-text-emphasis) shorthand, and its [text-emphasis-st
 
 ### <a id="text-emphasis-style-property"></a>3.1.  Emphasis Mark Style: the [text-emphasis-style](#propdef-text-emphasis-style) property
 
-<strong>Table 7 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-text-emphasis-style"></a>text-emphasis-style
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-string-value"></a>
-
-<a id="ref-for-comb-any⑥"></a>
-
-<a id="ref-for-comb-one⑦"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[ \[ filled <a id="ref-for-comb-one⑧"></a>\| open \] [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) \[ dot <a id="ref-for-comb-one⑨"></a>\| circle <a id="ref-for-comb-one①⓪"></a>\| double-circle <a id="ref-for-comb-one①①"></a>\| triangle <a id="ref-for-comb-one①②"></a>\| sesame \] \] <a id="ref-for-comb-one①③"></a>\| [\<string\>](https://www.w3.org/TR/css-values-4/#string-value)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-text
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-text-emphasis-style-none"></a>
-
-the keyword [none](#valdef-text-emphasis-style-none), a pair of keywords representing the shape and fill, or a string
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-text-emphasis-style"></a>text-emphasis-style                                                                                                                                                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-string-value"></a><a id="ref-for-comb-any⑥"></a><a id="ref-for-comb-one⑦"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[ \[ filled <a id="ref-for-comb-one⑧"></a>\| open \] [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) \[ dot <a id="ref-for-comb-one⑨"></a>\| circle <a id="ref-for-comb-one①⓪"></a>\| double-circle <a id="ref-for-comb-one①①"></a>\| triangle <a id="ref-for-comb-one①②"></a>\| sesame \] \] <a id="ref-for-comb-one①③"></a>\| [\<string\>](https://www.w3.org/TR/css-values-4/#string-value) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | text                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-valdef-text-emphasis-style-none"></a>the keyword [none](#valdef-text-emphasis-style-none), a pair of keywords representing the shape and fill, or a string                                                                                                                                                                                                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 This property applies emphasis marks to the element’s text. Values have the following meanings:
 
@@ -1150,99 +622,17 @@ The marks are drawn once for each [typographic character unit](https://www.w3.or
 
 ### <a id="text-emphasis-color-property"></a>3.2.  Emphasis Mark Color: the [text-emphasis-color](#propdef-text-emphasis-color) property
 
-<strong>Table 9 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-text-emphasis-color"></a>text-emphasis-color
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-typedef-color①"></a>
-
-[\<color\>](https://www.w3.org/TR/css-color-4/#typedef-color)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-currentcolor
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-text
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-computed color
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-by computed value type
+| Field               | Definition                                                                       |
+|---------------------|----------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-text-emphasis-color"></a>text-emphasis-color                                           |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-typedef-color①"></a>[\<color\>](https://www.w3.org/TR/css-color-4/#typedef-color) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | currentcolor                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | text                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                              |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | computed color                                                                   |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                      |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | by computed value type                                                           |
 
 This property specifies the foreground color of the emphasis marks.
 
@@ -1260,103 +650,17 @@ This property specifies the foreground color of the emphasis marks.
 
 ### <a id="text-emphasis-property"></a>3.3.  Emphasis Mark Shorthand: the [text-emphasis](#propdef-text-emphasis) property
 
-<strong>Table 10 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-text-emphasis"></a>text-emphasis
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-text-emphasis-color③"></a>
-
-<a id="ref-for-comb-any⑦"></a>
-
-<a id="ref-for-propdef-text-emphasis-style②"></a>
-
-[\<'text-emphasis-style'\>](#propdef-text-emphasis-style) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<'text-emphasis-color'\>](#propdef-text-emphasis-color)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                                                                                                                                                                        |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-text-emphasis"></a>text-emphasis                                                                                                                                                                                                  |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-propdef-text-emphasis-color③"></a><a id="ref-for-comb-any⑦"></a><a id="ref-for-propdef-text-emphasis-style②"></a>[\<'text-emphasis-style'\>](#propdef-text-emphasis-style) [\|\|](https://www.w3.org/TR/css-values-4/#comb-any) [\<'text-emphasis-color'\>](#propdef-text-emphasis-color) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | see individual properties                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                       |
 
 <a id="ref-for-propdef-text-emphasis-style③"></a>
 
@@ -1374,103 +678,17 @@ This property is a shorthand for setting [text-emphasis-style](#propdef-text-emp
 
 ### <a id="text-emphasis-position-property"></a>3.4.  Emphasis Mark Position: the [text-emphasis-position](#propdef-text-emphasis-position) property
 
-<strong>Table 11 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-text-emphasis-position"></a>text-emphasis-position
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-opt"></a>
-
-<a id="ref-for-comb-all"></a>
-
-<a id="ref-for-comb-one①④"></a>
-
-\[ over [\|](https://www.w3.org/TR/css-values-4/#comb-one) under \] [&#x26;&#x26;](https://www.w3.org/TR/css-values-4/#comb-all) \[ right <a id="ref-for-comb-one①⑤"></a>\| left \][?](https://www.w3.org/TR/css-values-4/#mult-opt)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-over right
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-text
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword(s)
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                                                                                          |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-text-emphasis-position"></a>text-emphasis-position                                                                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-opt"></a><a id="ref-for-comb-all"></a><a id="ref-for-comb-one①④"></a>\[ over [\|](https://www.w3.org/TR/css-values-4/#comb-one) under \] [&#x26;&#x26;](https://www.w3.org/TR/css-values-4/#comb-all) \[ right <a id="ref-for-comb-one①⑤"></a>\| left \][?](https://www.w3.org/TR/css-values-4/#mult-opt) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | over right                                                                                                                                                                                                                                                                                          |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | text                                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword(s)                                                                                                                                                                                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                            |
 
 <a id="ref-for-valdef-text-emphasis-position-right"></a>
 
@@ -1506,85 +724,18 @@ The effect of emphasis marks on the line height is the same as for ruby text.
 >
 > Note, the preferred position of emphasis marks depends on the language. In Japanese for example, the preferred position is over right. In Chinese, on the other hand, the preferred position is under right. The informative table below summarizes the preferred emphasis mark positions for Chinese and Japanese:
 >
-> <strong>Table 12 — structured row/cell transcription</strong>
+> **Table 12**
 >
 > Preferred emphasis mark and ruby position
 >
-> <strong>Row 1</strong>
+> Representation note: merged header paths are written explicitly; values from merged body cells are repeated wherever they apply.
 >
-> <strong>Column 1 (header cell; row span 2, scope col):</strong>
->
-> Language
->
-> <strong>Column 2 (header cell; column span 2, scope col):</strong>
->
-> Preferred position
->
-> <strong>Column 4 (header cell; row span 2, column span 2, scope col):</strong>
->
-> Illustration
->
-> <strong>Row 2</strong>
->
-> <strong>Column 2 (header cell):</strong>
->
-> Horizontal
->
-> <strong>Column 3 (header cell):</strong>
->
-> Vertical
->
-> <strong>Row 3</strong>
->
-> <strong>Column 1 (header cell; scope row):</strong>
->
-> Japanese
->
-> <strong>Column 2 (data cell; row span 3):</strong>
->
-> over
->
-> <strong>Column 3 (data cell; row span 3):</strong>
->
-> right
->
-> <strong>Column 4 (data cell; row span 3):</strong>
->
-> ![Emphasis marks appear over each emphasized character in horizontal Japanese text.](https://www.w3.org/TR/2022/CRD-css-text-decor-3-20220505/images/text-emphasis-ja.png "Emphasis (shown in blue for clarity) applied above a fragment of Japanese text")
->
-> <strong>Column 5 (data cell; row span 4):</strong>
->
-> ![Emphasis marks appear on the right of each emphasized character in vertical Japanese text.](https://www.w3.org/TR/2022/CRD-css-text-decor-3-20220505/images/text-emphasis-v.gif "Emphasis applied on the right of a fragment of Japanese text")
->
-> <strong>Row 4</strong>
->
-> <strong>Column 1 (header cell; scope row):</strong>
->
-> Korean
->
-> <strong>Row 5</strong>
->
-> <strong>Column 1 (header cell; scope row):</strong>
->
-> Mongolian
->
-> <strong>Row 6</strong>
->
-> <strong>Column 1 (header cell; scope row):</strong>
->
-> Chinese
->
-> <strong>Column 2 (data cell):</strong>
->
-> under
->
-> <strong>Column 3 (data cell):</strong>
->
-> right
->
-> <strong>Column 4 (data cell):</strong>
->
-> ![Emphasis marks appear below each emphasized character in horizontal Simplified Chinese text.](https://www.w3.org/TR/2022/CRD-css-text-decor-3-20220505/images/text-emphasis-zh.png "Emphasis (shown in blue for clarity) applied below a fragment of Chinese text")
+> | Language | Preferred position / Horizontal | Preferred position / Vertical | Illustration | Illustration |
+> | --- | --- | --- | --- | --- |
+> | Japanese | over | right | ![Emphasis marks appear over each emphasized character in horizontal Japanese text.](https://www.w3.org/TR/2022/CRD-css-text-decor-3-20220505/images/text-emphasis-ja.png "Emphasis (shown in blue for clarity) applied above a fragment of Japanese text") | ![Emphasis marks appear on the right of each emphasized character in vertical Japanese text.](https://www.w3.org/TR/2022/CRD-css-text-decor-3-20220505/images/text-emphasis-v.gif "Emphasis applied on the right of a fragment of Japanese text") |
+> | Korean | over | right | ![Emphasis marks appear over each emphasized character in horizontal Japanese text.](https://www.w3.org/TR/2022/CRD-css-text-decor-3-20220505/images/text-emphasis-ja.png "Emphasis (shown in blue for clarity) applied above a fragment of Japanese text") | ![Emphasis marks appear on the right of each emphasized character in vertical Japanese text.](https://www.w3.org/TR/2022/CRD-css-text-decor-3-20220505/images/text-emphasis-v.gif "Emphasis applied on the right of a fragment of Japanese text") |
+> | Mongolian | over | right | ![Emphasis marks appear over each emphasized character in horizontal Japanese text.](https://www.w3.org/TR/2022/CRD-css-text-decor-3-20220505/images/text-emphasis-ja.png "Emphasis (shown in blue for clarity) applied above a fragment of Japanese text") | ![Emphasis marks appear on the right of each emphasized character in vertical Japanese text.](https://www.w3.org/TR/2022/CRD-css-text-decor-3-20220505/images/text-emphasis-v.gif "Emphasis applied on the right of a fragment of Japanese text") |
+> | Chinese | under | right | ![Emphasis marks appear below each emphasized character in horizontal Simplified Chinese text.](https://www.w3.org/TR/2022/CRD-css-text-decor-3-20220505/images/text-emphasis-zh.png "Emphasis (shown in blue for clarity) applied below a fragment of Chinese text") | ![Emphasis marks appear on the right of each emphasized character in vertical Japanese text.](https://www.w3.org/TR/2022/CRD-css-text-decor-3-20220505/images/text-emphasis-v.gif "Emphasis applied on the right of a fragment of Japanese text") |
 
 <a id="ref-for-ruby-annotation-box"></a>
 
@@ -1612,113 +763,17 @@ Emphasis marks applied to 4 characters, with ruby also on 2 of them
 
 ## <a id="text-shadow-property"></a>4.  Text Shadows: the [text-shadow](#propdef-text-shadow) property
 
-<strong>Table 13 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-text-shadow"></a>text-shadow
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-comma"></a>
-
-<a id="ref-for-mult-num-range"></a>
-
-<a id="ref-for-length-value"></a>
-
-<a id="ref-for-comb-all①"></a>
-
-<a id="ref-for-mult-opt①"></a>
-
-<a id="ref-for-typedef-color②"></a>
-
-<a id="ref-for-comb-one①⑥"></a>
-
-none [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[ [\<color\>](https://www.w3.org/TR/css-color-4/#typedef-color)[?](https://www.w3.org/TR/css-values-4/#mult-opt) [&#x26;&#x26;](https://www.w3.org/TR/css-values-4/#comb-all) [\<length\>](https://www.w3.org/TR/css-values-4/#length-value)[{2,3}](https://www.w3.org/TR/css-values-4/#mult-num-range) \][\#](https://www.w3.org/TR/css-values-4/#mult-comma)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-none
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-text
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-box-shadow-none"></a>
-
-either the keyword [none](https://www.w3.org/TR/css-backgrounds-3/#box-shadow-none) or a list, each item consisting of three absolute lengths plus a computed color
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-[as shadow list](https://www.w3.org/TR/web-animations-1/#animating-shadow-lists)
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-text-shadow"></a>text-shadow                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-comma"></a><a id="ref-for-mult-num-range"></a><a id="ref-for-length-value"></a><a id="ref-for-comb-all①"></a><a id="ref-for-mult-opt①"></a><a id="ref-for-typedef-color②"></a><a id="ref-for-comb-one①⑥"></a>none [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[ [\<color\>](https://www.w3.org/TR/css-color-4/#typedef-color)[?](https://www.w3.org/TR/css-values-4/#mult-opt) [&#x26;&#x26;](https://www.w3.org/TR/css-values-4/#comb-all) [\<length\>](https://www.w3.org/TR/css-values-4/#length-value)[{2,3}](https://www.w3.org/TR/css-values-4/#mult-num-range) \][\#](https://www.w3.org/TR/css-values-4/#mult-comma) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | text                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-box-shadow-none"></a>either the keyword [none](https://www.w3.org/TR/css-backgrounds-3/#box-shadow-none) or a list, each item consisting of three absolute lengths plus a computed color                                                                                                                                                                                                                                                                                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | [as shadow list](https://www.w3.org/TR/web-animations-1/#animating-shadow-lists)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 <a id="ref-for-propdef-box-shadow"></a>
 
@@ -2208,445 +1263,18 @@ Anne van Kesteren; et al. [HTML Standard](https://html.spec.whatwg.org/multipage
 
 ## <a id="property-index"></a>Property Index
 
-<strong>Table 14 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope col):</strong>
-
-Name
-
-<strong>Column 2 (header cell; scope col):</strong>
-
-Value
-
-<strong>Column 3 (header cell; scope col):</strong>
-
-Initial
-
-<strong>Column 4 (header cell; scope col):</strong>
-
-Applies to
-
-<strong>Column 5 (header cell; scope col):</strong>
-
-Inh.
-
-<strong>Column 6 (header cell; scope col):</strong>
-
-%ages
-
-<strong>Column 7 (header cell; scope col):</strong>
-
-Anim­ation type
-
-<strong>Column 8 (header cell; scope col):</strong>
-
-Canonical order
-
-<strong>Column 9 (header cell; scope col):</strong>
-
-Com­puted value
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-text-decoration⑦"></a>
-
-[text-decoration](#propdef-text-decoration)
-
-<strong>Column 2 (data cell):</strong>
-
-\<'text-decoration-line'\> \|\| \<'text-decoration-style'\> \|\| \<'text-decoration-color'\>
-
-<strong>Column 3 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 4 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 5 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 6 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 7 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-text-decoration-color④"></a>
-
-[text-decoration-color](#propdef-text-decoration-color)
-
-<strong>Column 2 (data cell):</strong>
-
-\<color\>
-
-<strong>Column 3 (data cell):</strong>
-
-currentcolor
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-computed color
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-text-decoration-line⑤"></a>
-
-[text-decoration-line](#propdef-text-decoration-line)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| \[ underline \|\| overline \|\| line-through \|\| blink \]
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no (but see prose, above)
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword(s)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-text-decoration-style④"></a>
-
-[text-decoration-style](#propdef-text-decoration-style)
-
-<strong>Column 2 (data cell):</strong>
-
-solid \| double \| dotted \| dashed \| wavy
-
-<strong>Column 3 (data cell):</strong>
-
-solid
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-no
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-text-emphasis④"></a>
-
-[text-emphasis](#propdef-text-emphasis)
-
-<strong>Column 2 (data cell):</strong>
-
-\<'text-emphasis-style'\> \|\| \<'text-emphasis-color'\>
-
-<strong>Column 3 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 4 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 5 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 6 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 7 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-text-emphasis-color⑤"></a>
-
-[text-emphasis-color](#propdef-text-emphasis-color)
-
-<strong>Column 2 (data cell):</strong>
-
-\<color\>
-
-<strong>Column 3 (data cell):</strong>
-
-currentcolor
-
-<strong>Column 4 (data cell):</strong>
-
-text
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-by computed value type
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-computed color
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-text-emphasis-position⑥"></a>
-
-[text-emphasis-position](#propdef-text-emphasis-position)
-
-<strong>Column 2 (data cell):</strong>
-
-\[ over \| under \] &#x26;&#x26; \[ right \| left \]?
-
-<strong>Column 3 (data cell):</strong>
-
-over right
-
-<strong>Column 4 (data cell):</strong>
-
-text
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword(s)
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-text-emphasis-style④"></a>
-
-[text-emphasis-style](#propdef-text-emphasis-style)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| \[ \[ filled \| open \] \|\| \[ dot \| circle \| double-circle \| triangle \| sesame \] \] \| \<string\>
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-text
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the keyword none, a pair of keywords representing the shape and fill, or a string
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-text-shadow⑦"></a>
-
-[text-shadow](#propdef-text-shadow)
-
-<strong>Column 2 (data cell):</strong>
-
-none \| \[ \<color\>? &#x26;&#x26; \<length\>{2,3} \]#
-
-<strong>Column 3 (data cell):</strong>
-
-none
-
-<strong>Column 4 (data cell):</strong>
-
-text
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-as shadow list
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-either the keyword none or a list, each item consisting of three absolute lengths plus a computed color
-
-<strong>Row 11</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-text-underline-position⑨"></a>
-
-[text-underline-position](#propdef-text-underline-position)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| \[ under \|\| \[ left \| right \] \]
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword(s)
+| Name                | Value                                                                                                            | Initial                   | Applies to                | Inh.                      | %ages                     | Anim­ation type            | Canonical order | Com­puted value                                                                                          |
+|---------------------|------------------------------------------------------------------------------------------------------------------|---------------------------|---------------------------|---------------------------|---------------------------|---------------------------|-----------------|---------------------------------------------------------------------------------------------------------|
+| <strong><span><a id="ref-for-propdef-text-decoration⑦"></a></span><a href="#propdef-text-decoration">text-decoration</a>&#xA;      </strong> | \<'text-decoration-line'\> \|\| \<'text-decoration-style'\> \|\| \<'text-decoration-color'\>                     | see individual properties | see individual properties | see individual properties | see individual properties | see individual properties | per grammar     | see individual properties                                                                               |
+| <strong><span><a id="ref-for-propdef-text-decoration-color④"></a></span><a href="#propdef-text-decoration-color">text-decoration-color</a>&#xA;      </strong> | \<color\>                                                                                                        | currentcolor              | all elements              | no                        | n/a                       | by computed value type    | per grammar     | computed color                                                                                          |
+| <strong><span><a id="ref-for-propdef-text-decoration-line⑤"></a></span><a href="#propdef-text-decoration-line">text-decoration-line</a>&#xA;      </strong> | none \| \[ underline \|\| overline \|\| line-through \|\| blink \]                                               | none                      | all elements              | no (but see prose, above) | n/a                       | discrete                  | per grammar     | specified keyword(s)                                                                                    |
+| <strong><span><a id="ref-for-propdef-text-decoration-style④"></a></span><a href="#propdef-text-decoration-style">text-decoration-style</a>&#xA;      </strong> | solid \| double \| dotted \| dashed \| wavy                                                                      | solid                     | all elements              | no                        | n/a                       | discrete                  | per grammar     | specified keyword                                                                                       |
+| <strong><span><a id="ref-for-propdef-text-emphasis④"></a></span><a href="#propdef-text-emphasis">text-emphasis</a>&#xA;      </strong> | \<'text-emphasis-style'\> \|\| \<'text-emphasis-color'\>                                                         | see individual properties | see individual properties | see individual properties | see individual properties | see individual properties | per grammar     | see individual properties                                                                               |
+| <strong><span><a id="ref-for-propdef-text-emphasis-color⑤"></a></span><a href="#propdef-text-emphasis-color">text-emphasis-color</a>&#xA;      </strong> | \<color\>                                                                                                        | currentcolor              | text                      | yes                       | n/a                       | by computed value type    | per grammar     | computed color                                                                                          |
+| <strong><span><a id="ref-for-propdef-text-emphasis-position⑥"></a></span><a href="#propdef-text-emphasis-position">text-emphasis-position</a>&#xA;      </strong> | \[ over \| under \] &#x26;&#x26; \[ right \| left \]?                                          | over right                | text                      | yes                       | n/a                       | discrete                  | per grammar     | specified keyword(s)                                                                                    |
+| <strong><span><a id="ref-for-propdef-text-emphasis-style④"></a></span><a href="#propdef-text-emphasis-style">text-emphasis-style</a>&#xA;      </strong> | none \| \[ \[ filled \| open \] \|\| \[ dot \| circle \| double-circle \| triangle \| sesame \] \] \| \<string\> | none                      | text                      | yes                       | n/a                       | discrete                  | per grammar     | the keyword none, a pair of keywords representing the shape and fill, or a string                       |
+| <strong><span><a id="ref-for-propdef-text-shadow⑦"></a></span><a href="#propdef-text-shadow">text-shadow</a>&#xA;      </strong> | none \| \[ \<color\>? &#x26;&#x26; \<length\>{2,3} \]#                                         | none                      | text                      | yes                       | n/a                       | as shadow list            | per grammar     | either the keyword none or a list, each item consisting of three absolute lengths plus a computed color |
+| <strong><span><a id="ref-for-propdef-text-underline-position⑨"></a></span><a href="#propdef-text-underline-position">text-underline-position</a>&#xA;      </strong> | auto \| \[ under \|\| \[ left \| right \] \]                                                                     | auto                      | all elements              | yes                       | n/a                       | discrete                  | per grammar     | specified keyword(s)                                                                                    |
 
 ## <a id="issues-index"></a>Issues Index
 

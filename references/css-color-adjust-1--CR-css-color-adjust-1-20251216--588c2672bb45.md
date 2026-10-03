@@ -19,7 +19,8 @@ Snapshot SHA-256: 588c2672bb45911303f78a0590fa587f593234ef80d60b0f7a7af48afc9151
 Conversion: offline format conversion of the exact stored HTML; not a new specification or summary. Publication versions remain distinct. Source fragment identifiers are preserved as short HTML anchors. Original copyright and licensing text/links are retained where present in the source.
 
 Representation notes:
-- 7 complex or multi-paragraph tables are structured Markdown row/cell transcriptions with explicit header/data roles and row/column spans; no raw HTML tables remain.
+- The 7 source tables are presented as readable Markdown tables or explicit labeled layouts: 6 ordinary table conversions, 1 complex-table layout. Source cell content, links and relationships are retained.
+- Added table headings and layout labels are non-normative presentation aids. Source header/data roles and span models remain in the conversion checks; GFM cannot reproduce native HTML th/scope/rowspan/colspan accessibility semantics. Source row-header labels are bold where used in ordinary Markdown tables.
 - Small semantic emphasis/subscript/superscript HTML is retained to avoid GFM intraword-delimiter and subscript rendering defects; website layout HTML is not retained.
 - Canonically unstable or combining Unicode characters and escape-sensitive punctuation are shielded as numeric entities in prose/semantic inline HTML. Literal source code stays literal.
 
@@ -142,109 +143,17 @@ User agents <em>may</em> support additional [color schemes](#color-scheme), howe
 
 ### <a id="color-scheme-prop"></a>2.1. Opting Into a Preferred Color Scheme: the [color-scheme](#propdef-color-scheme) property
 
-<strong>Table 1 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-color-scheme"></a>color-scheme
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-mult-opt"></a>
-
-<a id="ref-for-comb-all"></a>
-
-<a id="ref-for-mult-one-plus"></a>
-
-<a id="ref-for-identifier-value"></a>
-
-<a id="ref-for-comb-one"></a>
-
-normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[ light <a id="ref-for-comb-one①"></a>\| dark <a id="ref-for-comb-one②"></a>\| [\<custom-ident\>](https://www.w3.org/TR/css-values-4/#identifier-value) \][+](https://www.w3.org/TR/css-values-4/#mult-one-plus) [&#x26;&#x26;](https://www.w3.org/TR/css-values-4/#comb-all) only[?](https://www.w3.org/TR/css-values-4/#mult-opt)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-normal
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-all elements and text
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-valdef-color-scheme-normal"></a>
-
-the keyword [normal](#valdef-color-scheme-normal), or an ordered list of specified color scheme keywords
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-color-scheme"></a>color-scheme                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-mult-opt"></a><a id="ref-for-comb-all"></a><a id="ref-for-mult-one-plus"></a><a id="ref-for-identifier-value"></a><a id="ref-for-comb-one"></a>normal [\|](https://www.w3.org/TR/css-values-4/#comb-one) \[ light <a id="ref-for-comb-one①"></a>\| dark <a id="ref-for-comb-one②"></a>\| [\<custom-ident\>](https://www.w3.org/TR/css-values-4/#identifier-value) \][+](https://www.w3.org/TR/css-values-4/#mult-one-plus) [&#x26;&#x26;](https://www.w3.org/TR/css-values-4/#comb-all) only[?](https://www.w3.org/TR/css-values-4/#mult-opt) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | normal                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | all elements and text                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | <a id="ref-for-valdef-color-scheme-normal"></a>the keyword [normal](#valdef-color-scheme-normal), or an ordered list of specified color scheme keywords                                                                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 
 Tests
 
@@ -839,99 +748,17 @@ UAs may further tweak these [forced colors mode](#forced-colors-mode) heuristics
 
 ### <a id="forced-color-adjust-prop"></a>3.2. Opting Out of a Forced Color Palette: the [forced-color-adjust](#propdef-forced-color-adjust) property
 
-<strong>Table 2 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-forced-color-adjust"></a>forced-color-adjust
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one③"></a>
-
-auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) none <a id="ref-for-comb-one④"></a>\| preserve-parent-color
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-auto
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-all elements and text
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-n/a
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-as specified
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-not animatable
+| Field               | Definition                                                                                                                  |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-forced-color-adjust"></a>forced-color-adjust                                                                                      |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one③"></a>auto [\|](https://www.w3.org/TR/css-values-4/#comb-one) none <a id="ref-for-comb-one④"></a>\| preserve-parent-color |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | auto                                                                                                                        |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | all elements and text                                                                                                       |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | n/a                                                                                                                         |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | as specified                                                                                                                |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                                                                 |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | not animatable                                                                                                              |
 
 <a id="ref-for-propdef-forced-color-adjust③"></a>
 
@@ -1013,99 +840,17 @@ As a result, in some circumstances user agents will alter the styles an author s
 
 ### <a id="print-color-adjust"></a>4.1. Ink Economy: the [print-color-adjust](#propdef-print-color-adjust) property
 
-<strong>Table 3 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-print-color-adjust"></a>print-color-adjust
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-comb-one⑤"></a>
-
-economy [\|](https://www.w3.org/TR/css-values-4/#comb-one) exact
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-economy
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-[all elements](https://www.w3.org/TR/css-pseudo/#generated-content)
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-yes
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-N/A
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-specified keyword
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-discrete
+| Field               | Definition                                                                          |
+|---------------------|-------------------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-print-color-adjust"></a>print-color-adjust                                               |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-comb-one⑤"></a>economy [\|](https://www.w3.org/TR/css-values-4/#comb-one) exact |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | economy                                                                             |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | [all elements](https://www.w3.org/TR/css-pseudo/#generated-content)                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | yes                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | N/A                                                                                 |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | specified keyword                                                                   |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                         |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | discrete                                                                            |
 
 Tests
 
@@ -1135,99 +880,17 @@ UAs must propagate the [print-color-adjust](#propdef-print-color-adjust) value s
 
 ### <a id="color-adjust"></a>4.2. The [color-adjust](#propdef-color-adjust) Shorthand
 
-<strong>Table 4 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-Name:
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="propdef-color-adjust"></a>color-adjust
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Value:](https://www.w3.org/TR/css-values/#value-defs)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-propdef-print-color-adjust⑥"></a>
-
-[\<'print-color-adjust'\>](#propdef-print-color-adjust)
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Initial:](https://www.w3.org/TR/css-cascade/#initial-values)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Applies to:](https://www.w3.org/TR/css-cascade/#applies-to)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Inherited:](https://www.w3.org/TR/css-cascade/#inherited-property)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Percentages:](https://www.w3.org/TR/css-values/#percentages)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Computed value:](https://www.w3.org/TR/css-cascade/#computed)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Animation type:](https://www.w3.org/TR/web-animations/#animation-type)
-
-<strong>Column 2 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-[Canonical order:](https://www.w3.org/TR/cssom/#serializing-css-values)
-
-<strong>Column 2 (data cell):</strong>
-
-per grammar
+| Field               | Definition                                                                 |
+|---------------------|----------------------------------------------------------------------------|
+| <strong>Name:&#xA;      </strong> | <a id="propdef-color-adjust"></a>color-adjust                                            |
+| <strong><a href="https://www.w3.org/TR/css-values/#value-defs">Value:</a>&#xA;      </strong> | <a id="ref-for-propdef-print-color-adjust⑥"></a>[\<'print-color-adjust'\>](#propdef-print-color-adjust) |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#initial-values">Initial:</a>&#xA;      </strong> | see individual properties                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#applies-to">Applies to:</a>&#xA;      </strong> | see individual properties                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#inherited-property">Inherited:</a>&#xA;      </strong> | see individual properties                                                  |
+| <strong><a href="https://www.w3.org/TR/css-values/#percentages">Percentages:</a>&#xA;      </strong> | see individual properties                                                  |
+| <strong><a href="https://www.w3.org/TR/css-cascade/#computed">Computed value:</a>&#xA;      </strong> | see individual properties                                                  |
+| <strong><a href="https://www.w3.org/TR/web-animations/#animation-type">Animation type:</a>&#xA;      </strong> | see individual properties                                                  |
+| <strong><a href="https://www.w3.org/TR/cssom/#serializing-css-values">Canonical order:</a>&#xA;      </strong> | per grammar                                                                |
 
 <a id="ref-for-propdef-color-adjust①"></a>
 
@@ -1331,507 +994,61 @@ For the purposes of user agent automation and application testing, this document
 
 <a id="ref-for-dom-forcedcolorsmodeautomationtheme-light"></a>
 
-<strong>Table 5 — structured row/cell transcription</strong>
+| <a id="ref-for-typedef-system-color②"></a>[\<system-color\>](https://www.w3.org/TR/css-color-4/#typedef-system-color) keyword  | Value                                                                                                                                  |
+|---------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------|
+| <a id="ref-for-valdef-color-accentcolor"></a>[AccentColor](https://www.w3.org/TR/css-color-4/#valdef-color-accentcolor)           |   #FFFFFF                                                                                                                              |
+| <a id="ref-for-valdef-color-accentcolortext"></a>[AccentColorText](https://www.w3.org/TR/css-color-4/#valdef-color-accentcolortext)   |   #000000                                                                                                                              |
+| <a id="ref-for-valdef-color-activetext"></a>[ActiveText](https://www.w3.org/TR/css-color-4/#valdef-color-activetext)             |   #00009F                                                                                                                              |
+| <a id="ref-for-valdef-color-buttonborder"></a>[ButtonBorder](https://www.w3.org/TR/css-color-4/#valdef-color-buttonborder)         |   #000000                                                                                                                              |
+| <a id="ref-for-valdef-color-buttonface"></a>[ButtonFace](https://www.w3.org/TR/css-color-4/#valdef-color-buttonface)             |   #FFFFFF                                                                                                                              |
+| <a id="ref-for-valdef-color-buttontext"></a>[ButtonText](https://www.w3.org/TR/css-color-4/#valdef-color-buttontext)             |   #000000                                                                                                                              |
+| <a id="ref-for-valdef-color-canvas④"></a>[Canvas](https://www.w3.org/TR/css-color-4/#valdef-color-canvas)                     |   #FFFFFF                                                                                                                              |
+| <a id="ref-for-valdef-color-canvastext③"></a>[CanvasText](https://www.w3.org/TR/css-color-4/#valdef-color-canvastext)             |   #000000                                                                                                                              |
+| <a id="ref-for-valdef-color-field"></a>[Field](https://www.w3.org/TR/css-color-4/#valdef-color-field)                       |   #FFFFFF                                                                                                                              |
+| <a id="ref-for-valdef-color-fieldtext"></a>[FieldText](https://www.w3.org/TR/css-color-4/#valdef-color-fieldtext)               |   #000000                                                                                                                              |
+| <a id="ref-for-valdef-color-graytext"></a>[GrayText](https://www.w3.org/TR/css-color-4/#valdef-color-graytext)                 |   #600000                                                                                                                              |
+| <a id="ref-for-valdef-color-highlight"></a>[Highlight](https://www.w3.org/TR/css-color-4/#valdef-color-highlight)               |   #37006E                                                                                                                              |
+| <a id="ref-for-valdef-color-highlighttext"></a>[HighlightText](https://www.w3.org/TR/css-color-4/#valdef-color-highlighttext)       |   #FFFFFF                                                                                                                              |
+| <a id="ref-for-valdef-color-linktext"></a>[LinkText](https://www.w3.org/TR/css-color-4/#valdef-color-linktext)                 |   #00009F                                                                                                                              |
+| <a id="ref-for-valdef-color-mark"></a>[Mark](https://www.w3.org/TR/css-color-4/#valdef-color-mark)                         | <a id="ref-for-css-system-colors⑦"></a> N/A - this [system color](https://drafts.csswg.org/css-color-4/#css-system-colors) keyword should not be adjusted. |
+| <a id="ref-for-valdef-color-marktext"></a>[MarkText](https://www.w3.org/TR/css-color-4/#valdef-color-marktext)                 | <a id="ref-for-css-system-colors⑧"></a> N/A - this [system color](https://drafts.csswg.org/css-color-4/#css-system-colors) keyword should not be adjusted. |
+| <a id="ref-for-valdef-color-selecteditem"></a>[SelectedItem](https://www.w3.org/TR/css-color-4/#valdef-color-selecteditem)         |   #37006E                                                                                                                              |
+| <a id="ref-for-valdef-color-selecteditemtext"></a>[SelectedItemText](https://www.w3.org/TR/css-color-4/#valdef-color-selecteditemtext) |   #FFFFFF                                                                                                                              |
+| <a id="ref-for-valdef-color-visitedtext"></a>[VisitedText](https://www.w3.org/TR/css-color-4/#valdef-color-visitedtext)           |   #00009F                                                                                                                              |
 
 [System color](https://drafts.csswg.org/css-color-4/#css-system-colors) mappings for "<code><a href="#dom-forcedcolorsmodeautomationtheme-light">light</a></code>"
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-typedef-system-color②"></a>
-
-[\<system-color\>](https://www.w3.org/TR/css-color-4/#typedef-system-color) keyword
-
-<strong>Column 2 (header cell):</strong>
-
-Value
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-accentcolor"></a>
-
-[AccentColor](https://www.w3.org/TR/css-color-4/#valdef-color-accentcolor)
-
-<strong>Column 2 (data cell):</strong>
-
- #FFFFFF
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-accentcolortext"></a>
-
-[AccentColorText](https://www.w3.org/TR/css-color-4/#valdef-color-accentcolortext)
-
-<strong>Column 2 (data cell):</strong>
-
- #000000
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-activetext"></a>
-
-[ActiveText](https://www.w3.org/TR/css-color-4/#valdef-color-activetext)
-
-<strong>Column 2 (data cell):</strong>
-
- #00009F
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-buttonborder"></a>
-
-[ButtonBorder](https://www.w3.org/TR/css-color-4/#valdef-color-buttonborder)
-
-<strong>Column 2 (data cell):</strong>
-
- #000000
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-buttonface"></a>
-
-[ButtonFace](https://www.w3.org/TR/css-color-4/#valdef-color-buttonface)
-
-<strong>Column 2 (data cell):</strong>
-
- #FFFFFF
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-buttontext"></a>
-
-[ButtonText](https://www.w3.org/TR/css-color-4/#valdef-color-buttontext)
-
-<strong>Column 2 (data cell):</strong>
-
- #000000
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-canvas④"></a>
-
-[Canvas](https://www.w3.org/TR/css-color-4/#valdef-color-canvas)
-
-<strong>Column 2 (data cell):</strong>
-
- #FFFFFF
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-canvastext③"></a>
-
-[CanvasText](https://www.w3.org/TR/css-color-4/#valdef-color-canvastext)
-
-<strong>Column 2 (data cell):</strong>
-
- #000000
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-field"></a>
-
-[Field](https://www.w3.org/TR/css-color-4/#valdef-color-field)
-
-<strong>Column 2 (data cell):</strong>
-
- #FFFFFF
-
-<strong>Row 11</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-fieldtext"></a>
-
-[FieldText](https://www.w3.org/TR/css-color-4/#valdef-color-fieldtext)
-
-<strong>Column 2 (data cell):</strong>
-
- #000000
-
-<strong>Row 12</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-graytext"></a>
-
-[GrayText](https://www.w3.org/TR/css-color-4/#valdef-color-graytext)
-
-<strong>Column 2 (data cell):</strong>
-
- #600000
-
-<strong>Row 13</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-highlight"></a>
-
-[Highlight](https://www.w3.org/TR/css-color-4/#valdef-color-highlight)
-
-<strong>Column 2 (data cell):</strong>
-
- #37006E
-
-<strong>Row 14</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-highlighttext"></a>
-
-[HighlightText](https://www.w3.org/TR/css-color-4/#valdef-color-highlighttext)
-
-<strong>Column 2 (data cell):</strong>
-
- #FFFFFF
-
-<strong>Row 15</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-linktext"></a>
-
-[LinkText](https://www.w3.org/TR/css-color-4/#valdef-color-linktext)
-
-<strong>Column 2 (data cell):</strong>
-
- #00009F
-
-<strong>Row 16</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-mark"></a>
-
-[Mark](https://www.w3.org/TR/css-color-4/#valdef-color-mark)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-css-system-colors⑦"></a>
-
-N/A - this [system color](https://drafts.csswg.org/css-color-4/#css-system-colors) keyword should not be adjusted.
-
-<strong>Row 17</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-marktext"></a>
-
-[MarkText](https://www.w3.org/TR/css-color-4/#valdef-color-marktext)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-css-system-colors⑧"></a>
-
-N/A - this [system color](https://drafts.csswg.org/css-color-4/#css-system-colors) keyword should not be adjusted.
-
-<strong>Row 18</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-selecteditem"></a>
-
-[SelectedItem](https://www.w3.org/TR/css-color-4/#valdef-color-selecteditem)
-
-<strong>Column 2 (data cell):</strong>
-
- #37006E
-
-<strong>Row 19</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-selecteditemtext"></a>
-
-[SelectedItemText](https://www.w3.org/TR/css-color-4/#valdef-color-selecteditemtext)
-
-<strong>Column 2 (data cell):</strong>
-
- #FFFFFF
-
-<strong>Row 20</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-visitedtext"></a>
-
-[VisitedText](https://www.w3.org/TR/css-color-4/#valdef-color-visitedtext)
-
-<strong>Column 2 (data cell):</strong>
-
- #00009F
 
 <a id="ref-for-css-system-colors⑨"></a>
 
 <a id="ref-for-dom-forcedcolorsmodeautomationtheme-dark"></a>
 
-<strong>Table 6 — structured row/cell transcription</strong>
+**Table 6**
 
 [System color](https://drafts.csswg.org/css-color-4/#css-system-colors) mappings for "<code><a href="#dom-forcedcolorsmodeautomationtheme-dark">dark</a></code>"
 
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell):</strong>
-
-<a id="ref-for-typedef-system-color③"></a>
-
-[\<system-color\>](https://www.w3.org/TR/css-color-4/#typedef-system-color) keyword
-
-<strong>Column 2 (header cell):</strong>
-
-Value
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-accentcolor①"></a>
-
-[AccentColor](https://www.w3.org/TR/css-color-4/#valdef-color-accentcolor)
-
-<strong>Column 2 (data cell):</strong>
-
- #000000
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-accentcolortext①"></a>
-
-[AccentColorText](https://www.w3.org/TR/css-color-4/#valdef-color-accentcolortext)
-
-<strong>Column 2 (data cell):</strong>
-
- #FFFFFF
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-activetext①"></a>
-
-[ActiveText](https://www.w3.org/TR/css-color-4/#valdef-color-activetext)
-
-<strong>Column 2 (data cell):</strong>
-
- #FFFF00
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-buttonborder①"></a>
-
-[ButtonBorder](https://www.w3.org/TR/css-color-4/#valdef-color-buttonborder)
-
-<strong>Column 2 (data cell):</strong>
-
- #000000
-
-<strong>Row 6</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-buttonface①"></a>
-
-[ButtonFace](https://www.w3.org/TR/css-color-4/#valdef-color-buttonface)
-
-<strong>Column 2 (data cell):</strong>
-
- #000000
-
-<strong>Row 7</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-buttontext①"></a>
-
-[ButtonText](https://www.w3.org/TR/css-color-4/#valdef-color-buttontext)
-
-<strong>Column 2 (data cell):</strong>
-
- #FFFFFF
-
-<strong>Row 8</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-canvas⑤"></a>
-
-[Canvas](https://www.w3.org/TR/css-color-4/#valdef-color-canvas)
-
-<strong>Column 2 (data cell):</strong>
-
- #000000
-
-<strong>Row 9</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-canvastext④"></a>
-
-[CanvasText](https://www.w3.org/TR/css-color-4/#valdef-color-canvastext)
-
-<strong>Column 2 (data cell):</strong>
-
- #FFFFFF
-
-<strong>Row 10</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-field①"></a>
-
-[Field](https://www.w3.org/TR/css-color-4/#valdef-color-field)
-
-<strong>Column 2 (data cell):</strong>
-
- #000000
-
-<strong>Row 11</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-fieldtext①"></a>
-
-[FieldText](https://www.w3.org/TR/css-color-4/#valdef-color-fieldtext)
-
-<strong>Column 2 (data cell):</strong>
-
- #FFFFFF
-
-<strong>Column 3 (data cell):</strong>
-
-<strong>Row 12</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-graytext①"></a>
-
-[GrayText](https://www.w3.org/TR/css-color-4/#valdef-color-graytext)
-
-<strong>Column 2 (data cell):</strong>
-
- #3FF23F
-
-<strong>Row 13</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-highlight①"></a>
-
-[Highlight](https://www.w3.org/TR/css-color-4/#valdef-color-highlight)
-
-<strong>Column 2 (data cell):</strong>
-
- #1AEBFF
-
-<strong>Row 14</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-highlighttext①"></a>
-
-[HighlightText](https://www.w3.org/TR/css-color-4/#valdef-color-highlighttext)
-
-<strong>Column 2 (data cell):</strong>
-
- #000000
-
-<strong>Row 15</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-linktext①"></a>
-
-[LinkText](https://www.w3.org/TR/css-color-4/#valdef-color-linktext)
-
-<strong>Column 2 (data cell):</strong>
-
- #FFFF00
-
-<strong>Row 16</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-mark①"></a>
-
-[Mark](https://www.w3.org/TR/css-color-4/#valdef-color-mark)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-css-system-colors①⓪"></a>
-
-N/A - this [system color](https://drafts.csswg.org/css-color-4/#css-system-colors) keyword should not be adjusted.
-
-<strong>Row 17</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-marktext①"></a>
-
-[MarkText](https://www.w3.org/TR/css-color-4/#valdef-color-marktext)
-
-<strong>Column 2 (data cell):</strong>
-
-<a id="ref-for-css-system-colors①①"></a>
-
-N/A - this [system color](https://drafts.csswg.org/css-color-4/#css-system-colors) keyword should not be adjusted.
-
-<strong>Row 18</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-selecteditem①"></a>
-
-[SelectedItem](https://www.w3.org/TR/css-color-4/#valdef-color-selecteditem)
-
-<strong>Column 2 (data cell):</strong>
-
- #1AEBFF
-
-<strong>Row 19</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-selecteditemtext①"></a>
-
-[SelectedItemText](https://www.w3.org/TR/css-color-4/#valdef-color-selecteditemtext)
-
-<strong>Column 2 (data cell):</strong>
-
- #000000
-
-<strong>Row 20</strong>
-
-<strong>Column 1 (data cell):</strong>
-
-<a id="ref-for-valdef-color-visitedtext①"></a>
-
-[VisitedText](https://www.w3.org/TR/css-color-4/#valdef-color-visitedtext)
-
-<strong>Column 2 (data cell):</strong>
-
- #FFFF00
+| <a id="ref-for-typedef-system-color③"></a> [\<system-color\>](https://www.w3.org/TR/css-color-4/#typedef-system-color) keyword | Value |
+| --- | --- |
+| <a id="ref-for-valdef-color-accentcolor①"></a> [AccentColor](https://www.w3.org/TR/css-color-4/#valdef-color-accentcolor) | #000000 |
+| <a id="ref-for-valdef-color-accentcolortext①"></a> [AccentColorText](https://www.w3.org/TR/css-color-4/#valdef-color-accentcolortext) | #FFFFFF |
+| <a id="ref-for-valdef-color-activetext①"></a> [ActiveText](https://www.w3.org/TR/css-color-4/#valdef-color-activetext) | #FFFF00 |
+| <a id="ref-for-valdef-color-buttonborder①"></a> [ButtonBorder](https://www.w3.org/TR/css-color-4/#valdef-color-buttonborder) | #000000 |
+| <a id="ref-for-valdef-color-buttonface①"></a> [ButtonFace](https://www.w3.org/TR/css-color-4/#valdef-color-buttonface) | #000000 |
+| <a id="ref-for-valdef-color-buttontext①"></a> [ButtonText](https://www.w3.org/TR/css-color-4/#valdef-color-buttontext) | #FFFFFF |
+| <a id="ref-for-valdef-color-canvas⑤"></a> [Canvas](https://www.w3.org/TR/css-color-4/#valdef-color-canvas) | #000000 |
+| <a id="ref-for-valdef-color-canvastext④"></a> [CanvasText](https://www.w3.org/TR/css-color-4/#valdef-color-canvastext) | #FFFFFF |
+| <a id="ref-for-valdef-color-field①"></a> [Field](https://www.w3.org/TR/css-color-4/#valdef-color-field) | #000000 |
+| <a id="ref-for-valdef-color-fieldtext①"></a> [FieldText](https://www.w3.org/TR/css-color-4/#valdef-color-fieldtext) | #FFFFFF |
+| <a id="ref-for-valdef-color-graytext①"></a> [GrayText](https://www.w3.org/TR/css-color-4/#valdef-color-graytext) | #3FF23F |
+| <a id="ref-for-valdef-color-highlight①"></a> [Highlight](https://www.w3.org/TR/css-color-4/#valdef-color-highlight) | #1AEBFF |
+| <a id="ref-for-valdef-color-highlighttext①"></a> [HighlightText](https://www.w3.org/TR/css-color-4/#valdef-color-highlighttext) | #000000 |
+| <a id="ref-for-valdef-color-linktext①"></a> [LinkText](https://www.w3.org/TR/css-color-4/#valdef-color-linktext) | #FFFF00 |
+| <a id="ref-for-valdef-color-mark①"></a> [Mark](https://www.w3.org/TR/css-color-4/#valdef-color-mark) | <a id="ref-for-css-system-colors①⓪"></a> N/A - this [system color](https://drafts.csswg.org/css-color-4/#css-system-colors) keyword should not be adjusted. |
+| <a id="ref-for-valdef-color-marktext①"></a> [MarkText](https://www.w3.org/TR/css-color-4/#valdef-color-marktext) | <a id="ref-for-css-system-colors①①"></a> N/A - this [system color](https://drafts.csswg.org/css-color-4/#css-system-colors) keyword should not be adjusted. |
+| <a id="ref-for-valdef-color-selecteditem①"></a> [SelectedItem](https://www.w3.org/TR/css-color-4/#valdef-color-selecteditem) | #1AEBFF |
+| <a id="ref-for-valdef-color-selecteditemtext①"></a> [SelectedItemText](https://www.w3.org/TR/css-color-4/#valdef-color-selecteditemtext) | #000000 |
+| <a id="ref-for-valdef-color-visitedtext①"></a> [VisitedText](https://www.w3.org/TR/css-color-4/#valdef-color-visitedtext) | #FFFF00 |
+
+Source-layout note: the FieldText row contains an additional empty third cell; it carries no text, link, image, or color value.
 
 ## <a id="privacy"></a>6. Privacy Considerations
 
@@ -2206,205 +1423,12 @@ Michael Cooper; et al. [Web Content Accessibility Guidelines (WCAG) 2.2](https:/
 
 ## <a id="property-index"></a>Property Index
 
-<strong>Table 7 — structured row/cell transcription</strong>
-
-<strong>Row 1</strong>
-
-<strong>Column 1 (header cell; scope col):</strong>
-
-Name
-
-<strong>Column 2 (header cell; scope col):</strong>
-
-Value
-
-<strong>Column 3 (header cell; scope col):</strong>
-
-Initial
-
-<strong>Column 4 (header cell; scope col):</strong>
-
-Applies to
-
-<strong>Column 5 (header cell; scope col):</strong>
-
-Inh.
-
-<strong>Column 6 (header cell; scope col):</strong>
-
-%ages
-
-<strong>Column 7 (header cell; scope col):</strong>
-
-Anim­ation type
-
-<strong>Column 8 (header cell; scope col):</strong>
-
-Canonical order
-
-<strong>Column 9 (header cell; scope col):</strong>
-
-Com­puted value
-
-<strong>Row 2</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-color-adjust③"></a>
-
-[color-adjust](#propdef-color-adjust)
-
-<strong>Column 2 (data cell):</strong>
-
-\<'print-color-adjust'\>
-
-<strong>Column 3 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 4 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 5 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 6 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 7 (data cell):</strong>
-
-see individual properties
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-see individual properties
-
-<strong>Row 3</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-color-scheme①⑥"></a>
-
-[color-scheme](#propdef-color-scheme)
-
-<strong>Column 2 (data cell):</strong>
-
-normal \| \[ light \| dark \| \<custom-ident\> \]+ &#x26;&#x26; only?
-
-<strong>Column 3 (data cell):</strong>
-
-normal
-
-<strong>Column 4 (data cell):</strong>
-
-all elements and text
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-the keyword normal, or an ordered list of specified color scheme keywords
-
-<strong>Row 4</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-forced-color-adjust⑥"></a>
-
-[forced-color-adjust](#propdef-forced-color-adjust)
-
-<strong>Column 2 (data cell):</strong>
-
-auto \| none \| preserve-parent-color
-
-<strong>Column 3 (data cell):</strong>
-
-auto
-
-<strong>Column 4 (data cell):</strong>
-
-all elements and text
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-n/a
-
-<strong>Column 7 (data cell):</strong>
-
-not animatable
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-as specified
-
-<strong>Row 5</strong>
-
-<strong>Column 1 (header cell; scope row):</strong>
-
-<a id="ref-for-propdef-print-color-adjust⑨"></a>
-
-[print-color-adjust](#propdef-print-color-adjust)
-
-<strong>Column 2 (data cell):</strong>
-
-economy \| exact
-
-<strong>Column 3 (data cell):</strong>
-
-economy
-
-<strong>Column 4 (data cell):</strong>
-
-all elements
-
-<strong>Column 5 (data cell):</strong>
-
-yes
-
-<strong>Column 6 (data cell):</strong>
-
-N/A
-
-<strong>Column 7 (data cell):</strong>
-
-discrete
-
-<strong>Column 8 (data cell):</strong>
-
-per grammar
-
-<strong>Column 9 (data cell):</strong>
-
-specified keyword
+| Name                | Value                                                                                   | Initial                   | Applies to                | Inh.                      | %ages                     | Anim­ation type            | Canonical order | Com­puted value                                                            |
+|---------------------|-----------------------------------------------------------------------------------------|---------------------------|---------------------------|---------------------------|---------------------------|---------------------------|-----------------|---------------------------------------------------------------------------|
+| <strong><span><a id="ref-for-propdef-color-adjust③"></a></span><a href="#propdef-color-adjust">color-adjust</a>&#xA;      </strong> | \<'print-color-adjust'\>                                                                | see individual properties | see individual properties | see individual properties | see individual properties | see individual properties | per grammar     | see individual properties                                                 |
+| <strong><span><a id="ref-for-propdef-color-scheme①⑥"></a></span><a href="#propdef-color-scheme">color-scheme</a>&#xA;      </strong> | normal \| \[ light \| dark \| \<custom-ident\> \]+ &#x26;&#x26; only? | normal                    | all elements and text     | yes                       | n/a                       | discrete                  | per grammar     | the keyword normal, or an ordered list of specified color scheme keywords |
+| <strong><span><a id="ref-for-propdef-forced-color-adjust⑥"></a></span><a href="#propdef-forced-color-adjust">forced-color-adjust</a>&#xA;      </strong> | auto \| none \| preserve-parent-color                                                   | auto                      | all elements and text     | yes                       | n/a                       | not animatable            | per grammar     | as specified                                                              |
+| <strong><span><a id="ref-for-propdef-print-color-adjust⑨"></a></span><a href="#propdef-print-color-adjust">print-color-adjust</a>&#xA;      </strong> | economy \| exact                                                                        | economy                   | all elements              | yes                       | N/A                       | discrete                  | per grammar     | specified keyword                                                         |
 
 ## <a id="idl-index"></a>IDL Index
 
