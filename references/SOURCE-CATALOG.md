@@ -4,7 +4,7 @@
 
 | Source | Exact snapshot | Source SHA-256 | Representation |
 |---|---|---|---|
-| [<h1>Filter Effects Module Level 2</h1>](X-BACKDROP-FILTER--034f50a78495b619478342d71117cd7ca7e76de7--Overview.bs--4e5ad82b5130.md) | [upstream](https://raw.githubusercontent.com/w3c/csswg-drafts/034f50a78495b619478342d71117cd7ca7e76de7/filter-effects-2/Overview.bs) | 4e5ad82b5130dcc048913e30637e3962a6184b6eab19aca6e707fa8970ea1aa6 | exact source-text witness |
+| [Filter Effects Module Level 2](X-BACKDROP-FILTER--034f50a78495b619478342d71117cd7ca7e76de7--Overview.bs--4e5ad82b5130.md) | [upstream](https://raw.githubusercontent.com/w3c/csswg-drafts/034f50a78495b619478342d71117cd7ca7e76de7/filter-effects-2/Overview.bs) | 4e5ad82b5130dcc048913e30637e3962a6184b6eab19aca6e707fa8970ea1aa6 | exact source-text witness |
 | [CSS Box Model Module Level 3](box-property-foundation-audit-css-box-3--be3732bfdaa6.md) | [upstream](https://www.w3.org/TR/2024/REC-css-box-3-20240411/) | be3732bfdaa640b3951fbecb7afece39d142f5a15a1b8a7c9af1b72f815120ac | exact source-text witness |
 | [CSS Display Module Level 3](box-property-foundation-audit-css-display-3--3cdbd7b19539.md) | [upstream](https://www.w3.org/TR/2026/CRD-css-display-3-20260605/) | 3cdbd7b195395cd751d6cb78099001884b72cfaa4623b69defad47956d483c5e | exact source-text witness |
 | [CSS Logical Properties and Values Module Level 1](box-property-foundation-audit-css-logical-1--a387e513984b.md) | [upstream](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/) | a387e513984bccc9df98d906ccdc48ccec3873ed6ac2a5a66b0751f985fd6dc3 | exact source-text witness |
