@@ -929,7 +929,7 @@ Similarly, child declarations in nested non-style rules need to be exposed as <a
 
 To address all of these issue, we instead wrap runs of consecutive directly-nested properties in a <a id="nested-declarations-rule"></a>nested declarations rule.
 
-Unless otherwise specified, a <a id="ref-for-nested-declarations-rule④"></a>[nested declarations rule](https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nested-declarations-rule) is a <a id="ref-for-nested-style-rule①①"></a>[nested style rule](https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nested-style-rule), and acts identically to any other style rule. It matches the exact same elements and pseudo-elements as its parent style rule, with the same specificity behavior. (This is *similar to* being a style rule with an <a id="ref-for-selectordef-①⑤"></a>[&](https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#selectordef-) selector, but slightly more powerful, as explained above.)
+Unless otherwise specified, a <a id="ref-for-nested-declarations-rule④"></a>[nested declarations rule](https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nested-declarations-rule) is a <a id="ref-for-nested-style-rule①①"></a>[nested style rule](https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nested-style-rule), and acts identically to any other style rule. It matches the exact same elements and pseudo-elements as its parent style rule, with the same specificity behavior. **Note:** (This is *similar to* being a style rule with an <a id="ref-for-selectordef-①⑤"></a>[&](https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#selectordef-) selector, but slightly more powerful, as explained above.)
 
 > **Note**
 >
@@ -1115,7 +1115,7 @@ Informative notes begin with the word “Note” and are set apart from the norm
 >
 > Note, this is an informative note.
 
-Advisements are normative sections styled to evoke special attention and are set apart from other normative text with `<strong class="advisement">`, like this: **UAs MUST provide an accessible alternative.**
+Advisements are normative sections styled to evoke special attention and are set apart from other normative text with `<strong class="advisement">`, like this: **Advisement:** **UAs MUST provide an accessible alternative.**
 
 Tests
 
