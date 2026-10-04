@@ -5323,3 +5323,87 @@ complete authored grammar support. Loading, fallback sounds, voice-volume
 resolution and audio rendering remain downstream. Behavioral evidence is in
 [`speech_cue_lifecycle.rs`](../tests/speech_cue_lifecycle.rs) and
 [`speech_cue_models.rs`](../tests/speech_cue_models.rs).
+
+
+## Authored Speech prosody
+
+The pinned [Speech 1 §12.1](https://www.w3.org/TR/2023/CRD-css-speech-1-20230214/#mixing-props-voice-duration)
+`voice-duration` model distinguishes `auto` from `CssDuration`. Ordinary time
+must be nonnegative; typed time calculations retain their authored range.
+Duration does not inherit and has the intrinsic initial `auto`. A fixed
+subtree duration can coexist with authored descendant duration/rate declarations;
+applying precedence to a live speech subtree belongs downstream.
+
+[Speech 1 §§11.3–11.4](https://www.w3.org/TR/2023/CRD-css-speech-1-20230214/#voice-props-voice-pitch)
+`voice-pitch` and `voice-range` share `CssVoicePitchRange`. Its checked absolute
+branch requires a strictly positive ordinary `CssFrequencyValue`; an actual
+Frequency-root calculation retains its range for later processing. Its relative
+branch is a nonempty composition of an optional `CssVoiceLevel` and one optional
+`CssVoiceOffset`. Frequency and percentage offsets are signed. `CssSemitoneLiteral`
+retains the local ordinary `st` dimension, exact coefficient and origin, without
+introducing a semitone calculation dimension or converting it to Hertz.
+Both properties inherit and have the symbolic intrinsic initial `medium`.
+
+The selected Speech text restricts ordinary absolute frequencies to positive
+values and explicitly rejects `-20Hz absolute`, while its absolute-keyword prose
+also describes a negative computed frequency becoming zero. Admission follows
+the ordinary restriction and retains this wording tension. The selected
+[Values 4 range phase](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-range)
+defers range checks within calculations; computed clamping, installed voices and
+synthesizer limits remain downstream.
+
+Relative frequency and percentage occupy the same grammar position and represent
+an inherited frequency quantity. [Values 4 §5.6](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#mixed-percentages)
+permits their combination in math. `CssFrequencyPercentageCalculation` reuses the
+shared hint/type algebra and projection, retaining the unresolved frequency basis
+and reporting `CssCalculationType::FrequencyPercentage` when hinted. Absolute
+frequency remains a pure Frequency root. The selected
+[math type table](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-type-checking)
+provides no semitone dimension, so `calc(1st)` is rejected.
+
+[Speech 1 §11.2](https://www.w3.org/TR/2023/CRD-css-speech-1-20230214/#voice-props-voice-rate)
+`CssVoiceRate` retains an optional symbolic rate keyword and an optional
+`CssSpecifiedNonNegativePercentage` in a nonempty checked composition. Ordinary
+percentages must be nonnegative, including exact tiny coefficients; values above
+100% are valid. Typed percentage math retains its specified phase. Rate inherits
+and has the intrinsic initial `normal`. Omitted keyword is not replaced with
+`normal`: a percentage can operate against an inherited rate.
+
+Specified serialization emits frequency before `absolute`, relative level before
+offset, and rate keyword before percentage. The
+[CSSOM omission rule](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serialize-a-css-value)
+permits suppressing an exact ordinary neutral 100% rate modifier beside an explicit
+keyword. Its authored field remains present and its input/projection visits still
+count. Standalone 100% and retained calculations are not suppressed. A pitch/range
+zero offset remains emitted because applying an offset fixes computed frequency
+across subsequent voice changes, unlike a keyword alone.
+
+All serializers share cumulative input, projection and byte limits with existing
+time/frequency/percentage owners. Ordinary frequency output retains its selected
+unit and rounds to at most six fractional places under the shared precision policy.
+Consequently, a positive `1e-999Hz absolute` model retains its exact admitted input
+but returns `CssSpecifiedValueSerializationErrorKind::UnrepresentableValue` rather
+than emitting invalid ordinary `0hz absolute`. This fail-closed policy reconciles
+[Values 4 supported precision](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#numeric-types)
+and [CSSOM number serialization](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serialize-a-css-component-value)
+with the [CSSOM grammar-representative value requirement](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serialize-a-css-value).
+The frequency owner formats once under its existing precision and budget; Speech
+checks its ordinary absolute output before completing the value. Resource limits
+encountered first retain their resource errors. Relative rounded zero remains valid;
+actual calculations keep their existing phase. A coefficient below `0.0000005`
+rounds to zero, while that exact halfway value rounds to `0.000001`, in either Hz
+or kHz. No epsilon frequency, invented calculation or computed voice clamping is
+introduced.
+
+Generic rule errors distinguish `Value(UnrepresentableValue)` and
+`Value(UnserializableBoundary)` from the four actual node/byte/capacity `Resource`
+errors. The original value error remains available as the error source, alongside
+any enclosing stylesheet rule index.
+
+Checked constructors reject original recovered numeric closures. Browser recovery
+can retain such calculations with diagnostics. The shared property lifecycle owns
+whole-value CSS-wide keywords, checked component admission, substitution reentry,
+intrinsic terminal expansion, recovery provenance and pinned support metadata.
+Behavioral evidence is in
+[`speech_prosody_lifecycle.rs`](../tests/speech_prosody_lifecycle.rs) and
+[`speech_prosody_models.rs`](../tests/speech_prosody_models.rs).

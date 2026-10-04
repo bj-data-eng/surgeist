@@ -1,9 +1,9 @@
-//! Intrinsic authored values from CSS Speech 1 §§7–11.
+//! Intrinsic authored values from CSS Speech 1 §§7–12.
 //!
 //! These values retain author choices. Voice selection, pronunciation and the
 //! contextual computed/used behavior of `speak: auto` belong downstream.
 //!
-//! Both properties apply to all elements, inherit, have no percentage values,
+//! The `speak` and `speak-as` properties apply to all elements, inherit, have no percentage values,
 //! and use grammar order for specified serialization. Their initial values are
 //! `auto` and `normal`. Speech 1's property tables label computed values as the
 //! specified value; the prose additionally gives contextual rules for `auto`.
@@ -988,6 +988,494 @@ impl CssVoiceFamily {
                         }
                     }
                 }
+            }
+        }
+        Ok(writer.css)
+    }
+}
+
+/// The authored speech-subtree duration; subtree precedence is resolved downstream.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub enum CssVoiceDuration {
+    Auto,
+    Time(CssDuration),
+}
+impl CssVoiceDuration {
+    /// Checks ordinary nonnegativity and original calculation closure.
+    pub fn try_time(time: CssTimeValue) -> Result<Self, CssNumericConstructionError> {
+        CssDuration::try_new(time).map(Self::Time)
+    }
+    /// Serializes the specified value without applying subtree precedence.
+    pub fn serialize_specified(&self) -> SerializationResult {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+    /// Uses the existing duration provider under one cumulative resource policy.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult {
+        match self {
+            Self::Auto => serialize_keyword_sequence("auto", limits),
+            Self::Time(value) => {
+                let mut writer =
+                    crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+                value.append_specified(&mut writer.context, &mut writer.css)?;
+                Ok(writer.css)
+            }
+        }
+    }
+}
+
+/// A voice-dependent symbolic pitch or pitch-range level.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssVoiceLevel {
+    XLow,
+    Low,
+    Medium,
+    High,
+    XHigh,
+}
+impl CssVoiceLevel {
+    pub(crate) fn keyword(self) -> &'static str {
+        match self {
+            Self::XLow => "x-low",
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::XHigh => "x-high",
+        }
+    }
+}
+
+/// The Speech-local ordinary signed `st` dimension, retaining exact spelling and origin.
+/// No semitone calculation type or voice-dependent conversion is introduced.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssSemitoneLiteral {
+    component: Box<crate::CssComponentValue>,
+}
+impl CssSemitoneLiteral {
+    pub fn try_new(number: &str) -> Result<Self, crate::CssComponentValueError> {
+        Self::try_from_component(crate::CssComponentValue::try_dimension(number, "st")?)
+    }
+    pub fn try_from_component(
+        component: crate::CssComponentValue,
+    ) -> Result<Self, crate::CssComponentValueError> {
+        if !matches!(component.view(), crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Dimension { unit, .. }) if unit.eq_ignore_ascii_case("st"))
+        {
+            return Err(crate::CssComponentValueError::new(
+                crate::CssComponentValueErrorKind::InvalidToken,
+                component.origin().clone(),
+            ));
+        }
+        Ok(Self {
+            component: Box::new(component),
+        })
+    }
+    /// Borrows the exact authored coefficient without machine-float narrowing.
+    #[must_use]
+    pub fn numeric(&self) -> crate::CssNumericTokenRef<'_> {
+        let crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Dimension {
+            number, ..
+        }) = self.component.view()
+        else {
+            unreachable!("checked semitone dimension")
+        };
+        number
+    }
+    #[must_use]
+    pub const fn component(&self) -> &crate::CssComponentValue {
+        &self.component
+    }
+    #[must_use]
+    pub const fn origin(&self) -> &crate::CssValueOrigin {
+        self.component.origin()
+    }
+    pub fn serialize_specified(&self) -> SerializationResult {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult {
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_specified(&mut writer)?;
+        Ok(writer.css)
+    }
+    fn append_specified(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> Result<(), CssSpecifiedValueSerializationError> {
+        writer.context.charge_input(1)?;
+        writer.context.charge_projection(1)?;
+        if writer.context.output_suppressed() {
+            return Ok(());
+        }
+        let text = crate::specified_serialization::format_coefficient(
+            self.numeric().representation(),
+            0,
+            "st",
+            writer.context.remaining_bytes(),
+        )?;
+        writer.append(&text)
+    }
+}
+
+/// One signed relative offset, without applying it to an inherited voice frequency.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssVoiceOffset {
+    Frequency(crate::CssFrequencyValue),
+    Semitones(CssSemitoneLiteral),
+    Percentage(crate::CssSpecifiedPercentage),
+    /// Typed math permits frequency and percentage against an unresolved frequency basis.
+    Calculation(crate::CssFrequencyPercentageCalculation),
+}
+impl CssVoiceOffset {
+    /// Requires original closure and normalizes an ordinary calculation root back
+    /// into the corresponding frequency/percentage literal owner.
+    pub fn try_from_calculation(
+        value: crate::CssFrequencyPercentageCalculation,
+    ) -> Result<Self, CssNumericConstructionError> {
+        if let Some(origin) = value.components().first_implicit_origin() {
+            return Err(CssNumericConstructionError::at_origin(
+                crate::CssNumericConstructionErrorKind::RecoveredComponent,
+                origin.clone(),
+            ));
+        }
+        let root = crate::specified_numeric::significant_root(value.components())?;
+        if matches!(root.view(), crate::CssComponentValueRef::Token(_)) {
+            return Self::from_literal_component(root.clone());
+        }
+        Ok(Self::Calculation(value))
+    }
+    fn from_literal_component(
+        component: crate::CssComponentValue,
+    ) -> Result<Self, CssNumericConstructionError> {
+        match component.view() {
+            crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Percentage(_)) => {
+                crate::CssSpecifiedPercentage::try_from_component(component).map(Self::Percentage)
+            }
+            crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Dimension {
+                unit, ..
+            }) if unit.eq_ignore_ascii_case("st") => {
+                CssSemitoneLiteral::try_from_component(component)
+                    .map(Self::Semitones)
+                    .map_err(CssNumericConstructionError::component)
+            }
+            _ => crate::CssFrequencyLiteral::try_from_component(component)
+                .map(crate::CssFrequencyValue::from_literal)
+                .map(Self::Frequency)
+                .map_err(CssNumericConstructionError::component),
+        }
+    }
+    pub(crate) fn from_parser_component(
+        component: crate::CssComponentValue,
+        context: &crate::numeric::NumericInputContext<'_>,
+    ) -> Result<Self, CssNumericConstructionError> {
+        if matches!(component.view(), crate::CssComponentValueRef::Token(_)) {
+            return Self::from_literal_component(component);
+        }
+        let values = crate::CssComponentValues::try_new(vec![component])
+            .map_err(CssNumericConstructionError::component)?;
+        let expression =
+            context.admit(values, crate::numeric::CalculationRoot::FrequencyPercentage)?;
+        Ok(Self::Calculation(
+            crate::CssFrequencyPercentageCalculation::from_expression(expression),
+        ))
+    }
+    fn ensure_closed(&self) -> Result<(), CssNumericConstructionError> {
+        let components = match self {
+            Self::Frequency(value) => return value.ensure_closed(),
+            Self::Semitones(_) => None,
+            Self::Percentage(value) => value
+                .calculation()
+                .map(crate::CssPercentageCalculation::components),
+            Self::Calculation(value) => Some(value.components()),
+        };
+        if let Some(origin) = components.and_then(crate::CssComponentValues::first_implicit_origin)
+        {
+            return Err(CssNumericConstructionError::at_origin(
+                crate::CssNumericConstructionErrorKind::RecoveredComponent,
+                origin.clone(),
+            ));
+        }
+        Ok(())
+    }
+    fn append_specified(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> Result<(), CssSpecifiedValueSerializationError> {
+        match self {
+            Self::Frequency(value) => value.append_specified(&mut writer.context, &mut writer.css),
+            Self::Semitones(value) => value.append_specified(writer),
+            Self::Percentage(value) => value.append_specified(&mut writer.context, &mut writer.css),
+            Self::Calculation(value) => crate::numeric::project_specified_into(
+                &value.expression,
+                &mut writer.context,
+                &mut writer.css,
+            )
+            .map(|_| ()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum VoicePitchRangeState {
+    Absolute(crate::CssFrequencyValue),
+    Relative {
+        level: Option<CssVoiceLevel>,
+        offset: Option<CssVoiceOffset>,
+    },
+}
+/// Checked shared authored grammar for `voice-pitch` and `voice-range`.
+/// Absolute frequency cannot carry a level; relative composition is nonempty.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssVoicePitchRange {
+    state: VoicePitchRangeState,
+}
+impl CssVoicePitchRange {
+    /// Requires strictly positive ordinary absolute frequency. Typed frequency
+    /// calculations retain their authored range for downstream processing.
+    pub fn try_absolute(
+        value: crate::CssFrequencyValue,
+    ) -> Result<Self, CssNumericConstructionError> {
+        value.ensure_closed()?;
+        Self::from_parser_absolute(value)
+    }
+    pub(crate) fn from_parser_absolute(
+        value: crate::CssFrequencyValue,
+    ) -> Result<Self, CssNumericConstructionError> {
+        if let Some(literal) = value.literal() {
+            let coefficient =
+                crate::exact_decimal::LexicalDecimal::new(literal.numeric().representation());
+            if coefficient.negative || coefficient.len == 0 {
+                return Err(CssNumericConstructionError::at_origin(
+                    crate::CssNumericConstructionErrorKind::OutOfRange,
+                    literal.origin().clone(),
+                ));
+            }
+        }
+        Ok(Self {
+            state: VoicePitchRangeState::Absolute(value),
+        })
+    }
+    /// Checks a nonempty relative composition and original calculation closure.
+    pub fn try_relative(
+        level: Option<CssVoiceLevel>,
+        offset: Option<CssVoiceOffset>,
+    ) -> Result<Self, CssNumericConstructionError> {
+        if let Some(offset) = &offset {
+            offset.ensure_closed()?;
+        }
+        Self::from_parser_relative(level, offset)
+    }
+    pub(crate) fn from_parser_relative(
+        level: Option<CssVoiceLevel>,
+        offset: Option<CssVoiceOffset>,
+    ) -> Result<Self, CssNumericConstructionError> {
+        if level.is_none() && offset.is_none() {
+            return Err(CssNumericConstructionError::at(
+                crate::CssNumericConstructionErrorKind::EmptyValue,
+                None,
+            ));
+        }
+        Ok(Self {
+            state: VoicePitchRangeState::Relative { level, offset },
+        })
+    }
+    /// Constructs a relative symbolic level without resolving its frequency.
+    #[must_use]
+    pub const fn level_only(level: CssVoiceLevel) -> Self {
+        Self {
+            state: VoicePitchRangeState::Relative {
+                level: Some(level),
+                offset: None,
+            },
+        }
+    }
+    #[must_use]
+    pub const fn absolute_frequency(&self) -> Option<&crate::CssFrequencyValue> {
+        match &self.state {
+            VoicePitchRangeState::Absolute(value) => Some(value),
+            VoicePitchRangeState::Relative { .. } => None,
+        }
+    }
+    #[must_use]
+    pub const fn level(&self) -> Option<CssVoiceLevel> {
+        match &self.state {
+            VoicePitchRangeState::Relative { level, .. } => *level,
+            VoicePitchRangeState::Absolute(_) => None,
+        }
+    }
+    #[must_use]
+    pub const fn offset(&self) -> Option<&CssVoiceOffset> {
+        match &self.state {
+            VoicePitchRangeState::Relative { offset, .. } => offset.as_ref(),
+            VoicePitchRangeState::Absolute(_) => None,
+        }
+    }
+    pub fn serialize_specified(&self) -> SerializationResult {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+    /// Emits frequency before `absolute`, or level before offset, under one
+    /// cumulative visit and output budget. It does not compute a voice frequency.
+    /// Ordinary frequency output shares its six-place precision owner. If a
+    /// positive absolute literal rounds to zero, returns `UnrepresentableValue`
+    /// atomically rather than emitting invalid grammar. Exact input remains
+    /// retained; this does not perform computed voice clamping.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult {
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        writer.context.charge_input(1)?;
+        writer.context.charge_projection(1)?;
+        match &self.state {
+            VoicePitchRangeState::Absolute(value) => {
+                let start = writer.css.len();
+                value.append_specified(&mut writer.context, &mut writer.css)?;
+                if let Some(literal) = value.literal() {
+                    let coefficient = writer.css[start..]
+                        .strip_suffix(crate::frequency::suffix(literal.unit()))
+                        .expect("frequency provider emits its selected canonical unit");
+                    if crate::exact_decimal::LexicalDecimal::new(coefficient).len == 0 {
+                        return Err(CssSpecifiedValueSerializationError::new(
+                            crate::CssSpecifiedValueSerializationErrorKind::UnrepresentableValue,
+                        ));
+                    }
+                }
+                writer.context.charge_input(1)?;
+                writer.context.charge_projection(1)?;
+                writer.append(" absolute")?;
+            }
+            VoicePitchRangeState::Relative { level, offset } => {
+                if let Some(level) = level {
+                    writer.context.charge_input(1)?;
+                    writer.context.charge_projection(1)?;
+                    writer.append(level.keyword())?;
+                }
+                if let Some(offset) = offset {
+                    if level.is_some() {
+                        writer.append(" ")?;
+                    }
+                    offset.append_specified(&mut writer)?;
+                }
+            }
+        }
+        Ok(writer.css)
+    }
+}
+
+/// A symbolic voice-rate keyword, without a words-per-minute mapping.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssVoiceRateKeyword {
+    Normal,
+    XSlow,
+    Slow,
+    Medium,
+    Fast,
+    XFast,
+}
+impl CssVoiceRateKeyword {
+    pub(crate) fn keyword(self) -> &'static str {
+        match self {
+            Self::Normal => "normal",
+            Self::XSlow => "x-slow",
+            Self::Slow => "slow",
+            Self::Medium => "medium",
+            Self::Fast => "fast",
+            Self::XFast => "x-fast",
+        }
+    }
+}
+/// Checked nonempty rate keyword/percentage composition; a retained 100% stays
+/// distinct from omission even when canonical output omits a neutral modifier.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssVoiceRate {
+    keyword: Option<CssVoiceRateKeyword>,
+    percentage: Option<crate::CssSpecifiedNonNegativePercentage>,
+}
+impl CssVoiceRate {
+    pub fn try_new(
+        keyword: Option<CssVoiceRateKeyword>,
+        percentage: Option<crate::CssSpecifiedNonNegativePercentage>,
+    ) -> Result<Self, CssNumericConstructionError> {
+        if let Some(value) = percentage
+            .as_ref()
+            .and_then(crate::CssSpecifiedNonNegativePercentage::calculation)
+            && let Some(origin) = value.components().first_implicit_origin()
+        {
+            return Err(CssNumericConstructionError::at_origin(
+                crate::CssNumericConstructionErrorKind::RecoveredComponent,
+                origin.clone(),
+            ));
+        }
+        Self::from_parser(keyword, percentage)
+    }
+    pub(crate) fn from_parser(
+        keyword: Option<CssVoiceRateKeyword>,
+        percentage: Option<crate::CssSpecifiedNonNegativePercentage>,
+    ) -> Result<Self, CssNumericConstructionError> {
+        if keyword.is_none() && percentage.is_none() {
+            return Err(CssNumericConstructionError::at(
+                crate::CssNumericConstructionErrorKind::EmptyValue,
+                None,
+            ));
+        }
+        Ok(Self {
+            keyword,
+            percentage,
+        })
+    }
+    #[must_use]
+    pub const fn keyword_only(keyword: CssVoiceRateKeyword) -> Self {
+        Self {
+            keyword: Some(keyword),
+            percentage: None,
+        }
+    }
+    #[must_use]
+    pub const fn keyword(&self) -> Option<CssVoiceRateKeyword> {
+        self.keyword
+    }
+    #[must_use]
+    pub const fn percentage(&self) -> Option<&crate::CssSpecifiedNonNegativePercentage> {
+        self.percentage.as_ref()
+    }
+    pub fn serialize_specified(&self) -> SerializationResult {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+    /// Emits grammar order and omits only an exact ordinary neutral 100%
+    /// modifier beside an explicit keyword. The suppressed child is still visited.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult {
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        writer.context.charge_input(1)?;
+        writer.context.charge_projection(1)?;
+        if let Some(keyword) = self.keyword {
+            writer.context.charge_input(1)?;
+            writer.context.charge_projection(1)?;
+            writer.append(keyword.keyword())?;
+        }
+        if let Some(percentage) = &self.percentage {
+            let neutral = percentage.literal_component().is_some_and(|component| {
+                matches!(component.view(), crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Percentage(number))
+                    if crate::exact_decimal::LexicalDecimal::new(number.representation()).value_eq(&crate::exact_decimal::LexicalDecimal::new("100")))
+            });
+            if self.keyword.is_some() && neutral {
+                writer.without_output(|writer| {
+                    percentage.append_specified(&mut writer.context, &mut writer.css)
+                })?;
+            } else {
+                if self.keyword.is_some() {
+                    writer.append(" ")?;
+                }
+                percentage.append_specified(&mut writer.context, &mut writer.css)?;
             }
         }
         Ok(writer.css)

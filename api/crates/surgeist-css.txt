@@ -2163,7 +2163,11 @@ pub surgeist_css::CssKnownProperty::UnicodeBidi
 pub surgeist_css::CssKnownProperty::UserSelect
 pub surgeist_css::CssKnownProperty::VerticalAlign
 pub surgeist_css::CssKnownProperty::Visibility
+pub surgeist_css::CssKnownProperty::VoiceDuration
 pub surgeist_css::CssKnownProperty::VoiceFamily
+pub surgeist_css::CssKnownProperty::VoicePitch
+pub surgeist_css::CssKnownProperty::VoiceRange
+pub surgeist_css::CssKnownProperty::VoiceRate
 pub surgeist_css::CssKnownProperty::VoiceStress
 pub surgeist_css::CssKnownProperty::WhiteSpace
 pub surgeist_css::CssKnownProperty::Widows
@@ -2519,7 +2523,11 @@ pub surgeist_css::CssKnownPropertyValueRef::UnicodeBidi(&'a surgeist_css::CssUni
 pub surgeist_css::CssKnownPropertyValueRef::UserSelect(&'a surgeist_css::CssUserSelectPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::VerticalAlign(&'a surgeist_css::CssVerticalAlignPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Visibility(&'a surgeist_css::CssVisibilityPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::VoiceDuration(&'a surgeist_css::CssVoiceDurationPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::VoiceFamily(&'a surgeist_css::CssVoiceFamilyPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::VoicePitch(&'a surgeist_css::CssVoicePitchPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::VoiceRange(&'a surgeist_css::CssVoiceRangePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::VoiceRate(&'a surgeist_css::CssVoiceRatePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::VoiceStress(&'a surgeist_css::CssVoiceStressPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::WhiteSpace(&'a surgeist_css::CssWhiteSpacePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Widows(&'a surgeist_css::CssWidowsPropertyValue)
@@ -2846,7 +2854,11 @@ pub surgeist_css::CssLonghandValueRef::TextOverflow(&'a surgeist_css::CssTextOve
 pub surgeist_css::CssLonghandValueRef::Top(&'a surgeist_css::CssInsetValue)
 pub surgeist_css::CssLonghandValueRef::UnicodeBidi(&'a surgeist_css::CssUnicodeBidi)
 pub surgeist_css::CssLonghandValueRef::Visibility(&'a surgeist_css::CssVisibility)
+pub surgeist_css::CssLonghandValueRef::VoiceDuration(&'a surgeist_css::CssVoiceDuration)
 pub surgeist_css::CssLonghandValueRef::VoiceFamily(&'a surgeist_css::CssVoiceFamily)
+pub surgeist_css::CssLonghandValueRef::VoicePitch(&'a surgeist_css::CssVoicePitchRange)
+pub surgeist_css::CssLonghandValueRef::VoiceRange(&'a surgeist_css::CssVoicePitchRange)
+pub surgeist_css::CssLonghandValueRef::VoiceRate(&'a surgeist_css::CssVoiceRate)
 pub surgeist_css::CssLonghandValueRef::VoiceStress(&'a surgeist_css::CssVoiceStress)
 pub surgeist_css::CssLonghandValueRef::Widows(&'a surgeist_css::CssPageLineMinimum)
 pub surgeist_css::CssLonghandValueRef::Width(&'a surgeist_css::CssSizeValue)
@@ -3802,11 +3814,13 @@ pub surgeist_css::CssSpecificationTier::SurgeistExtension
 pub surgeist_css::CssSpecifiedRuleSerializationErrorKind::Resource(surgeist_css::CssSpecifiedValueSerializationErrorKind)
 pub surgeist_css::CssSpecifiedRuleSerializationErrorKind::UnsupportedEncoding
 pub surgeist_css::CssSpecifiedRuleSerializationErrorKind::UnsupportedRule
+pub surgeist_css::CssSpecifiedRuleSerializationErrorKind::Value(surgeist_css::CssSpecifiedValueSerializationErrorKind)
 #[non_exhaustive] pub enum surgeist_css::CssSpecifiedValueSerializationErrorKind
 pub surgeist_css::CssSpecifiedValueSerializationErrorKind::ByteLimit
 pub surgeist_css::CssSpecifiedValueSerializationErrorKind::CapacityOverflow
 pub surgeist_css::CssSpecifiedValueSerializationErrorKind::InputNodeLimit
 pub surgeist_css::CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+pub surgeist_css::CssSpecifiedValueSerializationErrorKind::UnrepresentableValue
 pub surgeist_css::CssSpecifiedValueSerializationErrorKind::UnserializableBoundary
 #[non_exhaustive] pub enum surgeist_css::CssSpeechBreak
 pub surgeist_css::CssSpeechBreak::None
@@ -4250,6 +4264,13 @@ pub fn surgeist_css::CssVisibility::serialize_specified_with_limits(&self, limit
 pub surgeist_css::CssVoiceAge::Child
 pub surgeist_css::CssVoiceAge::Old
 pub surgeist_css::CssVoiceAge::Young
+#[non_exhaustive] pub enum surgeist_css::CssVoiceDuration
+pub surgeist_css::CssVoiceDuration::Auto
+pub surgeist_css::CssVoiceDuration::Time(surgeist_css::CssDuration)
+impl surgeist_css::CssVoiceDuration
+pub fn surgeist_css::CssVoiceDuration::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssVoiceDuration::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssVoiceDuration::try_time(time: surgeist_css::CssTimeValue) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 #[non_exhaustive] pub enum surgeist_css::CssVoiceFamily
 pub surgeist_css::CssVoiceFamily::Preserve
 pub surgeist_css::CssVoiceFamily::Voices(surgeist_css::CssVoiceFamilyList)
@@ -4266,6 +4287,26 @@ pub surgeist_css::CssVoiceFamilyNameRef::Quoted(&'a str)
 pub surgeist_css::CssVoiceGender::Female
 pub surgeist_css::CssVoiceGender::Male
 pub surgeist_css::CssVoiceGender::Neutral
+#[non_exhaustive] pub enum surgeist_css::CssVoiceLevel
+pub surgeist_css::CssVoiceLevel::High
+pub surgeist_css::CssVoiceLevel::Low
+pub surgeist_css::CssVoiceLevel::Medium
+pub surgeist_css::CssVoiceLevel::XHigh
+pub surgeist_css::CssVoiceLevel::XLow
+#[non_exhaustive] pub enum surgeist_css::CssVoiceOffset
+pub surgeist_css::CssVoiceOffset::Calculation(surgeist_css::CssFrequencyPercentageCalculation)
+pub surgeist_css::CssVoiceOffset::Frequency(surgeist_css::CssFrequencyValue)
+pub surgeist_css::CssVoiceOffset::Percentage(surgeist_css::CssSpecifiedPercentage)
+pub surgeist_css::CssVoiceOffset::Semitones(surgeist_css::CssSemitoneLiteral)
+impl surgeist_css::CssVoiceOffset
+pub fn surgeist_css::CssVoiceOffset::try_from_calculation(value: surgeist_css::CssFrequencyPercentageCalculation) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+#[non_exhaustive] pub enum surgeist_css::CssVoiceRateKeyword
+pub surgeist_css::CssVoiceRateKeyword::Fast
+pub surgeist_css::CssVoiceRateKeyword::Medium
+pub surgeist_css::CssVoiceRateKeyword::Normal
+pub surgeist_css::CssVoiceRateKeyword::Slow
+pub surgeist_css::CssVoiceRateKeyword::XFast
+pub surgeist_css::CssVoiceRateKeyword::XSlow
 #[non_exhaustive] pub enum surgeist_css::CssVoiceStress
 pub surgeist_css::CssVoiceStress::Moderate
 pub surgeist_css::CssVoiceStress::None
@@ -6646,6 +6687,17 @@ pub const fn surgeist_css::CssFrequencyLiteral::unit(&self) -> surgeist_css::Css
 impl surgeist_css::CssFrequencyLiteral
 pub fn surgeist_css::CssFrequencyLiteral::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssFrequencyLiteral::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssFrequencyPercentageCalculation
+impl surgeist_css::CssFrequencyPercentageCalculation
+pub fn surgeist_css::CssFrequencyPercentageCalculation::components(&self) -> &surgeist_css::CssComponentValues
+pub fn surgeist_css::CssFrequencyPercentageCalculation::expression(&self) -> surgeist_css::CssCalculationExpressionRef<'_>
+pub fn surgeist_css::CssFrequencyPercentageCalculation::numeric_type(&self) -> surgeist_css::CssNumericType
+pub fn surgeist_css::CssFrequencyPercentageCalculation::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssFrequencyPercentageCalculation::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+pub fn surgeist_css::CssFrequencyPercentageCalculation::result_type(&self) -> surgeist_css::CssCalculationType
+pub fn surgeist_css::CssFrequencyPercentageCalculation::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssFrequencyPercentageCalculation::try_from_components(values: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub fn surgeist_css::CssFrequencyPercentageCalculation::try_from_components_with_limits(values: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 pub struct surgeist_css::CssFrequencyValue
 impl surgeist_css::CssFrequencyValue
 pub fn surgeist_css::CssFrequencyValue::calculation(&self) -> core::option::Option<&surgeist_css::CssFrequencyCalculation>
@@ -8567,6 +8619,15 @@ pub struct surgeist_css::CssSelectorList
 impl surgeist_css::CssSelectorList
 pub fn surgeist_css::CssSelectorList::selectors(&self) -> &[surgeist_css::CssSelector]
 pub fn surgeist_css::CssSelectorList::try_new(selectors: alloc::vec::Vec<surgeist_css::CssSelector>) -> core::option::Option<Self>
+pub struct surgeist_css::CssSemitoneLiteral
+impl surgeist_css::CssSemitoneLiteral
+pub const fn surgeist_css::CssSemitoneLiteral::component(&self) -> &surgeist_css::CssComponentValue
+pub fn surgeist_css::CssSemitoneLiteral::numeric(&self) -> surgeist_css::CssNumericTokenRef<'_>
+pub const fn surgeist_css::CssSemitoneLiteral::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssSemitoneLiteral::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssSemitoneLiteral::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssSemitoneLiteral::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssSemitoneLiteral::try_new(number: &str) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
 pub struct surgeist_css::CssSerializedOriginSegment
 impl surgeist_css::CssSerializedOriginSegment
 pub fn surgeist_css::CssSerializedOriginSegment::byte_range(&self) -> core::ops::range::Range<usize>
@@ -9375,6 +9436,10 @@ pub struct surgeist_css::CssVisibilityPropertyValue
 impl surgeist_css::CssVisibilityPropertyValue
 pub fn surgeist_css::CssVisibilityPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssVisibilityPropertyValue::value(&self) -> &surgeist_css::CssVisibility
+pub struct surgeist_css::CssVoiceDurationPropertyValue
+impl surgeist_css::CssVoiceDurationPropertyValue
+pub fn surgeist_css::CssVoiceDurationPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssVoiceDurationPropertyValue::value(&self) -> &surgeist_css::CssVoiceDuration
 pub struct surgeist_css::CssVoiceFamilyList
 impl surgeist_css::CssVoiceFamilyList
 pub fn surgeist_css::CssVoiceFamilyList::entries(&self) -> &[surgeist_css::CssVoiceFamilyEntry]
@@ -9388,6 +9453,36 @@ pub struct surgeist_css::CssVoiceFamilyPropertyValue
 impl surgeist_css::CssVoiceFamilyPropertyValue
 pub fn surgeist_css::CssVoiceFamilyPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssVoiceFamilyPropertyValue::value(&self) -> &surgeist_css::CssVoiceFamily
+pub struct surgeist_css::CssVoicePitchPropertyValue
+impl surgeist_css::CssVoicePitchPropertyValue
+pub fn surgeist_css::CssVoicePitchPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssVoicePitchPropertyValue::value(&self) -> &surgeist_css::CssVoicePitchRange
+pub struct surgeist_css::CssVoicePitchRange
+impl surgeist_css::CssVoicePitchRange
+pub const fn surgeist_css::CssVoicePitchRange::absolute_frequency(&self) -> core::option::Option<&surgeist_css::CssFrequencyValue>
+pub const fn surgeist_css::CssVoicePitchRange::level(&self) -> core::option::Option<surgeist_css::CssVoiceLevel>
+pub const fn surgeist_css::CssVoicePitchRange::level_only(level: surgeist_css::CssVoiceLevel) -> Self
+pub const fn surgeist_css::CssVoicePitchRange::offset(&self) -> core::option::Option<&surgeist_css::CssVoiceOffset>
+pub fn surgeist_css::CssVoicePitchRange::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssVoicePitchRange::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssVoicePitchRange::try_absolute(value: surgeist_css::CssFrequencyValue) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub fn surgeist_css::CssVoicePitchRange::try_relative(level: core::option::Option<surgeist_css::CssVoiceLevel>, offset: core::option::Option<surgeist_css::CssVoiceOffset>) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub struct surgeist_css::CssVoiceRangePropertyValue
+impl surgeist_css::CssVoiceRangePropertyValue
+pub fn surgeist_css::CssVoiceRangePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssVoiceRangePropertyValue::value(&self) -> &surgeist_css::CssVoicePitchRange
+pub struct surgeist_css::CssVoiceRate
+impl surgeist_css::CssVoiceRate
+pub const fn surgeist_css::CssVoiceRate::keyword(&self) -> core::option::Option<surgeist_css::CssVoiceRateKeyword>
+pub const fn surgeist_css::CssVoiceRate::keyword_only(keyword: surgeist_css::CssVoiceRateKeyword) -> Self
+pub const fn surgeist_css::CssVoiceRate::percentage(&self) -> core::option::Option<&surgeist_css::CssSpecifiedNonNegativePercentage>
+pub fn surgeist_css::CssVoiceRate::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssVoiceRate::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssVoiceRate::try_new(keyword: core::option::Option<surgeist_css::CssVoiceRateKeyword>, percentage: core::option::Option<surgeist_css::CssSpecifiedNonNegativePercentage>) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub struct surgeist_css::CssVoiceRatePropertyValue
+impl surgeist_css::CssVoiceRatePropertyValue
+pub fn surgeist_css::CssVoiceRatePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssVoiceRatePropertyValue::value(&self) -> &surgeist_css::CssVoiceRate
 pub struct surgeist_css::CssVoiceStressPropertyValue
 impl surgeist_css::CssVoiceStressPropertyValue
 pub fn surgeist_css::CssVoiceStressPropertyValue::as_css(&self) -> &str

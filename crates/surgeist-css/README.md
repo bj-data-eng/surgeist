@@ -29,6 +29,16 @@ cues. Checked construction, expansion and bounded specified serialization preser
 authored omissions and token origins. Resource loading and contextual volume
 resolution belong downstream; see the [cue reference](docs/reference.md#authored-speech-cues).
 
+CSS Speech `voice-duration`, `voice-pitch`, `voice-range` and `voice-rate`
+retain authored prosody independently of voice execution. Duration uses the
+shared nonnegative ordinary time model; pitch/range separate positive ordinary
+absolute frequency from signed relative frequency, percentage and local `st`
+offsets. Typed math retains its specified phase, including relative
+frequency-percentage calculations against an unresolved inherited frequency.
+Checked composition and cumulative serialization preserve authored omissions;
+see the [prosody reference](docs/reference.md#authored-speech-prosody) for
+canonical output and precision limits.
+
 Checked `CssBackgroundLayer` and `CssBackground` construction retains authored
 omissions and enforces size/position and final-color constraints. Intrinsic
 `background` expansion supplies all eight longhands with per-layer schema

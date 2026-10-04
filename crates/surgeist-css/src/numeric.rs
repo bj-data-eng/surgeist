@@ -324,6 +324,9 @@ impl CssCalculationType {
         if t.hint == Some(CssNumericDimension::Length) && t.is(CssNumericDimension::Length) {
             return Self::LengthPercentage;
         }
+        if t.hint == Some(CssNumericDimension::Frequency) && t.is(CssNumericDimension::Frequency) {
+            return Self::FrequencyPercentage;
+        }
         Self::Algebra(t)
     }
     pub(crate) fn numeric(self) -> CssNumericType {
@@ -1449,6 +1452,7 @@ pub(crate) enum CalculationRoot {
     Angle,
     Time,
     Frequency,
+    FrequencyPercentage,
     Resolution,
     Relative(
         crate::CssRelativeColorEnvironment,
@@ -1457,7 +1461,11 @@ pub(crate) enum CalculationRoot {
 }
 impl CalculationRoot {
     fn hint(self) -> Option<CssNumericDimension> {
-        (self == Self::LengthPercentage).then_some(CssNumericDimension::Length)
+        match self {
+            Self::LengthPercentage => Some(CssNumericDimension::Length),
+            Self::FrequencyPercentage => Some(CssNumericDimension::Frequency),
+            _ => None,
+        }
     }
     fn accepts(self, t: CssNumericType) -> bool {
         match self {
@@ -1473,6 +1481,10 @@ impl CalculationRoot {
             Self::Angle => t.is(CssNumericDimension::Angle) && t.hint.is_none(),
             Self::Time => t.is(CssNumericDimension::Time) && t.hint.is_none(),
             Self::Frequency => t.is(CssNumericDimension::Frequency) && t.hint.is_none(),
+            Self::FrequencyPercentage => {
+                t.is(CssNumericDimension::Frequency)
+                    && (t.hint.is_none() || t.hint == Some(CssNumericDimension::Frequency))
+            }
             Self::Resolution => t.is(CssNumericDimension::Resolution) && t.hint.is_none(),
             Self::Relative(_, crate::CssRelativeColorResultDomain::Hue) => {
                 t.hint.is_none() && (t.is_number() || t.is(CssNumericDimension::Angle))
@@ -2519,6 +2531,8 @@ root!(CssFlexCalculation, Flex);
 root!(CssAngleCalculation, Angle);
 root!(CssTimeCalculation, Time);
 root!(CssFrequencyCalculation, Frequency);
+// Values 4 §5.6: percentages use the host's unresolved frequency basis.
+root!(CssFrequencyPercentageCalculation, FrequencyPercentage);
 root!(CssResolutionCalculation, Resolution);
 
 impl CssLengthCalculation {

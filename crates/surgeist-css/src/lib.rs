@@ -1353,10 +1353,11 @@ mod sizing;
 mod sizing_controls;
 mod speech;
 pub use speech::{
-    CssAudioCue, CssCue, CssCuePair, CssDecibelLiteral, CssGenericVoice, CssSpeak, CssSpeakAs,
-    CssSpeakAsPunctuation, CssSpeechBreak, CssSpeechBreakPair, CssSpeechBreakStrength, CssVoiceAge,
-    CssVoiceFamily, CssVoiceFamilyEntry, CssVoiceFamilyList, CssVoiceFamilyName,
-    CssVoiceFamilyNameRef, CssVoiceGender, CssVoiceStress,
+    CssAudioCue, CssCue, CssCuePair, CssDecibelLiteral, CssGenericVoice, CssSemitoneLiteral,
+    CssSpeak, CssSpeakAs, CssSpeakAsPunctuation, CssSpeechBreak, CssSpeechBreakPair,
+    CssSpeechBreakStrength, CssVoiceAge, CssVoiceDuration, CssVoiceFamily, CssVoiceFamilyEntry,
+    CssVoiceFamilyList, CssVoiceFamilyName, CssVoiceFamilyNameRef, CssVoiceGender, CssVoiceLevel,
+    CssVoiceOffset, CssVoicePitchRange, CssVoiceRate, CssVoiceRateKeyword, CssVoiceStress,
 };
 mod text_alignment;
 mod text_spacing;
@@ -1475,12 +1476,12 @@ pub use numeric::{
     CssCalculationSumOperator, CssCalculationSumRef, CssCalculationSumTermRef,
     CssCalculationTreeCountingRef, CssCalculationType, CssCalculationUnaryRef,
     CssCalculationValueRef, CssCalculationVariableRef, CssFlexCalculation, CssFrequencyCalculation,
-    CssIntegerCalculation, CssLengthCalculation, CssLengthPercentageCalculation, CssMathFunction,
-    CssNumberCalculation, CssNumericConstant, CssNumericConstructionError,
-    CssNumericConstructionErrorKind, CssNumericDimension, CssNumericLiteralRef, CssNumericType,
-    CssNumericUnit, CssPercentageCalculation, CssProfileColorCalculation,
-    CssProfileColorExpression, CssProfileColorExpressionRef, CssResolutionCalculation,
-    CssRoundingStrategy, CssTimeCalculation, CssTreeCountingFunction,
+    CssFrequencyPercentageCalculation, CssIntegerCalculation, CssLengthCalculation,
+    CssLengthPercentageCalculation, CssMathFunction, CssNumberCalculation, CssNumericConstant,
+    CssNumericConstructionError, CssNumericConstructionErrorKind, CssNumericDimension,
+    CssNumericLiteralRef, CssNumericType, CssNumericUnit, CssPercentageCalculation,
+    CssProfileColorCalculation, CssProfileColorExpression, CssProfileColorExpressionRef,
+    CssResolutionCalculation, CssRoundingStrategy, CssTimeCalculation, CssTreeCountingFunction,
 };
 #[cfg(test)]
 mod test_support;

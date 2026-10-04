@@ -1229,7 +1229,8 @@ append_checked_numeric!(
     CssSpecifiedLengthPercentage,
     CssSpecifiedNonNegativeLengthPercentage,
     CssSpecifiedNonNegativeNumber,
-    CssSpecifiedNonNegativePercentage
+    CssSpecifiedNonNegativePercentage,
+    CssSpecifiedPercentage
 );
 
 #[cfg(test)]

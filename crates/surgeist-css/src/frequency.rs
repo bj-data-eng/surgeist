@@ -100,6 +100,11 @@ impl CssFrequencyValue {
                 origin.clone(),
             ));
         }
+        Self::from_parser_calculation(calculation)
+    }
+    fn from_parser_calculation(
+        calculation: CssFrequencyCalculation,
+    ) -> Result<Self, CssNumericConstructionError> {
         if let Some(component) = calculation.literal_root_component() {
             return CssFrequencyLiteral::try_from_component(component.clone())
                 .map(Self::from_literal)
@@ -108,6 +113,31 @@ impl CssFrequencyValue {
         Ok(Self {
             value: FrequencyValue::Calculation(calculation),
         })
+    }
+    pub(crate) fn from_parser_component(
+        component: CssComponentValue,
+        context: &crate::numeric::NumericInputContext<'_>,
+    ) -> Result<Self, CssNumericConstructionError> {
+        if matches!(component.view(), CssComponentValueRef::Token(_)) {
+            return CssFrequencyLiteral::try_from_component(component)
+                .map(Self::from_literal)
+                .map_err(CssNumericConstructionError::component);
+        }
+        let values = crate::CssComponentValues::try_new(vec![component])
+            .map_err(CssNumericConstructionError::component)?;
+        let expression = context.admit(values, crate::numeric::CalculationRoot::Frequency)?;
+        Self::from_parser_calculation(CssFrequencyCalculation::from_expression(expression))
+    }
+    pub(crate) fn ensure_closed(&self) -> Result<(), CssNumericConstructionError> {
+        if let Some(value) = self.calculation()
+            && let Some(origin) = value.components().first_implicit_origin()
+        {
+            return Err(CssNumericConstructionError::at_origin(
+                CssNumericConstructionErrorKind::RecoveredComponent,
+                origin.clone(),
+            ));
+        }
+        Ok(())
     }
     /// Borrows the ordinary branch, when present.
     pub fn literal(&self) -> Option<&CssFrequencyLiteral> {

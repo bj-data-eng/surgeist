@@ -30,7 +30,8 @@ use crate::scroll_snap::*;
 use crate::sizing::{CssMaxSizeValue, CssSizeValue};
 use crate::sizing_controls::*;
 use crate::speech::{
-    CssCue, CssCuePair, CssSpeak, CssSpeakAs, CssSpeechBreak, CssSpeechBreakPair, CssVoiceFamily,
+    CssCue, CssCuePair, CssSpeak, CssSpeakAs, CssSpeechBreak, CssSpeechBreakPair, CssVoiceDuration,
+    CssVoiceFamily, CssVoiceLevel, CssVoicePitchRange, CssVoiceRate, CssVoiceRateKeyword,
     CssVoiceStress,
 };
 use crate::syntax::*;

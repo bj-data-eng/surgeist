@@ -49,7 +49,7 @@ impl Default for CssSpecifiedValueSerializationLimits {
     }
 }
 
-/// An exhausted serialization resource or unrepresentable component boundary.
+/// An exhausted resource or a value that cannot be faithfully represented.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssSpecifiedValueSerializationErrorKind {
@@ -59,6 +59,8 @@ pub enum CssSpecifiedValueSerializationErrorKind {
     CapacityOverflow,
     /// Retained component boundaries cannot be emitted without changing tokens.
     UnserializableBoundary,
+    /// The selected numeric precision cannot emit a value allowed by its grammar.
+    UnrepresentableValue,
 }
 
 /// Atomic failure: no partial CSS is returned and the authored input is unchanged.
@@ -93,6 +95,9 @@ impl fmt::Display for CssSpecifiedValueSerializationError {
             }
             CssSpecifiedValueSerializationErrorKind::UnserializableBoundary => {
                 "specified-value component boundary cannot be serialized"
+            }
+            CssSpecifiedValueSerializationErrorKind::UnrepresentableValue => {
+                "specified value cannot be represented within the selected serialization precision"
             }
         })
     }

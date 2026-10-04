@@ -270,3 +270,150 @@ fn parse_voice_entry<'i, 't>(
         .map(CssVoiceFamilyEntry::Name)
         .ok_or_else(|| input.new_error(cssparser::BasicParseErrorKind::EndOfInput))
 }
+
+pub(super) fn parse_voice_duration<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Result<crate::CssVoiceDuration, ParseError<'i, Error>> {
+    if input
+        .try_parse(|input| input.expect_ident_matching("auto"))
+        .is_ok()
+    {
+        return Ok(crate::CssVoiceDuration::Auto);
+    }
+    super::timing::parse_duration(input, numeric).map(crate::CssVoiceDuration::Time)
+}
+fn voice_level(value: &str) -> Option<crate::CssVoiceLevel> {
+    cssparser::match_ignore_ascii_case! { value, "x-low" => Some(crate::CssVoiceLevel::XLow), "low" => Some(crate::CssVoiceLevel::Low), "medium" => Some(crate::CssVoiceLevel::Medium), "high" => Some(crate::CssVoiceLevel::High), "x-high" => Some(crate::CssVoiceLevel::XHigh), _ => None }
+}
+pub(super) fn parse_voice_pitch_range<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Result<crate::CssVoicePitchRange, ParseError<'i, Error>> {
+    let mut level = None;
+    let mut absolute = None;
+    let mut offset = None;
+    while !input.is_exhausted() {
+        input.skip_whitespace();
+        let location = input.current_source_location();
+        let byte_offset = input.position().byte_index();
+        if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
+            if let Some(value) = voice_level(&ident)
+                && level.is_none()
+            {
+                level = Some(value);
+            } else if ident.eq_ignore_ascii_case("absolute") && absolute.is_none() {
+                absolute = Some(location);
+            } else {
+                return Err(location.new_unexpected_token_error(Token::Ident(ident)));
+            }
+        } else {
+            if offset.is_some() {
+                return Err(crate::error::unsupported_value_at(
+                    location,
+                    None,
+                    "only one voice offset is allowed",
+                ));
+            }
+            let component = numeric
+                .collect(input)
+                .map_err(|error| speech_numeric_error(numeric, &error, location, byte_offset))?;
+            offset = Some((component, location, byte_offset));
+        }
+    }
+    if let Some(location) = absolute {
+        if level.is_some() {
+            return Err(crate::error::unsupported_value_at(
+                location,
+                None,
+                "absolute frequency cannot carry a voice level",
+            ));
+        }
+        let Some((component, location, byte_offset)) = offset else {
+            return Err(crate::error::unsupported_value_at(
+                location,
+                None,
+                "absolute requires a frequency",
+            ));
+        };
+        let frequency = crate::CssFrequencyValue::from_parser_component(component, numeric)
+            .map_err(|error| speech_numeric_error(numeric, &error, location, byte_offset))?;
+        crate::CssVoicePitchRange::from_parser_absolute(frequency)
+            .map_err(|error| speech_numeric_error(numeric, &error, location, byte_offset))
+    } else {
+        let offset = offset
+            .map(|(component, location, byte_offset)| {
+                crate::CssVoiceOffset::from_parser_component(component, numeric)
+                    .map_err(|error| speech_numeric_error(numeric, &error, location, byte_offset))
+            })
+            .transpose()?;
+        crate::CssVoicePitchRange::from_parser_relative(level, offset)
+            .map_err(|_| input.new_error(cssparser::BasicParseErrorKind::EndOfInput))
+    }
+}
+fn voice_rate_keyword(value: &str) -> Option<crate::CssVoiceRateKeyword> {
+    cssparser::match_ignore_ascii_case! { value, "normal" => Some(crate::CssVoiceRateKeyword::Normal), "x-slow" => Some(crate::CssVoiceRateKeyword::XSlow), "slow" => Some(crate::CssVoiceRateKeyword::Slow), "medium" => Some(crate::CssVoiceRateKeyword::Medium), "fast" => Some(crate::CssVoiceRateKeyword::Fast), "x-fast" => Some(crate::CssVoiceRateKeyword::XFast), _ => None }
+}
+pub(super) fn parse_voice_rate<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Result<crate::CssVoiceRate, ParseError<'i, Error>> {
+    let mut keyword = None;
+    let mut percentage = None;
+    while !input.is_exhausted() {
+        input.skip_whitespace();
+        let location = input.current_source_location();
+        let byte_offset = input.position().byte_index();
+        if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
+            if let Some(value) = voice_rate_keyword(&ident)
+                && keyword.is_none()
+            {
+                keyword = Some(value);
+            } else {
+                return Err(location.new_unexpected_token_error(Token::Ident(ident)));
+            }
+        } else {
+            if percentage.is_some() {
+                return Err(crate::error::unsupported_value_at(
+                    location,
+                    None,
+                    "only one voice-rate percentage is allowed",
+                ));
+            }
+            let component = numeric
+                .collect(input)
+                .map_err(|error| speech_numeric_error(numeric, &error, location, byte_offset))?;
+            let value = if matches!(component.view(), crate::CssComponentValueRef::Token(_)) {
+                crate::CssSpecifiedNonNegativePercentage::try_from_component(component)
+            } else {
+                let values = crate::CssComponentValues::try_new(vec![component])
+                    .map_err(|error| crate::error::invalid_component_value(location, error))?;
+                numeric
+                    .admit(values, crate::numeric::CalculationRoot::Percentage)
+                    .and_then(|expression| {
+                        crate::CssSpecifiedNonNegativePercentage::try_from_calculation(
+                            crate::CssPercentageCalculation::from_expression(expression),
+                        )
+                    })
+            }
+            .map_err(|error| speech_numeric_error(numeric, &error, location, byte_offset))?;
+            percentage = Some(value);
+        }
+    }
+    crate::CssVoiceRate::from_parser(keyword, percentage)
+        .map_err(|_| input.new_error(cssparser::BasicParseErrorKind::EndOfInput))
+}
+fn speech_numeric_error<'i>(
+    numeric: &crate::numeric::NumericInputContext<'_>,
+    error: &crate::CssNumericConstructionError,
+    fallback: cssparser::SourceLocation,
+    offset: usize,
+) -> ParseError<'i, Error> {
+    let location = numeric.error_location(error, fallback, offset);
+    if let Some(component) = error.component_error()
+        && crate::error::is_component_resource_error(component)
+    {
+        return crate::error::invalid_component_value(location, component.clone());
+    }
+    crate::error::unsupported_value_at(location, None, "invalid authored speech numeric value")
+}

@@ -14,7 +14,10 @@ use crate::{
 pub enum CssSpecifiedRuleSerializationErrorKind {
     UnsupportedRule,
     UnsupportedEncoding,
+    /// A node, byte or capacity resource was exhausted.
     Resource(CssSpecifiedValueSerializationErrorKind),
+    /// A value or component boundary cannot be faithfully emitted.
+    Value(CssSpecifiedValueSerializationErrorKind),
 }
 
 /// An unsupported rule is never omitted or silently serialized as raw syntax.
@@ -53,9 +56,21 @@ impl CssSpecifiedRuleSerializationError {
         }
     }
 
-    fn resource(error: CssSpecifiedValueSerializationError, rule_index: Option<usize>) -> Self {
+    fn value_error(error: CssSpecifiedValueSerializationError, rule_index: Option<usize>) -> Self {
+        let kind = match error.kind() {
+            CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            | CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+            | CssSpecifiedValueSerializationErrorKind::ByteLimit
+            | CssSpecifiedValueSerializationErrorKind::CapacityOverflow => {
+                CssSpecifiedRuleSerializationErrorKind::Resource(error.kind())
+            }
+            CssSpecifiedValueSerializationErrorKind::UnserializableBoundary
+            | CssSpecifiedValueSerializationErrorKind::UnrepresentableValue => {
+                CssSpecifiedRuleSerializationErrorKind::Value(error.kind())
+            }
+        };
         Self {
-            kind: CssSpecifiedRuleSerializationErrorKind::Resource(error.kind()),
+            kind,
             rule_index,
             source: Some(error),
         }
@@ -72,6 +87,9 @@ impl fmt::Display for CssSpecifiedRuleSerializationError {
                 .write_str("canonical serialization is not available for encoding metadata"),
             CssSpecifiedRuleSerializationErrorKind::Resource(_) => {
                 formatter.write_str("canonical CSS rule serialization exceeded a resource limit")
+            }
+            CssSpecifiedRuleSerializationErrorKind::Value(_) => {
+                formatter.write_str("canonical CSS rule serialization cannot represent a value")
             }
         }
     }
@@ -252,15 +270,15 @@ impl CssSheet {
         writer
             .context
             .charge_input(1)
-            .map_err(|error| CssSpecifiedRuleSerializationError::resource(error, None))?;
+            .map_err(|error| CssSpecifiedRuleSerializationError::value_error(error, None))?;
         writer
             .context
             .charge_projection(1)
-            .map_err(|error| CssSpecifiedRuleSerializationError::resource(error, None))?;
+            .map_err(|error| CssSpecifiedRuleSerializationError::value_error(error, None))?;
         for (index, rule) in self.rules().iter().enumerate() {
             if index != 0 {
                 writer.append("\n").map_err(|error| {
-                    CssSpecifiedRuleSerializationError::resource(error, Some(index))
+                    CssSpecifiedRuleSerializationError::value_error(error, Some(index))
                 })?;
             }
             append_rule(&mut writer, rule, Some(index))?;
@@ -277,16 +295,16 @@ fn append_rule(
     match rule {
         CssRule::Namespace(rule) => writer
             .namespace(rule)
-            .map_err(|error| CssSpecifiedRuleSerializationError::resource(error, index)),
+            .map_err(|error| CssSpecifiedRuleSerializationError::value_error(error, index)),
         CssRule::ColorProfile(rule) => writer
             .color_profile(rule)
-            .map_err(|error| CssSpecifiedRuleSerializationError::resource(error, index)),
+            .map_err(|error| CssSpecifiedRuleSerializationError::value_error(error, index)),
         CssRule::FontPaletteValues(rule) => writer
             .palette(rule)
-            .map_err(|error| CssSpecifiedRuleSerializationError::resource(error, index)),
+            .map_err(|error| CssSpecifiedRuleSerializationError::value_error(error, index)),
         CssRule::SupportsCondition(rule) => writer
             .named_supports_rule(rule)
-            .map_err(|error| CssSpecifiedRuleSerializationError::resource(error, index)),
+            .map_err(|error| CssSpecifiedRuleSerializationError::value_error(error, index)),
         _ => Err(CssSpecifiedRuleSerializationError::unsupported_rule(index)),
     }
 }
@@ -341,5 +359,65 @@ mod suppression_tests {
         );
         writer.append("x").unwrap();
         assert_eq!(writer.css, "x");
+    }
+}
+
+#[cfg(test)]
+mod value_error_tests {
+    use super::*;
+    use std::error::Error;
+
+    #[test]
+    fn value_failure_mapping_preserves_category_source_and_rule_index() {
+        use CssSpecifiedValueSerializationErrorKind as Kind;
+        for (kind, resource) in [
+            (Kind::InputNodeLimit, true),
+            (Kind::ProjectionNodeLimit, true),
+            (Kind::ByteLimit, true),
+            (Kind::CapacityOverflow, true),
+            (Kind::UnserializableBoundary, false),
+            (Kind::UnrepresentableValue, false),
+        ] {
+            for index in [None, Some(7)] {
+                let source = CssSpecifiedValueSerializationError::new(kind);
+                let error = CssSpecifiedRuleSerializationError::value_error(source.clone(), index);
+                assert_eq!(
+                    error.kind(),
+                    if resource {
+                        CssSpecifiedRuleSerializationErrorKind::Resource(kind)
+                    } else {
+                        CssSpecifiedRuleSerializationErrorKind::Value(kind)
+                    }
+                );
+                assert_eq!(error.rule_index(), index);
+                assert_eq!(
+                    error
+                        .source()
+                        .unwrap()
+                        .downcast_ref::<CssSpecifiedValueSerializationError>(),
+                    Some(&source)
+                );
+                assert_eq!(
+                    error.to_string(),
+                    if resource {
+                        "canonical CSS rule serialization exceeded a resource limit"
+                    } else {
+                        "canonical CSS rule serialization cannot represent a value"
+                    }
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn unrepresentable_precision_failure_explains_a_value_limit_without_a_resource_claim() {
+        let error = CssSpecifiedValueSerializationError::new(
+            CssSpecifiedValueSerializationErrorKind::UnrepresentableValue,
+        );
+        assert_eq!(
+            error.to_string(),
+            "specified value cannot be represented within the selected serialization precision"
+        );
+        assert!(error.source().is_none());
     }
 }
