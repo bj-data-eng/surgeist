@@ -15,11 +15,20 @@ Use PISCT's focused skills for engineering and review.
 ## Work And Ownership
 
 An issue states the outcome, acceptance criteria, ownership boundaries, and
-relevant sources. Organize module work as module → crate contributions → bounded
-properties or tasks. Own shared capabilities once and link dependent work to
-that owner. Native parent-child relationships describe scope; blocking
-dependencies describe execution order. Keep both acyclic. Completing a leaf
-does not certify the enclosing contribution or module.
+relevant sources. Use module → crate contributions → bounded properties or tasks
+where that grouping fits the work. Own shared capabilities once and link
+dependent work to that owner. Native parent-child relationships describe scope;
+blocking dependencies describe execution order. Keep both acyclic. Completing a
+leaf does not certify the enclosing contribution or module.
+
+Issue decomposition and relationships describe the current working organization.
+Within existing authority, the coordinator may combine, split, move, or reorder
+work and remove obsolete blocking edges when implementation reveals a simpler
+route. Preserve underlying requirements, coverage, ownership, genuine
+prerequisites, and explicit human constraints; reconcile active assignments and
+update affected issues and relationships. Reuse Review results only for the
+requirements and source they actually cover; regrouping alone requires no new
+review, while uncovered work still needs its applicable evidence.
 
 Read the relevant issue, its parent, and actual prerequisites before expanding
 the search. Include closed issues and archived Project items when reconstructing
