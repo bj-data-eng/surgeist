@@ -35,25 +35,42 @@ impl CssUrl {
 
     /// Appends to an enclosing specified-value writer without resetting its budget.
     pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        // An enclosing shorthand can prove this complete URL redundant. Hidden
+        // authored input still incurs every provider visit, but needs no escaped
+        // output scratch bounded by the already consumed final byte budget.
+        let suppressed = writer.context.output_suppressed();
         charge_nodes(writer, 1)?;
-        writer.append(match self.function() {
-            CssUrlFunction::Url => "url(",
-            CssUrlFunction::Src => "src(",
-        })?;
+        if !suppressed {
+            writer.append(match self.function() {
+                CssUrlFunction::Url => "url(",
+                CssUrlFunction::Src => "src(",
+            })?;
+        }
 
         charge_nodes(writer, 1)?;
-        writer.append_string(self.as_str())?;
+        if !suppressed {
+            writer.append_string(self.as_str())?;
+        }
 
         for modifier in self.modifiers() {
-            writer.append(" ")?;
+            if !suppressed {
+                writer.append(" ")?;
+            }
             charge_nodes(writer, 1)?;
             match modifier {
-                CssUrlModifier::Ident(ident) => writer.append_identifier(ident.as_str())?,
+                CssUrlModifier::Ident(ident) => {
+                    if !suppressed {
+                        writer.append_identifier(ident.as_str())?;
+                    }
+                }
                 CssUrlModifier::Function(function) => {
-                    writer.append_identifier(function.name())?;
-                    writer.append("(")?;
                     let components = function.argument_components();
                     charge_nodes(writer, components.component_count())?;
+                    if suppressed {
+                        continue;
+                    }
+                    writer.append_identifier(function.name())?;
+                    writer.append("(")?;
                     // The opening parenthesis separates the first component from
                     // the function name. A successful builder finish guarantees
                     // that appending the closing parenthesis cannot consume an
@@ -68,7 +85,10 @@ impl CssUrl {
                 }
             }
         }
-        writer.append(")")
+        if !suppressed {
+            writer.append(")")?;
+        }
+        Ok(())
     }
 }
 

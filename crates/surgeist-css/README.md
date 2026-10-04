@@ -23,6 +23,12 @@ keywords. Checked models and bounded specified serialization use the shared
 identifier, string and integer owners. Contextual voice selection and acoustic
 realization belong downstream; see the [voice reference](docs/reference.md#authored-speech-voices).
 
+CSS Speech `cue-before` and `cue-after` retain `none` or a shared authored URL
+with an optional exact signed ordinary dB offset. `cue` retains one or two ordered
+cues. Checked construction, expansion and bounded specified serialization preserve
+authored omissions and token origins. Resource loading and contextual volume
+resolution belong downstream; see the [cue reference](docs/reference.md#authored-speech-cues).
+
 Checked `CssBackgroundLayer` and `CssBackground` construction retains authored
 omissions and enforces size/position and final-color constraints. Intrinsic
 `background` expansion supplies all eight longhands with per-layer schema

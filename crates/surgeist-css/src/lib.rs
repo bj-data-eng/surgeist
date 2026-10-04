@@ -1353,9 +1353,10 @@ mod sizing;
 mod sizing_controls;
 mod speech;
 pub use speech::{
-    CssGenericVoice, CssSpeak, CssSpeakAs, CssSpeakAsPunctuation, CssSpeechBreak,
-    CssSpeechBreakPair, CssSpeechBreakStrength, CssVoiceAge, CssVoiceFamily, CssVoiceFamilyEntry,
-    CssVoiceFamilyList, CssVoiceFamilyName, CssVoiceFamilyNameRef, CssVoiceGender, CssVoiceStress,
+    CssAudioCue, CssCue, CssCuePair, CssDecibelLiteral, CssGenericVoice, CssSpeak, CssSpeakAs,
+    CssSpeakAsPunctuation, CssSpeechBreak, CssSpeechBreakPair, CssSpeechBreakStrength, CssVoiceAge,
+    CssVoiceFamily, CssVoiceFamilyEntry, CssVoiceFamilyList, CssVoiceFamilyName,
+    CssVoiceFamilyNameRef, CssVoiceGender, CssVoiceStress,
 };
 mod text_alignment;
 mod text_spacing;

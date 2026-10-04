@@ -1,4 +1,4 @@
-//! Intrinsic authored values from CSS Speech 1 §§7–9 and §11.
+//! Intrinsic authored values from CSS Speech 1 §§7–11.
 //!
 //! These values retain author choices. Voice selection, pronunciation and the
 //! contextual computed/used behavior of `speak: auto` belong downstream.
@@ -349,6 +349,329 @@ impl CssSpeechBreakPair {
             context.replace_output_suppression(previous);
         }
         Ok(output)
+    }
+}
+
+/// An exact signed ordinary Speech 1 decibel dimension, retaining its origin.
+///
+/// The decoded unit must be `dB` (ASCII case insensitive). Coefficients remain
+/// finite authored decimals even when outside binary floating-point range.
+/// This terminal does not admit or evaluate decibel calculations.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssDecibelLiteral {
+    component: Box<crate::CssComponentValue>,
+}
+
+impl CssDecibelLiteral {
+    /// Constructs an exact coefficient with the Speech 1 `dB` unit.
+    pub fn try_new(number: &str) -> Result<Self, crate::CssComponentValueError> {
+        Self::try_from_component(crate::CssComponentValue::try_dimension(number, "dB")?)
+    }
+
+    /// Requires one ordinary dimension token with the decoded `dB` unit.
+    pub fn try_from_component(
+        component: crate::CssComponentValue,
+    ) -> Result<Self, crate::CssComponentValueError> {
+        if !matches!(component.view(),
+            crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Dimension { unit, .. })
+                if unit.eq_ignore_ascii_case("dB"))
+        {
+            return Err(crate::CssComponentValueError::new(
+                crate::CssComponentValueErrorKind::InvalidToken,
+                component.origin().clone(),
+            ));
+        }
+        Ok(Self {
+            component: Box::new(component),
+        })
+    }
+
+    /// Borrows the original coefficient spelling without conversion.
+    #[must_use]
+    pub fn numeric(&self) -> crate::CssNumericTokenRef<'_> {
+        let crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Dimension {
+            number, ..
+        }) = self.component.view()
+        else {
+            unreachable!("checked decibel dimension")
+        };
+        number
+    }
+
+    #[must_use]
+    pub const fn component(&self) -> &crate::CssComponentValue {
+        &self.component
+    }
+
+    #[must_use]
+    pub const fn origin(&self) -> &crate::CssValueOrigin {
+        self.component.origin()
+    }
+
+    fn is_zero(&self) -> bool {
+        crate::exact_decimal::LexicalDecimal::new(self.numeric().representation()).len == 0
+    }
+
+    fn equivalent(&self, other: &Self) -> bool {
+        crate::exact_decimal::LexicalDecimal::new(self.numeric().representation()).value_eq(
+            &crate::exact_decimal::LexicalDecimal::new(other.numeric().representation()),
+        )
+    }
+
+    /// Formats the retained coefficient with shared specified precision and
+    /// the canonical lowercase `db` unit; authored spelling remains unchanged.
+    pub fn serialize_specified(&self) -> SerializationResult {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Charges one terminal under the shared input, projection and byte limits.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult {
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_specified(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    fn append_specified(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> Result<(), CssSpecifiedValueSerializationError> {
+        writer.context.charge_input(1)?;
+        writer.context.charge_projection(1)?;
+        if writer.context.output_suppressed() {
+            return Ok(());
+        }
+        let text = crate::specified_serialization::format_coefficient(
+            self.numeric().representation(),
+            0,
+            "db",
+            writer.context.remaining_bytes(),
+        )?;
+        writer.append(&text)
+    }
+}
+
+/// An authored auditory resource and its optional relative decibel offset.
+///
+/// Omission remains distinct from an explicit zero offset. Resource loading,
+/// alternative cues and the computed relationship to voice-volume are downstream.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssAudioCue {
+    url: crate::CssUrl,
+    decibel: Option<CssDecibelLiteral>,
+}
+
+impl CssAudioCue {
+    /// Couples checked providers, rejecting recovered URL modifier arguments.
+    /// Original root closure belongs to declaration components, as for all URLs.
+    pub fn try_new(
+        url: crate::CssUrl,
+        decibel: Option<CssDecibelLiteral>,
+    ) -> Result<Self, crate::CssComponentValueError> {
+        let value = Self { url, decibel };
+        value.ensure_closed()?;
+        Ok(value)
+    }
+
+    pub(crate) const fn from_parser(
+        url: crate::CssUrl,
+        decibel: Option<CssDecibelLiteral>,
+    ) -> Self {
+        Self { url, decibel }
+    }
+
+    #[must_use]
+    pub const fn url(&self) -> &crate::CssUrl {
+        &self.url
+    }
+
+    /// Borrows the explicitly authored offset; omission does not insert 0dB.
+    #[must_use]
+    pub const fn decibel(&self) -> Option<&CssDecibelLiteral> {
+        self.decibel.as_ref()
+    }
+
+    fn ensure_closed(&self) -> Result<(), crate::CssComponentValueError> {
+        for modifier in self.url.modifiers() {
+            if let crate::CssUrlModifier::Function(function) = modifier
+                && let Some(origin) = function.argument_components().first_implicit_origin()
+            {
+                return Err(crate::CssComponentValueError::new(
+                    crate::CssComponentValueErrorKind::InvalidFunction,
+                    origin.clone(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn equivalent(&self, other: &Self) -> bool {
+        self.url == other.url
+            && match (&self.decibel, &other.decibel) {
+                (None, None) => true,
+                (Some(left), Some(right)) => left.equivalent(right),
+                (Some(value), None) | (None, Some(value)) => value.is_zero(),
+            }
+    }
+
+    /// Serializes the shared URL followed by a nonzero optional offset.
+    /// CSSOM omission of the implied 0dB leaves the authored field unchanged.
+    pub fn serialize_specified(&self) -> SerializationResult {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Shares the cumulative budget with the URL and the optional offset.
+    /// Explicit zero still incurs its terminal visit even when omitted.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult {
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_specified(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    fn append_specified(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> Result<(), CssSpecifiedValueSerializationError> {
+        writer.context.charge_input(1)?;
+        writer.context.charge_projection(1)?;
+        self.url.append_specified(writer)?;
+        if let Some(decibel) = &self.decibel {
+            if decibel.is_zero() {
+                writer.without_output(|writer| decibel.append_specified(writer))?;
+            } else {
+                writer.append(" ")?;
+                decibel.append_specified(writer)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+/// One authored cue: no auditory icon, or a shared URL plus optional dB offset.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssCue {
+    None,
+    Audio(CssAudioCue),
+}
+
+impl CssCue {
+    fn ensure_closed(&self) -> Result<(), crate::CssComponentValueError> {
+        match self {
+            Self::None => Ok(()),
+            Self::Audio(value) => value.ensure_closed(),
+        }
+    }
+
+    fn equivalent(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::None, Self::None) => true,
+            (Self::Audio(left), Self::Audio(right)) => left.equivalent(right),
+            _ => false,
+        }
+    }
+
+    /// Serializes the specified cue without loading or resolving its resource.
+    pub fn serialize_specified(&self) -> SerializationResult {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Uses the shared cumulative input, projection and emitted-byte limits.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult {
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_specified(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    fn append_specified(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> Result<(), CssSpecifiedValueSerializationError> {
+        match self {
+            Self::None => {
+                writer.context.charge_input(1)?;
+                writer.context.charge_projection(1)?;
+                writer.append("none")
+            }
+            Self::Audio(value) => value.append_specified(writer),
+        }
+    }
+}
+
+/// Ordered cue shorthand components, retaining whether after was authored.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssCuePair {
+    before: CssCue,
+    after: Option<CssCue>,
+}
+
+impl CssCuePair {
+    /// Composes cues, rejecting retained recovered URL modifier arguments.
+    pub fn try_new(
+        before: CssCue,
+        after: Option<CssCue>,
+    ) -> Result<Self, crate::CssComponentValueError> {
+        before.ensure_closed()?;
+        if let Some(after) = &after {
+            after.ensure_closed()?;
+        }
+        Ok(Self { before, after })
+    }
+
+    pub(crate) const fn from_parser(before: CssCue, after: Option<CssCue>) -> Self {
+        Self { before, after }
+    }
+
+    #[must_use]
+    pub const fn before(&self) -> &CssCue {
+        &self.before
+    }
+
+    #[must_use]
+    pub const fn authored_after(&self) -> Option<&CssCue> {
+        self.after.as_ref()
+    }
+
+    /// Shares before when the authored second component was omitted.
+    #[must_use]
+    pub const fn after(&self) -> &CssCue {
+        match &self.after {
+            Some(value) => value,
+            None => &self.before,
+        }
+    }
+
+    /// Serializes in grammar order, omitting an equivalent optional second cue.
+    pub fn serialize_specified(&self) -> SerializationResult {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Explicitly redundant children still charge cumulative traversal work.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult {
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        writer.context.charge_input(1)?;
+        writer.context.charge_projection(1)?;
+        self.before.append_specified(&mut writer)?;
+        if let Some(after) = &self.after {
+            if self.before.equivalent(after) {
+                writer.without_output(|writer| after.append_specified(writer))?;
+            } else {
+                writer.append(" ")?;
+                after.append_specified(&mut writer)?;
+            }
+        }
+        Ok(writer.css)
     }
 }
 

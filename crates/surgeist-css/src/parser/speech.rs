@@ -114,6 +114,59 @@ pub(super) fn parse_speech_break_pair<'i, 't>(
     Ok(CssSpeechBreakPair::from_parser(before, after))
 }
 
+pub(super) fn parse_cue<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Result<crate::CssCue, ParseError<'i, Error>> {
+    input.skip_whitespace();
+    if input
+        .try_parse(|input| input.expect_ident_matching("none"))
+        .is_ok()
+    {
+        return Ok(crate::CssCue::None);
+    }
+    let url = super::url::parse_url(input, numeric)?;
+    input.skip_whitespace();
+    let state = input.state();
+    let is_decibel = matches!(input.next(), Ok(Token::Dimension { unit, .. }) if unit.eq_ignore_ascii_case("dB"));
+    input.reset(&state);
+    let decibel = if is_decibel {
+        let location = input.current_source_location();
+        let offset = input.position().byte_index();
+        // Collect through the original component owner to retain exact spelling
+        // and provenance rather than cssparser's rounded numeric coefficient.
+        let component = numeric.collect(input).map_err(|error| {
+            let location = numeric.error_location(&error, location, offset);
+            error.component_error().map_or_else(
+                || crate::error::unsupported_value_at(location, None, "invalid authored decibel"),
+                |detail| crate::error::invalid_component_value(location, detail.clone()),
+            )
+        })?;
+        Some(
+            crate::CssDecibelLiteral::try_from_component(component)
+                .map_err(|error| crate::error::invalid_component_value(location, error))?,
+        )
+    } else {
+        None
+    };
+    Ok(crate::CssCue::Audio(crate::CssAudioCue::from_parser(
+        url, decibel,
+    )))
+}
+
+pub(super) fn parse_cue_pair<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Result<crate::CssCuePair, ParseError<'i, Error>> {
+    let before = parse_cue(input, numeric)?;
+    let after = if input.is_exhausted() {
+        None
+    } else {
+        Some(parse_cue(input, numeric)?)
+    };
+    Ok(crate::CssCuePair::from_parser(before, after))
+}
+
 pub(super) fn parse_voice_stress<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> Result<crate::CssVoiceStress, ParseError<'i, Error>> {

@@ -882,6 +882,12 @@ pub surgeist_css::CssCounterSymbol::Url(surgeist_css::CssUrl)
 #[non_exhaustive] pub enum surgeist_css::CssCounterSymbolValue
 pub surgeist_css::CssCounterSymbolValue::Image(surgeist_css::CssImage)
 pub surgeist_css::CssCounterSymbolValue::String(surgeist_css::CssContentString)
+#[non_exhaustive] pub enum surgeist_css::CssCue
+pub surgeist_css::CssCue::Audio(surgeist_css::CssAudioCue)
+pub surgeist_css::CssCue::None
+impl surgeist_css::CssCue
+pub fn surgeist_css::CssCue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssCue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssCursor
 pub surgeist_css::CssCursor::Keyword(surgeist_css::CssCursorKeyword)
 pub surgeist_css::CssCursor::Urls(surgeist_css::CssCursorUrls)
@@ -1945,6 +1951,9 @@ pub surgeist_css::CssKnownProperty::ContentVisibility
 pub surgeist_css::CssKnownProperty::CounterIncrement
 pub surgeist_css::CssKnownProperty::CounterReset
 pub surgeist_css::CssKnownProperty::CounterSet
+pub surgeist_css::CssKnownProperty::Cue
+pub surgeist_css::CssKnownProperty::CueAfter
+pub surgeist_css::CssKnownProperty::CueBefore
 pub surgeist_css::CssKnownProperty::Cursor
 pub surgeist_css::CssKnownProperty::Direction
 pub surgeist_css::CssKnownProperty::Display
@@ -2298,6 +2307,9 @@ pub surgeist_css::CssKnownPropertyValueRef::ContentVisibility(&'a surgeist_css::
 pub surgeist_css::CssKnownPropertyValueRef::CounterIncrement(&'a surgeist_css::CssCounterIncrementPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::CounterReset(&'a surgeist_css::CssCounterResetPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::CounterSet(&'a surgeist_css::CssCounterSetPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::Cue(&'a surgeist_css::CssCuePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::CueAfter(&'a surgeist_css::CssCueAfterPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::CueBefore(&'a surgeist_css::CssCueBeforePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Cursor(&'a surgeist_css::CssCursorPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Direction(&'a surgeist_css::CssDirectionPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Display(&'a surgeist_css::CssDisplayPropertyValue)
@@ -2703,6 +2715,8 @@ pub surgeist_css::CssLonghandValueRef::ContentVisibility(&'a surgeist_css::CssCo
 pub surgeist_css::CssLonghandValueRef::CounterIncrement(&'a surgeist_css::CssCounterChangesValue)
 pub surgeist_css::CssLonghandValueRef::CounterReset(&'a surgeist_css::CssCounterChangesValue)
 pub surgeist_css::CssLonghandValueRef::CounterSet(&'a surgeist_css::CssCounterChangesValue)
+pub surgeist_css::CssLonghandValueRef::CueAfter(&'a surgeist_css::CssCue)
+pub surgeist_css::CssLonghandValueRef::CueBefore(&'a surgeist_css::CssCue)
 pub surgeist_css::CssLonghandValueRef::Direction(&'a surgeist_css::CssDirection)
 pub surgeist_css::CssLonghandValueRef::Display(&'a surgeist_css::CssDisplayValue)
 pub surgeist_css::CssLonghandValueRef::EmptyCells(&'a surgeist_css::CssEmptyCells)
@@ -4488,6 +4502,13 @@ pub const fn surgeist_css::CssAttributeSelector::matcher(&self) -> &surgeist_css
 pub const fn surgeist_css::CssAttributeSelector::name(&self) -> &surgeist_css::CssAttributeName
 pub const fn surgeist_css::CssAttributeSelector::namespace(&self) -> &surgeist_css::CssNamespaceConstraint
 pub const fn surgeist_css::CssAttributeSelector::qualified_name(&self) -> &surgeist_css::CssQualifiedAttributeName
+pub struct surgeist_css::CssAudioCue
+impl surgeist_css::CssAudioCue
+pub const fn surgeist_css::CssAudioCue::decibel(&self) -> core::option::Option<&surgeist_css::CssDecibelLiteral>
+pub fn surgeist_css::CssAudioCue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssAudioCue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssAudioCue::try_new(url: surgeist_css::CssUrl, decibel: core::option::Option<surgeist_css::CssDecibelLiteral>) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+pub const fn surgeist_css::CssAudioCue::url(&self) -> &surgeist_css::CssUrl
 pub struct surgeist_css::CssAuthoredDeclarationValue
 impl surgeist_css::CssAuthoredDeclarationValue
 pub fn surgeist_css::CssAuthoredDeclarationValue::as_css(&self) -> &str
@@ -5856,6 +5877,26 @@ pub fn surgeist_css::CssCubicBezierX::try_new(value: surgeist_css::CssSpecifiedN
 pub const fn surgeist_css::CssCubicBezierX::value(&self) -> &surgeist_css::CssSpecifiedNumber
 impl core::cmp::PartialEq for surgeist_css::CssCubicBezierX
 pub fn surgeist_css::CssCubicBezierX::eq(&self, other: &Self) -> bool
+pub struct surgeist_css::CssCueAfterPropertyValue
+impl surgeist_css::CssCueAfterPropertyValue
+pub fn surgeist_css::CssCueAfterPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssCueAfterPropertyValue::value(&self) -> &surgeist_css::CssCue
+pub struct surgeist_css::CssCueBeforePropertyValue
+impl surgeist_css::CssCueBeforePropertyValue
+pub fn surgeist_css::CssCueBeforePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssCueBeforePropertyValue::value(&self) -> &surgeist_css::CssCue
+pub struct surgeist_css::CssCuePair
+impl surgeist_css::CssCuePair
+pub const fn surgeist_css::CssCuePair::after(&self) -> &surgeist_css::CssCue
+pub const fn surgeist_css::CssCuePair::authored_after(&self) -> core::option::Option<&surgeist_css::CssCue>
+pub const fn surgeist_css::CssCuePair::before(&self) -> &surgeist_css::CssCue
+pub fn surgeist_css::CssCuePair::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssCuePair::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssCuePair::try_new(before: surgeist_css::CssCue, after: core::option::Option<surgeist_css::CssCue>) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+pub struct surgeist_css::CssCuePropertyValue
+impl surgeist_css::CssCuePropertyValue
+pub fn surgeist_css::CssCuePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssCuePropertyValue::value(&self) -> &surgeist_css::CssCuePair
 pub struct surgeist_css::CssCursorPropertyValue
 impl surgeist_css::CssCursorPropertyValue
 pub fn surgeist_css::CssCursorPropertyValue::as_css(&self) -> &str
@@ -5920,6 +5961,15 @@ pub struct surgeist_css::CssCustomPropertyValue
 impl surgeist_css::CssCustomPropertyValue
 pub fn surgeist_css::CssCustomPropertyValue::as_css(&self) -> &str
 pub fn surgeist_css::CssCustomPropertyValue::is_empty(&self) -> bool
+pub struct surgeist_css::CssDecibelLiteral
+impl surgeist_css::CssDecibelLiteral
+pub const fn surgeist_css::CssDecibelLiteral::component(&self) -> &surgeist_css::CssComponentValue
+pub fn surgeist_css::CssDecibelLiteral::numeric(&self) -> surgeist_css::CssNumericTokenRef<'_>
+pub const fn surgeist_css::CssDecibelLiteral::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssDecibelLiteral::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssDecibelLiteral::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssDecibelLiteral::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssDecibelLiteral::try_new(number: &str) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
 pub struct surgeist_css::CssDeclaration
 impl surgeist_css::CssDeclaration
 pub fn surgeist_css::CssDeclaration::body(&self) -> &surgeist_css::CssDeclarationBody

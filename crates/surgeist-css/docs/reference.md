@@ -5224,3 +5224,63 @@ and property support metadata use the common property lifecycle.
 Behavioral evidence is in
 [`speech_voice_family_stress_lifecycle.rs`](../tests/speech_voice_family_stress_lifecycle.rs)
 and [`speech_voice_family_stress_models.rs`](../tests/speech_voice_family_stress_models.rs).
+
+## Authored Speech cues
+
+The selected [Speech 1 §10.1](https://www.w3.org/TR/2023/CRD-css-speech-1-20230214/#cue-props-cue-before-after)
+defines `cue-before` and `cue-after` as `none` or an auditory resource followed
+by an optional signed ordinary `<decibel>`. Both longhands apply to all elements,
+are noninherited, have `none` initials and no percentage values, and retain
+specified values. The resource uses the existing `CssUrl` owner, including
+`url()`/`src()` identity, decoded targets and ordered symbolic modifiers; no
+resource is fetched or interpreted.
+
+`CssDecibelLiteral` is the reusable exact ordinary dB terminal. `try_new(number)`
+and `try_from_component` require one dimension with the ASCII case insensitive
+decoded `dB` unit. Its `numeric`, `component` and `origin` accessors retain the
+original coefficient spelling and provenance, including signed zero and finite
+decimal values beyond binary64 range. Negative values are valid. Calculations
+are not admitted as decibel values: this leaf does not invent a dB math algebra.
+Specified serialization formats the retained coefficient with the shared specified
+precision and lowercase `db`, following Values 4's unit serialization rule.
+Authored coefficient spelling and unit case stay intact. A tiny nonzero offset
+may serialize as `0db` under that precision, but it is still emitted rather than
+omitted as an exactly authored zero.
+
+`CssCue` separates `None` from `Audio(CssAudioCue)`. The audio model couples a
+shared URL with an optional `CssDecibelLiteral`; its `url` and `decibel` accessors
+preserve the authored choice. An omitted offset stays absent, even though Speech
+defines its implied computed value as 0dB. `CssAudioCue::try_new` rejects implicit
+closure retained in URL modifier arguments using the shared component origin
+and error representation. Original URL root closure remains in declaration
+components; checked property construction rejects it, while browser recovery
+can retain the cue and its shared EOF diagnostics.
+
+[Speech 1 §10.3](https://www.w3.org/TR/2023/CRD-css-speech-1-20230214/#cue-props-cue)
+defines the ordered one/two-value `cue` shorthand. `CssCuePair` retains `before`
+and optional `authored_after`; `after` borrows the first cue when omitted.
+Its checked constructor rejects retained modifier-argument closure in either
+child. Intrinsic expansion supplies `cue-before` and `cue-after` in that order
+and retains source occurrence, importance and replacement component origins.
+CSS-wide keywords and pending whole-value substitution use the common lifecycle.
+
+Canonical specified serialization uses shared URL/string/modifier serialization,
+then the shared coefficient formatter. Under CSSOM optional-component omission, an explicit
+zero offset is omitted from audio output, and an equivalent optional after cue
+is omitted from shorthand output. Neither omission removes authored fields.
+Cue equivalence requires equal shared URL identity and symbolic modifiers and
+exact decimal offset equality, with absent offsets equivalent to explicit zero.
+No floating-point rounding participates in omission.
+
+All cue serializers share the existing cumulative input-node, projection-node
+and emitted-byte limits. A pair charges one aggregate; each `none` charges one
+leaf, each audio cue charges one aggregate plus its URL provider visits and any
+authored dB terminal. An omitted effective after incurs no duplicate traversal;
+an explicitly redundant after or zero offset still incurs authored traversal
+work. Failure returns no partial output and leaves models unchanged.
+
+Property metadata identifies `S-SPEECH1` and each `#propdef-*` production as
+complete authored grammar support. Loading, fallback sounds, voice-volume
+resolution and audio rendering remain downstream. Behavioral evidence is in
+[`speech_cue_lifecycle.rs`](../tests/speech_cue_lifecycle.rs) and
+[`speech_cue_models.rs`](../tests/speech_cue_models.rs).

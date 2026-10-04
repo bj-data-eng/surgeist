@@ -2299,6 +2299,9 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::RestBefore
         | CssKnownProperty::RestAfter
         | CssKnownProperty::Rest
+        | CssKnownProperty::CueBefore
+        | CssKnownProperty::CueAfter
+        | CssKnownProperty::Cue
         | CssKnownProperty::VoiceFamily
         | CssKnownProperty::VoiceStress => S_SPEECH1,
         CssKnownProperty::Quotes | CssKnownProperty::Content => X_CONTENT3,
@@ -2748,7 +2751,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 646] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 649] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -4526,6 +4529,17 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 646] = [
         "official.property.rest-after"
     ),
     complete_property_feature!(CssKnownProperty::Rest, "rest", "official.property.rest"),
+    complete_property_feature!(
+        CssKnownProperty::CueBefore,
+        "cue-before",
+        "official.property.cue-before"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::CueAfter,
+        "cue-after",
+        "official.property.cue-after"
+    ),
+    complete_property_feature!(CssKnownProperty::Cue, "cue", "official.property.cue"),
     complete_property_feature!(
         CssKnownProperty::Content,
         "content",
