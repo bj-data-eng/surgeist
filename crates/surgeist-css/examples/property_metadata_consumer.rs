@@ -2,7 +2,10 @@
 //! Independent contract cases for the selected public metadata and grammar slice.
 //! CSS Box 3, Backgrounds 3, Cascade 5, Color 4, Fonts 4, Writing Modes 4,
 //! Variables 1, Conditional Rules 5, Display 3, Containment 2, Sizing 3/4,
-//! and the pinned Grid 3 define values and shorthand semantics.
+//! the pinned Grid 3 and Speech 1 define values and shorthand semantics.
+//! Speech 1 CRD 2023-02-14 §§7–12 and Property Index supply nineteen names,
+//! intrinsic initials, inheritance and before/after shorthand membership:
+//! https://www.w3.org/TR/2023/CRD-css-speech-1-20230214/#property-index
 //! Grid 2 (2025-03-26) §7.6 defines implicit track sizes as noninherited,
 //! initially one `auto` breadth: https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#auto-tracks
 //! Grammar-handle identity, explicit unavailable metadata, and source occurrence
@@ -11,6 +14,22 @@ use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
 const LONGHANDS: &[P] = &[
+    P::VoiceDuration,
+    P::VoiceBalance,
+    P::VoiceVolume,
+    P::VoicePitch,
+    P::VoiceRange,
+    P::VoiceRate,
+    P::VoiceFamily,
+    P::VoiceStress,
+    P::Speak,
+    P::SpeakAs,
+    P::PauseBefore,
+    P::PauseAfter,
+    P::RestBefore,
+    P::RestAfter,
+    P::CueBefore,
+    P::CueAfter,
     P::ContainerName,
     P::ContainerType,
     P::Position,
@@ -223,6 +242,9 @@ const LONGHANDS: &[P] = &[
     P::TextCombineUpright,
 ];
 const SHORTHANDS: &[(P, &[P], &[P])] = &[
+    (P::Pause, &[P::PauseBefore, P::PauseAfter], &[]),
+    (P::Rest, &[P::RestBefore, P::RestAfter], &[]),
+    (P::Cue, &[P::CueBefore, P::CueAfter], &[]),
     (
         P::BorderImage,
         &[
@@ -565,6 +587,40 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
     };
     assert_eq!(value.property().known_property(), property);
     match value.view() {
+        CssLonghandValueRef::VoiceDuration(value) => {
+            assert!(matches!(value, CssVoiceDuration::Auto))
+        }
+        CssLonghandValueRef::VoiceBalance(value) => {
+            assert_eq!(value.keyword(), Some(CssVoiceBalanceKeyword::Center));
+            assert!(value.number().is_none());
+        }
+        CssLonghandValueRef::VoiceVolume(value) => assert!(matches!(
+            value,
+            CssVoiceVolume::Level {
+                level: CssVoiceVolumeLevel::Medium,
+                decibel: None
+            }
+        )),
+        CssLonghandValueRef::VoicePitch(value) | CssLonghandValueRef::VoiceRange(value) => {
+            assert_eq!(
+                value,
+                &CssVoicePitchRange::level_only(CssVoiceLevel::Medium)
+            )
+        }
+        CssLonghandValueRef::VoiceRate(value) => {
+            assert_eq!(value.keyword(), Some(CssVoiceRateKeyword::Normal));
+            assert!(value.percentage().is_none());
+        }
+        CssLonghandValueRef::VoiceStress(value) => assert_eq!(*value, CssVoiceStress::Normal),
+        CssLonghandValueRef::Speak(value) => assert_eq!(*value, CssSpeak::Auto),
+        CssLonghandValueRef::SpeakAs(value) => assert_eq!(value, &CssSpeakAs::normal()),
+        CssLonghandValueRef::PauseBefore(value)
+        | CssLonghandValueRef::PauseAfter(value)
+        | CssLonghandValueRef::RestBefore(value)
+        | CssLonghandValueRef::RestAfter(value) => assert_eq!(*value, CssSpeechBreak::None),
+        CssLonghandValueRef::CueBefore(value) | CssLonghandValueRef::CueAfter(value) => {
+            assert_eq!(*value, CssCue::None)
+        }
         CssLonghandValueRef::ContainerName(v) => assert_eq!(*v, CssContainerNames::None),
         CssLonghandValueRef::ContainerType(v) => assert_eq!(*v, CssContainerType::Normal),
         CssLonghandValueRef::Position(v) => assert_eq!(*v, CssLayoutPosition::Static),
@@ -962,7 +1018,7 @@ fn metadata_and_initials() {
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
         .chain([P::All])
         .collect();
-    assert_eq!(expected.len(), 262);
+    assert_eq!(expected.len(), 281);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {
@@ -1020,6 +1076,15 @@ fn metadata_and_initials() {
             matches!(
                 property,
                 P::Color
+                    | P::VoiceBalance
+                    | P::VoiceVolume
+                    | P::VoicePitch
+                    | P::VoiceRange
+                    | P::VoiceRate
+                    | P::VoiceFamily
+                    | P::VoiceStress
+                    | P::Speak
+                    | P::SpeakAs
                     | P::BorderCollapse
                     | P::BorderSpacing
                     | P::Quotes
@@ -1063,13 +1128,20 @@ fn metadata_and_initials() {
             )
         );
         let initial = metadata.initial_value();
-        if property == P::FontFamily {
-            assert_eq!(initial.property().known_property(), P::FontFamily);
+        if matches!(property, P::FontFamily | P::VoiceFamily) {
+            assert_eq!(initial.property().known_property(), property);
             let CssInitialValueRef::UserAgent(requirement) = initial.view() else {
-                panic!("font family is UA-dependent")
+                panic!("family initial is UA-dependent")
             };
-            assert_eq!(requirement, CssUserAgentInitial::FontFamily);
-            assert_eq!(requirement.property().known_property(), P::FontFamily);
+            assert_eq!(
+                requirement,
+                if property == P::FontFamily {
+                    CssUserAgentInitial::FontFamily
+                } else {
+                    CssUserAgentInitial::VoiceFamily
+                }
+            );
+            assert_eq!(requirement.property().known_property(), property);
         } else {
             assert_ordinary_initial(property, &initial);
         }
