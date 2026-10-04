@@ -706,6 +706,64 @@ remain exact; context-independent projection uses the documented binary64 policy
 Canonical text does not resolve symbolic dependencies. Computed and used-value
 contextual range clamping remains with the consuming owner.
 
+### Authored and resolved serialization phases
+
+Specified serialization in `surgeist-css` represents authored values without
+performing contextual style resolution. Ordinary specified lengths, angles and
+frequencies reuse
+[ordinary number output](#canonical-ordinary-number-output), retaining exact
+coefficients, selected units and source provenance. Values 4 represents a
+[specified length by its quantity and unit](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#lengths).
+Ordinary specified angle and frequency output retains its selected lowercase
+unit under Surgeist's existing project policy. Frozen WebKit's
+[primitive serializer](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/CSSPrimitiveValue.cpp#L266-L348)
+and [retained numeric-unit serializer](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/values/primitives/CSSPrimitiveNumericTypes%2BSerialization.h#L49-L53)
+corroborate that choice. It does not establish a normative answer to CSSOM's
+incomplete specified/computed wording.
+
+Specified calculations reuse [calculated number output](#calculated-number-output)
+and the accepted [shared math owner](https://github.com/bj-data-eng/surgeist/issues/735).
+They simplify context-free subtrees as the selected Values 4 clauses permit,
+including compatible-unit conversion, while retaining their specified math
+structure and unresolved context. For example, ordinary `1khz` emits `1khz`,
+while `calc(1khz)` emits `calc(1000hz)`. Values 4 separately requires
+[computed and used-value canonicalization](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#compat);
+computed dimensions use their canonical `px`, `deg` or `hz` unit. Contextual
+length resolution remains with [the style owner](https://github.com/bj-data-eng/surgeist/issues/727).
+
+`CssUrl::serialize_specified()` reuses the existing URL provider and
+[common string escaping](#owned-component-values). It emits the authored decoded
+target through `url()` or `src()`, retaining function identity and ordered
+symbolic modifiers. A relative target stays relative, a local fragment stays a
+fragment, and empty targets retain `url("")` or `src("")`. Serialization neither
+resolves nor fetches the target. Values 4 defines
+[computed absolute resolution and failed-resolution fallback](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#relative-urls),
+[local fragment output](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#local-urls),
+and [empty URL output](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#url-empty).
+Those contextual operations and base provenance belong to
+[root-owned URL integration](https://github.com/bj-data-eng/surgeist/issues/726).
+Frozen WebKit likewise separates
+[specified/resolved URL emission](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/values/primitives/CSSURL.cpp#L40-L55)
+from [style URL conversion](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/style/values/primitives/StyleURL.cpp#L82-L87).
+
+Explicit owning property rules take precedence over generic CSSOM shortening.
+The deprecated [clip owner](https://www.w3.org/TR/2021/CRD-css-masking-1-20210805/#clip-property)
+uses its existing comma-separated `rect()` provider; modern `clip-path: rect()`
+has a separate whitespace grammar. [Display 3](https://www.w3.org/TR/2026/CRD-css-display-3-20260605/#legacy-display)
+keeps specified `inline flex` distinct from `inline-flex`, although computed
+exposure selects precomposed keywords. [Cascade 5](https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/#aliasing)
+excludes legacy shorthands from CSSOM declaration selection; the existing
+property schema supplies that distinction to
+[declaration composition](https://github.com/bj-data-eng/surgeist/issues/831).
+Color phase rules remain with the existing declared/computed color owners.
+
+[The CSS-owned phase disposition](https://github.com/bj-data-eng/surgeist/issues/844)
+retains CSSOM's individual dimension/URL annotations and its unenumerated
+legacy exception note as source limits. Those limits neither override the
+explicit owning clauses nor certify downstream resolution, complete scalar or
+declaration serialization, or standards consensus. This boundary introduces no
+second formatter, evaluator, property registry or URL resolver.
+
 ### Declared color literal output
 
 `CssColor::to_specified_css()` applies the generic six-place number policy to
@@ -1427,7 +1485,9 @@ without partial CSS or input mutation.
 Calculation emission uses [calculated number output](#calculated-number-output)
 for finite components after the shared simplifier. Floating-point precision,
 overflow and underflow limits stay unchanged, and the original checked graph
-remains retained. Exact calculation evaluation remains unfinished.
+remains retained. The shared projection follows the documented
+[calculated number arithmetic policy](#calculated-number-output). Contextual
+resolution remains downstream.
 
 `CssTransition::try_new` and `CssAnimation::try_new` accept the same typed
 components as their property parsers. `CssAnimationComponents` is the animation
@@ -1776,9 +1836,10 @@ Ordinary angle serialization retains the selected unit and applies
 [canonical number rounding](#canonical-ordinary-number-output) without changing
 the stored coefficient. Calculation serialization uses
 [calculated number output](#calculated-number-output) after the existing
-simplified projection. Its arithmetic precision remains unchanged, and exact
-evaluation remains unfinished. Each context retains its grammar and omission
-rules.
+simplified projection. The accepted shared projection uses the documented
+binary64 arithmetic policy; it does not require arbitrary-precision evaluation.
+Contextual resolution remains downstream. Each context retains its grammar and
+omission rules.
 
 ```rust
 use surgeist_css::{
