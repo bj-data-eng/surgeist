@@ -8420,6 +8420,8 @@ impl surgeist_css::CssResolutionLiteral
 pub const fn surgeist_css::CssResolutionLiteral::component(&self) -> &surgeist_css::CssComponentValue
 pub fn surgeist_css::CssResolutionLiteral::numeric(&self) -> surgeist_css::CssNumericTokenRef<'_>
 pub const fn surgeist_css::CssResolutionLiteral::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssResolutionLiteral::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssResolutionLiteral::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssResolutionLiteral::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 pub fn surgeist_css::CssResolutionLiteral::try_new(number: &str, unit: surgeist_css::CssResolutionUnit) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 pub const fn surgeist_css::CssResolutionLiteral::unit(&self) -> surgeist_css::CssResolutionUnit
@@ -8429,6 +8431,8 @@ pub fn surgeist_css::CssResolutionValue::calculation(&self) -> core::option::Opt
 pub fn surgeist_css::CssResolutionValue::from_literal(literal: surgeist_css::CssResolutionLiteral) -> Self
 pub fn surgeist_css::CssResolutionValue::literal(&self) -> core::option::Option<&surgeist_css::CssResolutionLiteral>
 pub fn surgeist_css::CssResolutionValue::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssResolutionValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssResolutionValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssResolutionValue::try_from_calculation(calculation: surgeist_css::CssResolutionCalculation) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 pub struct surgeist_css::CssRestAfterPropertyValue
 impl surgeist_css::CssRestAfterPropertyValue

@@ -2,8 +2,12 @@
 use crate::{
     CssComponentValue, CssComponentValueError, CssComponentValueErrorKind, CssComponentValueRef,
     CssNumericConstructionError, CssNumericConstructionErrorKind, CssNumericTokenRef,
-    CssResolutionCalculation, CssResolutionUnit, CssValueOrigin, CssValueTokenRef,
+    CssResolutionCalculation, CssResolutionUnit, CssSpecifiedValueSerializationError,
+    CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits, CssValueOrigin,
+    CssValueTokenRef, specified_serialization::SpecifiedSerializationContext,
 };
+
+type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
 
 const fn suffix(unit: CssResolutionUnit) -> &'static str {
     match unit {
@@ -21,8 +25,8 @@ fn invalid(component: &CssComponentValue) -> CssNumericConstructionError {
 
 /// An exact nonnegative ordinary resolution, retaining coefficient, unit and provenance.
 ///
-/// Media resolution has a separate signed authored domain. Canonical resolution
-/// specified emission awaits the CSS-owned exact conversion and rounding provider.
+/// Media resolution has a separate signed authored domain. Specified serialization
+/// converts this ordinary value to `dppx` without changing its authored storage.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssResolutionLiteral {
     component: Box<CssComponentValue>,
@@ -86,6 +90,78 @@ impl CssResolutionLiteral {
     pub const fn origin(&self) -> &CssValueOrigin {
         self.component.origin()
     }
+
+    /// Emits canonical `dppx` after exact unit conversion and six-place rounding.
+    ///
+    /// The CSSOM resolution rule selects dots per CSS pixel. Conversion uses
+    /// exactly 96 dots per inch and 127/4800 dots per pixel per dot per centimeter.
+    /// Shared number serialization rounds halfway values away from zero;
+    /// signed zero emits zero. The original coefficient, unit and origin survive.
+    pub fn serialize_specified(&self) -> SerializationResult<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Uses one cumulative input, projection-work and generated-byte budget.
+    ///
+    /// Bytes include the suffix and are checked against actual rounded output.
+    /// Exact conversion spends shared rational work under the projection limit.
+    /// Failure returns no partial text and does not alter the authored value.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult<String> {
+        let mut context = SpecifiedSerializationContext::new(limits);
+        let mut output = String::new();
+        self.append_specified(&mut context, &mut output)?;
+        Ok(output)
+    }
+
+    pub(crate) fn append_specified(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> SerializationResult<()> {
+        context.charge_input(1)?;
+        context.charge_projection(1)?;
+        if context.output_suppressed() {
+            return Ok(());
+        }
+        let text = if self.unit() == CssResolutionUnit::Dppx {
+            crate::specified_serialization::format_coefficient(
+                self.numeric().representation(),
+                0,
+                "dppx",
+                context.remaining_bytes(),
+            )?
+        } else {
+            let number_bytes = context.remaining_bytes().checked_sub(4).ok_or_else(|| {
+                CssSpecifiedValueSerializationError::new(
+                    CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                )
+            })?;
+            let factor = crate::exact_decimal::ExactFactor {
+                numerator: if self.unit() == CssResolutionUnit::Dpi {
+                    1
+                } else {
+                    127
+                },
+                denominator: if self.unit() == CssResolutionUnit::Dpi {
+                    96
+                } else {
+                    4800
+                },
+            };
+            let number = crate::exact_decimal::ExactRational::format_generic_number(
+                self.numeric().representation(),
+                factor,
+                number_bytes,
+                context,
+            )?;
+            context.append(output, &number)?;
+            return context.append(output, "dppx");
+        };
+        context.append(output, &text)
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -146,6 +222,41 @@ impl CssResolutionValue {
             ResolutionValue::Calculation(value) => value.origin(),
         }
     }
+
+    /// Emits an ordinary resolution in `dppx` or projects retained numeric math.
+    ///
+    /// Calculations use the existing shared finite/structural simplifier. Their
+    /// original components and type remain unchanged; this does not resolve a
+    /// media query or apply the ordinary literal's range to a calculated result.
+    pub fn serialize_specified(&self) -> SerializationResult<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Shares cumulative visits, numeric projection work and UTF-8 output bytes.
+    /// Failure is atomic; no raw-component fallback or contextual evaluation occurs.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult<String> {
+        let mut context = SpecifiedSerializationContext::new(limits);
+        let mut output = String::new();
+        self.append_specified(&mut context, &mut output)?;
+        Ok(output)
+    }
+
+    pub(crate) fn append_specified(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> SerializationResult<()> {
+        match &self.value {
+            ResolutionValue::Literal(value) => value.append_specified(context, output),
+            ResolutionValue::Calculation(value) => {
+                crate::numeric::project_specified_into(&value.expression, context, output)
+                    .map(|_| ())
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -153,6 +264,48 @@ mod tests {
     use super::*;
     use crate::{CssComponentValueRef, parse_component_values};
     use std::error::Error;
+
+    #[test]
+    fn resolution_children_share_consumed_input_projection_and_output_budgets() {
+        let component = parse_component_values("-0dppx").unwrap().items()[0].clone();
+        let value = CssResolutionLiteral::try_from_component(component).unwrap();
+        let mut context =
+            SpecifiedSerializationContext::new(CssSpecifiedValueSerializationLimits::new(2, 2, 10));
+        let mut output = String::new();
+        value.append_specified(&mut context, &mut output).unwrap();
+        value.append_specified(&mut context, &mut output).unwrap();
+        assert_eq!(output, "0dppx0dppx");
+        assert_eq!(context.remaining_bytes(), 0);
+        assert_eq!(
+            value
+                .append_specified(&mut context, &mut output)
+                .unwrap_err()
+                .kind(),
+            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+        );
+        for (projection, bytes, expected) in [
+            (
+                1,
+                10,
+                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            ),
+            (2, 9, CssSpecifiedValueSerializationErrorKind::ByteLimit),
+        ] {
+            let mut context = SpecifiedSerializationContext::new(
+                CssSpecifiedValueSerializationLimits::new(2, projection, bytes),
+            );
+            let mut output = String::new();
+            value.append_specified(&mut context, &mut output).unwrap();
+            assert_eq!(
+                value
+                    .append_specified(&mut context, &mut output)
+                    .unwrap_err()
+                    .kind(),
+                expected,
+            );
+            assert_eq!(output, "0dppx");
+        }
+    }
 
     #[test]
     fn independently_recovered_children_report_the_first_original_source_closure() {

@@ -1497,9 +1497,18 @@ while retaining its exact authored coefficient. Frequency math uses
 after the shared simplifier, retaining its floating-point precision and range
 limits. This does not resolve the specified-versus-computed phase question.
 
-Ordinary resolution has no specified serialization helper yet. Canonical output
-requires exact conversion to `dppx` and the CSSOM number-rounding policy;
-conversions such as `1dpi` to `1/96dppx` require a repeating-decimal policy.
+`CssResolutionLiteral` and `CssResolutionValue` expose bounded specified
+serialization in `dppx`, as selected by the
+[CSSOM resolution component rule](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serialize-a-css-component-value).
+Ordinary conversion precedes the shared six-place number rounding: `192dpi`
+emits `2dppx`, and `1dpcm` emits `0.026458dppx`. The exact factors are `1/96`
+for dots per inch and `127/4800` for dots per centimeter. The `x` alias emits
+`dppx`, and signed zero emits `0dppx`; coefficients, authored units and origins
+remain unchanged. Conversion work and final suffix bytes consume one cumulative
+typed resource budget, with no partial output on failure. Calculations reuse
+the existing [calculated number output](#calculated-number-output) provider,
+including its finite and structural simplification limits, without imposing
+the ordinary literal range on their results or adding contextual evaluation.
 Media queries retain their existing authored lexical serialization rather than
 performing that conversion or evaluating their comparisons.
 
