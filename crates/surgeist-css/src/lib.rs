@@ -1284,6 +1284,7 @@ mod font_family_serialization;
 mod font_feature_values;
 mod font_palette_serialization;
 mod font_palette_values;
+mod font_source_serialization;
 mod font_variant;
 mod font_variant_serialization;
 mod image_serialization;

@@ -3305,17 +3305,47 @@ sequence. Their parser paths validate unquoted tokens before joining them.
 Generic branches are valid in property lists and explicit-font family tails,
 but invalid in the face-family descriptor and `local()`.
 
+`CssFontLocalName`, `CssFontFaceUrlSource`, `CssFontFaceSource`, and
+`CssFontFaceSourceList` expose `serialize_specified()` and
+`serialize_specified_with_limits()`. Following the
+[CSSOM LOCAL idiom](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serialize-a-local),
+a local source always contains a serialized string: `local(Gentium Bold)` emits
+`local("Gentium Bold")`. The checked nonempty source list emits members in
+priority order with comma-space separators. The URL branch reuses the shared
+authored URL provider, preserving `url()` versus `src()`, decoded targets,
+ordered modifiers and their retained argument components, without resolving
+relative targets or accessing resources.
+
+The selected
+[Fonts 4 source grammar](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-face-src-parsing)
+supplies the optional `format()` followed by `tech()`. Keyword formats emit
+lowercase; string formats retain their distinct production and decoded case,
+including empty, unknown and legacy strings. Technology hints emit lowercase in
+authored order, including repetitions. Serialization does not use recognized
+format or required-technology queries to rewrite these authored values.
+
+One cumulative input-node, projection-node and generated UTF-8 byte budget
+covers the complete source list. A list charges one node; enum dispatch adds
+none. A local source charges its wrapper and string target. A URL source adds
+one source node to the shared URL provider's visits, one node for a present
+format argument, and one technology-list node plus each hint when technologies
+are present. Failure returns a typed error with no partial text or changes to
+stored names, hints, source order or enclosing recovery diagnostics.
+
 The six system spellings (`caption`, `icon`, `menu`, `message-box`,
 `small-caption`, `status-bar`) are literal names in family contexts. A complete
 `font: menu` selects the system-font branch, while `font: large menu` selects a
 literal family named `menu`, as specified in
 [Fonts 4 §2.7](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-prop).
 Whole-value CSS-wide keywords use the declaration's global-value branch.
-These distinctions preserve decoded meaning and identifier boundaries. The
-family model does not yet provide canonical CSS serialization. A serializer must quote a
-literal name or escape each identifier token independently, and must keep
-quoted reserved names distinct from generic families. Rejecting decoded U+0000
-avoids claiming preservation of a character that CSS replaces with U+FFFD.
+These distinctions preserve decoded meaning and identifier boundaries.
+`CssFontFaceFamily::serialize_specified()` and its limits variant emit a decoded
+literal name as a bare identifier sequence when that preserves its meaning;
+empty, reserved or otherwise unsuitable names use string serialization.
+Property-family serializers retain the quoted, identifier-sequence or generic
+branch and escape each identifier token independently, keeping quoted reserved
+names distinct from generic families. Rejecting decoded U+0000 avoids claiming
+preservation of a character that CSS replaces with U+FFFD.
 
 `parse_font_face_descriptor_value(source, kind)` parses a complete raw value
 using one of the eight `CssFontFaceDescriptorKind` grammars. It returns an owned

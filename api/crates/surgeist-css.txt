@@ -1228,6 +1228,9 @@ pub fn surgeist_css::CssAuthoredFontFaceDescriptorValue::from(value: surgeist_cs
 #[non_exhaustive] pub enum surgeist_css::CssFontFaceSource
 pub surgeist_css::CssFontFaceSource::Local(surgeist_css::CssFontLocalName)
 pub surgeist_css::CssFontFaceSource::Url(surgeist_css::CssFontFaceUrlSource)
+impl surgeist_css::CssFontFaceSource
+pub fn surgeist_css::CssFontFaceSource::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontFaceSource::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssFontFaceStyle
 pub surgeist_css::CssFontFaceStyle::Auto
 pub surgeist_css::CssFontFaceStyle::Keyword(surgeist_css::CssFontStyleKeyword)
@@ -6386,6 +6389,9 @@ pub const fn surgeist_css::CssFontFaceRule::descriptors(&self) -> &surgeist_css:
 pub const fn surgeist_css::CssFontFaceRule::position(&self) -> surgeist_css::CssSourcePosition
 pub struct surgeist_css::CssFontFaceSourceList
 impl surgeist_css::CssFontFaceSourceList
+pub fn surgeist_css::CssFontFaceSourceList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontFaceSourceList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssFontFaceSourceList
 pub fn surgeist_css::CssFontFaceSourceList::sources(&self) -> &[surgeist_css::CssFontFaceSource]
 pub fn surgeist_css::CssFontFaceSourceList::try_new(sources: alloc::vec::Vec<surgeist_css::CssFontFaceSource>) -> core::option::Option<Self>
 pub struct surgeist_css::CssFontFaceUrlSource
@@ -6395,6 +6401,9 @@ pub fn surgeist_css::CssFontFaceUrlSource::new(url: surgeist_css::CssUrl, format
 pub fn surgeist_css::CssFontFaceUrlSource::required_technologies(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_css::CssFontTechHint> + '_
 pub fn surgeist_css::CssFontFaceUrlSource::tech(&self) -> &[surgeist_css::CssFontTechHint]
 pub const fn surgeist_css::CssFontFaceUrlSource::url(&self) -> &surgeist_css::CssUrl
+impl surgeist_css::CssFontFaceUrlSource
+pub fn surgeist_css::CssFontFaceUrlSource::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontFaceUrlSource::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssFontFaceValueError
 impl surgeist_css::CssFontFaceValueError
 pub fn surgeist_css::CssFontFaceValueError::kind(&self) -> &surgeist_css::CssFontFaceValueErrorKind
@@ -6520,6 +6529,9 @@ pub struct surgeist_css::CssFontLocalName
 impl surgeist_css::CssFontLocalName
 pub fn surgeist_css::CssFontLocalName::as_str(&self) -> &str
 pub fn surgeist_css::CssFontLocalName::try_new(name: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+impl surgeist_css::CssFontLocalName
+pub fn surgeist_css::CssFontLocalName::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontLocalName::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssFontObliqueAngle
 impl surgeist_css::CssFontObliqueAngle
 pub fn surgeist_css::CssFontObliqueAngle::calculation(&self) -> core::option::Option<&surgeist_css::CssAngleCalculation>
