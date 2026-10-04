@@ -519,6 +519,45 @@ Values 4 leaves supported numeric precision and range
 [implementation-defined](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#numeric-types);
 the authored coefficients remain exact even when their projected magnitudes differ.
 
+Finite canonical angle projection supports `[-f64::MAX, f64::MAX]` degrees.
+When a finite authored angle conversion or finite-input Angle-valued operator
+or named-function result overflows that range, it converts to the nearest
+supported multiple of `360deg`,
+as required by [Values 4's angle range rule](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#numeric-types).
+The positive endpoint is `f64::from_bits(f64::MAX.to_bits() - 31)`: the maximum
+value is `(2^53 - 1) * 2^971`, and its significand is 31 above a multiple of 45.
+Since `360 = 45 * 8`, subtracting those 31 representable steps gives the largest
+finite exact multiple of 360. Representable angles above this multiple remain
+supported. An overflowing `grad` coefficient is normalized to a bounded
+19-digit decimal prefix before binary64 degree scaling, so `1.8e308grad` still
+projects to a supported degree magnitude. Authored coefficients and origins
+remain unchanged. Infinite operands and defined calculation exceptions retain
+their mathematical semantics; [trigonometric functions of infinity produce NaN](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#trig-infinities).
+Same-unit Sum coefficients accumulate in source order, then Angle range
+conversion applies once when the combined scalar replacement is created,
+following [Values 4's Sum simplification](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-simplification).
+Separately grouped Angle Sums materialize separately. Thus
+`calc((1e308deg + 1e308deg - 1e308deg) / 1e308deg)` emits `calc(1.797693)`,
+while grouping the first two terms emits `calc(0.797693)`.
+Products flatten nested Product children and then merge Number coefficients in
+source order before distribution and typed evaluation, following
+[Values 4's Product simplification](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-simplification).
+Thus `cos(1e308deg * 2 * 0)` first combines the Number coefficient to zero and
+emits `calc(1)`. Each merged coefficient spends a shared projection node.
+Already materialized Number and compound arithmetic retains its selected IEEE
+infinity and NaN outcomes; an Angle ancestor does not reconstruct discarded
+magnitudes. A retained compound Product may instead flatten into its ancestor
+before the final Angle result is evaluated. Target-context computed and
+used-value range clamping remains with the consuming owner.
+
+The selected draft's general `atan2()` normalization interval
+[excludes `-180deg`](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#funcdef-atan2),
+while its [exceptional signed-zero/infinity table](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#trig-infinities)
+explicitly returns that endpoint for several cases. Projection follows the
+specific table for listed exceptional arguments, corroborated by frozen
+[WebKit's executor](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/calc/CSSCalcExecutor.h#L353-L357).
+The selected draft remains internally inconsistent on this endpoint.
+
 The shared simplifier retains hinted percentage `min()`, `max()`, and `clamp()`
 comparisons until their basis is known, including percentage siblings inside a
 partially simplified comparison. A negative basis can reverse their ordering.

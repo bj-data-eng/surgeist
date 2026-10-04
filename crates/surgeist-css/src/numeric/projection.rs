@@ -17,6 +17,19 @@ mod math;
 type Result<T> = std::result::Result<T, Error>;
 type Id = usize;
 
+// MAX = (2^53 - 1) * 2^971. Divisibility by 360 therefore requires the
+// significand to be divisible by 45; (2^53 - 1) % 45 == 31. All finite
+// binary64 degrees remain supported, including the 31 values above this one.
+const ANGLE_OVERFLOW_ENDPOINT: f64 = f64::from_bits(f64::MAX.to_bits() - 31);
+
+fn finite_angle_overflow(value: f64, finite_operands: bool) -> f64 {
+    if value.is_infinite() && finite_operands {
+        ANGLE_OVERFLOW_ENDPOINT.copysign(value)
+    } else {
+        value
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 enum Unit {
     Number,
@@ -241,7 +254,7 @@ impl Projection<'_> {
         let mut pending = ids;
         pending.reverse();
         let mut other = Vec::new();
-        let mut scalars: BTreeMap<Unit, f64> = BTreeMap::new();
+        let mut scalars: BTreeMap<Unit, (f64, bool)> = BTreeMap::new();
         // Visit flattened children in source order, including binary64 sums.
         while let Some(id) = pending.pop() {
             if matches!(self.arena[id].kind, Kind::Sum(_)) {
@@ -254,17 +267,29 @@ impl Projection<'_> {
             } else if let Some(scalar) = self.scalar(id) {
                 scalars
                     .entry(scalar.unit.clone())
-                    .and_modify(|value| *value += scalar.value)
-                    .or_insert(scalar.value);
+                    .and_modify(|(value, finite_operands)| {
+                        *value += scalar.value;
+                        *finite_operands &= scalar.value.is_finite();
+                    })
+                    .or_insert((scalar.value, scalar.value.is_finite()));
             } else {
                 other.push(id);
             }
         }
-        if ty.simple() && scalars.values().any(|value| value.is_nan()) {
+        if ty.simple() && scalars.values().any(|(value, _)| value.is_nan()) {
             return self.value(f64::NAN, Unit::from_type(ty), ty);
         }
         let mut combined = Vec::new();
-        for (unit, value) in scalars {
+        for (unit, (value, finite_operands)) in scalars {
+            // Each same-unit set creates one replacement. Range conversion
+            // occurs here, after source-order accumulation, not at prefixes.
+            // The accumulator may overflow although every source operand was
+            // finite; a genuine infinite operand must remain distinguishable.
+            let value = if ty.is(CssNumericDimension::Angle) && unit == Unit::Canonical("deg") {
+                finite_angle_overflow(value, finite_operands)
+            } else {
+                value
+            };
             combined.push(self.value(value, unit, ty)?);
         }
         combined.extend(other);
@@ -289,29 +314,38 @@ impl Projection<'_> {
             }
         }
         flat.reverse();
-        if ty.simple() {
-            let resolved = self.resolved_terms(&flat, true);
-            if let Some(value) = resolved {
-                return self.value(value, Unit::from_type(ty), ty);
-            }
-        }
-        let mut number = None;
+        // Product simplification merges Number children before distributing or
+        // evaluating the typed product. Accumulate them in source order and
+        // retain the first Number's position among the remaining children.
+        let mut number: Option<(Id, f64, usize, usize)> = None;
         let mut other = Vec::new();
         for id in flat {
             if let Some(value) = self.scalar(id)
                 && value.unit == Unit::Number
             {
-                number = Some(number.unwrap_or(1.0) * value.value);
+                if let Some((_, coefficient, count, _)) = &mut number {
+                    *coefficient *= value.value;
+                    *count += 1;
+                } else {
+                    number = Some((id, value.value, 1, other.len()));
+                }
             } else {
                 other.push(id);
             }
         }
-        if let Some(number) = number {
+        if let Some((first, coefficient, count, position)) = number {
+            let id = if count == 1 {
+                first
+            } else {
+                let number_type = if other.is_empty() {
+                    ty
+                } else {
+                    CssNumericType::NUMBER
+                };
+                self.value(coefficient, Unit::Number, number_type)?
+            };
             if other.len() == 1 {
                 let child = other[0];
-                if let Some(value) = self.scalar(child).cloned() {
-                    return self.value(number * value.value, value.unit, ty);
-                }
                 if let Kind::Sum(children) = &self.arena[child].kind
                     && children.iter().all(|&id| self.scalar(id).is_some())
                 {
@@ -320,7 +354,7 @@ impl Projection<'_> {
                     for id in children {
                         let value = self.scalar(id).expect("checked scalar child").clone();
                         distributed.push(self.value(
-                            number * value.value,
+                            coefficient * value.value,
                             value.unit,
                             self.arena[id].ty,
                         )?);
@@ -328,10 +362,36 @@ impl Projection<'_> {
                     return self.sum(distributed, ty);
                 }
             }
-            other.insert(0, self.value(number, Unit::Number, CssNumericType::NUMBER)?);
+            other.insert(position, id);
         }
         if other.len() == 1 {
             return Ok(other[0]);
+        }
+        if ty.simple() {
+            let resolved = self.resolved_terms(&other, true);
+            if let Some(value) = resolved {
+                let value = if ty.is(CssNumericDimension::Angle) {
+                    finite_angle_overflow(
+                        value,
+                        other.iter().all(|&id| {
+                            self.arena[id]
+                                .resolved_magnitude
+                                .is_some_and(f64::is_finite)
+                        }),
+                    )
+                } else {
+                    value
+                };
+                return self.value(value, Unit::from_type(ty), ty);
+            }
+        }
+        if let Some((_, coefficient, _, position)) = number
+            && other.len() == 2
+        {
+            let child = other[1 - position];
+            if let Some(value) = self.scalar(child).cloned() {
+                return self.value(coefficient * value.value, value.unit, ty);
+            }
         }
         self.add(Kind::Product(other), ty)
     }
@@ -383,6 +443,14 @@ impl Projection<'_> {
                         .all(|&id| self.magnitude_comparable(id))
             {
                 let output = math::evaluate(function, &values, strategy);
+                let output = if ty.is(CssNumericDimension::Angle) {
+                    finite_angle_overflow(
+                        output,
+                        values.iter().flatten().all(|value| value.value.is_finite()),
+                    )
+                } else {
+                    output
+                };
                 let unit = if resolved {
                     Unit::from_type(ty)
                 } else {
@@ -661,7 +729,11 @@ fn project_specified_impl_mode(
                     }
                     CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) => {
                         let (unit, factor) = canonical_unit(unit);
-                        let value = lexical_value(number.representation()) * factor;
+                        let value = if unit == Unit::Canonical("deg") {
+                            finite_angle_leaf(number.representation(), factor)
+                        } else {
+                            lexical_value(number.representation()) * factor
+                        };
                         let id = projection.value(value, unit, node.ty)?;
                         results.push(id);
                         continue;
@@ -806,6 +878,36 @@ fn lexical_value(representation: &str) -> f64 {
             .parse::<f64>()
             .expect("checked CSS numeric spelling")
     }
+}
+
+fn finite_angle_leaf(representation: &str, factor: f64) -> f64 {
+    let coefficient = lexical_value(representation);
+    let converted = if coefficient.is_infinite() && factor < 1.0 {
+        // A grad coefficient outside binary64 can still fit in degrees. Read
+        // a bounded normalized decimal prefix before applying its 9/10 scale;
+        // neither the authored token nor its exponent is materialized anew.
+        let lexical = crate::exact_decimal::LexicalDecimal::new(representation);
+        let point = lexical
+            .exponent
+            .map(|exponent| exponent.saturating_add(lexical.len as i128));
+        if point == Some(309) {
+            let mut prefix = 0u64;
+            let mut digits = 0;
+            for digit in lexical.digits().take(19) {
+                prefix = prefix * 10 + u64::from(digit);
+                digits += 1;
+            }
+            let normalized = prefix as f64 / 10f64.powi(digits - 1);
+            (normalized * factor * 1e308).copysign(coefficient)
+        } else {
+            coefficient
+        }
+    } else {
+        coefficient * factor
+    };
+    // Dimension tokens are authored finite decimals. Genuine infinities are
+    // constants or calculation results and never enter this leaf conversion.
+    finite_angle_overflow(converted, true)
 }
 
 fn canonical_unit(unit: &str) -> (Unit, f64) {

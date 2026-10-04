@@ -273,7 +273,9 @@ fn trig(function: Function, a: f64, degrees: bool) -> f64 {
 }
 
 fn atan2(y: f64, x: f64) -> f64 {
-    // Exact degree outputs for the selected signed-zero/infinity table.
+    // The selected draft's exceptional table explicitly gives -180 degrees,
+    // conflicting with its general (-180, 180] prose. Listed exceptional cases
+    // follow the specific table, also corroborated by frozen WebKit atan2.
     if y.is_infinite() {
         if x.is_infinite() {
             return (if x.is_sign_negative() {

@@ -3560,9 +3560,9 @@ mod color_component_calculation_tests {
             denominator: 1,
         };
         // Wrapper, product and three leaves give five inputs. Three leaves,
-        // inverse, merged number and product give six projections; the scale's
-        // factor, merged number and product add three more.
-        let mut context = Context::new(Limits::new(5, 9, 19));
+        // inverse and product give five projections; the single Number is
+        // reused. The scale's factor, merged Number and product add three more.
+        let mut context = Context::new(Limits::new(5, 8, 19));
         let (text, outcome) =
             capture_color_component_calculation(calculation, scale, &mut context).unwrap();
         assert_eq!(text, "calc(0 * 1em / 1px)");
@@ -3578,9 +3578,9 @@ mod color_component_calculation_tests {
             Kind::ProjectionNodeLimit
         );
         for (inputs, projections, bytes, kind) in [
-            (4, 9, 19, Kind::InputNodeLimit),
-            (5, 8, 19, Kind::ProjectionNodeLimit),
-            (5, 9, 18, Kind::ByteLimit),
+            (4, 8, 19, Kind::InputNodeLimit),
+            (5, 7, 19, Kind::ProjectionNodeLimit),
+            (5, 8, 18, Kind::ByteLimit),
         ] {
             let mut context = Context::new(Limits::new(inputs, projections, bytes));
             assert_eq!(
@@ -3590,7 +3590,7 @@ mod color_component_calculation_tests {
                 kind
             );
         }
-        let mut context = Context::new(Limits::new(5, 9, 19));
+        let mut context = Context::new(Limits::new(5, 8, 19));
         assert_eq!(
             capture_numeric_color_calculation(calculation, scale, &mut context)
                 .unwrap_err()
