@@ -473,7 +473,8 @@ impl CssOpacityValue {
     /// Ordinary input remains exact; emitted scalar text rounds to six fractional
     /// places, nearest with ties away from zero, after percentage conversion.
     /// Finite calculation text rounds the actual binary64 result with the same
-    /// six-place policy. Arithmetic precision and range remain unfinished.
+    /// six-place policy. Arithmetic uses the implementation-defined binary64
+    /// precision and range policy described in the crate's numeric reference.
     pub fn serialize_specified(&self) -> Result<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
