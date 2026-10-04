@@ -5102,8 +5102,9 @@ comparison across seconds/milliseconds and equivalent decimal coefficients, or
 the same retained calculation structure. Speech's `none` is also equivalent
 to an exact ordinary zero duration in either position; their authored variants
 remain distinct. A positive duration rounded to `0s` is not exact zero.
-Equal rounded text alone does not
-establish equality. The pair and every authored child share one cumulative
+This equivalence affects canonical output only; model equality still distinguishes
+`none` from a time and omission from an explicitly authored second component.
+Equal rounded text alone does not establish equality. The pair and every authored child share one cumulative
 input-node, projection-node and emitted-byte budget. A suppressed second child
 still incurs traversal work and node charges. Failure returns no partial CSS
 and leaves authored input unchanged.
