@@ -6,8 +6,8 @@ by higher-priority instructions. This guide grants no mutation, installation,
 commit, publication, or cross-repository authority.
 
 Use the repository-local
-[$surgeist-admin](.agents/skills/surgeist-admin/SKILL.md) for plans, ledger
-organization, evidence retention, temporary files, and pause/resume handoffs.
+[$surgeist-admin](.agents/skills/surgeist-admin/SKILL.md) for Project coordination,
+local working material, and pause/resume handoffs.
 It owns Surgeist's administrative storage conventions; PISCT continues to own
 the engineering workflow.
 
@@ -22,8 +22,8 @@ they do not establish separate repository ownership or delivery workflows.
 Apply `$pisct:invariants` to engineering work and `$pisct:rust-modeling` to Rust
 model/API decisions. Higher-priority user and system instructions still apply.
 
-The coordinator owns shared ledger updates, staging, commits, integration, and
-publication within the user's authorized scope. Use `$pisct:holistic-review`
+The coordinator owns issue and Project updates, staging, commits, integration,
+and publication within the user's authorized scope. Use `$pisct:holistic-review`
 for final independent integration review.
 
 ## Repository Identity And Ownership

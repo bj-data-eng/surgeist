@@ -31,8 +31,8 @@ harness are unimplemented. The shared source boundary supports integration work;
 it does not supply an integrated UI application by itself.
 
 Source, tests, fixtures, and legal material stay with their owning crates.
-[NOTICE.md](../NOTICE.md) records attribution and source provenance. Current plans
-live in PISCT ledgers under the
+[NOTICE.md](../NOTICE.md) records attribution and source provenance. Issues and
+the GitHub Project record current work under the
 [repository administration guidance](../.agents/skills/surgeist-admin/SKILL.md).
 
 ## Workspace Membership And Verification Are Separate

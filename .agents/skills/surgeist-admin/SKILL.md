@@ -1,206 +1,107 @@
 ---
 name: surgeist-admin
-description: Manage Surgeist plans, progress records, verification evidence, temporary files, and pause/resume handoffs. Use for administrative work or the administrative part of ongoing implementation; leave implementation and review methods to PISCT.
+description: Coordinate Surgeist issues and Project state, local working material, and pause/resume handoffs. Use for repository administration during authorized work; PISCT owns implementation and review methods.
 ---
 
-# Surgeist administration
+# Surgeist Administration
 
-Keep enough durable information to resume and verify work without preserving
-every intermediate file. This repository-owned skill supplies storage and
-retention conventions for coordinators and workers. It does not change product
-scope, PISCT's engineering checks, or the user's implementation, commit, and
-publication authority. Explicit user instructions take precedence, including
-requests to pause, retain an export, or delete particular records.
+Use [Surgeist Coordination](https://github.com/users/bj-data-eng/projects/1) as
+the single progress record for completed work and actionable future work in
+`bj-data-eng/surgeist`. The coordinator owns issue and Project updates within the
+user's authority. This convention grants no implementation, issue-creation,
+closure, commit, publication, or cleanup authority. Preserve user pauses.
+Use PISCT's focused skills for engineering and review.
 
-Scale administration to the work. A small completed edit may need only its Git
-change and a concise result; create a ledger record only when something needs
-durable coordination or tracking. Update records at meaningful decisions,
-verification boundaries, or handoffs, not after every command.
+## Work And Ownership
 
-## Give each fact one home
+An issue states the outcome, acceptance criteria, ownership boundaries, and
+relevant sources. Organize module work as module → crate contributions → bounded
+properties or tasks. Own shared capabilities once and link dependent work to
+that owner. Native parent-child relationships describe scope; blocking
+dependencies describe execution order. Keep both acyclic. Completing a leaf
+does not certify the enclosing contribution or module.
 
-| Information | Authoritative home |
+Read the relevant issue, its parent, and actual prerequisites before expanding
+the search. Include closed issues and archived Project items when reconstructing
+progress; an empty active view does not establish absence. Reference material
+supports acceptance criteria without automatically becoming another issue.
+
+Use the existing fields when useful: Crates, Workstream, Boundary, Priority,
+Plan, and Needs. Assign Workstream explicitly, not from GitHub author identity.
+Boundary distinguishes Root-owned, Crate-owned, Cross-crate, and
+Upstream-blocked work. Keep requirement coverage and consequential decisions
+with their owning issue or tracked source. Do not build a parallel progress
+database in local files, field values, or comments.
+
+## Project State
+
+Surgeist uses issues and direct commits; no PR workflow is required. Planned
+issues are managed through the Project. Authorized API creation can attach an
+issue in one `createIssue` call using the explicit Surgeist `repositoryId` and
+Project node ID in `projectV2Ids`; the UI's default repository does not supply
+the API argument. Read the existing identities instead of guessing them.
+
+Status choices are Backlog, Ready, In Progress, In Review, Blocked, and Done.
+The enabled built-in workflows own these effects:
+
+| Event | Effect |
 | --- | --- |
-| Product behavior, fixtures, required provenance, public API | Tracked source and its existing owning documentation/artifact paths |
-| Intended outcome, design, boundaries, acceptance criteria | One complete Markdown plan in the owning workspace's Plans ledger |
-| Requirement status, findings, next action, verification and review summaries | The relevant requirement or work row in its existing ledger |
-| Current checkout and committed changes | Git; inspect it again on resume |
-| Drafts, captured output, machine-readable intermediates | Ignored `tmp/`; never the sole source of an accepted decision or completed verification claim |
+| Matching issue created or updated, or sub-issue of a Project issue | Automatic Project intake |
+| Issue added | Status Backlog |
+| Status Done | Issue closed |
+| Issue closed | Status Done |
+| Issue reopened | Status Ready |
+| Closed issue unchanged for more than two weeks | Archived at the next 12-hour check |
 
-Keep administrative records in Markdown fields the dashboard can render. JSON
-is an exchange format or working input, not a parallel progress database. A plan
-describes intended work; an execution record describes what actually happened.
-Replace current summaries when facts change instead of appending a diary to the
-plan. Link related rows rather than copying their bodies.
+The coordinator records planned completion through Status. Close unplanned work
+directly as **not planned** and let the built-in closure rule set Done. Done
+means resolved or unplanned; it does not assert verified implementation.
+Before changing Status or issue state, account for these side effects and inspect
+the resulting state. Do not duplicate built-in transitions with synchronization
+scripts or assume an event order. Archive timing follows the last update, not
+simply the closure date. Workflow settings are user-owned; inspect saved
+configuration when changing or troubleshooting it within authorized scope.
 
-## Select the owner and retrieve narrowly
+## Review And Working Material
 
-Use PISCT project **surgeist**. Use workspace **surgeist** for root integration
-and one workspace named after each crate for its work, such as **surgeist-css**.
-These are ledger namespaces, not Cargo workspaces or separate repositories.
-Create missing workspaces only when actual work needs them. A cross-crate change
-still has one primary owner; related rows point to that owner's plan or decision.
-Do not create a complete set of ledgers for every crate in advance.
+Review is separate from Status: Not Started, CLEAN, or NOT CLEAN. The coordinator
+alone updates Review; reviewers remain read-only against GitHub. Keep detailed
+verdicts and supporting evidence local while they serve an active review,
+diagnosis, or handoff. No linked review record or compulsory report file is
+required in GitHub. PISCT's review skills own the actual judgment and scope.
 
-Discover the live registrations and ledger titles with `pisct workspace list`
-and `pisct --workspace NAME ledger status`. Replace `NAME` with the selected
-workspace. Use the CLI's configured registry; avoid hardcoded database paths.
-Use `$pisct:coordination`'s ledger guidance for discovery, schema inspection,
-guarded writes, pagination, and readback; this skill owns the local namespaces
-and retrieval conventions.
+Record CLEAN when the issue's required review process is clean and retain it at
+completion. Use NOT CLEAN when an unresolved result must accompany a handoff;
+routine review corrections can remain local until resolved. Preserve unresolved
+findings and limitations with enough context for the next action. Review applies
+only to the issue's scope, independently of its resolved or unplanned outcome.
 
-Start with title/status or requirement/state/next-action columns that actually
-exist. Read the relevant plan body and work rows, then open supporting source
-only when needed. Do not load whole ledgers, all JSON files, or raw logs merely
-to orient yourself. Follow pagination when searching for a record or proving
-that none exists. If durable storage is unavailable, preserve unsaved drafts
-and report the limitation; do not silently create a substitute authority.
+Use `$pisct:planning` only when explicitly requested. A local Markdown plan is
+useful when the issue needs design detail; it is not a prerequisite for every
+issue. Use one plan home and link it when needed. Accepted product decisions
+must remain discoverable in the owning issue or tracked source, not solely in a
+disposable draft. Do not create a separate plan/status lifecycle.
 
-Name references with their workspace and ledger/row address. Use the current
-row for ongoing work; include an exact revision only when a decision or review
-depends on those exact bytes. Keep semantic requirement IDs intact across moves.
-Row numbers alone are not global identities.
+Keep owned drafts, captured output, and API inputs in ignored `tmp/`, using a
+topic subdirectory when needed. Honor a tool's required temporary location
+without making a second copy. Stream routine successful output. Keep logs,
+reports, or exact inputs only while a concrete consumer needs them; retain an
+uncertain write's input until its outcome is reconciled. Preserve required
+standards provenance and raw data that belongs in a source fixture, not command
+transcripts. Remove only owned consumed files; never sweep shared files by age,
+prefix, or extension, or purge history as incidental cleanup.
 
-## Plans and current work
+## Pause And Resume
 
-Use PISCT's Plans ledger storage and disposition procedure, reached through
-`$pisct:coordination`, for complete plan bodies, row revisions, validation,
-guarded writes, exact readback, and status changes. Keep drafts in `tmp/plans/`
-until that storage procedure succeeds. Original imported plans need
-consolidation only when their work is revisited, not a bulk rewrite.
+On pause, stop or account for owned workers/processes through PISCT process
+handling. Leave enough current information to continue: the relevant issue,
+blocker or next action, outstanding checks, consequential decisions, and active
+ownership or needed working material. Preserve unfinished edits and inputs;
+administration does not authorize stashing, discarding, or resuming code.
 
-Use the existing work row's status, evidence and next-action fields for the
-current checkpoint. If there is no suitable row, create one for the actual
-outcome in an appropriate existing ledger. Do not create a new plan, handoff
-ledger, or status JSON just to record a pause. Fit the existing schema; a pause
-can be stated in next-action text without inventing a new status choice.
-
-Record the minimum needed for another coordinator to continue:
-
-- Current phase and disposition, including user pause or unresolved blocker.
-- Relevant plan/requirement references and the owning crate or root boundary.
-- Git commit and, for uncommitted work, affected paths and their verification
-  basis; include a diff or content digest when evidence depends on exact bytes.
-- Completed checks and review conclusions, incomplete checks, and next action.
-- Active writer/process ownership and any temporary artifact still needed.
-
-## Evidence that survives cleanup
-
-For a check, retain the source basis, working directory, exact command and
-relevant environment/feature/toolchain selection, exit or interruption result,
-and a short outcome. Include pass/fail/ignored counts where useful and the
-specific failure that matters. Distinguish successful checks, expected RED,
-unexpected failures, interruption, and process-cleanup failure. Partial success
-does not establish a complete suite pass.
-
-For a review, retain the reviewed source basis, review scope, independent
-reviewer identity when available, verdict, and actionable findings/dispositions.
-For committed RED/GREEN requirements, retain both exact commits and the supplied
-execution evidence and commands. Distinguish checks executed by the reviewer
-from matching evidence it reused. `$pisct:testing` and the applicable review
-skill own whether independent execution or replay is needed; this skill adds
-no replay requirement. Reuse the owning row for evidence; use a separate linked
-record only when it is genuinely shared or too substantial for that row.
-
-### Review report lifecycle
-
-Use the applicable PISCT review skill and its shared protocol for judgment and
-self-contained reports. This skill owns retention, not a second review rubric.
-For planning, task, and holistic review retention, CLEAN means `accepted`;
-NOT CLEAN means `changes_requested` or `blocked`. Other review skills retain
-their own result vocabulary. Preserve the actual result, findings and
-limitations in the ledger; these labels do not replace PISCT's judgment.
-
-- Keep NOT CLEAN reports and their needed working evidence while findings or
-  evidence gaps remain open. Record the next action in the owning row. Use the
-  applicable PISCT review and coordination guidance to establish disposition
-  before removing them.
-- For CLEAN reviews, save the decisive review evidence described above in the
-  owning ledger row, confirm the stored result is retrievable and sufficient
-  without the report, then delete the temporary report and consumed supporting
-  files. Remove superseded NOT CLEAN reports once their findings and limitations
-  have been resolved by that review and their dispositions are recorded.
-- Audits and inventories are not automatically acceptance reviews. Move their
-  requirements, unresolved findings, and reusable source facts into the owning
-  ledger or tracked artifact. After verifying that transfer, delete the consumed
-  temporary audit. Keep only inputs with a concrete unfinished consumer.
-
-Do not retain completed reports merely because another temporary file names
-them. Current checkpoints must use durable evidence; historical filenames do not
-create a retention obligation. Do not erase unresolved findings or promote a
-scope-limited verdict to milestone completion during cleanup.
-
-A log path, JSON filename, or checksum alone is not evidence of success. Before
-discarding a uniquely useful report, put its decisive observations and source
-references in the owning row. If raw data is essential to reproduce an outcome,
-preserve it as a proper fixture or source artifact in its existing repository
-owner, with required provenance and attribution, within authorized scope. If
-that cannot yet be done, keep the owned temporary input and record why and when
-it can be removed. Never turn `tmp/` into a required build or test input.
-
-Identify specifications by dated URL/version, relevant anchors and hash where
-required; identify source by commit and repository-relative path. Local download
-locations are conveniences. Required pinned bytes and immutable review material
-must remain available for their actual consumers, not merely have a remembered
-filename.
-
-## Temporary file lifecycle
-
-All paths below are relative to the repository root and are created on demand.
-Use a short topic or task subdirectory when ownership or collisions require it;
-there is no mandatory file manifest, historical-path index, or per-turn report.
-
-| Area | Use | End of lifetime |
-| --- | --- | --- |
-| `tmp/plans/` | Active plan and review drafts | After required review and verified ledger storage; keep unfinished or unsaved drafts |
-| `tmp/logs/` | Output needed for an active diagnosis or review | After recording the useful result and finishing that consumer |
-| `tmp/json/` | Ledger write inputs, selected query results, generation intermediates | After successful write/readback or the consuming operation completes |
-| `tmp/references/` | Downloaded reference material needed by active work | When no active consumer needs it and the durable source identity is recorded |
-| `tmp/work/` | Other owned experiments and temporary helpers | When the experiment or handoff is complete |
-
-Honor a tool's required temporary location without making a second copy here.
-Keep an uncertain write's exact input until its outcome is reconciled. Existing
-temporary material outside these areas can stay until its owning work is touched;
-do not perform an unrelated mass migration to satisfy the naming convention.
-
-Stream routine command output; do not save successful output by default. Save a
-log only when its contents have a named debugging or review consumer. Read the
-failure excerpt or relevant fields, not the full capture. Hash raw material when
-identity or provenance matters, not every disposable scratch file.
-
-When moving a cache, retain useful filenames and update a current consumer only
-if it actually needs the new location. Do not rewrite historical reports,
-maintain redirect copies, or create old-to-new path inventories. A missing cache
-is not a missing requirement: consult the durable record and recreate it only
-when needed and authorized. Do not claim a deleted artifact was inspected or
-that unavailable evidence is independently verified.
-
-## Pause, resume, and finish
-
-Use `$pisct:thread-capacity-recovery` for subagent thread-limit failures. Record
-an unresolved capacity limit in the existing checkpoint; do not duplicate its
-recovery procedure here.
-
-On pause, stop or account for owned workers/processes using PISCT process
-handling, save the current checkpoint, and preserve unfinished source edits and
-inputs still needed. A clean temporary directory is not more important than
-recoverable work. Do not stash, commit, discard, or resume code just to satisfy
-an administrative request.
-
-On an authorized resume, read the owning checkpoint and relevant plan, inspect
-Git and active ownership, and reconcile changed source before reusing evidence.
-If a prior check was interrupted, the missing check remains outstanding. Restore
-only the working material the next action needs.
-
-At a completed boundary, store the durable result and confirm it is retrievable,
-then remove the current task's consumed drafts, logs, JSON inputs and helpers.
-For shared or pre-existing files, establish ownership and retention needs before
-deleting; never sweep by age, filename prefix, or extension alone. Ledger purge,
-unrelated cleanup, history changes, and publication require their own applicable
-authorization. A user's explicit deletion request takes precedence; report any
-resulting loss of needed evidence without inventing a new retention obligation.
-
-Report the substantive result, its durable location, and remaining work briefly.
-Administrative completion means the work can be resumed or assessed from its
-owning records and source, with temporary exceptions accounted for. It does not
-mean that the product milestone is complete.
+On authorized resume, inspect Git, the owning issue and relevant relationships,
+local working material, and active ownership. Reconcile changed source before
+reusing evidence. Restore only material the next action needs. At completion,
+record the scoped outcome and applicable Review state, verify the Project result,
+and remove owned consumed temporary material. Report the result and remaining
+work briefly. Publication and unrelated cleanup retain their own authority.
