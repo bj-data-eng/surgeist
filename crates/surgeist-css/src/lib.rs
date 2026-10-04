@@ -1269,6 +1269,7 @@ mod border_image_serialization;
 mod clip_path_serialization;
 mod color_profile;
 mod color_profile_serialization;
+mod common_serialization;
 mod component_values;
 mod conformance;
 mod content_serialization;
@@ -1492,6 +1493,12 @@ mod test_support;
 mod validation;
 
 pub use color_profile::*;
+pub use common_serialization::{
+    serialize_css_comma_separated_list, serialize_css_comma_separated_list_with_limits,
+    serialize_css_identifier, serialize_css_identifier_with_limits, serialize_css_string,
+    serialize_css_string_with_limits, serialize_css_whitespace_separated_list,
+    serialize_css_whitespace_separated_list_with_limits,
+};
 pub use component_values::{
     CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueErrorKind,
     CssComponentValueLimits, CssComponentValueRef, CssComponentValues, CssFunctionValue,

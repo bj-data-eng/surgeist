@@ -197,6 +197,20 @@ the shared structural ceiling is 256. Input exceeding the byte limit is rejected
 before copying or tokenizing it, with `UnretainedInput` provenance and its UTF-8
 length. These syntax limits do not promise a global memory budget.
 
+The [CSSOM §2.1 common idioms](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#common-serializing-idioms)
+are available as `serialize_css_identifier`, `serialize_css_string`,
+`serialize_css_comma_separated_list`, and `serialize_css_whitespace_separated_list`,
+each with a `_with_limits` counterpart. Identifier and string functions borrow
+arbitrary decoded text, reuse the shared escaping writer, and replace NUL with
+U+FFFD; an empty identifier emits empty text and an empty string emits `""`.
+List functions borrow already serialized item slices and preserve every item
+byte, including empty items and NUL, inserting only `, ` or one space between
+items. Empty lists emit empty text. They do not parse, trim, or escape items.
+One primitive or list container charges one input and projection node; every
+list item charges one more of each, even if empty. Limits count actual output
+bytes and failures return no partial string or input mutation. These common
+operations leave strict `CssIdent` and property-list admission unchanged.
+
 ## Raw single rules
 
 `parse_rule(source, &CssNamespaceContext)` parses exactly one supported ordinary
