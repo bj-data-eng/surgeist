@@ -1,10 +1,9 @@
 //! Canonical specified palette values.
 
 use crate::{
-    CssFontFamilyName, CssFontPaletteBase, CssFontPaletteDescriptorValue,
-    CssFontPaletteDescriptorValueRef, CssFontPaletteValuesRule,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
-    specified_rule_serialization::SpecifiedRuleWriter,
+    CssFontPaletteBase, CssFontPaletteDescriptorValue, CssFontPaletteDescriptorValueRef,
+    CssFontPaletteValuesRule, CssSpecifiedValueSerializationError,
+    CssSpecifiedValueSerializationLimits, specified_rule_serialization::SpecifiedRuleWriter,
 };
 
 impl SpecifiedRuleWriter {
@@ -39,9 +38,7 @@ impl SpecifiedRuleWriter {
                     if index != 0 {
                         self.append(", ")?;
                     }
-                    self.context.charge_input(1)?;
-                    self.context.charge_projection(1)?;
-                    self.append_family(family.as_str())?;
+                    family.append_specified(self)?;
                 }
                 Ok(())
             }
@@ -83,46 +80,6 @@ impl SpecifiedRuleWriter {
         self.context.charge_projection(1)?;
         self.append(keyword)
     }
-
-    fn append_family(&mut self, name: &str) -> Result<(), CssSpecifiedValueSerializationError> {
-        if can_serialize_family_unquoted(name) {
-            for (index, word) in name.split(' ').enumerate() {
-                if index != 0 {
-                    self.append(" ")?;
-                }
-                self.append_identifier(word)?;
-            }
-            Ok(())
-        } else {
-            self.append_string(name)
-        }
-    }
-}
-
-fn can_serialize_family_unquoted(name: &str) -> bool {
-    if name.is_empty() || name.starts_with(' ') || name.ends_with(' ') || name.contains("  ") {
-        return false;
-    }
-    if CssFontFamilyName::try_ident_sequence(name.split(' ').map(str::to_owned).collect()).is_none()
-    {
-        return false;
-    }
-    name.split(' ').all(|word| {
-        let mut chars = word.chars();
-        let Some(first) = chars.next() else {
-            return false;
-        };
-        if !(first.is_ascii_alphabetic() || first == '_' || first == '-' || first as u32 >= 0x80) {
-            return false;
-        }
-        if first == '-' && word.len() == 1 {
-            return false;
-        }
-        if first == '-' && chars.clone().next().is_some_and(|c| c.is_ascii_digit()) {
-            return false;
-        }
-        chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c as u32 >= 0x80)
-    })
 }
 
 impl CssFontPaletteDescriptorValue {

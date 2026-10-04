@@ -6368,6 +6368,9 @@ pub struct surgeist_css::CssFontFaceFamily
 impl surgeist_css::CssFontFaceFamily
 pub fn surgeist_css::CssFontFaceFamily::as_str(&self) -> &str
 pub fn surgeist_css::CssFontFaceFamily::try_new(name: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+impl surgeist_css::CssFontFaceFamily
+pub fn surgeist_css::CssFontFaceFamily::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontFaceFamily::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssFontFaceObliqueRange
 impl surgeist_css::CssFontFaceObliqueRange
 pub const fn surgeist_css::CssFontFaceObliqueRange::end(&self) -> core::option::Option<&surgeist_css::CssFontObliqueAngle>
@@ -6402,6 +6405,9 @@ pub struct surgeist_css::CssFontFamilyList
 impl surgeist_css::CssFontFamilyList
 pub fn surgeist_css::CssFontFamilyList::families(&self) -> &[surgeist_css::CssFontFamilyName]
 pub fn surgeist_css::CssFontFamilyList::try_new(families: alloc::vec::Vec<surgeist_css::CssFontFamilyName>) -> core::option::Option<Self>
+impl surgeist_css::CssFontFamilyList
+pub fn surgeist_css::CssFontFamilyList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontFamilyList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssFontFamilyName
 impl surgeist_css::CssFontFamilyName
 pub fn surgeist_css::CssFontFamilyName::as_str(&self) -> &str
@@ -6412,6 +6418,9 @@ pub const fn surgeist_css::CssFontFamilyName::kind(&self) -> surgeist_css::CssFo
 pub fn surgeist_css::CssFontFamilyName::try_ident(value: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
 pub fn surgeist_css::CssFontFamilyName::try_ident_sequence(identifiers: alloc::vec::Vec<alloc::string::String>) -> core::option::Option<Self>
 pub fn surgeist_css::CssFontFamilyName::try_quoted(value: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+impl surgeist_css::CssFontFamilyName
+pub fn surgeist_css::CssFontFamilyName::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontFamilyName::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl core::fmt::Debug for surgeist_css::CssFontFamilyName
 pub fn surgeist_css::CssFontFamilyName::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css::CssFontFamilyPropertyValue

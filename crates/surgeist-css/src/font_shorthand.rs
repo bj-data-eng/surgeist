@@ -3,9 +3,9 @@
 
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::{
-    CssAbsoluteFontWeight, CssExplicitFont, CssFontFamilyNameKind, CssFontStyle,
-    CssFontStyleKeyword, CssFontValue, CssFontVariant, CssFontWeight, CssFontWidthKeyword,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits, CssSystemFont,
+    CssAbsoluteFontWeight, CssExplicitFont, CssFontStyle, CssFontStyleKeyword, CssFontValue,
+    CssFontVariant, CssFontWeight, CssFontWidthKeyword, CssSpecifiedValueSerializationError,
+    CssSpecifiedValueSerializationLimits, CssSystemFont,
 };
 
 type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
@@ -106,32 +106,7 @@ impl CssExplicitFont {
             }
         }
         writer.append(" ")?;
-        for (index, family) in self.families().families().iter().enumerate() {
-            if index != 0 {
-                writer.append(", ")?;
-            }
-            writer.context.charge_input(1)?;
-            writer.context.charge_projection(1)?;
-            match family.kind() {
-                CssFontFamilyNameKind::Quoted => writer.append_string(family.as_str())?,
-                CssFontFamilyNameKind::Generic => writer.append(family.as_str())?,
-                CssFontFamilyNameKind::IdentSequence => {
-                    for (part, identifier) in family
-                        .identifier_tokens()
-                        .expect("identifier sequence retains tokens")
-                        .iter()
-                        .enumerate()
-                    {
-                        if part != 0 {
-                            writer.append(" ")?;
-                        }
-                        writer.context.charge_input(1)?;
-                        writer.context.charge_projection(1)?;
-                        writer.append_identifier(identifier)?;
-                    }
-                }
-            }
-        }
+        self.families().append_specified(&mut writer)?;
         Ok(writer.css)
     }
 }

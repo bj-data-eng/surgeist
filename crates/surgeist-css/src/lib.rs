@@ -1278,6 +1278,7 @@ mod counter_changes_serialization;
 mod error;
 mod expansion;
 mod filter_serialization;
+mod font_family_serialization;
 mod font_feature_values;
 mod font_palette_serialization;
 mod font_palette_values;

@@ -3032,6 +3032,31 @@ individual dated sources.
 `as_css()`. Each font wrapper retains one checked semantic value; explicit
 shorthand components belong to `CssExplicitFont`.
 
+`CssFontFamilyName` and `CssFontFamilyList` expose `serialize_specified()` and
+`serialize_specified_with_limits()`. These retain the authored quoted,
+identifier-sequence, or generic branch, including identifier token boundaries,
+case, and list order. For example, one identifier containing a space emits
+`A\ B`, while two identifiers emit `A B`; a quoted `"serif"` remains distinct
+from the generic `serif`. This is specified-value serialization rather than the
+computed family-name joining algorithm or font selection.
+
+`CssFontFaceFamily` exposes the same bounded methods for its decoded literal
+name. This model is shared by font-face descriptors, font-feature-values
+preludes, and font-palette-values families; it does not retain the original
+quoting form. Its canonical output uses a bare identifier sequence when that
+preserves the literal name, and quotes reserved, empty, or otherwise unsuitable
+names. Emitting a family does not provide a complete font-face or feature-rule
+writer. The existing font shorthand and palette descriptor/rule writers share
+these family helpers and the common CSSOM escaping writer.
+
+One cumulative serialization budget covers all emitted bytes and visited name
+nodes. Property names charge one node plus each retained identifier token;
+generic and quoted property names charge one node. A decoded descriptor family
+charges one node, including multiword names. Family-list containers add no node
+charge, preserving the embedded shorthand and palette budget contracts. A
+failed emission returns a typed error without partial CSS or changes to the
+checked model, declaration occurrence, or source components.
+
 The selected Fonts 4 `font-variant` family accepts ligatures, caps, alternates,
 numeric, East Asian, position, and emoji groups in either longhand declarations
 or the full shorthand. `CssFontVariantValue` retains the authored groups;
