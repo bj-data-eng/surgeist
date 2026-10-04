@@ -3387,6 +3387,16 @@ pub surgeist_css::CssPseudoElement::Slotted(surgeist_css::CssCompoundSelectorArg
 #[non_exhaustive] pub enum surgeist_css::CssPseudoElementSegment
 pub surgeist_css::CssPseudoElementSegment::PseudoClass(surgeist_css::CssPseudoClass)
 pub surgeist_css::CssPseudoElementSegment::PseudoElement(surgeist_css::CssPseudoElement)
+#[non_exhaustive] pub enum surgeist_css::CssQualifiedNameError
+pub surgeist_css::CssQualifiedNameError::UndeclaredNamespacePrefix(surgeist_css::CssNamespacePrefix)
+impl core::error::Error for surgeist_css::CssQualifiedNameError
+impl core::fmt::Display for surgeist_css::CssQualifiedNameError
+pub fn surgeist_css::CssQualifiedNameError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+#[non_exhaustive] pub enum surgeist_css::CssQualifiedNamePrefix
+pub surgeist_css::CssQualifiedNamePrefix::Any
+pub surgeist_css::CssQualifiedNamePrefix::ExplicitNone
+pub surgeist_css::CssQualifiedNamePrefix::Named(surgeist_css::CssNamespacePrefix)
+pub surgeist_css::CssQualifiedNamePrefix::Unqualified
 #[non_exhaustive] pub enum surgeist_css::CssQueryComparison
 pub surgeist_css::CssQueryComparison::Equal
 pub surgeist_css::CssQueryComparison::GreaterThan
@@ -4477,6 +4487,7 @@ pub const fn surgeist_css::CssAttributeSelector::case_sensitivity(&self) -> surg
 pub const fn surgeist_css::CssAttributeSelector::matcher(&self) -> &surgeist_css::CssAttributeMatcher
 pub const fn surgeist_css::CssAttributeSelector::name(&self) -> &surgeist_css::CssAttributeName
 pub const fn surgeist_css::CssAttributeSelector::namespace(&self) -> &surgeist_css::CssNamespaceConstraint
+pub const fn surgeist_css::CssAttributeSelector::qualified_name(&self) -> &surgeist_css::CssQualifiedAttributeName
 pub struct surgeist_css::CssAuthoredDeclarationValue
 impl surgeist_css::CssAuthoredDeclarationValue
 pub fn surgeist_css::CssAuthoredDeclarationValue::as_css(&self) -> &str
@@ -7513,6 +7524,9 @@ pub const fn surgeist_css::CssNamespaceRule::name(&self) -> &surgeist_css::CssNa
 pub const fn surgeist_css::CssNamespaceRule::new(prefix: core::option::Option<surgeist_css::CssNamespacePrefix>, name: surgeist_css::CssNamespaceName) -> Self
 pub const fn surgeist_css::CssNamespaceRule::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
 pub const fn surgeist_css::CssNamespaceRule::prefix(&self) -> core::option::Option<&surgeist_css::CssNamespacePrefix>
+impl surgeist_css::CssNamespaceRule
+pub fn surgeist_css::CssNamespaceRule::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssNamespaceRule::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssNestedDeclarationsRule
 impl surgeist_css::CssNestedDeclarationsRule
 pub const fn surgeist_css::CssNestedDeclarationsRule::declarations(&self) -> &surgeist_css::CssDeclarationList
@@ -8068,6 +8082,13 @@ impl surgeist_css::CssPseudoSelectorList
 pub fn surgeist_css::CssPseudoSelectorList::has_pseudo_elements(&self) -> bool
 pub fn surgeist_css::CssPseudoSelectorList::selectors(&self) -> &[surgeist_css::CssSelector]
 pub fn surgeist_css::CssPseudoSelectorList::try_new(selectors: alloc::vec::Vec<surgeist_css::CssSelector>) -> core::option::Option<Self>
+pub struct surgeist_css::CssQualifiedAttributeName
+impl surgeist_css::CssQualifiedAttributeName
+pub const fn surgeist_css::CssQualifiedAttributeName::local_name(&self) -> &surgeist_css::CssAttributeName
+pub const fn surgeist_css::CssQualifiedAttributeName::namespace(&self) -> &surgeist_css::CssNamespaceConstraint
+pub const fn surgeist_css::CssQualifiedAttributeName::prefix(&self) -> &surgeist_css::CssQualifiedNamePrefix
+pub fn surgeist_css::CssQualifiedAttributeName::serialize_with_limit(&self, max_css_bytes: usize) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssQualifiedAttributeName::try_new(prefix: surgeist_css::CssQualifiedNamePrefix, local_name: surgeist_css::CssAttributeName, context: &surgeist_css::CssNamespaceContext) -> core::result::Result<Self, surgeist_css::CssQualifiedNameError>
 pub struct surgeist_css::CssQualifiedRuleError
 impl surgeist_css::CssQualifiedRuleError
 pub const fn surgeist_css::CssQualifiedRuleError::encountered(&self) -> core::option::Option<&surgeist_css::CssTokenSummary>
@@ -8078,6 +8099,10 @@ impl surgeist_css::CssQualifiedSelectorName
 pub const fn surgeist_css::CssQualifiedSelectorName::is_universal(&self) -> bool
 pub fn surgeist_css::CssQualifiedSelectorName::local_name(&self) -> core::option::Option<&str>
 pub const fn surgeist_css::CssQualifiedSelectorName::namespace(&self) -> &surgeist_css::CssNamespaceConstraint
+pub const fn surgeist_css::CssQualifiedSelectorName::prefix(&self) -> &surgeist_css::CssQualifiedNamePrefix
+pub fn surgeist_css::CssQualifiedSelectorName::serialize_with_limit(&self, max_css_bytes: usize) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssQualifiedSelectorName::try_new(prefix: surgeist_css::CssQualifiedNamePrefix, local_name: surgeist_css::CssIdent, context: &surgeist_css::CssNamespaceContext) -> core::result::Result<Self, surgeist_css::CssQualifiedNameError>
+pub fn surgeist_css::CssQualifiedSelectorName::try_universal(prefix: surgeist_css::CssQualifiedNamePrefix, context: &surgeist_css::CssNamespaceContext) -> core::result::Result<Self, surgeist_css::CssQualifiedNameError>
 pub struct surgeist_css::CssQueryLength
 impl surgeist_css::CssQueryLength
 pub fn surgeist_css::CssQueryLength::try_new(value: f32, unit: surgeist_css::CssLengthUnit) -> core::option::Option<Self>

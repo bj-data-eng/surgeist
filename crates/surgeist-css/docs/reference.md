@@ -5118,6 +5118,73 @@ style lowering remain downstream. Behavioral evidence is in
 [`speech_pause_rest_models.rs`](../tests/speech_pause_rest_models.rs).
 
 
+## Qualified selector names
+
+[Namespaces 3 §4](https://www.w3.org/TR/2014/REC-css-namespaces-3-20140320/#css-qnames)
+separates an authored qualified name from the effective namespace constraint.
+`CssQualifiedNamePrefix` retains `Unqualified`, `ExplicitNone` (`|`), `Any`
+(`*|`), or `Named(CssNamespacePrefix)`. `CssQualifiedSelectorName` retains this
+prefix alongside its decoded local identifier or universal `*` and its
+`CssNamespaceConstraint`. `CssAttributeSelector::qualified_name()` exposes the
+corresponding `CssQualifiedAttributeName`, whose local name cannot be universal.
+Model equality retains prefix distinctions even when constraints coincide:
+`*` differs from `*|*` without a default binding, and `[href]` differs from
+`[|href]` in every context. Normalization preserves the models, ordered recovery
+diagnostics, and enclosing rule source positions.
+
+The checked qualified-name constructors take typed decoded local names and an
+explicit `CssNamespaceContext`. Missing or case-mismatched named bindings return
+`CssQualifiedNameError::UndeclaredNamespacePrefix`. An empty named namespace is
+still a binding. Unqualified types and universals use the active default when
+present; unqualified attributes always have no namespace. `CssIdent` and
+`CssAttributeName` share the component identifier owner, preserving escaped
+spaces, punctuation, digits and case without treating decoded strings as raw CSS.
+
+The name models provide `serialize_with_limit(max_css_bytes)`, using the shared
+component token writer to preserve authored prefixes and decoded identifiers.
+The bound includes escaping and necessary token separators; failure returns no
+partial output. These generated name tokens have programmatic origins. Parsed
+enclosing rule positions remain separate. Complete CSSOM selector, style and
+media rule serialization is tracked by
+[#834](https://github.com/bj-data-eng/surgeist/issues/834).
+
+`CssNamespaceRule::to_specified_css()` and `to_specified_css_with_limits()` use
+[CSSOM's namespace rule format](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serialize-a-css-rule):
+`@namespace [prefix ]url("literal");`. The shared specified rule writer owns
+identifier/string escaping and cumulative input-node, projection-node and
+emitted-byte limits. A declaration charges one node for the rule, one for an
+optional prefix and one for its literal name in each node budget. A supported
+sheet also charges its enclosing aggregate and shares the budgets across every
+rule. Failure returns no partial CSS. `CssRule` and `CssSheet` use this same
+namespace provider, retaining declaration order and duplicates; unsupported
+sibling rules still fail closed. Literal names remain unresolved, including empty
+and non-URI names. CSSOM string serialization replaces programmatic NUL with
+U+FFFD in output, while the stored authored value remains unchanged. Parsed
+source positions and normalization diagnostics remain available without being
+rewritten by canonical output.
+
+Selector-qualified names permit comments but forbid whitespace within each name.
+Whitespace can separate complete compounds: `svg |leaf` contains an unqualified
+`svg` type followed by a descendant whose type has an explicit empty prefix.
+The unsupported column combinator `||` remains rejected. Strict hosts reject
+undeclared prefixes; forgiving selector hosts can discard the invalid member.
+Ignored namespace declarations do not establish bindings.
+
+The selected [2024 `attr()` definition](https://www.w3.org/TR/2024/WD-css-values-5-20241111/#attr-notation)
+has its own optional named-prefix grammar, without empty or wildcard prefixes.
+Its pending substitution retains original components. Namespace resolution
+belongs downstream, as recorded in
+[#717](https://github.com/bj-data-eng/surgeist/issues/717); the selector name model
+does not widen that host grammar or change property admission.
+
+Behavioral evidence is in
+[`qualified_name_authored_prefixes.rs`](../tests/qualified_name_authored_prefixes.rs),
+[`qualified_name_construction.rs`](../tests/qualified_name_construction.rs),
+[`qualified_name_decoded_identifiers.rs`](../tests/qualified_name_decoded_identifiers.rs),
+[`namespace_specified_serialization.rs`](../tests/namespace_specified_serialization.rs), and
+[`namespace_rule_construction_serialization.rs`](../tests/namespace_rule_construction_serialization.rs).
+
+
 ## Authored Speech voices
 
 The pinned [Speech 1 §11.1](https://www.w3.org/TR/2023/CRD-css-speech-1-20230214/#voice-family)

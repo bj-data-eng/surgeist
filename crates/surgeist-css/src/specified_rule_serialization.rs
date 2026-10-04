@@ -3,7 +3,7 @@
 use std::fmt;
 
 use crate::{
-    CssRule, CssSheet, CssSpecifiedValueSerializationError,
+    CssNamespaceRule, CssRule, CssSheet, CssSpecifiedValueSerializationError,
     CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits,
     specified_serialization::SpecifiedSerializationContext,
 };
@@ -102,6 +102,27 @@ impl SpecifiedRuleWriter {
         self.context.append(&mut self.css, text)
     }
 
+    /// Emits a namespace declaration without resolving or normalizing its literal name.
+    fn namespace(
+        &mut self,
+        rule: &CssNamespaceRule,
+    ) -> Result<(), CssSpecifiedValueSerializationError> {
+        self.context.charge_input(1)?;
+        self.context.charge_projection(1)?;
+        self.append("@namespace ")?;
+        if let Some(prefix) = rule.prefix() {
+            self.context.charge_input(1)?;
+            self.context.charge_projection(1)?;
+            self.append_identifier(prefix.as_str())?;
+            self.append(" ")?;
+        }
+        self.context.charge_input(1)?;
+        self.context.charge_projection(1)?;
+        self.append("url(")?;
+        self.append_string(rule.name().as_str())?;
+        self.append(");")
+    }
+
     /// Visits a proved simple initial through its provider without producing bytes.
     /// Restores the enclosing emission mode even when a nested visit fails.
     pub(crate) fn without_output<T>(
@@ -176,6 +197,27 @@ impl fmt::Write for BoundedEscaped<'_> {
     }
 }
 
+impl CssNamespaceRule {
+    /// Serializes the declaration using CSSOM's escaped prefix and quoted URL form.
+    /// The stored literal name and optional source position remain unchanged.
+    /// CSSOM string serialization replaces programmatic U+0000 with U+FFFD.
+    pub fn to_specified_css(&self) -> Result<String, CssSpecifiedValueSerializationError> {
+        self.to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Serializes atomically under cumulative node and generated-byte limits.
+    /// The rule, its optional prefix, and its literal name each charge one input
+    /// and one projection node. Enclosing sheets share these same budgets.
+    pub fn to_specified_css_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String, CssSpecifiedValueSerializationError> {
+        let mut writer = SpecifiedRuleWriter::new(limits);
+        writer.namespace(self)?;
+        Ok(writer.css)
+    }
+}
+
 impl CssRule {
     /// Serializes only rule kinds with a complete canonical specified writer.
     pub fn to_specified_css(&self) -> Result<String, CssSpecifiedRuleSerializationError> {
@@ -233,6 +275,9 @@ fn append_rule(
     index: Option<usize>,
 ) -> Result<(), CssSpecifiedRuleSerializationError> {
     match rule {
+        CssRule::Namespace(rule) => writer
+            .namespace(rule)
+            .map_err(|error| CssSpecifiedRuleSerializationError::resource(error, index)),
         CssRule::ColorProfile(rule) => writer
             .color_profile(rule)
             .map_err(|error| CssSpecifiedRuleSerializationError::resource(error, index)),

@@ -6394,7 +6394,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 646] = [
     CssFeatureMetadata::complete(
         "official.selector.namespace-qualified-name",
         CssFeatureKind::Selector,
-        "default, explicit-none, any, and named selector namespace constraints",
+        "authored selector prefixes and default, explicit-none, any, and named namespace constraints",
         O_NAMESPACES3,
         "#scope,#prefixes,#css-qnames",
     ),

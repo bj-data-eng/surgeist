@@ -392,7 +392,7 @@ fn parse_selector_after_first_compound<'i, 't>(
     loop {
         let had_whitespace = consume_selector_whitespace(input)?;
         let state = input.state();
-        match input.next_including_whitespace() {
+        match input.next_including_whitespace().cloned() {
             Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
                 input.reset(&state);
                 break;
@@ -426,7 +426,9 @@ fn parse_selector_after_first_compound<'i, 't>(
                     recovery,
                 )?);
             }
-            Ok(Token::Delim('|')) => {
+            Ok(Token::Delim('|'))
+                if !had_whitespace || input.try_parse(|input| input.expect_delim('|')).is_ok() =>
+            {
                 return Err(invalid_selector(
                     input,
                     "unsupported selector combinator `||`",
@@ -490,15 +492,10 @@ pub(super) fn consume_selector_whitespace<'i, 't>(
     }
 }
 
-struct ParsedTypeSelector {
-    name: CssQualifiedSelectorName,
-    unqualified_any_namespace: bool,
-}
-
 fn parse_type_selector<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &SelectorRecovery<'_>,
-) -> std::result::Result<Option<ParsedTypeSelector>, ParseError<'i, Error>> {
+) -> std::result::Result<Option<CssQualifiedSelectorName>, ParseError<'i, Error>> {
     let start = input.state();
     let first = match input.next_including_whitespace() {
         Ok(token) => token.clone(),
@@ -508,98 +505,73 @@ fn parse_type_selector<'i, 't>(
         }
         Err(error) => return Err(selector_basic(error)),
     };
-
-    match first {
+    let (namespace, prefix, local_name) = match first {
         Token::Ident(prefix_or_name) => {
             let prefix_or_name = prefix_or_name.to_string();
             let after_ident = input.state();
-            match input.next_including_whitespace() {
-                Ok(Token::Delim('|')) => {
-                    let local_start = input.state();
-                    let local_name = parse_qualified_local_name(input)?;
-                    let Some(prefix) = recovery.named_namespace(&prefix_or_name) else {
-                        input.reset(&local_start);
-                        return Err(invalid_selector(
-                            input,
-                            format!("undeclared selector namespace prefix `{prefix_or_name}`"),
-                        ));
-                    };
-                    let namespace = CssNamespaceConstraint::Named(prefix);
-                    let name = if let Some(local_name) = local_name {
-                        CssQualifiedSelectorName::new(namespace, local_name)
-                    } else {
-                        CssQualifiedSelectorName::universal(namespace)
-                    };
-                    Ok(Some(ParsedTypeSelector {
-                        name,
-                        unqualified_any_namespace: false,
-                    }))
-                }
-                Ok(_) => {
-                    input.reset(&after_ident);
-                    let namespace = recovery.unqualified_type_namespace();
-                    let unqualified_any_namespace =
-                        matches!(namespace, CssNamespaceConstraint::Any);
-                    Ok(Some(ParsedTypeSelector {
-                        name: CssQualifiedSelectorName::new(namespace, prefix_or_name),
-                        unqualified_any_namespace,
-                    }))
-                }
-                Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
-                    input.reset(&after_ident);
-                    let namespace = recovery.unqualified_type_namespace();
-                    let unqualified_any_namespace =
-                        matches!(namespace, CssNamespaceConstraint::Any);
-                    Ok(Some(ParsedTypeSelector {
-                        name: CssQualifiedSelectorName::new(namespace, prefix_or_name),
-                        unqualified_any_namespace,
-                    }))
-                }
-                Err(error) => Err(selector_basic(error)),
+            let separated = match input.next_including_whitespace() {
+                Ok(Token::Delim('|')) => true,
+                Ok(_) => false,
+                Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => false,
+                Err(error) => return Err(selector_basic(error)),
+            };
+            if separated {
+                let local_start = input.state();
+                let local_name = parse_qualified_local_name(input)?;
+                let Some(prefix) = recovery.named_namespace(&prefix_or_name) else {
+                    input.reset(&local_start);
+                    return Err(invalid_selector(
+                        input,
+                        format!("undeclared selector namespace prefix `{prefix_or_name}`"),
+                    ));
+                };
+                (
+                    CssNamespaceConstraint::Named(prefix.clone()),
+                    CssQualifiedNamePrefix::Named(prefix),
+                    local_name,
+                )
+            } else {
+                input.reset(&after_ident);
+                (
+                    recovery.unqualified_type_namespace(),
+                    CssQualifiedNamePrefix::Unqualified,
+                    Some(prefix_or_name),
+                )
             }
         }
         Token::Delim('*') => {
             let after_star = input.state();
             if matches!(input.next_including_whitespace(), Ok(Token::Delim('|'))) {
-                let local_name = parse_qualified_local_name(input)?;
-                let namespace = CssNamespaceConstraint::Any;
-                let name = if let Some(local_name) = local_name {
-                    CssQualifiedSelectorName::new(namespace, local_name)
-                } else {
-                    CssQualifiedSelectorName::universal(namespace)
-                };
-                Ok(Some(ParsedTypeSelector {
-                    name,
-                    unqualified_any_namespace: false,
-                }))
+                (
+                    CssNamespaceConstraint::Any,
+                    CssQualifiedNamePrefix::Any,
+                    parse_qualified_local_name(input)?,
+                )
             } else {
                 input.reset(&after_star);
-                Ok(Some(ParsedTypeSelector {
-                    name: CssQualifiedSelectorName::universal(
-                        recovery.unqualified_type_namespace(),
-                    ),
-                    unqualified_any_namespace: false,
-                }))
+                (
+                    recovery.unqualified_type_namespace(),
+                    CssQualifiedNamePrefix::Unqualified,
+                    None,
+                )
             }
         }
-        Token::Delim('|') => {
-            let local_name = parse_qualified_local_name(input)?;
-            let namespace = CssNamespaceConstraint::ExplicitNone;
-            let name = if let Some(local_name) = local_name {
-                CssQualifiedSelectorName::new(namespace, local_name)
-            } else {
-                CssQualifiedSelectorName::universal(namespace)
-            };
-            Ok(Some(ParsedTypeSelector {
-                name,
-                unqualified_any_namespace: false,
-            }))
-        }
+        Token::Delim('|') => (
+            CssNamespaceConstraint::ExplicitNone,
+            CssQualifiedNamePrefix::ExplicitNone,
+            parse_qualified_local_name(input)?,
+        ),
         _ => {
             input.reset(&start);
-            Ok(None)
+            return Ok(None);
         }
-    }
+    };
+    Ok(Some(match local_name {
+        Some(local_name) => {
+            CssQualifiedSelectorName::new(namespace, prefix, CssIdent::new(local_name))
+        }
+        None => CssQualifiedSelectorName::universal(namespace, prefix),
+    }))
 }
 
 fn parse_qualified_local_name<'i, 't>(
@@ -645,9 +617,7 @@ fn parse_compound_selector_model_with_options<'i, 't>(
         }
     }
 
-    let parsed_type_selector = parse_type_selector(input, recovery)?;
-    let type_selector =
-        parsed_type_selector.map(|parsed| (parsed.name, parsed.unqualified_any_namespace));
+    let type_selector = parse_type_selector(input, recovery)?;
     let mut scope_anchors = 0;
     let mut nesting_selectors = 0;
     let mut id_names = Vec::new();
@@ -963,12 +933,11 @@ fn parse_attribute_selector<'i, 't>(
     recovery: &SelectorRecovery<'_>,
 ) -> std::result::Result<CssAttributeSelector, ParseError<'i, Error>> {
     consume_selector_whitespace(input)?;
-    let (namespace, name) = parse_attribute_selector_name(input, recovery)?;
+    let name = parse_attribute_selector_name(input, recovery)?;
 
     let matcher = match input.next() {
         Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
             return Ok(CssAttributeSelector::new_qualified(
-                namespace,
                 name,
                 CssAttributeMatcher::Exists,
                 CssAttributeCaseSensitivity::DocumentDefault,
@@ -1005,7 +974,6 @@ fn parse_attribute_selector<'i, 't>(
     let case_sensitivity = parse_attribute_case_sensitivity(input)?;
     input.expect_exhausted().map_err(selector_basic)?;
     Ok(CssAttributeSelector::new_qualified(
-        namespace,
         name,
         matcher,
         case_sensitivity,
@@ -1015,7 +983,7 @@ fn parse_attribute_selector<'i, 't>(
 fn parse_attribute_selector_name<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &SelectorRecovery<'_>,
-) -> std::result::Result<(CssNamespaceConstraint, CssAttributeName), ParseError<'i, Error>> {
+) -> std::result::Result<CssQualifiedAttributeName, ParseError<'i, Error>> {
     match input.next_including_whitespace() {
         Ok(Token::Ident(prefix_or_name)) => {
             let prefix_or_name = prefix_or_name.to_string();
@@ -1050,22 +1018,25 @@ fn parse_attribute_selector_name<'i, 't>(
                             format!("undeclared selector namespace prefix `{prefix_or_name}`"),
                         ));
                     };
-                    Ok((
-                        CssNamespaceConstraint::Named(prefix),
+                    Ok(CssQualifiedAttributeName::new(
+                        CssNamespaceConstraint::Named(prefix.clone()),
+                        CssQualifiedNamePrefix::Named(prefix),
                         CssAttributeName::new(local_name),
                     ))
                 }
                 Ok(_) => {
                     input.reset(&after_ident);
-                    Ok((
+                    Ok(CssQualifiedAttributeName::new(
                         CssNamespaceConstraint::ExplicitNone,
+                        CssQualifiedNamePrefix::Unqualified,
                         CssAttributeName::new(prefix_or_name),
                     ))
                 }
                 Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
                     input.reset(&after_ident);
-                    Ok((
+                    Ok(CssQualifiedAttributeName::new(
                         CssNamespaceConstraint::ExplicitNone,
+                        CssQualifiedNamePrefix::Unqualified,
                         CssAttributeName::new(prefix_or_name),
                     ))
                 }
@@ -1094,8 +1065,9 @@ fn parse_attribute_selector_name<'i, 't>(
             }
             let name = input.next_including_whitespace();
             match name {
-                Ok(Token::Ident(name)) => Ok((
+                Ok(Token::Ident(name)) => Ok(CssQualifiedAttributeName::new(
                     CssNamespaceConstraint::Any,
+                    CssQualifiedNamePrefix::Any,
                     CssAttributeName::new(name.to_string()),
                 )),
                 Ok(token) => {
@@ -1114,8 +1086,9 @@ fn parse_attribute_selector_name<'i, 't>(
             }
         }
         Ok(Token::Delim('|')) => match input.next_including_whitespace() {
-            Ok(Token::Ident(name)) => Ok((
+            Ok(Token::Ident(name)) => Ok(CssQualifiedAttributeName::new(
                 CssNamespaceConstraint::ExplicitNone,
+                CssQualifiedNamePrefix::ExplicitNone,
                 CssAttributeName::new(name.to_string()),
             )),
             Ok(token) => {

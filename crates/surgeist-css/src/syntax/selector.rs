@@ -924,30 +924,161 @@ pub enum CssNamespaceConstraint {
     Named(CssNamespacePrefix),
 }
 
-/// One parser-produced namespace-qualified type or universal selector name.
+/// The authored prefix of a qualified name, independent of its effective namespace.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssQualifiedNamePrefix {
+    /// No prefix or namespace separator was authored.
+    Unqualified,
+    /// A bare `|` was authored.
+    ExplicitNone,
+    /// The wildcard prefix `*|` was authored.
+    Any,
+    /// One exact, case-sensitive decoded prefix was authored.
+    Named(CssNamespacePrefix),
+}
+
+/// A checked qualified name cannot refer to an undeclared named prefix.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssQualifiedNameError {
+    UndeclaredNamespacePrefix(CssNamespacePrefix),
+}
+
+impl std::fmt::Display for CssQualifiedNameError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UndeclaredNamespacePrefix(prefix) => write!(
+                formatter,
+                "undeclared namespace prefix `{}`",
+                prefix.as_str()
+            ),
+        }
+    }
+}
+
+impl std::error::Error for CssQualifiedNameError {}
+
+impl CssQualifiedNamePrefix {
+    fn admits_constraint(&self, namespace: &CssNamespaceConstraint, apply_default: bool) -> bool {
+        match (self, namespace) {
+            (Self::Unqualified, CssNamespaceConstraint::Default | CssNamespaceConstraint::Any) => {
+                apply_default
+            }
+            (Self::Unqualified, CssNamespaceConstraint::ExplicitNone) => !apply_default,
+            (Self::ExplicitNone, CssNamespaceConstraint::ExplicitNone)
+            | (Self::Any, CssNamespaceConstraint::Any) => true,
+            (Self::Named(authored), CssNamespaceConstraint::Named(active)) => authored == active,
+            _ => false,
+        }
+    }
+
+    fn namespace(
+        &self,
+        context: &crate::CssNamespaceContext,
+        apply_default: bool,
+    ) -> Result<CssNamespaceConstraint, CssQualifiedNameError> {
+        Ok(match self {
+            Self::Unqualified if !apply_default => CssNamespaceConstraint::ExplicitNone,
+            Self::Unqualified if context.default_namespace().is_some() => {
+                CssNamespaceConstraint::Default
+            }
+            Self::Unqualified | Self::Any => CssNamespaceConstraint::Any,
+            Self::ExplicitNone => CssNamespaceConstraint::ExplicitNone,
+            Self::Named(prefix) => {
+                if context.named_namespace(prefix).is_none() {
+                    return Err(CssQualifiedNameError::UndeclaredNamespacePrefix(
+                        prefix.clone(),
+                    ));
+                }
+                CssNamespaceConstraint::Named(prefix.clone())
+            }
+        })
+    }
+
+    fn serialize_name(
+        &self,
+        local_name: Option<&str>,
+        max_css_bytes: usize,
+    ) -> Result<crate::CssSerializedValue, crate::CssComponentValueError> {
+        use crate::component_values::{CssCanonicalBuilder, CssCanonicalToken};
+        let mut writer = CssCanonicalBuilder::new(max_css_bytes);
+        let origin = CssValueOrigin::Programmatic;
+        match self {
+            Self::Unqualified => {}
+            Self::ExplicitNone => writer.push_grammar(CssCanonicalToken::Delim('|'), &origin)?,
+            Self::Any => {
+                writer.push_grammar(CssCanonicalToken::Delim('*'), &origin)?;
+                writer.push_grammar(CssCanonicalToken::Delim('|'), &origin)?;
+            }
+            Self::Named(prefix) => {
+                writer.push_grammar(CssCanonicalToken::Ident(prefix.as_str()), &origin)?;
+                writer.push_grammar(CssCanonicalToken::Delim('|'), &origin)?;
+            }
+        }
+        writer.push_grammar(
+            match local_name {
+                Some(name) => CssCanonicalToken::Ident(name),
+                None => CssCanonicalToken::Delim('*'),
+            },
+            &origin,
+        )?;
+        writer.finish()
+    }
+}
+
+/// One authored namespace-qualified type or universal selector name.
 ///
-/// The private representation admits either one decoded CSS identifier or the
-/// universal selector, never an empty or otherwise invalid local name.
+/// Local identifiers are decoded values; wildcard identity and authored prefix
+/// remain distinct from the namespace constraint selected by the parse context.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssQualifiedSelectorName {
     namespace: CssNamespaceConstraint,
-    local_name: Option<String>,
+    prefix: CssQualifiedNamePrefix,
+    local_name: Option<super::CssIdent>,
 }
 
 impl CssQualifiedSelectorName {
-    #[must_use]
-    pub(crate) fn new(namespace: CssNamespaceConstraint, local_name: String) -> Self {
-        debug_assert!(!local_name.is_empty());
+    /// Checks a decoded type name against explicit namespace bindings.
+    pub fn try_new(
+        prefix: CssQualifiedNamePrefix,
+        local_name: super::CssIdent,
+        context: &crate::CssNamespaceContext,
+    ) -> Result<Self, CssQualifiedNameError> {
+        let namespace = prefix.namespace(context, true)?;
+        Ok(Self::new(namespace, prefix, local_name))
+    }
+
+    /// Checks a universal selector against explicit namespace bindings.
+    pub fn try_universal(
+        prefix: CssQualifiedNamePrefix,
+        context: &crate::CssNamespaceContext,
+    ) -> Result<Self, CssQualifiedNameError> {
+        let namespace = prefix.namespace(context, true)?;
+        Ok(Self::universal(namespace, prefix))
+    }
+
+    pub(crate) fn new(
+        namespace: CssNamespaceConstraint,
+        prefix: CssQualifiedNamePrefix,
+        local_name: super::CssIdent,
+    ) -> Self {
+        debug_assert!(prefix.admits_constraint(&namespace, true));
         Self {
             namespace,
+            prefix,
             local_name: Some(local_name),
         }
     }
 
-    #[must_use]
-    pub(crate) const fn universal(namespace: CssNamespaceConstraint) -> Self {
+    pub(crate) fn universal(
+        namespace: CssNamespaceConstraint,
+        prefix: CssQualifiedNamePrefix,
+    ) -> Self {
+        debug_assert!(prefix.admits_constraint(&namespace, true));
         Self {
             namespace,
+            prefix,
             local_name: None,
         }
     }
@@ -958,16 +1089,93 @@ impl CssQualifiedSelectorName {
         &self.namespace
     }
 
+    /// Returns the authored prefix, including the absence of a prefix.
+    #[must_use]
+    pub const fn prefix(&self) -> &CssQualifiedNamePrefix {
+        &self.prefix
+    }
+
     /// Returns the decoded local identifier, or `None` for universal `*`.
     #[must_use]
     pub fn local_name(&self) -> Option<&str> {
-        self.local_name.as_deref()
+        self.local_name.as_ref().map(super::CssIdent::as_str)
     }
 
     /// Reports whether this name is the universal selector.
     #[must_use]
     pub const fn is_universal(&self) -> bool {
         self.local_name.is_none()
+    }
+
+    /// Serializes this name with a bound on generated UTF-8 bytes.
+    ///
+    /// Escaping preserves decoded identity and authored prefix form. Generated
+    /// tokens have programmatic origins; enclosing parsed rule origins remain
+    /// available separately. This does not serialize a complete selector or rule.
+    pub fn serialize_with_limit(
+        &self,
+        max_css_bytes: usize,
+    ) -> Result<crate::CssSerializedValue, crate::CssComponentValueError> {
+        self.prefix.serialize_name(self.local_name(), max_css_bytes)
+    }
+}
+
+/// One authored qualified attribute name; attribute local names cannot be universal.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssQualifiedAttributeName {
+    namespace: CssNamespaceConstraint,
+    prefix: CssQualifiedNamePrefix,
+    local_name: CssAttributeName,
+}
+
+impl CssQualifiedAttributeName {
+    /// Checks a decoded attribute name against explicit namespace bindings.
+    /// The default namespace never applies to an unqualified attribute.
+    pub fn try_new(
+        prefix: CssQualifiedNamePrefix,
+        local_name: CssAttributeName,
+        context: &crate::CssNamespaceContext,
+    ) -> Result<Self, CssQualifiedNameError> {
+        let namespace = prefix.namespace(context, false)?;
+        Ok(Self::new(namespace, prefix, local_name))
+    }
+
+    pub(crate) fn new(
+        namespace: CssNamespaceConstraint,
+        prefix: CssQualifiedNamePrefix,
+        local_name: CssAttributeName,
+    ) -> Self {
+        debug_assert!(prefix.admits_constraint(&namespace, false));
+        Self {
+            namespace,
+            prefix,
+            local_name,
+        }
+    }
+
+    #[must_use]
+    pub const fn namespace(&self) -> &CssNamespaceConstraint {
+        &self.namespace
+    }
+
+    #[must_use]
+    pub const fn prefix(&self) -> &CssQualifiedNamePrefix {
+        &self.prefix
+    }
+
+    #[must_use]
+    pub const fn local_name(&self) -> &CssAttributeName {
+        &self.local_name
+    }
+
+    /// Serializes this qualified name with bounded bytes and programmatic origins.
+    /// This name grammar is for attribute selectors, not `attr()` host admission.
+    pub fn serialize_with_limit(
+        &self,
+        max_css_bytes: usize,
+    ) -> Result<crate::CssSerializedValue, crate::CssComponentValueError> {
+        self.prefix
+            .serialize_name(Some(self.local_name.as_str()), max_css_bytes)
     }
 }
 
@@ -998,7 +1206,7 @@ impl CssNthAnPlusB {
 pub struct CssCompoundSelector {
     scope_anchors: usize,
     nesting_selectors: usize,
-    type_selector: Option<Box<(CssQualifiedSelectorName, bool)>>,
+    type_selector: Option<Box<CssQualifiedSelectorName>>,
     ids: Vec<String>,
     classes: Vec<String>,
     attributes: Vec<CssAttributeSelector>,
@@ -1049,9 +1257,10 @@ impl CssCompoundSelector {
         pseudo_elements: Option<CssPseudoElementSequence>,
     ) -> Self {
         let type_selector = tag.map(|tag| {
-            (
-                CssQualifiedSelectorName::new(CssNamespaceConstraint::Any, tag),
-                true,
+            CssQualifiedSelectorName::new(
+                CssNamespaceConstraint::Any,
+                CssQualifiedNamePrefix::Unqualified,
+                super::CssIdent::new(tag),
             )
         });
         let ids = key.into_iter().collect();
@@ -1069,7 +1278,7 @@ impl CssCompoundSelector {
     #[must_use]
     pub(crate) fn new_with_qualified_type_and_pseudo_elements(
         scope_anchors: usize,
-        type_selector: Option<(CssQualifiedSelectorName, bool)>,
+        type_selector: Option<CssQualifiedSelectorName>,
         ids: Vec<String>,
         classes: Vec<String>,
         attributes: Vec<CssAttributeSelector>,
@@ -1123,16 +1332,16 @@ impl CssCompoundSelector {
     /// Returns the authored namespace-aware type or universal selector.
     #[must_use]
     pub fn type_selector(&self) -> Option<&CssQualifiedSelectorName> {
-        match self.type_selector.as_deref() {
-            Some((type_selector, _)) => Some(type_selector),
-            None => None,
-        }
+        self.type_selector.as_deref()
     }
 
     /// Whether the authored unqualified form has Any namespace; a simple tag also needs a local name.
     #[must_use]
     pub(crate) fn has_unqualified_any_namespace(&self) -> bool {
-        matches!(self.type_selector.as_deref(), Some((_, true)))
+        self.type_selector.as_deref().is_some_and(|name| {
+            matches!(name.prefix(), CssQualifiedNamePrefix::Unqualified)
+                && matches!(name.namespace(), CssNamespaceConstraint::Any)
+        })
     }
 
     /// Returns the parser-retained IDs in authored order.
@@ -1169,8 +1378,7 @@ impl CssCompoundSelector {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssAttributeSelector {
-    namespace: CssNamespaceConstraint,
-    name: CssAttributeName,
+    name: CssQualifiedAttributeName,
     matcher: CssAttributeMatcher,
     case_sensitivity: CssAttributeCaseSensitivity,
 }
@@ -1178,13 +1386,11 @@ pub struct CssAttributeSelector {
 impl CssAttributeSelector {
     #[must_use]
     pub(crate) const fn new_qualified(
-        namespace: CssNamespaceConstraint,
-        name: CssAttributeName,
+        name: CssQualifiedAttributeName,
         matcher: CssAttributeMatcher,
         case_sensitivity: CssAttributeCaseSensitivity,
     ) -> Self {
         Self {
-            namespace,
             name,
             matcher,
             case_sensitivity,
@@ -1194,12 +1400,18 @@ impl CssAttributeSelector {
     /// Returns the namespace constraint for the attribute name.
     #[must_use]
     pub const fn namespace(&self) -> &CssNamespaceConstraint {
-        &self.namespace
+        self.name.namespace()
+    }
+
+    /// Returns the qualified authored name, including its prefix form.
+    #[must_use]
+    pub const fn qualified_name(&self) -> &CssQualifiedAttributeName {
+        &self.name
     }
 
     #[must_use]
     pub const fn name(&self) -> &CssAttributeName {
-        &self.name
+        self.name.local_name()
     }
 
     #[must_use]
