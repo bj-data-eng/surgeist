@@ -293,7 +293,7 @@ fn invalid_values_drop_only_the_palette_declaration_and_report_known_grammar_fai
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
         assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
         if value == "none" {
-            assert_eq!(diagnostic.error().position().byte_offset().value(), 22);
+            assert_eq!(diagnostic.error().position().byte_offset().value(), 23);
         }
         assert!(validate_style_attribute(&text).is_err());
         let error = parse_property_value_for_grammar(
@@ -327,12 +327,7 @@ fn checked_failures_map_to_supplied_tokens_and_reject_declaration_annotations() 
     assert_eq!(origin.source().as_str(), "none");
     assert_eq!(origin.span().start().byte_offset().value(), 0);
     assert_eq!(origin.span().end().byte_offset().value(), 4);
-    for value in [
-        "normal!important",
-        "dark;",
-        "normal {}",
-        "{} var(--palette)",
-    ] {
+    for value in ["normal!important", "dark;", "normal {}"] {
         assert!(matches!(
             parse_property_value_for_grammar(
                 grammar(),
@@ -388,6 +383,9 @@ fn whole_pending_values_reenter_strictly_without_changing_source_or_replacement_
         "env(palette)",
         "var(--palette, {fallback})",
         "palette-mix(var(--palette), dark)",
+        // Syntax 3 (2021) §8.2 permits balanced blocks; Variables 1 §3
+        // defers the entire known-property grammar for a valid var() reference.
+        "{} var(--palette)",
     ] {
         for source in [declaration(symbolic), checked(symbolic)] {
             let before = source.clone();
@@ -395,6 +393,19 @@ fn whole_pending_values_reenter_strictly_without_changing_source_or_replacement_
                 source.known().unwrap().declared_value(),
                 CssKnownDeclaredValueRef::SubstitutionDependent(_)
             ));
+            assert_eq!(
+                source
+                    .known()
+                    .unwrap()
+                    .substitution_dependent()
+                    .unwrap()
+                    .as_css(),
+                symbolic
+            );
+            assert_eq!(
+                source.value_components().serialize().unwrap().as_css(),
+                symbolic
+            );
             let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
                 panic!("whole pending palette")
             };
@@ -429,7 +440,13 @@ fn whole_pending_values_reenter_strictly_without_changing_source_or_replacement_
                 values.items()[0].value(),
                 CssContributionValueRef::Global(CssGlobalKeyword::Initial)
             );
-            for invalid in ["none", "palette-mix(dark,)", "dark!important", "dark;"] {
+            for invalid in [
+                "none",
+                "palette-mix(dark,)",
+                "dark!important",
+                "dark;",
+                "{} dark",
+            ] {
                 assert!(matches!(
                     pending
                         .reenter(parse_component_values(invalid).unwrap())
