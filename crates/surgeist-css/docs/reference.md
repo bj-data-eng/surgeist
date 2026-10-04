@@ -5383,10 +5383,12 @@ time/frequency/percentage owners. Ordinary frequency output retains its selected
 unit and rounds to at most six fractional places under the shared precision policy.
 Consequently, a positive `1e-999Hz absolute` model retains its exact admitted input
 but returns `CssSpecifiedValueSerializationErrorKind::UnrepresentableValue` rather
-than emitting invalid ordinary `0hz absolute`. This fail-closed policy reconciles
+than emitting invalid ordinary `0hz absolute`. This is Surgeist's fail-closed
+emission policy. The pinned sources leave the reconciliation between
 [Values 4 supported precision](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#numeric-types)
 and [CSSOM number serialization](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serialize-a-css-component-value)
-with the [CSSOM grammar-representative value requirement](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serialize-a-css-value).
+and the [CSSOM grammar-representative value requirement](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serialize-a-css-value)
+unspecified; they do not mandate this error algorithm.
 The frequency owner formats once under its existing precision and budget; Speech
 checks its ordinary absolute output before completing the value. Resource limits
 encountered first retain their resource errors. Relative rounded zero remains valid;
