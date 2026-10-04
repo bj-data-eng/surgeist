@@ -1275,6 +1275,7 @@ mod content_serialization;
 mod content_values;
 mod counter_changes;
 mod counter_changes_serialization;
+mod easing_serialization;
 mod error;
 mod expansion;
 mod filter_serialization;

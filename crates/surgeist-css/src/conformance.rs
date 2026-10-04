@@ -1773,7 +1773,7 @@ static CONFORMANCE_EXCLUSIONS: &[CssExclusionMetadata] = &[
     exclusion!(
         "excluded.O-EASING1.evaluation",
         O_EASING1,
-        "easing output/serialization sections",
+        "easing evaluation and output algorithms",
         CssExclusionReason::OutsideAuthoredSyntaxBoundary
     ),
     exclusion!(

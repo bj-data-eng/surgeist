@@ -78,7 +78,7 @@ impl CssPositiveIntegerValue {
         Ok(output)
     }
 
-    fn serialize_specified_into(
+    pub(crate) fn serialize_specified_into(
         &self,
         context: &mut SpecifiedSerializationContext,
         output: &mut String,

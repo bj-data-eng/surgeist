@@ -1805,6 +1805,29 @@ symbolic even when their authored expression is `calc(1)`. Ordinary zero,
 negative, decimal-point and exponent counts are rejected. Position omission
 remains distinct from explicit `end` or `JumpEnd`.
 
+`CssEasing`, `CssEasingList`, `CssCubicBezier`, and `CssSteps` expose
+`serialize_specified()` and `serialize_specified_with_limits()`. Their canonical
+output follows [CSS Easing Functions Level 1 §2.4](https://www.w3.org/TR/2023/CRD-css-easing-1-20230213/#serialization):
+the five non-step keywords remain keywords, `step-start` becomes
+`steps(1, start)`, and `step-end` becomes `steps(1)`. Explicit `end` and
+`jump-end` positions are omitted; `start` and `jump-start` retain their distinct
+spellings. Cubic coordinates retain their order and use the shared Number
+formatter; counts use the existing exact Integer and Integer-calculation owner.
+Specified calculations remain calculations, without coordinate clamping,
+positive-count clamping, integer rounding, or an assumed relative-unit basis.
+The selected publication does not admit `linear()` or `spring()` functions.
+
+One cumulative serialization context covers every list member and numeric
+child. A list, cubic function, or steps function charges one input and one
+projection node; enum dispatch adds no wrapper charge. Each stored position
+charges one input node, and an emitted position charges one projection node.
+A keyword, including a step alias's canonical replacement, charges one of each.
+Numeric children retain their shared owner's visits and projection work; bytes
+are the actual canonical output. Errors return no partial string and leave
+authored components, origins, omissions, and position identities unchanged.
+Timing evaluation and generic Transition/Animation property expansion remain
+separate capabilities.
+
 Filter amounts use `CssFilterAmount::Default`, `Number` or `Percentage`.
 The scalar branches hold `CssSpecifiedNonNegativeNumber` and
 `CssSpecifiedNonNegativePercentage` directly, preserving ordinary spelling,

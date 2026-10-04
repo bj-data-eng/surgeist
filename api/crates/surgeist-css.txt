@@ -1056,6 +1056,9 @@ pub fn surgeist_css::CssDisplayValue::serialize_specified_with_limits(&self, lim
 pub surgeist_css::CssEasing::CubicBezier(surgeist_css::CssCubicBezier)
 pub surgeist_css::CssEasing::Keyword(surgeist_css::CssEasingKeyword)
 pub surgeist_css::CssEasing::Steps(surgeist_css::CssSteps)
+impl surgeist_css::CssEasing
+pub fn surgeist_css::CssEasing::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssEasing::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssEasingKeyword
 pub surgeist_css::CssEasingKeyword::Ease
 pub surgeist_css::CssEasingKeyword::EaseIn
@@ -5956,6 +5959,9 @@ impl surgeist_css::CssCounterSymbols
 pub fn surgeist_css::CssCounterSymbols::symbols(&self) -> &[surgeist_css::CssCounterSymbol]
 pub struct surgeist_css::CssCubicBezier
 impl surgeist_css::CssCubicBezier
+pub fn surgeist_css::CssCubicBezier::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssCubicBezier::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssCubicBezier
 pub fn surgeist_css::CssCubicBezier::try_new(x1: surgeist_css::CssSpecifiedNumber, y1: surgeist_css::CssSpecifiedNumber, x2: surgeist_css::CssSpecifiedNumber, y2: surgeist_css::CssSpecifiedNumber) -> core::option::Option<Self>
 pub const fn surgeist_css::CssCubicBezier::x1(&self) -> &surgeist_css::CssCubicBezierX
 pub const fn surgeist_css::CssCubicBezier::x2(&self) -> &surgeist_css::CssCubicBezierX
@@ -6164,6 +6170,9 @@ impl surgeist_css::CssDurationList
 pub fn surgeist_css::CssDurationList::try_new(values: alloc::vec::Vec<surgeist_css::CssDuration>) -> core::option::Option<Self>
 pub fn surgeist_css::CssDurationList::values(&self) -> &[surgeist_css::CssDuration]
 pub struct surgeist_css::CssEasingList
+impl surgeist_css::CssEasingList
+pub fn surgeist_css::CssEasingList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssEasingList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl surgeist_css::CssEasingList
 pub fn surgeist_css::CssEasingList::try_new(values: alloc::vec::Vec<surgeist_css::CssEasing>) -> core::option::Option<Self>
 pub fn surgeist_css::CssEasingList::values(&self) -> &[surgeist_css::CssEasing]
@@ -8993,6 +9002,9 @@ impl surgeist_css::CssSteps
 pub const fn surgeist_css::CssSteps::count(&self) -> &surgeist_css::CssPositiveIntegerValue
 pub const fn surgeist_css::CssSteps::position(&self) -> core::option::Option<surgeist_css::CssStepPosition>
 pub fn surgeist_css::CssSteps::try_new(count: surgeist_css::CssPositiveIntegerValue, position: core::option::Option<surgeist_css::CssStepPosition>) -> core::option::Option<Self>
+impl surgeist_css::CssSteps
+pub fn surgeist_css::CssSteps::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssSteps::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssStyleBlock
 impl surgeist_css::CssStyleBlock
 pub const fn surgeist_css::CssStyleBlock::declarations(&self) -> &surgeist_css::CssDeclarationList
