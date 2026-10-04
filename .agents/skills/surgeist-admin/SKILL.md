@@ -35,8 +35,8 @@ the search. Include closed issues and archived Project items when reconstructing
 progress; an empty active view does not establish absence. Reference material
 supports acceptance criteria without automatically becoming another issue.
 
-Use the existing fields when useful: Crates, Workstream, Boundary, Priority,
-Plan, and Needs. Assign Workstream explicitly, not from GitHub author identity.
+Use the existing fields when useful: Crates, Feature Group, Boundary, Priority,
+Plan, and Needs. Assign Feature Group explicitly, not from GitHub author identity.
 Boundary distinguishes Root-owned, Crate-owned, Cross-crate, and
 Upstream-blocked work. Keep requirement coverage and consequential decisions
 with their owning issue or tracked source. Do not build a parallel progress
