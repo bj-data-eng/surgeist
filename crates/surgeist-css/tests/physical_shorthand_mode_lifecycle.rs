@@ -208,42 +208,95 @@ fn scroll_margin_length(value: &CssLonghandValue) -> Option<&CssSpecifiedLength>
         _ => None,
     }
 }
+fn scroll_padding(value: &CssLonghandValue) -> Option<&CssScrollPaddingValue> {
+    match value.view() {
+        CssLonghandValueRef::ScrollPaddingTop(value)
+        | CssLonghandValueRef::ScrollPaddingRight(value)
+        | CssLonghandValueRef::ScrollPaddingBottom(value)
+        | CssLonghandValueRef::ScrollPaddingLeft(value)
+        | CssLonghandValueRef::ScrollPaddingBlockStart(value)
+        | CssLonghandValueRef::ScrollPaddingInlineStart(value)
+        | CssLonghandValueRef::ScrollPaddingBlockEnd(value)
+        | CssLonghandValueRef::ScrollPaddingInlineEnd(value) => Some(value),
+        _ => None,
+    }
+}
+fn assert_literal_payload(actual: &CssComponentValue, expected: &CssComponentValue) {
+    match (actual.view(), expected.view()) {
+        (
+            CssComponentValueRef::Token(CssValueTokenRef::Number(actual)),
+            CssComponentValueRef::Token(CssValueTokenRef::Number(expected)),
+        )
+        | (
+            CssComponentValueRef::Token(CssValueTokenRef::Percentage(actual)),
+            CssComponentValueRef::Token(CssValueTokenRef::Percentage(expected)),
+        ) => {
+            assert_eq!(actual.representation(), expected.representation());
+            assert_eq!(actual.kind(), expected.kind());
+        }
+        (
+            CssComponentValueRef::Token(CssValueTokenRef::Dimension {
+                number: actual,
+                unit: actual_unit,
+            }),
+            CssComponentValueRef::Token(CssValueTokenRef::Dimension {
+                number: expected,
+                unit: expected_unit,
+            }),
+        ) => {
+            assert_eq!(actual.representation(), expected.representation());
+            assert_eq!(actual.kind(), expected.kind());
+            assert_eq!(actual_unit, expected_unit);
+        }
+        _ => panic!("selected literal token/unit shape differs"),
+    }
+}
 fn assert_semantic_payload(actual: &CssLonghandValue, expected: &CssLonghandValue) {
     assert_eq!(actual.property(), expected.property());
+    if let Some(actual_padding) = scroll_padding(actual) {
+        match (
+            actual_padding,
+            scroll_padding(expected).expect("scroll-padding domain"),
+        ) {
+            (CssScrollPaddingValue::Auto, CssScrollPaddingValue::Auto) => {}
+            (
+                CssScrollPaddingValue::LengthPercentage(actual),
+                CssScrollPaddingValue::LengthPercentage(expected),
+            ) => {
+                assert!(actual.calculation().is_none());
+                assert!(expected.calculation().is_none());
+                assert_literal_payload(
+                    actual.literal_component().expect("ordinary exact padding"),
+                    expected
+                        .literal_component()
+                        .expect("ordinary exact padding"),
+                );
+            }
+            _ => panic!("selected Auto/LengthPercentage branch differs"),
+        }
+        return;
+    }
     match (scroll_margin_length(actual), scroll_margin_length(expected)) {
         (Some(actual), Some(expected)) => {
             assert!(actual.calculation().is_none());
             assert!(expected.calculation().is_none());
-            let actual = actual.literal_component().expect("ordinary exact length");
-            let expected = expected.literal_component().expect("ordinary exact length");
-            match (actual.view(), expected.view()) {
-                (
-                    CssComponentValueRef::Token(CssValueTokenRef::Number(actual)),
-                    CssComponentValueRef::Token(CssValueTokenRef::Number(expected)),
-                ) => {
-                    assert_eq!(actual.representation(), expected.representation());
-                    assert_eq!(actual.kind(), expected.kind());
-                }
-                (
-                    CssComponentValueRef::Token(CssValueTokenRef::Dimension {
-                        number: actual,
-                        unit: actual_unit,
-                    }),
-                    CssComponentValueRef::Token(CssValueTokenRef::Dimension {
-                        number: expected,
-                        unit: expected_unit,
-                    }),
-                ) => {
-                    assert_eq!(actual.representation(), expected.representation());
-                    assert_eq!(actual.kind(), expected.kind());
-                    assert_eq!(actual_unit, expected_unit);
-                }
-                _ => panic!("selected literal token/unit shape differs"),
-            }
+            assert_literal_payload(
+                actual.literal_component().expect("ordinary exact length"),
+                expected.literal_component().expect("ordinary exact length"),
+            );
         }
         (None, None) => assert_eq!(actual, expected),
         _ => panic!("selected longhand domain differs"),
     }
+}
+fn scroll_scalar_origin(value: &CssLonghandValue) -> Option<&CssValueOrigin> {
+    scroll_margin_length(value)
+        .map(CssSpecifiedLength::origin)
+        .or_else(|| match scroll_padding(value) {
+            Some(CssScrollPaddingValue::LengthPercentage(value)) => Some(value.origin()),
+            Some(CssScrollPaddingValue::Auto) | None => None,
+            Some(_) => panic!("unexpected scroll-padding branch"),
+        })
 }
 fn assigned(arity: usize) -> [usize; 4] {
     match arity {
@@ -284,7 +337,7 @@ fn assert_values(
         assert_eq!(item.property(), grammar(name).target_property());
         let actual = item.ordinary_value().expect("ordinary selected side");
         assert_semantic_payload(actual, &one_value(name, family.tokens[token]));
-        if let Some(length) = scroll_margin_length(actual) {
+        if let Some(origin) = scroll_scalar_origin(actual) {
             let components = replacement.unwrap_or_else(|| source.value_components());
             let leaves = components
                 .items()
@@ -293,13 +346,15 @@ fn assert_values(
                     matches!(
                         component.view(),
                         CssComponentValueRef::Token(
-                            CssValueTokenRef::Number(_) | CssValueTokenRef::Dimension { .. }
+                            CssValueTokenRef::Number(_)
+                                | CssValueTokenRef::Dimension { .. }
+                                | CssValueTokenRef::Percentage(_)
                         )
                     )
                 })
                 .collect::<Vec<_>>();
             assert_eq!(leaves.len(), arity);
-            assert_eq!(length.origin(), leaves[token].origin());
+            assert_eq!(origin, leaves[token].origin());
         }
         assert!(item.source().same_occurrence(source));
         assert_eq!(item.source().position(), source.position());
