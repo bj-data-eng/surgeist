@@ -65,14 +65,8 @@ fn partial_comparisons_keep_each_percentage_and_the_first_comparable_group_posit
         ("max(1%,2px,2%,1px)", "max(1%, 2px, 2%)"),
         ("min(2px,1%,1px,2%)", "min(1px, 1%, 2%)"),
         ("max(2px,1%,1px,2%)", "max(2px, 1%, 2%)"),
-        (
-            "min(2em,1%,1em,2%,3px)",
-            "min(1em, 1%, 2%, 3px)",
-        ),
-        (
-            "max(1em,1%,2em,2%,3px)",
-            "max(2em, 1%, 2%, 3px)",
-        ),
+        ("min(2em,1%,1em,2%,3px)", "min(1em, 1%, 2%, 3px)"),
+        ("max(1em,1%,2em,2%,3px)", "max(2em, 1%, 2%, 3px)"),
     ] {
         assert_length_percentage(source, expected);
     }
@@ -179,11 +173,8 @@ fn assert_numeric_limits(source: &str, expected: &str, inputs: usize, projection
             before.calculation().unwrap().components()
         );
     }
-    let result = value.serialize_specified_with_limits(Limits::new(
-        inputs,
-        projections,
-        expected.len(),
-    ));
+    let result =
+        value.serialize_specified_with_limits(Limits::new(inputs, projections, expected.len()));
     assert_eq!(value, before);
     assert_eq!(result.unwrap(), expected);
 }
@@ -226,7 +217,12 @@ fn sibling_hinted_comparisons_keep_one_cumulative_enclosing_budget() {
         let error = shape.serialize_specified_with_limits(limits).unwrap_err();
         assert_eq!(error.kind(), kind, "{limits:?}");
         assert_eq!(shape, before);
-        for (value, original) in shape.offsets().values().iter().zip(before.offsets().values()) {
+        for (value, original) in shape
+            .offsets()
+            .values()
+            .iter()
+            .zip(before.offsets().values())
+        {
             assert_eq!(value.origin(), original.origin());
             assert_eq!(
                 value.calculation().unwrap().components(),
