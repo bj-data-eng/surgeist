@@ -29,6 +29,7 @@ use crate::properties::{CssKnownDeclaration, CssKnownDeclaredValueRef, CssKnownP
 use crate::scroll_snap::*;
 use crate::sizing::{CssMaxSizeValue, CssSizeValue};
 use crate::sizing_controls::*;
+use crate::speech::{CssSpeak, CssSpeakAs};
 use crate::syntax::*;
 use crate::text_alignment::{CssTextAlignAllValue, CssTextAlignLastValue, CssTextAlignValue};
 use crate::{

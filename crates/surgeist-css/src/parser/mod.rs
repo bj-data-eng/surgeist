@@ -63,6 +63,7 @@ mod scroll_snap;
 mod selectors;
 mod sizing;
 mod sizing_controls;
+mod speech;
 mod supports;
 mod text_alignment;
 mod timing;
@@ -141,6 +142,7 @@ use supports::{
 };
 use url::parse_url;
 pub(crate) mod named_supports;
+use speech::*;
 use text_alignment::*;
 use timing::*;
 use typography::*;

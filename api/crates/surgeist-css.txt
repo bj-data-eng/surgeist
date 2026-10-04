@@ -2116,6 +2116,8 @@ pub surgeist_css::CssKnownProperty::ScrollSnapType
 pub surgeist_css::CssKnownProperty::ScrollbarGutter
 pub surgeist_css::CssKnownProperty::ScrollbarWidth
 pub surgeist_css::CssKnownProperty::Size
+pub surgeist_css::CssKnownProperty::Speak
+pub surgeist_css::CssKnownProperty::SpeakAs
 pub surgeist_css::CssKnownProperty::TableLayout
 pub surgeist_css::CssKnownProperty::TextAlign
 pub surgeist_css::CssKnownProperty::TextAlignAll
@@ -2459,6 +2461,8 @@ pub surgeist_css::CssKnownPropertyValueRef::ScrollSnapType(&'a surgeist_css::Css
 pub surgeist_css::CssKnownPropertyValueRef::ScrollbarGutter(&'a surgeist_css::CssScrollbarGutterPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ScrollbarWidth(&'a surgeist_css::CssScrollbarWidthPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Size(&'a surgeist_css::CssSizePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::Speak(&'a surgeist_css::CssSpeakPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::SpeakAs(&'a surgeist_css::CssSpeakAsPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TableLayout(&'a surgeist_css::CssTableLayoutPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextAlign(&'a surgeist_css::CssTextAlignPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextAlignAll(&'a surgeist_css::CssTextAlignAllPropertyValue)
@@ -2796,6 +2800,8 @@ pub surgeist_css::CssLonghandValueRef::ScrollSnapAlign(&'a surgeist_css::CssScro
 pub surgeist_css::CssLonghandValueRef::ScrollSnapStop(&'a surgeist_css::CssScrollSnapStop)
 pub surgeist_css::CssLonghandValueRef::ScrollSnapType(&'a surgeist_css::CssScrollSnapType)
 pub surgeist_css::CssLonghandValueRef::ScrollbarGutter(&'a surgeist_css::CssScrollbarGutter)
+pub surgeist_css::CssLonghandValueRef::Speak(&'a surgeist_css::CssSpeak)
+pub surgeist_css::CssLonghandValueRef::SpeakAs(&'a surgeist_css::CssSpeakAs)
 pub surgeist_css::CssLonghandValueRef::TableLayout(&'a surgeist_css::CssTableLayout)
 pub surgeist_css::CssLonghandValueRef::TextAlignAll(&'a surgeist_css::CssTextAlignAllValue)
 pub surgeist_css::CssLonghandValueRef::TextAlignLast(&'a surgeist_css::CssTextAlignLastValue)
@@ -3727,6 +3733,16 @@ pub fn surgeist_css::CssSizeValue::serialize_specified(&self) -> core::result::R
 pub fn surgeist_css::CssSizeValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl core::convert::From<surgeist_css::CssSizeValue> for surgeist_css::CssFlexBasisValue
 pub fn surgeist_css::CssFlexBasisValue::from(value: surgeist_css::CssSizeValue) -> Self
+#[non_exhaustive] pub enum surgeist_css::CssSpeak
+pub surgeist_css::CssSpeak::Always
+pub surgeist_css::CssSpeak::Auto
+pub surgeist_css::CssSpeak::Never
+impl surgeist_css::CssSpeak
+pub fn surgeist_css::CssSpeak::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssSpeak::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssSpeakAsPunctuation
+pub surgeist_css::CssSpeakAsPunctuation::Literal
+pub surgeist_css::CssSpeakAsPunctuation::None
 #[non_exhaustive] pub enum surgeist_css::CssSpecificationTier
 pub surgeist_css::CssSpecificationTier::LaterStandard
 pub surgeist_css::CssSpecificationTier::Snapshot2026Interop
@@ -8501,6 +8517,24 @@ pub struct surgeist_css::CssSourceSpan
 impl surgeist_css::CssSourceSpan
 pub const fn surgeist_css::CssSourceSpan::end(self) -> surgeist_css::CssSourcePosition
 pub const fn surgeist_css::CssSourceSpan::start(self) -> surgeist_css::CssSourcePosition
+pub struct surgeist_css::CssSpeakAs
+impl surgeist_css::CssSpeakAs
+pub const fn surgeist_css::CssSpeakAs::digits(self) -> bool
+pub const fn surgeist_css::CssSpeakAs::is_normal(self) -> bool
+pub const fn surgeist_css::CssSpeakAs::normal() -> Self
+pub const fn surgeist_css::CssSpeakAs::punctuation(self) -> core::option::Option<surgeist_css::CssSpeakAsPunctuation>
+pub fn surgeist_css::CssSpeakAs::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssSpeakAs::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub const fn surgeist_css::CssSpeakAs::spell_out(self) -> bool
+pub const fn surgeist_css::CssSpeakAs::try_new(spell_out: bool, digits: bool, punctuation: core::option::Option<surgeist_css::CssSpeakAsPunctuation>) -> core::option::Option<Self>
+pub struct surgeist_css::CssSpeakAsPropertyValue
+impl surgeist_css::CssSpeakAsPropertyValue
+pub fn surgeist_css::CssSpeakAsPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssSpeakAsPropertyValue::value(&self) -> &surgeist_css::CssSpeakAs
+pub struct surgeist_css::CssSpeakPropertyValue
+impl surgeist_css::CssSpeakPropertyValue
+pub fn surgeist_css::CssSpeakPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssSpeakPropertyValue::value(&self) -> &surgeist_css::CssSpeak
 pub struct surgeist_css::CssSpecificationSource
 impl surgeist_css::CssSpecificationSource
 pub const fn surgeist_css::CssSpecificationSource::id(self) -> surgeist_css::CssSpecificationSourceId

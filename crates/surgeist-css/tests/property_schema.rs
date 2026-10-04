@@ -490,6 +490,8 @@ macro_rules! with_property_value_variants {
             AlignTracks,
             AspectRatio,
             ScrollbarWidth,
+            Speak,
+            SpeakAs,
             Cursor,
             PointerEvents,
             UserSelect,
@@ -571,6 +573,8 @@ macro_rules! dispatch_vector {
 // and global-keyword paths.
 const PROPERTY_DISPATCH_VECTORS: &[DispatchVector] = &[
     dispatch_vector!("all", "block"),
+    dispatch_vector!("speak", "always"),
+    dispatch_vector!("speak-as", "digits spell-out no-punctuation"),
     dispatch_vector!("display", "block"),
     dispatch_vector!("box-sizing", "border-box"),
     dispatch_vector!("position", "sticky"),

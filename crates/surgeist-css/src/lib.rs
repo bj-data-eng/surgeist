@@ -1351,6 +1351,8 @@ mod resolution;
 mod scroll_snap;
 mod sizing;
 mod sizing_controls;
+mod speech;
+pub use speech::{CssSpeak, CssSpeakAs, CssSpeakAsPunctuation};
 mod text_alignment;
 mod text_spacing;
 mod time;

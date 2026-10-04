@@ -894,6 +894,14 @@ profile_source!(
     "https://www.w3.org/TR/2026/CRD-css-display-3-20260605/"
 );
 profile_source!(
+    S_SPEECH1,
+    "S-SPEECH1",
+    "CSS Speech",
+    "1",
+    CssSpecificationTier::Snapshot2026Stable,
+    "https://www.w3.org/TR/2023/CRD-css-speech-1-20230214/"
+);
+profile_source!(
     S_WRITING4,
     "S-WRITING4",
     "CSS Writing Modes",
@@ -1277,6 +1285,7 @@ static SPECIFICATION_SOURCES: &[CssSpecificationSource] = &[
     R_CASCADE5,
     R_CONDITIONAL4,
     S_DISPLAY3,
+    S_SPEECH1,
     S_WRITING4,
     S_BREAK3,
     S_ALIGN3,
@@ -2282,6 +2291,7 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::ContainerType => X_CONDITIONAL5,
         CssKnownProperty::All => O_CASCADE4,
         CssKnownProperty::Display | CssKnownProperty::Visibility => S_DISPLAY3,
+        CssKnownProperty::Speak | CssKnownProperty::SpeakAs => S_SPEECH1,
         CssKnownProperty::Quotes | CssKnownProperty::Content => X_CONTENT3,
         CssKnownProperty::BorderCollapse
         | CssKnownProperty::BorderSpacing
@@ -2729,7 +2739,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 636] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 638] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -4468,6 +4478,12 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 636] = [
         CssKnownProperty::Visibility,
         "visibility",
         "baseline.property.visibility"
+    ),
+    complete_property_feature!(CssKnownProperty::Speak, "speak", "official.property.speak"),
+    complete_property_feature!(
+        CssKnownProperty::SpeakAs,
+        "speak-as",
+        "official.property.speak-as"
     ),
     complete_property_feature!(
         CssKnownProperty::Content,
