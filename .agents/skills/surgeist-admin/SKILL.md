@@ -79,8 +79,10 @@ verdicts and supporting evidence local while they serve an active review,
 diagnosis, or handoff. No linked review record or compulsory report file is
 required in GitHub. PISCT's review skills own the actual judgment and scope.
 
-Record CLEAN when the issue's required review process is clean and retain it at
-completion. Use NOT CLEAN when an unresolved result must accompany a handoff;
+An `accepted` PISCT implementation-review verdict maps to CLEAN for its reviewed
+scope, including when advisory suggestions remain. Record CLEAN when the issue's
+required reviews are satisfied and retain it at completion. Use NOT CLEAN when
+blocking findings or insufficient review evidence must accompany a handoff;
 routine review corrections can remain local until resolved. Preserve unresolved
 findings and limitations with enough context for the next action. Review applies
 only to the issue's scope, independently of its resolved or unplanned outcome.
