@@ -365,10 +365,25 @@ integer consumer's deferred conversion requirement. No arithmetic is evaluated
 during admission: division by zero, symbolic infinity and NaN, range clamping,
 and integer rounding belong to later resolution.
 
+`CssHintedNumberCalculation` checks a Number result whose dimensional powers
+cancel while its percentage hint remains non-null. Color and opacity expose
+distinct `HintedNumberCalculation` branches for these percentage-permitting
+slots. Relative non-hue channels, profile expressions and alpha retain the same
+permission. Pure `CssNumberCalculation` and integer roots, hue, and legacy
+number-only CMYK channels reject this payload. This follows
+[Typed OM's numeric matching rule](https://www.w3.org/TR/2024/WD-css-typed-om-1-20240321/#cssnumericvalue-match)
+and [Values 4's type checking](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-type-checking):
+matching a percentage-permitting Number result does not erase its hint or supply
+an external percentage basis. Shared specified projection retains unresolved
+expressions; borrowed parsed-alpha views retain the distinct calculation type.
+
 The shared Values 4 grammar admits `calc`, `min`, `max`, `clamp`, `round`, `mod`,
 `rem`, the trigonometric functions, `pow`, `sqrt`, `hypot`, `log`, `exp`, `abs`, and
 `sign`, with their intrinsic arity and type rules. Binary addition and subtraction
 require actual whitespace on both sides; comments alone are insufficient.
+`sign()` admits compound dimensional inputs and produces Number, preserving
+any inferred hint. Specified simplification may retain the compound input when
+it cannot resolve its magnitude; admission does not require another evaluator.
 Standalone delimiter negation such as `-(1px)` is invalid. Substitution-dependent
 declarations remain pending upstream; exact constructors reject residual `var()`.
 

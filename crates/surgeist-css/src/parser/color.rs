@@ -502,6 +502,13 @@ fn parse_authored_number_or_percentage_calculation<'i, 't>(
         CalculationRoot::NumberPercentage,
     )?;
     match expression.result_type() {
+        CssCalculationType::Number
+            if expression.as_ref().numeric_type().percent_hint().is_some() =>
+        {
+            Ok(CssColorComponent::HintedNumberCalculation(
+                CssHintedNumberCalculation::from_expression(expression),
+            ))
+        }
         CssCalculationType::Number => Ok(CssColorComponent::NumberCalculation(
             CssNumberCalculation::from_expression(expression),
         )),

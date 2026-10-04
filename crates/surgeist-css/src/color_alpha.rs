@@ -1,8 +1,8 @@
 //! Borrowed intrinsic parsed alpha alongside the unchanged authored color graph.
 
 use crate::{
-    CssColorComponent, CssNumberCalculation, CssPercentageCalculation, CssValueOrigin,
-    exact_decimal::LexicalDecimal,
+    CssColorComponent, CssHintedNumberCalculation, CssNumberCalculation, CssPercentageCalculation,
+    CssValueOrigin, exact_decimal::LexicalDecimal,
 };
 
 /// A borrowed ordinary color alpha at the intrinsic parsed-value phase.
@@ -41,6 +41,7 @@ use crate::{
 ///         CssParsedColorAlphaRef::Missing => false,
 ///         CssParsedColorAlphaRef::Scalar(_) => false,
 ///         CssParsedColorAlphaRef::NumberCalculation(_) => false,
+///         CssParsedColorAlphaRef::HintedNumberCalculation(_) => false,
 ///         CssParsedColorAlphaRef::PercentageCalculation(_) => false,
 ///     }
 /// }
@@ -56,6 +57,8 @@ pub enum CssParsedColorAlphaRef<'a> {
     Scalar(CssColorAlphaScalarRef<'a>),
     /// An authored number calculation awaiting its applicable range/evaluation phase.
     NumberCalculation(&'a CssNumberCalculation),
+    /// A Number calculation whose percentage basis remains contextual.
+    HintedNumberCalculation(&'a CssHintedNumberCalculation),
     /// An authored percentage calculation awaiting its applicable range/evaluation phase.
     PercentageCalculation(&'a CssPercentageCalculation),
 }
@@ -171,6 +174,9 @@ pub(crate) fn parsed_alpha(alpha: Option<&CssColorComponent>) -> CssParsedColorA
         }
         Some(CssColorComponent::NumberCalculation(value)) => {
             CssParsedColorAlphaRef::NumberCalculation(value)
+        }
+        Some(CssColorComponent::HintedNumberCalculation(value)) => {
+            CssParsedColorAlphaRef::HintedNumberCalculation(value)
         }
         Some(CssColorComponent::PercentageCalculation(value)) => {
             CssParsedColorAlphaRef::PercentageCalculation(value)

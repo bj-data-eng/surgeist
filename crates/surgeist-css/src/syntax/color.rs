@@ -1,7 +1,8 @@
 use super::{
     CssAngleCalculation, CssAngleLiteral, CssAuthoredDeclarationValue, CssCalculationExpression,
     CssCalculationExpressionRef, CssCalculationType, CssColorNumberLiteral,
-    CssColorPercentageLiteral, CssColorScalarError, CssNumberCalculation, CssPercentageCalculation,
+    CssColorPercentageLiteral, CssColorScalarError, CssHintedNumberCalculation,
+    CssNumberCalculation, CssPercentageCalculation,
 };
 
 mod serialization;
@@ -60,9 +61,12 @@ impl CssDeviceCmykColor {
     ) -> Result<Self, CssColorConstructionError> {
         if syntax == CssColorSyntax::Legacy
             && (alpha.is_some()
-                || channels
-                    .iter()
-                    .any(|value| value.domain() != Some(CssCalculationType::Number)))
+                || channels.iter().any(|value| {
+                    !matches!(
+                        value,
+                        CssColorComponent::Number(_) | CssColorComponent::NumberCalculation(_)
+                    )
+                }))
         {
             return Err(CssColorConstructionError::InvalidSyntax);
         }
@@ -616,6 +620,7 @@ pub enum CssColorComponent {
     Number(CssColorNumberLiteral),
     Percentage(CssColorPercentageLiteral),
     NumberCalculation(CssNumberCalculation),
+    HintedNumberCalculation(CssHintedNumberCalculation),
     PercentageCalculation(CssPercentageCalculation),
 }
 
@@ -627,7 +632,9 @@ impl CssColorComponent {
     pub(crate) const fn domain(&self) -> Option<CssCalculationType> {
         match self {
             Self::None => None,
-            Self::Number(_) | Self::NumberCalculation(_) => Some(CssCalculationType::Number),
+            Self::Number(_) | Self::NumberCalculation(_) | Self::HintedNumberCalculation(_) => {
+                Some(CssCalculationType::Number)
+            }
             Self::Percentage(_) | Self::PercentageCalculation(_) => {
                 Some(CssCalculationType::Percentage)
             }
@@ -1786,6 +1793,7 @@ fn color_mix_depth(components: &[CssColorMixComponent]) -> Result<u32, ColorGrap
 fn color_component_depth(value: &CssColorComponent) -> u32 {
     match value {
         CssColorComponent::NumberCalculation(v) => v.components().nesting_depth(),
+        CssColorComponent::HintedNumberCalculation(v) => v.components().nesting_depth(),
         CssColorComponent::PercentageCalculation(v) => v.components().nesting_depth(),
         _ => 0,
     }

@@ -48,16 +48,16 @@ fn declaration(name: &str, text: &str) -> CssDeclaration {
     );
     report.syntax()[0].clone()
 }
-fn number(source: &CssDeclaration) -> &CssNumberCalculation {
+fn number(source: &CssDeclaration) -> &CssHintedNumberCalculation {
     match source.known().unwrap().property_value().unwrap() {
         CssKnownPropertyValueRef::Opacity(value) => {
-            let CssOpacityValue::NumberCalculation(calculation) = value.value() else {
+            let CssOpacityValue::HintedNumberCalculation(calculation) = value.value() else {
                 panic!("Number opacity calculation")
             };
             calculation
         }
         CssKnownPropertyValueRef::Color(value) => {
-            let CssColorComponent::NumberCalculation(calculation) =
+            let CssColorComponent::HintedNumberCalculation(calculation) =
                 &value.value().rgb_value().unwrap().channels()[0]
             else {
                 panic!("Number RGB channel")

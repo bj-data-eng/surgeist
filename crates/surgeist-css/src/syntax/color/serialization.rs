@@ -670,6 +670,9 @@ fn declared_component_projection(
             CssColorComponent::NumberCalculation(value) => {
                 Some(crate::numeric::ColorCalculationRef::Number(value))
             }
+            CssColorComponent::HintedNumberCalculation(value) => {
+                Some(crate::numeric::ColorCalculationRef::HintedNumber(value))
+            }
             CssColorComponent::PercentageCalculation(value) => {
                 Some(crate::numeric::ColorCalculationRef::Percentage(value))
             }
@@ -875,36 +878,18 @@ fn component_projection_with_text(
                 context,
             )
         }
-        C::NumberCalculation(value) => {
-            let scale = match target {
-                ComponentTarget::Preserve => crate::numeric::NumericProjectionScale::Identity,
-                ComponentTarget::Number => crate::numeric::NumericProjectionScale::Number {
-                    numerator: number_factor.numerator,
-                    denominator: number_factor.denominator,
-                },
-                ComponentTarget::Percentage => {
-                    crate::numeric::NumericProjectionScale::NumberToPercentage {
-                        numerator: number_factor.numerator,
-                        denominator: number_factor.denominator,
-                    }
-                }
-            };
-            let (text, outcome) = crate::numeric::capture_color_component_calculation(
-                crate::numeric::ColorCalculationRef::Number(value),
-                scale,
-                context,
-            )?;
-            Ok(ProjectedScalar {
-                scalar_value: outcome.scalar_value,
-                text,
-                number: outcome.scalar_value.map(ScaledNumber::from_binary64),
-                exact: None,
-                contextual: outcome.context_dependent,
-                missing: false,
-                percentage: false,
-                calculation: true,
-            })
-        }
+        C::NumberCalculation(value) => number_calculation_projection(
+            crate::numeric::ColorCalculationRef::Number(value),
+            number_factor,
+            target,
+            context,
+        ),
+        C::HintedNumberCalculation(value) => number_calculation_projection(
+            crate::numeric::ColorCalculationRef::HintedNumber(value),
+            number_factor,
+            target,
+            context,
+        ),
         C::PercentageCalculation(value) => {
             let scale = if target == ComponentTarget::Number {
                 crate::numeric::NumericProjectionScale::PercentageToNumber {
@@ -931,6 +916,45 @@ fn component_projection_with_text(
             })
         }
     }
+}
+
+fn number_calculation_projection(
+    calculation: crate::numeric::ColorCalculationRef<'_>,
+    factor: Factor,
+    target: ComponentTarget,
+    context: &mut SpecifiedSerializationContext,
+) -> Result<ProjectedScalar> {
+    let scale = match target {
+        ComponentTarget::Number
+            if matches!(
+                calculation,
+                crate::numeric::ColorCalculationRef::HintedNumber(_)
+            ) && factor.numerator == factor.denominator =>
+        {
+            crate::numeric::NumericProjectionScale::Identity
+        }
+        ComponentTarget::Preserve => crate::numeric::NumericProjectionScale::Identity,
+        ComponentTarget::Number => crate::numeric::NumericProjectionScale::Number {
+            numerator: factor.numerator,
+            denominator: factor.denominator,
+        },
+        ComponentTarget::Percentage => crate::numeric::NumericProjectionScale::NumberToPercentage {
+            numerator: factor.numerator,
+            denominator: factor.denominator,
+        },
+    };
+    let (text, outcome) =
+        crate::numeric::capture_color_component_calculation(calculation, scale, context)?;
+    Ok(ProjectedScalar {
+        scalar_value: outcome.scalar_value,
+        text,
+        number: outcome.scalar_value.map(ScaledNumber::from_binary64),
+        exact: None,
+        contextual: outcome.context_dependent,
+        missing: false,
+        percentage: false,
+        calculation: true,
+    })
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -971,10 +995,16 @@ fn serialize_alpha(
         return Ok(Some("none".into()));
     }
     match value {
-        CssColorComponent::NumberCalculation(_) | CssColorComponent::PercentageCalculation(_) => {
+        CssColorComponent::NumberCalculation(_)
+        | CssColorComponent::HintedNumberCalculation(_)
+        | CssColorComponent::PercentageCalculation(_) => {
             let (calculation, scale) = match value {
                 CssColorComponent::NumberCalculation(value) => (
                     crate::numeric::ColorCalculationRef::Number(value),
+                    crate::numeric::NumericProjectionScale::Identity,
+                ),
+                CssColorComponent::HintedNumberCalculation(value) => (
+                    crate::numeric::ColorCalculationRef::HintedNumber(value),
                     crate::numeric::NumericProjectionScale::Identity,
                 ),
                 CssColorComponent::PercentageCalculation(value) => (

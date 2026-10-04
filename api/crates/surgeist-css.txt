@@ -455,6 +455,7 @@ impl surgeist_css::CssClipPath
 pub fn surgeist_css::CssClipPath::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssClipPath::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssColorComponent
+pub surgeist_css::CssColorComponent::HintedNumberCalculation(surgeist_css::CssHintedNumberCalculation)
 pub surgeist_css::CssColorComponent::None
 pub surgeist_css::CssColorComponent::Number(surgeist_css::CssColorNumberLiteral)
 pub surgeist_css::CssColorComponent::NumberCalculation(surgeist_css::CssNumberCalculation)
@@ -3232,6 +3233,7 @@ pub surgeist_css::CssObjectFit::ScaleDown
 pub surgeist_css::CssOpacityScalarKind::Number
 pub surgeist_css::CssOpacityScalarKind::Percentage
 #[non_exhaustive] pub enum surgeist_css::CssOpacityValue
+pub surgeist_css::CssOpacityValue::HintedNumberCalculation(surgeist_css::CssHintedNumberCalculation)
 pub surgeist_css::CssOpacityValue::NumberCalculation(surgeist_css::CssNumberCalculation)
 pub surgeist_css::CssOpacityValue::PercentageCalculation(surgeist_css::CssPercentageCalculation)
 pub surgeist_css::CssOpacityValue::Scalar(surgeist_css::CssOpacityScalar)
@@ -3275,6 +3277,7 @@ pub surgeist_css::CssPageSelector::First
 pub surgeist_css::CssPageSelector::Left
 pub surgeist_css::CssPageSelector::Right
 #[non_exhaustive] pub enum surgeist_css::CssParsedColorAlphaRef<'a>
+pub surgeist_css::CssParsedColorAlphaRef::HintedNumberCalculation(&'a surgeist_css::CssHintedNumberCalculation)
 pub surgeist_css::CssParsedColorAlphaRef::Missing
 pub surgeist_css::CssParsedColorAlphaRef::NumberCalculation(&'a surgeist_css::CssNumberCalculation)
 pub surgeist_css::CssParsedColorAlphaRef::Omitted
@@ -6970,6 +6973,17 @@ pub struct surgeist_css::CssHexColor
 impl surgeist_css::CssHexColor
 pub fn surgeist_css::CssHexColor::digits(&self) -> &str
 pub fn surgeist_css::CssHexColor::try_new(digits: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub struct surgeist_css::CssHintedNumberCalculation
+impl surgeist_css::CssHintedNumberCalculation
+pub fn surgeist_css::CssHintedNumberCalculation::components(&self) -> &surgeist_css::CssComponentValues
+pub fn surgeist_css::CssHintedNumberCalculation::expression(&self) -> surgeist_css::CssCalculationExpressionRef<'_>
+pub fn surgeist_css::CssHintedNumberCalculation::numeric_type(&self) -> surgeist_css::CssNumericType
+pub fn surgeist_css::CssHintedNumberCalculation::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssHintedNumberCalculation::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+pub fn surgeist_css::CssHintedNumberCalculation::result_type(&self) -> surgeist_css::CssCalculationType
+pub fn surgeist_css::CssHintedNumberCalculation::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssHintedNumberCalculation::try_from_components(values: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub fn surgeist_css::CssHintedNumberCalculation::try_from_components_with_limits(values: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 pub struct surgeist_css::CssHslColor
 impl surgeist_css::CssHslColor
 pub const fn surgeist_css::CssHslColor::alpha(&self) -> core::option::Option<&surgeist_css::CssColorComponent>

@@ -1476,12 +1476,13 @@ pub use numeric::{
     CssCalculationSumOperator, CssCalculationSumRef, CssCalculationSumTermRef,
     CssCalculationTreeCountingRef, CssCalculationType, CssCalculationUnaryRef,
     CssCalculationValueRef, CssCalculationVariableRef, CssFlexCalculation, CssFrequencyCalculation,
-    CssFrequencyPercentageCalculation, CssIntegerCalculation, CssLengthCalculation,
-    CssLengthPercentageCalculation, CssMathFunction, CssNumberCalculation, CssNumericConstant,
-    CssNumericConstructionError, CssNumericConstructionErrorKind, CssNumericDimension,
-    CssNumericLiteralRef, CssNumericType, CssNumericUnit, CssPercentageCalculation,
-    CssProfileColorCalculation, CssProfileColorExpression, CssProfileColorExpressionRef,
-    CssResolutionCalculation, CssRoundingStrategy, CssTimeCalculation, CssTreeCountingFunction,
+    CssFrequencyPercentageCalculation, CssHintedNumberCalculation, CssIntegerCalculation,
+    CssLengthCalculation, CssLengthPercentageCalculation, CssMathFunction, CssNumberCalculation,
+    CssNumericConstant, CssNumericConstructionError, CssNumericConstructionErrorKind,
+    CssNumericDimension, CssNumericLiteralRef, CssNumericType, CssNumericUnit,
+    CssPercentageCalculation, CssProfileColorCalculation, CssProfileColorExpression,
+    CssProfileColorExpressionRef, CssResolutionCalculation, CssRoundingStrategy,
+    CssTimeCalculation, CssTreeCountingFunction,
 };
 #[cfg(test)]
 mod test_support;

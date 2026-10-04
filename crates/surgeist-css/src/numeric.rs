@@ -303,10 +303,12 @@ pub enum CssCalculationType {
 }
 impl CssCalculationType {
     pub(crate) fn from_numeric(t: CssNumericType) -> Self {
+        // A percentage hint does not introduce a dimensional power. Keep the
+        // Number category; numeric_type() retains its complete contextual type.
+        if t.is_number() {
+            return Self::Number;
+        }
         if t.hint.is_none() {
-            if t.is_number() {
-                return Self::Number;
-            }
             for (d, v) in [
                 (CssNumericDimension::Length, Self::Length),
                 (CssNumericDimension::Angle, Self::Angle),
@@ -358,7 +360,12 @@ impl CssCalculationType {
     pub fn exponent(self, d: CssNumericDimension) -> i32 {
         self.numeric().exponent(d)
     }
-    /// Returns the percentage basis retained by type checking.
+    /// Returns the percentage hint encoded by this classification.
+    ///
+    /// The Number category reports `None` even when its originating calculation
+    /// retains a hint. Use the expression or checked root's `numeric_type()` for
+    /// the complete contextual type. A hint names a dimension without resolving
+    /// its percentage basis.
     pub fn percent_hint(self) -> Option<CssNumericDimension> {
         self.numeric().hint
     }
@@ -1444,6 +1451,7 @@ pub(crate) enum CalculationRoot {
     NumberPercentage,
     NamedDimensionOrNumber,
     Number,
+    HintedNumber,
     Integer,
     Percentage,
     Length,
@@ -1474,6 +1482,7 @@ impl CalculationRoot {
                     && (t.is_number() || DIMENSIONS[..6].iter().any(|dimension| t.is(*dimension)))
             }
             Self::Number | Self::Integer => t.is_number() && t.hint.is_none(),
+            Self::HintedNumber => t.is_number() && t.hint.is_some(),
             Self::Percentage => t.is(CssNumericDimension::Percentage) && t.hint.is_none(),
             Self::Length => t.is(CssNumericDimension::Length) && t.hint.is_none(),
             Self::LengthPercentage => t.is(CssNumericDimension::Length),
@@ -1490,7 +1499,7 @@ impl CalculationRoot {
                 t.hint.is_none() && (t.is_number() || t.is(CssNumericDimension::Angle))
             }
             Self::NumberPercentage | Self::ProfileRelative | Self::Relative(_, _) => {
-                t.hint.is_none() && (t.is_number() || t.is(CssNumericDimension::Percentage))
+                t.is_number() || t.is(CssNumericDimension::Percentage)
             }
         }
     }
@@ -2098,7 +2107,8 @@ fn parse_function<'a>(
             ..CssNumericType::NUMBER
         },
     };
-    if !output.simple() || ts.iter().any(|t| !t.simple()) && function != F::Calc {
+    if !output.simple() || ts.iter().any(|t| !t.simple()) && !matches!(function, F::Calc | F::Sign)
+    {
         return Err(err(CssNumericConstructionErrorKind::InvalidArgumentType));
     }
     Ok((
@@ -2468,7 +2478,8 @@ fn construct_grid_track_math(
 }
 
 macro_rules! root {
-    ($name:ident,$kind:ident) => {
+    ($(#[$meta:meta])* $name:ident,$kind:ident) => {
+        $(#[$meta])*
         #[derive(Clone, Debug, Eq, PartialEq)]
         pub struct $name {
             pub(crate) expression: Box<CssCalculationExpression>,
@@ -2523,6 +2534,21 @@ macro_rules! root {
     };
 }
 root!(CssNumberCalculation, Number);
+root!(
+    /// A Number-result calculation retaining a non-null dimensional percentage hint.
+    ///
+    /// Only percentage-permitting consumers admit this payload. The hint names
+    /// a dimension without resolving its percentage basis. Pure Number roots
+    /// remain a separate checked domain.
+    ///
+    /// ```compile_fail
+    /// use surgeist_css::{CssHintedNumberCalculation, CssSpecifiedNumber};
+    /// fn pure(value: CssHintedNumberCalculation) {
+    ///     let _ = CssSpecifiedNumber::try_from_calculation(value);
+    /// }
+    /// ```
+    CssHintedNumberCalculation, HintedNumber
+);
 root!(CssIntegerCalculation, Integer);
 root!(CssPercentageCalculation, Percentage);
 root!(CssLengthCalculation, Length);
@@ -3319,6 +3345,7 @@ pub(crate) fn project_calculation_specified_into(
 #[derive(Clone, Copy)]
 pub(crate) enum ColorCalculationRef<'a> {
     Number(&'a CssNumberCalculation),
+    HintedNumber(&'a CssHintedNumberCalculation),
     Percentage(&'a CssPercentageCalculation),
     Angle(&'a CssAngleCalculation),
 }
@@ -3326,6 +3353,7 @@ impl ColorCalculationRef<'_> {
     fn expression(&self) -> &CssCalculationExpression {
         match self {
             Self::Number(value) => &value.expression,
+            Self::HintedNumber(value) => &value.expression,
             Self::Percentage(value) => &value.expression,
             Self::Angle(value) => &value.expression,
         }

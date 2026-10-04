@@ -4256,6 +4256,7 @@ impl CssFiniteNumber {
 pub enum CssOpacityValue {
     Scalar(crate::CssOpacityScalar),
     NumberCalculation(CssNumberCalculation),
+    HintedNumberCalculation(CssHintedNumberCalculation),
     PercentageCalculation(CssPercentageCalculation),
 }
 

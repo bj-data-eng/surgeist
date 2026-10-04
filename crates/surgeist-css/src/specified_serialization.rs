@@ -493,6 +493,9 @@ impl CssOpacityValue {
             Self::NumberCalculation(value) => {
                 return crate::numeric::project_specified(&value.expression, limits);
             }
+            Self::HintedNumberCalculation(value) => {
+                return crate::numeric::project_specified(&value.expression, limits);
+            }
             Self::PercentageCalculation(value) => {
                 return crate::numeric::project_specified(&value.expression, limits);
             }
@@ -514,7 +517,9 @@ impl CssOpacityValue {
                 value.kind() == CssOpacityScalarKind::Percentage,
                 limits.max_css_bytes(),
             ),
-            Self::NumberCalculation(_) | Self::PercentageCalculation(_) => {
+            Self::NumberCalculation(_)
+            | Self::HintedNumberCalculation(_)
+            | Self::PercentageCalculation(_) => {
                 unreachable!("calculation branches handled above")
             }
         }

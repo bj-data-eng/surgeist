@@ -686,16 +686,28 @@ pub(super) fn parse_opacity<'i, 't>(
                 .map_err(|_| unsupported_value_at(location, None, "invalid opacity scalar token"))
         }
         Token::Function(name) if crate::numeric::is_math_function(name) => {
-            if let Ok(calculation) = input.try_parse(|input| {
-                parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Number)
-            }) {
-                return Ok(CssOpacityValue::NumberCalculation(
+            let calculation = parse_numeric_function(
+                input,
+                &numeric_start,
+                numeric,
+                CalculationRoot::NumberPercentage,
+            )?;
+            Ok(match calculation.result_type() {
+                CssCalculationType::Number
+                    if calculation.as_ref().numeric_type().percent_hint().is_some() =>
+                {
+                    CssOpacityValue::HintedNumberCalculation(
+                        CssHintedNumberCalculation::from_expression(calculation),
+                    )
+                }
+                CssCalculationType::Number => CssOpacityValue::NumberCalculation(
                     CssNumberCalculation::from_expression(calculation),
-                ));
-            }
-            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Percentage)
-                .map(CssPercentageCalculation::from_expression)
-                .map(CssOpacityValue::PercentageCalculation)
+                ),
+                CssCalculationType::Percentage => CssOpacityValue::PercentageCalculation(
+                    CssPercentageCalculation::from_expression(calculation),
+                ),
+                _ => unreachable!("checked opacity Number or Percentage"),
+            })
         }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
