@@ -6,6 +6,19 @@
 
 use surgeist_css::*;
 
+fn assert_four_expansion(result: Result<CssExpansion, CssExpansionError>) {
+    let CssExpansion::Contributions(values) = result.unwrap() else {
+        panic!("completed four-side expansion")
+    };
+    assert_four_contributions(Ok(values));
+}
+fn assert_four_contributions(result: Result<CssContributions, CssExpansionError>) {
+    let CssContributions::Longhands(values) = result.unwrap() else {
+        panic!("four selected sides")
+    };
+    assert_eq!(values.items().len(), 4);
+}
+
 const PHYSICAL: [&str; 4] = [
     "border-top-color",
     "border-right-color",
@@ -176,13 +189,6 @@ fn assert_color_contribution(item: &CssLonghandContribution, expected: &str) {
             assert!(lab.alpha().is_none());
         }
         _ => panic!("uncatalogued expanded color {expected}"),
-    }
-}
-
-fn unresolved_kind() -> CssExpansionErrorKind {
-    CssExpansionErrorKind::UnresolvedStandard {
-        property: grammar(FOUR_SIDE).target_property(),
-        reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
     }
 }
 
@@ -375,7 +381,7 @@ fn logical_color_pairs_assign_exact_start_and_end_with_omission() {
 }
 
 #[test]
-fn four_side_colors_accept_both_role_modes_and_report_unresolved_resets() {
+fn four_side_colors_accept_both_role_modes_and_expand_selected_sides() {
     for value in [
         "red",
         "red #12abef",
@@ -387,10 +393,7 @@ fn four_side_colors_accept_both_role_modes_and_report_unresolved_resets() {
         "logical red #12abef currentcolor rgb(1 2 3 / none)",
     ] {
         accepted(FOUR_SIDE, value);
-        assert_eq!(
-            rejected(expand_declaration(&declaration(FOUR_SIDE, value))).kind(),
-            &unresolved_kind()
-        );
+        assert_four_expansion(expand_declaration(&declaration(FOUR_SIDE, value)));
     }
     for value in [
         "",
@@ -404,49 +407,17 @@ fn four_side_colors_accept_both_role_modes_and_report_unresolved_resets() {
         invalid(FOUR_SIDE, value);
     }
     let grammar = grammar(FOUR_SIDE);
-    assert_eq!(
-        rejected(grammar.metadata()),
-        CssPropertyMetadataError::UnresolvedStandard {
-            grammar,
-            reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
-        }
-    );
+    assert!(matches!(
+        grammar.metadata().unwrap().kind(),
+        CssPropertyKindRef::FourSideShorthand(_)
+    ));
 
     let source = ".a{color:red;border-color:logical currentcolor #12abef;color:blue}";
     let report = parse_sheet(source);
-    assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let [CssRule::Style(style)] = report.syntax().rules() else {
-        panic!("one authored .a style rule")
-    };
-    let [_before, border, _after] = style.declarations().as_slice() else {
-        panic!("border-color between two color declarations")
-    };
-    let original = report.syntax().clone();
-    let error = rejected(normalize_sheet(report.syntax()));
-    assert!(matches!(
-        error.kind(),
-        CssNormalizationErrorKind::UnsupportedDeclaration(expansion)
-            if expansion.kind() == &unresolved_kind()
-    ));
-    assert_eq!(error.declaration_order(), Some(1));
-    assert_eq!(
-        error.position().unwrap().byte_offset().value(),
-        source.find("border-color").unwrap()
-    );
-    assert!(error.declaration().unwrap().same_occurrence(border));
-    let context = error.rule_context().expect("owning .a style rule");
-    let CssRuleContextKindRef::Style(selectors) = context.kind() else {
-        panic!("owning style context")
-    };
-    assert_eq!(
-        selectors.selectors()[0].selector(),
-        &CssSelector::Class("a".into())
-    );
-    assert_eq!(
-        context.position().unwrap().byte_offset().value(),
-        source.find(".a").unwrap()
-    );
-    assert_eq!(report.syntax(), &original, "failed normalization is atomic");
+    assert!(report.is_clean());
+    let before = report.syntax().clone();
+    assert!(normalize_sheet(report.syntax()).is_ok());
+    assert_eq!(report.syntax(), &before);
 }
 
 #[test]
@@ -508,10 +479,7 @@ fn globals_all_and_pending_reentry_keep_color_members_and_occurrence() {
             let source = declaration(name, text);
             checked(name, text);
             if name == FOUR_SIDE {
-                assert_eq!(
-                    rejected(expand_declaration(&source)).kind(),
-                    &unresolved_kind()
-                );
+                assert_four_expansion(expand_declaration(&source));
             } else {
                 let CssExpansion::Contributions(CssContributions::Longhands(values)) =
                     expand_declaration(&source).unwrap()
@@ -545,10 +513,8 @@ fn globals_all_and_pending_reentry_keep_color_members_and_occurrence() {
             ));
             if name == FOUR_SIDE {
                 for replacement in ["red blue", "logical red #12abef"] {
-                    assert_eq!(
-                        rejected(handle.reenter(parse_component_values(replacement).unwrap()))
-                            .kind(),
-                        &unresolved_kind()
+                    assert_four_contributions(
+                        handle.reenter(parse_component_values(replacement).unwrap()),
                     );
                 }
             } else {

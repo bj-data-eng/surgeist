@@ -915,14 +915,10 @@ assert_eq!(
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-The 19 terminal properties and four block/inline axis shorthands have intrinsic
-metadata and completed longhand contributions. The two four-side shorthands
-accept their full authored grammar, including CSS-wide keywords and pending
-substitution, but their complete physical/logical reset membership is unsettled
-in the selected Logical 1 text. Their metadata and completed expansion return a
-typed `UnresolvedStandard` reason; strict substitution reentry checks the
-replacement grammar first. Support metadata reports complete authored grammar
-for all 25 names and does not imply completed shorthand expansion for those two.
+The 19 terminal properties, four axis shorthands and two four-side scroll
+shorthands have intrinsic metadata and completed contributions. Four-side
+expansion follows the [mode-selected membership policy](#four-side-shorthand-membership).
+Whole-value pending substitutions remain symbolic until strict grammar reentry.
 
 Opacity is a non-inherited longhand with numeric initial value `1`. Its ordinary
 contribution retains the exact `CssOpacityValue`, including percentages,
@@ -2411,13 +2407,10 @@ must still fit before composition. Authored token kinds, coefficients and
 provenance remain unchanged.
 
 `border-color` accepts one to four colors and an optional leading `logical`
-marker. Its `CssBorderColorShorthand` retains authored arity and role mode;
-`assigned_values()` applies the one-to-four shorthand repetition. The logical
-axis pairs retain optional end values independently from effective repeated
-ends. The selected [Logical 1 issue 3030](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#issue-3d880eb1)
-leaves complete physical/logical reset membership unsettled, so completed
-`border-color` expansion returns `UnresolvedStandard` in either mode. Pending
-substitution remains symbolic.
+marker. `CssBorderColorShorthand` retains authored arity and role mode;
+`assigned_values()` applies shorthand repetition. Logical axis pairs retain
+optional end values independently. Expansion follows the
+[mode-selected membership policy](#four-side-shorthand-membership).
 
 The selected Color 5 surface includes relative `rgb`/`rgba`, `hsl`/`hsla`,
 `hwb`, `lab`, `lch`, `oklab`, `oklch`, and predefined RGB/XYZ `color()` spaces.
@@ -4974,17 +4967,11 @@ mapping and used offsets belong to style and layout.
 Position 3's inset definitions supersede Logical 1 §4.3; Logical 1 §4.7's
 separate four-side `logical` switch remains an authored grammar extension.
 
-The four-side `inset` shorthand accepts one to four values. [Box 4's
-four-side assignment](https://www.w3.org/TR/2024/WD-css-box-4-20240804/#propdef-margin)
-supplies physical top/right/bottom/left repetition. [Logical 1
-§4.7](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#logical-shorthand-keyword)
-adds a leading `logical` switch and block-start, inline-start, block-end,
-inline-end order; three values repeat the second at both inline edges. Its
-[unsettled physical/logical reset membership](https://github.com/w3c/csswg-drafts/issues/3030)
-yields the typed `LogicalShorthandResetMembership` error for completed intrinsic expansion and
-metadata, including CSS-wide values. Pending substitution remains symbolic
-until valid replacement tokens reenter the grammar. The authored value and
-`assigned_values()` remain available without choosing a reset set.
+The four-side `inset` shorthand accepts one to four values. Physical order
+is top/right/bottom/left; a leading `logical` marker selects block-start,
+inline-start, block-end and inline-end. Three values repeat the second on
+both inline edges. Expansion follows the
+[mode-selected membership policy](#four-side-shorthand-membership).
 
 `CssInsetValue`, `CssInsetPair`, and `CssInsetShorthand` preserve exact checked
 numbers, authored arity and mode. Their typed equality compares retained
@@ -5004,17 +4991,10 @@ All sixteen longhands are noninherited and start at zero. The four block/inline
 axis pairs accept one or two values and expand to their two longhands, retaining
 the authored component count and source occurrence.
 
-The physical `margin` and `padding` shorthands accept one to four values. A
-leading `logical` marker selects the block-start, inline-start, block-end,
-inline-end role order; otherwise the physical top, right, bottom, left order
-applies. Their checked four-side values expose `assigned_values()` for these
-roles. Completed expansion and stylesheet normalization currently return the
-typed `LogicalShorthandResetMembership` unresolved-standard error for either
-four-side shorthand, including CSS-wide values. Pending substitution remains
-symbolic; valid replacement tokens reenter the owning grammar before a
-completed expansion reports the unresolved membership.
-The selected Logical 1 draft leaves their reset membership unresolved, so
-normalization does not silently assign a longhand set.
+The four-side `margin` and `padding` values preserve authored arity and
+physical or logical mode. Their `assigned_values()` accessors apply quad
+repetition; expansion and normalization use the
+[mode-selected membership policy](#four-side-shorthand-membership).
 
 The ten physical wrappers expose `value()` for `CssMarginValue`, `CssPaddingValue`,
 `CssMarginShorthand`, or `CssPaddingShorthand`; inspect exact literals or
@@ -5157,13 +5137,44 @@ bounded canonical serializers. Grammar and expansion preserve declaration
 identity and source order; scroll execution, gutter geometry, and text painting
 belong to their downstream owners.
 
+## Four-side shorthand membership
+
+`border-color`, `border-style`, `border-width`, `inset`, `margin`, `padding`,
+`scroll-margin` and `scroll-padding` expand to exactly four ordered longhands.
+Physical mode selects top/right/bottom/left; `logical` mode selects block-start,
+inline-start, block-end and inline-end. Neither mode resets complementary sides.
+CSS-wide values select physical sides. Pending substitution occupies one symbolic
+contribution until strict replacement reentry selects its own mode and retains
+both the original occurrence and replacement origins.
+
+This is a bounded compatibility decision. The selected
+[Logical 1 draft](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#intro)
+leaves complementary reset membership unsettled. Frozen WebKit
+`73aa6c89e2cb77c46184a81aec944e4ab99d114d` corroborates physical four-member
+membership and CSS-wide dispatch. Logical assignments follow
+[Logical 1 §4.7](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#logical-shorthand-keyword);
+logical no-reset is Surgeist policy, not a claim of settled normative behavior
+or WebKit support for that marker.
+
+`CssPropertyKindRef::FourSideShorthand` exposes
+`CssFourSideShorthandMetadata::members(mode)` and `settable_members(mode)` using
+`CssBoxSideKind`. Both select the same four ordered terminals;
+`reset_only_members()` is empty. Fixed `Shorthand` metadata keeps its complete
+unqualified getters. The existing property schema owns mode footprints and
+projections; normalization charges the selected four members cumulatively.
+CSSOM reverse composition and contextual writing-mode mapping are separate
+operations.
+
 ## Authored border widths and physical border triples
 
 The selected [Backgrounds 3 border-width definitions](https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/#border-width)
 and [Logical 1 logical width definitions](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#propdef-border-block-start-width)
 provide exact `thin | medium | thick | <length [0,∞]>` widths for four physical and four logical longhands, with noninherited `medium` initials. The logical block/inline pairs retain one or two authored values and contribute their respective two longhands. `CssBorderWidth` retains exact numeric spelling and symbolic math, and `CssBorder` retains each authored width, style, and color component of the five physical and six logical border triples; omitted components contribute their defined initials. `CssBorder::color()` borrows the authored color.
 
-The four-side `border-width` grammar accepts one to four values, with an optional leading `logical` switch. `CssBorderWidthShorthand::assigned_values()` exposes the physical or logical role assignments. The selected [Logical 1 §4.7 issue 3030](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#issue-3d880eb1) leaves the complete complementary reset membership undefined, so completed `border-width` expansion returns `UnresolvedStandard` in **both** modes, including CSS-wide values and valid substitution reentry. Pending substitution remains symbolic. Physical `border` and side-border triples still expand to their defined members; `border` also resets the five border-image members.
+The four-side `border-width` grammar accepts one to four values and an optional
+leading `logical` switch. `assigned_values()` exposes side assignments;
+expansion follows the [mode-selected membership policy](#four-side-shorthand-membership).
+Physical border triples retain their defined defaults and border-image resets.
 
 The [Logical 1 side and axis border shorthands](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#border-shorthands) accept the same unordered width, style, and color triple. `border-block-start`, `border-block-end`, `border-inline-start`, and `border-inline-end` contribute only their three matching flow-relative longhands. `border-block` and `border-inline` contribute both sides of their axis in width, style, color order, with no border-image reset. Their wrappers expose `CssBorder` through `value()`; omitted width, style, and color contribute `medium`, `none`, and `currentcolor` respectively. No physical-side projection or writing-mode mapping occurs in this crate.
 
@@ -5179,7 +5190,10 @@ for the authored roles. `CssBorderStyle` is the checked scalar keyword domain.
 Each scalar, pair, and shorthand has bounded specified serialization under one
 cumulative budget per value.
 
-The selected [Logical 1 issue 3030](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#issue-3d880eb1) leaves the full physical/logical reset membership of `border-style` unresolved. Its authored grammar is accepted, but completed intrinsic expansion and metadata return `UnresolvedStandard` in both modes, for CSS-wide values, and after valid substitution reentry. Pending substitutions stay symbolic. Physical `border` and side-border shorthands still expand their style members and defined defaults, including `border`'s border-image resets. Writing-mode mapping, computed border-width zeroing, and painting remain downstream.
+Four-side `border-style` expansion follows the
+[mode-selected membership policy](#four-side-shorthand-membership). Physical
+border triples retain their style defaults and border-image resets. Writing-mode
+mapping, computed width zeroing and painting remain downstream.
 
 ## Authored corner radii
 

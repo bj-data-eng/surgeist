@@ -5,6 +5,19 @@
 
 use surgeist_css::*;
 
+fn assert_four_expansion(result: Result<CssExpansion, CssExpansionError>) {
+    let CssExpansion::Contributions(values) = result.unwrap() else {
+        panic!("completed four-side expansion")
+    };
+    assert_four_contributions(Ok(values));
+}
+fn assert_four_contributions(result: Result<CssContributions, CssExpansionError>) {
+    let CssContributions::Longhands(values) = result.unwrap() else {
+        panic!("four selected sides")
+    };
+    assert_eq!(values.items().len(), 4);
+}
+
 const LONGHANDS: [&str; 8] = [
     "top",
     "right",
@@ -96,13 +109,6 @@ fn one_value(source: &CssDeclaration) -> CssLonghandValue {
     assert_eq!(item.property(), source.known().unwrap().property());
     assert!(item.source().same_occurrence(source));
     item.ordinary_value().unwrap().clone()
-}
-
-fn unresolved_kind() -> CssExpansionErrorKind {
-    CssExpansionErrorKind::UnresolvedStandard {
-        property: grammar(FOUR_SIDE).target_property(),
-        reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
-    }
 }
 
 #[test]
@@ -297,7 +303,7 @@ fn axis_pairs_repeat_start_at_end_without_physical_mapping() {
 }
 
 #[test]
-fn inset_grammar_is_complete_while_four_side_reset_membership_remains_typed_unresolved() {
+fn inset_grammar_is_complete_while_four_side_reset_membership_selects_only_authored_mode() {
     for value in [
         "auto",
         "1px 2%",
@@ -309,10 +315,7 @@ fn inset_grammar_is_complete_while_four_side_reset_membership_remains_typed_unre
     ] {
         accepted(FOUR_SIDE, value);
         let source = declaration(FOUR_SIDE, value);
-        assert_eq!(
-            expand_declaration(&source).unwrap_err().kind(),
-            &unresolved_kind()
-        );
+        assert_four_expansion(expand_declaration(&source));
     }
     for value in [
         "",
@@ -326,36 +329,22 @@ fn inset_grammar_is_complete_while_four_side_reset_membership_remains_typed_unre
         invalid(FOUR_SIDE, value);
     }
     let grammar = grammar(FOUR_SIDE);
-    assert_eq!(
-        grammar.metadata().unwrap_err(),
-        CssPropertyMetadataError::UnresolvedStandard {
-            grammar,
-            reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
-        }
-    );
+    assert!(matches!(
+        grammar.metadata().unwrap().kind(),
+        CssPropertyKindRef::FourSideShorthand(_)
+    ));
     for value in ["initial", "inherit", "unset", "revert", "revert-layer"] {
         let source = declaration(FOUR_SIDE, value);
         checked(FOUR_SIDE, value);
-        assert_eq!(
-            expand_declaration(&source).unwrap_err().kind(),
-            &unresolved_kind()
-        );
+        assert_four_expansion(expand_declaration(&source));
     }
-    let report = parse_sheet(".a{color:red;inset:logical 1px 2%;color:blue}");
-    assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let syntax = report.syntax().clone();
-    let error = normalize_sheet(report.syntax()).unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssNormalizationErrorKind::UnsupportedDeclaration(expansion)
-            if expansion.kind() == &unresolved_kind()
+    let report = parse_sheet(&format!(
+        ".a{{color:red;{FOUR_SIDE}:logical 1px 2px;color:blue}}"
     ));
-    assert_eq!(error.declaration_order(), Some(1));
-    assert_eq!(
-        error.declaration().unwrap().known().unwrap().property(),
-        grammar.target_property()
-    );
-    assert_eq!(report.syntax(), &syntax, "failed normalization is atomic");
+    assert!(report.is_clean());
+    let before = report.syntax().clone();
+    assert!(normalize_sheet(report.syntax()).is_ok());
+    assert_eq!(report.syntax(), &before);
 }
 
 #[test]
@@ -379,10 +368,7 @@ fn all_css_wide_and_pending_reentry_preserve_members_and_occurrence() {
             let source = declaration(name, text);
             checked(name, text);
             if name == FOUR_SIDE {
-                assert_eq!(
-                    expand_declaration(&source).unwrap_err().kind(),
-                    &unresolved_kind()
-                );
+                assert_four_expansion(expand_declaration(&source));
             } else {
                 let CssExpansion::Contributions(CssContributions::Longhands(values)) =
                     expand_declaration(&source).unwrap()
@@ -421,10 +407,7 @@ fn all_css_wide_and_pending_reentry_preserve_members_and_occurrence() {
             let replacement_text = if name == "position" { "fixed" } else { "auto" };
             let replacement = parse_component_values(replacement_text).unwrap();
             if name == FOUR_SIDE {
-                assert_eq!(
-                    handle.reenter(replacement).unwrap_err().kind(),
-                    &unresolved_kind()
-                );
+                assert_four_contributions(handle.reenter(replacement));
             } else {
                 let CssContributions::Longhands(values) =
                     handle.reenter(replacement.clone()).unwrap()

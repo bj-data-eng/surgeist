@@ -1016,9 +1016,19 @@ fn metadata_and_initials() {
         .iter()
         .copied()
         .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
-        .chain([P::All])
+        .chain([
+            P::BorderColor,
+            P::BorderStyle,
+            P::BorderWidth,
+            P::Inset,
+            P::Margin,
+            P::Padding,
+            P::ScrollMargin,
+            P::ScrollPadding,
+            P::All,
+        ])
         .collect();
-    assert_eq!(expected.len(), 281);
+    assert_eq!(expected.len(), 289);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {
@@ -1044,24 +1054,6 @@ fn metadata_and_initials() {
             Err(CssPropertyMetadataError::Unavailable(g)) => {
                 assert!(!expected.contains(&property));
                 assert_eq!(g, handle);
-            }
-            Err(CssPropertyMetadataError::UnresolvedStandard { grammar, reason }) => {
-                assert!(matches!(
-                    property,
-                    P::ScrollPadding
-                        | P::ScrollMargin
-                        | P::Margin
-                        | P::Padding
-                        | P::Inset
-                        | P::BorderWidth
-                        | P::BorderStyle
-                        | P::BorderColor
-                ));
-                assert_eq!(grammar, handle);
-                assert_eq!(
-                    reason,
-                    CssUnresolvedStandard::LogicalShorthandResetMembership
-                );
             }
             other => panic!("unexpected capability result: {other:?}"),
         }

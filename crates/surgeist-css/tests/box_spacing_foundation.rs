@@ -6,6 +6,19 @@
 
 use surgeist_css::*;
 
+fn assert_four_expansion(result: Result<CssExpansion, CssExpansionError>) {
+    let CssExpansion::Contributions(values) = result.unwrap() else {
+        panic!("completed four-side expansion")
+    };
+    assert_four_contributions(Ok(values));
+}
+fn assert_four_contributions(result: Result<CssContributions, CssExpansionError>) {
+    let CssContributions::Longhands(values) = result.unwrap() else {
+        panic!("four selected sides")
+    };
+    assert_eq!(values.items().len(), 4);
+}
+
 const SIDES: [&str; 8] = [
     "top",
     "right",
@@ -311,7 +324,7 @@ fn css_wide_values_and_pending_reentry_participate_at_every_property() {
                 let source = declaration(&name, text);
                 checked(&name, text);
                 if four_side {
-                    assert_unresolved(&name, &source);
+                    assert_four_expansion(expand_declaration(&source));
                 } else {
                     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
                         expand_declaration(&source).unwrap()
@@ -347,10 +360,7 @@ fn css_wide_values_and_pending_reentry_participate_at_every_property() {
             );
             let replacement = parse_component_values("1px").unwrap();
             if four_side {
-                assert_eq!(
-                    handle.reenter(replacement).unwrap_err().kind(),
-                    &unresolved_kind(&name)
-                );
+                assert_four_contributions(handle.reenter(replacement));
             } else {
                 let CssContributions::Longhands(values) =
                     handle.reenter(replacement.clone()).unwrap()
@@ -368,51 +378,26 @@ fn css_wide_values_and_pending_reentry_participate_at_every_property() {
     }
 }
 
-fn unresolved_kind(name: &str) -> CssExpansionErrorKind {
-    CssExpansionErrorKind::UnresolvedStandard {
-        property: grammar(name).target_property(),
-        reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
-    }
-}
-
-fn assert_unresolved(name: &str, source: &CssDeclaration) {
-    assert_eq!(
-        expand_declaration(source).unwrap_err().kind(),
-        &unresolved_kind(name)
-    );
-}
-
 #[test]
-fn four_side_shorthands_parse_cleanly_but_report_unresolved_reset_membership() {
+fn four_side_shorthands_parse_cleanly_but_expand_selected_sides() {
     for family in FAMILIES {
         let grammar = grammar(family);
-        assert_eq!(
-            grammar.metadata().unwrap_err(),
-            CssPropertyMetadataError::UnresolvedStandard {
-                grammar,
-                reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
-            }
-        );
+        assert!(matches!(
+            grammar.metadata().unwrap().kind(),
+            CssPropertyKindRef::FourSideShorthand(_)
+        ));
         for value in ["1px", "1px 2px 3px 4px", "logical 1px 2px 3px 4px"] {
             let source = declaration(family, value);
             checked(family, value);
-            assert_unresolved(family, &source);
+            assert_four_expansion(expand_declaration(&source));
         }
         let report = parse_sheet(&format!(
             ".a{{color:red;{family}:logical 1px 2px;color:blue}}"
         ));
-        assert!(report.is_clean(), "{:?}", report.diagnostics());
-        let syntax = report.syntax().clone();
-        let error = normalize_sheet(report.syntax()).unwrap_err();
-        assert!(
-            matches!(error.kind(), CssNormalizationErrorKind::UnsupportedDeclaration(expansion) if expansion.kind() == &unresolved_kind(family))
-        );
-        assert_eq!(error.declaration_order(), Some(1));
-        assert_eq!(
-            error.declaration().unwrap().known().unwrap().property(),
-            grammar.target_property()
-        );
-        assert_eq!(report.syntax(), &syntax, "failed normalization is atomic");
+        assert!(report.is_clean());
+        let before = report.syntax().clone();
+        assert!(normalize_sheet(report.syntax()).is_ok());
+        assert_eq!(report.syntax(), &before);
     }
 }
 

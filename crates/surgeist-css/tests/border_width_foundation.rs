@@ -6,6 +6,19 @@
 
 use surgeist_css::*;
 
+fn assert_four_expansion(result: Result<CssExpansion, CssExpansionError>) {
+    let CssExpansion::Contributions(values) = result.unwrap() else {
+        panic!("completed four-side expansion")
+    };
+    assert_four_contributions(Ok(values));
+}
+fn assert_four_contributions(result: Result<CssContributions, CssExpansionError>) {
+    let CssContributions::Longhands(values) = result.unwrap() else {
+        panic!("four selected sides")
+    };
+    assert_eq!(values.items().len(), 4);
+}
+
 const PHYSICAL: [&str; 4] = [
     "border-top-width",
     "border-right-width",
@@ -106,13 +119,6 @@ fn one_value(name: &str, value: &str) -> CssLonghandValue {
         panic!("{name} has one terminal contribution")
     };
     item.ordinary_value().unwrap().clone()
-}
-
-fn unresolved_kind() -> CssExpansionErrorKind {
-    CssExpansionErrorKind::UnresolvedStandard {
-        property: grammar(FOUR_SIDE).target_property(),
-        reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
-    }
 }
 
 fn expect_rejection<T, E>(result: Result<T, E>) -> E {
@@ -264,7 +270,7 @@ fn logical_width_pairs_expand_start_then_end_and_repeat_omitted_end() {
 }
 
 #[test]
-fn four_side_width_accepts_both_roles_but_complete_expansion_is_undefined() {
+fn four_side_width_accepts_both_roles_but_expansion_selects_four_sides() {
     for value in [
         "thin",
         "thin medium",
@@ -276,10 +282,7 @@ fn four_side_width_accepts_both_roles_but_complete_expansion_is_undefined() {
         "logical thin medium thick 1e100px",
     ] {
         accepted(FOUR_SIDE, value);
-        assert_eq!(
-            expect_rejection(expand_declaration(&declaration(FOUR_SIDE, value))).kind(),
-            &unresolved_kind()
-        );
+        assert_four_expansion(expand_declaration(&declaration(FOUR_SIDE, value)));
     }
     for value in [
         "",
@@ -293,23 +296,17 @@ fn four_side_width_accepts_both_roles_but_complete_expansion_is_undefined() {
         invalid(FOUR_SIDE, value);
     }
     let grammar = grammar(FOUR_SIDE);
-    assert_eq!(
-        expect_rejection(grammar.metadata()),
-        CssPropertyMetadataError::UnresolvedStandard {
-            grammar,
-            reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
-        }
-    );
-    let report = parse_sheet(".a{color:red;border-width:logical thin medium;color:blue}");
-    assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let original = report.syntax().clone();
-    let error = expect_rejection(normalize_sheet(report.syntax()));
-    assert!(
-        matches!(error.kind(), CssNormalizationErrorKind::UnsupportedDeclaration(expansion)
-        if expansion.kind() == &unresolved_kind())
-    );
-    assert_eq!(error.declaration_order(), Some(1));
-    assert_eq!(report.syntax(), &original, "failed normalization is atomic");
+    assert!(matches!(
+        grammar.metadata().unwrap().kind(),
+        CssPropertyKindRef::FourSideShorthand(_)
+    ));
+    let report = parse_sheet(&format!(
+        ".a{{color:red;{FOUR_SIDE}:logical thin medium;color:blue}}"
+    ));
+    assert!(report.is_clean());
+    let before = report.syntax().clone();
+    assert!(normalize_sheet(report.syntax()).is_ok());
+    assert_eq!(report.syntax(), &before);
 }
 
 #[test]
@@ -429,10 +426,7 @@ fn css_wide_all_and_pending_reentry_preserve_original_grammar_and_occurrence() {
             let source = declaration(name, text);
             checked(name, text);
             if name == FOUR_SIDE {
-                assert_eq!(
-                    expect_rejection(expand_declaration(&source)).kind(),
-                    &unresolved_kind()
-                );
+                assert_four_expansion(expand_declaration(&source));
             } else {
                 let CssExpansion::Contributions(CssContributions::Longhands(values)) =
                     expand_declaration(&source).unwrap()
@@ -487,16 +481,9 @@ fn css_wide_all_and_pending_reentry_preserve_original_grammar_and_occurrence() {
             };
             let replacement = parse_component_values(replacement_text).unwrap();
             if name == FOUR_SIDE {
-                assert_eq!(
-                    expect_rejection(handle.reenter(replacement)).kind(),
-                    &unresolved_kind()
-                );
-                assert_eq!(
-                    expect_rejection(
-                        handle.reenter(parse_component_values("logical thin medium").unwrap()),
-                    )
-                    .kind(),
-                    &unresolved_kind()
+                assert_four_contributions(handle.reenter(replacement));
+                assert_four_contributions(
+                    handle.reenter(parse_component_values("logical thin medium").unwrap()),
                 );
             } else {
                 let CssContributions::Longhands(values) =

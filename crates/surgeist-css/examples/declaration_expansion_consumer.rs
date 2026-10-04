@@ -16,6 +16,13 @@
 
 use surgeist_css::{CssKnownProperty as Property, *};
 
+fn assert_selected_four(result: Result<CssExpansion, CssExpansionError>) {
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = result.unwrap() else {
+        panic!("selected four-side contributions")
+    };
+    assert_eq!(values.items().len(), 4);
+}
+
 const MARGINS: [Property; 4] = [
     Property::MarginTop,
     Property::MarginRight,
@@ -296,13 +303,7 @@ fn four_sided_length_shorthands() {
             };
             assert_eq!(assigned, expected);
             assert_eq!(sides.len(), assigned.len());
-            assert_eq!(
-                expand_declaration(&source).unwrap_err().kind(),
-                &CssExpansionErrorKind::UnresolvedStandard {
-                    property,
-                    reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
-                }
-            );
+            assert_selected_four(expand_declaration(&source));
         }
     }
     for (css, expected) in [
@@ -324,13 +325,7 @@ fn four_sided_length_shorthands() {
                 .map(|width| width.serialize_specified().unwrap()),
             expected.map(|n| format!("{n}px"))
         );
-        assert_eq!(
-            expand_declaration(&source).unwrap_err().kind(),
-            &CssExpansionErrorKind::UnresolvedStandard {
-                property: Property::BorderWidth,
-                reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
-            }
-        );
+        assert_selected_four(expand_declaration(&source));
     }
     let source = declaration(Property::Margin, "auto 10% -3px", CssImportance::Normal);
     let Some(CssKnownPropertyValueRef::Margin(authored)) = source.known().unwrap().property_value()
@@ -345,13 +340,7 @@ fn four_sided_length_shorthands() {
         ["auto", "10%", "-3px", "10%"]
     );
     assert_eq!(authored.as_css(), "auto 10% -3px");
-    assert_eq!(
-        expand_declaration(&source).unwrap_err().kind(),
-        &CssExpansionErrorKind::UnresolvedStandard {
-            property: Property::Margin,
-            reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
-        }
-    );
+    assert_selected_four(expand_declaration(&source));
     println!("four-sided authored values and reset boundary: ok");
 }
 
@@ -400,13 +389,7 @@ fn four_sided_styles_and_current_colors() {
             authored.value().assigned_values().map(|value| *value),
             expected
         );
-        assert_eq!(
-            expand_declaration(&source).unwrap_err().kind(),
-            &CssExpansionErrorKind::UnresolvedStandard {
-                property: Property::BorderStyle,
-                reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
-            }
-        );
+        assert_selected_four(expand_declaration(&source));
     }
     for (css, expected) in [
         ("red", ["red", "red", "red", "red"]),
@@ -427,13 +410,7 @@ fn four_sided_styles_and_current_colors() {
         for (side, expected) in authored.value().assigned_values().into_iter().zip(expected) {
             assert_eq!(side.named().unwrap().name(), expected);
         }
-        assert_eq!(
-            expand_declaration(&source).unwrap_err().kind(),
-            &CssExpansionErrorKind::UnresolvedStandard {
-                property: Property::BorderColor,
-                reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
-            }
-        );
+        assert_selected_four(expand_declaration(&source));
     }
     let source = declaration(
         Property::BorderColor,
@@ -684,29 +661,11 @@ fn globals_include_reset_only_members_and_all_stays_symbolic() {
             }
         }
         let border_width = declaration(Property::BorderWidth, css, CssImportance::Important);
-        assert_eq!(
-            expand_declaration(&border_width).unwrap_err().kind(),
-            &CssExpansionErrorKind::UnresolvedStandard {
-                property: Property::BorderWidth,
-                reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
-            }
-        );
+        assert_selected_four(expand_declaration(&border_width));
         let border_style = declaration(Property::BorderStyle, css, CssImportance::Important);
-        assert_eq!(
-            expand_declaration(&border_style).unwrap_err().kind(),
-            &CssExpansionErrorKind::UnresolvedStandard {
-                property: Property::BorderStyle,
-                reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
-            }
-        );
+        assert_selected_four(expand_declaration(&border_style));
         let border_color = declaration(Property::BorderColor, css, CssImportance::Important);
-        assert_eq!(
-            expand_declaration(&border_color).unwrap_err().kind(),
-            &CssExpansionErrorKind::UnresolvedStandard {
-                property: Property::BorderColor,
-                reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
-            }
-        );
+        assert_selected_four(expand_declaration(&border_color));
         let source = declaration(Property::All, css, CssImportance::Important);
         let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
             expand_declaration(&source).unwrap()

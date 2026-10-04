@@ -45,6 +45,14 @@ Checked composition and cumulative serialization preserve authored omissions;
 see the [prosody reference](docs/reference.md#authored-speech-prosody) for
 canonical output and precision limits.
 
+The eight four-side border, inset, spacing and scroll shorthands expand to four
+members in their authored physical or logical mode without complementary resets.
+CSS-wide values select physical sides; strict substitution reentry selects the
+replacement mode. Mode-aware metadata and normalization preserve occurrence
+identity and cumulative limits. See the
+[membership policy](docs/reference.md#four-side-shorthand-membership) for the
+selected draft's source limit and the bounded compatibility decision.
+
 Checked `CssBackgroundLayer` and `CssBackground` construction retains authored
 omissions and enforces size/position and final-color constraints. Intrinsic
 `background` expansion supplies all eight longhands with per-layer schema

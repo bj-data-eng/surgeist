@@ -1505,11 +1505,12 @@ pub use counter_changes::{CssCounterChangeValue, CssCounterChangesValue, CssCoun
 pub use error::*;
 pub use expansion::{
     CssContributionValueRef, CssContributions, CssCustomPropertyContribution, CssExpansion,
-    CssExpansionError, CssExpansionErrorKind, CssInitialValueRef, CssLonghandContribution,
-    CssLonghandContributions, CssLonghandInitialValue, CssLonghandMetadata, CssLonghandProperty,
-    CssLonghandValue, CssLonghandValueRef, CssPendingSubstitution, CssPropertyKindRef,
-    CssPropertyMetadata, CssPropertyMetadataError, CssShorthandMetadata, CssUniversalReset,
-    CssUniversalResetMetadata, CssUnresolvedStandard, CssUserAgentInitial, expand_declaration,
+    CssExpansionError, CssExpansionErrorKind, CssFourSideShorthandMetadata, CssInitialValueRef,
+    CssLonghandContribution, CssLonghandContributions, CssLonghandInitialValue,
+    CssLonghandMetadata, CssLonghandProperty, CssLonghandValue, CssLonghandValueRef,
+    CssPendingSubstitution, CssPropertyKindRef, CssPropertyMetadata, CssPropertyMetadataError,
+    CssShorthandMetadata, CssUniversalReset, CssUniversalResetMetadata, CssUserAgentInitial,
+    expand_declaration,
 };
 pub use font_feature_values::*;
 pub use font_palette_values::*;

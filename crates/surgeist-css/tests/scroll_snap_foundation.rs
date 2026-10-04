@@ -7,6 +7,19 @@
 
 use surgeist_css::*;
 
+fn assert_four_expansion(result: Result<CssExpansion, CssExpansionError>) {
+    let CssExpansion::Contributions(values) = result.unwrap() else {
+        panic!("completed four-side expansion")
+    };
+    assert_four_contributions(Ok(values));
+}
+fn assert_four_contributions(result: Result<CssContributions, CssExpansionError>) {
+    let CssContributions::Longhands(values) = result.unwrap() else {
+        panic!("four selected sides")
+    };
+    assert_eq!(values.items().len(), 4);
+}
+
 const TERMINALS: &[&str] = &[
     "scroll-snap-type",
     "scroll-snap-align",
@@ -755,7 +768,7 @@ fn math_pair_captures_both_authored_trees_with_one_input_budget() {
 }
 
 #[test]
-fn four_side_authored_values_report_exact_unresolved_expansion_footprint() {
+fn four_side_authored_values_expand_selected_mode_footprint() {
     for (name, valid, invalid) in [
         ("scroll-padding", "logical auto 2px", "-1px"),
         ("scroll-margin", "logical 1px -2px", "1%"),
@@ -765,22 +778,13 @@ fn four_side_authored_values_report_exact_unresolved_expansion_footprint() {
             property_support_metadata(name).unwrap().feature().status(),
             CssSupportStatus::Complete
         );
-        assert_eq!(
-            grammar.metadata().unwrap_err(),
-            CssPropertyMetadataError::UnresolvedStandard {
-                grammar,
-                reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
-            }
-        );
+        assert!(matches!(
+            grammar.metadata().unwrap().kind(),
+            CssPropertyKindRef::FourSideShorthand(_)
+        ));
         for value in [valid, "initial", "inherit", "unset"] {
             let source = declaration(name, value);
-            assert_eq!(
-                expand_declaration(&source).unwrap_err().kind(),
-                &CssExpansionErrorKind::UnresolvedStandard {
-                    property: grammar.target_property(),
-                    reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
-                }
-            );
+            assert_four_expansion(expand_declaration(&source));
         }
         let source = declaration(name, "var(--inset)");
         let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
@@ -802,13 +806,7 @@ fn four_side_authored_values_report_exact_unresolved_expansion_footprint() {
             &CssExpansionErrorKind::ResidualSubstitution
         );
         let replacement = parse_component_values(valid).unwrap();
-        assert_eq!(
-            handle.reenter(replacement.clone()).unwrap_err().kind(),
-            &CssExpansionErrorKind::UnresolvedStandard {
-                property: grammar.target_property(),
-                reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
-            }
-        );
+        assert_four_contributions(handle.reenter(replacement.clone()));
 
         let pending_report = parse_sheet(&format!(".a{{{name}:var(--inset)}}"));
         assert!(pending_report.is_clean());
@@ -826,34 +824,15 @@ fn four_side_authored_values_report_exact_unresolved_expansion_footprint() {
         let report = parse_sheet(&format!(".a{{color:red;{name}:{valid};color:blue}}"));
         assert!(report.is_clean(), "{name}: {:?}", report.diagnostics());
         let syntax = report.syntax().clone();
-        let error = normalize_sheet(report.syntax()).unwrap_err();
-        assert!(
-            matches!(error.kind(), CssNormalizationErrorKind::UnsupportedDeclaration(expansion)
-                if expansion.kind() == &CssExpansionErrorKind::UnresolvedStandard {
-                    property: grammar.target_property(),
-                    reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
-                }
-            )
-        );
+        let normalized = normalize_sheet(report.syntax()).unwrap();
         assert_eq!(
-            error.declaration().unwrap().known().unwrap().property(),
-            grammar.target_property()
+            normalized
+                .items()
+                .iter()
+                .filter(|item| matches!(item, CssNormalizedItem::Declaration(_)))
+                .count(),
+            3
         );
-        assert_eq!(error.declaration_order(), Some(1));
-        assert_eq!(
-            error
-                .declaration()
-                .unwrap()
-                .value_components()
-                .serialize()
-                .unwrap()
-                .as_css(),
-            valid
-        );
-        assert_eq!(
-            report.syntax(),
-            &syntax,
-            "normalization preserves authored sheet"
-        );
+        assert_eq!(report.syntax(), &syntax);
     }
 }

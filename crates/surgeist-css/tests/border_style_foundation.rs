@@ -6,6 +6,19 @@
 
 use surgeist_css::*;
 
+fn assert_four_expansion(result: Result<CssExpansion, CssExpansionError>) {
+    let CssExpansion::Contributions(values) = result.unwrap() else {
+        panic!("completed four-side expansion")
+    };
+    assert_four_contributions(Ok(values));
+}
+fn assert_four_contributions(result: Result<CssContributions, CssExpansionError>) {
+    let CssContributions::Longhands(values) = result.unwrap() else {
+        panic!("four selected sides")
+    };
+    assert_eq!(values.items().len(), 4);
+}
+
 const PHYSICAL: [&str; 4] = [
     "border-top-style",
     "border-right-style",
@@ -110,13 +123,6 @@ fn one_value(name: &str, value: &str) -> CssLonghandValue {
     assert_eq!(item.property(), grammar(name).target_property());
     assert!(item.source().same_occurrence(&source));
     item.ordinary_value().unwrap().clone()
-}
-
-fn unresolved_kind() -> CssExpansionErrorKind {
-    CssExpansionErrorKind::UnresolvedStandard {
-        property: grammar(FOUR_SIDE).target_property(),
-        reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
-    }
 }
 
 fn expect_rejection<T, E>(result: Result<T, E>) -> E {
@@ -265,8 +271,8 @@ fn logical_style_pairs_assign_start_then_end_and_repeat_omitted_end() {
 }
 
 #[test]
-fn border_style_accepts_physical_or_prefixed_logical_one_to_four_values_but_expansion_is_unresolved()
- {
+fn border_style_accepts_physical_or_prefixed_logical_one_to_four_values_and_expands_selected_sides()
+{
     for value in [
         "solid",
         "solid dashed",
@@ -278,10 +284,7 @@ fn border_style_accepts_physical_or_prefixed_logical_one_to_four_values_but_expa
         "logical solid dashed dotted double",
     ] {
         accepted(FOUR_SIDE, value);
-        assert_eq!(
-            expect_rejection(expand_declaration(&declaration(FOUR_SIDE, value))).kind(),
-            &unresolved_kind()
-        );
+        assert_four_expansion(expand_declaration(&declaration(FOUR_SIDE, value)));
     }
     for value in [
         "",
@@ -295,47 +298,17 @@ fn border_style_accepts_physical_or_prefixed_logical_one_to_four_values_but_expa
         invalid(FOUR_SIDE, value);
     }
     let grammar = grammar(FOUR_SIDE);
-    assert_eq!(
-        expect_rejection(grammar.metadata()),
-        CssPropertyMetadataError::UnresolvedStandard {
-            grammar,
-            reason: CssUnresolvedStandard::LogicalShorthandResetMembership,
-        }
-    );
-    let source = ".a{color:red;border-style:logical solid dotted;color:blue}";
-    let report = parse_sheet(source);
-    assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let [CssRule::Style(style)] = report.syntax().rules() else {
-        panic!("one authored .a style rule")
-    };
-    let [_before, border, _after] = style.declarations().as_slice() else {
-        panic!("border-style between two color declarations")
-    };
-    let original = report.syntax().clone();
-    let error = expect_rejection(normalize_sheet(report.syntax()));
-    assert!(
-        matches!(error.kind(), CssNormalizationErrorKind::UnsupportedDeclaration(expansion)
-        if expansion.kind() == &unresolved_kind())
-    );
-    assert_eq!(error.declaration_order(), Some(1));
-    assert_eq!(
-        error.position().unwrap().byte_offset().value(),
-        source.find("border-style").unwrap()
-    );
-    assert!(error.declaration().unwrap().same_occurrence(border));
-    let context = error.rule_context().expect("owning .a style rule");
-    let CssRuleContextKindRef::Style(selectors) = context.kind() else {
-        panic!("owning style context")
-    };
-    assert_eq!(
-        selectors.selectors()[0].selector(),
-        &CssSelector::Class("a".into())
-    );
-    assert_eq!(
-        context.position().unwrap().byte_offset().value(),
-        source.find(".a").unwrap()
-    );
-    assert_eq!(report.syntax(), &original, "failed normalization is atomic");
+    assert!(matches!(
+        grammar.metadata().unwrap().kind(),
+        CssPropertyKindRef::FourSideShorthand(_)
+    ));
+    let report = parse_sheet(&format!(
+        ".a{{color:red;{FOUR_SIDE}:logical solid dotted;color:blue}}"
+    ));
+    assert!(report.is_clean());
+    let before = report.syntax().clone();
+    assert!(normalize_sheet(report.syntax()).is_ok());
+    assert_eq!(report.syntax(), &before);
 }
 
 #[test]
@@ -415,10 +388,7 @@ fn css_wide_all_and_pending_reentry_keep_style_members_and_original_occurrence()
             let source = declaration(name, text);
             checked(name, text);
             if name == FOUR_SIDE {
-                assert_eq!(
-                    expect_rejection(expand_declaration(&source)).kind(),
-                    &unresolved_kind()
-                );
+                assert_four_expansion(expand_declaration(&source));
             } else {
                 let CssExpansion::Contributions(CssContributions::Longhands(values)) =
                     expand_declaration(&source).unwrap()
@@ -466,16 +436,9 @@ fn css_wide_all_and_pending_reentry_keep_style_members_and_original_occurrence()
             }
             let replacement = parse_component_values("solid dashed").unwrap();
             if name == FOUR_SIDE {
-                assert_eq!(
-                    expect_rejection(handle.reenter(replacement)).kind(),
-                    &unresolved_kind()
-                );
-                assert_eq!(
-                    expect_rejection(
-                        handle.reenter(parse_component_values("logical solid dotted").unwrap())
-                    )
-                    .kind(),
-                    &unresolved_kind()
+                assert_four_contributions(handle.reenter(replacement));
+                assert_four_contributions(
+                    handle.reenter(parse_component_values("logical solid dotted").unwrap()),
                 );
             } else {
                 let replacement = if PAIRS.contains(&name) {

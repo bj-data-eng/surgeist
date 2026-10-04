@@ -159,13 +159,20 @@ supersedes Logical 1's older initial `0` with `auto`, while Logical 1 still owns
 the mapping between physical and flow-relative properties.
 
 Logical 1 §4.7 defines the authored `logical` marker and four-side role order,
-even though the marker is unstable. Its separate issue 3030 leaves the complete
-physical/logical reset footprint unresolved. The catalog records that limit for
-`margin`, `padding`, `border-width`, `border-style`, `border-color`, `scroll-margin`, and `scroll-padding`: accept and retain the
-defined grammar, but do not present four explicit assignments as a complete
-expansion with known resets. Logical-axis pairs and longhands have defined
-intrinsic expansion. This distinction changes prior physical-only shorthand
-normalization; it does not move an ordinary grammar gap to a downstream owner.
+even though the marker is unstable. The pinned draft leaves complementary
+physical/logical reset membership source-limited; four explicit assignments
+alone do not settle that normative question. Surgeist adopts a bounded project
+policy for all eight families: `border-color`, `border-style`, `border-width`,
+`inset`, `margin`, `padding`, `scroll-margin` and `scroll-padding`. Physical mode
+and CSS-wide values expand to four physical sides; retained `logical` mode
+expands to four flow-relative sides. Neither mode resets complementary sides.
+Strict substitution reentry selects the replacement mode, and normalization
+uses that selected footprint. Frozen WebKit corroborates physical membership
+only; logical no-reset is project policy, not settled normative behavior or
+WebKit support for the marker. See the
+[four-side membership reference](../docs/reference.md#four-side-shorthand-membership)
+for the exact boundary. Logical-axis pairs and longhands retain their defined
+intrinsic expansion.
 
 Color 5 also directly references Values 5 mix items and percentage normalization.
 Those definitions are absent from the latest published 2024 edition. A separate

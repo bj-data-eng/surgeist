@@ -56,19 +56,6 @@ pub enum CssExpansionErrorKind {
     ResidualSubstitution,
     /// Replacement components failed serialization or the original property grammar.
     InvalidReplacement(CssPropertyValueParseError),
-    /// The selected source leaves a complete intrinsic target/reset footprint unresolved.
-    UnresolvedStandard {
-        property: CssKnownProperty,
-        reason: CssUnresolvedStandard,
-    },
-}
-
-/// A source-defined authored grammar whose intrinsic expansion footprint is unsettled.
-#[non_exhaustive]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CssUnresolvedStandard {
-    /// Logical 1 leaves physical/logical four-side shorthand reset membership open.
-    LogicalShorthandResetMembership,
 }
 
 /// A typed expansion capability or strict-reentry failure.
@@ -103,11 +90,6 @@ impl fmt::Display for CssExpansionError {
                 formatter.write_str("replacement still contains var() or env() substitution")
             }
             CssExpansionErrorKind::InvalidReplacement(error) => fmt::Display::fmt(error, formatter),
-            CssExpansionErrorKind::UnresolvedStandard { property, .. } => write!(
-                formatter,
-                "the selected standard leaves {} expansion membership unresolved",
-                property.canonical_name()
-            ),
         }
     }
 }
@@ -152,7 +134,7 @@ macro_rules! define_expansion_schema {
             $($( $variant, $kind { $($metadata)* }; )?)*
         );
     };
-    (@collect [$($longhands:tt)*] [$($shorthands:tt)*] [$($universal:tt)*] [$($unresolved:tt)*];
+    (@collect [$($longhands:tt)*] [$($shorthands:tt)*] [$($universal:tt)*] [$($four:tt)*];
         $variant:ident, longhand {
             value: $value:ty,
             accessor: $accessor:ident, inherited: $inherited:literal, initial_kind: $initial_kind:ident, initial: $initial:expr
@@ -160,10 +142,10 @@ macro_rules! define_expansion_schema {
     ) => {
         define_expansion_schema!(@collect
             [$($longhands)* ($variant, $value, $accessor, $inherited, $initial_kind, $initial)]
-            [$($shorthands)*] [$($universal)*] [$($unresolved)*]; $($rest)*
+            [$($shorthands)*] [$($universal)*] [$($four)*]; $($rest)*
         );
     };
-    (@collect [$($longhands:tt)*] [$($shorthands:tt)*] [$($universal:tt)*] [$($unresolved:tt)*];
+    (@collect [$($longhands:tt)*] [$($shorthands:tt)*] [$($universal:tt)*] [$($four:tt)*];
         $variant:ident, shorthand {
             accessor: $accessor:ident,
             members: [$($member:ident => $projection:expr),+],
@@ -173,10 +155,10 @@ macro_rules! define_expansion_schema {
         define_expansion_schema!(@collect
             [$($longhands)*]
             [$($shorthands)* ($variant, $accessor, [$($member => $projection),+], [$($reset),*])]
-            [$($universal)*] [$($unresolved)*]; $($rest)*
+            [$($universal)*] [$($four)*]; $($rest)*
         );
     };
-    (@collect [$($longhands:tt)*] [$($shorthands:tt)*] [$($universal:tt)*] [$($unresolved:tt)*];
+    (@collect [$($longhands:tt)*] [$($shorthands:tt)*] [$($universal:tt)*] [$($four:tt)*];
         $variant:ident, universal { exclude_custom: $exclude_custom:literal,
             excluded: [$($excluded:ident),+]
         }; $($rest:tt)*
@@ -184,15 +166,19 @@ macro_rules! define_expansion_schema {
         define_expansion_schema!(@collect
             [$($longhands)*] [$($shorthands)*]
             [$($universal)* ($variant, $exclude_custom, [$($excluded),+])]
-            [$($unresolved)*]; $($rest)*
+            [$($four)*]; $($rest)*
         );
     };
-    (@collect [$($longhands:tt)*] [$($shorthands:tt)*] [$($universal:tt)*] [$($unresolved:tt)*];
-        $variant:ident, unresolved { reason: $reason:expr }; $($rest:tt)*
+    (@collect [$($longhands:tt)*] [$($shorthands:tt)*] [$($universal:tt)*] [$($four:tt)*];
+        $variant:ident, four_side {
+            accessor: $accessor:ident, mode: $mode:expr,
+            physical: [$($physical:ident => $physical_projection:expr),+],
+            logical: [$($logical:ident => $logical_projection:expr),+]
+        }; $($rest:tt)*
     ) => {
         define_expansion_schema!(@collect
             [$($longhands)*] [$($shorthands)*] [$($universal)*]
-            [$($unresolved)* ($variant, $reason)]; $($rest)*
+            [$($four)* ($variant, $accessor, $mode, [$($physical => $physical_projection),+], [$($logical => $logical_projection),+])]; $($rest)*
         );
     };
     (@collect
@@ -200,7 +186,9 @@ macro_rules! define_expansion_schema {
         [$(($shorthand:ident, $shorthand_accessor:ident,
             [$($member:ident => $projection:expr),+], [$($reset:ident),*]))*]
         [($universal:ident, $exclude_custom:literal, [$($excluded:ident),+])]
-        [$(($unresolved_property:ident, $unresolved_reason:expr))*];
+        [$(($four_property:ident, $four_accessor:ident, $four_mode:expr,
+            [$($physical:ident => $physical_projection:expr),+],
+            [$($logical:ident => $logical_projection:expr),+]))*];
     ) => {
         #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
         enum Longhand {
@@ -343,6 +331,16 @@ macro_rules! define_expansion_schema {
                     };
                     Ok(&METADATA)
                 },)*
+                $(CssKnownProperty::$four_property => {
+                    const METADATA: CssPropertyMetadata = CssPropertyMetadata {
+                        grammar: CssKnownProperty::$four_property.grammar(),
+                        kind: CssPropertyKindRef::FourSideShorthand(&CssFourSideShorthandMetadata {
+                            physical: &[$(CssLonghandProperty(Longhand::$physical),)+],
+                            logical: &[$(CssLonghandProperty(Longhand::$logical),)+],
+                        }),
+                    };
+                    Ok(&METADATA)
+                },)*
                 CssKnownProperty::$universal => {
                     const METADATA: CssPropertyMetadata = CssPropertyMetadata {
                         grammar: CssKnownProperty::$universal.grammar(),
@@ -350,17 +348,12 @@ macro_rules! define_expansion_schema {
                     };
                     Ok(&METADATA)
                 },
-                $(CssKnownProperty::$unresolved_property => Err(
-                    CssPropertyMetadataError::UnresolvedStandard {
-                        grammar,
-                        reason: $unresolved_reason,
-                    }
-                ),)*
                 _ => Err(CssPropertyMetadataError::Unavailable(grammar)),
             }
         }
 
-        fn expansion_shape(property: CssKnownProperty) -> Result<ExpansionShape, CssExpansionError> {
+        fn expansion_shape(known: &CssKnownDeclaration) -> Result<ExpansionShape, CssExpansionError> {
+            let property = known.property();
             match property {
                 CssKnownProperty::$universal => Ok(ExpansionShape::UniversalReset),
                 $(CssKnownProperty::$longhand => {
@@ -369,12 +362,16 @@ macro_rules! define_expansion_schema {
                 $(CssKnownProperty::$shorthand => {
                     Ok(ExpansionShape::Longhands(&[$(Longhand::$member,)+ $(Longhand::$reset,)*]))
                 })*
-                $(CssKnownProperty::$unresolved_property => Err(CssExpansionError::new(
-                    CssExpansionErrorKind::UnresolvedStandard {
-                        property,
-                        reason: $unresolved_reason,
-                    }
-                )),)*
+                $(CssKnownProperty::$four_property => {
+                    let mode = match known.property_value() {
+                        Some(CssKnownPropertyValueRef::$four_property(value)) => ($four_mode)(value.$four_accessor()),
+                        _ => crate::CssBoxSideKind::Physical,
+                    };
+                    Ok(ExpansionShape::Longhands(match mode {
+                        crate::CssBoxSideKind::Physical => &[$(Longhand::$physical,)+],
+                        crate::CssBoxSideKind::Logical => &[$(Longhand::$logical,)+],
+                    }))
+                })*
                 _ => Err(CssExpansionError::new(CssExpansionErrorKind::UnsupportedProperty(property))),
             }
         }
@@ -403,6 +400,17 @@ macro_rules! define_expansion_schema {
                         },)+
                         $(Longhand::$reset.initial(),)*
                     ])
+                })*
+                $(CssKnownPropertyValueRef::$four_property(value) => {
+                    let value = value.$four_accessor();
+                    Ok(match ($four_mode)(value) {
+                        crate::CssBoxSideKind::Physical => vec![
+                            $(OwnedContributionValue::Ordinary(CssLonghandValue { value: Box::new(OwnedLonghandValue::$physical(($physical_projection)(value))) }),)+
+                        ],
+                        crate::CssBoxSideKind::Logical => vec![
+                            $(OwnedContributionValue::Ordinary(CssLonghandValue { value: Box::new(OwnedLonghandValue::$logical(($logical_projection)(value))) }),)+
+                        ],
+                    })
                 })*
                 _ => Err(CssExpansionError::new(CssExpansionErrorKind::UnsupportedProperty(property))),
             }
@@ -693,7 +701,7 @@ impl CssPendingSubstitution {
         let CssDeclarationBody::Known(known) = body else {
             unreachable!("pending expansion is created only for supported known properties");
         };
-        let shape = expansion_shape(known.property())?;
+        let shape = expansion_shape(&known)?;
         complete_contributions(
             &known,
             shape,
@@ -727,13 +735,8 @@ pub fn expand_declaration(source: &CssDeclaration) -> Result<CssExpansion, CssEx
             )));
         }
     };
-    let shape = expansion_shape(known.property());
-    if known.substitution_dependent().is_some()
-        && matches!(
-            shape.as_ref().map_err(CssExpansionError::kind),
-            Ok(_) | Err(CssExpansionErrorKind::UnresolvedStandard { .. })
-        )
-    {
+    let shape = expansion_shape(known);
+    if known.substitution_dependent().is_some() && shape.is_ok() {
         return Ok(CssExpansion::Pending(CssPendingSubstitution {
             source: source.clone(),
         }));
@@ -756,13 +759,8 @@ pub(crate) fn expansion_member_count(source: &CssDeclaration) -> Result<usize, C
     let Some(known) = source.known() else {
         return Ok(1);
     };
-    let shape = expansion_shape(known.property());
-    if known.substitution_dependent().is_some()
-        && matches!(
-            shape.as_ref().map_err(CssExpansionError::kind),
-            Ok(_) | Err(CssExpansionErrorKind::UnresolvedStandard { .. })
-        )
-    {
+    let shape = expansion_shape(known);
+    if known.substitution_dependent().is_some() && shape.is_ok() {
         return Ok(1);
     }
     let shape = shape?;
@@ -971,21 +969,11 @@ impl OwnedContributionValue {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssPropertyMetadataError {
     Unavailable(crate::CssPropertyGrammar),
-    /// The grammar is supported but the shorthand's complete target set is unsettled.
-    UnresolvedStandard {
-        grammar: crate::CssPropertyGrammar,
-        reason: CssUnresolvedStandard,
-    },
 }
 impl fmt::Display for CssPropertyMetadataError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Unavailable(g) => write!(f, "intrinsic metadata unavailable for {}", g.name()),
-            Self::UnresolvedStandard { grammar, .. } => write!(
-                f,
-                "the selected standard leaves {} shorthand membership unresolved",
-                grammar.name()
-            ),
         }
     }
 }
@@ -1014,6 +1002,8 @@ impl CssPropertyMetadata {
 pub enum CssPropertyKindRef<'a> {
     Longhand(&'a CssLonghandMetadata),
     Shorthand(&'a CssShorthandMetadata),
+    /// An authored coordinate-mode shorthand with exactly four selected sides.
+    FourSideShorthand(&'a CssFourSideShorthandMetadata),
     UniversalReset(&'a CssUniversalResetMetadata),
 }
 /// A terminal property's inheritance and intrinsic initial.
@@ -1066,6 +1056,40 @@ impl CssShorthandMetadata {
     #[must_use]
     pub const fn is_legacy(&self) -> bool {
         self.legacy
+    }
+}
+/// Mode-selected terminal membership for an authored four-side shorthand.
+///
+/// Physical mode is corroborated by the frozen WebKit boundary. Logical mode
+/// preserves Logical 1's authored assignments under Surgeist's explicit no-
+/// complementary-reset policy; the selected draft does not settle that reset
+/// question. CSS-wide values use physical mode; reentry uses the replacement mode.
+#[derive(Debug)]
+pub struct CssFourSideShorthandMetadata {
+    physical: &'static [CssLonghandProperty],
+    logical: &'static [CssLonghandProperty],
+}
+impl CssFourSideShorthandMetadata {
+    /// Returns exactly four ordered sides in the requested coordinate mode.
+    #[must_use]
+    pub const fn members(&self, mode: crate::CssBoxSideKind) -> &'static [CssLonghandProperty] {
+        match mode {
+            crate::CssBoxSideKind::Physical => self.physical,
+            crate::CssBoxSideKind::Logical => self.logical,
+        }
+    }
+    /// Returns the four directly settable sides, without complementary writes.
+    #[must_use]
+    pub const fn settable_members(
+        &self,
+        mode: crate::CssBoxSideKind,
+    ) -> &'static [CssLonghandProperty] {
+        self.members(mode)
+    }
+    /// Returns the empty reset-only set in either mode.
+    #[must_use]
+    pub const fn reset_only_members(&self) -> &'static [CssLonghandProperty] {
+        &[]
     }
 }
 /// Intrinsic exclusions for `all`, before contextual target selection.
