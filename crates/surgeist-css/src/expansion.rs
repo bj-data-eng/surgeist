@@ -29,7 +29,9 @@ use crate::properties::{CssKnownDeclaration, CssKnownDeclaredValueRef, CssKnownP
 use crate::scroll_snap::*;
 use crate::sizing::{CssMaxSizeValue, CssSizeValue};
 use crate::sizing_controls::*;
-use crate::speech::{CssSpeak, CssSpeakAs, CssSpeechBreak, CssSpeechBreakPair};
+use crate::speech::{
+    CssSpeak, CssSpeakAs, CssSpeechBreak, CssSpeechBreakPair, CssVoiceFamily, CssVoiceStress,
+};
 use crate::syntax::*;
 use crate::text_alignment::{CssTextAlignAllValue, CssTextAlignLastValue, CssTextAlignValue};
 use crate::{
@@ -879,6 +881,7 @@ impl CssLonghandValue {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssUserAgentInitial {
     FontFamily,
+    VoiceFamily,
 }
 impl CssUserAgentInitial {
     /// Returns the terminal property requiring context.
@@ -886,6 +889,7 @@ impl CssUserAgentInitial {
     pub const fn property(self) -> CssLonghandProperty {
         match self {
             Self::FontFamily => CssLonghandProperty(Longhand::FontFamily),
+            Self::VoiceFamily => CssLonghandProperty(Longhand::VoiceFamily),
         }
     }
 }

@@ -16,6 +16,13 @@ and bounded specified serialization preserve authored omissions and provenance;
 canonical pair output omits a demonstrably equivalent second value. Strength
 durations, pause collapse, and additive rest execution belong downstream.
 
+CSS Speech `voice-family` retains prioritized quoted or identifier names,
+ordered generic voices with optional exact positive variant indices, and the
+whole-value `preserve` alternative. `voice-stress` retains its five symbolic
+keywords. Checked models and bounded specified serialization use the shared
+identifier, string and integer owners. Contextual voice selection and acoustic
+realization belong downstream; see the [voice reference](docs/reference.md#authored-speech-voices).
+
 Checked `CssBackgroundLayer` and `CssBackground` construction retains authored
 omissions and enforces size/position and final-color constraints. Intrinsic
 `background` expansion supplies all eight longhands with per-layer schema

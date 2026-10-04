@@ -1,4 +1,4 @@
-//! Intrinsic authored values from CSS Speech 1 §§7–9.
+//! Intrinsic authored values from CSS Speech 1 §§7–9 and §11.
 //!
 //! These values retain author choices. Voice selection, pronunciation and the
 //! contextual computed/used behavior of `speak: auto` belong downstream.
@@ -349,5 +349,324 @@ impl CssSpeechBreakPair {
             context.replace_output_suppression(previous);
         }
         Ok(output)
+    }
+}
+
+/// Symbolic vocal stress; acoustic realization belongs to a speech renderer.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssVoiceStress {
+    Normal,
+    Strong,
+    Moderate,
+    None,
+    Reduced,
+}
+impl CssVoiceStress {
+    /// Serializes the specified keyword.
+    pub fn serialize_specified(&self) -> SerializationResult {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+    /// Serializes under the shared cumulative resource limits.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult {
+        serialize_keyword_sequence(
+            match self {
+                Self::Normal => "normal",
+                Self::Strong => "strong",
+                Self::Moderate => "moderate",
+                Self::None => "none",
+                Self::Reduced => "reduced",
+            },
+            limits,
+        )
+    }
+}
+
+/// An authored generic voice age.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssVoiceAge {
+    Child,
+    Young,
+    Old,
+}
+impl CssVoiceAge {
+    pub(crate) fn keyword(self) -> &'static str {
+        match self {
+            Self::Child => "child",
+            Self::Young => "young",
+            Self::Old => "old",
+        }
+    }
+}
+/// An authored generic voice gender.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssVoiceGender {
+    Male,
+    Female,
+    Neutral,
+}
+impl CssVoiceGender {
+    pub(crate) fn keyword(self) -> &'static str {
+        match self {
+            Self::Male => "male",
+            Self::Female => "female",
+            Self::Neutral => "neutral",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum VoiceName {
+    Quoted(String),
+    Identifiers(Vec<crate::CssIdent>),
+}
+/// A checked voice name retaining its quoted or identifier-sequence form.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssVoiceFamilyName {
+    name: VoiceName,
+}
+/// Borrowed authored voice-name representation.
+#[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
+pub enum CssVoiceFamilyNameRef<'a> {
+    Quoted(&'a str),
+    Identifiers(&'a [crate::CssIdent]),
+}
+impl CssVoiceFamilyName {
+    /// Constructs a decoded quoted string, including the empty string.
+    pub fn try_quoted(value: impl Into<String>) -> Result<Self, crate::CssComponentValueError> {
+        let value = value.into();
+        crate::CssComponentValue::try_string(value.clone())?;
+        Ok(Self {
+            name: VoiceName::Quoted(value),
+        })
+    }
+    /// Constructs a nonempty sequence of decoded identifiers. Speech keywords,
+    /// CSS-wide keywords and `default` require a quoted name.
+    #[must_use]
+    pub fn try_identifiers(identifiers: Vec<crate::CssIdent>) -> Option<Self> {
+        if identifiers.is_empty()
+            || identifiers
+                .iter()
+                .any(|ident| reserved_voice_identifier(ident.as_str()))
+        {
+            return None;
+        }
+        Some(Self {
+            name: VoiceName::Identifiers(identifiers),
+        })
+    }
+    /// Borrows the retained authored form without joining identifiers.
+    #[must_use]
+    pub fn view(&self) -> CssVoiceFamilyNameRef<'_> {
+        match &self.name {
+            VoiceName::Quoted(value) => CssVoiceFamilyNameRef::Quoted(value),
+            VoiceName::Identifiers(values) => CssVoiceFamilyNameRef::Identifiers(values),
+        }
+    }
+}
+pub(crate) fn reserved_voice_identifier(value: &str) -> bool {
+    [
+        "male",
+        "female",
+        "neutral",
+        "preserve",
+        "default",
+        "inherit",
+        "initial",
+        "unset",
+        "revert",
+        "revert-layer",
+    ]
+    .iter()
+    .any(|keyword| value.eq_ignore_ascii_case(keyword))
+}
+
+/// Checked `[<age>? <gender> <integer>?]`; a variant is exact and positive
+/// when ordinary, or retained integer math with deferred range processing.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssGenericVoice {
+    age: Option<CssVoiceAge>,
+    gender: CssVoiceGender,
+    variant: Option<crate::CssPositiveIntegerValue>,
+}
+impl CssGenericVoice {
+    /// Constructs a generic voice without selecting an installed voice.
+    /// Bare calculation literals also pass exact positivity validation.
+    pub fn try_new(
+        age: Option<CssVoiceAge>,
+        gender: CssVoiceGender,
+        variant: Option<crate::CssPositiveIntegerValue>,
+    ) -> Result<Self, CssNumericConstructionError> {
+        if let Some(crate::CssPositiveIntegerValue::Calculation(value)) = &variant
+            && let Some(origin) = value.components().first_implicit_origin()
+        {
+            return Err(CssNumericConstructionError::at_origin(
+                crate::CssNumericConstructionErrorKind::RecoveredComponent,
+                origin.clone(),
+            ));
+        }
+        Self::from_parser(age, gender, variant)
+    }
+    pub(crate) fn from_parser(
+        age: Option<CssVoiceAge>,
+        gender: CssVoiceGender,
+        mut variant: Option<crate::CssPositiveIntegerValue>,
+    ) -> Result<Self, CssNumericConstructionError> {
+        if let Some(crate::CssPositiveIntegerValue::Calculation(value)) = &variant {
+            let root = crate::specified_numeric::significant_root(value.components())?;
+            if matches!(root.view(), crate::CssComponentValueRef::Token(_)) {
+                let integer =
+                    crate::CssIntegerLiteral::try_from_component(root.clone()).map_err(|_| {
+                        CssNumericConstructionError::at(
+                            crate::CssNumericConstructionErrorKind::RootDomainMismatch,
+                            Some(root),
+                        )
+                    })?;
+                let positive =
+                    crate::CssPositiveIntegerLiteral::try_new(integer).ok_or_else(|| {
+                        CssNumericConstructionError::at(
+                            crate::CssNumericConstructionErrorKind::OutOfRange,
+                            Some(root),
+                        )
+                    })?;
+                variant = Some(crate::CssPositiveIntegerValue::Literal(positive));
+            }
+        }
+        Ok(Self {
+            age,
+            gender,
+            variant,
+        })
+    }
+    #[must_use]
+    pub const fn age(&self) -> Option<CssVoiceAge> {
+        self.age
+    }
+    #[must_use]
+    pub const fn gender(&self) -> CssVoiceGender {
+        self.gender
+    }
+    /// `None` retains omission of the variant, independently of variant `1`.
+    #[must_use]
+    pub const fn variant(&self) -> Option<&crate::CssPositiveIntegerValue> {
+        self.variant.as_ref()
+    }
+}
+/// One authored entry in a prioritized voice list.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub enum CssVoiceFamilyEntry {
+    Name(CssVoiceFamilyName),
+    Generic(CssGenericVoice),
+}
+
+/// A nonempty prioritized list of authored voices.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssVoiceFamilyList {
+    entries: Vec<CssVoiceFamilyEntry>,
+}
+impl CssVoiceFamilyList {
+    /// Rejects an empty list or an originally recovered variant calculation.
+    #[must_use]
+    pub fn try_new(entries: Vec<CssVoiceFamilyEntry>) -> Option<Self> {
+        if entries.iter().any(|entry| matches!(entry,
+            CssVoiceFamilyEntry::Generic(value)
+                if matches!(value.variant(), Some(crate::CssPositiveIntegerValue::Calculation(value))
+                    if value.components().first_implicit_origin().is_some()))) {
+            return None;
+        }
+        Self::from_parser(entries)
+    }
+    pub(crate) fn from_parser(entries: Vec<CssVoiceFamilyEntry>) -> Option<Self> {
+        (!entries.is_empty()).then_some(Self { entries })
+    }
+    #[must_use]
+    pub fn entries(&self) -> &[CssVoiceFamilyEntry] {
+        &self.entries
+    }
+}
+/// A prioritized voice list or the distinct language-preservation alternative.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub enum CssVoiceFamily {
+    Voices(CssVoiceFamilyList),
+    Preserve,
+}
+impl CssVoiceFamily {
+    /// Serializes specified author choices without contextual voice selection.
+    pub fn serialize_specified(&self) -> SerializationResult {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+    /// Uses shared identifier/string escaping and cumulative integer projection.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult {
+        use crate::specified_rule_serialization::SpecifiedRuleWriter;
+        fn leaf(
+            writer: &mut SpecifiedRuleWriter,
+        ) -> Result<(), CssSpecifiedValueSerializationError> {
+            writer.context.charge_input(1)?;
+            writer.context.charge_projection(1)
+        }
+        let mut writer = SpecifiedRuleWriter::new(limits);
+        leaf(&mut writer)?;
+        match self {
+            Self::Preserve => writer.append("preserve")?,
+            Self::Voices(list) => {
+                for (index, entry) in list.entries.iter().enumerate() {
+                    if index > 0 {
+                        writer.append(", ")?;
+                    }
+                    leaf(&mut writer)?;
+                    match entry {
+                        CssVoiceFamilyEntry::Name(name) => match name.view() {
+                            CssVoiceFamilyNameRef::Quoted(value) => {
+                                leaf(&mut writer)?;
+                                writer.append_string(value)?;
+                            }
+                            CssVoiceFamilyNameRef::Identifiers(values) => {
+                                for (index, value) in values.iter().enumerate() {
+                                    if index > 0 {
+                                        writer.append(" ")?;
+                                    }
+                                    leaf(&mut writer)?;
+                                    writer.append_identifier(value.as_str())?;
+                                }
+                            }
+                        },
+                        CssVoiceFamilyEntry::Generic(value) => {
+                            if let Some(age) = value.age {
+                                leaf(&mut writer)?;
+                                writer.append(age.keyword())?;
+                                writer.append(" ")?;
+                            }
+                            leaf(&mut writer)?;
+                            writer.append(value.gender.keyword())?;
+                            if let Some(variant) = &value.variant {
+                                writer.append(" ")?;
+                                match variant {
+                                    crate::CssPositiveIntegerValue::Literal(value) => value
+                                        .integer()
+                                        .append_specified(&mut writer.context, &mut writer.css)?,
+                                    crate::CssPositiveIntegerValue::Calculation(value) => value
+                                        .serialize_specified_into(
+                                            &mut writer.context,
+                                            &mut writer.css,
+                                        )?,
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(writer.css)
     }
 }

@@ -1,8 +1,8 @@
 use super::border_style::parse_border_style;
 use super::border_width::{parse_exact_line_triple, parse_exact_line_width};
-use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
+use cssparser::{ParseError, Parser, match_ignore_ascii_case};
 
-use super::values::{CalculationRoot, parse_numeric_function};
+use super::values::parse_positive_integer_value;
 use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
 use crate::syntax::*;
 use crate::validation::unsupported_keyword_reason;
@@ -18,42 +18,6 @@ pub(super) fn parse_column_count<'i, 't>(
         Ok(CssColumnCount::Auto)
     } else {
         parse_positive_integer_value(input, numeric, "column-count").map(CssColumnCount::Count)
-    }
-}
-
-fn parse_positive_integer_value<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-    context: &str,
-) -> Result<CssPositiveIntegerValue, ParseError<'i, Error>> {
-    input.skip_whitespace();
-    let numeric_start = input.state();
-    let location = input.current_source_location();
-    match input.next().map_err(basic)? {
-        Token::Number { .. } => {
-            input.reset(&numeric_start);
-            let component = numeric.collect(input).map_err(|_| {
-                unsupported_value_at(location, None, format!("invalid {context} integer"))
-            })?;
-            let literal =
-                crate::CssIntegerLiteral::try_from_component(component).map_err(|_| {
-                    unsupported_value_at(location, None, format!("{context} must be an integer"))
-                })?;
-            let positive = CssPositiveIntegerLiteral::try_new(literal).ok_or_else(|| {
-                unsupported_value_at(
-                    location,
-                    None,
-                    format!("{context} must be a positive integer"),
-                )
-            })?;
-            Ok(CssPositiveIntegerValue::Literal(positive))
-        }
-        Token::Function(name) if crate::numeric::is_math_function(name) => {
-            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Integer)
-                .map(CssIntegerCalculation::from_expression)
-                .map(CssPositiveIntegerValue::Calculation)
-        }
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
 }
 

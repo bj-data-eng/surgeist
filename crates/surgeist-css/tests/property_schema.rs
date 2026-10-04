@@ -492,6 +492,8 @@ macro_rules! with_property_value_variants {
             ScrollbarWidth,
             Speak,
             SpeakAs,
+            VoiceFamily,
+            VoiceStress,
             PauseBefore,
             PauseAfter,
             Pause,

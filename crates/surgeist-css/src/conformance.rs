@@ -2298,7 +2298,9 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::Pause
         | CssKnownProperty::RestBefore
         | CssKnownProperty::RestAfter
-        | CssKnownProperty::Rest => S_SPEECH1,
+        | CssKnownProperty::Rest
+        | CssKnownProperty::VoiceFamily
+        | CssKnownProperty::VoiceStress => S_SPEECH1,
         CssKnownProperty::Quotes | CssKnownProperty::Content => X_CONTENT3,
         CssKnownProperty::BorderCollapse
         | CssKnownProperty::BorderSpacing
@@ -2746,7 +2748,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 644] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 646] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -4485,6 +4487,16 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 644] = [
         CssKnownProperty::Visibility,
         "visibility",
         "baseline.property.visibility"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::VoiceFamily,
+        "voice-family",
+        "official.property.voice-family"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::VoiceStress,
+        "voice-stress",
+        "official.property.voice-stress"
     ),
     complete_property_feature!(CssKnownProperty::Speak, "speak", "official.property.speak"),
     complete_property_feature!(

@@ -5116,3 +5116,44 @@ selection, pause collapse, additive rest behavior, synthesis and root-owned
 style lowering remain downstream. Behavioral evidence is in
 [`speech_pause_rest_lifecycle.rs`](../tests/speech_pause_rest_lifecycle.rs) and
 [`speech_pause_rest_models.rs`](../tests/speech_pause_rest_models.rs).
+
+
+## Authored Speech voices
+
+The pinned [Speech 1 §11.1](https://www.w3.org/TR/2023/CRD-css-speech-1-20230214/#voice-family)
+`voice-family` model retains a nonempty prioritized list or the whole-value
+`preserve` alternative. `CssVoiceFamilyName` preserves quoted strings separately
+from sequences of decoded `CssIdent` values, including empty quoted names and
+escaped identifier characters. Visual generic names such as `serif` are ordinary
+voice names. Age words `child`, `young` and `old` can also be names when they do
+not introduce the generic voice production.
+
+The borrowed family-name/custom-ident grammar excludes CSS-wide keywords and
+`default` per identifier token. Speech's gender keywords and `preserve` also
+require quoting within a name. Thus `"Mike male"` is a name, while `Mike male`
+is invalid. A generic voice retains optional age, required gender and optional
+variant in grammar order. `CssGenericVoice` uses the shared positive integer
+model: an ordinary index must be strictly positive with integer lexical syntax
+and has no machine magnitude bound. Integer math retains its authored calculation
+phase; this crate does not select voices or evaluate a contextual variant.
+Omitting a variant stays distinct from explicitly authoring `1`.
+
+[Speech 1 §11.5](https://www.w3.org/TR/2023/CRD-css-speech-1-20230214/#voice-stress)
+`voice-stress` retains `normal`, `strong`, `moderate`, `none` or `reduced` through
+`CssVoiceStress`. Both properties inherit, apply to all elements and accept no
+percentage values. `voice-stress` has the intrinsic initial `normal`;
+`voice-family` has `CssUserAgentInitial::VoiceFamily`, which records the required
+user-agent environment without inventing an installed voice.
+
+The models' specified serializers use one cumulative resource context, shared
+identifier/string escaping and shared exact integer/math projection. Output
+uses grammar order without converting unquoted names to computed strings or
+resolving language preservation, installed-voice fallback or acoustic effects.
+Failure returns no partial output. Checked generic construction rejects original
+recovered calculation closures; browser recovery can retain these with diagnostics.
+Whole-value CSS-wide keywords, substitution reentry, intrinsic terminal expansion
+and property support metadata use the common property lifecycle.
+
+Behavioral evidence is in
+[`speech_voice_family_stress_lifecycle.rs`](../tests/speech_voice_family_stress_lifecycle.rs)
+and [`speech_voice_family_stress_models.rs`](../tests/speech_voice_family_stress_models.rs).
