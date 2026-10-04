@@ -1,4 +1,4 @@
-//! Original corpus behavior under the documented provisional Fonts4 policy.
+//! Original corpus behavior under selected Fonts4 section 6.9.2/frozen WebKit.
 //! The normative section 6.9.1 / 6.9.2 conflict remains unresolved.
 #![forbid(unsafe_code)]
 
@@ -33,7 +33,7 @@ fn span(value: CssSourceSpan) -> Value {
 }
 
 #[test]
-fn original_singleton_retains_typed_blocks_and_exact_policy_recovery() {
+fn original_singleton_retains_all_typed_definitions_without_recovery() {
     let data = expectations();
     let row = &data["rows"][0];
     let input = text(row, "input");

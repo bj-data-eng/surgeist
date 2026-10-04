@@ -13,7 +13,6 @@ pub enum CssFontFeatureValuesErrorKind {
     InvalidIntegerSyntax,
     NegativeIndex,
     InvalidIndexCount,
-    IndexOutOfRange,
 }
 /// A checked-construction failure, with the affected block and member when known.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -21,7 +20,6 @@ pub struct CssFontFeatureValuesError {
     kind: CssFontFeatureValuesErrorKind,
     block: Option<CssFontFeatureValueKind>,
     definition_index: Option<usize>,
-    index: Option<usize>,
 }
 impl CssFontFeatureValuesError {
     fn new(kind: CssFontFeatureValuesErrorKind) -> Self {
@@ -29,7 +27,6 @@ impl CssFontFeatureValuesError {
             kind,
             block: None,
             definition_index: None,
-            index: None,
         }
     }
     pub const fn kind(&self) -> CssFontFeatureValuesErrorKind {
@@ -40,9 +37,6 @@ impl CssFontFeatureValuesError {
     }
     pub const fn definition_index(&self) -> Option<usize> {
         self.definition_index
-    }
-    pub const fn index(&self) -> Option<usize> {
-        self.index
     }
 }
 impl std::fmt::Display for CssFontFeatureValuesError {
@@ -97,10 +91,6 @@ impl CssFontFeatureValueIndex {
     pub(crate) fn with_origin(mut self, origin: CssParsedOrigin) -> Self {
         self.origin = Some(origin);
         self
-    }
-    fn exceeds(&self, bound: &str) -> bool {
-        self.digits.len() > bound.len()
-            || (self.digits.len() == bound.len() && self.digits.as_ref() > bound)
     }
 }
 impl From<u32> for CssFontFeatureValueIndex {
@@ -163,8 +153,10 @@ impl CssFontFeatureValueKind {
         .into_iter()
         .find(|kind| value.eq_ignore_ascii_case(kind.css_name()))
     }
-    // Provisional Fonts 4 (2026-09-07) section 6.9.1 policy. Section 6.9.2
-    // conflicts on character-variant cardinality/first range and styleset range.
+    // Selected Fonts 4 (2026-09-07) section 6.9.2 / frozen WebKit
+    // 73aa6c89e2cb77c46184a81aec944e4ab99d114d CSSParser.cpp:800–885 policy.
+    // Section 6.9.1 conflicts on CV cardinality and CV/styleset feature ranges;
+    // font activation ranges do not constrain these exact authored integers.
     pub(crate) fn validate(
         self,
         definition: &CssFontFeatureValueDefinition,
@@ -172,38 +164,16 @@ impl CssFontFeatureValueKind {
         let count = definition.indexes.len();
         let valid_count = match self {
             Self::HistoricalForms | Self::Styleset => count > 0,
-            Self::CharacterVariant => count == 2,
+            Self::CharacterVariant => matches!(count, 1 | 2),
             _ => count == 1,
         };
-        let mut error = if !valid_count {
-            Some(CssFontFeatureValuesError::new(
-                CssFontFeatureValuesErrorKind::InvalidIndexCount,
-            ))
+        if valid_count {
+            Ok(())
         } else {
-            None
-        };
-        if error.is_none() {
-            let invalid = match self {
-                Self::Styleset => definition
-                    .indexes
-                    .iter()
-                    .position(|index| index.exceeds("20")),
-                Self::CharacterVariant if definition.indexes[0].exceeds("99") => Some(0),
-                _ => None,
-            };
-            if let Some(index) = invalid {
-                let mut range =
-                    CssFontFeatureValuesError::new(CssFontFeatureValuesErrorKind::IndexOutOfRange);
-                range.index = Some(index);
-                error = Some(range);
-            }
-        }
-        match error {
-            Some(mut error) => {
-                error.block = Some(self);
-                Err(error)
-            }
-            None => Ok(()),
+            let mut error =
+                CssFontFeatureValuesError::new(CssFontFeatureValuesErrorKind::InvalidIndexCount);
+            error.block = Some(self);
+            Err(error)
         }
     }
 }

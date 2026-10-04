@@ -1,19 +1,20 @@
 {
   "schema_version": 1,
-  "basis": "27cc2212db7b0afc049ac9c1bc6a46c7298b6ff4",
-  "policy_green_revision": "214a0281ee5dd4b5ac8f5040bad88a990ea81236",
-  "method": "Original source and neutral fixture, pinned normative text, documented adopted policy, and immutable descriptor/recovery/source contracts inspected. No Cargo, parser execution, runtime observation, oracle capture, or expected-class registry used to derive expectations. Source-index arithmetic is from original ASCII input. This is a conditional implementation-policy expectation, not a resolution of the normative conflict.",
+  "basis": "2b71a293e22d8ba277d0b6d5df580e39d16db246",
+  "method": "Original immutable ASCII source and neutral fixture, selected Fonts4 section 6.9.2, frozen WebKit parser, and descriptor/source contracts determine expectations independently. No parser execution or oracle capture used. Positions are source-index arithmetic. The normative section 6.9.1 contradiction remains explicit.",
   "source_policy": {
     "catalog_path": "crates/surgeist-css/specs/catalog.json",
     "publication_url": "https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/",
     "catalog_publication_sha256": "03626a0c85658aaa94191f1b8c64dd5491b723acff08cc33ddd0331a80b920f5",
     "publication_hash_status": "Identity from pinned catalog; online dated publication inspected through web tool, raw response bytes not independently rehashed.",
-    "adopted_section": "6.9.1",
-    "conflicting_section": "6.9.2",
+    "adopted_section": "6.9.2",
+    "conflicting_section": "6.9.1",
     "normative_conflict_status": "unresolved",
-    "policy_authority": "crates/surgeist-css/src/lib.rs:460-464 at 27cc2212db7b0afc049ac9c1bc6a46c7298b6ff4",
-    "policy_test_authority": "crates/surgeist-css/tests/font_feature_values.rs:244-278 at 27cc2212db7b0afc049ac9c1bc6a46c7298b6ff4",
-    "rationale": "Adopted policy requires exactly two character-variant indexes; singleton definitions are individually invalid. Styleset values 1, 2, 3 satisfy both sections. Section 6.9.1 preserves the containing block when a definition fails. Section 6.9.2 permits singleton character-variant values, so a uniquely settled standards verdict remains unavailable."
+    "policy_authority": "GitHub issue #756 adopted authored grammar",
+    "policy_test_authority": "crates/surgeist-css/tests/font_feature_value_index_lifecycle.rs at 415e199d4790437af773920fc9df25d02a3d4db9",
+    "rationale": "Section 6.9.2 and frozen WebKit admit one or two nonnegative character-variant integers and nonempty styleset lists without authored feature-range caps. The original contains six valid singleton definitions in each block. Section 6.9.1 contradicts this cardinality/range policy; font activation is downstream.",
+    "frozen_webkit_revision": "73aa6c89e2cb77c46184a81aec944e4ab99d114d",
+    "frozen_webkit_parser": "Source/WebCore/css/parser/CSSParser.cpp:800-885"
   },
   "evidence": [
     {
@@ -73,20 +74,18 @@
     }
   ],
   "derivation": [
-    "parse_rule preserves a valid outer rule and inner diagnostics; no wrapper bytes in atrule input.",
-    "The adopted policy rejects all six singleton character-variant definitions, preserving their empty subsidiary block and the outer rule. All six styleset definitions survive in source order.",
-    "Descriptor validation emits at declaration start; with_descriptor_context maps to InvalidDescriptorValue; inferred encountered token is the original identifier at that position.",
-    "RuleBodyParser consumes through semicolon for the first five failures. Final open-6 has no semicolon, so its recovery span ends immediately before the block closing brace at byte 100.",
-    "Structural recovery uses DropDescriptor; report ordering sorts by responsible source byte. Input is ASCII on one line, so UTF-8 byte offsets equal UTF-16 columns.",
-    "No outer rejection, implicit closure, resource-limit, or additional diagnostic is warranted by this complete bounded input."
+    "parse_rule preserves the valid outer rule and ordered subsidiary blocks; the original atrule input has no wrapper bytes.",
+    "Selected section 6.9.2 and frozen WebKit admit all six singleton character-variant definitions and all six styleset definitions in source order.",
+    "Each admitted definition retains its original name position, exact integer token and source span. Input is ASCII on one line, so UTF-8 byte offsets equal UTF-16 columns.",
+    "The complete bounded input warrants no descriptor, outer-rule, implicit-closure or resource diagnostic; clean-report validation accepts it."
   ],
   "uncertainties": [
     "Fonts4 6.9.1 versus 6.9.2 remains normatively unresolved for character-variant cardinality, character-variant first range, and styleset range.",
     "Only cardinality conflict affects this original input; its positive small styleset values satisfy both sections.",
-    "Expectations were independently predicted under documented policy; runtime equality has intentionally not been evaluated."
+    "Expectations are independently specified from the selected source policy; public-parser execution verifies them and does not supply their derivation."
   ],
-  "scope": "Original singleton character-variant corpus input under the adopted provisional implementation policy. Normative conflicts remain unresolved.",
-  "policy_provenance": "Recovered describes the CSS-owned expected implementation behavior under documented Fonts4 section 6.9.1 policy, not a standards-conflict resolution. L02-R104 through L02-R106 remain unresolved-standard. The earlier at-rule-reconciliation.json unresolved singleton is retained as historical uncertainty.",
+  "scope": "Original singleton character-variant corpus input under the selected section 6.9.2/frozen WebKit authored policy. The normative section 6.9.1 conflict remains unresolved.",
+  "policy_provenance": "Clean describes selected CSS-owned admission under section 6.9.2/frozen WebKit, not resolution of the conflicting normative wording. The earlier at-rule-reconciliation.json unresolved singleton remains historical source uncertainty.",
   "normative_sources": [
     {
       "id": "css-fonts-4",
@@ -121,232 +120,9 @@
       "expectation_path": "tests/corpus/csstree/expectations/atrule/atrule/font-feature-values.json",
       "expectation_sha256": "639da2bcdef001fa01667a49344bb0e0bdd19a46416380d5c0ee43602c3e6489",
       "present": true,
-      "clean": false,
-      "validator_accepts": false,
-      "diagnostics": [
-        {
-          "error_code": "InvalidDescriptorValue",
-          "error_byte_offset": 54,
-          "error_position": {
-            "byte_offset": 54,
-            "line": 0,
-            "column": 54
-          },
-          "recovery_byte_span": [
-            54,
-            61
-          ],
-          "recovery_span": {
-            "start": {
-              "byte_offset": 54,
-              "line": 0,
-              "column": 54
-            },
-            "end": {
-              "byte_offset": 61,
-              "line": 0,
-              "column": 61
-            }
-          },
-          "action": "DropDescriptor",
-          "payload_relation": "intersects",
-          "detail": {
-            "at_rule": "character-variant",
-            "descriptor": "cv01",
-            "expectation": "a value accepted by the descriptor grammar",
-            "encountered": {
-              "kind": "Ident",
-              "authored": "cv01"
-            }
-          },
-          "recovered_source": "cv01:1;"
-        },
-        {
-          "error_code": "InvalidDescriptorValue",
-          "error_byte_offset": 61,
-          "error_position": {
-            "byte_offset": 61,
-            "line": 0,
-            "column": 61
-          },
-          "recovery_byte_span": [
-            61,
-            68
-          ],
-          "recovery_span": {
-            "start": {
-              "byte_offset": 61,
-              "line": 0,
-              "column": 61
-            },
-            "end": {
-              "byte_offset": 68,
-              "line": 0,
-              "column": 68
-            }
-          },
-          "action": "DropDescriptor",
-          "payload_relation": "intersects",
-          "detail": {
-            "at_rule": "character-variant",
-            "descriptor": "cv02",
-            "expectation": "a value accepted by the descriptor grammar",
-            "encountered": {
-              "kind": "Ident",
-              "authored": "cv02"
-            }
-          },
-          "recovered_source": "cv02:2;"
-        },
-        {
-          "error_code": "InvalidDescriptorValue",
-          "error_byte_offset": 68,
-          "error_position": {
-            "byte_offset": 68,
-            "line": 0,
-            "column": 68
-          },
-          "recovery_byte_span": [
-            68,
-            75
-          ],
-          "recovery_span": {
-            "start": {
-              "byte_offset": 68,
-              "line": 0,
-              "column": 68
-            },
-            "end": {
-              "byte_offset": 75,
-              "line": 0,
-              "column": 75
-            }
-          },
-          "action": "DropDescriptor",
-          "payload_relation": "intersects",
-          "detail": {
-            "at_rule": "character-variant",
-            "descriptor": "cv03",
-            "expectation": "a value accepted by the descriptor grammar",
-            "encountered": {
-              "kind": "Ident",
-              "authored": "cv03"
-            }
-          },
-          "recovered_source": "cv03:3;"
-        },
-        {
-          "error_code": "InvalidDescriptorValue",
-          "error_byte_offset": 75,
-          "error_position": {
-            "byte_offset": 75,
-            "line": 0,
-            "column": 75
-          },
-          "recovery_byte_span": [
-            75,
-            83
-          ],
-          "recovery_span": {
-            "start": {
-              "byte_offset": 75,
-              "line": 0,
-              "column": 75
-            },
-            "end": {
-              "byte_offset": 83,
-              "line": 0,
-              "column": 83
-            }
-          },
-          "action": "DropDescriptor",
-          "payload_relation": "intersects",
-          "detail": {
-            "at_rule": "character-variant",
-            "descriptor": "alt-1",
-            "expectation": "a value accepted by the descriptor grammar",
-            "encountered": {
-              "kind": "Ident",
-              "authored": "alt-1"
-            }
-          },
-          "recovered_source": "alt-1:1;"
-        },
-        {
-          "error_code": "InvalidDescriptorValue",
-          "error_byte_offset": 83,
-          "error_position": {
-            "byte_offset": 83,
-            "line": 0,
-            "column": 83
-          },
-          "recovery_byte_span": [
-            83,
-            92
-          ],
-          "recovery_span": {
-            "start": {
-              "byte_offset": 83,
-              "line": 0,
-              "column": 83
-            },
-            "end": {
-              "byte_offset": 92,
-              "line": 0,
-              "column": 92
-            }
-          },
-          "action": "DropDescriptor",
-          "payload_relation": "intersects",
-          "detail": {
-            "at_rule": "character-variant",
-            "descriptor": "open-4",
-            "expectation": "a value accepted by the descriptor grammar",
-            "encountered": {
-              "kind": "Ident",
-              "authored": "open-4"
-            }
-          },
-          "recovered_source": "open-4:2;"
-        },
-        {
-          "error_code": "InvalidDescriptorValue",
-          "error_byte_offset": 92,
-          "error_position": {
-            "byte_offset": 92,
-            "line": 0,
-            "column": 92
-          },
-          "recovery_byte_span": [
-            92,
-            100
-          ],
-          "recovery_span": {
-            "start": {
-              "byte_offset": 92,
-              "line": 0,
-              "column": 92
-            },
-            "end": {
-              "byte_offset": 100,
-              "line": 0,
-              "column": 100
-            }
-          },
-          "action": "DropDescriptor",
-          "payload_relation": "intersects",
-          "detail": {
-            "at_rule": "character-variant",
-            "descriptor": "open-6",
-            "expectation": "a value accepted by the descriptor grammar",
-            "encountered": {
-              "kind": "Ident",
-              "authored": "open-6"
-            }
-          },
-          "recovered_source": "open-6:3"
-        }
-      ],
+      "clean": true,
+      "validator_accepts": true,
+      "diagnostics": [],
       "typed_retention": {
         "variant": "CssRule::FontFeatureValues",
         "position": {
@@ -366,7 +142,182 @@
               "line": 0,
               "column": 35
             },
-            "definitions": []
+            "definitions": [
+              {
+                "name": "cv01",
+                "position": {
+                  "byte_offset": 54,
+                  "line": 0,
+                  "column": 54
+                },
+                "indexes": [
+                  {
+                    "decimal": "1",
+                    "origin": {
+                      "original_source": "@font-feature-values InterVariable{@character-variant{cv01:1;cv02:2;cv03:3;alt-1:1;open-4:2;open-6:3}@styleset{ss01:1;ss02:2;ss03:3;open-digits:1;disambiguation:2;round-quotes-and-commas:3}}",
+                      "span": {
+                        "start": {
+                          "byte_offset": 59,
+                          "line": 0,
+                          "column": 59
+                        },
+                        "end": {
+                          "byte_offset": 60,
+                          "line": 0,
+                          "column": 60
+                        }
+                      },
+                      "authored": "1"
+                    }
+                  }
+                ]
+              },
+              {
+                "name": "cv02",
+                "position": {
+                  "byte_offset": 61,
+                  "line": 0,
+                  "column": 61
+                },
+                "indexes": [
+                  {
+                    "decimal": "2",
+                    "origin": {
+                      "original_source": "@font-feature-values InterVariable{@character-variant{cv01:1;cv02:2;cv03:3;alt-1:1;open-4:2;open-6:3}@styleset{ss01:1;ss02:2;ss03:3;open-digits:1;disambiguation:2;round-quotes-and-commas:3}}",
+                      "span": {
+                        "start": {
+                          "byte_offset": 66,
+                          "line": 0,
+                          "column": 66
+                        },
+                        "end": {
+                          "byte_offset": 67,
+                          "line": 0,
+                          "column": 67
+                        }
+                      },
+                      "authored": "2"
+                    }
+                  }
+                ]
+              },
+              {
+                "name": "cv03",
+                "position": {
+                  "byte_offset": 68,
+                  "line": 0,
+                  "column": 68
+                },
+                "indexes": [
+                  {
+                    "decimal": "3",
+                    "origin": {
+                      "original_source": "@font-feature-values InterVariable{@character-variant{cv01:1;cv02:2;cv03:3;alt-1:1;open-4:2;open-6:3}@styleset{ss01:1;ss02:2;ss03:3;open-digits:1;disambiguation:2;round-quotes-and-commas:3}}",
+                      "span": {
+                        "start": {
+                          "byte_offset": 73,
+                          "line": 0,
+                          "column": 73
+                        },
+                        "end": {
+                          "byte_offset": 74,
+                          "line": 0,
+                          "column": 74
+                        }
+                      },
+                      "authored": "3"
+                    }
+                  }
+                ]
+              },
+              {
+                "name": "alt-1",
+                "position": {
+                  "byte_offset": 75,
+                  "line": 0,
+                  "column": 75
+                },
+                "indexes": [
+                  {
+                    "decimal": "1",
+                    "origin": {
+                      "original_source": "@font-feature-values InterVariable{@character-variant{cv01:1;cv02:2;cv03:3;alt-1:1;open-4:2;open-6:3}@styleset{ss01:1;ss02:2;ss03:3;open-digits:1;disambiguation:2;round-quotes-and-commas:3}}",
+                      "span": {
+                        "start": {
+                          "byte_offset": 81,
+                          "line": 0,
+                          "column": 81
+                        },
+                        "end": {
+                          "byte_offset": 82,
+                          "line": 0,
+                          "column": 82
+                        }
+                      },
+                      "authored": "1"
+                    }
+                  }
+                ]
+              },
+              {
+                "name": "open-4",
+                "position": {
+                  "byte_offset": 83,
+                  "line": 0,
+                  "column": 83
+                },
+                "indexes": [
+                  {
+                    "decimal": "2",
+                    "origin": {
+                      "original_source": "@font-feature-values InterVariable{@character-variant{cv01:1;cv02:2;cv03:3;alt-1:1;open-4:2;open-6:3}@styleset{ss01:1;ss02:2;ss03:3;open-digits:1;disambiguation:2;round-quotes-and-commas:3}}",
+                      "span": {
+                        "start": {
+                          "byte_offset": 90,
+                          "line": 0,
+                          "column": 90
+                        },
+                        "end": {
+                          "byte_offset": 91,
+                          "line": 0,
+                          "column": 91
+                        }
+                      },
+                      "authored": "2"
+                    }
+                  }
+                ]
+              },
+              {
+                "name": "open-6",
+                "position": {
+                  "byte_offset": 92,
+                  "line": 0,
+                  "column": 92
+                },
+                "indexes": [
+                  {
+                    "decimal": "3",
+                    "origin": {
+                      "original_source": "@font-feature-values InterVariable{@character-variant{cv01:1;cv02:2;cv03:3;alt-1:1;open-4:2;open-6:3}@styleset{ss01:1;ss02:2;ss03:3;open-digits:1;disambiguation:2;round-quotes-and-commas:3}}",
+                      "span": {
+                        "start": {
+                          "byte_offset": 99,
+                          "line": 0,
+                          "column": 99
+                        },
+                        "end": {
+                          "byte_offset": 100,
+                          "line": 0,
+                          "column": 100
+                        }
+                      },
+                      "authored": "3"
+                    }
+                  }
+                ]
+              }
+            ]
           },
           {
             "variant": "Block",
@@ -556,7 +507,7 @@
         ]
       },
       "expected_class": {
-        "kind": "recovered",
+        "kind": "clean",
         "retained_syntax": {
           "extractor": {
             "kind": "at_rule"
@@ -565,39 +516,7 @@
             "relation": "exact",
             "value": 1
           }
-        },
-        "diagnostics": [
-          {
-            "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
-            "payload_relation": "intersects"
-          }
-        ]
+        }
       },
       "original_expectation": {
         "id": "atrule/atrule/font-feature-values.json#/with character-variant and styleset",
@@ -611,62 +530,8 @@
       "options": null,
       "effective_options": {},
       "options_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
-      "expected_raw_diagnostics": [
-        {
-          "code": "invalid_descriptor_value",
-          "action": "drop_descriptor",
-          "byte_offset": 54,
-          "span_start": 54,
-          "span_end": 61,
-          "multiplicity": 1,
-          "payload_relation": "intersects"
-        },
-        {
-          "code": "invalid_descriptor_value",
-          "action": "drop_descriptor",
-          "byte_offset": 61,
-          "span_start": 61,
-          "span_end": 68,
-          "multiplicity": 1,
-          "payload_relation": "intersects"
-        },
-        {
-          "code": "invalid_descriptor_value",
-          "action": "drop_descriptor",
-          "byte_offset": 68,
-          "span_start": 68,
-          "span_end": 75,
-          "multiplicity": 1,
-          "payload_relation": "intersects"
-        },
-        {
-          "code": "invalid_descriptor_value",
-          "action": "drop_descriptor",
-          "byte_offset": 75,
-          "span_start": 75,
-          "span_end": 83,
-          "multiplicity": 1,
-          "payload_relation": "intersects"
-        },
-        {
-          "code": "invalid_descriptor_value",
-          "action": "drop_descriptor",
-          "byte_offset": 83,
-          "span_start": 83,
-          "span_end": 92,
-          "multiplicity": 1,
-          "payload_relation": "intersects"
-        },
-        {
-          "code": "invalid_descriptor_value",
-          "action": "drop_descriptor",
-          "byte_offset": 92,
-          "span_start": 92,
-          "span_end": 100,
-          "multiplicity": 1,
-          "payload_relation": "intersects"
-        }
-      ]
+      "expected_raw_diagnostics": []
     }
-  ]
+  ],
+  "evidence_scope": "The following immutable evidence captures the historical provisional implementation; current expectations are derived from selected section 6.9.2 and frozen WebKit under issue #756, not from those old implementation restrictions."
 }

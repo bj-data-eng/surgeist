@@ -4061,8 +4061,8 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 665] = [
         "@font-feature-values",
         I_FONTS4_20260907,
         "#font-feature-values-syntax",
-        "Ordered family lists, all seven subsidiary blocks, font-display, exact unbounded nonnegative integer tokens, checked construction, local recovery, ordinary group placement, and opaque normalization.",
-        "Provisional section 6.9.1 constraints conflict with section 6.9.2 on character-variant one-index cardinality, first indexes above 99, and styleset indexes above 20. These three requirements remain unresolved. General rule serialization is unfinished; no CSSOM mapping or cascade is provided.",
+        "Ordered family lists, all seven subsidiary blocks, font-display, exact unbounded nonnegative integer tokens, shared checked/parsed one-or-two character-variant and nonempty styleset index policy, local recovery, ordinary group placement, and opaque normalization.",
+        "The selected section 6.9.2/frozen WebKit authored index policy resolves implementation behavior; the contradictory section 6.9.1 cardinality and feature-range wording remains unresolved. General rule serialization is unfinished; live CSSOM map mutation and font activation remain downstream.",
     ),
     CssFeatureMetadata::complete(
         "interop.rule.color-profile",

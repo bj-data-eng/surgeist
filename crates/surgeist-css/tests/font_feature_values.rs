@@ -1,7 +1,7 @@
 use surgeist_css::{CssNamespaceContext, parse_rule, parse_sheet, validate_sheet};
 
-// Fonts 4 (7 September 2026), section 6.9.1 defines these authored forms.
-// The indices below satisfy both conflicting clauses in sections 6.9.1/6.9.2.
+// Fonts 4 (7 September 2026), section 6.9.2 and frozen WebKit select the
+// authored index policy; section 6.9.1's contradictory ranges remain unresolved.
 // Retention and report cleanliness are independent of font activation/cascade.
 #[test]
 fn font_feature_values_retains_empty_named_family_rules() {
@@ -241,40 +241,44 @@ fn checked_construction_normalizes_decimal_syntax_without_inventing_source() {
     assert_eq!(rule.families()[0].as_str(), "serif");
 }
 #[test]
-fn provisional_6_9_1_character_variant_requires_two_indexes() {
+fn character_variant_accepts_one_or_two_indexes_and_rejects_three() {
+    assert!(Block::try_new(Kind::CharacterVariant, vec![definition(&[1])]).is_ok());
     let error = Block::try_new(
         Kind::CharacterVariant,
-        vec![definition(&[1, 2]), definition(&[1])],
+        vec![definition(&[1, 2]), definition(&[1, 2, 3])],
     )
     .unwrap_err();
     assert_eq!(error.kind(), ConstructionError::InvalidIndexCount);
     assert_eq!(error.block(), Some(Kind::CharacterVariant));
     assert_eq!(error.definition_index(), Some(1));
-    for value in ["1", "1 2 3"] {
+    for value in ["", "1 2 3"] {
         assert_invalid_value("character-variant", value);
     }
 }
 #[test]
-fn provisional_6_9_1_character_variant_first_index_is_at_most_99() {
-    let error = Block::try_new(
+fn character_variant_first_index_has_no_font_feature_upper_bound() {
+    let value = Block::try_new(
         Kind::CharacterVariant,
-        vec![definition(&[1, 2]), definition(&[100, 1])],
+        vec![definition(&[100]), definition(&[100, u32::MAX])],
     )
-    .unwrap_err();
-    assert_eq!(error.kind(), ConstructionError::IndexOutOfRange);
-    assert_eq!(error.block(), Some(Kind::CharacterVariant));
-    assert_eq!(error.definition_index(), Some(1));
-    assert_eq!(error.index(), Some(0));
-    assert_invalid_value("character-variant", "100 1");
-    assert!(Block::try_new(Kind::CharacterVariant, vec![definition(&[99, u32::MAX])]).is_ok());
+    .unwrap();
+    assert_eq!(value.definitions()[0].indexes()[0].as_decimal_str(), "100");
+    assert_eq!(value.definitions()[1].indexes()[0].as_decimal_str(), "100");
+    let parsed =
+        authored("@font-feature-values Demo { @character-variant { one: 100; two: 100 1; } }");
+    assert_eq!(block(&parsed.items()[0]).definitions().len(), 2);
 }
 #[test]
-fn provisional_6_9_1_styleset_range_is_shared() {
-    let error = Block::try_new(Kind::Styleset, vec![definition(&[0, 20, 21])]).unwrap_err();
-    assert_eq!(error.kind(), ConstructionError::IndexOutOfRange);
-    assert_eq!(error.index(), Some(2));
-    assert_invalid_value("styleset", "21");
-    assert!(Block::try_new(Kind::Styleset, vec![definition(&[0, 20, 20])]).is_ok());
+fn styleset_indexes_have_no_font_feature_upper_bound() {
+    let value = Block::try_new(
+        Kind::Styleset,
+        vec![definition(&[0, 20, 21, 100, u32::MAX])],
+    )
+    .unwrap();
+    assert_eq!(value.definitions()[0].indexes().len(), 5);
+    let parsed =
+        authored("@font-feature-values Demo { @styleset { one: 21; many: 0 20 21 100; } }");
+    assert_eq!(block(&parsed.items()[0]).definitions().len(), 2);
 }
 fn assert_invalid_value(kind: &str, value: &str) {
     let source = format!(

@@ -326,7 +326,7 @@
       "id": "atrule/atrule/font-feature-values.json#/with character-variant and styleset",
       "expectation_sha256": "639da2bcdef001fa01667a49344bb0e0bdd19a46416380d5c0ee43602c3e6489",
       "class": {
-        "kind": "recovered",
+        "kind": "clean",
         "retained_syntax": {
           "extractor": {
             "kind": "at_rule"
@@ -335,39 +335,7 @@
             "relation": "exact",
             "value": 1
           }
-        },
-        "diagnostics": [
-          {
-            "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
-            "payload_relation": "intersects"
-          }
-        ]
+        }
       }
     },
     {

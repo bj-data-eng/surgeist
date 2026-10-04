@@ -1291,7 +1291,6 @@ pub const fn surgeist_css::CssFontFeatureValueKind::css_name(self) -> &'static s
 #[non_exhaustive] pub enum surgeist_css::CssFontFeatureValuesErrorKind
 pub surgeist_css::CssFontFeatureValuesErrorKind::EmptyFamilies
 pub surgeist_css::CssFontFeatureValuesErrorKind::EmptyIndexes
-pub surgeist_css::CssFontFeatureValuesErrorKind::IndexOutOfRange
 pub surgeist_css::CssFontFeatureValuesErrorKind::InvalidIdentifier
 pub surgeist_css::CssFontFeatureValuesErrorKind::InvalidIndexCount
 pub surgeist_css::CssFontFeatureValuesErrorKind::InvalidIntegerSyntax
@@ -6570,7 +6569,6 @@ pub struct surgeist_css::CssFontFeatureValuesError
 impl surgeist_css::CssFontFeatureValuesError
 pub const fn surgeist_css::CssFontFeatureValuesError::block(&self) -> core::option::Option<surgeist_css::CssFontFeatureValueKind>
 pub const fn surgeist_css::CssFontFeatureValuesError::definition_index(&self) -> core::option::Option<usize>
-pub const fn surgeist_css::CssFontFeatureValuesError::index(&self) -> core::option::Option<usize>
 pub const fn surgeist_css::CssFontFeatureValuesError::kind(&self) -> surgeist_css::CssFontFeatureValuesErrorKind
 impl core::error::Error for surgeist_css::CssFontFeatureValuesError
 impl core::fmt::Display for surgeist_css::CssFontFeatureValuesError

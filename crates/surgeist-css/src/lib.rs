@@ -573,10 +573,11 @@
 //! token, while Rust construction has no invented source coordinates.
 //!
 //! The pinned Fonts 4 draft (7 September 2026) conflicts between sections 6.9.1
-//! and 6.9.2. The provisional section 6.9.1 policy requires two character-variant
-//! indexes, a first index at most 99, and styleset indexes at most 20. These three
-//! disputed requirements remain unresolved. Historical-forms and other unrestricted
-//! positions retain arbitrarily large authored integer tokens.
+//! and 6.9.2. The selected section 6.9.2 / frozen WebKit policy admits one or two
+//! character-variant indexes and nonempty styleset lists without feature-specific
+//! upper bounds. The normative contradiction remains unresolved. All index
+//! positions retain arbitrarily large exact nonnegative authored integer tokens;
+//! downstream font activation may ignore unsupported feature indexes.
 //!
 //! Ordinary stylesheet/group/scope rule lists retain these global named rules;
 //! style-rule ancestry rejects them. Normalization retains one opaque payload and
@@ -1195,7 +1196,8 @@
 //! `ext.media.range.resolution`, `ext.media.range.color`, and
 //! `ext.media.range.monochrome` records remain Partial with explicit subset and
 //! remainder metadata. `@font-feature-values` is Partial under its documented
-//! provisional Fonts 4 policy, with its rule serialization unfinished. C13's
+//! selected section 6.9.2/frozen WebKit authored index policy, with the normative
+//! contradiction explicit and rule serialization unfinished. C13's
 //! 456 public catalog records plus C14's 31 additions reached 487 at that point;
 //! subsequent selected records extend the catalog. [`feature_catalog`] owns its
 //! current cardinality, which is distinct from the immutable official

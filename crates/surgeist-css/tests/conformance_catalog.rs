@@ -1456,18 +1456,18 @@ const EXPECTED: &[ExpectedFeature] = &[
         production: "#font-feature-values-syntax",
         status: CssSupportStatus::Partial,
         supported_subset: Some(
-            "Ordered family lists, all seven subsidiary blocks, font-display, exact unbounded nonnegative integer tokens, checked construction, local recovery, ordinary group placement, and opaque normalization.",
+            "Ordered family lists, all seven subsidiary blocks, font-display, exact unbounded nonnegative integer tokens, shared checked/parsed one-or-two character-variant and nonempty styleset index policy, local recovery, ordinary group placement, and opaque normalization.",
         ),
         unsupported_remainder: Some(
-            "Provisional section 6.9.1 constraints conflict with section 6.9.2 on character-variant one-index cardinality, first indexes above 99, and styleset indexes above 20. These three requirements remain unresolved. General rule serialization is unfinished; no CSSOM mapping or cascade is provided.",
+            "The selected section 6.9.2/frozen WebKit authored index policy resolves implementation behavior; the contradictory section 6.9.1 cardinality and feature-range wording remains unresolved. General rule serialization is unfinished; live CSSOM map mutation and font activation remain downstream.",
         ),
         recognized_code: None,
         positive: Some(Input::Sheet(
             "@font-feature-values Font One { @styleset { nice: 1; } }",
         )),
-        // The disputed section 6.9.2 case follows the provisional 6.9.1 policy.
+        // Empty definitions remain invalid under the selected authored grammar.
         negative: Some((
-            Input::Sheet("@font-feature-values Font One { @styleset { nice: 21; } }"),
+            Input::Sheet("@font-feature-values Font One { @styleset { nice:; } }"),
             CssErrorCode::InvalidDescriptorValue,
         )),
     },

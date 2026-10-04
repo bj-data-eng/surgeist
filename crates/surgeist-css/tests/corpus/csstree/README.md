@@ -43,7 +43,7 @@ the same reviewed change; the ordinary offline tests validate the complete
 
 The current captured oracle binds the reconciled CSS-owned registry: 820 cases
 have full public-parser observations and 115 retain explicit panic-freedom-only
-policies. Outcomes are 347 clean, 339 strict rejections, 96 recoveries, and 153
+policies. Outcomes are 348 clean, 339 strict rejections, 95 recoveries, and 153
 explicit unsupported dispositions. These corpus results do not establish complete
 grammar coverage of the selected standards profile.
 
@@ -121,14 +121,15 @@ checks this relation together with expected-class admission.
 
 The complex container-query original retains its unknown enclosed operands
 within the authored Boolean structure. The Fonts4 character-variant singleton
-original uses the documented provisional section 6.9.1 policy: retain the outer
-rule, its empty character-variant block and all six styleset definitions, with
-six ordered descriptor diagnostics. Its
+original uses selected Fonts4 section 6.9.2 and frozen WebKit's authored grammar:
+retain the outer rule and all six definitions in each character-variant/styleset
+block cleanly. Its
 [`policy expectations`](../../csstree/font-singleton-policy-reconciliation.json)
-describe implementation behavior. The conflicting section 6.9.2 prose remains
-unresolved; the historical uncertainty in `at-rule-reconciliation.json` is
-preserved. This selected grammar is not an outside-profile exclusion. Class
-reconciliation does not itself refresh the separately persisted oracle.
+record independently derived typed values, origins, and the clean class. The
+contradictory section 6.9.1 prose remains explicit; the historical uncertainty in
+`at-rule-reconciliation.json` is preserved. This selected grammar is not an
+outside-profile exclusion. Class reconciliation does not itself refresh the
+separately persisted oracle.
 
 The ten original strict selector-list inputs use independently specified
 [`selector-list expectations`](../../csstree/selector-list-original-reconciliation.json).

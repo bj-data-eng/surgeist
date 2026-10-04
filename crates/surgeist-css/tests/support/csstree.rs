@@ -5278,8 +5278,8 @@ fn selector_list_original_adapters_admit_independent_classes_and_diagnostics() {
 #[cfg(test)]
 #[test]
 fn font_singleton_policy_adapter_admits_independent_class_and_diagnostics() {
-    // This owner expectation follows the documented provisional implementation
-    // policy. It does not settle the pinned Fonts4 normative conflict.
+    // This independent owner expectation follows selected section 6.9.2 and
+    // frozen WebKit. The pinned section 6.9.1 contradiction stays explicit.
     let data: serde_json::Value = serde_json::from_str(include_str!(
         "../csstree/font-singleton-policy-reconciliation.json"
     ))

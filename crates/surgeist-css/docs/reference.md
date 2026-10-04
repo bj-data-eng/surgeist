@@ -3446,11 +3446,15 @@ separate from the older `CssFontFeatureIndex` used by `font-feature-settings`.
 
 The [pinned Fonts 4 section 6.9.1](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-feature-values-syntax)
 conflicts with [section 6.9.2](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/).
-The provisional section 6.9.1 policy requires exactly two character-variant
-indexes, constrains its first index to 0–99, and constrains styleset indexes to
-0–20. These three cases remain unresolved. Historical-forms accepts a nonempty
-list with no upper bound; stylistic, swash, ornaments and annotation each require
-one unbounded index. The second character-variant index is also unbounded.
+The selected [section 6.9.2](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#multi-value-features)
+and [frozen WebKit parser](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/parser/CSSParser.cpp#L800)
+policy admits one or two character-variant indexes and a nonempty styleset list.
+Neither the first character-variant index nor any styleset index has a
+feature-specific authored upper bound. All positions preserve exact nonnegative
+integers without a machine-integer maximum. The section 6.9.1/6.9.2 normative
+contradiction remains unresolved; downstream font activation may ignore indexes
+that select no supported font feature. Historical-forms accepts a nonempty list;
+stylistic, swash, ornaments and annotation each require exactly one index.
 
 Ordinary media/supports/container/layer/scope rule lists retain this global
 named rule; any style-rule ancestor forbids it, including through intervening
@@ -4534,8 +4538,8 @@ with both subset and remainder metadata. The five `ext.media.range.*` records
 for width, height, resolution, color and monochrome are now `Complete`, covering
 signed symbolic operands and source-ordered chained comparisons.
 The `@font-feature-values` record is `Partial`: its authored parser,
-checked model and normalization are implemented under the pinned Fonts 4 edition;
-three conflicting grammar requirements retain a documented provisional policy.
+checked model and normalization use the selected section 6.9.2/frozen WebKit
+authored index policy. The contradictory section 6.9.1 wording remains explicit.
 Rule serialization for `@font-feature-values` remains unfinished; the selected
 palette rule kind has a canonical specified writer.
 

@@ -5,7 +5,7 @@
   "source_tree": "bfadc7a7a8d93dce59a27fa7df3bb0f6f6a623d8",
   "expectation_schema_version": 1,
   "generation_report_sha256": "ed8c70539c10effc254a8c2c4faa750396c7f3647996f5120e9e311bbe96d366",
-  "expected_class_registry_sha256": "2394d558d10fafefef5af7699d4cfbc275dc860b3f27a7464e9d4787fa4e3202",
+  "expected_class_registry_sha256": "17ad3f5c8aba6f288866b6e3d9a7f9b3d461a4f3c798c0251ce9473d102d13f9",
   "records": [
     {
       "id": "atrule/atrule/container.json#/all together",
@@ -728,70 +728,15 @@
         }
       },
       "outcome": {
-        "kind": "recovered"
+        "kind": "clean"
       },
       "observation": {
         "extractor": {
           "kind": "at_rule"
         },
         "syntax_count": 1,
-        "is_clean": false,
-        "diagnostics": [
-          {
-            "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
-            "byte_offset": 54,
-            "span_start": 54,
-            "span_end": 61,
-            "multiplicity": 1,
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
-            "byte_offset": 61,
-            "span_start": 61,
-            "span_end": 68,
-            "multiplicity": 1,
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
-            "byte_offset": 68,
-            "span_start": 68,
-            "span_end": 75,
-            "multiplicity": 1,
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
-            "byte_offset": 75,
-            "span_start": 75,
-            "span_end": 83,
-            "multiplicity": 1,
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
-            "byte_offset": 83,
-            "span_start": 83,
-            "span_end": 92,
-            "multiplicity": 1,
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "invalid_descriptor_value",
-            "action": "drop_descriptor",
-            "byte_offset": 92,
-            "span_start": 92,
-            "span_end": 100,
-            "multiplicity": 1,
-            "payload_relation": "intersects"
-          }
-        ]
+        "is_clean": true,
+        "diagnostics": []
       }
     },
     {
