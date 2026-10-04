@@ -5424,3 +5424,55 @@ intrinsic terminal expansion, recovery provenance and pinned support metadata.
 Behavioral evidence is in
 [`speech_prosody_lifecycle.rs`](../tests/speech_prosody_lifecycle.rs) and
 [`speech_prosody_models.rs`](../tests/speech_prosody_models.rs).
+
+## Authored Speech mixing
+
+The selected [Speech 1 §6.2](https://www.w3.org/TR/2023/CRD-css-speech-1-20230214/#mixing-props-voice-balance)
+defines `voice-balance` as a number or `left`, `center`, `right`, `leftwards` or
+`rightwards`. `CssVoiceBalance` retains one keyword or the existing pure
+`CssSpecifiedNumber` domain. Its `from_keyword`, `try_number`, `keyword` and
+`number` methods preserve those branches separately. Ordinary coefficients have
+no specified magnitude bound; typed Number calculations remain authored.
+Percentages, percentage-hinted calculations and other numeric roots are not
+balance numbers. Checked numeric model construction rejects original recovered
+math closure, while browser recovery can retain diagnosed authored math.
+
+Balance's specified serializer delegates shared keyword or pure Number output
+precision and resource limits. It does not clamp to [-100,100], replace keywords
+with numeric equivalents, or resolve inherited leftwards/rightwards adjustments.
+Its initial is `center`; the property inherits, applies to all elements and has
+no percentage interpretation. The property table's computed numeric range and
+spatial mixing behavior belong to downstream style and execution owners.
+
+[Speech 1 §6.1](https://www.w3.org/TR/2023/CRD-css-speech-1-20230214/#mixing-props-voice-volume)
+defines `voice-volume` as `silent`, or a nonempty composition of a level and an
+ordinary signed dB offset. `CssVoiceVolume` encodes `Silent`, `Level` with a
+`CssVoiceVolumeLevel` and optional `CssDecibelLiteral`, or `Offset` alone.
+The five level choices are `x-soft`, `soft`, `medium`, `loud` and `x-loud`.
+The variants prevent empty compositions and every companion to silent;
+declaration grammar also rejects duplicate/conflicting levels and offsets.
+Both authored level/offset orders are admitted, with level first in canonical
+output. The accepted cue-owned dB terminal supplies exact coefficients and
+origins; no dB calculation dimension is introduced.
+
+Volume's initial is `medium`; it inherits, applies to all elements and admits
+no percentages. Omitted level remains distinct from explicit medium: a bare
+offset applies relatively to inherited volume or the root default. Authored
+offset omission remains distinct from explicit zero. Under the selected
+[CSSOM optional-component rule](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serialize-a-css-value),
+a level plus an exact ordinary zero offset serializes as the level alone, while
+a standalone zero remains `0db`. A tiny nonzero offset may round to `0db` under
+shared specified precision but remains emitted beside a level; omission uses
+the exact authored coefficient rather than the rounded output.
+
+Volume's serializers share cumulative input, projection and emitted-byte limits.
+Silent and standalone offsets use their terminal providers. A level composition
+charges one aggregate and one keyword, plus any authored offset terminal even
+when exact zero is omitted. Failure returns no partial output or model mutation.
+Both properties use the shared metadata, CSS-wide keywords, intrinsic terminal
+expansion, substitution reentry and diagnostic provenance lifecycle and identify
+their `S-SPEECH1` productions as complete authored grammar support.
+Inherited offset addition, calibrated loudness levels, computed balance clamping
+and sound-system behavior remain downstream. Evidence is in
+[`speech_balance_volume_lifecycle.rs`](../tests/speech_balance_volume_lifecycle.rs)
+and [`speech_balance_volume_models.rs`](../tests/speech_balance_volume_models.rs).

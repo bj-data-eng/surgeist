@@ -1355,9 +1355,10 @@ mod speech;
 pub use speech::{
     CssAudioCue, CssCue, CssCuePair, CssDecibelLiteral, CssGenericVoice, CssSemitoneLiteral,
     CssSpeak, CssSpeakAs, CssSpeakAsPunctuation, CssSpeechBreak, CssSpeechBreakPair,
-    CssSpeechBreakStrength, CssVoiceAge, CssVoiceDuration, CssVoiceFamily, CssVoiceFamilyEntry,
-    CssVoiceFamilyList, CssVoiceFamilyName, CssVoiceFamilyNameRef, CssVoiceGender, CssVoiceLevel,
-    CssVoiceOffset, CssVoicePitchRange, CssVoiceRate, CssVoiceRateKeyword, CssVoiceStress,
+    CssSpeechBreakStrength, CssVoiceAge, CssVoiceBalance, CssVoiceBalanceKeyword, CssVoiceDuration,
+    CssVoiceFamily, CssVoiceFamilyEntry, CssVoiceFamilyList, CssVoiceFamilyName,
+    CssVoiceFamilyNameRef, CssVoiceGender, CssVoiceLevel, CssVoiceOffset, CssVoicePitchRange,
+    CssVoiceRate, CssVoiceRateKeyword, CssVoiceStress, CssVoiceVolume, CssVoiceVolumeLevel,
 };
 mod text_alignment;
 mod text_spacing;

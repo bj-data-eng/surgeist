@@ -2164,12 +2164,14 @@ pub surgeist_css::CssKnownProperty::UnicodeBidi
 pub surgeist_css::CssKnownProperty::UserSelect
 pub surgeist_css::CssKnownProperty::VerticalAlign
 pub surgeist_css::CssKnownProperty::Visibility
+pub surgeist_css::CssKnownProperty::VoiceBalance
 pub surgeist_css::CssKnownProperty::VoiceDuration
 pub surgeist_css::CssKnownProperty::VoiceFamily
 pub surgeist_css::CssKnownProperty::VoicePitch
 pub surgeist_css::CssKnownProperty::VoiceRange
 pub surgeist_css::CssKnownProperty::VoiceRate
 pub surgeist_css::CssKnownProperty::VoiceStress
+pub surgeist_css::CssKnownProperty::VoiceVolume
 pub surgeist_css::CssKnownProperty::WhiteSpace
 pub surgeist_css::CssKnownProperty::Widows
 pub surgeist_css::CssKnownProperty::Width
@@ -2524,12 +2526,14 @@ pub surgeist_css::CssKnownPropertyValueRef::UnicodeBidi(&'a surgeist_css::CssUni
 pub surgeist_css::CssKnownPropertyValueRef::UserSelect(&'a surgeist_css::CssUserSelectPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::VerticalAlign(&'a surgeist_css::CssVerticalAlignPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Visibility(&'a surgeist_css::CssVisibilityPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::VoiceBalance(&'a surgeist_css::CssVoiceBalancePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::VoiceDuration(&'a surgeist_css::CssVoiceDurationPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::VoiceFamily(&'a surgeist_css::CssVoiceFamilyPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::VoicePitch(&'a surgeist_css::CssVoicePitchPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::VoiceRange(&'a surgeist_css::CssVoiceRangePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::VoiceRate(&'a surgeist_css::CssVoiceRatePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::VoiceStress(&'a surgeist_css::CssVoiceStressPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::VoiceVolume(&'a surgeist_css::CssVoiceVolumePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::WhiteSpace(&'a surgeist_css::CssWhiteSpacePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Widows(&'a surgeist_css::CssWidowsPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Width(&'a surgeist_css::CssWidthPropertyValue)
@@ -2855,12 +2859,14 @@ pub surgeist_css::CssLonghandValueRef::TextOverflow(&'a surgeist_css::CssTextOve
 pub surgeist_css::CssLonghandValueRef::Top(&'a surgeist_css::CssInsetValue)
 pub surgeist_css::CssLonghandValueRef::UnicodeBidi(&'a surgeist_css::CssUnicodeBidi)
 pub surgeist_css::CssLonghandValueRef::Visibility(&'a surgeist_css::CssVisibility)
+pub surgeist_css::CssLonghandValueRef::VoiceBalance(&'a surgeist_css::CssVoiceBalance)
 pub surgeist_css::CssLonghandValueRef::VoiceDuration(&'a surgeist_css::CssVoiceDuration)
 pub surgeist_css::CssLonghandValueRef::VoiceFamily(&'a surgeist_css::CssVoiceFamily)
 pub surgeist_css::CssLonghandValueRef::VoicePitch(&'a surgeist_css::CssVoicePitchRange)
 pub surgeist_css::CssLonghandValueRef::VoiceRange(&'a surgeist_css::CssVoicePitchRange)
 pub surgeist_css::CssLonghandValueRef::VoiceRate(&'a surgeist_css::CssVoiceRate)
 pub surgeist_css::CssLonghandValueRef::VoiceStress(&'a surgeist_css::CssVoiceStress)
+pub surgeist_css::CssLonghandValueRef::VoiceVolume(&'a surgeist_css::CssVoiceVolume)
 pub surgeist_css::CssLonghandValueRef::Widows(&'a surgeist_css::CssPageLineMinimum)
 pub surgeist_css::CssLonghandValueRef::Width(&'a surgeist_css::CssSizeValue)
 pub surgeist_css::CssLonghandValueRef::WordSpacing(&'a surgeist_css::CssTextSpacingAdjustment)
@@ -4267,6 +4273,12 @@ pub fn surgeist_css::CssVisibility::serialize_specified_with_limits(&self, limit
 pub surgeist_css::CssVoiceAge::Child
 pub surgeist_css::CssVoiceAge::Old
 pub surgeist_css::CssVoiceAge::Young
+#[non_exhaustive] pub enum surgeist_css::CssVoiceBalanceKeyword
+pub surgeist_css::CssVoiceBalanceKeyword::Center
+pub surgeist_css::CssVoiceBalanceKeyword::Left
+pub surgeist_css::CssVoiceBalanceKeyword::Leftwards
+pub surgeist_css::CssVoiceBalanceKeyword::Right
+pub surgeist_css::CssVoiceBalanceKeyword::Rightwards
 #[non_exhaustive] pub enum surgeist_css::CssVoiceDuration
 pub surgeist_css::CssVoiceDuration::Auto
 pub surgeist_css::CssVoiceDuration::Time(surgeist_css::CssDuration)
@@ -4319,6 +4331,21 @@ pub surgeist_css::CssVoiceStress::Strong
 impl surgeist_css::CssVoiceStress
 pub fn surgeist_css::CssVoiceStress::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssVoiceStress::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssVoiceVolume
+pub surgeist_css::CssVoiceVolume::Level
+pub surgeist_css::CssVoiceVolume::Level::decibel: core::option::Option<surgeist_css::CssDecibelLiteral>
+pub surgeist_css::CssVoiceVolume::Level::level: surgeist_css::CssVoiceVolumeLevel
+pub surgeist_css::CssVoiceVolume::Offset(surgeist_css::CssDecibelLiteral)
+pub surgeist_css::CssVoiceVolume::Silent
+impl surgeist_css::CssVoiceVolume
+pub fn surgeist_css::CssVoiceVolume::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssVoiceVolume::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssVoiceVolumeLevel
+pub surgeist_css::CssVoiceVolumeLevel::Loud
+pub surgeist_css::CssVoiceVolumeLevel::Medium
+pub surgeist_css::CssVoiceVolumeLevel::Soft
+pub surgeist_css::CssVoiceVolumeLevel::XLoud
+pub surgeist_css::CssVoiceVolumeLevel::XSoft
 #[non_exhaustive] pub enum surgeist_css::CssWhiteSpace
 pub surgeist_css::CssWhiteSpace::BreakSpaces
 pub surgeist_css::CssWhiteSpace::NoWrap
@@ -9450,6 +9477,18 @@ pub struct surgeist_css::CssVisibilityPropertyValue
 impl surgeist_css::CssVisibilityPropertyValue
 pub fn surgeist_css::CssVisibilityPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssVisibilityPropertyValue::value(&self) -> &surgeist_css::CssVisibility
+pub struct surgeist_css::CssVoiceBalance
+impl surgeist_css::CssVoiceBalance
+pub const fn surgeist_css::CssVoiceBalance::from_keyword(keyword: surgeist_css::CssVoiceBalanceKeyword) -> Self
+pub const fn surgeist_css::CssVoiceBalance::keyword(&self) -> core::option::Option<surgeist_css::CssVoiceBalanceKeyword>
+pub const fn surgeist_css::CssVoiceBalance::number(&self) -> core::option::Option<&surgeist_css::CssSpecifiedNumber>
+pub fn surgeist_css::CssVoiceBalance::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssVoiceBalance::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssVoiceBalance::try_number(number: surgeist_css::CssSpecifiedNumber) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub struct surgeist_css::CssVoiceBalancePropertyValue
+impl surgeist_css::CssVoiceBalancePropertyValue
+pub fn surgeist_css::CssVoiceBalancePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssVoiceBalancePropertyValue::value(&self) -> &surgeist_css::CssVoiceBalance
 pub struct surgeist_css::CssVoiceDurationPropertyValue
 impl surgeist_css::CssVoiceDurationPropertyValue
 pub fn surgeist_css::CssVoiceDurationPropertyValue::as_css(&self) -> &str
@@ -9501,6 +9540,10 @@ pub struct surgeist_css::CssVoiceStressPropertyValue
 impl surgeist_css::CssVoiceStressPropertyValue
 pub fn surgeist_css::CssVoiceStressPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssVoiceStressPropertyValue::value(&self) -> &surgeist_css::CssVoiceStress
+pub struct surgeist_css::CssVoiceVolumePropertyValue
+impl surgeist_css::CssVoiceVolumePropertyValue
+pub fn surgeist_css::CssVoiceVolumePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssVoiceVolumePropertyValue::value(&self) -> &surgeist_css::CssVoiceVolume
 pub struct surgeist_css::CssWhiteSpacePropertyValue
 impl surgeist_css::CssWhiteSpacePropertyValue
 pub fn surgeist_css::CssWhiteSpacePropertyValue::as_css(&self) -> &str

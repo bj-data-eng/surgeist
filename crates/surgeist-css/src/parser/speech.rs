@@ -131,21 +131,7 @@ pub(super) fn parse_cue<'i, 't>(
     let is_decibel = matches!(input.next(), Ok(Token::Dimension { unit, .. }) if unit.eq_ignore_ascii_case("dB"));
     input.reset(&state);
     let decibel = if is_decibel {
-        let location = input.current_source_location();
-        let offset = input.position().byte_index();
-        // Collect through the original component owner to retain exact spelling
-        // and provenance rather than cssparser's rounded numeric coefficient.
-        let component = numeric.collect(input).map_err(|error| {
-            let location = numeric.error_location(&error, location, offset);
-            error.component_error().map_or_else(
-                || crate::error::unsupported_value_at(location, None, "invalid authored decibel"),
-                |detail| crate::error::invalid_component_value(location, detail.clone()),
-            )
-        })?;
-        Some(
-            crate::CssDecibelLiteral::try_from_component(component)
-                .map_err(|error| crate::error::invalid_component_value(location, error))?,
-        )
+        Some(parse_decibel(input, numeric)?)
     } else {
         None
     };
@@ -416,4 +402,84 @@ fn speech_numeric_error<'i>(
         return crate::error::invalid_component_value(location, component.clone());
     }
     crate::error::unsupported_value_at(location, None, "invalid authored speech numeric value")
+}
+
+fn parse_decibel<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Result<crate::CssDecibelLiteral, ParseError<'i, Error>> {
+    input.skip_whitespace();
+    let location = input.current_source_location();
+    let offset = input.position().byte_index();
+    let component = numeric
+        .collect(input)
+        .map_err(|error| speech_numeric_error(numeric, &error, location, offset))?;
+    crate::CssDecibelLiteral::try_from_component(component)
+        .map_err(|error| crate::error::invalid_component_value(location, error))
+}
+
+pub(super) fn parse_voice_balance<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Result<crate::CssVoiceBalance, ParseError<'i, Error>> {
+    input.skip_whitespace();
+    let location = input.current_source_location();
+    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
+        let keyword = cssparser::match_ignore_ascii_case! { &ident,
+            "left" => crate::CssVoiceBalanceKeyword::Left,
+            "center" => crate::CssVoiceBalanceKeyword::Center,
+            "right" => crate::CssVoiceBalanceKeyword::Right,
+            "leftwards" => crate::CssVoiceBalanceKeyword::Leftwards,
+            "rightwards" => crate::CssVoiceBalanceKeyword::Rightwards,
+            _ => return Err(location.new_unexpected_token_error(Token::Ident(ident))),
+        };
+        return Ok(crate::CssVoiceBalance::from_keyword(keyword));
+    }
+    super::values::parse_specified_number(input, numeric, "voice-balance")
+        .map(crate::CssVoiceBalance::from_parser_number)
+}
+
+pub(super) fn parse_voice_volume<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Result<crate::CssVoiceVolume, ParseError<'i, Error>> {
+    input.skip_whitespace();
+    if input
+        .try_parse(|input| input.expect_ident_matching("silent"))
+        .is_ok()
+    {
+        return Ok(crate::CssVoiceVolume::Silent);
+    }
+    let mut level = None;
+    let mut decibel = None;
+    while !input.is_exhausted() {
+        input.skip_whitespace();
+        let state = input.state();
+        let location = input.current_source_location();
+        let token = input.next().map_err(basic)?.clone();
+        match &token {
+            Token::Ident(ident) if level.is_none() => {
+                level = Some(cssparser::match_ignore_ascii_case! { &ident,
+                    "x-soft" => crate::CssVoiceVolumeLevel::XSoft,
+                    "soft" => crate::CssVoiceVolumeLevel::Soft,
+                    "medium" => crate::CssVoiceVolumeLevel::Medium,
+                    "loud" => crate::CssVoiceVolumeLevel::Loud,
+                    "x-loud" => crate::CssVoiceVolumeLevel::XLoud,
+                    _ => return Err(location.new_unexpected_token_error(token)),
+                });
+            }
+            Token::Dimension { unit, .. }
+                if decibel.is_none() && unit.eq_ignore_ascii_case("dB") =>
+            {
+                input.reset(&state);
+                decibel = Some(parse_decibel(input, numeric)?);
+            }
+            _ => return Err(location.new_unexpected_token_error(token)),
+        }
+    }
+    match (level, decibel) {
+        (Some(level), decibel) => Ok(crate::CssVoiceVolume::Level { level, decibel }),
+        (None, Some(value)) => Ok(crate::CssVoiceVolume::Offset(value)),
+        (None, None) => Err(input.new_error(cssparser::BasicParseErrorKind::EndOfInput)),
+    }
 }

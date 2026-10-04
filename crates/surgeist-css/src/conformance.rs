@@ -2307,7 +2307,9 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::VoiceDuration
         | CssKnownProperty::VoicePitch
         | CssKnownProperty::VoiceRange
-        | CssKnownProperty::VoiceRate => S_SPEECH1,
+        | CssKnownProperty::VoiceRate
+        | CssKnownProperty::VoiceBalance
+        | CssKnownProperty::VoiceVolume => S_SPEECH1,
         CssKnownProperty::Quotes | CssKnownProperty::Content => X_CONTENT3,
         CssKnownProperty::BorderCollapse
         | CssKnownProperty::BorderSpacing
@@ -2755,7 +2757,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 653] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 655] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -4499,6 +4501,16 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 653] = [
         CssKnownProperty::VoiceDuration,
         "voice-duration",
         "official.property.voice-duration"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::VoiceBalance,
+        "voice-balance",
+        "official.property.voice-balance"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::VoiceVolume,
+        "voice-volume",
+        "official.property.voice-volume"
     ),
     complete_property_feature!(
         CssKnownProperty::VoicePitch,

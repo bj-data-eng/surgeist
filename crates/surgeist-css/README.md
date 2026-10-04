@@ -29,6 +29,12 @@ cues. Checked construction, expansion and bounded specified serialization preser
 authored omissions and token origins. Resource loading and contextual volume
 resolution belong downstream; see the [cue reference](docs/reference.md#authored-speech-cues).
 
+CSS Speech `voice-balance` retains five keywords or an unrestricted exact Number
+value with pure Number math. `voice-volume` retains silent, a calibrated level
+with optional signed dB offset, or an offset alone. Canonical output preserves
+the meaning of an omitted level; computed clamping, inheritance and acoustic
+calibration belong downstream. See the [mixing reference](docs/reference.md#authored-speech-mixing).
+
 CSS Speech `voice-duration`, `voice-pitch`, `voice-range` and `voice-rate`
 retain authored prosody independently of voice execution. Duration uses the
 shared nonnegative ordinary time model; pitch/range separate positive ordinary

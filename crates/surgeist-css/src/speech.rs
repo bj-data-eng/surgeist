@@ -1481,3 +1481,170 @@ impl CssVoiceRate {
         Ok(writer.css)
     }
 }
+
+/// An authored spatial-balance keyword; numerical resolution belongs downstream.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssVoiceBalanceKeyword {
+    Left,
+    Center,
+    Right,
+    Leftwards,
+    Rightwards,
+}
+impl CssVoiceBalanceKeyword {
+    const fn keyword(self) -> &'static str {
+        match self {
+            Self::Left => "left",
+            Self::Center => "center",
+            Self::Right => "right",
+            Self::Leftwards => "leftwards",
+            Self::Rightwards => "rightwards",
+        }
+    }
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum VoiceBalanceState {
+    Keyword(CssVoiceBalanceKeyword),
+    Number(crate::CssSpecifiedNumber),
+}
+/// Exact authored balance keyword or unrestricted pure Number value.
+/// Specified admission does not clamp numbers or resolve inherited adjustments.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssVoiceBalance {
+    state: VoiceBalanceState,
+}
+impl CssVoiceBalance {
+    #[must_use]
+    pub const fn from_keyword(keyword: CssVoiceBalanceKeyword) -> Self {
+        Self {
+            state: VoiceBalanceState::Keyword(keyword),
+        }
+    }
+    /// Retains pure Number syntax, rejecting original recovered math closure.
+    /// Percentage values cannot cross this Number-only construction boundary.
+    /// ```compile_fail
+    /// use surgeist_css::{CssComponentValue, CssSpecifiedPercentage, CssVoiceBalance};
+    /// let percentage = CssSpecifiedPercentage::try_from_component(
+    ///     CssComponentValue::try_percentage("50").unwrap()).unwrap();
+    /// CssVoiceBalance::try_number(percentage);
+    /// ```
+    pub fn try_number(
+        number: crate::CssSpecifiedNumber,
+    ) -> Result<Self, CssNumericConstructionError> {
+        if let Some(value) = number.calculation()
+            && let Some(origin) = value.components().first_implicit_origin()
+        {
+            return Err(CssNumericConstructionError::at_origin(
+                crate::CssNumericConstructionErrorKind::RecoveredComponent,
+                origin.clone(),
+            ));
+        }
+        Ok(Self::from_parser_number(number))
+    }
+    pub(crate) const fn from_parser_number(number: crate::CssSpecifiedNumber) -> Self {
+        Self {
+            state: VoiceBalanceState::Number(number),
+        }
+    }
+    #[must_use]
+    pub const fn keyword(&self) -> Option<CssVoiceBalanceKeyword> {
+        match &self.state {
+            VoiceBalanceState::Keyword(value) => Some(*value),
+            VoiceBalanceState::Number(_) => None,
+        }
+    }
+    #[must_use]
+    pub const fn number(&self) -> Option<&crate::CssSpecifiedNumber> {
+        match &self.state {
+            VoiceBalanceState::Number(value) => Some(value),
+            VoiceBalanceState::Keyword(_) => None,
+        }
+    }
+    /// Formats through shared Number precision without Speech clamping.
+    pub fn serialize_specified(&self) -> SerializationResult {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+    /// Uses the keyword or pure Number provider's cumulative resource policy.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult {
+        match &self.state {
+            VoiceBalanceState::Keyword(value) => {
+                serialize_keyword_sequence(value.keyword(), limits)
+            }
+            VoiceBalanceState::Number(value) => value.serialize_specified_with_limits(limits),
+        }
+    }
+}
+
+/// A symbolic user-calibrated volume level, excluding the distinct silent state.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssVoiceVolumeLevel {
+    XSoft,
+    Soft,
+    Medium,
+    Loud,
+    XLoud,
+}
+impl CssVoiceVolumeLevel {
+    const fn keyword(self) -> &'static str {
+        match self {
+            Self::XSoft => "x-soft",
+            Self::Soft => "soft",
+            Self::Medium => "medium",
+            Self::Loud => "loud",
+            Self::XLoud => "x-loud",
+        }
+    }
+}
+/// A nonempty authored volume grammar, retaining absent level and offset.
+/// These alternatives exclude empty compositions and every companion to silent.
+/// Calibration, inheritance and synthesis remain downstream.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssVoiceVolume {
+    Silent,
+    Level {
+        level: CssVoiceVolumeLevel,
+        decibel: Option<CssDecibelLiteral>,
+    },
+    Offset(CssDecibelLiteral),
+}
+impl CssVoiceVolume {
+    /// Serializes level before offset, preserving standalone offset meaning.
+    pub fn serialize_specified(&self) -> SerializationResult {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+    /// Visits an explicitly authored offset even when an exact zero companion
+    /// is omitted. Standalone zero and rounded tiny nonzero offsets are emitted.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult {
+        match self {
+            Self::Silent => serialize_keyword_sequence("silent", limits),
+            Self::Offset(value) => value.serialize_specified_with_limits(limits),
+            Self::Level { level, decibel } => {
+                let mut writer =
+                    crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+                writer.context.charge_input(1)?;
+                writer.context.charge_projection(1)?;
+                writer.context.charge_input(1)?;
+                writer.context.charge_projection(1)?;
+                writer.append(level.keyword())?;
+                if let Some(value) = decibel {
+                    if value.is_zero() {
+                        writer.without_output(|writer| value.append_specified(writer))?;
+                    } else {
+                        writer.append(" ")?;
+                        value.append_specified(&mut writer)?;
+                    }
+                }
+                Ok(writer.css)
+            }
+        }
+    }
+}
