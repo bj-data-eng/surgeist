@@ -164,6 +164,24 @@ checked_length_parser!(
 );
 
 // Scalar consumers share exact ordinary admission and typed symbolic roots.
+// Percentage-permitting consumers retain Number results with a dimensional hint
+// separately from the pure scalar wrappers and their ordinary range checks.
+pub(super) fn parse_hinted_number_calculation<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &NumericInputContext<'_>,
+) -> Result<CssHintedNumberCalculation, ParseError<'i, Error>> {
+    input.skip_whitespace();
+    let start = input.state();
+    let location = input.current_source_location();
+    match input.next().map_err(basic)? {
+        Token::Function(name) if is_math_function(name) => {
+            parse_numeric_function(input, &start, numeric, CalculationRoot::HintedNumber)
+                .map(CssHintedNumberCalculation::from_expression)
+        }
+        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
+    }
+}
+
 macro_rules! checked_scalar_parser {
     ($name:ident, $owner:ident, $calculation:ident, $root:ident, $token:ident) => {
         pub(super) fn $name<'i, 't>(

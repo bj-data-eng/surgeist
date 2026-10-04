@@ -10,8 +10,8 @@ use super::position::{parse_full_position, parse_physical_position};
 use super::url::parse_url;
 use super::values::{
     AngleParserContext, next_is_comma, next_is_delim, next_is_ident, parse_angle_or_zero,
-    parse_nonnegative_number, parse_nonnegative_percentage, parse_specified_number,
-    parse_specified_number_literal, parse_specified_percentage,
+    parse_hinted_number_calculation, parse_nonnegative_number, parse_nonnegative_percentage,
+    parse_specified_number, parse_specified_number_literal, parse_specified_percentage,
 };
 use crate::error::{CssFeatureId, Error, basic, unsupported_value, unsupported_value_at};
 use crate::syntax::*;
@@ -448,6 +448,13 @@ fn parse_transform_scale_component<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssTransformScaleComponent, ParseError<'i, Error>> {
+    if let Ok(calculation) =
+        input.try_parse(|input| parse_hinted_number_calculation(input, numeric))
+    {
+        return Ok(CssTransformScaleComponent::HintedNumberCalculation(
+            calculation,
+        ));
+    }
     let state = input.state();
     if let Ok(number) = input.try_parse(|input| parse_specified_number(input, numeric, "transform"))
     {
@@ -935,7 +942,11 @@ fn parse_filter_amount<'i, 't>(
     if input.is_exhausted() {
         return Ok(CssFilterAmount::Default);
     }
-    let amount = if let Ok(number) =
+    let amount = if let Ok(calculation) =
+        input.try_parse(|input| parse_hinted_number_calculation(input, numeric))
+    {
+        CssFilterAmount::HintedNumberCalculation(calculation)
+    } else if let Ok(number) =
         input.try_parse(|input| parse_nonnegative_number(input, numeric, "filter amount"))
     {
         CssFilterAmount::Number(number)

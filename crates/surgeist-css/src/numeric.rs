@@ -2561,6 +2561,27 @@ root!(CssFrequencyCalculation, Frequency);
 root!(CssFrequencyPercentageCalculation, FrequencyPercentage);
 root!(CssResolutionCalculation, Resolution);
 
+impl CssHintedNumberCalculation {
+    pub(crate) fn structural_eq(&self, other: &Self) -> bool {
+        self.expression.structural_eq(&other.expression)
+    }
+
+    pub(crate) fn append_specified(
+        &self,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        project_specified_into(&self.expression, context, output).map(|_| ())
+    }
+
+    pub(crate) fn capture_specified(
+        &self,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+    ) -> std::result::Result<String, crate::CssSpecifiedValueSerializationError> {
+        capture_specified(&self.expression, context).map(|(text, _)| text)
+    }
+}
+
 impl CssLengthCalculation {
     pub(crate) fn structural_eq(&self, other: &Self) -> bool {
         self.expression.structural_eq(&other.expression)

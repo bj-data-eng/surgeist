@@ -106,6 +106,9 @@ fn append_amount(
         CssFilterAmount::Number(value) => {
             value.append_specified(&mut writer.context, &mut writer.css)
         }
+        CssFilterAmount::HintedNumberCalculation(value) => {
+            value.append_specified(&mut writer.context, &mut writer.css)
+        }
         CssFilterAmount::Percentage(value) => {
             value.append_specified(&mut writer.context, &mut writer.css)
         }

@@ -369,7 +369,9 @@ and integer rounding belong to later resolution.
 cancel while its percentage hint remains non-null. Color and opacity expose
 distinct `HintedNumberCalculation` branches for these percentage-permitting
 slots. Relative non-hue channels, profile expressions and alpha retain the same
-permission. Pure `CssNumberCalculation` and integer roots, hue, and legacy
+permission. Percentage-permitting scale3d/scaleZ operands, filter amounts,
+border-image slice/width and line-height also expose this distinct branch.
+Pure `CssNumberCalculation` and integer roots, hue, and legacy
 number-only CMYK channels reject this payload. This follows
 [Typed OM's numeric matching rule](https://www.w3.org/TR/2024/WD-css-typed-om-1-20240321/#cssnumericvalue-match)
 and [Values 4's type checking](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-type-checking):
@@ -1734,7 +1736,10 @@ omitted second operands and symbolic calculations. `translate3d` keeps a pure
 length on Z while X and Y accept length-percentages; `perspective` keeps a
 checked nonnegative length or `none`. Matrix operands, rotate3d axes, scale
 numbers, and cubic-bezier coordinates use `CssSpecifiedNumber`; three-dimensional
-scale percentage branches use `CssSpecifiedPercentage`. Both retain exact token
+scale percentage branches use `CssSpecifiedPercentage`. The three-dimensional
+scale3d/scaleZ grammar also admits `CssTransformScaleComponent::HintedNumberCalculation`,
+retaining a Number result whose percentage basis remains unresolved. The selected
+Level 1 scale/scaleX/scaleY grammar still uses pure Numbers. These payloads retain exact token
 spelling and provenance, or genuine symbolic calculations. Numeric aggregate
 equality compares exact structure while ignoring numeric source origins; direct
 scalar equality retains provenance. The independent `scale` property accepts
@@ -1807,7 +1812,12 @@ stays omitted. The nonempty count list retains order.
 Border-image slice uses shared nonnegative `Number` and `Percentage`
 payloads with a separate `fill` flag. Width keeps `Auto`,
 `LengthPercentage` and `Number`; outset keeps `Length` and
-`Number`. Each list expands one to four authored components using CSS edge
+`Number`. Slice and width also retain contextual Number results in distinct
+`HintedNumberCalculation` branches. Their shared numeric capture preserves
+the percentage hint and symbolic basis, including comparisons before edge
+compression. Ordinary negative inputs are rejected; typed math defers its
+range handling. Outset retains its pure Number restriction.
+Each list expands one to four authored components using CSS edge
 rules; the shorthand retains coupled member requirements and omission. Intrinsic
 initials are programmatic `0` for outset, `100%` for slice and `1` for width.
 The model retains four effective edges rather than original edge arity.
@@ -1908,6 +1918,10 @@ serializer and URL branches retain their function identity, target and modifiers
 Ordinary angle literals retain their finite precision and units; calculations
 reuse the shared numeric projection, including its existing unit projection.
 Serialization introduces no filter-specific clamping or angle normalization.
+All seven amount functions admit `CssFilterAmount::HintedNumberCalculation`
+alongside pure Number and Percentage. This checked root retains its percentage
+basis and shares the existing projection, equality and cumulative resource
+contract. Ordinary amounts remain nonnegative; math range handling is deferred.
 
 One list aggregate plus every function and authored child share a cumulative
 input, projection and UTF-8 byte budget. Non-drop functions charge one aggregate;
@@ -3138,6 +3152,10 @@ missing-preference fallback belong to downstream resolution.
 grammar: `normal`, a nonnegative number, or a nonnegative length-percentage.
 `CssLineHeight::Number` retains a checked `CssSpecifiedNonNegativeNumber`;
 `CssLineHeight::LengthPercentage` retains the corresponding checked scalar.
+`CssLineHeight::HintedNumberCalculation` retains a Number result with an unresolved
+percentage basis. It uses the same grammar in the `font` slash component,
+compares structure while ignoring origins, and reuses the shared numeric
+serializer without a font basis or early range clamp.
 Unitless zero stays a number, while `0px` and `0%` retain their own domain.
 Ordinary negative nonzero values are rejected before floating-point narrowing;
 bare checked calculation roots reenter literal admission, while actual math

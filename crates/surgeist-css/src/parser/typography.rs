@@ -1,5 +1,7 @@
 use super::color::parse_color;
-use super::values::{parse_length_percentage, parse_nonnegative_length_percentage};
+use super::values::{
+    parse_hinted_number_calculation, parse_length_percentage, parse_nonnegative_length_percentage,
+};
 use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
 use super::values::{CalculationRoot, next_is_comma, parse_numeric_function};
@@ -102,6 +104,12 @@ pub(super) fn parse_line_height<'i, 't>(
     }
 
     input.skip_whitespace();
+
+    if let Ok(calculation) =
+        input.try_parse(|input| parse_hinted_number_calculation(input, numeric))
+    {
+        return Ok(CssLineHeight::HintedNumberCalculation(calculation));
+    }
 
     if let Ok(number) = input.try_parse(|input| parse_line_height_number(input, numeric)) {
         return Ok(CssLineHeight::Number(number));

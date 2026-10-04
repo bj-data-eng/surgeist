@@ -6389,6 +6389,8 @@ pub enum CssImageValue {
 #[non_exhaustive]
 pub enum CssBorderImageSliceComponent {
     Number(CssSpecifiedNonNegativeNumber),
+    /// A Number result retaining a percentage basis; math range handling is deferred.
+    HintedNumberCalculation(CssHintedNumberCalculation),
     Percentage(CssSpecifiedNonNegativePercentage),
 }
 
@@ -6396,6 +6398,9 @@ impl PartialEq for CssBorderImageSliceComponent {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Number(left), Self::Number(right)) => left.structural_eq(right),
+            (Self::HintedNumberCalculation(left), Self::HintedNumberCalculation(right)) => {
+                left.structural_eq(right)
+            }
             (Self::Percentage(left), Self::Percentage(right)) => left == right,
             _ => false,
         }
@@ -6433,6 +6438,8 @@ pub enum CssBorderImageWidthComponent {
     Auto,
     LengthPercentage(CssSpecifiedNonNegativeLengthPercentage),
     Number(CssSpecifiedNonNegativeNumber),
+    /// A contextual Number multiplier, before computed-value range handling.
+    HintedNumberCalculation(CssHintedNumberCalculation),
 }
 
 impl PartialEq for CssBorderImageWidthComponent {
@@ -6443,6 +6450,9 @@ impl PartialEq for CssBorderImageWidthComponent {
                 left.structural_eq(right)
             }
             (Self::Number(left), Self::Number(right)) => left.structural_eq(right),
+            (Self::HintedNumberCalculation(left), Self::HintedNumberCalculation(right)) => {
+                left.structural_eq(right)
+            }
             _ => false,
         }
     }
@@ -7515,6 +7525,8 @@ pub enum CssTransformFunctionKind {
 #[non_exhaustive]
 pub enum CssTransformScaleComponent {
     Number(CssSpecifiedNumber),
+    /// A contextual Number admitted only by the percentage-permitting 3D grammar.
+    HintedNumberCalculation(CssHintedNumberCalculation),
     Percentage(CssSpecifiedPercentage),
 }
 
@@ -7527,6 +7539,9 @@ impl PartialEq for CssTransformScaleComponent {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Number(left), Self::Number(right)) => left.structural_eq(right),
+            (Self::HintedNumberCalculation(left), Self::HintedNumberCalculation(right)) => {
+                left.structural_eq(right)
+            }
             (Self::Percentage(left), Self::Percentage(right)) => left.structural_eq(right),
             _ => false,
         }
@@ -7984,6 +7999,8 @@ impl CssScaleValues {
 pub enum CssFilterAmount {
     Default,
     Number(CssSpecifiedNonNegativeNumber),
+    /// A Number with an unresolved percentage basis; no filter range is applied here.
+    HintedNumberCalculation(CssHintedNumberCalculation),
     Percentage(CssSpecifiedNonNegativePercentage),
 }
 
@@ -7992,6 +8009,9 @@ impl PartialEq for CssFilterAmount {
         match (self, other) {
             (Self::Default, Self::Default) => true,
             (Self::Number(left), Self::Number(right)) => left.structural_eq(right),
+            (Self::HintedNumberCalculation(left), Self::HintedNumberCalculation(right)) => {
+                left.structural_eq(right)
+            }
             (Self::Percentage(left), Self::Percentage(right)) => left == right,
             _ => false,
         }

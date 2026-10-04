@@ -2,8 +2,9 @@
 
 use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{
-    CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedNonNegativeNumber,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
+    CssHintedNumberCalculation, CssSpecifiedNonNegativeLengthPercentage,
+    CssSpecifiedNonNegativeNumber, CssSpecifiedValueSerializationError,
+    CssSpecifiedValueSerializationLimits,
 };
 
 type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
@@ -15,6 +16,8 @@ type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
 pub enum CssLineHeight {
     Normal,
     Number(CssSpecifiedNonNegativeNumber),
+    /// A contextual Number before font or percentage basis and math range resolution.
+    HintedNumberCalculation(CssHintedNumberCalculation),
     LengthPercentage(CssSpecifiedNonNegativeLengthPercentage),
 }
 
@@ -23,6 +26,9 @@ impl PartialEq for CssLineHeight {
         match (self, other) {
             (Self::Normal, Self::Normal) => true,
             (Self::Number(left), Self::Number(right)) => left.structural_eq(right),
+            (Self::HintedNumberCalculation(left), Self::HintedNumberCalculation(right)) => {
+                left.structural_eq(right)
+            }
             (Self::LengthPercentage(left), Self::LengthPercentage(right)) => {
                 left.structural_eq(right)
             }
@@ -61,6 +67,10 @@ impl CssLineHeight {
                 context.append(output, "normal")?;
             }
             Self::Number(value) => {
+                let captured = value.capture_specified(context)?;
+                context.append(output, &captured)?;
+            }
+            Self::HintedNumberCalculation(value) => {
                 let captured = value.capture_specified(context)?;
                 context.append(output, &captured)?;
             }

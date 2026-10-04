@@ -244,12 +244,14 @@ pub surgeist_css::CssBorderImageRepeatKeyword::Round
 pub surgeist_css::CssBorderImageRepeatKeyword::Space
 pub surgeist_css::CssBorderImageRepeatKeyword::Stretch
 #[non_exhaustive] pub enum surgeist_css::CssBorderImageSliceComponent
+pub surgeist_css::CssBorderImageSliceComponent::HintedNumberCalculation(surgeist_css::CssHintedNumberCalculation)
 pub surgeist_css::CssBorderImageSliceComponent::Number(surgeist_css::CssSpecifiedNonNegativeNumber)
 pub surgeist_css::CssBorderImageSliceComponent::Percentage(surgeist_css::CssSpecifiedNonNegativePercentage)
 impl core::cmp::PartialEq for surgeist_css::CssBorderImageSliceComponent
 pub fn surgeist_css::CssBorderImageSliceComponent::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssBorderImageWidthComponent
 pub surgeist_css::CssBorderImageWidthComponent::Auto
+pub surgeist_css::CssBorderImageWidthComponent::HintedNumberCalculation(surgeist_css::CssHintedNumberCalculation)
 pub surgeist_css::CssBorderImageWidthComponent::LengthPercentage(surgeist_css::CssSpecifiedNonNegativeLengthPercentage)
 pub surgeist_css::CssBorderImageWidthComponent::Number(surgeist_css::CssSpecifiedNonNegativeNumber)
 impl core::cmp::PartialEq for surgeist_css::CssBorderImageWidthComponent
@@ -1132,6 +1134,7 @@ pub fn surgeist_css::CssFilter::serialize_specified(&self) -> core::result::Resu
 pub fn surgeist_css::CssFilter::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssFilterAmount
 pub surgeist_css::CssFilterAmount::Default
+pub surgeist_css::CssFilterAmount::HintedNumberCalculation(surgeist_css::CssHintedNumberCalculation)
 pub surgeist_css::CssFilterAmount::Number(surgeist_css::CssSpecifiedNonNegativeNumber)
 pub surgeist_css::CssFilterAmount::Percentage(surgeist_css::CssSpecifiedNonNegativePercentage)
 impl core::cmp::PartialEq for surgeist_css::CssFilterAmount
@@ -2615,6 +2618,7 @@ pub surgeist_css::CssLengthUnit::Vw
 impl surgeist_css::CssLengthUnit
 pub const fn surgeist_css::CssLengthUnit::as_css_str(self) -> &'static str
 #[non_exhaustive] pub enum surgeist_css::CssLineHeight
+pub surgeist_css::CssLineHeight::HintedNumberCalculation(surgeist_css::CssHintedNumberCalculation)
 pub surgeist_css::CssLineHeight::LengthPercentage(surgeist_css::CssSpecifiedNonNegativeLengthPercentage)
 pub surgeist_css::CssLineHeight::Normal
 pub surgeist_css::CssLineHeight::Number(surgeist_css::CssSpecifiedNonNegativeNumber)
@@ -4145,6 +4149,7 @@ pub surgeist_css::CssTransformPerspective::None
 impl core::cmp::PartialEq for surgeist_css::CssTransformPerspective
 pub fn surgeist_css::CssTransformPerspective::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssTransformScaleComponent
+pub surgeist_css::CssTransformScaleComponent::HintedNumberCalculation(surgeist_css::CssHintedNumberCalculation)
 pub surgeist_css::CssTransformScaleComponent::Number(surgeist_css::CssSpecifiedNumber)
 pub surgeist_css::CssTransformScaleComponent::Percentage(surgeist_css::CssSpecifiedPercentage)
 impl core::cmp::PartialEq for surgeist_css::CssTransformScaleComponent

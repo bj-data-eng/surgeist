@@ -10,7 +10,8 @@ use super::position::{
 };
 use super::url::parse_url;
 use super::values::{
-    CalculationRoot, next_is_comma, parse_nonnegative_number, parse_nonnegative_percentage,
+    CalculationRoot, next_is_comma, parse_hinted_number_calculation, parse_nonnegative_number,
+    parse_nonnegative_percentage,
 };
 use crate::error::{CssFeatureId, Error, basic, unsupported_value, unsupported_value_at};
 use crate::syntax::*;
@@ -376,6 +377,13 @@ fn parse_border_image_slice_component<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorderImageSliceComponent, ParseError<'i, Error>> {
+    if let Ok(calculation) =
+        input.try_parse(|input| parse_hinted_number_calculation(input, numeric))
+    {
+        return Ok(CssBorderImageSliceComponent::HintedNumberCalculation(
+            calculation,
+        ));
+    }
     if let Ok(number) =
         input.try_parse(|input| parse_nonnegative_number(input, numeric, "border-image-slice"))
     {
@@ -406,6 +414,13 @@ fn parse_border_image_width_component<'i, 't>(
         .is_ok()
     {
         return Ok(CssBorderImageWidthComponent::Auto);
+    }
+    if let Ok(calculation) =
+        input.try_parse(|input| parse_hinted_number_calculation(input, numeric))
+    {
+        return Ok(CssBorderImageWidthComponent::HintedNumberCalculation(
+            calculation,
+        ));
     }
     if let Ok(number) =
         input.try_parse(|input| parse_nonnegative_number(input, numeric, "border-image-width"))

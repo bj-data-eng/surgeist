@@ -116,6 +116,10 @@ fn slice_equal(
 ) -> bool {
     match (left, right) {
         (
+            CssBorderImageSliceComponent::HintedNumberCalculation(_),
+            CssBorderImageSliceComponent::HintedNumberCalculation(_),
+        ) => numeric_components_equal(None, None, left_css, right_css),
+        (
             CssBorderImageSliceComponent::Number(left),
             CssBorderImageSliceComponent::Number(right),
         ) => numeric_components_equal(
@@ -144,6 +148,10 @@ fn width_equal(
     right_css: &CapturedNumericComponent,
 ) -> bool {
     match (left, right) {
+        (
+            CssBorderImageWidthComponent::HintedNumberCalculation(_),
+            CssBorderImageWidthComponent::HintedNumberCalculation(_),
+        ) => numeric_components_equal(None, None, left_css, right_css),
         (CssBorderImageWidthComponent::Auto, CssBorderImageWidthComponent::Auto) => true,
         (
             CssBorderImageWidthComponent::Number(left),
@@ -202,6 +210,9 @@ fn capture_slice(
 ) -> Result<CapturedNumericComponent> {
     charge(writer, 1)?;
     match value {
+        CssBorderImageSliceComponent::HintedNumberCalculation(value) => {
+            CapturedNumericComponent::capture_calculation(&value.expression, &mut writer.context)
+        }
         CssBorderImageSliceComponent::Number(value) => capture_numeric!(value, writer),
         CssBorderImageSliceComponent::Percentage(value) => capture_numeric!(value, writer),
     }
@@ -219,6 +230,9 @@ fn capture_width(
 ) -> Result<CapturedNumericComponent> {
     charge(writer, 1)?;
     match value {
+        CssBorderImageWidthComponent::HintedNumberCalculation(value) => {
+            CapturedNumericComponent::capture_calculation(&value.expression, &mut writer.context)
+        }
         CssBorderImageWidthComponent::Auto => {
             let mut css = String::new();
             if !writer.context.output_suppressed() {
