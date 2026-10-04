@@ -6,7 +6,15 @@
 
 use surgeist_css::*;
 
-const CASES: &[(&str, &str, bool, &[&str], &[&str])] = &[
+type PropertyCase = (
+    &'static str,
+    &'static str,
+    bool,
+    &'static [&'static str],
+    &'static [&'static str],
+);
+
+const CASES: &[PropertyCase] = &[
     (
         "scrollbar-width",
         "auto",
