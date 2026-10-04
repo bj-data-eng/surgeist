@@ -511,6 +511,21 @@ that differ from a shorter decimal spelling which merely round-trips to the
 same binary64 value. The authored calculation and its source origin remain
 unchanged.
 
+Same-unit Sum coefficients accumulate in source order under this binary64
+policy. Thus `calc(1e16 - 1e16 + 1)` emits `calc(1)`, while
+`calc(1 + 1e16 - 1e16)` emits `calc(0)`. This operational order follows frozen
+[WebKit's same-unit simplifier](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/calc/CSSCalcTree%2BSimplification.cpp#L490-L554).
+Values 4 leaves supported numeric precision and range
+[implementation-defined](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#numeric-types);
+the authored coefficients remain exact even when their projected magnitudes differ.
+
+The shared simplifier retains hinted percentage `min()`, `max()`, and `clamp()`
+comparisons until their basis is known, including percentage siblings inside a
+partially simplified comparison. A negative basis can reverse their ordering.
+Unhinted percentages and comparable same-unit dimensions may still fold, and
+same-unit percentage sums may still combine. These distinctions follow
+[Values 4's simplification algorithm and percentage note](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-simplification).
+
 ```rust
 use surgeist_css::{
     CssNumberCalculation, CssSpecifiedNumber, CssSpecifiedValueSerializationLimits,

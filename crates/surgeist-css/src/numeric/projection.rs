@@ -156,6 +156,12 @@ impl Projection<'_> {
             None
         }
     }
+    fn magnitude_comparable(&self, id: Id) -> bool {
+        self.scalar(id).is_some_and(|value| {
+            // An unknown percentage basis can reverse coefficient ordering.
+            !matches!(value.unit, Unit::Percentage) || self.arena[id].ty.hint.is_none()
+        })
+    }
     fn value(&mut self, value: f64, unit: Unit, ty: CssNumericType) -> Result<Id> {
         self.add(Kind::Scalar(Scalar { value, unit }), ty)
     }
@@ -187,9 +193,10 @@ impl Projection<'_> {
             return self.value(f64::NAN, Unit::from_type(ty), ty);
         }
         let mut pending = ids;
+        pending.reverse();
         let mut other = Vec::new();
         let mut scalars: BTreeMap<Unit, f64> = BTreeMap::new();
-        // Pop backwards, then restore original order for symbolic terms.
+        // Visit flattened children in source order, including binary64 sums.
         while let Some(id) = pending.pop() {
             if matches!(self.arena[id].kind, Kind::Sum(_)) {
                 let Kind::Sum(children) =
@@ -197,7 +204,7 @@ impl Projection<'_> {
                 else {
                     unreachable!()
                 };
-                pending.extend(children);
+                pending.extend(children.into_iter().rev());
             } else if let Some(scalar) = self.scalar(id) {
                 scalars
                     .entry(scalar.unit.clone())
@@ -207,7 +214,6 @@ impl Projection<'_> {
                 other.push(id);
             }
         }
-        other.reverse();
         if ty.simple() && scalars.values().any(|value| value.is_nan()) {
             return self.value(f64::NAN, Unit::from_type(ty), ty);
         }
@@ -318,7 +324,12 @@ impl Projection<'_> {
                 .map(|v| &v.unit)
                 .all(|unit| Some(unit) == values.iter().flatten().next().map(|v| &v.unit));
             if resolved
-                || same_unit && matches!(function, Function::Min | Function::Max | Function::Clamp)
+                || same_unit
+                    && matches!(function, Function::Min | Function::Max | Function::Clamp)
+                    && args
+                        .iter()
+                        .flatten()
+                        .all(|&id| self.magnitude_comparable(id))
             {
                 let output = math::evaluate(function, &values, strategy);
                 let unit = if resolved {
@@ -339,7 +350,9 @@ impl Projection<'_> {
             let mut grouped: BTreeMap<Unit, (usize, f64)> = BTreeMap::new();
             let mut other = Vec::new();
             for id in args.into_iter().flatten() {
-                if let Some(scalar) = self.scalar(id) {
+                if let Some(scalar) = self.scalar(id)
+                    && self.magnitude_comparable(id)
+                {
                     if let Some((_, value)) = grouped.get_mut(&scalar.unit) {
                         *value = math::extreme(*value, scalar.value, function == Function::Min);
                     } else {
