@@ -2948,6 +2948,17 @@ pub fn surgeist_css::CssImportConstructionError::from(error: surgeist_css::CssMe
 impl core::error::Error for surgeist_css::CssMediaConstructionError
 impl core::fmt::Display for surgeist_css::CssMediaConstructionError
 pub fn surgeist_css::CssMediaConstructionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+#[non_exhaustive] pub enum surgeist_css::CssMediaCssomSerializationError
+pub surgeist_css::CssMediaCssomSerializationError::Media(surgeist_css::CssMediaSerializationError)
+pub surgeist_css::CssMediaCssomSerializationError::Resource
+pub surgeist_css::CssMediaCssomSerializationError::Resource::error: surgeist_css::CssSpecifiedValueSerializationError
+pub surgeist_css::CssMediaCssomSerializationError::Resource::origin: surgeist_css::CssValueOrigin
+impl surgeist_css::CssMediaCssomSerializationError
+pub fn surgeist_css::CssMediaCssomSerializationError::origin(&self) -> &surgeist_css::CssValueOrigin
+impl core::error::Error for surgeist_css::CssMediaCssomSerializationError
+pub fn surgeist_css::CssMediaCssomSerializationError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_css::CssMediaCssomSerializationError
+pub fn surgeist_css::CssMediaCssomSerializationError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_css::CssMediaDynamicRange
 pub surgeist_css::CssMediaDynamicRange::High
 pub surgeist_css::CssMediaDynamicRange::Standard
@@ -3058,13 +3069,17 @@ pub surgeist_css::CssMediaQuery::Condition(surgeist_css::CssMediaCondition)
 pub surgeist_css::CssMediaQuery::Never(surgeist_css::CssNeverMediaQuery)
 pub surgeist_css::CssMediaQuery::Typed(surgeist_css::CssTypedMediaQuery)
 impl surgeist_css::CssMediaQuery
+pub fn surgeist_css::CssMediaQuery::cssom_equals(&self, other: &Self) -> core::result::Result<bool, surgeist_css::CssMediaCssomSerializationError>
+pub fn surgeist_css::CssMediaQuery::cssom_equals_with_limits(&self, other: &Self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<bool, surgeist_css::CssMediaCssomSerializationError>
+pub fn surgeist_css::CssMediaQuery::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssMediaSerializationError>
+pub fn surgeist_css::CssMediaQuery::serialize_cssom(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssMediaCssomSerializationError>
+pub fn surgeist_css::CssMediaQuery::serialize_cssom_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssMediaCssomSerializationError>
+pub fn surgeist_css::CssMediaQuery::try_from_components(values: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssMediaConstructionError>
+pub fn surgeist_css::CssMediaQuery::try_from_components_with_limits(values: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssMediaConstructionError>
+impl surgeist_css::CssMediaQuery
 pub const fn surgeist_css::CssMediaQuery::is_guaranteed_false(&self) -> bool
 pub const fn surgeist_css::CssMediaQuery::origin(&self) -> &surgeist_css::CssValueOrigin
 pub const fn surgeist_css::CssMediaQuery::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
-impl surgeist_css::CssMediaQuery
-pub fn surgeist_css::CssMediaQuery::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssMediaSerializationError>
-pub fn surgeist_css::CssMediaQuery::try_from_components(values: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssMediaConstructionError>
-pub fn surgeist_css::CssMediaQuery::try_from_components_with_limits(values: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssMediaConstructionError>
 #[non_exhaustive] pub enum surgeist_css::CssMediaQueryModifier
 pub surgeist_css::CssMediaQueryModifier::Not
 pub surgeist_css::CssMediaQueryModifier::Only
@@ -3114,6 +3129,7 @@ pub fn surgeist_css::CssCustomMediaSerializationError::from(e: surgeist_css::Css
 impl core::convert::From<surgeist_css::CssMediaSerializationError> for surgeist_css::CssImportSerializationError
 pub fn surgeist_css::CssImportSerializationError::from(value: surgeist_css::CssMediaSerializationError) -> Self
 impl core::error::Error for surgeist_css::CssMediaSerializationError
+pub fn surgeist_css::CssMediaSerializationError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_css::CssMediaSerializationError
 pub fn surgeist_css::CssMediaSerializationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_css::CssMediaType
@@ -7591,6 +7607,8 @@ pub fn surgeist_css::CssMediaQueryList::new(queries: alloc::vec::Vec<surgeist_cs
 pub fn surgeist_css::CssMediaQueryList::queries(&self) -> &[surgeist_css::CssMediaQuery]
 impl surgeist_css::CssMediaQueryList
 pub fn surgeist_css::CssMediaQueryList::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssMediaSerializationError>
+pub fn surgeist_css::CssMediaQueryList::serialize_cssom(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssMediaCssomSerializationError>
+pub fn surgeist_css::CssMediaQueryList::serialize_cssom_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssMediaCssomSerializationError>
 pub struct surgeist_css::CssMediaRange<T>
 impl<T> surgeist_css::CssMediaRange<T>
 pub fn surgeist_css::CssMediaRange<T>::view(&self) -> surgeist_css::CssMediaRangeRef<'_, T>
@@ -9626,6 +9644,7 @@ pub fn surgeist_css::normalize_sheet_with_limits(sheet: &surgeist_css::CssSheet,
 pub fn surgeist_css::parse_color_profile_descriptor_value(source: &str, descriptor: surgeist_css::CssColorProfileDescriptorKind) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssColorProfileDescriptorValue>>
 pub fn surgeist_css::parse_component_values(source: &str) -> core::result::Result<surgeist_css::CssComponentValues, surgeist_css::CssComponentValueError>
 pub fn surgeist_css::parse_component_values_with_limits(source: &str, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<surgeist_css::CssComponentValues, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::parse_cssom_media_query(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssMediaQuery>>
 pub fn surgeist_css::parse_declaration(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssDeclaration>>
 pub fn surgeist_css::parse_font_face_descriptor_value(source: &str, descriptor: surgeist_css::CssFontFaceDescriptorKind) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssAuthoredFontFaceDescriptorValue>>
 pub fn surgeist_css::parse_font_palette_descriptor_value(source: &str, descriptor: surgeist_css::CssFontPaletteDescriptorKind) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssFontPaletteDescriptorValue>>

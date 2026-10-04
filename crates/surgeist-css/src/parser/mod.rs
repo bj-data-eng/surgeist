@@ -29,10 +29,10 @@ mod font_variant;
 mod fragments;
 mod gap;
 pub use fragments::{
-    parse_color_profile_descriptor_value, parse_declaration, parse_font_face_descriptor_value,
-    parse_font_palette_descriptor_value, parse_media_query, parse_media_query_list,
-    parse_property_value_text, parse_property_value_text_for_grammar, parse_rule, parse_selector,
-    parse_selector_list, parse_style_block,
+    parse_color_profile_descriptor_value, parse_cssom_media_query, parse_declaration,
+    parse_font_face_descriptor_value, parse_font_palette_descriptor_value, parse_media_query,
+    parse_media_query_list, parse_property_value_text, parse_property_value_text_for_grammar,
+    parse_rule, parse_selector, parse_selector_list, parse_style_block,
 };
 mod color;
 mod container_properties;

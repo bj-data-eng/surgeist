@@ -5494,3 +5494,53 @@ Inherited offset addition, calibrated loudness levels, computed balance clamping
 and sound-system behavior remain downstream. Evidence is in
 [`speech_balance_volume_lifecycle.rs`](../tests/speech_balance_volume_lifecycle.rs)
 and [`speech_balance_volume_models.rs`](../tests/speech_balance_volume_models.rs).
+
+## CSSOM media-query text
+
+[`parse_cssom_media_query`](../src/parser/fragments.rs) delegates to the existing
+Media Queries 5 list parser. Exactly one member produces `Some`, including a
+diagnosed ignored grammar member; empty and multiple-member lists produce `None`.
+The original diagnostics, recovery actions and spans remain available on the
+report. This nullable boundary is separate from `parse_media_query`, whose
+authored fragment contract always retains a query or recovery sentinel.
+
+`CssMediaQuery::serialize_cssom` and `CssMediaQueryList::serialize_cssom` use the
+same owning emitter as authored serialization. They project malformed ignored
+members to `not all` in their original list positions. The authored `serialize`
+methods still reject recovered `Never` members. Neither operation mutates a
+query, removes diagnostics, evaluates media conditions or resolves custom media.
+
+Canonical output lowercases media-type identifiers, including unknown types,
+and emits the defined orientation and scan keywords in lowercase. An unprefixed
+`all` with a condition omits `all and`; lone `all`, `not all` and `only all` retain
+their type. Lists preserve order and repetition with comma-space separators;
+the empty list emits empty text. Explicit `only` remains the owning grammar's
+legacy-hiding syntax. Modern range/condition syntax uses the existing MQ5
+provider rather than a second CSSOM grammar.
+
+The CSSOM projection also lowercases ordinary unknown feature names while
+retaining their value components. Valid general-enclosed syntax and case-sensitive
+custom-media references remain authored. A valid unknown condition is distinct
+from malformed grammar recovery; its truth belongs to the downstream evaluator.
+`CssMediaQuery::cssom_equals` compares canonical CSSOM bytes case-sensitively,
+preserving syntactic ordering rather than claiming semantic query equivalence.
+Derived authored model equality continues to include content and provenance.
+
+The `*_with_limits` operations consume the shared specified-value resource
+policy. Each query, condition and backing component charges one input and one
+projection node; a list charges its aggregate too. A recovered query adds two
+projected keyword nodes. Omitted default-type components still consume their
+visited nodes. Comparison shares one budget across both operands, including
+their combined serialized bytes. Errors retain the responsible source or
+explicit programmatic origin, and no partial output is returned. The crate-owned
+capture boundary accepts the same cumulative context used by enclosing rule
+writers; final emitted bytes are charged once by that writer.
+
+The [pinned CSSOM1 media clauses](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#media-queries)
+define orientation and scan value spellings. Its other media-feature table cells
+contain explicit ellipses. Selected Media Queries 5 and value-owner clauses
+govern those features; this surface does not invent an ellipsis-cell format or
+certify uncovered feature serialization. Numeric/value phase limitations remain
+with their existing owners. Focused public evidence is in
+[`cssom_media_queries_lifecycle.rs`](../tests/cssom_media_queries_lifecycle.rs)
+and [`cssom_media_projection_contract.rs`](../tests/cssom_media_projection_contract.rs).

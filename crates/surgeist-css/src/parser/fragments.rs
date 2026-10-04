@@ -313,6 +313,31 @@ pub fn parse_media_query_list(source: &str) -> crate::CssParseReport<CssMediaQue
     })
 }
 
+/// Parses the CSSOM single-query boundary through the owning media-query list parser.
+///
+/// Exactly one list member is returned, including a diagnosed ignored member
+/// whose CSSOM serialization is `not all`. Empty or multiple-member lists return
+/// `None`. Diagnostics retain their original ordering, spans and recovery actions;
+/// this operation performs no host evaluation and does not erase unknown syntax.
+///
+/// ```
+/// use surgeist_css::parse_cssom_media_query;
+/// assert!(parse_cssom_media_query("screen, print").syntax().is_none());
+/// let report = parse_cssom_media_query("???");
+/// assert!(!report.is_clean());
+/// assert_eq!(
+///     report.syntax().as_ref().unwrap().serialize_cssom().unwrap().as_css(),
+///     "not all"
+/// );
+/// ```
+pub fn parse_cssom_media_query(source: &str) -> crate::CssParseReport<Option<CssMediaQuery>> {
+    let (list, diagnostics) = parse_media_query_list(source).into_parts();
+    crate::media::with_media_stack(
+        list.queries().iter().any(crate::media::query_is_deep),
+        || crate::CssParseReport::new(list.into_single_query(), diagnostics),
+    )
+}
+
 /// Parses one complete raw `@font-face` descriptor value in the selected grammar.
 ///
 /// The source contains only the value, without a descriptor name, annotation or

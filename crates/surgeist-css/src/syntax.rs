@@ -2359,6 +2359,14 @@ impl CssMediaQueryList {
     pub fn queries(&self) -> &[CssMediaQuery] {
         &self.queries
     }
+
+    pub(crate) fn into_single_query(self) -> Option<CssMediaQuery> {
+        if self.queries.len() == 1 {
+            self.queries.into_iter().next()
+        } else {
+            None
+        }
+    }
 }
 
 /// One authored or parser-recovered media-query-list member.
