@@ -66,7 +66,86 @@ fn speech_break_models_keep_none_strength_and_explicit_zero_time_distinct() {
         }
     }
     let zero_none = composed(CssSpeechBreak::None, Some(zero));
-    assert_eq!(zero_none.serialize_specified().unwrap(), "none 0s");
+    assert_eq!(zero_none.serialize_specified().unwrap(), "none");
+}
+
+#[test]
+fn speech_pairs_omit_none_and_exact_zero_equivalents_without_losing_authored_children() {
+    // Speech 1 §§8.1/9.1 equate none with 0ms; CSSOM §6.7.2 requires
+    // omission of a redundant optional component without changing meaning.
+    for (number, unit) in [
+        ("0", CssTimeUnit::Seconds),
+        ("-0", CssTimeUnit::Milliseconds),
+        (
+            "+0.00e999999999999999999999999999999999999999999",
+            CssTimeUnit::Seconds,
+        ),
+    ] {
+        let zero = time(number, unit);
+        for (before, after, expected) in [
+            (CssSpeechBreak::None, zero.clone(), "none"),
+            (zero.clone(), CssSpeechBreak::None, "0s"),
+        ] {
+            assert_ne!(before, after);
+            let model = composed(before, Some(after));
+            let retained = model.clone();
+            assert_eq!(model.serialize_specified().unwrap(), expected);
+            assert!(model.authored_after().is_some());
+            assert_eq!(model, retained);
+            assert_eq!(
+                model
+                    .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+                        3,
+                        3,
+                        expected.len()
+                    ))
+                    .unwrap(),
+                expected
+            );
+            for (limits, error) in [
+                (
+                    CssSpecifiedValueSerializationLimits::new(2, 3, expected.len()),
+                    CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                ),
+                (
+                    CssSpecifiedValueSerializationLimits::new(3, 2, expected.len()),
+                    CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                ),
+                (
+                    CssSpecifiedValueSerializationLimits::new(3, 3, expected.len() - 1),
+                    CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                ),
+            ] {
+                assert_eq!(
+                    model
+                        .serialize_specified_with_limits(limits)
+                        .unwrap_err()
+                        .kind(),
+                    error
+                );
+                assert_eq!(model, retained);
+            }
+        }
+    }
+    // A positive authored duration may round to 0s; that is not exact zero.
+    let tiny = time("1e-400", CssTimeUnit::Seconds);
+    for (before, after, expected) in [
+        (CssSpeechBreak::None, tiny.clone(), "none 0s"),
+        (tiny, CssSpeechBreak::None, "0s none"),
+    ] {
+        assert_eq!(
+            composed(before, Some(after)).serialize_specified().unwrap(),
+            expected
+        );
+    }
+    for name in ["pause", "rest"] {
+        for (value, expected) in [("none -0ms", "none"), ("0e400s none", "0s")] {
+            let declaration = parsed(name, value);
+            let authored = pair(&declaration);
+            assert!(authored.authored_after().is_some());
+            assert_eq!(authored.serialize_specified().unwrap(), expected);
+        }
+    }
 }
 
 #[test]
