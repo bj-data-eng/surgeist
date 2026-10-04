@@ -331,3 +331,52 @@ fn malformed_and_block_declarations_are_ignored_without_redeclaring_the_active_p
         );
     }
 }
+
+#[test]
+fn decoded_namespace_prefix_construction_accepts_values_requiring_identifier_escapes() {
+    // A decoded IDENT value is distinct from its CSS spelling. Both values can
+    // be expressed as one IDENT by escaping the leading digit or embedded space.
+    assert!(CssNamespacePrefix::try_new("").is_none());
+    assert!(CssNamespacePrefix::try_new("a\0b").is_none());
+    for decoded in ["1", "a b"] {
+        let prefix = CssNamespacePrefix::try_new(decoded)
+            .expect("a decoded identifier may require escapes in its CSS spelling");
+        assert_eq!(prefix.as_str(), decoded);
+    }
+}
+
+#[test]
+fn escaped_namespace_prefixes_parse_as_clean_decoded_identifiers_without_unwinding() {
+    for (source, decoded, fragment) in [
+        (
+            r"@namespace \31 'urn:digit';\31 |leaf{}",
+            "1",
+            r"\31 |leaf.mark",
+        ),
+        (
+            r"@namespace a\ b 'urn:space';a\ b|leaf{}",
+            "a b",
+            r"a\ b|leaf.mark",
+        ),
+    ] {
+        let report = std::panic::catch_unwind(|| parse_sheet(source))
+            .expect("valid escaped namespace identifiers must not unwind");
+        assert!(report.is_clean(), "{source}: {report:?}");
+        let [CssRule::Namespace(namespace), CssRule::Style(_)] = report.syntax().rules() else {
+            panic!("valid namespace declaration and qualified rule retained: {report:?}");
+        };
+        let parsed_prefix = namespace.prefix().expect("named declaration");
+        assert_eq!(parsed_prefix.as_str(), decoded);
+        let context = CssNamespaceContext::from_sheet(report.syntax());
+        assert_eq!(
+            context.named_namespace(parsed_prefix),
+            Some(namespace.name())
+        );
+        assert_selector_namespace(
+            fragment,
+            &context,
+            CssNamespaceConstraint::Named(parsed_prefix.clone()),
+        );
+        assert_eq!(validate_sheet(source).unwrap(), *report.syntax());
+    }
+}
