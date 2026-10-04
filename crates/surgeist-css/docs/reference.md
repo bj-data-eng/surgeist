@@ -5061,3 +5061,54 @@ cover the four physical and four flow-relative corner longhands. Each accepts on
 The physical `border-radius` shorthand accepts one to four horizontal values and an optional slash followed by one to four vertical values. `CssBorderRadiusShorthand` retains the authored lists and supplies the four physical corners in top-left, top-right, bottom-right, bottom-left order. Without a slash, each contributed corner retains an omitted vertical radius; an explicit slash retains its authored vertical value. Intrinsic expansion has four physical longhand members and no reset-only members. Bounded specified serialization shares one resource budget across the aggregate and its authored children.
 
 Physical property wrappers expose the exact checked `value()`. Basic-shape `inset()` round values use `CssBorderRadiusShorthand`, preserving horizontal and vertical arity and whether the vertical list was omitted. Flow-relative wrappers do not invent a physical corner mapping. Writing-mode and direction mapping, percentage basis, overlapping-radii reduction, geometry, and painting remain downstream.
+
+
+## Authored Speech pause and rest
+
+The pinned [Speech 1 pause definitions](https://www.w3.org/TR/2023/CRD-css-speech-1-20230214/#pause-props)
+and [rest definitions](https://www.w3.org/TR/2023/CRD-css-speech-1-20230214/#rest-props)
+provide `pause-before`, `pause-after`, `rest-before`, and `rest-after` with
+`<time> | none | x-weak | weak | medium | strong | x-strong` grammar. All four
+apply to all elements, have noninherited `none` initials, accept no percentages,
+and retain the specified value as their computed-value contract. Canonical
+order follows the grammar. Strengths remain symbolic; their absolute duration
+is implementation-dependent.
+
+`CssSpeechBreak` retains `None`, `Strength(CssSpeechBreakStrength)`, or
+`Time(CssDuration)`. `try_time(CssTimeValue)` uses the existing duration owner
+for exact rejection of negative ordinary times (including negative underflow)
+and original recovered closure. Signed zero remains allowed. Valid authored
+time calculations retain their math branch and defer computed range handling.
+`none` remains distinct from an explicit zero time. The four coupled property
+wrappers expose this model through `value()` and retain authored case, escapes,
+comments, spelling and provenance through `as_css()` and declaration components.
+
+`pause` and `rest` use `CssSpeechBreakPair`. Its checked `try_new(before, after)`
+retains an optional second authored value and rejects recovered time children.
+`before()` and `after()` borrow the effective assignments; `authored_after()`
+reveals the optional authored second value. Intrinsic expansion emits exactly
+before then after, assigning one value to both when the second is omitted. There
+are no reset-only members. Whole-value CSS-wide keywords expand at the shorthand
+boundary, and substitution reentry validates the original grammar atomically
+while retaining source occurrence, importance and replacement origins.
+
+Both models provide `serialize_specified()` and
+`serialize_specified_with_limits(CssSpecifiedValueSerializationLimits)`. Times
+use the existing canonical seconds provider and its six-place rounding policy.
+Following [CSSOM value serialization](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serialize-a-css-value),
+pair output omits a demonstrably equivalent second component without discarding
+its authored presence. Equality for this omission uses exact ordinary duration
+comparison across seconds/milliseconds and equivalent decimal coefficients, or
+the same retained calculation structure; equal rounded text alone does not
+establish equality. The pair and every authored child share one cumulative
+input-node, projection-node and emitted-byte budget. A suppressed second child
+still incurs traversal work and node charges. Failure returns no partial CSS
+and leaves authored input unchanged.
+
+Recovering parsing retains valid siblings and ordered diagnostics; clean-report
+validation uses the same grammar. Source metadata identifies `S-SPEECH1` and the
+individual `#propdef-*` production. Speech execution, strength duration
+selection, pause collapse, additive rest behavior, synthesis and root-owned
+style lowering remain downstream. Behavioral evidence is in
+[`speech_pause_rest_lifecycle.rs`](../tests/speech_pause_rest_lifecycle.rs) and
+[`speech_pause_rest_models.rs`](../tests/speech_pause_rest_models.rs).

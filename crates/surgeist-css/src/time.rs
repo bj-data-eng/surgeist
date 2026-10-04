@@ -75,6 +75,20 @@ impl CssTimeLiteral {
                 .component
                 .structural_eq_ignoring_origin(&other.component)
     }
+    /// Exact ordinary duration equivalence for specified shorthand omission.
+    /// Coefficients and origins remain authored; only standard s/ms conversion
+    /// participates, without floating-point rounding or exponent expansion.
+    fn equivalent(&self, other: &Self) -> bool {
+        fn seconds(literal: &CssTimeLiteral) -> crate::exact_decimal::LexicalDecimal<'_> {
+            crate::exact_decimal::LexicalDecimal::new(literal.numeric().representation()).shifted(
+                match literal.unit() {
+                    CssTimeUnit::Seconds => 0,
+                    CssTimeUnit::Milliseconds => -3,
+                },
+            )
+        }
+        seconds(self).value_eq(&seconds(other))
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -231,6 +245,12 @@ impl CssDuration {
     /// Borrows the original selected branch provenance.
     pub fn origin(&self) -> &CssValueOrigin {
         self.time.origin()
+    }
+    pub(crate) fn specified_value_eq(&self, other: &Self) -> bool {
+        match (self.time.literal(), other.time.literal()) {
+            (Some(left), Some(right)) => left.equivalent(right),
+            _ => self.time.structural_eq(&other.time),
+        }
     }
 }
 impl PartialEq for CssDuration {

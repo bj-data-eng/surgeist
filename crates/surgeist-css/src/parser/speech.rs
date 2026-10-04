@@ -1,7 +1,10 @@
 //! Exact authored Speech 1 keyword grammars; no speech execution.
 
 use crate::error::{Error, basic};
-use crate::{CssSpeak, CssSpeakAs, CssSpeakAsPunctuation};
+use crate::{
+    CssSpeak, CssSpeakAs, CssSpeakAsPunctuation, CssSpeechBreak, CssSpeechBreakPair,
+    CssSpeechBreakStrength,
+};
 use cssparser::{ParseError, Parser, Token};
 
 pub(super) fn parse_speak<'i, 't>(
@@ -75,4 +78,38 @@ pub(super) fn parse_speak_as<'i, 't>(
     }
     CssSpeakAs::try_new(spell_out, digits, punctuation)
         .ok_or_else(|| input.new_error(cssparser::BasicParseErrorKind::EndOfInput))
+}
+
+pub(super) fn parse_speech_break<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Result<CssSpeechBreak, ParseError<'i, Error>> {
+    input.skip_whitespace();
+    let location = input.current_source_location();
+    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
+        let value = cssparser::match_ignore_ascii_case! { &ident,
+            "none" => CssSpeechBreak::None,
+            "x-weak" => CssSpeechBreak::Strength(CssSpeechBreakStrength::XWeak),
+            "weak" => CssSpeechBreak::Strength(CssSpeechBreakStrength::Weak),
+            "medium" => CssSpeechBreak::Strength(CssSpeechBreakStrength::Medium),
+            "strong" => CssSpeechBreak::Strength(CssSpeechBreakStrength::Strong),
+            "x-strong" => CssSpeechBreak::Strength(CssSpeechBreakStrength::XStrong),
+            _ => return Err(location.new_unexpected_token_error(Token::Ident(ident))),
+        };
+        return Ok(value);
+    }
+    super::timing::parse_duration(input, numeric).map(CssSpeechBreak::Time)
+}
+
+pub(super) fn parse_speech_break_pair<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Result<CssSpeechBreakPair, ParseError<'i, Error>> {
+    let before = parse_speech_break(input, numeric)?;
+    let after = if input.is_exhausted() {
+        None
+    } else {
+        Some(parse_speech_break(input, numeric)?)
+    };
+    Ok(CssSpeechBreakPair::from_parser(before, after))
 }

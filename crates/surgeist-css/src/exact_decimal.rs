@@ -68,6 +68,17 @@ impl<'a> LexicalDecimal<'a> {
             .filter(|c| *c != b'.')
             .map(|c| c - b'0')
     }
+    /// Applies an exact decimal unit exponent without materializing digits.
+    /// The bounded shift leaves the borrowed coefficient and raw exponent
+    /// available to the overflow-safe equality fallback.
+    pub(crate) fn shifted(mut self, places: i32) -> Self {
+        let places = i128::from(places);
+        self.exponent_adjustment += places;
+        self.exponent = self
+            .exponent
+            .and_then(|exponent| exponent.checked_add(places));
+        self
+    }
     /// Compares checked decimal values without expanding their exponents or
     /// rounding their coefficients. Original syntax and provenance stay intact.
     pub(crate) fn value_eq(&self, other: &Self) -> bool {

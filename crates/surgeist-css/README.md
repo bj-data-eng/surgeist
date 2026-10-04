@@ -8,6 +8,14 @@ unsupported productions; consult the [support reference](docs/reference.md#confo
 for exact boundaries. Cascade, substitution, matching, resource loading, and
 layout belong to downstream consumers.
 
+CSS Speech `pause-before`, `pause-after`, `rest-before`, and `rest-after` retain
+`none`, symbolic break strengths, or exact nonnegative ordinary times with
+checked time calculations. `pause` and `rest` retain one or two ordered values
+and intrinsically expand them to before/after longhands. Checked composition
+and bounded specified serialization preserve authored omissions and provenance;
+canonical pair output omits a demonstrably equivalent second value. Strength
+durations, pause collapse, and additive rest execution belong downstream.
+
 Checked `CssBackgroundLayer` and `CssBackground` construction retains authored
 omissions and enforces size/position and final-color constraints. Intrinsic
 `background` expansion supplies all eight longhands with per-layer schema

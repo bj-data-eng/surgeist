@@ -1,4 +1,4 @@
-//! Intrinsic authored keyword values from CSS Speech 1 §§7.1–7.2.
+//! Intrinsic authored values from CSS Speech 1 §§7–9.
 //!
 //! These values retain author choices. Voice selection, pronunciation and the
 //! contextual computed/used behavior of `speak: auto` belong downstream.
@@ -8,8 +8,11 @@
 //! `auto` and `normal`. Speech 1's property tables label computed values as the
 //! specified value; the prose additionally gives contextual rules for `auto`.
 
-use crate::specified_serialization::serialize_keyword_sequence;
-use crate::{CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits};
+use crate::specified_serialization::{SpecifiedSerializationContext, serialize_keyword_sequence};
+use crate::{
+    CssDuration, CssNumericConstructionError, CssSpecifiedValueSerializationError,
+    CssSpecifiedValueSerializationLimits, CssTimeValue,
+};
 
 type SerializationResult = Result<String, CssSpecifiedValueSerializationError>;
 
@@ -175,5 +178,173 @@ impl CssSpeakAs {
             },
         };
         serialize_keyword_sequence(text, limits)
+    }
+}
+
+/// An authored pause/rest strength whose absolute duration remains contextual.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssSpeechBreakStrength {
+    XWeak,
+    Weak,
+    Medium,
+    Strong,
+    XStrong,
+}
+
+impl CssSpeechBreakStrength {
+    const fn as_css(self) -> &'static str {
+        match self {
+            Self::XWeak => "x-weak",
+            Self::Weak => "weak",
+            Self::Medium => "medium",
+            Self::Strong => "strong",
+            Self::XStrong => "x-strong",
+        }
+    }
+}
+
+/// One authored pause or rest, retaining a strength, `none`, or checked duration.
+///
+/// Ordinary times are nonnegative under [`CssDuration`]'s exact lexical rule;
+/// calculations remain authored until computed range handling downstream.
+/// `none` is preserved separately from an explicit zero time. This model does
+/// not assign strength durations or execute pause collapse or additive rests.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssSpeechBreak {
+    None,
+    Strength(CssSpeechBreakStrength),
+    Time(CssDuration),
+}
+
+impl CssSpeechBreak {
+    /// Checks ordinary time range and original closure through the duration owner.
+    pub fn try_time(time: CssTimeValue) -> Result<Self, CssNumericConstructionError> {
+        CssDuration::try_new(time).map(Self::Time)
+    }
+
+    fn ensure_closed(&self) -> Result<(), CssNumericConstructionError> {
+        match self {
+            Self::Time(duration) => duration.time().ensure_closed(),
+            _ => Ok(()),
+        }
+    }
+    fn specified_value_eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Time(left), Self::Time(right)) => left.specified_value_eq(right),
+            _ => self == other,
+        }
+    }
+    /// Serializes a specified keyword or canonical time without speech execution.
+    pub fn serialize_specified(&self) -> SerializationResult {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Uses the shared cumulative input, projection and emitted-byte policy.
+    /// Time output follows [`CssDuration::serialize_specified`]; authored input
+    /// and provenance remain unchanged, including on atomic failure.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult {
+        let mut context = SpecifiedSerializationContext::new(limits);
+        let mut output = String::new();
+        self.append_specified(&mut context, &mut output)?;
+        Ok(output)
+    }
+
+    fn append_specified(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> Result<(), CssSpecifiedValueSerializationError> {
+        let keyword = match self {
+            Self::None => "none",
+            Self::Strength(strength) => strength.as_css(),
+            Self::Time(duration) => return duration.append_specified(context, output),
+        };
+        context.charge_input(1)?;
+        context.charge_projection(1)?;
+        context.append(output, keyword)
+    }
+}
+
+/// Authored before/after components of a `pause` or `rest` shorthand.
+///
+/// The optional second component remains distinct from an explicitly equal
+/// value. Omission applies the first component to both longhands; the property
+/// schema supplies their pause/rest identities and source occurrence.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssSpeechBreakPair {
+    before: CssSpeechBreak,
+    after: Option<CssSpeechBreak>,
+}
+
+impl CssSpeechBreakPair {
+    /// Composes checked components, rejecting original recovered time closure
+    /// while retaining whether the second component was authored.
+    pub fn try_new(
+        before: CssSpeechBreak,
+        after: Option<CssSpeechBreak>,
+    ) -> Result<Self, CssNumericConstructionError> {
+        before.ensure_closed()?;
+        if let Some(after) = &after {
+            after.ensure_closed()?;
+        }
+        Ok(Self { before, after })
+    }
+
+    pub(crate) const fn from_parser(before: CssSpeechBreak, after: Option<CssSpeechBreak>) -> Self {
+        Self { before, after }
+    }
+
+    #[must_use]
+    pub const fn before(&self) -> &CssSpeechBreak {
+        &self.before
+    }
+
+    /// Borrows the optional explicitly authored second component.
+    #[must_use]
+    pub const fn authored_after(&self) -> Option<&CssSpeechBreak> {
+        self.after.as_ref()
+    }
+
+    /// Borrows the after value, sharing the first when the second was omitted.
+    #[must_use]
+    pub const fn after(&self) -> &CssSpeechBreak {
+        match &self.after {
+            Some(value) => value,
+            None => &self.before,
+        }
+    }
+
+    /// Serializes in grammar order, omitting an equal second component as CSSOM
+    /// requires, without discarding its authored presence from this model.
+    pub fn serialize_specified(&self) -> SerializationResult {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Shares one cumulative budget across the pair and both authored children.
+    /// An omitted effective-after value incurs no duplicate input traversal.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult {
+        let mut context = SpecifiedSerializationContext::new(limits);
+        context.charge_input(1)?;
+        context.charge_projection(1)?;
+        let mut output = String::new();
+        self.before.append_specified(&mut context, &mut output)?;
+        if let Some(after) = &self.after {
+            let omit = after.specified_value_eq(&self.before);
+            let previous = context.replace_output_suppression(omit);
+            if !omit {
+                context.append(&mut output, " ")?;
+            }
+            after.append_specified(&mut context, &mut output)?;
+            context.replace_output_suppression(previous);
+        }
+        Ok(output)
     }
 }

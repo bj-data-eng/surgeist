@@ -2077,6 +2077,9 @@ pub surgeist_css::CssKnownProperty::PaddingInlineStart
 pub surgeist_css::CssKnownProperty::PaddingLeft
 pub surgeist_css::CssKnownProperty::PaddingRight
 pub surgeist_css::CssKnownProperty::PaddingTop
+pub surgeist_css::CssKnownProperty::Pause
+pub surgeist_css::CssKnownProperty::PauseAfter
+pub surgeist_css::CssKnownProperty::PauseBefore
 pub surgeist_css::CssKnownProperty::PlaceContent
 pub surgeist_css::CssKnownProperty::PlaceItems
 pub surgeist_css::CssKnownProperty::PlaceSelf
@@ -2084,6 +2087,9 @@ pub surgeist_css::CssKnownProperty::PointerEvents
 pub surgeist_css::CssKnownProperty::Position
 pub surgeist_css::CssKnownProperty::Quotes
 pub surgeist_css::CssKnownProperty::Resize
+pub surgeist_css::CssKnownProperty::Rest
+pub surgeist_css::CssKnownProperty::RestAfter
+pub surgeist_css::CssKnownProperty::RestBefore
 pub surgeist_css::CssKnownProperty::Right
 pub surgeist_css::CssKnownProperty::Rotate
 pub surgeist_css::CssKnownProperty::RowGap
@@ -2422,6 +2428,9 @@ pub surgeist_css::CssKnownPropertyValueRef::PaddingInlineStart(&'a surgeist_css:
 pub surgeist_css::CssKnownPropertyValueRef::PaddingLeft(&'a surgeist_css::CssPaddingLeftPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::PaddingRight(&'a surgeist_css::CssPaddingRightPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::PaddingTop(&'a surgeist_css::CssPaddingTopPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::Pause(&'a surgeist_css::CssPausePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::PauseAfter(&'a surgeist_css::CssPauseAfterPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::PauseBefore(&'a surgeist_css::CssPauseBeforePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::PlaceContent(&'a surgeist_css::CssPlaceContentPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::PlaceItems(&'a surgeist_css::CssPlaceItemsPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::PlaceSelf(&'a surgeist_css::CssPlaceSelfPropertyValue)
@@ -2429,6 +2438,9 @@ pub surgeist_css::CssKnownPropertyValueRef::PointerEvents(&'a surgeist_css::CssP
 pub surgeist_css::CssKnownPropertyValueRef::Position(&'a surgeist_css::CssPositionPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Quotes(&'a surgeist_css::CssQuotesPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Resize(&'a surgeist_css::CssResizePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::Rest(&'a surgeist_css::CssRestPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::RestAfter(&'a surgeist_css::CssRestAfterPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::RestBefore(&'a surgeist_css::CssRestBeforePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Right(&'a surgeist_css::CssRightPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Rotate(&'a surgeist_css::CssRotatePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::RowGap(&'a surgeist_css::CssRowGapPropertyValue)
@@ -2776,8 +2788,12 @@ pub surgeist_css::CssLonghandValueRef::PaddingInlineStart(&'a surgeist_css::CssP
 pub surgeist_css::CssLonghandValueRef::PaddingLeft(&'a surgeist_css::CssPaddingValue)
 pub surgeist_css::CssLonghandValueRef::PaddingRight(&'a surgeist_css::CssPaddingValue)
 pub surgeist_css::CssLonghandValueRef::PaddingTop(&'a surgeist_css::CssPaddingValue)
+pub surgeist_css::CssLonghandValueRef::PauseAfter(&'a surgeist_css::CssSpeechBreak)
+pub surgeist_css::CssLonghandValueRef::PauseBefore(&'a surgeist_css::CssSpeechBreak)
 pub surgeist_css::CssLonghandValueRef::Position(&'a surgeist_css::CssLayoutPosition)
 pub surgeist_css::CssLonghandValueRef::Quotes(&'a surgeist_css::CssQuotes)
+pub surgeist_css::CssLonghandValueRef::RestAfter(&'a surgeist_css::CssSpeechBreak)
+pub surgeist_css::CssLonghandValueRef::RestBefore(&'a surgeist_css::CssSpeechBreak)
 pub surgeist_css::CssLonghandValueRef::Right(&'a surgeist_css::CssInsetValue)
 pub surgeist_css::CssLonghandValueRef::RowGap(&'a surgeist_css::CssGapValue)
 pub surgeist_css::CssLonghandValueRef::ScrollBehavior(&'a surgeist_css::CssScrollBehavior)
@@ -3762,6 +3778,20 @@ pub surgeist_css::CssSpecifiedValueSerializationErrorKind::CapacityOverflow
 pub surgeist_css::CssSpecifiedValueSerializationErrorKind::InputNodeLimit
 pub surgeist_css::CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
 pub surgeist_css::CssSpecifiedValueSerializationErrorKind::UnserializableBoundary
+#[non_exhaustive] pub enum surgeist_css::CssSpeechBreak
+pub surgeist_css::CssSpeechBreak::None
+pub surgeist_css::CssSpeechBreak::Strength(surgeist_css::CssSpeechBreakStrength)
+pub surgeist_css::CssSpeechBreak::Time(surgeist_css::CssDuration)
+impl surgeist_css::CssSpeechBreak
+pub fn surgeist_css::CssSpeechBreak::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssSpeechBreak::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssSpeechBreak::try_time(time: surgeist_css::CssTimeValue) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+#[non_exhaustive] pub enum surgeist_css::CssSpeechBreakStrength
+pub surgeist_css::CssSpeechBreakStrength::Medium
+pub surgeist_css::CssSpeechBreakStrength::Strong
+pub surgeist_css::CssSpeechBreakStrength::Weak
+pub surgeist_css::CssSpeechBreakStrength::XStrong
+pub surgeist_css::CssSpeechBreakStrength::XWeak
 #[non_exhaustive] pub enum surgeist_css::CssStepPosition
 pub surgeist_css::CssStepPosition::End
 pub surgeist_css::CssStepPosition::JumpBoth
@@ -7789,6 +7819,18 @@ pub const fn surgeist_css::CssPathShape::new(fill_rule: core::option::Option<sur
 impl surgeist_css::CssPathShape
 pub fn surgeist_css::CssPathShape::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssPathShape::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssPauseAfterPropertyValue
+impl surgeist_css::CssPauseAfterPropertyValue
+pub fn surgeist_css::CssPauseAfterPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssPauseAfterPropertyValue::value(&self) -> &surgeist_css::CssSpeechBreak
+pub struct surgeist_css::CssPauseBeforePropertyValue
+impl surgeist_css::CssPauseBeforePropertyValue
+pub fn surgeist_css::CssPauseBeforePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssPauseBeforePropertyValue::value(&self) -> &surgeist_css::CssSpeechBreak
+pub struct surgeist_css::CssPausePropertyValue
+impl surgeist_css::CssPausePropertyValue
+pub fn surgeist_css::CssPausePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssPausePropertyValue::value(&self) -> &surgeist_css::CssSpeechBreakPair
 pub struct surgeist_css::CssPendingFontFaceDescriptorValue
 impl surgeist_css::CssPendingFontFaceDescriptorValue
 pub const fn surgeist_css::CssPendingFontFaceDescriptorValue::components(&self) -> &surgeist_css::CssComponentValues
@@ -8146,6 +8188,18 @@ pub fn surgeist_css::CssResolutionValue::from_literal(literal: surgeist_css::Css
 pub fn surgeist_css::CssResolutionValue::literal(&self) -> core::option::Option<&surgeist_css::CssResolutionLiteral>
 pub fn surgeist_css::CssResolutionValue::origin(&self) -> &surgeist_css::CssValueOrigin
 pub fn surgeist_css::CssResolutionValue::try_from_calculation(calculation: surgeist_css::CssResolutionCalculation) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub struct surgeist_css::CssRestAfterPropertyValue
+impl surgeist_css::CssRestAfterPropertyValue
+pub fn surgeist_css::CssRestAfterPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssRestAfterPropertyValue::value(&self) -> &surgeist_css::CssSpeechBreak
+pub struct surgeist_css::CssRestBeforePropertyValue
+impl surgeist_css::CssRestBeforePropertyValue
+pub fn surgeist_css::CssRestBeforePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssRestBeforePropertyValue::value(&self) -> &surgeist_css::CssSpeechBreak
+pub struct surgeist_css::CssRestPropertyValue
+impl surgeist_css::CssRestPropertyValue
+pub fn surgeist_css::CssRestPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssRestPropertyValue::value(&self) -> &surgeist_css::CssSpeechBreakPair
 pub struct surgeist_css::CssRgbColor
 impl surgeist_css::CssRgbColor
 pub const fn surgeist_css::CssRgbColor::alpha(&self) -> core::option::Option<&surgeist_css::CssColorComponent>
@@ -8671,6 +8725,14 @@ pub const fn surgeist_css::CssSpecifiedValueSerializationLimits::max_projection_
 pub const fn surgeist_css::CssSpecifiedValueSerializationLimits::new(max_input_nodes: usize, max_projection_nodes: usize, max_css_bytes: usize) -> Self
 impl core::default::Default for surgeist_css::CssSpecifiedValueSerializationLimits
 pub fn surgeist_css::CssSpecifiedValueSerializationLimits::default() -> Self
+pub struct surgeist_css::CssSpeechBreakPair
+impl surgeist_css::CssSpeechBreakPair
+pub const fn surgeist_css::CssSpeechBreakPair::after(&self) -> &surgeist_css::CssSpeechBreak
+pub const fn surgeist_css::CssSpeechBreakPair::authored_after(&self) -> core::option::Option<&surgeist_css::CssSpeechBreak>
+pub const fn surgeist_css::CssSpeechBreakPair::before(&self) -> &surgeist_css::CssSpeechBreak
+pub fn surgeist_css::CssSpeechBreakPair::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssSpeechBreakPair::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssSpeechBreakPair::try_new(before: surgeist_css::CssSpeechBreak, after: core::option::Option<surgeist_css::CssSpeechBreak>) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 pub struct surgeist_css::CssSteps
 impl surgeist_css::CssSteps
 pub const fn surgeist_css::CssSteps::count(&self) -> &surgeist_css::CssPositiveIntegerValue

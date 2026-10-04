@@ -2291,7 +2291,14 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::ContainerType => X_CONDITIONAL5,
         CssKnownProperty::All => O_CASCADE4,
         CssKnownProperty::Display | CssKnownProperty::Visibility => S_DISPLAY3,
-        CssKnownProperty::Speak | CssKnownProperty::SpeakAs => S_SPEECH1,
+        CssKnownProperty::Speak
+        | CssKnownProperty::SpeakAs
+        | CssKnownProperty::PauseBefore
+        | CssKnownProperty::PauseAfter
+        | CssKnownProperty::Pause
+        | CssKnownProperty::RestBefore
+        | CssKnownProperty::RestAfter
+        | CssKnownProperty::Rest => S_SPEECH1,
         CssKnownProperty::Quotes | CssKnownProperty::Content => X_CONTENT3,
         CssKnownProperty::BorderCollapse
         | CssKnownProperty::BorderSpacing
@@ -2739,7 +2746,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 638] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 644] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -4485,6 +4492,28 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 638] = [
         "speak-as",
         "official.property.speak-as"
     ),
+    complete_property_feature!(
+        CssKnownProperty::PauseBefore,
+        "pause-before",
+        "official.property.pause-before"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::PauseAfter,
+        "pause-after",
+        "official.property.pause-after"
+    ),
+    complete_property_feature!(CssKnownProperty::Pause, "pause", "official.property.pause"),
+    complete_property_feature!(
+        CssKnownProperty::RestBefore,
+        "rest-before",
+        "official.property.rest-before"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::RestAfter,
+        "rest-after",
+        "official.property.rest-after"
+    ),
+    complete_property_feature!(CssKnownProperty::Rest, "rest", "official.property.rest"),
     complete_property_feature!(
         CssKnownProperty::Content,
         "content",
