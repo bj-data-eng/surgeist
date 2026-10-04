@@ -3806,11 +3806,44 @@ fn attribute_name_constructor_matches_parser_identifier_invariants() {
         "data-state"
     );
     assert_eq!(CssAttributeName::try_new(""), None);
-    assert_eq!(CssAttributeName::try_new(" \t\n "), None);
-    assert_eq!(CssAttributeName::try_new("data state"), None);
-    assert_eq!(CssAttributeName::try_new("svg|href"), None);
-    assert_eq!(CssAttributeName::try_new("data-state extra"), None);
-    assert_eq!(CssAttributeName::try_new("data-state;"), None);
+    assert_eq!(CssAttributeName::try_new("a\0b"), None);
+    for (decoded, spelling) in [
+        (" \t\n ", r"\20 \9 \a \20 "),
+        ("data state", r"data\ state"),
+        ("svg|href", r"svg\|href"),
+        ("data-state extra", r"data-state\ extra"),
+        ("data-state;", r"data-state\;"),
+    ] {
+        // These are decoded IDENT values, not unescaped selector spelling.
+        let components = parse_component_values(spelling).unwrap();
+        let [identifier] = components.items() else {
+            panic!("one independently supplied identifier spelling: {spelling}");
+        };
+        assert!(matches!(
+            identifier.view(),
+            CssComponentValueRef::Token(CssValueTokenRef::Ident(value)) if value == decoded
+        ));
+        assert_eq!(
+            CssAttributeName::try_new(decoded).unwrap().as_str(),
+            decoded
+        );
+
+        let source = format!("[{spelling}]");
+        let parsed = parse_selector(&source, &CssNamespaceContext::default());
+        assert!(parsed.is_clean(), "{source}: {parsed:?}");
+        let Some(CssSelector::Compound(compound)) = parsed.syntax() else {
+            panic!("one attribute selector: {source}");
+        };
+        let [attribute] = compound.attributes() else {
+            panic!("one decoded attribute name: {source}");
+        };
+        assert_eq!(attribute.name().as_str(), decoded);
+        assert_eq!(attribute.namespace(), &CssNamespaceConstraint::ExplicitNone);
+
+        let unescaped = parse_selector(&format!("[{decoded}]"), &CssNamespaceContext::default());
+        assert!(!unescaped.is_clean());
+        assert!(unescaped.syntax().is_none());
+    }
 }
 
 #[test]

@@ -1219,17 +1219,13 @@ pub struct CssAttributeName {
 }
 
 impl CssAttributeName {
+    /// Constructs a decoded attribute identifier whose CSS spelling may require escapes.
+    /// Empty values and NUL cannot preserve identifier identity.
     #[must_use]
     pub fn try_new(name: impl Into<String>) -> Option<Self> {
         let name = name.into();
-        let is_valid = {
-            let mut input = cssparser::ParserInput::new(&name);
-            let mut parser = cssparser::Parser::new(&mut input);
-            let parsed = parser.expect_ident_cloned().ok()?;
-            parser.expect_exhausted().ok()?;
-            parsed.as_ref() == name
-        };
-        if is_valid { Some(Self { name }) } else { None }
+        crate::CssComponentValue::try_ident(name.clone()).ok()?;
+        Some(Self { name })
     }
 
     #[must_use]
