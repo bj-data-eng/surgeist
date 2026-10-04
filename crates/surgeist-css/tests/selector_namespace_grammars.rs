@@ -180,7 +180,17 @@ fn namespace_rules_obey_namespaces3_prelude_ordering() {
     );
     let report = parse_sheet(source);
 
-    assert!(report.is_clean(), "{:?}", report.diagnostics());
+    assert!(!report.is_clean());
+    assert_eq!(report.diagnostics().len(), 2);
+    assert!(
+        report
+            .diagnostics()
+            .iter()
+            .all(
+                |diagnostic| diagnostic.error().code() == CssErrorCode::NamespaceRedeclaration
+                    && diagnostic.action() == CssRecoveryAction::RetainNonconformingRule
+            )
+    );
     let [
         CssRule::Namespace(first_default),
         CssRule::Namespace(first_named),
@@ -211,7 +221,7 @@ fn namespace_rules_obey_namespaces3_prelude_ordering() {
     assert_eq!(replacement.name().as_str(), "replacement");
     assert!(last_default.prefix().is_none());
     assert_eq!(last_default.name().as_str(), "");
-    assert_eq!(first_default.position().byte_offset().value(), 0);
+    assert_eq!(first_default.position().unwrap().byte_offset().value(), 0);
 }
 
 #[test]
@@ -261,8 +271,15 @@ fn namespace_public_values_check_prefixes_and_preserve_literal_names() {
         "SVG"
     );
     assert!(CssNamespacePrefix::try_new("").is_none());
-    assert!(CssNamespacePrefix::try_new("two names").is_none());
-    assert!(CssNamespacePrefix::try_new("s\\76 g").is_none());
+    assert_eq!(
+        CssNamespacePrefix::try_new("two names").unwrap().as_str(),
+        "two names"
+    );
+    assert_eq!(
+        CssNamespacePrefix::try_new("s\\76 g").unwrap().as_str(),
+        "s\\76 g"
+    );
+    assert!(CssNamespacePrefix::try_new("a\0b").is_none());
 
     assert_eq!(CssNamespaceName::new("").as_str(), "");
     assert_eq!(CssNamespaceName::new("not a URI").as_str(), "not a URI");
@@ -430,7 +447,17 @@ fn namespace_prefix_escapes_redeclarations_and_case_remain_exact() {
         "@namespace s\\76 g \"urn:replacement\";",
         "s\\76 g|\\61 ,SVG|a,*|*,|* { color: red; }",
     ));
-    assert!(report.is_clean(), "{:?}", report.diagnostics());
+    assert!(!report.is_clean());
+    assert_eq!(report.diagnostics().len(), 1);
+    assert!(
+        report
+            .diagnostics()
+            .iter()
+            .all(
+                |diagnostic| diagnostic.error().code() == CssErrorCode::NamespaceRedeclaration
+                    && diagnostic.action() == CssRecoveryAction::RetainNonconformingRule
+            )
+    );
     assert_eq!(report.syntax().rules().len(), 4);
     let CssRule::Style(style) = &report.syntax().rules()[3] else {
         panic!("expected one authored qualified selector list")

@@ -1477,7 +1477,7 @@ fn rule_start(rule: &CssRule) -> usize {
                 .value();
         }
         CssRule::Import(rule) => rule.position().expect("parsed import rule"),
-        CssRule::Namespace(rule) => rule.position(),
+        CssRule::Namespace(rule) => rule.position().expect("parsed namespace rule"),
         CssRule::CounterStyle(rule) => rule.position(),
         CssRule::Page(rule) => rule.position(),
         CssRule::LayerStatement(rule) => rule.position(),
@@ -1543,6 +1543,42 @@ fn parse_sheet_inner(source: &str, recovery: RecoveryState) -> crate::CssParseRe
             match result {
                 Ok(parsed_rules) => {
                     for rule in parsed_rules {
+                        if let CssRule::Namespace(namespace) = &rule
+                            && let Some(previous) =
+                                sheet
+                                    .rules()
+                                    .iter()
+                                    .rev()
+                                    .find_map(|retained| match retained {
+                                        CssRule::Namespace(previous)
+                                            if previous.prefix() == namespace.prefix() =>
+                                        {
+                                            Some(previous)
+                                        }
+                                        _ => None,
+                                    })
+                        {
+                            let position = namespace.position().expect("parsed namespace rule");
+                            let previous_position =
+                                previous.position().expect("parsed namespace rule");
+                            let span = crate::CssSourceSpan::new(
+                                position,
+                                crate::CssSourcePosition::from_byte_offset_in(source, unit_end),
+                            )
+                            .expect("retained namespace rule lies within its source unit");
+                            diagnostics.push(
+                                crate::CssRecoveryDiagnostic::new(
+                                    crate::error::namespace_redeclaration(
+                                        namespace.prefix().cloned(),
+                                        position,
+                                        previous_position,
+                                    ),
+                                    span,
+                                    crate::CssRecoveryAction::RetainNonconformingRule,
+                                )
+                                .expect("namespace error is at the retained rule's source start"),
+                            );
+                        }
                         sheet.push_rule(rule);
                     }
                 }
@@ -2324,9 +2360,7 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
                 Ok(vec![rule])
             }
             StrictAtRulePrelude::Namespace(prelude) => {
-                let rule = CssNamespaceRule::new(
-                    prelude.prefix,
-                    prelude.name,
+                let rule = CssNamespaceRule::new(prelude.prefix, prelude.name).with_position(
                     crate::source::CssSourcePosition::from_cssparser(
                         start.position(),
                         start.source_location(),

@@ -31,7 +31,7 @@ fn public_surface_exposes_checked_private_field_namespace_models() {
     };
     assert_eq!(rule.prefix().expect("decoded prefix").as_str(), "svg");
     assert_eq!(rule.name().as_str(), "not a URI");
-    assert_eq!(rule.position().byte_offset().value(), 0);
+    assert_eq!(rule.position().unwrap().byte_offset().value(), 0);
 
     assert_eq!(
         CssNamespacePrefix::try_new("svg")
@@ -39,7 +39,12 @@ fn public_surface_exposes_checked_private_field_namespace_models() {
             .as_str(),
         "svg"
     );
-    assert!(CssNamespacePrefix::try_new("svg icon").is_none());
+    assert_eq!(
+        CssNamespacePrefix::try_new("svg icon")
+            .expect("decoded identifier representable with CSS escaping")
+            .as_str(),
+        "svg icon"
+    );
     assert_eq!(CssNamespaceName::new("").as_str(), "");
 }
 

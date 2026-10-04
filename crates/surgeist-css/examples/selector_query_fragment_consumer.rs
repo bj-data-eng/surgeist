@@ -172,7 +172,18 @@ fn first_slice_signatures_and_namespace_context() {
         "@namespace SVG \"urn:upper\";@namespace \"\";@namespace svg \"\";",
         ".kept{color:red}",
     ));
-    assert!(sheet.is_clean(), "{:?}", sheet.diagnostics());
+    assert!(!sheet.is_clean());
+    assert_eq!(sheet.diagnostics().len(), 2);
+    assert!(
+        sheet
+            .diagnostics()
+            .iter()
+            .all(
+                |diagnostic| diagnostic.error().code() == CssErrorCode::NamespaceRedeclaration
+                    && diagnostic.action() == CssRecoveryAction::RetainNonconformingRule
+            )
+    );
+    assert_validation_parity(&sheet);
     let from_sheet = CssNamespaceContext::from_sheet(sheet.syntax());
     drop(sheet);
     assert_eq!(from_sheet.default_namespace().unwrap().as_str(), "");

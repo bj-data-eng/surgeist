@@ -48,7 +48,10 @@ fn initial_layer_statements_allow_namespaces_with_or_without_imports() {
             .unwrap();
         assert_eq!(namespace.prefix().unwrap().as_str(), "svg");
         assert_eq!(namespace.name().as_str(), "urn:svg");
-        assert_eq!(namespace.position().byte_offset().value(), prefix.len());
+        assert_eq!(
+            namespace.position().unwrap().byte_offset().value(),
+            prefix.len()
+        );
     }
 }
 

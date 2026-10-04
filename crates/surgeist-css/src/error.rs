@@ -12,9 +12,9 @@ use crate::source::CssSourcePosition;
 use crate::syntax::CssCustomPropertyName;
 use crate::validation::{PropertyNameStatus, classify_property_name, property_for_supported_name};
 
-/// A stable machine-readable diagnostic-phase category for a strict CSS parse failure.
+/// A stable machine-readable category for a CSS grammar or conformance diagnostic.
 ///
-/// A code classifies the rejected authored syntax; it does not select recovery policy or
+/// A code classifies the authored invariant violation; it does not select recovery policy or
 /// resolve authored values.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -31,6 +31,8 @@ pub enum CssErrorCode {
     InvalidAtRulePrelude,
     /// An authored at-rule body did not satisfy the rule's grammar.
     InvalidAtRuleBody,
+    /// A retained declaration repeated a namespace prefix or default binding.
+    NamespaceRedeclaration,
     /// The authored at-rule name is not recognized by the CSS catalog.
     UnknownAtRule,
     /// The authored at-rule is recognized but is outside this crate's supported subset.
@@ -414,6 +416,30 @@ impl CssAtRuleSyntaxError {
     /// Returns the responsible authored token, or `None` when the production ended at EOF.
     pub const fn encountered(&self) -> Option<&CssTokenSummary> {
         self.encountered.as_ref()
+    }
+}
+
+/// Diagnostic detail for a retained namespace declaration repeating an existing binding.
+///
+/// A missing prefix identifies the default binding. The last declaration remains
+/// effective, while the stylesheet is nonconforming even when the names agree.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssNamespaceRedeclarationError {
+    prefix: Option<crate::CssNamespacePrefix>,
+    previous_position: CssSourcePosition,
+}
+
+impl CssNamespaceRedeclarationError {
+    /// Returns the exact decoded prefix, or `None` for a repeated default binding.
+    #[must_use]
+    pub const fn prefix(&self) -> Option<&crate::CssNamespacePrefix> {
+        self.prefix.as_ref()
+    }
+
+    /// Returns the preceding retained declaration's at-keyword position.
+    #[must_use]
+    pub const fn previous_position(&self) -> CssSourcePosition {
+        self.previous_position
     }
 }
 
@@ -895,10 +921,10 @@ impl CssNestingLimitError {
     }
 }
 
-/// The structured diagnostic-phase detail for one strict CSS parse failure.
+/// The structured diagnostic-phase detail for one CSS grammar or conformance violation.
 ///
 /// Every variant carries the payload required by its stable [`CssErrorCode`] and preserves authored
-/// provenance without a free-form catch-all. Matching a variant diagnoses rejected syntax; it does
+/// provenance without a free-form catch-all. Matching a variant diagnoses authored syntax; it does
 /// not perform browser-style recovery, cascade, substitution, matching, or contextual resolution.
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -915,6 +941,8 @@ pub enum ErrorKind {
     InvalidAtRulePrelude(CssAtRuleSyntaxError),
     /// An authored at-rule body was invalid.
     InvalidAtRuleBody(CssAtRuleSyntaxError),
+    /// A retained namespace declaration repeated a named or default binding.
+    NamespaceRedeclaration(CssNamespaceRedeclarationError),
     /// An authored at-rule name was not recognized.
     UnknownAtRule(CssUnknownAtRuleError),
     /// An authored at-rule was recognized but unsupported.
@@ -949,9 +977,9 @@ pub enum ErrorKind {
     NestingLimit(CssNestingLimitError),
 }
 
-/// A structured strict-parse diagnostic at one semantic authored-source position.
+/// A structured grammar or conformance diagnostic at one semantic authored-source position.
 ///
-/// The kind and position jointly identify the rejected syntax invariant. This error reports the
+/// The kind and position jointly identify the violated authored invariant. This error reports the
 /// failure but does not perform browser-style recovery, cascade, substitution, selector matching,
 /// contextual resolution, or resource loading.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -989,6 +1017,7 @@ impl Error {
             ErrorKind::InvalidAtRulePlacement(_) => CssErrorCode::InvalidAtRulePlacement,
             ErrorKind::InvalidAtRulePrelude(_) => CssErrorCode::InvalidAtRulePrelude,
             ErrorKind::InvalidAtRuleBody(_) => CssErrorCode::InvalidAtRuleBody,
+            ErrorKind::NamespaceRedeclaration(_) => CssErrorCode::NamespaceRedeclaration,
             ErrorKind::UnknownAtRule(_) => CssErrorCode::UnknownAtRule,
             ErrorKind::UnsupportedAtRule(_) => CssErrorCode::UnsupportedAtRule,
             ErrorKind::InvalidQualifiedRule(_) => CssErrorCode::InvalidQualifiedRule,
@@ -1070,6 +1099,20 @@ pub(crate) fn nesting_limit<'i>(
             position,
         }),
         location,
+    }
+}
+
+pub(crate) fn namespace_redeclaration(
+    prefix: Option<crate::CssNamespacePrefix>,
+    position: CssSourcePosition,
+    previous_position: CssSourcePosition,
+) -> Error {
+    Error {
+        kind: ErrorKind::NamespaceRedeclaration(CssNamespaceRedeclarationError {
+            prefix,
+            previous_position,
+        }),
+        position,
     }
 }
 
@@ -2087,6 +2130,13 @@ mod tests {
                     name: at_rule.clone(),
                 }),
                 CssErrorCode::UnknownAtRule,
+            ),
+            (
+                ErrorKind::NamespaceRedeclaration(CssNamespaceRedeclarationError {
+                    prefix: None,
+                    previous_position: CssSourcePosition::from_byte_offset_in("@namespace '';", 0),
+                }),
+                CssErrorCode::NamespaceRedeclaration,
             ),
             (
                 ErrorKind::UnsupportedAtRule(CssUnsupportedAtRuleError {

@@ -1245,7 +1245,7 @@ fn ordinary_position(rule: &CssRule) -> Option<CssSourcePosition> {
                 .and_then(CssDeclaration::position);
         }
         CssRule::Import(value) => return value.position(),
-        CssRule::Namespace(value) => value.position(),
+        CssRule::Namespace(value) => return value.position(),
         CssRule::CounterStyle(value) => value.position(),
         CssRule::Page(value) => value.position(),
         CssRule::LayerStatement(value) => value.position(),
@@ -1397,6 +1397,28 @@ mod import_construction_tests {
         CssComponentValue, CssComponentValues, CssNamespaceContext, CssValueOrigin,
         parse_component_values,
     };
+
+    #[test]
+    fn constructed_namespace_normalization_preserves_absent_authored_coordinates() {
+        let declaration = crate::CssNamespaceRule::new(
+            Some(crate::CssNamespacePrefix::try_new("1").unwrap()),
+            crate::CssNamespaceName::new(""),
+        );
+        let mut sheet = CssSheet::new();
+        sheet.push_rule(CssRule::Namespace(declaration.clone()));
+        let normalized = normalize_sheet(&sheet).unwrap();
+        drop(sheet);
+        let [CssNormalizedItem::Rule(context)] = normalized.items() else {
+            panic!("constructed namespace retained as one normalization occurrence")
+        };
+        assert_eq!(context.position(), None);
+        let CssRuleContextKindRef::Namespace(retained) = context.kind() else {
+            panic!("constructed namespace payload")
+        };
+        assert_eq!(retained, &declaration);
+        assert_eq!(retained.position(), None);
+        assert!(context.parent().is_none());
+    }
 
     #[test]
     fn programmatic_and_parsed_import_origins_survive_normalization() {

@@ -1080,6 +1080,7 @@ pub surgeist_css::CssErrorCode::InvalidMediaQuery
 pub surgeist_css::CssErrorCode::InvalidPropertyValue
 pub surgeist_css::CssErrorCode::InvalidQualifiedRule
 pub surgeist_css::CssErrorCode::InvalidSelector
+pub surgeist_css::CssErrorCode::NamespaceRedeclaration
 pub surgeist_css::CssErrorCode::NestingLimit
 pub surgeist_css::CssErrorCode::UnexpectedEnd
 pub surgeist_css::CssErrorCode::UnexpectedToken
@@ -3404,6 +3405,7 @@ pub surgeist_css::CssRecoveryAction::IgnoreLegacyToken
 pub surgeist_css::CssRecoveryAction::IgnoreUnterminatedComment
 pub surgeist_css::CssRecoveryAction::RejectInput
 pub surgeist_css::CssRecoveryAction::ReplaceMediaQueryWithNever
+pub surgeist_css::CssRecoveryAction::RetainNonconformingRule
 pub surgeist_css::CssRecoveryAction::RetainWithImplicitClosure
 pub surgeist_css::CssRecoveryAction::StopAtNestingLimit
 #[non_exhaustive] pub enum surgeist_css::CssRectShapeEdge
@@ -4221,6 +4223,7 @@ pub surgeist_css::ErrorKind::InvalidMediaQuery(surgeist_css::CssMediaQueryError)
 pub surgeist_css::ErrorKind::InvalidPropertyValue(surgeist_css::CssPropertyValueError)
 pub surgeist_css::ErrorKind::InvalidQualifiedRule(surgeist_css::CssQualifiedRuleError)
 pub surgeist_css::ErrorKind::InvalidSelector(surgeist_css::CssSelectorError)
+pub surgeist_css::ErrorKind::NamespaceRedeclaration(surgeist_css::CssNamespaceRedeclarationError)
 pub surgeist_css::ErrorKind::NestingLimit(surgeist_css::CssNestingLimitError)
 pub surgeist_css::ErrorKind::UnexpectedEnd(surgeist_css::CssUnexpectedEndError)
 pub surgeist_css::ErrorKind::UnexpectedToken(surgeist_css::CssUnexpectedTokenError)
@@ -7428,10 +7431,15 @@ pub struct surgeist_css::CssNamespacePrefix
 impl surgeist_css::CssNamespacePrefix
 pub fn surgeist_css::CssNamespacePrefix::as_str(&self) -> &str
 pub fn surgeist_css::CssNamespacePrefix::try_new(value: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub struct surgeist_css::CssNamespaceRedeclarationError
+impl surgeist_css::CssNamespaceRedeclarationError
+pub const fn surgeist_css::CssNamespaceRedeclarationError::prefix(&self) -> core::option::Option<&surgeist_css::CssNamespacePrefix>
+pub const fn surgeist_css::CssNamespaceRedeclarationError::previous_position(&self) -> surgeist_css::CssSourcePosition
 pub struct surgeist_css::CssNamespaceRule
 impl surgeist_css::CssNamespaceRule
 pub const fn surgeist_css::CssNamespaceRule::name(&self) -> &surgeist_css::CssNamespaceName
-pub const fn surgeist_css::CssNamespaceRule::position(&self) -> surgeist_css::CssSourcePosition
+pub const fn surgeist_css::CssNamespaceRule::new(prefix: core::option::Option<surgeist_css::CssNamespacePrefix>, name: surgeist_css::CssNamespaceName) -> Self
+pub const fn surgeist_css::CssNamespaceRule::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
 pub const fn surgeist_css::CssNamespaceRule::prefix(&self) -> core::option::Option<&surgeist_css::CssNamespacePrefix>
 pub struct surgeist_css::CssNestedDeclarationsRule
 impl surgeist_css::CssNestedDeclarationsRule

@@ -3881,7 +3881,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 638] = [
         CssFeatureKind::Rule,
         "@namespace",
         O_NAMESPACES3,
-        "#declaration,#syntax",
+        "#terminology,#declaration,#syntax,#scope,#prefixes",
     ),
     CssFeatureMetadata::complete(
         "later.rule.supports",

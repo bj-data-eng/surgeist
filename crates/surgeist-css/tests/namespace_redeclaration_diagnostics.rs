@@ -4,8 +4,10 @@
 //! https://www.w3.org/TR/2014/REC-css-namespaces-3-20140320/#prefixes
 
 use surgeist_css::{
-    CssNamespaceConstraint, CssNamespaceContext, CssNamespacePrefix, CssParseReport,
-    CssRecoveryAction, CssRule, CssSelector, CssSheet, parse_selector, parse_sheet, validate_sheet,
+    CssErrorCode, CssNamespaceConstraint, CssNamespaceContext, CssNamespacePrefix,
+    CssNormalizedItem, CssParseReport, CssRecoveryAction, CssRule, CssRuleContextKindRef,
+    CssSelector, CssSheet, ErrorKind, normalize_report, parse_rule, parse_selector, parse_sheet,
+    validate_sheet,
 };
 
 fn prefix(value: &str) -> CssNamespacePrefix {
@@ -62,8 +64,18 @@ fn assert_duplicate_diagnostics(
         );
         assert!(span.start().byte_offset().value() >= start);
         assert!(span.end().byte_offset().value() <= end);
-        assert_ne!(diagnostic.action(), CssRecoveryAction::DropAtRule);
-        assert_ne!(diagnostic.action(), CssRecoveryAction::RejectInput);
+        assert_eq!(
+            diagnostic.error().code(),
+            CssErrorCode::NamespaceRedeclaration
+        );
+        assert_eq!(
+            diagnostic.action(),
+            CssRecoveryAction::RetainNonconformingRule
+        );
+        assert!(matches!(
+            diagnostic.error().kind(),
+            ErrorKind::NamespaceRedeclaration(_)
+        ));
     }
     let failure = validate_sheet(source).expect_err("nonconforming sheet fails validation");
     assert_eq!(failure.diagnostics(), report.diagnostics());
@@ -110,7 +122,7 @@ fn decoded_named_redeclarations_retain_order_and_last_binding_with_local_diagnos
         .rules()
         .iter()
         .filter_map(|rule| match rule {
-            CssRule::Namespace(rule) => Some(rule.position().byte_offset().value()),
+            CssRule::Namespace(rule) => Some(rule.position().unwrap().byte_offset().value()),
             _ => None,
         })
         .collect::<Vec<_>>();
@@ -379,4 +391,187 @@ fn escaped_namespace_prefixes_parse_as_clean_decoded_identifiers_without_unwindi
         );
         assert_eq!(validate_sheet(source).unwrap(), *report.syntax());
     }
+}
+
+#[test]
+fn named_and_default_redeclarations_preserve_typed_prior_origins_through_normalization() {
+    let first_named = "@namespace svg 'first';";
+    let second_named = "@namespace svg 'second';";
+    let first_default = "@namespace 'first';";
+    let second_default = "@namespace '';";
+    let source = format!(
+        "/*😀*/\r\n{first_named}\r\n{second_named}\r\n{first_default}\r\n{second_default}\r\nsvg|leaf{{}}"
+    );
+    let report = parse_sheet(&source);
+    assert_eq!(report.diagnostics().len(), 2);
+    for (diagnostic, name, current, previous, line) in [
+        (
+            &report.diagnostics()[0],
+            Some("svg"),
+            second_named,
+            first_named,
+            2,
+        ),
+        (
+            &report.diagnostics()[1],
+            None,
+            second_default,
+            first_default,
+            4,
+        ),
+    ] {
+        assert_eq!(
+            diagnostic.action(),
+            CssRecoveryAction::RetainNonconformingRule
+        );
+        assert_eq!(
+            diagnostic.error().code(),
+            CssErrorCode::NamespaceRedeclaration
+        );
+        let ErrorKind::NamespaceRedeclaration(detail) = diagnostic.error().kind() else {
+            panic!("typed namespace redeclaration detail: {diagnostic:?}");
+        };
+        assert_eq!(detail.prefix().map(CssNamespacePrefix::as_str), name);
+        assert_eq!(
+            detail.previous_position().byte_offset().value(),
+            source.find(previous).unwrap()
+        );
+        assert_eq!(detail.previous_position().line().value(), line - 1);
+        assert_eq!(detail.previous_position().column().value(), 0);
+        let position = diagnostic.error().position();
+        assert_eq!(
+            position.byte_offset().value(),
+            source.find(current).unwrap()
+        );
+        assert_eq!(position.line().value(), line);
+        assert_eq!(position.column().value(), 0);
+        assert_eq!(
+            &source[diagnostic.span().start().byte_offset().value()
+                ..diagnostic.span().end().byte_offset().value()],
+            current
+        );
+    }
+    let normalized =
+        normalize_report(&report).expect("namespace syntax normalizes with diagnostics");
+    assert!(!normalized.is_clean());
+    assert_eq!(normalized.diagnostics(), report.diagnostics());
+    let names = normalized
+        .syntax()
+        .items()
+        .iter()
+        .filter_map(|item| match item {
+            CssNormalizedItem::Rule(context) => match context.kind() {
+                CssRuleContextKindRef::Namespace(rule) => Some((
+                    rule.prefix().map(CssNamespacePrefix::as_str),
+                    rule.name().as_str(),
+                )),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        names,
+        [
+            (Some("svg"), "first"),
+            (Some("svg"), "second"),
+            (None, "first"),
+            (None, "")
+        ]
+    );
+}
+
+#[test]
+fn fragment_context_bindings_do_not_manufacture_authored_namespace_redeclarations() {
+    let context = CssNamespaceContext::from_bindings([
+        (None, surgeist_css::CssNamespaceName::new("urn:default")),
+        (
+            Some(prefix("svg")),
+            surgeist_css::CssNamespaceName::new("urn:original"),
+        ),
+    ]);
+    let original = context.clone();
+    for (source, expected_prefix, expected_name) in [
+        (
+            "@namespace svg 'urn:fragment';",
+            Some("svg"),
+            "urn:fragment",
+        ),
+        ("@namespace '';", None, ""),
+    ] {
+        let report = parse_rule(source, &context);
+        assert!(
+            report.is_clean(),
+            "supplied context is not another authored declaration: {report:?}"
+        );
+        let Some(CssRule::Namespace(namespace)) = report.syntax() else {
+            panic!("one fragment namespace declaration retained: {report:?}");
+        };
+        assert_eq!(
+            namespace.prefix().map(CssNamespacePrefix::as_str),
+            expected_prefix
+        );
+        assert_eq!(namespace.name().as_str(), expected_name);
+        assert_eq!(namespace.position().unwrap().byte_offset().value(), 0);
+        assert_eq!(
+            report.clone().into_validation_result().unwrap(),
+            *report.syntax()
+        );
+        assert_eq!(context, original);
+    }
+}
+
+#[test]
+fn ignored_declarations_do_not_make_the_first_retained_binding_a_redeclaration() {
+    for ignored in ["@namespace svg ident;", "@namespace svg 'urn:ignored'{}"] {
+        let source = format!("{ignored}@namespace svg 'urn:retained';svg|leaf{{}}");
+        let report = parse_sheet(&source);
+        assert_eq!(
+            declarations(report.syntax()),
+            [(Some("svg"), "urn:retained")]
+        );
+        assert_eq!(report.diagnostics().len(), 1);
+        assert_eq!(
+            report.diagnostics()[0].action(),
+            CssRecoveryAction::DropAtRule
+        );
+        let context = CssNamespaceContext::from_sheet(report.syntax());
+        assert_eq!(
+            context.named_namespace(&prefix("svg")).unwrap().as_str(),
+            "urn:retained"
+        );
+        assert_selector_namespace(
+            "svg|leaf.mark",
+            &context,
+            CssNamespaceConstraint::Named(prefix("svg")),
+        );
+    }
+}
+
+#[test]
+fn copied_null_default_remains_local_to_its_sheet_and_explicit_fragment_context() {
+    let report = parse_sheet("@import 'child.css';@namespace '';leaf{}");
+    assert!(report.is_clean());
+    let context = CssNamespaceContext::from_sheet(report.syntax());
+    let original = context.clone();
+    assert_eq!(context.default_namespace().unwrap().as_str(), "");
+    assert_selector_namespace("leaf.mark", &context, CssNamespaceConstraint::Default);
+    for source in ["leaf.mark{}", "@import 'parent.css';leaf.mark{}"] {
+        let isolated = parse_sheet(source);
+        assert!(isolated.is_clean());
+        let isolated_context = CssNamespaceContext::from_sheet(isolated.syntax());
+        assert!(isolated_context.default_namespace().is_none());
+        let Some(CssRule::Style(style)) = isolated.syntax().rules().last() else {
+            panic!("isolated style retained: {isolated:?}");
+        };
+        let CssSelector::Compound(compound) = style.selectors().selectors()[0].selector() else {
+            panic!("isolated compound retained: {isolated:?}");
+        };
+        assert_eq!(
+            compound.type_selector().unwrap().namespace(),
+            &CssNamespaceConstraint::Any
+        );
+        assert_selector_namespace("leaf.mark", &isolated_context, CssNamespaceConstraint::Any);
+    }
+    assert_eq!(context, original);
 }

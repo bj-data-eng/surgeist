@@ -1389,7 +1389,7 @@ const EXPECTED: &[ExpectedFeature] = &[
         kind: CssFeatureKind::Rule,
         spelling: "@namespace",
         source: ExpectedSource::Id("O-NAMESPACES3"),
-        production: "#declaration,#syntax",
+        production: "#terminology,#declaration,#syntax,#scope,#prefixes",
         status: CssSupportStatus::Complete,
         supported_subset: None,
         unsupported_remainder: None,
@@ -3447,7 +3447,7 @@ fn selectors3_and_namespace_metadata_are_truthful() {
         "later.rule.namespace",
         CssFeatureKind::Rule,
         "O-NAMESPACES3",
-        "#declaration,#syntax",
+        "#terminology,#declaration,#syntax,#scope,#prefixes",
     );
     assert_complete(
         "official.selector.namespace-qualified-name",

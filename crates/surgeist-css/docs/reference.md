@@ -109,6 +109,9 @@ rules into an owned context that outlives the sheet. `default_namespace()` and
 and an absent binding differs from a binding to the empty namespace. Parsing
 borrows the immutable context and preserves symbolic selector namespace
 constraints. Retain the context if later matching needs namespace names.
+Imported and sibling sheets start with their own empty bindings. Supplying a
+context to a fragment does not add declarations to that fragment or mutate the
+context.
 
 `parse_media_query` replaces a malformed complete query with `CssMediaQuery::Never`.
 `parse_media_query_list` recovers each root comma member independently, preserving
@@ -3428,9 +3431,28 @@ that previously treated every remainder as valid-but-unimplemented syntax.
 
 `CssRule::Namespace` retains a top-level `@namespace` declaration with its
 optional decoded, case-sensitive `CssNamespacePrefix`, literal
-`CssNamespaceName`, and parser-produced position. Namespace names preserve the
+`CssNamespaceName`, and optional source position. Namespace names preserve the
 authored string or `url()` token value, including empty strings and strings that
 are not valid URIs. The crate does not normalize, resolve, or load the value.
+
+`CssNamespacePrefix::try_new()` checks a decoded identifier value through the
+component-value identifier owner. Values such as `"1"` and `"a b"` are valid
+because CSS identifier escaping can represent them; an empty value or a value
+containing NUL is rejected. `CssNamespaceRule::new(prefix, name)` consumes these
+checked types and produces an intrinsically valid declaration without a source
+position. `position()` returns `None` for constructed declarations and `Some`
+for parsed declarations. Callers reading a parsed rule's position must unwrap
+that optional authored origin.
+
+Namespace declarations precede ordinary rules, following any imports and
+permitted layer statements. Within a sheet, each repeated decoded prefix or
+default declaration produces `CssErrorCode::NamespaceRedeclaration` with
+`CssRecoveryAction::RetainNonconformingRule`. The error's typed detail exposes
+the prefix and preceding retained declaration's position. Both declarations
+remain in authored order, and the last binding is effective even when its name
+is empty or agrees with the preceding name. Normalization preserves the
+diagnostics and retained rules; clean-report validation rejects the
+nonconforming sheet.
 
 Selector type, universal, and attribute names expose
 `CssNamespaceConstraint`. `Named` contains an earlier active prefix;

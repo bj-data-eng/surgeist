@@ -875,30 +875,35 @@ impl CssCounterStyleCombinationIssue {
     }
 }
 
-/// One valid authored Namespaces 3 declaration.
+/// One intrinsically valid authored Namespaces 3 declaration.
 ///
 /// The declaration retains its optional decoded prefix, literal namespace name,
-/// and parser-produced source position. It does not resolve namespace names,
-/// load resources, or perform selector matching.
+/// and optional parser-produced source position. Placement and redeclaration
+/// conformance belong to the declaring stylesheet. It does not resolve namespace
+/// names, load resources, or perform selector matching.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssNamespaceRule {
     prefix: Option<CssNamespacePrefix>,
     name: CssNamespaceName,
-    position: CssSourcePosition,
+    position: Option<CssSourcePosition>,
 }
 
 impl CssNamespaceRule {
+    /// Constructs a declaration from a checked decoded prefix and a literal name.
+    /// An omitted prefix declares the default. Empty names denote the null namespace.
+    /// Programmatic construction has no authored source position.
     #[must_use]
-    pub(crate) const fn new(
-        prefix: Option<CssNamespacePrefix>,
-        name: CssNamespaceName,
-        position: CssSourcePosition,
-    ) -> Self {
+    pub const fn new(prefix: Option<CssNamespacePrefix>, name: CssNamespaceName) -> Self {
         Self {
             prefix,
             name,
-            position,
+            position: None,
         }
+    }
+
+    pub(crate) const fn with_position(mut self, position: CssSourcePosition) -> Self {
+        self.position = Some(position);
+        self
     }
 
     /// Returns the optional exact, case-sensitive decoded namespace prefix.
@@ -913,9 +918,9 @@ impl CssNamespaceRule {
         &self.name
     }
 
-    /// Returns the semantic source position of the rule's at-keyword.
+    /// Returns the rule's authored at-keyword position, or `None` for Rust construction.
     #[must_use]
-    pub const fn position(&self) -> CssSourcePosition {
+    pub const fn position(&self) -> Option<CssSourcePosition> {
         self.position
     }
 }
@@ -930,17 +935,19 @@ pub struct CssNamespacePrefix {
 }
 
 impl CssNamespacePrefix {
-    /// Constructs a prefix from one decoded CSS identifier.
+    /// Constructs a prefix from a decoded CSS identifier, which may require escapes
+    /// in its CSS spelling. Empty values and NUL cannot retain identifier identity.
     #[must_use]
     pub fn try_new(value: impl Into<String>) -> Option<Self> {
         let value = value.into();
-        is_exact_css_identifier(&value).then(|| Self::new(value))
+        crate::CssComponentValue::try_ident(value.clone()).ok()?;
+        Some(Self { value })
     }
 
     #[must_use]
     pub(crate) fn new(value: impl Into<String>) -> Self {
         let value = value.into();
-        debug_assert!(is_exact_css_identifier(&value));
+        debug_assert!(crate::CssComponentValue::try_ident(value.clone()).is_ok());
         Self { value }
     }
 

@@ -1179,7 +1179,7 @@ fn source_public_nodes_expose_zero_based_byte_line_and_utf16_coordinates() {
     let CssRule::Namespace(rule) = &sheet.rules()[0] else {
         panic!("expected namespace rule");
     };
-    assert_position(rule.position(), 11, 1, 2);
+    assert_position(rule.position().unwrap(), 11, 1, 2);
     assert_eq!(rule.prefix().expect("decoded prefix").as_str(), "svg");
 }
 
