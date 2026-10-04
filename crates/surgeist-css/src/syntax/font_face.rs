@@ -1,7 +1,8 @@
 use super::CssSourcePosition;
 use crate::{
     CssAuthoredFontFeatureSettings, CssComponentValues, CssFontFaceStyle, CssFontFaceWeight,
-    CssFontFaceWidth, CssFontVariationSettings, CssUrl,
+    CssFontFaceWidth, CssFontLanguageOverride, CssFontMetricOverride, CssFontNamedInstance,
+    CssFontVariationSettings, CssUrl,
 };
 
 mod pending;
@@ -51,6 +52,11 @@ pub enum CssFontFaceDescriptorKind {
     UnicodeRange,
     FontFeatureSettings,
     FontVariationSettings,
+    FontNamedInstance,
+    FontLanguageOverride,
+    AscentOverride,
+    DescentOverride,
+    LineGapOverride,
 }
 
 impl CssFontFaceDescriptorKind {
@@ -67,6 +73,11 @@ impl CssFontFaceDescriptorKind {
             Self::UnicodeRange => "unicode-range",
             Self::FontFeatureSettings => "font-feature-settings",
             Self::FontVariationSettings => "font-variation-settings",
+            Self::FontNamedInstance => "font-named-instance",
+            Self::FontLanguageOverride => "font-language-override",
+            Self::AscentOverride => "ascent-override",
+            Self::DescentOverride => "descent-override",
+            Self::LineGapOverride => "line-gap-override",
         }
     }
 
@@ -81,6 +92,11 @@ impl CssFontFaceDescriptorKind {
             Self::UnicodeRange,
             Self::FontFeatureSettings,
             Self::FontVariationSettings,
+            Self::FontNamedInstance,
+            Self::FontLanguageOverride,
+            Self::AscentOverride,
+            Self::DescentOverride,
+            Self::LineGapOverride,
         ]
         .into_iter()
         .find(|kind| {
@@ -108,6 +124,11 @@ pub enum CssFontFaceDescriptorValue {
     UnicodeRange(CssUnicodeRangeList),
     FontFeatureSettings(CssAuthoredFontFeatureSettings),
     FontVariationSettings(CssFontVariationSettings),
+    FontNamedInstance(CssFontNamedInstance),
+    FontLanguageOverride(CssFontLanguageOverride),
+    AscentOverride(CssFontMetricOverride),
+    DescentOverride(CssFontMetricOverride),
+    LineGapOverride(CssFontMetricOverride),
 }
 
 impl CssFontFaceDescriptorValue {
@@ -124,6 +145,11 @@ impl CssFontFaceDescriptorValue {
             Self::UnicodeRange(_) => CssFontFaceDescriptorKind::UnicodeRange,
             Self::FontFeatureSettings(_) => CssFontFaceDescriptorKind::FontFeatureSettings,
             Self::FontVariationSettings(_) => CssFontFaceDescriptorKind::FontVariationSettings,
+            Self::FontNamedInstance(_) => CssFontFaceDescriptorKind::FontNamedInstance,
+            Self::FontLanguageOverride(_) => CssFontFaceDescriptorKind::FontLanguageOverride,
+            Self::AscentOverride(_) => CssFontFaceDescriptorKind::AscentOverride,
+            Self::DescentOverride(_) => CssFontFaceDescriptorKind::DescentOverride,
+            Self::LineGapOverride(_) => CssFontFaceDescriptorKind::LineGapOverride,
         }
     }
 }

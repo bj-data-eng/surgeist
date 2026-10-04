@@ -8,6 +8,15 @@ unsupported productions; consult the [support reference](docs/reference.md#confo
 for exact boundaries. Cascade, substitution, matching, resource loading, and
 layout belong to downstream consumers.
 
+`@font-face` types named-instance (`auto` or a string), language override
+(`normal` or a string), and ascent/descent/line-gap overrides (`normal` or a
+nonnegative percentage with checked math). Parsed occurrence order, recovery,
+provenance and pending `env()` reentry use the shared descriptor lifecycle.
+Their payloads provide bounded specified serialization; font matching and
+metric execution belong downstream. See the
+[descriptor reference](docs/reference.md#named-instance-language-and-metric-descriptors)
+and [consumer example](examples/font_face_metrics.rs).
+
 CSS Speech `pause-before`, `pause-after`, `rest-before`, and `rest-after` retain
 `none`, symbolic break strengths, or exact nonnegative ordinary times with
 checked time calculations. `pause` and `rest` retain one or two ordered values

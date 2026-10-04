@@ -6,6 +6,7 @@ use cssparser::{
 
 mod unicode_range;
 
+use super::font_controls::parse_font_language_override;
 use super::font_settings::{parse_font_feature_settings, parse_font_variation_settings};
 use super::recovery::{
     RecoveryLoopOutcome, RecoveryProgress, RecoveryState, comma_member_span,
@@ -16,6 +17,7 @@ use super::typography::{
     parse_font_width, parse_non_generic_font_family_name,
 };
 use super::url::parse_url;
+use super::values::parse_nonnegative_percentage;
 use super::{block_item_diagnostic, is_declaration_recovery_unit, parse_descriptor_boundary};
 use crate::error::{
     CssFeatureId, Error, basic, descriptor_name_error, from_parse_error, incomplete_descriptor_at,
@@ -23,7 +25,10 @@ use crate::error::{
 };
 use crate::syntax::*;
 use crate::validation::unsupported_keyword_reason;
-use crate::{CssFontFaceObliqueRange, CssFontFaceStyle, CssFontFaceWeight, CssFontFaceWidth};
+use crate::{
+    CssFontFaceObliqueRange, CssFontFaceStyle, CssFontFaceWeight, CssFontFaceWidth,
+    CssFontMetricOverride, CssFontNamedInstance, CssFontNamedInstanceString,
+};
 
 pub(super) static IMPLEMENTED_RULES: &[CssFeatureId] =
     &[CssFeatureId::new("baseline.rule.font-face")];
@@ -38,6 +43,11 @@ pub(super) static IMPLEMENTED_DESCRIPTORS: &[CssFeatureId] = &[
     CssFeatureId::new("baseline.descriptor.unicode-range"),
     CssFeatureId::new("official.descriptor.font-feature-settings"),
     CssFeatureId::new("official.descriptor.font-variation-settings"),
+    CssFeatureId::new("official.descriptor.font-named-instance"),
+    CssFeatureId::new("official.descriptor.font-language-override"),
+    CssFeatureId::new("official.descriptor.ascent-override"),
+    CssFeatureId::new("official.descriptor.descent-override"),
+    CssFeatureId::new("official.descriptor.line-gap-override"),
     CssFeatureId::new("ext.descriptor.font-weight-range"),
     CssFeatureId::new("ext.descriptor.font-style-oblique-range"),
     CssFeatureId::new("ext.descriptor.font-stretch-range"),
@@ -414,9 +424,74 @@ pub(super) fn parse_font_face_value<'i, 't>(
                     input, numeric,
                 )?)
             }
+            CssFontFaceDescriptorKind::FontNamedInstance => {
+                CssFontFaceDescriptorValue::FontNamedInstance(parse_font_named_instance(
+                    input, numeric,
+                )?)
+            }
+            CssFontFaceDescriptorKind::FontLanguageOverride => {
+                CssFontFaceDescriptorValue::FontLanguageOverride(parse_font_language_override(
+                    input, numeric,
+                )?)
+            }
+            CssFontFaceDescriptorKind::AscentOverride => {
+                CssFontFaceDescriptorValue::AscentOverride(parse_font_metric_override(
+                    input,
+                    numeric,
+                    kind.css_name(),
+                )?)
+            }
+            CssFontFaceDescriptorKind::DescentOverride => {
+                CssFontFaceDescriptorValue::DescentOverride(parse_font_metric_override(
+                    input,
+                    numeric,
+                    kind.css_name(),
+                )?)
+            }
+            CssFontFaceDescriptorKind::LineGapOverride => {
+                CssFontFaceDescriptorValue::LineGapOverride(parse_font_metric_override(
+                    input,
+                    numeric,
+                    kind.css_name(),
+                )?)
+            }
         })
     })
     .map_err(|error| with_descriptor_context(error, "font-face", kind.css_name()))
+}
+
+fn parse_font_named_instance<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Result<CssFontNamedInstance, ParseError<'i, Error>> {
+    if input
+        .try_parse(|input| input.expect_ident_matching("auto"))
+        .is_ok()
+    {
+        return Ok(CssFontNamedInstance::Auto);
+    }
+    input.skip_whitespace();
+    let location = input.current_source_location();
+    let component = numeric
+        .collect(input)
+        .map_err(|_| unsupported_value_at(location, None, "invalid font-named-instance string"))?;
+    CssFontNamedInstanceString::try_from_component(component)
+        .map(CssFontNamedInstance::String)
+        .map_err(|_| unsupported_value_at(location, None, "font-named-instance requires a string"))
+}
+
+fn parse_font_metric_override<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+    name: &str,
+) -> Result<CssFontMetricOverride, ParseError<'i, Error>> {
+    if input
+        .try_parse(|input| input.expect_ident_matching("normal"))
+        .is_ok()
+    {
+        return Ok(CssFontMetricOverride::Normal);
+    }
+    parse_nonnegative_percentage(input, numeric, name).map(CssFontMetricOverride::Percentage)
 }
 
 fn parse_font_face_family<'i, 't>(

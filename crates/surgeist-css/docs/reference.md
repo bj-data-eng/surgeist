@@ -3497,6 +3497,49 @@ Ordinary media/supports/container/layer/scope rule lists retain the authored
 palette with its structural parent; a style-rule ancestor forbids it. No live
 CSSOM or contextual color/profile evaluation is implied.
 
+### Named-instance, language and metric descriptors
+
+The selected [Fonts 4 §4.7](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-named-instance)
+`font-named-instance` descriptor accepts `auto` or any string, including an
+empty or unknown name. `CssFontNamedInstance::String` contains a checked
+`CssFontNamedInstanceString`; its `try_new` and `try_from_component` preserve
+respectively programmatic and parsed string provenance. `as_str`, `component`
+and `origin` expose the decoded name and its retained source. Checked decoded
+NUL is rejected by the shared string component owner; parsed CSS NUL follows
+CSS replacement semantics.
+
+[§4.10](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-language-override-desc)
+`font-language-override` accepts `normal` or a string and reuses
+`CssFontLanguageOverride` and `CssFontLanguageString` from the property owner.
+Neither string descriptor performs language-tag validation or font matching.
+
+The [§4.11 metric descriptors](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-metrics-override-desc)
+`ascent-override`, `descent-override` and `line-gap-override` each contain
+`CssFontMetricOverride`: `Normal` or a checked `CssSpecifiedNonNegativePercentage`.
+Zero and percentages above 100 are valid; negative ordinary percentages and
+unitless numbers are invalid. Percentage-typed math stays authored, including
+`calc(-10%)`; [Values 4 range checking](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-range)
+does not clamp specified calculations. Frozen
+[WebKit descriptor grammar](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/CSSProperties.json#L14698)
+corroborates the metric grammar; its absence of the two string descriptors
+does not replace their selected Fonts 4 definitions.
+
+All five kinds use the existing raw and checked component front doors, ordered
+occurrence retention, descriptor-local recovery, whole-value `env()` deferral
+and strict substituted reentry. Standalone `var()`, CSS-wide keywords and
+`!important` are invalid descriptor grammar. Normalization preserves these
+payloads, their original positions and recovery diagnostics.
+
+The new named-instance string/enum and metric payloads expose
+`serialize_specified()` and `_with_limits()`; language emission uses its existing
+provider. Keywords emit lowercase and strings use shared CSSOM escaping.
+Metrics reuse the exact percentage/calculation provider. Keyword/string payloads
+charge one input and projection node; metric percentages reuse their provider's
+complete visits with no extra enum-dispatch node. Output uses one actual UTF-8
+byte budget and failure returns no partial text or input mutation. Complete
+font-face rule construction and canonical effective-descriptor rule serialization
+remain separate work.
+
 `@font-face` retains every valid descriptor occurrence in authored order;
 `effective(kind)` returns the last admitted ordinary or pending occurrence.
 Source-list grammar follows the selected Fonts 4 edition. Weight and style

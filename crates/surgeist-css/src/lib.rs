@@ -594,8 +594,11 @@
 //!
 //! Family, font, source-list, and font-face records cite `I-FONTS4-20260907`.
 //! Family grammar, the font shorthand, and modern source hints are Complete;
-//! source list is Complete; the font-face rule remains Partial because selected
-//! descriptors remain unfinished. Values 4 `url()` and `src()` preserve authored
+//! source list is Complete; the font-face rule remains Partial because checked
+//! rule composition and effective-value rule serialization remain unfinished.
+//! Named-instance, language and metric descriptors retain typed ordinary values
+//! or whole-descriptor environment values. Their payload serializers are bounded
+//! and context independent. Values 4 `url()` and `src()` preserve authored
 //! function identity and modifiers without loading resources.
 //! Older immutable source identities retain their original editions.
 //! Family models do not yet provide canonical CSS serialization. Font loading,
@@ -1316,6 +1319,7 @@ mod easing_serialization;
 mod error;
 mod expansion;
 mod filter_serialization;
+mod font_face_values;
 mod font_family_serialization;
 mod font_feature_values;
 mod font_palette;
@@ -1557,6 +1561,9 @@ pub use expansion::{
     CssPendingSubstitution, CssPropertyKindRef, CssPropertyMetadata, CssPropertyMetadataError,
     CssShorthandMetadata, CssUniversalReset, CssUniversalResetMetadata, CssUserAgentInitial,
     expand_declaration,
+};
+pub use font_face_values::{
+    CssFontMetricOverride, CssFontNamedInstance, CssFontNamedInstanceString,
 };
 pub use font_feature_values::*;
 pub use font_palette::*;

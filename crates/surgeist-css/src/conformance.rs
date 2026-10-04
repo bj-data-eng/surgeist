@@ -2162,6 +2162,11 @@ static OFFICIAL_NON_PROPERTY_COVERAGE_ROWS: &[CssOfficialCoverageRecord] = &[
     active_coverage!("baseline.descriptor.unicode-range"),
     active_coverage!("official.descriptor.font-feature-settings"),
     active_coverage!("official.descriptor.font-variation-settings"),
+    active_coverage!("official.descriptor.font-named-instance"),
+    active_coverage!("official.descriptor.font-language-override"),
+    active_coverage!("official.descriptor.ascent-override"),
+    active_coverage!("official.descriptor.descent-override"),
+    active_coverage!("official.descriptor.line-gap-override"),
     active_coverage!("official.value.font-source"),
     active_coverage!("official.value.opentype-tag"),
     active_coverage!("official.value.transform-list"),
@@ -2285,8 +2290,8 @@ const GRID_AUTO_FLOW_SUBSET: &str = "The authored grid-auto-flow grammar accepts
 const GRID_AUTO_FLOW_REMAINDER: &str = "Grid 3 §2.3 issue #12803 has not settled whether its context-dependent orientation extends grid-auto-flow or belongs to a separate grid-lanes-direction property. The normal initial and implicit-direction dense choice follow the recorded WebKit behavior; runtime orientation and placement belong downstream.";
 const KEYFRAMES_SUBSET: &str = "Keyframe names, literal selectors, empty rules and blocks, duplicate selectors and blocks in authored order, and supported declarations with recovery are supported.";
 const KEYFRAMES_REMAINDER: &str = "Calculation selectors, string names, and declaration-processing grammar not selected by C07 remain unsupported.";
-const FONT_FACE_RULE_SUBSET: &str = "Empty font-face rules and ordered valid descriptor occurrences are retained. Family, source, weight, style, width, display, unicode-range, feature-settings and variation-settings descriptors have typed ordinary representations and admit pending whole values for valid env(); invalid descriptors recover independently.";
-const FONT_FACE_RULE_REMAINDER: &str = "Selected Fonts 4 descriptors including font-named-instance and metric overrides remain unsupported.";
+const FONT_FACE_RULE_SUBSET: &str = "Empty font-face rules and ordered valid descriptor occurrences are retained. Family, source, weight, style, width, display, unicode-range, feature-settings, variation-settings, named-instance, language-override and metric-override descriptors have typed ordinary representations and admit pending whole values for valid env(); invalid descriptors recover independently.";
+const FONT_FACE_RULE_REMAINDER: &str = "Checked font-face rule composition and canonical effective-value rule serialization remain unfinished.";
 
 const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
     match property {
@@ -2766,7 +2771,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 660] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 665] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -4177,6 +4182,41 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 660] = [
         "font-variation-settings in @font-face",
         I_FONTS4_20260907,
         "#descdef-font-face-font-variation-settings",
+    ),
+    CssFeatureMetadata::complete(
+        "official.descriptor.font-named-instance",
+        CssFeatureKind::Descriptor,
+        "font-named-instance in @font-face",
+        I_FONTS4_20260907,
+        "#font-named-instance",
+    ),
+    CssFeatureMetadata::complete(
+        "official.descriptor.font-language-override",
+        CssFeatureKind::Descriptor,
+        "font-language-override in @font-face",
+        I_FONTS4_20260907,
+        "#font-language-override-desc",
+    ),
+    CssFeatureMetadata::complete(
+        "official.descriptor.ascent-override",
+        CssFeatureKind::Descriptor,
+        "ascent-override in @font-face",
+        I_FONTS4_20260907,
+        "#descdef-font-face-ascent-override",
+    ),
+    CssFeatureMetadata::complete(
+        "official.descriptor.descent-override",
+        CssFeatureKind::Descriptor,
+        "descent-override in @font-face",
+        I_FONTS4_20260907,
+        "#descdef-font-face-descent-override",
+    ),
+    CssFeatureMetadata::complete(
+        "official.descriptor.line-gap-override",
+        CssFeatureKind::Descriptor,
+        "line-gap-override in @font-face",
+        I_FONTS4_20260907,
+        "#descdef-font-face-line-gap-override",
     ),
     CssFeatureMetadata::complete(
         "official.value.font-source",

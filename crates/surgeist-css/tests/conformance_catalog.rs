@@ -78,8 +78,8 @@ const GRID_PROPERTY_SUBSET: &str = "The structural grammar supports non-recursiv
 const GRID_PROPERTY_REMAINDER: &str = "Subgrid name-repeat and remaining grid/grid-template shorthand alternatives remain unfinished; used track sizing belongs downstream.";
 const KEYFRAMES_SUBSET: &str = "Keyframe names, literal selectors, empty rules and blocks, duplicate selectors and blocks in authored order, and supported declarations with recovery are supported.";
 const KEYFRAMES_REMAINDER: &str = "Calculation selectors, string names, and declaration-processing grammar not selected by C07 remain unsupported.";
-const FONT_FACE_RULE_SUBSET: &str = "Empty font-face rules and ordered valid descriptor occurrences are retained. Family, source, weight, style, width, display, unicode-range, feature-settings and variation-settings descriptors have typed ordinary representations and admit pending whole values for valid env(); invalid descriptors recover independently.";
-const FONT_FACE_RULE_REMAINDER: &str = "Selected Fonts 4 descriptors including font-named-instance and metric overrides remain unsupported.";
+const FONT_FACE_RULE_SUBSET: &str = "Empty font-face rules and ordered valid descriptor occurrences are retained. Family, source, weight, style, width, display, unicode-range, feature-settings, variation-settings, named-instance, language-override and metric-override descriptors have typed ordinary representations and admit pending whole values for valid env(); invalid descriptors recover independently.";
+const FONT_FACE_RULE_REMAINDER: &str = "Checked font-face rule composition and canonical effective-value rule serialization remain unfinished.";
 
 fn assert_complete_fonts3_feature(
     id: &str,
@@ -1529,6 +1529,75 @@ const EXPECTED: &[ExpectedFeature] = &[
         positive: Some(Input::Sheet(
             "@font-palette-values --brand { font-family: Demo; override-colors: 0 red; }",
         )),
+        negative: None,
+    },
+    ExpectedFeature {
+        id: "official.descriptor.font-named-instance",
+        kind: CssFeatureKind::Descriptor,
+        spelling: "font-named-instance in @font-face",
+        source: ExpectedSource::Id("I-FONTS4-20260907"),
+        production: "#font-named-instance",
+        status: CssSupportStatus::Complete,
+        supported_subset: None,
+        unsupported_remainder: None,
+        recognized_code: None,
+        positive: Some(Input::Sheet(
+            "@font-face { font-named-instance: \"Grotesque\"; }",
+        )),
+        negative: None,
+    },
+    ExpectedFeature {
+        id: "official.descriptor.font-language-override",
+        kind: CssFeatureKind::Descriptor,
+        spelling: "font-language-override in @font-face",
+        source: ExpectedSource::Id("I-FONTS4-20260907"),
+        production: "#font-language-override-desc",
+        status: CssSupportStatus::Complete,
+        supported_subset: None,
+        unsupported_remainder: None,
+        recognized_code: None,
+        positive: Some(Input::Sheet(
+            "@font-face { font-language-override: \"TRK\"; }",
+        )),
+        negative: None,
+    },
+    ExpectedFeature {
+        id: "official.descriptor.ascent-override",
+        kind: CssFeatureKind::Descriptor,
+        spelling: "ascent-override in @font-face",
+        source: ExpectedSource::Id("I-FONTS4-20260907"),
+        production: "#descdef-font-face-ascent-override",
+        status: CssSupportStatus::Complete,
+        supported_subset: None,
+        unsupported_remainder: None,
+        recognized_code: None,
+        positive: Some(Input::Sheet("@font-face { ascent-override: 125%; }")),
+        negative: None,
+    },
+    ExpectedFeature {
+        id: "official.descriptor.descent-override",
+        kind: CssFeatureKind::Descriptor,
+        spelling: "descent-override in @font-face",
+        source: ExpectedSource::Id("I-FONTS4-20260907"),
+        production: "#descdef-font-face-descent-override",
+        status: CssSupportStatus::Complete,
+        supported_subset: None,
+        unsupported_remainder: None,
+        recognized_code: None,
+        positive: Some(Input::Sheet("@font-face { descent-override: 25%; }")),
+        negative: None,
+    },
+    ExpectedFeature {
+        id: "official.descriptor.line-gap-override",
+        kind: CssFeatureKind::Descriptor,
+        spelling: "line-gap-override in @font-face",
+        source: ExpectedSource::Id("I-FONTS4-20260907"),
+        production: "#descdef-font-face-line-gap-override",
+        status: CssSupportStatus::Complete,
+        supported_subset: None,
+        unsupported_remainder: None,
+        recognized_code: None,
+        positive: Some(Input::Sheet("@font-face { line-gap-override: 0%; }")),
         negative: None,
     },
     ExpectedFeature {
