@@ -92,6 +92,7 @@ fn assert_complete_fonts3_feature(
     assert_eq!(metadata.spelling(), spelling, "{id}");
     let source = if spelling.starts_with("font-variant")
         || spelling.starts_with("font-synthesis")
+        || spelling == "font-palette"
         || matches!(
             id,
             "baseline.property.font-feature-settings"
@@ -183,6 +184,12 @@ fn fonts3_and_preserved_fonts4_metadata_are_truthful() {
             "font-synthesis",
             "#propdef-font-synthesis",
             "weight style",
+        ),
+        (
+            "official.property.font-palette",
+            "font-palette",
+            "#propdef-font-palette",
+            "palette-mix(light, dark)",
         ),
         (
             "baseline.property.font-variant",

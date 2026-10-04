@@ -165,6 +165,7 @@ const LONGHANDS: &[P] = &[
     P::FontSynthesisStyle,
     P::FontSynthesisSmallCaps,
     P::FontSynthesisPosition,
+    P::FontPalette,
     P::TextOrientation,
     P::TextAlignAll,
     P::TextAlignLast,
@@ -977,6 +978,7 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         CssLonghandValueRef::FontSynthesisPosition(v) => {
             assert_eq!(v, &CssFontSynthesisPosition::Auto)
         }
+        CssLonghandValueRef::FontPalette(v) => assert_eq!(v, &CssFontPalette::Normal),
         CssLonghandValueRef::FontKerning(v) => assert_eq!(v, &CssFontKerning::Auto),
         CssLonghandValueRef::FontSizeAdjust(v) => assert_eq!(v, &CssFontSizeAdjust::None),
         CssLonghandValueRef::FontLanguageOverride(v) => {
@@ -1050,7 +1052,7 @@ fn metadata_and_initials() {
             P::All,
         ])
         .collect();
-    assert_eq!(expected.len(), 294);
+    assert_eq!(expected.len(), 295);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {
@@ -1133,6 +1135,7 @@ fn metadata_and_initials() {
                     | P::FontSynthesisStyle
                     | P::FontSynthesisSmallCaps
                     | P::FontSynthesisPosition
+                    | P::FontPalette
                     | P::TextOrientation
                     | P::TextAlignAll
                     | P::TextAlignLast

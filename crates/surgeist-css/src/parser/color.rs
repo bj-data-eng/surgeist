@@ -885,7 +885,7 @@ fn parse_authored_color_mix_arguments<'i, 't>(
         .try_parse(|input| input.expect_ident_matching("in"))
         .is_ok()
     {
-        let value = parse_authored_color_mix_interpolation_method(input)?;
+        let value = parse_authored_mix_interpolation_method(input)?;
         input.expect_comma().map_err(basic)?;
         Some(value)
     } else {
@@ -918,7 +918,7 @@ fn parse_authored_color_mix_arguments<'i, 't>(
     })
 }
 
-fn parse_authored_color_mix_interpolation_method<'i, 't>(
+pub(super) fn parse_authored_mix_interpolation_method<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssColorInterpolation, ParseError<'i, Error>> {
     let state = input.state();
@@ -941,20 +941,20 @@ fn parse_authored_color_mix_component<'i, 't>(
     numeric: &NumericInputContext<'_>,
 ) -> std::result::Result<CssColorMixComponent, ParseError<'i, Error>> {
     let leading = if next_is_mix_weight(input) {
-        Some(parse_authored_color_mix_weight(input, numeric)?)
+        Some(parse_authored_mix_weight(input, numeric)?)
     } else {
         None
     };
     let color = parse_color(input, numeric)?;
     let weight = if leading.is_none() && next_is_mix_weight(input) {
-        Some(parse_authored_color_mix_weight(input, numeric)?)
+        Some(parse_authored_mix_weight(input, numeric)?)
     } else {
         leading
     };
     Ok(CssColorMixComponent::new(color, weight))
 }
 
-fn next_is_mix_weight(input: &mut Parser<'_, '_>) -> bool {
+pub(super) fn next_is_mix_weight(input: &mut Parser<'_, '_>) -> bool {
     let state = input.state();
     let result = match input.next() {
         Ok(Token::Percentage { .. }) => true,
@@ -965,7 +965,7 @@ fn next_is_mix_weight(input: &mut Parser<'_, '_>) -> bool {
     result
 }
 
-fn parse_authored_color_mix_weight<'i>(
+pub(super) fn parse_authored_mix_weight<'i>(
     input: &mut Parser<'i, '_>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssColorMixWeight, ParseError<'i, Error>> {

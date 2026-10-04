@@ -1,10 +1,117 @@
 //! Canonical specified palette values.
 
+use crate::syntax::color::serialization::{
+    is_default_mix, mix_weight_texts, serialize_interpolation,
+};
 use crate::{
-    CssFontPaletteBase, CssFontPaletteDescriptorValue, CssFontPaletteDescriptorValueRef,
+    CssFontPalette, CssFontPaletteBase, CssFontPaletteDescriptorValue,
+    CssFontPaletteDescriptorValueRef, CssFontPaletteMix, CssFontPaletteMixComponent,
     CssFontPaletteValuesRule, CssSpecifiedValueSerializationError,
     CssSpecifiedValueSerializationLimits, specified_rule_serialization::SpecifiedRuleWriter,
 };
+
+enum PaletteWork<'a> {
+    Palette(&'a CssFontPalette),
+    Text(&'static str),
+    Owned(String),
+}
+
+impl CssFontPalette {
+    /// Canonical authored output; named palettes and calculations stay symbolic.
+    pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Emits the entire graph atomically under cumulative node and byte limits.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String, CssSpecifiedValueSerializationError> {
+        let mut writer = SpecifiedRuleWriter::new(limits);
+        let mut work = Vec::new();
+        reserve_palette_work(&mut work, 1)?;
+        work.push(PaletteWork::Palette(self));
+        while let Some(next) = work.pop() {
+            match next {
+                PaletteWork::Text(text) => writer.append(text)?,
+                PaletteWork::Owned(text) => writer.append(&text)?,
+                PaletteWork::Palette(value) => {
+                    writer.context.charge_input(1)?;
+                    writer.context.charge_projection(1)?;
+                    match value {
+                        Self::Normal => writer.append("normal")?,
+                        Self::Light => writer.append("light")?,
+                        Self::Dark => writer.append("dark")?,
+                        Self::Named(name) => writer.append_identifier(name.as_str())?,
+                        Self::Mix(value) => schedule_palette_mix(value, &mut work, &mut writer)?,
+                    }
+                }
+            }
+        }
+        Ok(writer.css)
+    }
+}
+
+fn reserve_palette_work(
+    work: &mut Vec<PaletteWork<'_>>,
+    additional: usize,
+) -> Result<(), CssSpecifiedValueSerializationError> {
+    work.try_reserve(additional).map_err(|_| {
+        CssSpecifiedValueSerializationError::new(
+            crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
+        )
+    })
+}
+
+fn schedule_palette_mix<'a>(
+    value: &'a CssFontPaletteMix,
+    work: &mut Vec<PaletteWork<'a>>,
+    writer: &mut SpecifiedRuleWriter,
+) -> Result<(), CssSpecifiedValueSerializationError> {
+    let slots = value
+        .components()
+        .len()
+        .checked_mul(4)
+        .and_then(|value| value.checked_add(5))
+        .ok_or_else(|| {
+            CssSpecifiedValueSerializationError::new(
+                crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
+            )
+        })?;
+    reserve_palette_work(work, slots)?;
+    let weights = mix_weight_texts(
+        value
+            .components()
+            .iter()
+            .map(CssFontPaletteMixComponent::weight),
+        &mut writer.context,
+    )?;
+    work.push(PaletteWork::Text(")"));
+    for (index, (component, weight)) in value.components().iter().zip(weights).enumerate().rev() {
+        if let Some(weight) = weight {
+            work.push(PaletteWork::Owned(weight));
+            work.push(PaletteWork::Text(" "));
+        }
+        work.push(PaletteWork::Palette(component.palette()));
+        if index != 0 {
+            work.push(PaletteWork::Text(", "));
+        }
+    }
+    if let Some(interpolation) = value.interpolation() {
+        writer.context.charge_input(1)?;
+        writer.context.charge_projection(1)?;
+        if !is_default_mix(interpolation) {
+            work.push(PaletteWork::Text(", "));
+            work.push(PaletteWork::Owned(serialize_interpolation(
+                interpolation,
+                &writer.context,
+            )?));
+            work.push(PaletteWork::Text("in "));
+        }
+    }
+    work.push(PaletteWork::Text("palette-mix("));
+    Ok(())
+}
 
 impl SpecifiedRuleWriter {
     pub(crate) fn palette(

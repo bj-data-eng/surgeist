@@ -345,6 +345,12 @@ fn added_fonts_property_rows_expose_complete_authored_metadata() {
             "style weight",
         ),
         (
+            "official.property.font-palette",
+            "font-palette",
+            "#propdef-font-palette",
+            "palette-mix(light, dark)",
+        ),
+        (
             "official.property.font-variant-alternates",
             "font-variant-alternates",
             "#propdef-font-variant-alternates",
@@ -405,7 +411,7 @@ fn added_fonts_property_rows_expose_complete_authored_metadata() {
         assert_eq!(metadata.feature().id().as_str(), id);
         let source = match name {
             name if name.starts_with("font-synthesis") => "I-FONTS4-20260907",
-            "font-kerning" | "font-size-adjust" => "I-FONTS4-20260907",
+            "font-kerning" | "font-size-adjust" | "font-palette" => "I-FONTS4-20260907",
             name if name.starts_with("font-variant-") => "I-FONTS4-20260907",
             _ => unreachable!("the source inventory lists every property in this test"),
         };

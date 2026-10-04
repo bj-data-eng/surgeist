@@ -3675,6 +3675,60 @@ against its cumulative budget. See the
 Font selection, italic fallback, glyph synthesis, cascade, and inheritance
 execution belong to downstream style, text, and render owners.
 
+### Authored font-palette
+
+The [selected Fonts 4 working draft, September 7, 2026, §9.1](../../../references/css-fonts-4--WD-css-fonts-4-20260907--03626a0c8565.md#font-palette-prop)
+defines `font-palette` as `normal`, `light`, `dark`, a case-sensitive dashed
+palette identifier, or `palette-mix()`. The intrinsic initial is `normal` and
+the property is inherited. It contributes one longhand independently of `font`;
+the font shorthand neither sets nor resets it.
+
+`CssFontPalette` retains these alternatives. `Named` uses the same checked
+`CssFontPaletteName` as `@font-palette-values`, including bare `--`.
+`CssFontPaletteMix::try_new` accepts an optional `CssColorInterpolation` and
+a nonempty ordered list of `CssFontPaletteMixComponent` values. Each component
+holds a palette and an optional `CssColorMixWeight`: an exact literal percentage
+in `[0,100]` or checked symbolic Percentage-root math. Parsed percentages may
+precede or follow the palette; the checked model retains palette order,
+duplicates, interpolation omission, nested mixes and supplied numeric origins.
+Construction rejects empty lists and complete palette/math graphs exceeding
+the shared 256-level structural ceiling.
+
+`CssFontPalette::serialize_specified()` and `serialize_specified_with_limits()`
+emit canonical authored CSS. Omitted interpolation denotes Oklab;
+omits an explicit default Oklab method from output, and emits each palette before
+its percentage. It shares interpolation, exact percentage formatting and omitted
+weight handling with `color-mix()`: equal effective `100/N` shares can be omitted;
+otherwise missing literal weights are filled from the exact capped specified sum.
+Explicit literal shares are never rescaled. Any calculated weight leaves missing
+weights unknown, retaining its calculation rather than normalizing computed
+weights. Generated rational shares use the accepted six-place percentage policy.
+Singleton and repeated-palette mixes remain functions; equivalence simplification
+belongs to computed values downstream.
+
+The iterative writer shares one cumulative input, projection and byte budget
+across the complete graph, including interpolation and weight projection work.
+Each palette visits one input and one projection node. Exhaustion produces a
+typed error without partial output or changes to the authored graph. CSS-wide
+and whole-value pending values use the shared property lifecycle. Strict reentry
+checks complete replacement grammar and rejects residual substitutions and
+implicit closures while retaining the original occurrence, importance and
+replacement origins.
+
+```rust
+use surgeist_css::{CssFontPalette, CssFontPaletteMix, CssFontPaletteMixComponent};
+
+let value = CssFontPalette::Mix(Box::new(CssFontPaletteMix::try_new(None, vec![
+    CssFontPaletteMixComponent::new(CssFontPalette::Light, None),
+    CssFontPaletteMixComponent::new(CssFontPalette::Dark, None),
+]).unwrap()));
+assert_eq!(value.serialize_specified().unwrap(), "palette-mix(light, dark)");
+```
+
+See the [executable palette example](../examples/font_palette.rs). Palette lookup,
+font selection, per-index color mixing, contextual resolution, cascade and
+inheritance execution remain with downstream owners.
+
 ## Conformance sources and atomic records
 
 The conformance source registry assigns every selected dated specification or

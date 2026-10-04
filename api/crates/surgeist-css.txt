@@ -1323,6 +1323,15 @@ pub surgeist_css::CssFontOpticalSizing::None
 impl surgeist_css::CssFontOpticalSizing
 pub fn surgeist_css::CssFontOpticalSizing::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssFontOpticalSizing::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssFontPalette
+pub surgeist_css::CssFontPalette::Dark
+pub surgeist_css::CssFontPalette::Light
+pub surgeist_css::CssFontPalette::Mix(alloc::boxed::Box<surgeist_css::CssFontPaletteMix>)
+pub surgeist_css::CssFontPalette::Named(surgeist_css::CssFontPaletteName)
+pub surgeist_css::CssFontPalette::Normal
+impl surgeist_css::CssFontPalette
+pub fn surgeist_css::CssFontPalette::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontPalette::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssFontPaletteBase
 pub surgeist_css::CssFontPaletteBase::Dark
 pub surgeist_css::CssFontPaletteBase::Index(surgeist_css::CssFontPaletteIndex)
@@ -1346,6 +1355,13 @@ pub surgeist_css::CssFontPaletteDescriptorValueRef::BasePalette(&'a surgeist_css
 pub surgeist_css::CssFontPaletteDescriptorValueRef::FontFamily(&'a [surgeist_css::CssFontFaceFamily])
 pub surgeist_css::CssFontPaletteDescriptorValueRef::OverrideColors(&'a [surgeist_css::CssFontPaletteOverride])
 pub surgeist_css::CssFontPaletteDescriptorValueRef::Pending(&'a surgeist_css::CssSubstitutionDependentValue)
+#[non_exhaustive] pub enum surgeist_css::CssFontPaletteMixConstructionError
+pub surgeist_css::CssFontPaletteMixConstructionError::CapacityOverflow
+pub surgeist_css::CssFontPaletteMixConstructionError::EmptyComponents
+pub surgeist_css::CssFontPaletteMixConstructionError::NestingLimit
+impl core::error::Error for surgeist_css::CssFontPaletteMixConstructionError
+impl core::fmt::Display for surgeist_css::CssFontPaletteMixConstructionError
+pub fn surgeist_css::CssFontPaletteMixConstructionError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_css::CssFontPaletteValueErrorKind
 pub surgeist_css::CssFontPaletteValueErrorKind::Component(surgeist_css::CssComponentValueErrorKind)
 pub surgeist_css::CssFontPaletteValueErrorKind::Grammar(surgeist_css::ErrorKind)
@@ -2009,6 +2025,7 @@ pub surgeist_css::CssKnownProperty::FontFeatureSettings
 pub surgeist_css::CssKnownProperty::FontKerning
 pub surgeist_css::CssKnownProperty::FontLanguageOverride
 pub surgeist_css::CssKnownProperty::FontOpticalSizing
+pub surgeist_css::CssKnownProperty::FontPalette
 pub surgeist_css::CssKnownProperty::FontSize
 pub surgeist_css::CssKnownProperty::FontSizeAdjust
 pub surgeist_css::CssKnownProperty::FontStyle
@@ -2375,6 +2392,7 @@ pub surgeist_css::CssKnownPropertyValueRef::FontFeatureSettings(&'a surgeist_css
 pub surgeist_css::CssKnownPropertyValueRef::FontKerning(&'a surgeist_css::CssFontKerningPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::FontLanguageOverride(&'a surgeist_css::CssFontLanguageOverridePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::FontOpticalSizing(&'a surgeist_css::CssFontOpticalSizingPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::FontPalette(&'a surgeist_css::CssFontPalettePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::FontSize(&'a surgeist_css::CssFontSizePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::FontSizeAdjust(&'a surgeist_css::CssFontSizeAdjustPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::FontStyle(&'a surgeist_css::CssFontStylePropertyValue)
@@ -2789,6 +2807,7 @@ pub surgeist_css::CssLonghandValueRef::FontFeatureSettings(&'a surgeist_css::Css
 pub surgeist_css::CssLonghandValueRef::FontKerning(&'a surgeist_css::CssFontKerning)
 pub surgeist_css::CssLonghandValueRef::FontLanguageOverride(&'a surgeist_css::CssFontLanguageOverride)
 pub surgeist_css::CssLonghandValueRef::FontOpticalSizing(&'a surgeist_css::CssFontOpticalSizing)
+pub surgeist_css::CssLonghandValueRef::FontPalette(&'a surgeist_css::CssFontPalette)
 pub surgeist_css::CssLonghandValueRef::FontSize(&'a surgeist_css::CssFontSize)
 pub surgeist_css::CssLonghandValueRef::FontSizeAdjust(&'a surgeist_css::CssFontSizeAdjust)
 pub surgeist_css::CssLonghandValueRef::FontStyle(&'a surgeist_css::CssFontStyle)
@@ -6609,6 +6628,16 @@ pub struct surgeist_css::CssFontPaletteIndex
 impl surgeist_css::CssFontPaletteIndex
 pub fn surgeist_css::CssFontPaletteIndex::try_new(value: surgeist_css::CssIntegerValue) -> core::result::Result<Self, surgeist_css::CssFontPaletteConstructionError>
 pub const fn surgeist_css::CssFontPaletteIndex::value(&self) -> &surgeist_css::CssIntegerValue
+pub struct surgeist_css::CssFontPaletteMix
+impl surgeist_css::CssFontPaletteMix
+pub fn surgeist_css::CssFontPaletteMix::components(&self) -> &[surgeist_css::CssFontPaletteMixComponent]
+pub const fn surgeist_css::CssFontPaletteMix::interpolation(&self) -> core::option::Option<&surgeist_css::CssColorInterpolation>
+pub fn surgeist_css::CssFontPaletteMix::try_new(interpolation: core::option::Option<surgeist_css::CssColorInterpolation>, components: alloc::vec::Vec<surgeist_css::CssFontPaletteMixComponent>) -> core::result::Result<Self, surgeist_css::CssFontPaletteMixConstructionError>
+pub struct surgeist_css::CssFontPaletteMixComponent
+impl surgeist_css::CssFontPaletteMixComponent
+pub const fn surgeist_css::CssFontPaletteMixComponent::new(palette: surgeist_css::CssFontPalette, weight: core::option::Option<surgeist_css::CssColorMixWeight>) -> Self
+pub const fn surgeist_css::CssFontPaletteMixComponent::palette(&self) -> &surgeist_css::CssFontPalette
+pub const fn surgeist_css::CssFontPaletteMixComponent::weight(&self) -> core::option::Option<&surgeist_css::CssColorMixWeight>
 pub struct surgeist_css::CssFontPaletteName(_)
 impl surgeist_css::CssFontPaletteName
 pub fn surgeist_css::CssFontPaletteName::as_str(&self) -> &str
@@ -6618,6 +6647,10 @@ impl surgeist_css::CssFontPaletteOverride
 pub const fn surgeist_css::CssFontPaletteOverride::color(&self) -> &surgeist_css::CssColor
 pub const fn surgeist_css::CssFontPaletteOverride::index(&self) -> &surgeist_css::CssFontPaletteIndex
 pub fn surgeist_css::CssFontPaletteOverride::try_new(index: surgeist_css::CssFontPaletteIndex, color: surgeist_css::CssColor) -> core::result::Result<Self, surgeist_css::CssFontPaletteConstructionError>
+pub struct surgeist_css::CssFontPalettePropertyValue
+impl surgeist_css::CssFontPalettePropertyValue
+pub fn surgeist_css::CssFontPalettePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssFontPalettePropertyValue::palette(&self) -> &surgeist_css::CssFontPalette
 pub struct surgeist_css::CssFontPaletteValueError
 impl surgeist_css::CssFontPaletteValueError
 pub fn surgeist_css::CssFontPaletteValueError::kind(&self) -> &surgeist_css::CssFontPaletteValueErrorKind

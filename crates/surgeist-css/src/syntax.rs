@@ -8972,7 +8972,7 @@ impl CssAnimationList {
     }
 }
 
-mod color;
+pub(crate) mod color;
 pub use color::*;
 
 mod selector;

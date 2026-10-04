@@ -2496,7 +2496,8 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::FontVariantLigatures
         | CssKnownProperty::FontVariantNumeric
         | CssKnownProperty::FontVariantPosition => I_FONTS4_20260907,
-        CssKnownProperty::FontSynthesis
+        CssKnownProperty::FontPalette
+        | CssKnownProperty::FontSynthesis
         | CssKnownProperty::FontSynthesisWeight
         | CssKnownProperty::FontSynthesisStyle
         | CssKnownProperty::FontSynthesisSmallCaps
@@ -2765,7 +2766,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 659] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 660] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -5125,6 +5126,13 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 659] = [
         CssKnownProperty::FontSynthesisPosition,
         "font-synthesis-position",
         "#propdef-font-synthesis-position",
+        &[],
+    ),
+    CssFeatureMetadata::complete_property(
+        "official.property.font-palette",
+        CssKnownProperty::FontPalette,
+        "font-palette",
+        "#propdef-font-palette",
         &[],
     ),
     CssFeatureMetadata::complete(

@@ -117,6 +117,7 @@ fn requires_closed_components(property: crate::CssKnownProperty) -> bool {
             | crate::CssKnownProperty::FontFeatureSettings
             | crate::CssKnownProperty::FontSizeAdjust
             | crate::CssKnownProperty::FontVariationSettings
+            | crate::CssKnownProperty::FontPalette
     )
 }
 

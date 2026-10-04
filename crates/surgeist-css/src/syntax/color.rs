@@ -5,7 +5,7 @@ use super::{
     CssNumberCalculation, CssPercentageCalculation,
 };
 
-mod serialization;
+pub(crate) mod serialization;
 
 /// An authored color retaining its specified syntax and symbolic dependencies.
 #[derive(Clone, Debug, PartialEq)]

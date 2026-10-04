@@ -619,6 +619,25 @@
 //! assert_eq!(value.serialize_specified().unwrap(), "weight position");
 //! ```
 //!
+//! # Authored font palettes
+//!
+//! [`CssFontPalette`] retains keywords, symbolic names and checked ordered mixes.
+//! [`CssFontPaletteMix`] shares color interpolation and percentage providers,
+//! accepts one or more recursive palette components, and checks their complete
+//! structural depth. Its specified output preserves symbolic values without
+//! selecting a font or evaluating a palette. The property is inherited, initially
+//! `normal`, and independent of the `font` shorthand.
+//!
+//! ```
+//! use surgeist_css::{CssFontPalette, CssFontPaletteMix, CssFontPaletteMixComponent};
+//!
+//! let value = CssFontPalette::Mix(Box::new(CssFontPaletteMix::try_new(None, vec![
+//!     CssFontPaletteMixComponent::new(CssFontPalette::Light, None),
+//!     CssFontPaletteMixComponent::new(CssFontPalette::Dark, None),
+//! ]).unwrap()));
+//! assert_eq!(value.serialize_specified().unwrap(), "palette-mix(light, dark)");
+//! ```
+//!
 //! # Ordinary canonical number text
 //!
 //! Shared ordinary number, percentage and dimension serializers emit shortest base-ten text
@@ -1299,6 +1318,7 @@ mod expansion;
 mod filter_serialization;
 mod font_family_serialization;
 mod font_feature_values;
+mod font_palette;
 mod font_palette_serialization;
 mod font_palette_values;
 mod font_source_serialization;
@@ -1539,6 +1559,7 @@ pub use expansion::{
     expand_declaration,
 };
 pub use font_feature_values::*;
+pub use font_palette::*;
 pub use font_palette_values::*;
 pub use font_synthesis::*;
 pub use font_variant::*;

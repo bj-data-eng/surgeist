@@ -419,6 +419,7 @@ macro_rules! with_property_value_variants {
             FontSynthesisStyle,
             FontSynthesisSmallCaps,
             FontSynthesisPosition,
+            FontPalette,
             LetterSpacing,
             TextWrap,
             WhiteSpace,

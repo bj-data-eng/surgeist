@@ -93,6 +93,13 @@ serialization emits canonical grammar order. See the
 [synthesis reference](docs/reference.md#authored-font-synthesis) and
 [executable example](examples/font_synthesis.rs).
 
+The authored `font-palette` longhand retains keywords, case-sensitive palette
+names and recursive ordered `palette-mix()` values. Checked construction and
+bounded specified serialization reuse the color interpolation and percentage
+providers; palette lookup and color mixing remain downstream. See the
+[palette reference](docs/reference.md#authored-font-palette) and
+[executable example](examples/font_palette.rs).
+
 ## Start
 
 ```rust

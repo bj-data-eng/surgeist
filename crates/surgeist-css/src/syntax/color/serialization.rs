@@ -222,7 +222,10 @@ fn schedule_mix<'a>(
     context: &mut SpecifiedSerializationContext,
 ) -> Result<()> {
     reserve_work(work, work_slots(6, 3, value.components().len())?)?;
-    let weights = mix_weight_texts(value.components(), context)?;
+    let weights = mix_weight_texts(
+        value.components().iter().map(CssColorMixComponent::weight),
+        context,
+    )?;
     work.push(Work::Text(")"));
     for (index, (component, weight)) in value.components().iter().zip(weights).enumerate().rev() {
         if let Some(weight) = weight {
@@ -250,7 +253,7 @@ fn schedule_mix<'a>(
     Ok(())
 }
 
-fn is_default_mix(value: &CssColorInterpolation) -> bool {
+pub(crate) fn is_default_mix(value: &CssColorInterpolation) -> bool {
     value.predefined().is_some_and(|value| {
         value.space() == CssColorInterpolationSpace::Oklab && value.hue().is_none()
     })
@@ -2506,7 +2509,7 @@ fn relative_channel(value: CssRelativeColorChannel) -> &'static str {
     }
 }
 
-fn serialize_interpolation(
+pub(crate) fn serialize_interpolation(
     value: &CssColorInterpolation,
     context: &SpecifiedSerializationContext,
 ) -> Result<String> {
@@ -2548,21 +2551,21 @@ fn serialize_interpolation_method(value: &CssColorInterpolationMethod) -> String
     result
 }
 
-fn mix_weight_texts(
-    components: &[CssColorMixComponent],
+pub(crate) fn mix_weight_texts<'a>(
+    weights: impl ExactSizeIterator<Item = Option<&'a CssColorMixWeight>> + Clone,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<Vec<Option<String>>> {
-    if components.iter().any(|component| {
-        component
-            .weight()
-            .is_some_and(|weight| weight.calculation().is_some())
-    }) {
+    let count = weights.len();
+    if weights
+        .clone()
+        .any(|weight| weight.is_some_and(|weight| weight.calculation().is_some()))
+    {
         let mut output = Vec::new();
-        output.try_reserve(components.len()).map_err(|_| {
+        output.try_reserve(count).map_err(|_| {
             Error::new(crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow)
         })?;
-        for component in components {
-            output.push(match component.weight() {
+        for weight in weights {
+            output.push(match weight {
                 None => None,
                 Some(weight) if weight.literal_value().is_some() => {
                     let text = literal_weight(weight.literal_value().unwrap(), context)?;
@@ -2583,14 +2586,13 @@ fn mix_weight_texts(
     }
 
     let mut exact = Vec::new();
-    exact.try_reserve(components.len()).map_err(|_| {
+    exact.try_reserve(count).map_err(|_| {
         Error::new(crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow)
     })?;
     let mut sum: Option<crate::exact_decimal::ExactRational> = None;
     let mut omitted = 0usize;
-    for component in components {
-        let value = component
-            .weight()
+    for weight in weights {
+        let value = weight
             .and_then(CssColorMixWeight::literal_value)
             .map(|value| exact_weight(value, context))
             .transpose()?;
@@ -2618,7 +2620,6 @@ fn mix_weight_texts(
                 .divide_by(omitted)?,
         )
     };
-    let count = components.len();
     let mut all_equal = true;
     for value in &exact {
         let value = value
@@ -2632,10 +2633,10 @@ fn mix_weight_texts(
     }
     if all_equal {
         let mut output = Vec::new();
-        output.try_reserve(components.len()).map_err(|_| {
+        output.try_reserve(count).map_err(|_| {
             Error::new(crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow)
         })?;
-        output.resize_with(components.len(), || None);
+        output.resize_with(count, || None);
         return Ok(output);
     }
     exact
