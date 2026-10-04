@@ -36,6 +36,52 @@ impl Unit {
     fn resolved(&self) -> bool {
         !matches!(self, Self::Context(_))
     }
+    fn nonnegative_basis(&self) -> bool {
+        let Self::Context(unit) = self else {
+            return true;
+        };
+        use crate::CssLengthUnit::*;
+        // Font size, line height and box sizes can be zero. Glyph metrics and
+        // flex fractions require their own basis guarantee before folding.
+        matches!(
+            crate::CssLengthUnit::from_css_unit(unit),
+            Some(
+                Em | Rem
+                    | Lh
+                    | Rlh
+                    | Vw
+                    | Vh
+                    | Vi
+                    | Vb
+                    | Vmin
+                    | Vmax
+                    | Svw
+                    | Svh
+                    | Svi
+                    | Svb
+                    | Svmin
+                    | Svmax
+                    | Lvw
+                    | Lvh
+                    | Lvi
+                    | Lvb
+                    | Lvmin
+                    | Lvmax
+                    | Dvw
+                    | Dvh
+                    | Dvi
+                    | Dvb
+                    | Dvmin
+                    | Dvmax
+                    | Cqw
+                    | Cqh
+                    | Cqi
+                    | Cqb
+                    | Cqmin
+                    | Cqmax
+            )
+        )
+    }
     fn from_type(ty: CssNumericType) -> Self {
         if ty.is_number() {
             return Self::Number;
@@ -325,7 +371,12 @@ impl Projection<'_> {
                 .all(|unit| Some(unit) == values.iter().flatten().next().map(|v| &v.unit));
             if resolved
                 || same_unit
-                    && matches!(function, Function::Min | Function::Max | Function::Clamp)
+                    && (matches!(function, Function::Min | Function::Max | Function::Clamp)
+                        || matches!(function, Function::Abs | Function::Hypot)
+                            && values
+                                .iter()
+                                .flatten()
+                                .all(|value| value.unit.nonnegative_basis()))
                     && args
                         .iter()
                         .flatten()

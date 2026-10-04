@@ -526,6 +526,21 @@ Unhinted percentages and comparable same-unit dimensions may still fold, and
 same-unit percentage sums may still combine. These distinctions follow
 [Values 4's simplification algorithm and percentage note](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-simplification).
 
+For same-unit contextual coefficients with nonnegative size bases, `abs()` and
+`hypot()` preserve the unit while folding: `abs(-2em)` emits `calc(2em)` and
+`hypot(3em, 4em)` emits `calc(5em)`. This applies to `em`/`rem`, `lh`/`rlh`,
+viewport units and container units, whose bases are
+[font sizes](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#propdef-font-size),
+[line heights](https://www.w3.org/TR/2011/REC-CSS2-20110607/visudet.html#propdef-line-height),
+[viewport dimensions](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#viewport-relative-lengths)
+or [container dimensions](https://www.w3.org/TR/2022/WD-css-contain-3-20220818/#container-lengths).
+The bases may be zero; the coefficient identities remain valid. The selected
+[norm examples](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#exponent-funcs)
+also give `hypot(3em, 4em)` as `5em`. Glyph-metric units and flex fractions keep
+their contextual expressions pending a basis guarantee. Mixed units and hinted
+percentages remain symbolic. `sign(-2em)` also stays symbolic because a zero font
+size changes its result; [sign operates on the resolved magnitude](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#sign-funcs).
+
 ```rust
 use surgeist_css::{
     CssNumberCalculation, CssSpecifiedNumber, CssSpecifiedValueSerializationLimits,
@@ -616,8 +631,10 @@ Similarly, `rgb(none none none / calc(100000000000000000000))` needs 27 bytes
 for retained alpha scratch before emitting its 26-byte opaque color.
 Retained alpha, weight and contextual component captures count rounded text
 against their scratch bounds, using the same cumulative traversal budget.
-Mathematical arithmetic precision and range remain unfinished; canonical text
-does not make binary64 evaluation exact or resolve symbolic dependencies.
+Number formatting leaves calculation arithmetic unchanged. Authored coefficients
+remain exact; context-independent projection uses the documented binary64 policy.
+Canonical text does not resolve symbolic dependencies. Computed and used-value
+contextual range clamping remains with the consuming owner.
 
 ### Declared color literal output
 
