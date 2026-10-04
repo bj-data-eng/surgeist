@@ -602,6 +602,23 @@
 //! matching, fallback, shaping, cascade, substitution, computed values, and
 //! live CSSOM behavior belong to their downstream owners.
 //!
+//! # Authored font-synthesis
+//!
+//! [`CssFontSynthesis`] represents `none` or a checked set of weight, style,
+//! small-caps, and position capabilities. Intrinsic expansion contributes four
+//! inherited longhands: selected capabilities become `auto`, omitted ones become
+//! `none`. Their initial values are `auto`; only [`CssFontSynthesisStyle`] admits
+//! `oblique-only`. Font matching and glyph synthesis remain downstream.
+//!
+//! ```
+//! use surgeist_css::{CssFontSynthesis, CssFontSynthesisValues};
+//!
+//! let value = CssFontSynthesis::Values(
+//!     CssFontSynthesisValues::try_new(true, false, false, true).unwrap(),
+//! );
+//! assert_eq!(value.serialize_specified().unwrap(), "weight position");
+//! ```
+//!
 //! # Ordinary canonical number text
 //!
 //! Shared ordinary number, percentage and dimension serializers emit shortest base-ten text
@@ -1285,6 +1302,7 @@ mod font_feature_values;
 mod font_palette_serialization;
 mod font_palette_values;
 mod font_source_serialization;
+mod font_synthesis;
 mod font_variant;
 mod font_variant_serialization;
 mod image_serialization;
@@ -1522,6 +1540,7 @@ pub use expansion::{
 };
 pub use font_feature_values::*;
 pub use font_palette_values::*;
+pub use font_synthesis::*;
 pub use font_variant::*;
 pub use hsl_color_conversion::{
     CssHslColorCoordinates, CssHslHwbConversionError, CssHwbColorCoordinates, convert_hsl_to_srgb,

@@ -11,10 +11,11 @@ use crate::syntax::*;
 use crate::validation::unsupported_keyword_reason;
 use crate::{
     CssAbsoluteFontWeight, CssFontObliqueAngle, CssFontSize, CssFontStyle, CssFontStyleKeyword,
-    CssFontWeight, CssFontWeightNumber, CssFontWidth, CssFontWidthKeyword,
-    CssLengthPercentageCalculation, CssLineHeight, CssSpecifiedLengthPercentage,
-    CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedNonNegativeNumber,
-    CssTextSpacingAdjustment,
+    CssFontSynthesis, CssFontSynthesisPosition, CssFontSynthesisSmallCaps, CssFontSynthesisStyle,
+    CssFontSynthesisValues, CssFontSynthesisWeight, CssFontWeight, CssFontWeightNumber,
+    CssFontWidth, CssFontWidthKeyword, CssLengthPercentageCalculation, CssLineHeight,
+    CssSpecifiedLengthPercentage, CssSpecifiedNonNegativeLengthPercentage,
+    CssSpecifiedNonNegativeNumber, CssTextSpacingAdjustment,
 };
 
 pub(super) static IMPLEMENTED_PROPERTY_EXTENSIONS: &[CssFeatureId] =
@@ -814,6 +815,8 @@ pub(super) fn parse_font_synthesis<'i, 't>(
 
     let mut weight = false;
     let mut style = false;
+    let mut small_caps = false;
+    let mut position = false;
     while !input.is_exhausted() {
         let location = input.current_source_location();
         let token = input.next().map_err(basic)?;
@@ -824,15 +827,66 @@ pub(super) fn parse_font_synthesis<'i, 't>(
             Token::Ident(ident) if ident.eq_ignore_ascii_case("style") && !style => {
                 style = true;
             }
+            Token::Ident(ident) if ident.eq_ignore_ascii_case("small-caps") && !small_caps => {
+                small_caps = true;
+            }
+            Token::Ident(ident) if ident.eq_ignore_ascii_case("position") && !position => {
+                position = true;
+            }
             token => {
                 return Err(location.new_unexpected_token_error::<Error>(token.clone()));
             }
         }
     }
 
-    CssFontSynthesisValues::try_new(weight, style)
+    CssFontSynthesisValues::try_new(weight, style, small_caps, position)
         .map(CssFontSynthesis::Values)
         .ok_or_else(|| unsupported_value(input, None, "font-synthesis requires a value"))
+}
+
+pub(super) fn parse_font_synthesis_weight<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> std::result::Result<CssFontSynthesisWeight, ParseError<'i, Error>> {
+    let ident = input.expect_ident_cloned().map_err(basic)?;
+    match_ignore_ascii_case! { &ident,
+        "auto" => Ok(CssFontSynthesisWeight::Auto),
+        "none" => Ok(CssFontSynthesisWeight::None),
+        _ => Err(unsupported_value(input, None, unsupported_keyword_reason("font-synthesis-weight", ident.as_ref()))),
+    }
+}
+
+pub(super) fn parse_font_synthesis_style<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> std::result::Result<CssFontSynthesisStyle, ParseError<'i, Error>> {
+    let ident = input.expect_ident_cloned().map_err(basic)?;
+    match_ignore_ascii_case! { &ident,
+        "auto" => Ok(CssFontSynthesisStyle::Auto),
+        "none" => Ok(CssFontSynthesisStyle::None),
+        "oblique-only" => Ok(CssFontSynthesisStyle::ObliqueOnly),
+        _ => Err(unsupported_value(input, None, unsupported_keyword_reason("font-synthesis-style", ident.as_ref()))),
+    }
+}
+
+pub(super) fn parse_font_synthesis_small_caps<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> std::result::Result<CssFontSynthesisSmallCaps, ParseError<'i, Error>> {
+    let ident = input.expect_ident_cloned().map_err(basic)?;
+    match_ignore_ascii_case! { &ident,
+        "auto" => Ok(CssFontSynthesisSmallCaps::Auto),
+        "none" => Ok(CssFontSynthesisSmallCaps::None),
+        _ => Err(unsupported_value(input, None, unsupported_keyword_reason("font-synthesis-small-caps", ident.as_ref()))),
+    }
+}
+
+pub(super) fn parse_font_synthesis_position<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> std::result::Result<CssFontSynthesisPosition, ParseError<'i, Error>> {
+    let ident = input.expect_ident_cloned().map_err(basic)?;
+    match_ignore_ascii_case! { &ident,
+        "auto" => Ok(CssFontSynthesisPosition::Auto),
+        "none" => Ok(CssFontSynthesisPosition::None),
+        _ => Err(unsupported_value(input, None, unsupported_keyword_reason("font-synthesis-position", ident.as_ref()))),
+    }
 }
 
 pub(super) fn parse_letter_spacing<'i, 't>(

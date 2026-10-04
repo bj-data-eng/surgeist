@@ -404,7 +404,7 @@ fn added_fonts_property_rows_expose_complete_authored_metadata() {
         let metadata = property_support_metadata(name).unwrap_or_else(|| panic!("missing {id}"));
         assert_eq!(metadata.feature().id().as_str(), id);
         let source = match name {
-            "font-synthesis" => "O-FONTS3",
+            name if name.starts_with("font-synthesis") => "I-FONTS4-20260907",
             "font-kerning" | "font-size-adjust" => "I-FONTS4-20260907",
             name if name.starts_with("font-variant-") => "I-FONTS4-20260907",
             _ => unreachable!("the source inventory lists every property in this test"),

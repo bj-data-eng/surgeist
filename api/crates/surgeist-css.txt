@@ -1394,6 +1394,34 @@ pub surgeist_css::CssFontStyleKeyword::Right
 #[non_exhaustive] pub enum surgeist_css::CssFontSynthesis
 pub surgeist_css::CssFontSynthesis::None
 pub surgeist_css::CssFontSynthesis::Values(surgeist_css::CssFontSynthesisValues)
+impl surgeist_css::CssFontSynthesis
+pub fn surgeist_css::CssFontSynthesis::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontSynthesis::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssFontSynthesisPosition
+pub surgeist_css::CssFontSynthesisPosition::Auto
+pub surgeist_css::CssFontSynthesisPosition::None
+impl surgeist_css::CssFontSynthesisPosition
+pub fn surgeist_css::CssFontSynthesisPosition::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontSynthesisPosition::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssFontSynthesisSmallCaps
+pub surgeist_css::CssFontSynthesisSmallCaps::Auto
+pub surgeist_css::CssFontSynthesisSmallCaps::None
+impl surgeist_css::CssFontSynthesisSmallCaps
+pub fn surgeist_css::CssFontSynthesisSmallCaps::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontSynthesisSmallCaps::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssFontSynthesisStyle
+pub surgeist_css::CssFontSynthesisStyle::Auto
+pub surgeist_css::CssFontSynthesisStyle::None
+pub surgeist_css::CssFontSynthesisStyle::ObliqueOnly
+impl surgeist_css::CssFontSynthesisStyle
+pub fn surgeist_css::CssFontSynthesisStyle::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontSynthesisStyle::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssFontSynthesisWeight
+pub surgeist_css::CssFontSynthesisWeight::Auto
+pub surgeist_css::CssFontSynthesisWeight::None
+impl surgeist_css::CssFontSynthesisWeight
+pub fn surgeist_css::CssFontSynthesisWeight::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontSynthesisWeight::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssFontTechHint
 pub surgeist_css::CssFontTechHint::ColorCBDT
 pub surgeist_css::CssFontTechHint::ColorCOLRv0
@@ -1985,6 +2013,10 @@ pub surgeist_css::CssKnownProperty::FontSize
 pub surgeist_css::CssKnownProperty::FontSizeAdjust
 pub surgeist_css::CssKnownProperty::FontStyle
 pub surgeist_css::CssKnownProperty::FontSynthesis
+pub surgeist_css::CssKnownProperty::FontSynthesisPosition
+pub surgeist_css::CssKnownProperty::FontSynthesisSmallCaps
+pub surgeist_css::CssKnownProperty::FontSynthesisStyle
+pub surgeist_css::CssKnownProperty::FontSynthesisWeight
 pub surgeist_css::CssKnownProperty::FontVariant
 pub surgeist_css::CssKnownProperty::FontVariantAlternates
 pub surgeist_css::CssKnownProperty::FontVariantCaps
@@ -2347,6 +2379,10 @@ pub surgeist_css::CssKnownPropertyValueRef::FontSize(&'a surgeist_css::CssFontSi
 pub surgeist_css::CssKnownPropertyValueRef::FontSizeAdjust(&'a surgeist_css::CssFontSizeAdjustPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::FontStyle(&'a surgeist_css::CssFontStylePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::FontSynthesis(&'a surgeist_css::CssFontSynthesisPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::FontSynthesisPosition(&'a surgeist_css::CssFontSynthesisPositionPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::FontSynthesisSmallCaps(&'a surgeist_css::CssFontSynthesisSmallCapsPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::FontSynthesisStyle(&'a surgeist_css::CssFontSynthesisStylePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::FontSynthesisWeight(&'a surgeist_css::CssFontSynthesisWeightPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::FontVariant(&'a surgeist_css::CssFontVariantPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::FontVariantAlternates(&'a surgeist_css::CssFontVariantAlternatesPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::FontVariantCaps(&'a surgeist_css::CssFontVariantCapsPropertyValue)
@@ -2756,6 +2792,10 @@ pub surgeist_css::CssLonghandValueRef::FontOpticalSizing(&'a surgeist_css::CssFo
 pub surgeist_css::CssLonghandValueRef::FontSize(&'a surgeist_css::CssFontSize)
 pub surgeist_css::CssLonghandValueRef::FontSizeAdjust(&'a surgeist_css::CssFontSizeAdjust)
 pub surgeist_css::CssLonghandValueRef::FontStyle(&'a surgeist_css::CssFontStyle)
+pub surgeist_css::CssLonghandValueRef::FontSynthesisPosition(&'a surgeist_css::CssFontSynthesisPosition)
+pub surgeist_css::CssLonghandValueRef::FontSynthesisSmallCaps(&'a surgeist_css::CssFontSynthesisSmallCaps)
+pub surgeist_css::CssLonghandValueRef::FontSynthesisStyle(&'a surgeist_css::CssFontSynthesisStyle)
+pub surgeist_css::CssLonghandValueRef::FontSynthesisWeight(&'a surgeist_css::CssFontSynthesisWeight)
 pub surgeist_css::CssLonghandValueRef::FontVariantAlternates(&'a surgeist_css::CssFontVariantAlternates)
 pub surgeist_css::CssLonghandValueRef::FontVariantCaps(&'a surgeist_css::CssFontVariantCaps)
 pub surgeist_css::CssLonghandValueRef::FontVariantEastAsian(&'a surgeist_css::CssFontVariantEastAsian)
@@ -6611,15 +6651,33 @@ pub struct surgeist_css::CssFontStylePropertyValue
 impl surgeist_css::CssFontStylePropertyValue
 pub fn surgeist_css::CssFontStylePropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssFontStylePropertyValue::value(&self) -> &surgeist_css::CssFontStyle
+pub struct surgeist_css::CssFontSynthesisPositionPropertyValue
+impl surgeist_css::CssFontSynthesisPositionPropertyValue
+pub fn surgeist_css::CssFontSynthesisPositionPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssFontSynthesisPositionPropertyValue::position(&self) -> &surgeist_css::CssFontSynthesisPosition
 pub struct surgeist_css::CssFontSynthesisPropertyValue
 impl surgeist_css::CssFontSynthesisPropertyValue
 pub fn surgeist_css::CssFontSynthesisPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssFontSynthesisPropertyValue::synthesis(&self) -> &surgeist_css::CssFontSynthesis
+pub struct surgeist_css::CssFontSynthesisSmallCapsPropertyValue
+impl surgeist_css::CssFontSynthesisSmallCapsPropertyValue
+pub fn surgeist_css::CssFontSynthesisSmallCapsPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssFontSynthesisSmallCapsPropertyValue::small_caps(&self) -> &surgeist_css::CssFontSynthesisSmallCaps
+pub struct surgeist_css::CssFontSynthesisStylePropertyValue
+impl surgeist_css::CssFontSynthesisStylePropertyValue
+pub fn surgeist_css::CssFontSynthesisStylePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssFontSynthesisStylePropertyValue::style(&self) -> &surgeist_css::CssFontSynthesisStyle
 pub struct surgeist_css::CssFontSynthesisValues
 impl surgeist_css::CssFontSynthesisValues
+pub const fn surgeist_css::CssFontSynthesisValues::position(self) -> bool
+pub const fn surgeist_css::CssFontSynthesisValues::small_caps(self) -> bool
 pub const fn surgeist_css::CssFontSynthesisValues::style(self) -> bool
-pub const fn surgeist_css::CssFontSynthesisValues::try_new(weight: bool, style: bool) -> core::option::Option<Self>
+pub const fn surgeist_css::CssFontSynthesisValues::try_new(weight: bool, style: bool, small_caps: bool, position: bool) -> core::option::Option<Self>
 pub const fn surgeist_css::CssFontSynthesisValues::weight(self) -> bool
+pub struct surgeist_css::CssFontSynthesisWeightPropertyValue
+impl surgeist_css::CssFontSynthesisWeightPropertyValue
+pub fn surgeist_css::CssFontSynthesisWeightPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssFontSynthesisWeightPropertyValue::weight(&self) -> &surgeist_css::CssFontSynthesisWeight
 pub struct surgeist_css::CssFontVariantAlternateNames
 impl surgeist_css::CssFontVariantAlternateNames
 pub fn surgeist_css::CssFontVariantAlternateNames::names(&self) -> &[surgeist_css::CssFontFeatureValueName]

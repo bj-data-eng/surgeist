@@ -297,8 +297,9 @@ fn public_surface_checks_current_opentype_construction() {
 
 #[test]
 fn public_surface_exposes_checked_font_control_models() {
-    assert!(CssFontSynthesisValues::try_new(false, false).is_none());
-    let weight = CssFontSynthesisValues::try_new(true, false).expect("nonempty synthesis set");
+    assert!(CssFontSynthesisValues::try_new(false, false, false, false).is_none());
+    let weight =
+        CssFontSynthesisValues::try_new(true, false, false, false).expect("nonempty synthesis set");
     assert!(weight.weight());
     assert!(!weight.style());
     assert!(matches!(

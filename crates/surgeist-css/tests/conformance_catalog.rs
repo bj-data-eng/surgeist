@@ -91,6 +91,7 @@ fn assert_complete_fonts3_feature(
     assert_eq!(metadata.kind(), kind, "{id}");
     assert_eq!(metadata.spelling(), spelling, "{id}");
     let source = if spelling.starts_with("font-variant")
+        || spelling.starts_with("font-synthesis")
         || matches!(
             id,
             "baseline.property.font-feature-settings"

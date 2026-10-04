@@ -3564,6 +3564,56 @@ not load or match fonts, resolve fallback or feature application, shape glyphs,
 apply cascade or substitution, evaluate computed values, expose CSSOM, serialize
 composed font rules, or lower into another Surgeist crate.
 
+### Authored font-synthesis
+
+The [selected Fonts 4 working draft, September 7, 2026, §§2.8.1–2.8.5](../../../references/css-fonts-4--WD-css-fonts-4-20260907--03626a0c8565.md#font-synthesis-weight)
+defines the complete synthesis shorthand and four longhands. `font-synthesis`
+accepts `none` or a nonempty set of nonrepeated `weight`, `style`, `small-caps`,
+and `position` keywords in any order. `CssFontSynthesisValues::try_new` takes
+four booleans in that order and rejects an empty set; use `CssFontSynthesis::None`
+for `none`. Its getters expose each capability without computing a font result.
+Existing two-argument callers must supply the `small_caps` and `position` arguments.
+
+| Property | Checked value | Keywords | Intrinsic initial | Inherited |
+| --- | --- | --- | --- | --- |
+| `font-synthesis-weight` | `CssFontSynthesisWeight` | `auto`, `none` | `auto` | yes |
+| `font-synthesis-style` | `CssFontSynthesisStyle` | `auto`, `none`, `oblique-only` | `auto` | yes |
+| `font-synthesis-small-caps` | `CssFontSynthesisSmallCaps` | `auto`, `none` | `auto` | yes |
+| `font-synthesis-position` | `CssFontSynthesisPosition` | `auto`, `none` | `auto` | yes |
+
+The shorthand contributes all four members in weight/style/small-caps/position
+order with no reset-only members. Included capabilities contribute `auto`;
+omitted capabilities contribute `none`, including all four for shorthand `none`.
+Its initial is the full four-capability set. `oblique-only` is a style-longhand
+choice and cannot be expressed by this shorthand. The `font` shorthand leaves
+synthesis properties independent.
+
+`CssFontSynthesis` and each longhand type expose `serialize_specified()` and
+`serialize_specified_with_limits()`. They emit lowercase keywords, with shorthand
+capabilities in grammar order. Each emitted keyword charges one input node and
+one projection node; spaces and keywords share one cumulative byte budget.
+An exhausted budget returns a typed error with no partial CSS and preserves the
+checked model and declaration occurrence. Authored text and exact origins remain
+available through the property wrappers and declaration components.
+
+```rust
+use surgeist_css::{CssFontSynthesis, CssFontSynthesisValues};
+
+let value = CssFontSynthesis::Values(
+    CssFontSynthesisValues::try_new(true, false, false, true).unwrap(),
+);
+assert_eq!(value.serialize_specified().unwrap(), "weight position");
+```
+
+All five properties use the shared CSS-wide and whole-value pending lifecycle.
+Strict substitution reentry validates the original property's grammar and retains
+the original occurrence, importance, and replacement components. Normalization
+retains declaration order and counts each of the four shorthand contributions
+against its cumulative budget. See the
+[executable synthesis example](../examples/font_synthesis.rs).
+Font selection, italic fallback, glyph synthesis, cascade, and inheritance
+execution belong to downstream style, text, and render owners.
+
 ## Conformance sources and atomic records
 
 The conformance source registry assigns every selected dated specification or

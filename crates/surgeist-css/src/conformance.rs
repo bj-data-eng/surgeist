@@ -1967,6 +1967,10 @@ static OFFICIAL_PROPERTY_COVERAGE_ROWS: &[CssOfficialCoverageRecord] = &[
     active_coverage!("baseline.property.font-stretch"),
     active_coverage!("baseline.property.font-style"),
     active_coverage!("official.property.font-synthesis"),
+    active_coverage!("official.property.font-synthesis-weight"),
+    active_coverage!("official.property.font-synthesis-style"),
+    active_coverage!("official.property.font-synthesis-small-caps"),
+    active_coverage!("official.property.font-synthesis-position"),
     active_coverage!("baseline.property.font-variant"),
     active_coverage!("official.property.font-variant-alternates"),
     active_coverage!("official.property.font-variant-caps"),
@@ -2492,7 +2496,11 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::FontVariantLigatures
         | CssKnownProperty::FontVariantNumeric
         | CssKnownProperty::FontVariantPosition => I_FONTS4_20260907,
-        CssKnownProperty::FontSynthesis => O_FONTS3,
+        CssKnownProperty::FontSynthesis
+        | CssKnownProperty::FontSynthesisWeight
+        | CssKnownProperty::FontSynthesisStyle
+        | CssKnownProperty::FontSynthesisSmallCaps
+        | CssKnownProperty::FontSynthesisPosition => I_FONTS4_20260907,
         CssKnownProperty::FontFeatureSettings
         | CssKnownProperty::FontKerning
         | CssKnownProperty::FontSizeAdjust
@@ -2757,7 +2765,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 655] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 659] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -5089,6 +5097,34 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 655] = [
         CssKnownProperty::FontSynthesis,
         "font-synthesis",
         "#propdef-font-synthesis",
+        &[],
+    ),
+    CssFeatureMetadata::complete_property(
+        "official.property.font-synthesis-weight",
+        CssKnownProperty::FontSynthesisWeight,
+        "font-synthesis-weight",
+        "#propdef-font-synthesis-weight",
+        &[],
+    ),
+    CssFeatureMetadata::complete_property(
+        "official.property.font-synthesis-style",
+        CssKnownProperty::FontSynthesisStyle,
+        "font-synthesis-style",
+        "#propdef-font-synthesis-style",
+        &[],
+    ),
+    CssFeatureMetadata::complete_property(
+        "official.property.font-synthesis-small-caps",
+        CssKnownProperty::FontSynthesisSmallCaps,
+        "font-synthesis-small-caps",
+        "#propdef-font-synthesis-small-caps",
+        &[],
+    ),
+    CssFeatureMetadata::complete_property(
+        "official.property.font-synthesis-position",
+        CssKnownProperty::FontSynthesisPosition,
+        "font-synthesis-position",
+        "#propdef-font-synthesis-position",
         &[],
     ),
     CssFeatureMetadata::complete(

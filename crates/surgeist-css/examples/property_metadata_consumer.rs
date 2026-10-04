@@ -161,6 +161,10 @@ const LONGHANDS: &[P] = &[
     P::FontLanguageOverride,
     P::FontOpticalSizing,
     P::FontVariationSettings,
+    P::FontSynthesisWeight,
+    P::FontSynthesisStyle,
+    P::FontSynthesisSmallCaps,
+    P::FontSynthesisPosition,
     P::TextOrientation,
     P::TextAlignAll,
     P::TextAlignLast,
@@ -329,6 +333,16 @@ const SHORTHANDS: &[(P, &[P], &[P])] = &[
             P::FontVariantEastAsian,
             P::FontVariantPosition,
             P::FontVariantEmoji,
+        ],
+        &[],
+    ),
+    (
+        P::FontSynthesis,
+        &[
+            P::FontSynthesisWeight,
+            P::FontSynthesisStyle,
+            P::FontSynthesisSmallCaps,
+            P::FontSynthesisPosition,
         ],
         &[],
     ),
@@ -955,6 +969,14 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         CssLonghandValueRef::FontFeatureSettings(v) => {
             assert_eq!(v, &CssAuthoredFontFeatureSettings::Normal)
         }
+        CssLonghandValueRef::FontSynthesisWeight(v) => assert_eq!(v, &CssFontSynthesisWeight::Auto),
+        CssLonghandValueRef::FontSynthesisStyle(v) => assert_eq!(v, &CssFontSynthesisStyle::Auto),
+        CssLonghandValueRef::FontSynthesisSmallCaps(v) => {
+            assert_eq!(v, &CssFontSynthesisSmallCaps::Auto)
+        }
+        CssLonghandValueRef::FontSynthesisPosition(v) => {
+            assert_eq!(v, &CssFontSynthesisPosition::Auto)
+        }
         CssLonghandValueRef::FontKerning(v) => assert_eq!(v, &CssFontKerning::Auto),
         CssLonghandValueRef::FontSizeAdjust(v) => assert_eq!(v, &CssFontSizeAdjust::None),
         CssLonghandValueRef::FontLanguageOverride(v) => {
@@ -1028,7 +1050,7 @@ fn metadata_and_initials() {
             P::All,
         ])
         .collect();
-    assert_eq!(expected.len(), 289);
+    assert_eq!(expected.len(), 294);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {
@@ -1107,6 +1129,10 @@ fn metadata_and_initials() {
                     | P::FontLanguageOverride
                     | P::FontOpticalSizing
                     | P::FontVariationSettings
+                    | P::FontSynthesisWeight
+                    | P::FontSynthesisStyle
+                    | P::FontSynthesisSmallCaps
+                    | P::FontSynthesisPosition
                     | P::TextOrientation
                     | P::TextAlignAll
                     | P::TextAlignLast

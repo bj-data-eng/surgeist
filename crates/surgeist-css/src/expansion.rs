@@ -19,6 +19,7 @@ use crate::contain_intrinsic_size::*;
 use crate::flex::{CssFlexBasisValue, CssFlexDirection, CssFlexFlow, CssFlexWrap};
 use crate::font_controls::*;
 use crate::font_settings::*;
+use crate::font_synthesis::*;
 use crate::font_variant::*;
 use crate::gap::{CssGapShorthand, CssGapValue};
 use crate::inset::*;

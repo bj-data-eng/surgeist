@@ -84,6 +84,15 @@ providers under one cumulative budget without clamping amounts or resolving
 symbolic values. The backdrop source selects only the named authored property,
 not the complete Filter Effects 2 module or its execution behavior.
 
+The authored `font-synthesis` shorthand accepts nonrepeated `weight`, `style`,
+`small-caps`, and `position` capabilities in any order, or `none`. It contributes
+four inherited longhands, each initially `auto`; selected capabilities become
+`auto` and omitted capabilities become `none`. The four longhands have distinct
+checked keyword models, including `oblique-only` for style. Bounded specified
+serialization emits canonical grammar order. See the
+[synthesis reference](docs/reference.md#authored-font-synthesis) and
+[executable example](examples/font_synthesis.rs).
+
 ## Start
 
 ```rust
