@@ -233,6 +233,9 @@ impl CssSpeechBreak {
     fn specified_value_eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Time(left), Self::Time(right)) => left.specified_value_eq(right),
+            (Self::None, Self::Time(duration)) | (Self::Time(duration), Self::None) => {
+                duration.is_exact_ordinary_zero()
+            }
             _ => self == other,
         }
     }

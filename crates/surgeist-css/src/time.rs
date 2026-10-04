@@ -252,6 +252,11 @@ impl CssDuration {
             _ => self.time.structural_eq(&other.time),
         }
     }
+    pub(crate) fn is_exact_ordinary_zero(&self) -> bool {
+        self.time.literal().is_some_and(|literal| {
+            crate::exact_decimal::LexicalDecimal::new(literal.numeric().representation()).len == 0
+        })
+    }
 }
 impl PartialEq for CssDuration {
     fn eq(&self, other: &Self) -> bool {

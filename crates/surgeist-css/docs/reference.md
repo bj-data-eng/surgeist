@@ -5099,7 +5099,10 @@ Following [CSSOM value serialization](https://www.w3.org/TR/2021/WD-cssom-1-2021
 pair output omits a demonstrably equivalent second component without discarding
 its authored presence. Equality for this omission uses exact ordinary duration
 comparison across seconds/milliseconds and equivalent decimal coefficients, or
-the same retained calculation structure; equal rounded text alone does not
+the same retained calculation structure. Speech's `none` is also equivalent
+to an exact ordinary zero duration in either position; their authored variants
+remain distinct. A positive duration rounded to `0s` is not exact zero.
+Equal rounded text alone does not
 establish equality. The pair and every authored child share one cumulative
 input-node, projection-node and emitted-byte budget. A suppressed second child
 still incurs traversal work and node charges. Failure returns no partial CSS
