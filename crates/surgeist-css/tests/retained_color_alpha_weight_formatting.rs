@@ -710,13 +710,14 @@ fn alpha_percentage_exact_scale_counts_and_bytes() {
 
 #[test]
 fn alpha_contextual_exact_counts_and_bytes() {
-    // calc wrapper/product/three leaves = 5 inputs. Three leaves, inverse,
-    // combined Number and product = 6 projections. Alpha uses Identity.
+    // calc wrapper/product/three leaves = 5 inputs. Three leaves, inverse
+    // and Product = 5 projections; the single Number reuses its scalar.
+    // Alpha uses Identity, plus Color and none each charge one projection.
     assert_limits(
         "color(--P none / calc(.0078125 * 1em / 1px))",
         "color(--P none / calc(0.007813 * 1em / 1px))",
         7,
-        8,
+        7,
     );
 }
 
@@ -797,7 +798,7 @@ fn unchanged_coefficients_prove_exact_graph_counts_independently_of_rounding() {
         "color(--P none / calc(.5 * 1em / 1px))",
         "color(--P none / calc(0.5 * 1em / 1px))",
         7,
-        8,
+        7,
     );
     assert_limits(
         "color(--P none / calc(.5% * 1em / 1px))",

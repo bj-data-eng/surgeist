@@ -412,8 +412,10 @@ text_case!(
 text_case!(literal_modulo_control, "lch(20 30 720)", "lch(20 30 0)");
 
 // calc(.0078125 * 1em / 1px): wrapper/product/three leaves = five inputs.
-// Leaves (3), inverse (1), combined number (1), product (1) = six projections.
-// Non-origin Number(1/1) adds scale leaf, combined number and product (3).
+// Leaves (3), inverse (1), product (1) = five projections. A single Number
+// reuses its existing scalar instead of creating a merged replacement.
+// Non-origin Number(1/1) adds scale leaf, combined Number and Product (3).
+// With the Color root (1), one scaled contextual component costs nine.
 // A percentage product has no number-combination node (five projections),
 // then percentage-to-number adds percentage leaf/inverse/product (3).
 fn assert_limits(source: &str, expected: &str, inputs: usize, projections: usize) {
@@ -451,7 +453,7 @@ fn number_exact_counts_and_final_bytes() {
         "color(--P calc(.0078125 * 1em / 1px))",
         "color(--P calc(0.007813 * 1em / 1px))",
         6,
-        10,
+        9,
     );
 }
 #[test]
@@ -465,23 +467,24 @@ fn percent_scale_suffix_counts_and_final_bytes() {
 }
 #[test]
 fn cumulative_sibling_counts_and_bytes() {
+    // One Color root + two captures of (first pass 5 + scale 3) = seventeen.
     assert_limits(
         "color(--P calc(.0078125 * 1em / 1px) calc(.0078125 * 1em / 1px))",
         "color(--P calc(0.007813 * 1em / 1px) calc(0.007813 * 1em / 1px))",
         11,
-        19,
+        17,
     );
 }
 #[test]
 fn mix_remaining_bytes_and_cumulative_counts() {
     // An explicit calc(50%) selects the retained weight path, avoiding generated
     // exact-rational weights. Three color roots + five component inputs + two
-    // weight inputs = ten. Roots (3) + component (9) + weight leaf (1) = thirteen.
+    // weight inputs = ten. Roots (3) + component (5 + 3) + weight leaf (1) = twelve.
     assert_limits(
         "color-mix(color(--P calc(.0078125 * 1em / 1px)) calc(50%), blue)",
         "color-mix(color(--P calc(0.007813 * 1em / 1px)) calc(50%), blue)",
         10,
-        13,
+        12,
     );
 }
 
@@ -502,8 +505,9 @@ fn contextual_scratch_reaches_sibling_input_limit() {
 #[test]
 fn contextual_scratch_reaches_sibling_projection_limit() {
     let c = color("color(--P calc(5e-324 * 1em / 1px) none)");
+    // Color root + first pass 5 + scale 3 spend nine before the none sibling.
     assert_eq!(
-        c.to_specified_css_with_limits(Limits::new(usize::MAX, 10, 24))
+        c.to_specified_css_with_limits(Limits::new(usize::MAX, 9, 24))
             .unwrap_err()
             .kind(),
         Kind::ProjectionNodeLimit
