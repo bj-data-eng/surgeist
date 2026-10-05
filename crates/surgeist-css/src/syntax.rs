@@ -242,7 +242,9 @@ pub enum CssPageSelector {
     First,
 }
 
-/// One valid parser-produced Counter Styles 3 definition.
+/// One syntactically valid parser-produced Counter Styles 3 rule.
+/// A rule with missing or insufficient symbols remains authored syntax without
+/// necessarily defining a usable counter style for downstream execution.
 ///
 /// The private fields couple a checked name, a valid effective descriptor
 /// combination, and the authored at-keyword position. This authored model does
@@ -252,6 +254,7 @@ pub struct CssCounterStyleRule {
     name: CssCounterStyleName,
     descriptors: Box<CssCounterStyleDescriptors>,
     position: CssSourcePosition,
+    parsed_name: Option<CssParsedOrigin>,
 }
 
 impl CssCounterStyleRule {
@@ -265,7 +268,27 @@ impl CssCounterStyleRule {
             name,
             descriptors: Box::new(descriptors),
             position,
+            parsed_name: None,
         }
+    }
+
+    pub(crate) fn from_parsed(
+        name: CssCounterStyleName,
+        descriptors: CssCounterStyleDescriptors,
+        position: CssSourcePosition,
+        parsed_name: CssParsedOrigin,
+    ) -> Self {
+        Self {
+            parsed_name: Some(parsed_name),
+            ..Self::new(name, descriptors, position)
+        }
+    }
+
+    /// Borrows the genuine original name token, before predefined-name normalization.
+    /// Semantic construction does not invent a parsed source origin.
+    #[must_use]
+    pub const fn parsed_name(&self) -> Option<&CssParsedOrigin> {
+        self.parsed_name.as_ref()
     }
 
     /// Returns the checked, case-sensitive authored counter-style name.
@@ -340,72 +363,27 @@ impl CssCounterStyleDescriptors {
             }
         }
 
-        let effective_system = system
-            .as_ref()
-            .map(CssDescriptorOccurrence::value)
-            .unwrap_or(&CssCounterStyleSystem::Symbolic);
-        match effective_system {
-            CssCounterStyleSystem::Extends(_)
-                if symbols.is_some() || additive_symbols.is_some() =>
-            {
-                let mut conflicting = Vec::new();
-                if symbols.is_some() {
-                    conflicting.push("symbols");
-                }
-                if additive_symbols.is_some() {
-                    conflicting.push("additive-symbols");
-                }
-                return Err(CssCounterStyleCombinationIssue::new(
-                    system.as_ref().expect("extends is authored").position(),
-                    "system",
-                    conflicting,
-                ));
+        // Counter Styles 3 §§3.1 and 3.8 distinguish a syntactically valid
+        // rule from a rule that defines a usable counter style. Missing or
+        // insufficient symbols remain authored syntax; definition selection
+        // and integer-to-representation execution belong downstream. §3.1.7
+        // alone invalidates a rule that combines extends with symbol descriptors.
+        if let Some(system) = &system
+            && matches!(system.value(), CssCounterStyleSystem::Extends(_))
+            && (symbols.is_some() || additive_symbols.is_some())
+        {
+            let mut conflicting = Vec::new();
+            if symbols.is_some() {
+                conflicting.push("symbols");
             }
-            CssCounterStyleSystem::Extends(_) => {}
-            CssCounterStyleSystem::Additive => {
-                if additive_symbols.is_none() {
-                    return Err(CssCounterStyleCombinationIssue::new(
-                        system.as_ref().expect("additive is authored").position(),
-                        "system",
-                        vec!["additive-symbols"],
-                    ));
-                }
+            if additive_symbols.is_some() {
+                conflicting.push("additive-symbols");
             }
-            CssCounterStyleSystem::Numeric | CssCounterStyleSystem::Alphabetic => {
-                let Some(symbols) = symbols.as_ref() else {
-                    return Err(CssCounterStyleCombinationIssue::new(
-                        system.as_ref().expect("system is authored").position(),
-                        "system",
-                        vec!["symbols"],
-                    ));
-                };
-                if symbols.value().symbols().len() < 2 {
-                    return Err(CssCounterStyleCombinationIssue::new(
-                        symbols.position(),
-                        "symbols",
-                        vec!["system"],
-                    ));
-                }
-            }
-            CssCounterStyleSystem::Cyclic
-            | CssCounterStyleSystem::Symbolic
-            | CssCounterStyleSystem::Fixed(_) => {
-                if symbols.is_none() {
-                    let (position, responsible) = system.as_ref().map_or_else(
-                        || {
-                            occurrences.first().map_or((None, "symbols"), |descriptor| {
-                                (Some(descriptor.position()), "symbols")
-                            })
-                        },
-                        |system| (Some(system.position()), "system"),
-                    );
-                    return Err(CssCounterStyleCombinationIssue::new_optional(
-                        position,
-                        responsible,
-                        vec!["symbols"],
-                    ));
-                }
-            }
+            return Err(CssCounterStyleCombinationIssue::new(
+                system.position(),
+                "system",
+                conflicting,
+            ));
         }
 
         Ok(Self {
@@ -522,21 +500,6 @@ impl CssCounterStyleDescriptor {
             Self::SpeakAs(value) => CssCounterStyleDescriptorRef::SpeakAs(value),
         }
     }
-
-    const fn position(&self) -> CssSourcePosition {
-        match self {
-            Self::System(value) => value.position(),
-            Self::Negative(value) => value.position(),
-            Self::Symbols(value) => value.position(),
-            Self::Prefix(value) => value.position(),
-            Self::Suffix(value) => value.position(),
-            Self::Range(value) => value.position(),
-            Self::Pad(value) => value.position(),
-            Self::Fallback(value) => value.position(),
-            Self::AdditiveSymbols(value) => value.position(),
-            Self::SpeakAs(value) => value.position(),
-        }
-    }
 }
 
 /// A borrowed valid authored core counter-style descriptor occurrence.
@@ -587,15 +550,17 @@ impl CssCounterStyleFixedSystem {
 }
 
 /// One or two authored symbols applied around negative counter representations.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssCounterStyleNegative {
     prefix: CssCounterSymbol,
     suffix: Option<CssCounterSymbol>,
 }
 
 impl CssCounterStyleNegative {
+    /// Preserves one required checked symbol and an optional second symbol in order.
+    /// No counter representation, applicability, or resource is resolved here.
     #[must_use]
-    pub(crate) const fn new(prefix: CssCounterSymbol, suffix: Option<CssCounterSymbol>) -> Self {
+    pub const fn new(prefix: CssCounterSymbol, suffix: Option<CssCounterSymbol>) -> Self {
         Self { prefix, suffix }
     }
 
@@ -685,7 +650,7 @@ pub enum CssCounterStyleRangeBound {
 }
 
 /// One valid authored zero-padding descriptor.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssCounterStylePad {
     minimum_length: crate::CssIntegerLiteral,
     symbol: CssCounterSymbol,
@@ -717,7 +682,7 @@ impl CssCounterStylePad {
 }
 
 /// A nonempty, strictly descending authored `additive-symbols` list.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssCounterAdditiveSymbols {
     tuples: Vec<CssCounterAdditiveTuple>,
 }
@@ -742,7 +707,7 @@ impl CssCounterAdditiveSymbols {
 }
 
 /// One nonnegative integer weight and counter symbol in an additive list.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssCounterAdditiveTuple {
     weight: crate::CssIntegerLiteral,
     symbol: CssCounterSymbol,
@@ -780,7 +745,7 @@ pub enum CssCounterStyleSpeakAs {
 }
 
 /// A nonempty authored `symbols` descriptor value.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssCounterSymbols {
     symbols: Vec<CssCounterSymbol>,
 }
@@ -799,12 +764,12 @@ impl CssCounterSymbols {
 }
 
 /// One typed authored counter symbol.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssCounterSymbol {
     String(CssContentString),
     Ident(CssCounterSymbolIdent),
-    Url(CssUrl),
+    Image(CssImage),
 }
 
 /// One checked `<custom-ident>` used as an authored counter symbol.
@@ -1312,11 +1277,14 @@ impl CssKeyframePercent {
     }
 }
 
-/// A parser-produced authored `@font-face` descriptor value and its semantic name position.
+/// A checked authored descriptor value and its semantic name position.
 ///
 /// The private fields preserve the coupling between a validated descriptor value and the source
 /// position of its descriptor-name start. Construction is parser-owned, so callers cannot forge
-/// provenance. This occurrence does not apply descriptor matching or load font resources.
+/// provenance. Parsed counter descriptors also retain their original name/value regions and
+/// complete component trees. Semantic construction and descriptor parsers without retained
+/// lexical metadata do not invent parsed origins. This occurrence does not apply descriptor
+/// matching or load resources.
 ///
 /// ```compile_fail
 /// use surgeist_css::{CssDescriptorOccurrence, CssFontDisplay};
@@ -1326,11 +1294,60 @@ impl CssKeyframePercent {
 pub struct CssDescriptorOccurrence<T> {
     value: T,
     position: CssSourcePosition,
+    parsed: Option<Arc<CssParsedDescriptor>>,
+}
+
+#[derive(Debug, PartialEq)]
+struct CssParsedDescriptor {
+    name: CssParsedOrigin,
+    value: CssParsedOrigin,
+    components: CssComponentValues,
 }
 
 impl<T> CssDescriptorOccurrence<T> {
+    #[cfg(test)]
     pub(crate) const fn new(value: T, position: CssSourcePosition) -> Self {
-        Self { value, position }
+        Self {
+            value,
+            position,
+            parsed: None,
+        }
+    }
+
+    pub(crate) fn from_parsed(
+        value: T,
+        name: CssParsedOrigin,
+        value_origin: CssParsedOrigin,
+        components: CssComponentValues,
+    ) -> Self {
+        Self {
+            value,
+            position: name.span().start(),
+            parsed: Some(Arc::new(CssParsedDescriptor {
+                name,
+                value: value_origin,
+                components,
+            })),
+        }
+    }
+
+    /// Borrows the original descriptor-name token when retained by its parser.
+    #[must_use]
+    pub fn parsed_name(&self) -> Option<&CssParsedOrigin> {
+        self.parsed.as_ref().map(|parsed| &parsed.name)
+    }
+
+    /// Borrows the original descriptor-value region when retained by its parser.
+    #[must_use]
+    pub fn parsed_value(&self) -> Option<&CssParsedOrigin> {
+        self.parsed.as_ref().map(|parsed| &parsed.value)
+    }
+
+    /// Borrows every original value component, including trivia and nested delimiters.
+    /// The retained source stays distinct from specified-text projection.
+    #[must_use]
+    pub fn value_components(&self) -> Option<&CssComponentValues> {
+        self.parsed.as_ref().map(|parsed| &parsed.components)
     }
 
     /// Returns the typed authored descriptor value.

@@ -4,12 +4,12 @@ use cssparser::{
     match_ignore_ascii_case,
 };
 
+use super::background::parse_image_value;
 use super::recovery::{RecoveryLoopOutcome, RecoveryProgress, RecoveryState};
-use super::url::parse_url;
 use super::values::parse_integer_literal;
 use super::{
-    block_item_diagnostic, is_declaration_recovery_unit, parse_descriptor_boundary,
-    top_level_only_at_rule_placement,
+    block_item_diagnostic, collect_declaration_value, is_declaration_recovery_unit,
+    parse_descriptor_boundary, top_level_only_at_rule_placement,
 };
 use crate::error::{
     Error, basic, descriptor_name_error, invalid_descriptor_combination, unsupported_value,
@@ -17,11 +17,24 @@ use crate::error::{
 };
 use crate::syntax::*;
 
+pub(super) struct CounterStylePrelude {
+    name: CssCounterStyleName,
+    origin: crate::CssParsedOrigin,
+}
+
 pub(super) fn parse_counter_style_name<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> Result<CssCounterStyleName, ParseError<'i, Error>> {
+    source_snapshot: &crate::CssSourceSnapshot,
+) -> Result<CounterStylePrelude, ParseError<'i, Error>> {
+    input.skip_whitespace();
+    let token_start = input.position();
     let location = input.current_source_location();
     let name = input.expect_ident_cloned().map_err(basic)?;
+    let origin = crate::CssParsedOrigin::from_range(
+        source_snapshot,
+        token_start.byte_index()..input.position().byte_index(),
+    )
+    .expect("counter name token belongs to the original source");
     let name = CssCounterStyleName::try_new(name.to_string()).ok_or_else(|| {
         unsupported_value_at(
             location,
@@ -42,12 +55,12 @@ pub(super) fn parse_counter_style_name<'i, 't>(
             "counter-style definitions cannot use protected predefined names",
         ));
     }
-    Ok(name)
+    Ok(CounterStylePrelude { name, origin })
 }
 
 pub(super) fn parse_counter_style_rule<'i, 't>(
     source: &'i str,
-    name: CssCounterStyleName,
+    prelude: CounterStylePrelude,
     input: &mut Parser<'i, 't>,
     start: &ParserState,
     diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
@@ -96,10 +109,11 @@ pub(super) fn parse_counter_style_rule<'i, 't>(
             )
         })?;
 
-    Ok(CssCounterStyleRule::new(
-        name,
+    Ok(CssCounterStyleRule::from_parsed(
+        prelude.name,
         descriptors,
         crate::CssSourcePosition::from_cssparser(start.position(), start.source_location()),
+        prelude.origin,
     ))
 }
 
@@ -181,59 +195,40 @@ impl<'i> DeclarationParser<'i> for CounterStyleDescriptorParser<'i> {
             self.recovery
                 .check_component_values(self.source, input, "css.descriptor")?;
         let numeric = crate::numeric::NumericInputContext::parsed(self.recovery.source_snapshot());
-        let position = crate::CssSourcePosition::from_cssparser(
-            declaration_start.position(),
-            declaration_start.source_location(),
-        );
+        // Revisit the original descriptor-name token, just as declarations do.
+        // The semantic name may be decoded/case-folded; its source is not.
+        let value_start = input.state();
+        input.reset(declaration_start);
+        input.expect_ident().map_err(basic)?;
+        let name_origin = crate::CssParsedOrigin::from_range(
+            self.recovery.source_snapshot(),
+            declaration_start.position().byte_index()..input.position().byte_index(),
+        )
+        .expect("counter descriptor name belongs to the original source");
+        input.reset(&value_start);
+        macro_rules! occurrence {
+            ($descriptor:literal, $parse:expr) => {
+                parse_occurrence(
+                    input,
+                    self.recovery.source_snapshot(),
+                    &name_origin,
+                    $descriptor,
+                    $parse,
+                )?
+            };
+        }
         let result = (|| {
             Ok(match_ignore_ascii_case! { &name,
-                "system" => CssCounterStyleDescriptor::System(CssDescriptorOccurrence::new(
-                    parse_descriptor_boundary(input, "counter-style", "system", |input| parse_system(input, &numeric))?,
-                    position,
-                )),
-                "negative" => CssCounterStyleDescriptor::Negative(CssDescriptorOccurrence::new(
-                    parse_descriptor_boundary(input, "counter-style", "negative", |input| parse_negative(input, &numeric))?,
-                    position,
-                )),
-                "symbols" => CssCounterStyleDescriptor::Symbols(CssDescriptorOccurrence::new(
-                    parse_descriptor_boundary(input, "counter-style", "symbols", |input| parse_symbols(input, &numeric))?,
-                    position,
-                )),
-                "prefix" => CssCounterStyleDescriptor::Prefix(CssDescriptorOccurrence::new(
-                    parse_descriptor_boundary(input, "counter-style", "prefix", |input| parse_symbol(input, &numeric))?,
-                    position,
-                )),
-                "suffix" => CssCounterStyleDescriptor::Suffix(CssDescriptorOccurrence::new(
-                    parse_descriptor_boundary(input, "counter-style", "suffix", |input| parse_symbol(input, &numeric))?,
-                    position,
-                )),
-                "range" => CssCounterStyleDescriptor::Range(CssDescriptorOccurrence::new(
-                    parse_descriptor_boundary(input, "counter-style", "range", |input| parse_range(input, &numeric))?,
-                    position,
-                )),
-                "pad" => CssCounterStyleDescriptor::Pad(CssDescriptorOccurrence::new(
-                    parse_descriptor_boundary(input, "counter-style", "pad", |input| parse_pad(input, &numeric))?,
-                    position,
-                )),
-                "fallback" => CssCounterStyleDescriptor::Fallback(CssDescriptorOccurrence::new(
-                    parse_descriptor_boundary(input, "counter-style", "fallback", parse_fallback)?,
-                    position,
-                )),
-                "additive-symbols" => CssCounterStyleDescriptor::AdditiveSymbols(
-                    CssDescriptorOccurrence::new(
-                        parse_descriptor_boundary(
-                            input,
-                            "counter-style",
-                            "additive-symbols",
-                            |input| parse_additive_symbols(input, &numeric),
-                        )?,
-                        position,
-                    ),
-                ),
-                "speak-as" => CssCounterStyleDescriptor::SpeakAs(CssDescriptorOccurrence::new(
-                    parse_descriptor_boundary(input, "counter-style", "speak-as", parse_speak_as)?,
-                    position,
-                )),
+                "system" => CssCounterStyleDescriptor::System(occurrence!("system", |input| parse_system(input, &numeric))),
+                "negative" => CssCounterStyleDescriptor::Negative(occurrence!("negative", |input| parse_negative(input, &numeric))),
+                "symbols" => CssCounterStyleDescriptor::Symbols(occurrence!("symbols", |input| parse_symbols(input, &numeric))),
+                "prefix" => CssCounterStyleDescriptor::Prefix(occurrence!("prefix", |input| parse_symbol(input, &numeric))),
+                "suffix" => CssCounterStyleDescriptor::Suffix(occurrence!("suffix", |input| parse_symbol(input, &numeric))),
+                "range" => CssCounterStyleDescriptor::Range(occurrence!("range", |input| parse_range(input, &numeric))),
+                "pad" => CssCounterStyleDescriptor::Pad(occurrence!("pad", |input| parse_pad(input, &numeric))),
+                "fallback" => CssCounterStyleDescriptor::Fallback(occurrence!("fallback", parse_fallback)),
+                "additive-symbols" => CssCounterStyleDescriptor::AdditiveSymbols(occurrence!("additive-symbols", |input| parse_additive_symbols(input, &numeric))),
+                "speak-as" => CssCounterStyleDescriptor::SpeakAs(occurrence!("speak-as", parse_speak_as)),
                 _ => return Err(descriptor_name_error(
                     declaration_start.source_location(),
                     "counter-style",
@@ -241,10 +236,35 @@ impl<'i> DeclarationParser<'i> for CounterStyleDescriptorParser<'i> {
                 )),
             })
         })()
-        .map_err(|error| with_descriptor_context(error, "counter-style", name.as_ref()))?;
+        .map_err(|error| {
+            if crate::error::is_resource_parse_error(&error) {
+                error
+            } else {
+                with_descriptor_context(error, "counter-style", name.as_ref())
+            }
+        })?;
         self.recovery.retain_component_closures(implicit_closures);
         Ok(result)
     }
+}
+
+fn parse_occurrence<'i, 't, T>(
+    input: &mut Parser<'i, 't>,
+    source_snapshot: &crate::CssSourceSnapshot,
+    name_origin: &crate::CssParsedOrigin,
+    descriptor: &str,
+    parse_value: impl for<'tt> FnOnce(&mut Parser<'i, 'tt>) -> Result<T, ParseError<'i, Error>>,
+) -> Result<CssDescriptorOccurrence<T>, ParseError<'i, Error>> {
+    parse_descriptor_boundary(input, "counter-style", descriptor, |input| {
+        let (value, components, value_origin) =
+            collect_declaration_value(input, source_snapshot, parse_value)?;
+        Ok(CssDescriptorOccurrence::from_parsed(
+            value,
+            name_origin.clone(),
+            value_origin,
+            components,
+        ))
+    })
 }
 
 fn parse_system<'i, 't>(
@@ -501,12 +521,19 @@ fn parse_symbol_component<'i, 't>(
             .map(CssCounterSymbol::String)
             .ok_or_else(|| unsupported_value(input, None, "counter symbol contains null"));
     }
-    if let Ok(value) = input.try_parse(|input| parse_url(input, numeric)) {
-        return Ok(CssCounterSymbol::Url(value));
-    }
     let location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
-    CssCounterSymbolIdent::try_new(ident.to_string())
-        .map(CssCounterSymbol::Ident)
-        .ok_or_else(|| unsupported_value_at(location, None, "invalid custom-ident counter symbol"))
+    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
+        return CssCounterSymbolIdent::try_new(ident.to_string())
+            .map(CssCounterSymbol::Ident)
+            .ok_or_else(|| {
+                unsupported_value_at(location, None, "invalid custom-ident counter symbol")
+            });
+    }
+    // An image is selected only after the string/custom-ident alternatives.
+    // In particular, `none` is a symbol identifier, not property-level no image.
+    // Do not speculate and discard an image provider's typed resource failure.
+    let image = parse_image_value(input, numeric)?;
+    CssImage::try_new(image)
+        .map(CssCounterSymbol::Image)
+        .ok_or_else(|| unsupported_value_at(location, None, "counter symbol requires an image"))
 }

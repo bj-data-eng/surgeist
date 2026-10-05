@@ -107,7 +107,7 @@ use container_query::{collect_container_components, container_prelude_from_compo
 pub(crate) use container_query::{
     construct_container_condition, construct_container_prelude, container_condition_from_enclosed,
 };
-use counter_style::{parse_counter_style_name, parse_counter_style_rule};
+use counter_style::{CounterStylePrelude, parse_counter_style_name, parse_counter_style_rule};
 use effects::*;
 use flex::*;
 use font_controls::*;
@@ -2076,7 +2076,7 @@ enum StrictAtRulePrelude {
     Encoding(String),
     Import(Box<CssImportPrelude>),
     Namespace(CssNamespacePrelude),
-    CounterStyle(CssCounterStyleName),
+    CounterStyle(CounterStylePrelude),
     Page(Option<CssPageSelector>),
     Layer(Vec<CssLayerName>),
     FontFace,
@@ -2235,7 +2235,7 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
                 Ok(StrictAtRulePrelude::Namespace(prelude))
             },
             "counter-style" => Ok(StrictAtRulePrelude::CounterStyle(
-                parse_counter_style_prelude(self.source, input)?,
+                parse_counter_style_prelude(self.source, input, self.recovery.source_snapshot())?,
             )),
             "page" => Ok(StrictAtRulePrelude::Page(parse_page_prelude(self.source, input)?)),
             "custom-media" => Ok(StrictAtRulePrelude::CustomMedia(Box::new(parse_custom_media_prelude(self.source, input, &self.recovery)?))),
@@ -3697,8 +3697,9 @@ fn with_scope_prelude_context(error: ParseError<'_, Error>) -> ParseError<'_, Er
 fn parse_counter_style_prelude<'i, 't>(
     source: &'i str,
     input: &mut Parser<'i, 't>,
-) -> Result<CssCounterStyleName, ParseError<'i, Error>> {
-    let name = parse_counter_style_name(input).map_err(|error| {
+    source_snapshot: &CssSourceSnapshot,
+) -> Result<CounterStylePrelude, ParseError<'i, Error>> {
+    let name = parse_counter_style_name(input, source_snapshot).map_err(|error| {
         with_at_rule_prelude_context(
             error,
             "counter-style",
@@ -3819,7 +3820,7 @@ impl<'s> ScopedRuleParser<'s> {
 
 enum ScopedAtRulePrelude {
     Page(Option<CssPageSelector>),
-    CounterStyle(CssCounterStyleName),
+    CounterStyle(CounterStylePrelude),
     FontFace,
     Keyframes(CssKeyframesName),
     CustomMedia(Box<CustomMediaPrelude>),
@@ -3987,7 +3988,7 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
                 if self.has_style_ancestor {
                     return Err(invalid_at_rule_placement(input.current_source_location(), "counter-style", "a rule list without a style-rule ancestor"));
                 }
-                let name = parse_counter_style_prelude(self.source, input)?;
+                let name = parse_counter_style_prelude(self.source, input, self.recovery.source_snapshot())?;
                 Ok(ScopedAtRulePrelude::CounterStyle(name))
             },
             "page" => {
@@ -4572,7 +4573,7 @@ pub(super) fn parse_declaration_core<'i, 't>(
     })
 }
 
-fn collect_declaration_value<'i, 't, T>(
+pub(super) fn collect_declaration_value<'i, 't, T>(
     input: &mut Parser<'i, 't>,
     source_snapshot: &CssSourceSnapshot,
     parse_value: impl FnOnce(&mut Parser<'i, 't>) -> std::result::Result<T, ParseError<'i, Error>>,

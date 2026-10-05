@@ -256,10 +256,24 @@ fn invalid_effective_counter_style_combinations_drop_only_the_at_rule() {
         [
             CssRule::Style(_),
             CssRule::CounterStyle(_),
+            CssRule::CounterStyle(_),
+            CssRule::CounterStyle(_),
             CssRule::Style(_)
         ]
     ));
-    assert_eq!(report.diagnostics().len(), 4);
+    // Missing symbols make no counter-style definition but do not invalidate
+    // the authored at-rule. Only the two forbidden extends combinations drop.
+    let CssRule::CounterStyle(missing_additive) = &report.syntax().rules()[1] else {
+        unreachable!()
+    };
+    assert_eq!(missing_additive.name().as_str(), "missing-additive");
+    assert!(missing_additive.descriptors().additive_symbols().is_none());
+    let CssRule::CounterStyle(missing_symbols) = &report.syntax().rules()[2] else {
+        unreachable!()
+    };
+    assert_eq!(missing_symbols.name().as_str(), "missing-symbols");
+    assert!(missing_symbols.descriptors().symbols().is_none());
+    assert_eq!(report.diagnostics().len(), 2);
     assert!(report.diagnostics().iter().all(|diagnostic| {
         diagnostic.error().code() == CssErrorCode::InvalidDescriptorCombination
             && diagnostic.action() == CssRecoveryAction::DropAtRule
@@ -315,6 +329,8 @@ fn counter_style_descriptor_recovery_keeps_valid_occurrences_and_siblings() {
         [
             CssRule::Style(_),
             CssRule::CounterStyle(_),
+            CssRule::CounterStyle(_),
+            CssRule::CounterStyle(_),
             CssRule::Style(_)
         ]
     ));
@@ -340,14 +356,6 @@ fn counter_style_descriptor_recovery_keeps_valid_occurrences_and_siblings() {
             (
                 CssErrorCode::UnknownDescriptor,
                 CssRecoveryAction::DropDescriptor
-            ),
-            (
-                CssErrorCode::InvalidDescriptorCombination,
-                CssRecoveryAction::DropAtRule
-            ),
-            (
-                CssErrorCode::InvalidDescriptorCombination,
-                CssRecoveryAction::DropAtRule
             ),
             (
                 CssErrorCode::InvalidDescriptorCombination,

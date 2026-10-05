@@ -4268,10 +4268,45 @@ rules through ordinary recovery.
 
 `CssCounterSymbolIdent::try_new` uses the shared decoded custom-identifier owner.
 Symbol identifiers retain their case and decoded content without predefined-name
-normalization; `none`, `auto` and `span` are valid symbol identifiers. Parsed
-escape spelling, rule/descriptor positions and retained declaration component
-origins remain unchanged. Admission and recovery evidence is in
+normalization; `none`, `auto` and `span` are valid symbol identifiers. Admission
+and recovery evidence is in
 [`counter_style_identifier_admission.rs`](../tests/counter_style_identifier_admission.rs).
+
+`CssCounterSymbol` carries a checked string, identifier or `CssImage`. Image
+symbols reuse the selected shared image grammar: URLs, the four Images 3
+gradient forms, and the selected Color 5 `light-dark()` extension. A bare
+`none` remains an identifier symbol; image branches may retain the shared
+image grammar's `none`. URLs preserve `url()`/`src()` identity and symbolic
+modifiers, while gradients keep unresolved colors and contextual calculations.
+Unknown image functions invalidate their entire descriptor. The
+[Counter Styles symbol grammar](https://www.w3.org/TR/2021/CR-css-counter-styles-3-20210727/#counter-style-symbols)
+permits mixed string, image and identifier symbols. Its at-risk annotation
+does not remove the selected grammar. Image admission evidence is in
+[`counter_style_image_admission.rs`](../tests/counter_style_image_admission.rs).
+
+Parsed rule names expose their genuine token origin through `parsed_name()`.
+Counter descriptor occurrences expose `parsed_name()`, `parsed_value()` and
+`value_components()` from one coupled parser-owned record. These borrow the
+original authored source, retaining escapes, casing, comments, whitespace and
+nested image components. Semantic construction has no parsed record and never
+invents source metadata. Effective accessors, ordered occurrences and immutable
+normalization preserve the complete payload. Numeric tokens retain their
+existing exact coefficient and origin owners. Counter Style parsing populates
+the lexical record for every retained descriptor. Evidence is in
+[`counter_style_provenance.rs`](../tests/counter_style_provenance.rs).
+
+Omitted descriptors remain absent in authored getters and output. The ordinary
+specification initials are `symbolic` system, `"-"` negative, empty prefix,
+`". "` suffix, `auto` range, `0 ""` pad, `decimal` fallback, and `auto` speak-as.
+The specification gives no initial symbol or additive-symbol list. An `extends`
+system instead takes omitted
+descriptors from its unresolved target. These initials and target-dependent
+inheritance describe downstream resolution, without forged authored occurrences.
+`CssCounterStyleNegative::new` takes one checked prefix symbol and an optional
+checked suffix symbol, preserving their order and second-symbol omission.
+Descriptor admission, duplicate recovery, unresolved references and checked
+construction are exercised in
+[`counter_style_lifecycle.rs`](../tests/counter_style_lifecycle.rs).
 
 The optional `fixed` starting value is `Option<CssIntegerLiteral>`, preserving
 omission separately from explicit `1` and `+0001`. Finite range bounds retain
@@ -4292,7 +4327,16 @@ reuses these retained values.
 An invalid or unknown counter-style descriptor is dropped individually with a
 typed `DropDescriptor` diagnostic, preserving valid neighboring descriptors.
 An invalid effective combination, such as `system: extends` with an authored
-`symbols` definition, drops the complete at-rule. Counter-style rules are
+`symbols` definition, drops the complete at-rule. Missing symbols, missing
+additive tuples, or a numeric/alphabetic list with only one symbol instead leave
+a syntactically valid retained at-rule. Under
+[Counter Styles 3 system requirements](https://www.w3.org/TR/2021/CR-css-counter-styles-3-20210727/#counter-style-system)
+and [symbol requirements](https://www.w3.org/TR/2021/CR-css-counter-styles-3-20210727/#counter-style-symbols),
+such a rule defines no counter style; downstream definition selection applies
+that condition. Parsing and clean-report validation preserve the valid syntax.
+Evidence is in
+[`counter_style_rule_validity.rs`](../tests/counter_style_rule_validity.rs).
+Counter-style rules are
 block rules admitted at stylesheet level, in ordinary conditional and layer rule
 lists, and in ordinary scopes. Malformed preludes, statement forms and placement
 beneath a style-rule ancestor drop the smallest established at-rule unit and
@@ -6610,7 +6654,7 @@ chooses the last valid occurrence of each descriptor. Its CSSOM interface and
 the selected CSSOM snapshot do not specify complete counter-style `cssText`
 ordering. Surgeist selects the descriptor section order: system, negative,
 prefix, suffix, range, pad, fallback, symbols, additive-symbols, speak-as.
-Children reuse CSS identifier, string, URL and exact integer providers. Optional
+Children reuse CSS identifier, string, image and exact integer providers. Optional
 `fixed` starting value 1 and an empty negative suffix can be omitted without
 changing meaning; the retained values remain unchanged and charged.
 

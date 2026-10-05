@@ -398,6 +398,21 @@ fn counter_effective_system_coupling_and_neighbor_recovery_remain_checked() {
         "system: numeric; symbols: \"x\";",
         "system: alphabetic; symbols: \"x\";",
         "system: additive;",
+    ] {
+        // Counter Styles 3 §§3.1/3.8 retain syntactically valid rules that
+        // do not define a usable counter style; the integer model is unchanged.
+        let source = format!("@counter-style incomplete {{ {body} }} .after {{ color: red; }}");
+        let report = parse_sheet(&source);
+        assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
+        assert!(
+            matches!(
+                report.syntax().rules(),
+                [CssRule::CounterStyle(_), CssRule::Style(_)]
+            ),
+            "{source}"
+        );
+    }
+    for body in [
         "system: extends base; symbols: \"x\";",
         "system: extends base; additive-symbols: 1 \"x\";",
     ] {

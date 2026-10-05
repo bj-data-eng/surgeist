@@ -64,7 +64,7 @@ fn symbol(writer: &mut SpecifiedRuleWriter, value: &CssCounterSymbol) -> Result<
             writer.append_string(value.as_str())
         }
         CssCounterSymbol::Ident(value) => name(writer, value.as_str()),
-        CssCounterSymbol::Url(value) => value.append_specified(writer),
+        CssCounterSymbol::Image(value) => value.append_specified(writer),
     }
 }
 
@@ -268,7 +268,7 @@ impl CssCounterStyleRule {
     ///
     /// The rule, name, every descriptor occurrence, typed aggregate, and leaf
     /// each charge one input and projection node. Range intervals and additive
-    /// tuples are aggregates; URL children use the URL owner's node accounting.
+    /// tuples are aggregates; image children use their owner's node accounting.
     /// Suppressed duplicates and optional components retain their full node cost
     /// while consuming no final bytes. Failure returns no partial CSS.
     pub fn to_specified_css_with_limits(&self, limits: Limits) -> Result<String> {
@@ -419,6 +419,11 @@ mod tests {
             position,
         );
         let before = rule.clone();
+        assert!(rule.parsed_name().is_none());
+        let system = rule.descriptors().system().unwrap();
+        assert!(system.parsed_name().is_none());
+        assert!(system.parsed_value().is_none());
+        assert!(system.value_components().is_none());
         assert_eq!(
             rule.to_specified_css().unwrap(),
             "@counter-style Constructed { system: extends Unknown; pad: 3 \"_\"; }"

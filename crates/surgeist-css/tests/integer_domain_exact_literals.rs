@@ -73,9 +73,21 @@ fn equal_additive_weights_with_different_spelling_remain_invalid() {
     );
     let report = parse_sheet(source);
     assert!(!report.is_clean());
-    let [CssRule::Style(_)] = report.syntax().rules() else {
-        panic!("invalid additive rule is dropped and sibling survives");
+    let [CssRule::CounterStyle(rule), CssRule::Style(_)] = report.syntax().rules() else {
+        panic!("invalid additive descriptor is dropped while the valid rule and sibling survive");
     };
+    assert!(rule.descriptors().additive_symbols().is_none());
+    let [diagnostic] = report.diagnostics() else {
+        panic!("one wholly invalid additive descriptor");
+    };
+    assert_eq!(
+        diagnostic.error().code(),
+        surgeist_css::CssErrorCode::InvalidDescriptorValue
+    );
+    assert_eq!(
+        diagnostic.action(),
+        surgeist_css::CssRecoveryAction::DropDescriptor
+    );
 }
 
 #[test]

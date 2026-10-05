@@ -917,8 +917,8 @@ pub fn surgeist_css::CssCounterStyleValue::serialize_specified(&self) -> core::r
 pub fn surgeist_css::CssCounterStyleValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssCounterSymbol
 pub surgeist_css::CssCounterSymbol::Ident(surgeist_css::CssCounterSymbolIdent)
+pub surgeist_css::CssCounterSymbol::Image(surgeist_css::CssImage)
 pub surgeist_css::CssCounterSymbol::String(surgeist_css::CssContentString)
-pub surgeist_css::CssCounterSymbol::Url(surgeist_css::CssUrl)
 #[non_exhaustive] pub enum surgeist_css::CssCounterSymbolValue
 pub surgeist_css::CssCounterSymbolValue::Image(surgeist_css::CssImage)
 pub surgeist_css::CssCounterSymbolValue::String(surgeist_css::CssContentString)
@@ -6259,6 +6259,7 @@ pub fn surgeist_css::CssCounterStyleName::as_str(&self) -> &str
 pub fn surgeist_css::CssCounterStyleName::try_new(name: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
 pub struct surgeist_css::CssCounterStyleNegative
 impl surgeist_css::CssCounterStyleNegative
+pub const fn surgeist_css::CssCounterStyleNegative::new(prefix: surgeist_css::CssCounterSymbol, suffix: core::option::Option<surgeist_css::CssCounterSymbol>) -> Self
 pub const fn surgeist_css::CssCounterStyleNegative::prefix(&self) -> &surgeist_css::CssCounterSymbol
 pub const fn surgeist_css::CssCounterStyleNegative::suffix(&self) -> core::option::Option<&surgeist_css::CssCounterSymbol>
 pub struct surgeist_css::CssCounterStylePad
@@ -6290,6 +6291,7 @@ pub fn surgeist_css::CssCounterStyleRule::to_specified_css_with_limits(&self, li
 impl surgeist_css::CssCounterStyleRule
 pub const fn surgeist_css::CssCounterStyleRule::descriptors(&self) -> &surgeist_css::CssCounterStyleDescriptors
 pub const fn surgeist_css::CssCounterStyleRule::name(&self) -> &surgeist_css::CssCounterStyleName
+pub const fn surgeist_css::CssCounterStyleRule::parsed_name(&self) -> core::option::Option<&surgeist_css::CssParsedOrigin>
 pub const fn surgeist_css::CssCounterStyleRule::position(&self) -> surgeist_css::CssSourcePosition
 pub struct surgeist_css::CssCounterSymbolIdent
 impl surgeist_css::CssCounterSymbolIdent
@@ -6470,8 +6472,11 @@ impl surgeist_css::CssDescriptorName
 pub fn surgeist_css::CssDescriptorName::as_str(&self) -> &str
 pub struct surgeist_css::CssDescriptorOccurrence<T>
 impl<T> surgeist_css::CssDescriptorOccurrence<T>
+pub fn surgeist_css::CssDescriptorOccurrence<T>::parsed_name(&self) -> core::option::Option<&surgeist_css::CssParsedOrigin>
+pub fn surgeist_css::CssDescriptorOccurrence<T>::parsed_value(&self) -> core::option::Option<&surgeist_css::CssParsedOrigin>
 pub const fn surgeist_css::CssDescriptorOccurrence<T>::position(&self) -> surgeist_css::CssSourcePosition
 pub const fn surgeist_css::CssDescriptorOccurrence<T>::value(&self) -> &T
+pub fn surgeist_css::CssDescriptorOccurrence<T>::value_components(&self) -> core::option::Option<&surgeist_css::CssComponentValues>
 impl<T> core::ops::deref::Deref for surgeist_css::CssDescriptorOccurrence<T>
 pub type surgeist_css::CssDescriptorOccurrence<T>::Target = T
 pub fn surgeist_css::CssDescriptorOccurrence<T>::deref(&self) -> &Self::Target
