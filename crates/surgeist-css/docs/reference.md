@@ -3409,7 +3409,7 @@ names distinct from generic families. Rejecting decoded U+0000 avoids claiming
 preservation of a character that CSS replaces with U+FFFD.
 
 `parse_font_face_descriptor_value(source, kind)` parses a complete raw value
-using one of the eight `CssFontFaceDescriptorKind` grammars. It returns an owned
+using the selected `CssFontFaceDescriptorKind` grammar. It returns an owned
 `CssFontFaceDescriptorValue` without an invented descriptor-name position.
 Diagnostics refer directly to the supplied source, including actual EOF; keep
 the source when interpreting those positions. Descriptor names, semicolons and

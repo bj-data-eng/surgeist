@@ -602,9 +602,9 @@
 //! and context independent. Values 4 `url()` and `src()` preserve authored
 //! function identity and modifiers without loading resources.
 //! Older immutable source identities retain their original editions.
-//! Family models do not yet provide canonical CSS serialization. Font loading,
-//! matching, fallback, shaping, cascade, substitution, computed values, and
-//! live CSSOM behavior belong to their downstream owners.
+//! Family names and lists provide bounded canonical specified serialization.
+//! Font loading, matching, fallback, shaping, cascade, substitution, computed
+//! values, and live CSSOM behavior belong to their downstream owners.
 //!
 //! # Authored font-synthesis
 //!
