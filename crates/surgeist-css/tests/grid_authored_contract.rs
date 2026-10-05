@@ -252,6 +252,8 @@ fn none_subgrid_and_name_repeat_admit_the_selected_axis_language() {
                 "subgrid repeat(auto-fill, [a])",
             ),
             (r"subgrid [a\ b] [\41 ]", r"subgrid [a\ b] [A]"),
+            // Syntax 3 escaped-zero consumption returns U+FFFD, not NUL.
+            (r"subgrid [\0 ]", "subgrid [�]"),
         ] {
             accepted(property, value, expected);
         }
@@ -265,7 +267,6 @@ fn none_subgrid_and_name_repeat_admit_the_selected_axis_language() {
             "subgrid [span]",
             "subgrid [inherit]",
             "subgrid [default]",
-            r"subgrid [\0 ]",
             "subgrid repeat(auto-fill, [a]) repeat(auto-fill, [b])",
         ] {
             invalid(property, value);
