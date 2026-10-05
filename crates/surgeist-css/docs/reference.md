@@ -991,8 +991,9 @@ Pair and four-side compression compares ordinary values exactly before rounding
 emitted coefficients. Distinct values that round alike retain their positions;
 equivalent coefficient spellings can compress. In a length slot, exact unitless
 zero compares as `0px`, and the first selected component keeps its own emitted
-spelling. Other units and percentages remain distinct. Calculations retain their
-existing canonical projected-text comparison. Every authored child consumes its
+spelling. Other units and percentages remain distinct. Calculations compare
+canonical projected components before rounding emitted coefficients. Every
+authored child consumes its
 existing node budget, even when compression omits its text; the logical marker
 adds its own node charges and eight output bytes.
 
