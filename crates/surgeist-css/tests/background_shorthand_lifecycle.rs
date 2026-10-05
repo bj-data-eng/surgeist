@@ -2,6 +2,8 @@
 //! Backgrounds 3 CRD20240311 §2.10 defines per-layer initial-then-explicit
 //! projection into seven lists, followed by one final-layer color.
 //! https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/#background
+//! Compositing 1 CRD20240321 §3.4.3 adds background-blend-mode as a reset-only
+//! singleton normal terminal; the eight authored settable members remain intact.
 //! These tests use the existing public metadata/expansion/normalization boundary.
 
 use surgeist_css::*;
@@ -44,6 +46,9 @@ fn assert_context(values: &CssLonghandContributions, source: &CssDeclaration) {
             .map(CssLonghandContribution::property)
             .collect::<Vec<_>>(),
         MEMBERS
+            .into_iter()
+            .chain([CssKnownProperty::BackgroundBlendMode])
+            .collect::<Vec<_>>()
     );
     for item in values.items() {
         assert!(item.source().same_occurrence(source));
@@ -62,12 +67,18 @@ fn text(value: CssLonghandValueRef<'_>) -> String {
             v.serialize_specified().unwrap()
         }
         CssLonghandValueRef::BackgroundColor(v) => v.to_specified_css().unwrap(),
+        CssLonghandValueRef::BackgroundBlendMode(v) => v.serialize_specified().unwrap(),
         _ => panic!("background terminal"),
     }
 }
 
 fn assert_text(values: &CssLonghandContributions, expected: [&str; 8]) {
-    for (item, expected) in values.items().iter().zip(expected) {
+    assert_eq!(values.items().len(), 9);
+    for (item, expected) in values
+        .items()
+        .iter()
+        .zip(expected.into_iter().chain(["normal"]))
+    {
         let ordinary = item.ordinary_value().expect("ordinary background terminal");
         assert_eq!(ordinary.property().known_property(), item.property());
         assert_eq!(text(ordinary.view()), expected, "{:?}", item.property());
@@ -75,7 +86,7 @@ fn assert_text(values: &CssLonghandContributions, expected: [&str; 8]) {
 }
 
 #[test]
-fn background_metadata_has_eight_ordered_settable_members_and_no_extra_resets() {
+fn background_metadata_has_eight_ordered_settable_members_and_one_blend_reset() {
     let metadata = CssKnownProperty::Background
         .metadata()
         .expect("intrinsic background metadata");
@@ -90,8 +101,25 @@ fn background_metadata_has_eight_ordered_settable_members_and_no_extra_resets() 
             .collect::<Vec<_>>(),
         MEMBERS
     );
-    assert_eq!(shorthand.members(), shorthand.settable_members());
-    assert!(shorthand.reset_only_members().is_empty());
+    assert_eq!(
+        shorthand
+            .members()
+            .iter()
+            .map(|p| p.known_property())
+            .collect::<Vec<_>>(),
+        MEMBERS
+            .into_iter()
+            .chain([CssKnownProperty::BackgroundBlendMode])
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        shorthand
+            .reset_only_members()
+            .iter()
+            .map(|p| p.known_property())
+            .collect::<Vec<_>>(),
+        [CssKnownProperty::BackgroundBlendMode]
+    );
 }
 
 #[test]
@@ -200,7 +228,7 @@ fn explicit_layers_preserve_all_components_and_single_final_color() {
 }
 
 #[test]
-fn all_five_css_wide_keywords_expand_symbolically_to_eight_members() {
+fn all_five_css_wide_keywords_expand_symbolically_to_nine_members() {
     for (css, keyword) in [
         ("inherit", CssGlobalKeyword::Inherit),
         ("initial", CssGlobalKeyword::Initial),
@@ -319,7 +347,7 @@ fn pending_background_reentry_is_strict_reusable_and_preserves_both_origins() {
         let replacement = parse_component_values("revert-layer").unwrap();
         let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
         else {
-            panic!("eight symbolic replacement members")
+            panic!("nine symbolic replacement members")
         };
         assert_context(&values, &source);
         for item in values.items() {
@@ -333,11 +361,11 @@ fn pending_background_reentry_is_strict_reusable_and_preserves_both_origins() {
 }
 
 #[test]
-fn normalization_keeps_one_shorthand_ordinal_but_charges_eight_contributions() {
+fn normalization_keeps_one_shorthand_ordinal_but_charges_nine_contributions() {
     let css = ".a{background:red!important; background-size:cover}.b{background:var(--layers)}";
     let report = parse_sheet(css);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 10).unwrap();
+    let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 11).unwrap();
     let normalized = normalize_sheet_with_limits(report.syntax(), limits).unwrap();
     let declarations: Vec<_> = normalized
         .items()
@@ -354,7 +382,7 @@ fn normalization_keeps_one_shorthand_ordinal_but_charges_eight_contributions() {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
         declarations[0].expansion()
     else {
-        panic!("eight background contributions")
+        panic!("nine background contributions")
     };
     assert_context(values, declarations[0].source());
     assert_eq!(
@@ -388,7 +416,7 @@ fn normalization_keeps_one_shorthand_ordinal_but_charges_eight_contributions() {
         panic!("one deferred group")
     };
     assert!(pending.source().same_occurrence(declarations[2].source()));
-    for (limit, order) in [(7, 0), (8, 1), (9, 2)] {
+    for (limit, order) in [(8, 0), (9, 1), (10, 2)] {
         let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, limit).unwrap();
         let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
         assert_eq!(

@@ -97,6 +97,9 @@ fn requires_closed_components(property: crate::CssKnownProperty) -> bool {
     matches!(
         property,
         crate::CssKnownProperty::ClipPath
+            | crate::CssKnownProperty::BackgroundBlendMode
+            | crate::CssKnownProperty::Isolation
+            | crate::CssKnownProperty::MixBlendMode
             | crate::CssKnownProperty::CueBefore
             | crate::CssKnownProperty::CueAfter
             | crate::CssKnownProperty::Cue

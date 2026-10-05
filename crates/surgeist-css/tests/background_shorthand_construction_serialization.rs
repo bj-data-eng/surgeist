@@ -207,6 +207,10 @@ fn terminal_text(value: CssLonghandValueRef<'_>) -> String {
             v.serialize_specified().unwrap()
         }
         CssLonghandValueRef::BackgroundColor(v) => v.to_specified_css().unwrap(),
+        CssLonghandValueRef::BackgroundBlendMode(v) => {
+            assert_eq!(v.modes(), &[CssBlendMode::Normal]);
+            v.serialize_specified().unwrap()
+        }
         _ => panic!("background terminal"),
     }
 }

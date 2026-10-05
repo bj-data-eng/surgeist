@@ -250,6 +250,9 @@
 //! constructors retain optional authored components, couple size to position, and
 //! restrict color to the final layer. Intrinsic `background` expansion fills each
 //! of seven per-layer lists from the terminal schema initial and emits one color.
+//! It also resets `background-blend-mode` to one `normal` entry. Expansion and
+//! normalization account for nine terminal contributions; a CSS-wide keyword
+//! applies to all nine. The authored shorthand retains its eight settable members.
 //! [`CssBackground::serialize_specified`] composes canonical specified children in
 //! grammar order, omitting proved simple initials under one cumulative budget.
 //! Omitted authored children still consume input and projection visits; an empty
@@ -881,6 +884,15 @@
 //! record is partial: the admitted literal mapping is supported, while numeric-terminal
 //! spelling and math applicability remain unresolved by the selected standards. The shared
 //! box-edge and blend-mode productions have independent complete records.
+//!
+//! `background-blend-mode`, `isolation`, and `mix-blend-mode` provide noninherited
+//! intrinsic initials of one `normal` list entry, `auto`, and `normal`. Their
+//! [`CssLonghandValueRef`] variants borrow the existing typed values. Expansion,
+//! pending-substitution reentry, and normalization retain authored blend-list
+//! order, duplicates, source occurrences, and declaration importance. Checked
+//! admission requires complete original components, while browser recovery stays
+//! observable in the parse report. Specified output and normalization use
+//! cumulative limits and return no partial public result on failure.
 //!
 //! ```
 //! use surgeist_css::{

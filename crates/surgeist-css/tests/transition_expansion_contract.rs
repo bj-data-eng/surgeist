@@ -190,6 +190,7 @@ fn supported_background_control_expands_omissions_without_losing_importance() {
         P::BackgroundOrigin,
         P::BackgroundClip,
         P::BackgroundColor,
+        P::BackgroundBlendMode,
     ];
     assert_eq!(member_names(&values), expected);
     for item in values.items() {

@@ -16,10 +16,15 @@
 //! initials and the selected shorthand's four settable members without extra resets.
 //! Animations 1 WD 2023-03-02 §§3.2–3.10 defines eight noninherited
 //! one-entry initials and eight shorthand members without extra resets.
+//! Compositing 1 CRD 2024-03-21 §§3.1, 3.4.2, 3.4.3 defines noninherited
+//! blend/isolation initials and background's reset-only background-blend-mode.
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
 const LONGHANDS: &[P] = &[
+    P::BackgroundBlendMode,
+    P::Isolation,
+    P::MixBlendMode,
     P::AnimationDuration,
     P::AnimationTimingFunction,
     P::AnimationDelay,
@@ -325,7 +330,7 @@ const SHORTHANDS: &[(P, &[P], &[P])] = &[
             P::BackgroundClip,
             P::BackgroundColor,
         ],
-        &[],
+        &[P::BackgroundBlendMode],
     ),
     (P::Flex, &[P::FlexGrow, P::FlexShrink, P::FlexBasis], &[]),
     (P::FlexFlow, &[P::FlexDirection, P::FlexWrap], &[]),
@@ -994,6 +999,11 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
             assert_eq!(v.attachments(), &[CssBackgroundAttachment::Scroll])
         }
         CssLonghandValueRef::BackgroundColor(v) => assert_eq!(v, &CssColor::transparent()),
+        CssLonghandValueRef::BackgroundBlendMode(v) => {
+            assert_eq!(v.modes(), &[CssBlendMode::Normal])
+        }
+        CssLonghandValueRef::Isolation(v) => assert_eq!(*v, CssIsolation::Auto),
+        CssLonghandValueRef::MixBlendMode(v) => assert_eq!(*v, CssBlendMode::Normal),
         CssLonghandValueRef::Content(v) => assert_eq!(v, &CssContentValue::Normal),
         CssLonghandValueRef::CaptionSide(v) => assert_eq!(*v, CssCaptionSide::Top),
         CssLonghandValueRef::Clip(v) => assert_eq!(*v, CssClip::Auto),
@@ -1151,7 +1161,7 @@ fn metadata_and_initials() {
             P::All,
         ])
         .collect();
-    assert_eq!(expected.len(), 319);
+    assert_eq!(expected.len(), 322);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {

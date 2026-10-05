@@ -909,7 +909,8 @@ the `border-image` shorthand and its five longhands, `border-collapse`, `border-
 `text-orientation`, its legacy `glyph-orientation-vertical` grammar, `opacity`, `display`, `box-sizing`,
 `order`, `aspect-ratio`, `visibility`, `direction`, `unicode-bidi`, `writing-mode`, `text-combine-upright`,
 the `container` shorthand and its two longhands, the `transition` shorthand
-and its four longhands, the `animation` shorthand and its eight longhands, and `all`.
+and its four longhands, the `animation` shorthand and its eight longhands,
+`background-blend-mode`, `isolation`, `mix-blend-mode`, and `all`.
 The shared property schema owns their
 member lists, initial values and reset-only components. Other known properties
 return typed unsupported errors preserving their identity. The stylesheet
@@ -917,11 +918,18 @@ normalizer uses this same expansion boundary, so its complete property coverage
 remains unfinished.
 
 `background` owns eight ordered settable members: image, position, size, repeat,
-attachment, origin, clip, and color, without extra reset-only members. Every
-checked authored layer supplies one entry to each of the seven lists, filling
-omissions from the corresponding schema initial. Color appears once from the
-final layer or the transparent schema initial. This intrinsic projection does
-not match list lengths to used images or resolve positioning geometry.
+attachment, origin, clip, and color. It also resets `background-blend-mode`, as
+required by [Compositing 1](https://www.w3.org/TR/2024/CRD-compositing-1-20240321/#background-blend-mode).
+Every checked authored layer supplies one entry to each of the seven lists,
+filling omissions from the corresponding schema initial. Color appears once
+from the final layer or the transparent schema initial. The reset-only blend
+member follows color and supplies one `normal` entry, independent of the authored
+layer count. Expansion and normalization therefore account for nine terminal
+contributions. A CSS-wide keyword propagates to all nine members, including the
+reset-only member, under [Cascade 5 shorthand rules](https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/#shorthand).
+The authored shorthand and its specified output still expose the eight settable
+components. This intrinsic projection does not match list lengths to used images
+or resolve positioning geometry.
 
 `CssBackgroundLayer::try_new` retains its seven optional typed components and
 rejects an empty layer or size without position. `CssBackground::try_new` rejects
@@ -4745,6 +4753,25 @@ two current-production-less `glyph-orientation-horizontal` and `ime-mode`
 spellings; the remaining exclusions cover exact non-property or downstream
 source areas.
 
+## Authored compositing lifecycle
+
+`background-blend-mode`, `isolation`, and `mix-blend-mode` have noninherited
+intrinsic initials of one `normal` list entry, `auto`, and `normal`, respectively.
+Their `CssLonghandValueRef` variants borrow the existing `CssBlendModeList`,
+`CssIsolation`, and `CssBlendMode` values. Authored blend lists retain their order
+and duplicates through expansion, specified output, and normalization. The
+selected [Compositing 1 grammar](https://www.w3.org/TR/2024/CRD-compositing-1-20240321/#blending)
+contains sixteen blend modes; `plus-lighter` is outside that selected grammar.
+
+Checked property and grammar admission require complete original components,
+including comments and enclosures. Browser recovery remains visible in the parse
+report and cannot establish a clean validated value. CSS-wide keywords and
+pending substitutions use the shared expansion and reentry machinery, preserving
+source occurrences and declaration importance. Bounded specified output and
+normalization use cumulative resource budgets and return no partial public
+result on failure. Image-list matching, actual blending, stacking contexts, and
+painting remain downstream responsibilities.
+
 ## Backgrounds, border images, and gradients
 
 Backgrounds 3 and Images 3 values remain authored and symbolic. Background
@@ -6718,8 +6745,9 @@ duplicates, costing one aggregate plus each primitive mode. All use one cumulati
 writer and return no partial public output on failure.
 
 These writers certify represented values. Broader containment alternatives,
-image-rendering alternatives, property metadata, expansion/normalization and
-generic declaration dispatch retain their existing owners.
+image-rendering alternatives and the remaining caret/containment property
+lifecycles retain their existing owners. The complete authored Compositing
+lifecycle is described above.
 
 ## Cursor images and represented transform, mask and outline output
 
