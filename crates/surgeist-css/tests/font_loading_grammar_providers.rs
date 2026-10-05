@@ -27,14 +27,25 @@ fn font(declaration: &CssDeclaration) -> &CssFontValue {
 
 #[test]
 fn raw_queries_preserve_relative_values_and_the_original_unwrapped_source() {
-    for (source, expected_weight, expected_size) in [
+    for (source, expected_weight, expected_size, expected_font) in [
         (
             "/*😀*/ bolder 120%/1.25 Demo",
             CssFontWeight::Bolder,
             "120%",
+            "bolder 120%/1.25 Demo",
         ),
-        ("lighter 2em Demo", CssFontWeight::Lighter, "2em"),
-        ("bolder larger Demo", CssFontWeight::Bolder, "larger"),
+        (
+            "lighter 2em Demo",
+            CssFontWeight::Lighter,
+            "2em",
+            "lighter 2em Demo",
+        ),
+        (
+            "bolder larger Demo",
+            CssFontWeight::Bolder,
+            "larger",
+            "bolder larger Demo",
+        ),
     ] {
         let declaration = query(source).into_validation_result().unwrap().unwrap();
         assert!(declaration.parsed_name().is_none());
@@ -49,6 +60,10 @@ fn raw_queries_preserve_relative_values_and_the_original_unwrapped_source() {
         assert_eq!(value.weight(), Some(&expected_weight));
         assert_eq!(value.size().serialize_specified().unwrap(), expected_size);
         assert_eq!(value.families().families()[0].as_str(), "Demo");
+        assert_eq!(
+            font(&declaration).serialize_specified().unwrap(),
+            expected_font
+        );
         assert_eq!(
             value.weight().unwrap().serialize_specified().unwrap(),
             match expected_weight {
@@ -90,6 +105,7 @@ fn globals_and_pending_queries_are_distinct_clean_authored_branches() {
             declaration.known().unwrap().declared_value(),
             CssKnownDeclaredValueRef::Global(expected)
         );
+        assert!(declaration.known().unwrap().property_value().is_none());
     }
     for source in ["var(--query)", "env(query)", "attr(data-font)"] {
         let declaration = query(source).into_validation_result().unwrap().unwrap();
@@ -97,6 +113,7 @@ fn globals_and_pending_queries_are_distinct_clean_authored_branches() {
             declaration.known().unwrap().declared_value(),
             CssKnownDeclaredValueRef::SubstitutionDependent(_)
         ));
+        assert!(declaration.known().unwrap().property_value().is_none());
         assert_eq!(
             declaration.parsed_value().unwrap().source().as_str(),
             source
