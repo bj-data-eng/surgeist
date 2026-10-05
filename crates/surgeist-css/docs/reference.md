@@ -5960,3 +5960,38 @@ authored phase. All suppressed duplicate values and endpoints still consume
 cumulative input/projection work; discarded output consumes no final bytes.
 Failures are atomic. Generic groups continue to return `UnsupportedRule` until
 their separate serialization owner supplies wrappers and complete dispatch.
+
+## Optimization, anchoring, and fragmentation-decoration controls
+
+[CSS Will Change 1 §2](https://www.w3.org/TR/2022/CRD-css-will-change-1-20220505/#will-change)
+supplies `will-change: auto | <animateable-feature>#`. `CssWillChange` retains
+`auto` or a checked nonempty ordered comma list of `scroll-position`, `contents`,
+and property names. The dedicated `CssWillChangePropertyName` excludes the
+CSS-wide keywords, `default`, `will-change`, `none`, `all`, `auto`,
+`scroll-position`, and `contents` without importing grid's `span` exclusion.
+Names retain decoded case, unknown future and custom property names, and repeats.
+Canonical specified output escapes names through the shared CSSOM writer and
+uses comma followed by one space. Serialization charges one input and projection
+node for `auto`, or one list node plus one per hint; escaped bytes and separators
+consume the same cumulative byte budget. Exhaustion returns an atomic typed
+failure and leaves the authored value unchanged. Optimization execution belongs
+to downstream style and rendering owners.
+
+[Scroll Anchoring 1 §3](https://www.w3.org/TR/2020/WD-css-scroll-anchoring-1-20201111/#exclusion-api)
+supplies `overflow-anchor: auto | none`, represented by `CssOverflowAnchor` in
+the existing overflow-controls owner. It applies to all elements and has discrete
+animation semantics. Anchor selection and scroll adjustment remain downstream.
+[Fragmentation 3 §5.4](https://www.w3.org/TR/2018/CR-css-break-3-20181204/#break-decoration)
+supplies `box-decoration-break: slice | clone`; its existing
+`CssBoxDecorationBreak` now has bounded canonical specified output in the
+fragmentation-controls owner. Each keyword charges one input node, one projection
+node, and its canonical bytes; geometry and painting remain downstream.
+
+These three longhands are non-inherited with specified initials `auto`, `auto`,
+and `slice`, respectively. Parsed and checked component admission use the same
+intrinsic grammars and preserve origins, importance, and occurrence identity.
+Expansion emits one ordinary or CSS-wide contribution; whole-value substitution
+remains pending until strict reentry. Normalization retains authored declaration
+order. Their public support records are `Complete` for the authored lifecycle.
+The catalog adds two feature records and two pinned specification sources;
+`box-decoration-break` retains its baseline identity and Fragmentation 3 source.

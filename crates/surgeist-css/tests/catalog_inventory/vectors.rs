@@ -22,6 +22,12 @@ macro_rules! vector {
 // Every non-`all` value is an ordinary typed value that must reach generated
 // property dispatch. The `all` row deliberately exercises its global contract.
 pub const PROPERTY_POSITIVE_VECTORS: &[PropertyVector] = &[
+    vector!(
+        "ext.property.will-change",
+        "will-change",
+        "span, contents, --custom"
+    ),
+    vector!("ext.property.overflow-anchor", "overflow-anchor", "none"),
     vector!("baseline.property.all", "all", "inherit"),
     vector!("baseline.property.display", "display", "block"),
     vector!(
@@ -708,6 +714,8 @@ pub const PROPERTY_POSITIVE_VECTORS: &[PropertyVector] = &[
 // cardinality error, or numeric/range boundary. The `all` row deliberately uses
 // ordinary typed syntax so its generated dispatch arm rejects it.
 pub const PROPERTY_NEGATIVE_VECTORS: &[PropertyVector] = &[
+    vector!("ext.property.will-change", "will-change", "opacity, none"),
+    vector!("ext.property.overflow-anchor", "overflow-anchor", "smooth"),
     vector!("baseline.property.all", "all", "block"),
     vector!("baseline.property.display", "display", "block inline"),
     vector!(

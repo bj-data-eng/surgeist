@@ -1485,7 +1485,10 @@ pub use font_weight::{
 pub use inset::{CssInsetPair, CssInsetShorthand, CssInsetValue};
 pub use integer_value::CssIntegerLiteral;
 pub use overflow::CssOverflowValue;
-pub use overflow_controls::{CssOverflowClipMargin, CssScrollBehavior, CssScrollbarGutter};
+pub use overflow_controls::{
+    CssOverflowAnchor, CssOverflowClipMargin, CssScrollBehavior, CssScrollbarGutter,
+};
+mod will_change;
 pub use scroll_snap::{
     CssScrollMarginPair, CssScrollMarginShorthand, CssScrollPaddingPair, CssScrollPaddingShorthand,
     CssScrollPaddingValue, CssScrollSideKind, CssScrollSnapAlign, CssScrollSnapAlignment,
@@ -1499,6 +1502,9 @@ pub use text_alignment::{
     CssTextAlignAllValue, CssTextAlignLastValue, CssTextAlignPosition, CssTextAlignValue,
 };
 pub use text_spacing::CssTextSpacingAdjustment;
+pub use will_change::{
+    CssWillChange, CssWillChangeFeature, CssWillChangeFeatures, CssWillChangePropertyName,
+};
 mod float_clear;
 mod overflow;
 mod overflow_controls;

@@ -56,6 +56,7 @@ mod position;
 mod queries;
 mod query_components;
 mod shapes;
+mod will_change;
 // Shared checked media construction uses the same private admission engine.
 pub(crate) use queries::{construct_media_condition, construct_media_query};
 pub(crate) use supports::{construct_supports_condition, construct_supports_declaration};
@@ -145,6 +146,7 @@ use supports::{
     parse_supports_condition, parse_supports_declaration, with_supports_prelude_context,
 };
 use url::parse_url;
+use will_change::*;
 pub(crate) mod named_supports;
 use speech::*;
 use text_alignment::*;

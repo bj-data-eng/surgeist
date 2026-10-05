@@ -60,3 +60,24 @@ impl CssBreakInside {
         )
     }
 }
+
+impl crate::CssBoxDecorationBreak {
+    /// Emits the canonical authored fragmentation-decoration keyword.
+    pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Charges one input node, one projection node, and the emitted bytes.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String, CssSpecifiedValueSerializationError> {
+        serialize_keyword_sequence(
+            match self {
+                Self::Slice => "slice",
+                Self::Clone => "clone",
+            },
+            limits,
+        )
+    }
+}

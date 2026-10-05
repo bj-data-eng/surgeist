@@ -286,6 +286,9 @@ pub fn surgeist_css::CssBorderWidth::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssBoxDecorationBreak
 pub surgeist_css::CssBoxDecorationBreak::Clone
 pub surgeist_css::CssBoxDecorationBreak::Slice
+impl surgeist_css::CssBoxDecorationBreak
+pub fn surgeist_css::CssBoxDecorationBreak::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBoxDecorationBreak::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssBoxEdgeKeyword
 pub surgeist_css::CssBoxEdgeKeyword::BorderBox
 pub surgeist_css::CssBoxEdgeKeyword::ContentBox
@@ -2149,6 +2152,7 @@ pub surgeist_css::CssKnownProperty::OutlineOffset
 pub surgeist_css::CssKnownProperty::OutlineStyle
 pub surgeist_css::CssKnownProperty::OutlineWidth
 pub surgeist_css::CssKnownProperty::Overflow
+pub surgeist_css::CssKnownProperty::OverflowAnchor
 pub surgeist_css::CssKnownProperty::OverflowBlock
 pub surgeist_css::CssKnownProperty::OverflowClipMargin
 pub surgeist_css::CssKnownProperty::OverflowInline
@@ -2255,6 +2259,7 @@ pub surgeist_css::CssKnownProperty::VoiceVolume
 pub surgeist_css::CssKnownProperty::WhiteSpace
 pub surgeist_css::CssKnownProperty::Widows
 pub surgeist_css::CssKnownProperty::Width
+pub surgeist_css::CssKnownProperty::WillChange
 pub surgeist_css::CssKnownProperty::WordBreak
 pub surgeist_css::CssKnownProperty::WordSpacing
 pub surgeist_css::CssKnownProperty::WritingMode
@@ -2517,6 +2522,7 @@ pub surgeist_css::CssKnownPropertyValueRef::OutlineOffset(&'a surgeist_css::CssO
 pub surgeist_css::CssKnownPropertyValueRef::OutlineStyle(&'a surgeist_css::CssOutlineStylePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::OutlineWidth(&'a surgeist_css::CssOutlineWidthPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Overflow(&'a surgeist_css::CssOverflowPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::OverflowAnchor(&'a surgeist_css::CssOverflowAnchorPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::OverflowBlock(&'a surgeist_css::CssOverflowBlockPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::OverflowClipMargin(&'a surgeist_css::CssOverflowClipMarginPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::OverflowInline(&'a surgeist_css::CssOverflowInlinePropertyValue)
@@ -2623,6 +2629,7 @@ pub surgeist_css::CssKnownPropertyValueRef::VoiceVolume(&'a surgeist_css::CssVoi
 pub surgeist_css::CssKnownPropertyValueRef::WhiteSpace(&'a surgeist_css::CssWhiteSpacePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Widows(&'a surgeist_css::CssWidowsPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Width(&'a surgeist_css::CssWidthPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::WillChange(&'a surgeist_css::CssWillChangePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::WordBreak(&'a surgeist_css::CssWordBreakPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::WordSpacing(&'a surgeist_css::CssWordSpacingPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::WritingMode(&'a surgeist_css::CssWritingModePropertyValue)
@@ -2786,6 +2793,7 @@ pub surgeist_css::CssLonghandValueRef::BorderTopRightRadius(&'a surgeist_css::Cs
 pub surgeist_css::CssLonghandValueRef::BorderTopStyle(&'a surgeist_css::CssBorderStyle)
 pub surgeist_css::CssLonghandValueRef::BorderTopWidth(&'a surgeist_css::CssBorderWidth)
 pub surgeist_css::CssLonghandValueRef::Bottom(&'a surgeist_css::CssInsetValue)
+pub surgeist_css::CssLonghandValueRef::BoxDecorationBreak(&'a surgeist_css::CssBoxDecorationBreak)
 pub surgeist_css::CssLonghandValueRef::BoxShadow(&'a surgeist_css::CssBoxShadow)
 pub surgeist_css::CssLonghandValueRef::BoxSizing(&'a surgeist_css::CssBoxSizing)
 pub surgeist_css::CssLonghandValueRef::BreakAfter(&'a surgeist_css::CssBreakBetween)
@@ -2897,6 +2905,7 @@ pub surgeist_css::CssLonghandValueRef::MinWidth(&'a surgeist_css::CssSizeValue)
 pub surgeist_css::CssLonghandValueRef::Opacity(&'a surgeist_css::CssOpacityValue)
 pub surgeist_css::CssLonghandValueRef::Order(&'a surgeist_css::CssIntegerValue)
 pub surgeist_css::CssLonghandValueRef::Orphans(&'a surgeist_css::CssPageLineMinimum)
+pub surgeist_css::CssLonghandValueRef::OverflowAnchor(&'a surgeist_css::CssOverflowAnchor)
 pub surgeist_css::CssLonghandValueRef::OverflowBlock(&'a surgeist_css::CssOverflow)
 pub surgeist_css::CssLonghandValueRef::OverflowClipMargin(&'a surgeist_css::CssOverflowClipMargin)
 pub surgeist_css::CssLonghandValueRef::OverflowInline(&'a surgeist_css::CssOverflow)
@@ -2963,6 +2972,7 @@ pub surgeist_css::CssLonghandValueRef::VoiceStress(&'a surgeist_css::CssVoiceStr
 pub surgeist_css::CssLonghandValueRef::VoiceVolume(&'a surgeist_css::CssVoiceVolume)
 pub surgeist_css::CssLonghandValueRef::Widows(&'a surgeist_css::CssPageLineMinimum)
 pub surgeist_css::CssLonghandValueRef::Width(&'a surgeist_css::CssSizeValue)
+pub surgeist_css::CssLonghandValueRef::WillChange(&'a surgeist_css::CssWillChange)
 pub surgeist_css::CssLonghandValueRef::WordSpacing(&'a surgeist_css::CssTextSpacingAdjustment)
 pub surgeist_css::CssLonghandValueRef::WritingMode(&'a surgeist_css::CssWritingMode)
 #[non_exhaustive] pub enum surgeist_css::CssMarginValue
@@ -3378,6 +3388,12 @@ pub surgeist_css::CssOverflow::Visible
 impl surgeist_css::CssOverflow
 pub fn surgeist_css::CssOverflow::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssOverflow::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssOverflowAnchor
+pub surgeist_css::CssOverflowAnchor::Auto
+pub surgeist_css::CssOverflowAnchor::None
+impl surgeist_css::CssOverflowAnchor
+pub fn surgeist_css::CssOverflowAnchor::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssOverflowAnchor::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssOverflowPosition
 pub surgeist_css::CssOverflowPosition::Safe
 pub surgeist_css::CssOverflowPosition::Unsafe
@@ -4472,6 +4488,16 @@ pub surgeist_css::CssWhiteSpace::Normal
 pub surgeist_css::CssWhiteSpace::Pre
 pub surgeist_css::CssWhiteSpace::PreLine
 pub surgeist_css::CssWhiteSpace::PreWrap
+#[non_exhaustive] pub enum surgeist_css::CssWillChange
+pub surgeist_css::CssWillChange::Auto
+pub surgeist_css::CssWillChange::Features(surgeist_css::CssWillChangeFeatures)
+impl surgeist_css::CssWillChange
+pub fn surgeist_css::CssWillChange::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssWillChange::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssWillChangeFeature
+pub surgeist_css::CssWillChangeFeature::Contents
+pub surgeist_css::CssWillChangeFeature::Property(surgeist_css::CssWillChangePropertyName)
+pub surgeist_css::CssWillChangeFeature::ScrollPosition
 #[non_exhaustive] pub enum surgeist_css::CssWordBreak
 pub surgeist_css::CssWordBreak::BreakAll
 pub surgeist_css::CssWordBreak::BreakWord
@@ -8033,6 +8059,10 @@ pub struct surgeist_css::CssOutlineWidthPropertyValue
 impl surgeist_css::CssOutlineWidthPropertyValue
 pub fn surgeist_css::CssOutlineWidthPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssOutlineWidthPropertyValue::value(&self) -> &surgeist_css::CssOutlineWidth
+pub struct surgeist_css::CssOverflowAnchorPropertyValue
+impl surgeist_css::CssOverflowAnchorPropertyValue
+pub fn surgeist_css::CssOverflowAnchorPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssOverflowAnchorPropertyValue::value(&self) -> &surgeist_css::CssOverflowAnchor
 pub struct surgeist_css::CssOverflowBlockPropertyValue
 impl surgeist_css::CssOverflowBlockPropertyValue
 pub fn surgeist_css::CssOverflowBlockPropertyValue::as_css(&self) -> &str
@@ -9797,6 +9827,18 @@ pub struct surgeist_css::CssWidthPropertyValue
 impl surgeist_css::CssWidthPropertyValue
 pub fn surgeist_css::CssWidthPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssWidthPropertyValue::value(&self) -> &surgeist_css::CssSizeValue
+pub struct surgeist_css::CssWillChangeFeatures(_)
+impl surgeist_css::CssWillChangeFeatures
+pub fn surgeist_css::CssWillChangeFeatures::items(&self) -> &[surgeist_css::CssWillChangeFeature]
+pub fn surgeist_css::CssWillChangeFeatures::try_new(features: alloc::vec::Vec<surgeist_css::CssWillChangeFeature>) -> core::option::Option<Self>
+pub struct surgeist_css::CssWillChangePropertyName(_)
+impl surgeist_css::CssWillChangePropertyName
+pub fn surgeist_css::CssWillChangePropertyName::as_str(&self) -> &str
+pub fn surgeist_css::CssWillChangePropertyName::try_new(value: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub struct surgeist_css::CssWillChangePropertyValue
+impl surgeist_css::CssWillChangePropertyValue
+pub fn surgeist_css::CssWillChangePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssWillChangePropertyValue::value(&self) -> &surgeist_css::CssWillChange
 pub struct surgeist_css::CssWordBreakPropertyValue
 impl surgeist_css::CssWordBreakPropertyValue
 pub fn surgeist_css::CssWordBreakPropertyValue::as_css(&self) -> &str

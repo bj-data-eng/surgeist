@@ -198,3 +198,33 @@ impl CssTextOverflow {
         )
     }
 }
+
+/// Authored scroll-anchoring opt-out, applying to all elements with discrete animation.
+/// Anchor selection and scroll adjustment belong to downstream style and layout owners.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssOverflowAnchor {
+    Auto,
+    None,
+}
+
+impl CssOverflowAnchor {
+    /// Emits the canonical authored keyword.
+    pub fn serialize_specified(&self) -> SerializationResult<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Charges one input node, one projection node, and the emitted bytes.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> SerializationResult<String> {
+        serialize_keyword_sequence(
+            match self {
+                Self::Auto => "auto",
+                Self::None => "none",
+            },
+            limits,
+        )
+    }
+}

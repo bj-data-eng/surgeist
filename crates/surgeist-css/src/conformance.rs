@@ -910,6 +910,22 @@ profile_source!(
     "https://www.w3.org/TR/2019/CR-css-writing-modes-4-20190730/"
 );
 profile_source!(
+    I_WILLCHANGE1,
+    "I-WILLCHANGE1",
+    "CSS Will Change",
+    "1",
+    CssSpecificationTier::Snapshot2026Interop,
+    "https://www.w3.org/TR/2022/CRD-css-will-change-1-20220505/"
+);
+profile_source!(
+    I_SCROLLANCHORING1,
+    "I-SCROLLANCHORING1",
+    "CSS Scroll Anchoring",
+    "1",
+    CssSpecificationTier::Snapshot2026Interop,
+    "https://www.w3.org/TR/2020/WD-css-scroll-anchoring-1-20201111/"
+);
+profile_source!(
     S_BREAK3,
     "S-BREAK3",
     "CSS Fragmentation",
@@ -1288,6 +1304,8 @@ static SPECIFICATION_SOURCES: &[CssSpecificationSource] = &[
     S_SPEECH1,
     S_WRITING4,
     S_BREAK3,
+    I_WILLCHANGE1,
+    I_SCROLLANCHORING1,
     S_ALIGN3,
     S_SHAPES1,
     S_TEXT3,
@@ -2582,6 +2600,8 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::InsetInlineEnd
         | CssKnownProperty::InsetBlock
         | CssKnownProperty::InsetInline => I_POSITION3,
+        CssKnownProperty::WillChange => I_WILLCHANGE1,
+        CssKnownProperty::OverflowAnchor => I_SCROLLANCHORING1,
         CssKnownProperty::BoxDecorationBreak => S_BREAK3,
         CssKnownProperty::Order => S_DISPLAY3,
         CssKnownProperty::AspectRatio => X_SIZING4_20260904,
@@ -2769,7 +2789,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 666] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 668] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -4442,6 +4462,16 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 666] = [
         "ext.property.overflow-clip-margin"
     ),
     complete_property_feature!(
+        CssKnownProperty::WillChange,
+        "will-change",
+        "ext.property.will-change"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::OverflowAnchor,
+        "overflow-anchor",
+        "ext.property.overflow-anchor"
+    ),
+    complete_property_feature!(
         CssKnownProperty::ScrollBehavior,
         "scroll-behavior",
         "ext.property.scroll-behavior"
@@ -5281,7 +5311,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 666] = [
         "z-index",
         "baseline.property.z-index"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::BoxDecorationBreak,
         "box-decoration-break",
         "baseline.property.box-decoration-break"

@@ -140,3 +140,14 @@ pub(super) fn parse_scrollbar_gutter<'i, 't>(
         "expected auto or stable with optional both-edges",
     ))
 }
+
+pub(super) fn parse_overflow_anchor<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> Result<crate::CssOverflowAnchor, ParseError<'i, Error>> {
+    let ident = input.expect_ident_cloned().map_err(basic)?;
+    match_ignore_ascii_case! { &ident,
+        "auto" => Ok(crate::CssOverflowAnchor::Auto),
+        "none" => Ok(crate::CssOverflowAnchor::None),
+        _ => Err(unsupported_value(input, None, "expected auto or none")),
+    }
+}

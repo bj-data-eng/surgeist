@@ -176,6 +176,8 @@ fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
         ("text-decoration-thickness", "X-TEXTDECOR4"),
         ("inset", "I-POSITION3"),
         ("box-decoration-break", "S-BREAK3"),
+        ("will-change", "I-WILLCHANGE1"),
+        ("overflow-anchor", "I-SCROLLANCHORING1"),
         ("order", "S-DISPLAY3"),
         ("aspect-ratio", "X-SIZING4-20260904"),
         ("scrollbar-width", "R-SCROLLBARS1"),
