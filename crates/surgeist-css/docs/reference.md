@@ -1110,6 +1110,18 @@ Its specified integer value expands to one contribution; normalization retains
 source order and does not sort declarations by their numeric values. Layout
 item ordering and computed integer rounding belong to downstream consumers.
 
+The selected [CSS2 §9.9.1 z-index definition](../../../references/css2--visuren.html--3f334c530cf4.md#propdef-z-index)
+provides a non-inherited longhand with intrinsic initial `auto`. Ordinary
+`auto` and integer values contribute one `CssLonghandValueRef::ZIndex` payload;
+CSS-wide values stay symbolic. Pending whole-value substitutions reenter the
+same strict grammar, preserving original importance and replacement origins.
+Normalization retains declaration order. `CssZIndexValue::serialize_specified()`
+emits canonical `auto` or delegates to the exact integer and specified math
+writer. Its bounded variant shares input, projection and UTF-8 byte budgets;
+`auto` charges one input and one projection node. Errors return no partial CSS
+and leave the authored value unchanged. [Positioned Layout 3 §2.2](../../../references/css-position-3--WD-css-position-3-20251007--3c8a8120af2c.md#stacking)
+stacking contexts, painting order and contextual interpretation remain downstream.
+
 `CssIntegerValue` is shared by Order and the integer branch of ZIndex.
 `Literal(CssIntegerLiteral)` retains the complete checked integer token and its
 parsed or programmatic origin at every magnitude. Decimal points, exponent

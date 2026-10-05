@@ -6015,3 +6015,37 @@ fn path_shape_metadata_cites_complete_authored_grammar_without_promoting_shape_c
     assert_eq!(metadata.recognized_unsupported_code(), None);
     assert!(metadata.baseline_alias_targets().is_empty());
 }
+
+#[test]
+fn complete_z_index_catalogue_matches_the_typed_authored_lifecycle() {
+    for (text, expected) in [
+        ("AUTO", "auto"),
+        ("+0002147483648", "2147483648"),
+        ("calc(1.5)", "calc(1.5)"),
+    ] {
+        let report = parse_style_attribute(&format!("z-index:{text}!important"));
+        assert!(report.is_clean());
+        let source = &report.syntax()[0];
+        let CssExpansion::Contributions(CssContributions::Longhands(values)) =
+            expand_declaration(source).unwrap()
+        else {
+            panic!("one longhand")
+        };
+        let [item] = values.items() else {
+            panic!("one terminal")
+        };
+        let CssLonghandValueRef::ZIndex(value) = item.ordinary_value().unwrap().view() else {
+            panic!("z-index payload")
+        };
+        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert!(item.source().same_occurrence(source));
+        assert_eq!(item.source().importance(), CssImportance::Important);
+    }
+    assert_complete_position_property_metadata(
+        "baseline.property.z-index",
+        "z-index",
+        CssKnownProperty::ZIndex,
+        "O-CSS2",
+        "visuren.html#propdef-z-index",
+    );
+}

@@ -5319,7 +5319,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 672] = [
         "inset-inline",
         "official.property.inset-inline"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::ZIndex,
         "z-index",
         "baseline.property.z-index"

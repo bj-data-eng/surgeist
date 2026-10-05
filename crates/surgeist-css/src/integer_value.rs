@@ -1,4 +1,4 @@
-//! Exact ordinary signed integers and specified integer-value serialization.
+//! Exact ordinary signed integers and specified integer/z-index serialization.
 
 use std::cmp::Ordering;
 
@@ -6,7 +6,7 @@ use crate::{
     CssComponentValue, CssComponentValueError, CssComponentValueErrorKind, CssComponentValueRef,
     CssIntegerValue, CssNumericTokenKind, CssNumericTokenRef, CssSpecifiedValueSerializationError,
     CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits, CssValueOrigin,
-    CssValueTokenRef, specified_serialization::SpecifiedSerializationContext,
+    CssValueTokenRef, CssZIndexValue, specified_serialization::SpecifiedSerializationContext,
 };
 
 /// One checked lexical integer token, without a machine-integer magnitude bound.
@@ -196,6 +196,44 @@ impl CssIntegerValue {
     }
 }
 
+impl CssZIndexValue {
+    /// Produces canonical specified `auto` or integer text, retaining authored identity.
+    ///
+    /// Integer literals retain exact magnitude. Math uses the shared specified
+    /// projection without computed integer rounding or contextual stacking policy.
+    pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Serializes atomically under shared input, projection and UTF-8 byte budgets.
+    /// `auto` charges one input and one projection node. Integer values use the
+    /// integer writer's accounting without an additional wrapper charge.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String, CssSpecifiedValueSerializationError> {
+        let mut context = SpecifiedSerializationContext::new(limits);
+        let mut output = String::new();
+        self.append_specified(&mut context, &mut output)?;
+        Ok(output)
+    }
+
+    pub(crate) fn append_specified(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> Result<(), CssSpecifiedValueSerializationError> {
+        match self {
+            Self::Auto => {
+                context.charge_input(1)?;
+                context.charge_projection(1)?;
+                context.append(output, "auto")
+            }
+            Self::Integer(value) => value.append_specified(context, output),
+        }
+    }
+}
+
 fn serialize_integer_digits(
     text: &str,
     byte_limit: usize,
@@ -224,4 +262,99 @@ fn serialize_integer_digits(
     }
     output.push_str(digits);
     Ok(output)
+}
+
+#[cfg(test)]
+mod z_index_serialization_tests {
+    use super::*;
+    use crate::CssIntegerCalculation;
+    use CssSpecifiedValueSerializationErrorKind as Kind;
+
+    #[test]
+    fn z_index_siblings_share_input_projection_and_utf8_byte_budgets() {
+        let first = CssZIndexValue::Auto;
+        let second =
+            CssZIndexValue::Integer(CssIntegerValue::Literal(CssIntegerLiteral::from_i32(-2)));
+        let before = (first.clone(), second.clone());
+        // The separator is a UTF-8 accounting probe in the shared private writer,
+        // not a proposed CSS property grammar. "autoé-2" occupies eight bytes.
+        for (limits, failure) in [
+            (CssSpecifiedValueSerializationLimits::new(2, 2, 8), None),
+            (
+                CssSpecifiedValueSerializationLimits::new(1, 2, 8),
+                Some(Kind::InputNodeLimit),
+            ),
+            (
+                CssSpecifiedValueSerializationLimits::new(2, 1, 8),
+                Some(Kind::ProjectionNodeLimit),
+            ),
+            (
+                CssSpecifiedValueSerializationLimits::new(2, 2, 7),
+                Some(Kind::ByteLimit),
+            ),
+        ] {
+            let mut context = SpecifiedSerializationContext::new(limits);
+            let mut output = String::new();
+            first.append_specified(&mut context, &mut output).unwrap();
+            context.append(&mut output, "é").unwrap();
+            let result = second.append_specified(&mut context, &mut output);
+            if let Some(kind) = failure {
+                assert_eq!(result.unwrap_err().kind(), kind);
+                assert_eq!(output, "autoé");
+            } else {
+                result.unwrap();
+                assert_eq!(output, "autoé-2");
+            }
+            assert_eq!((&first, &second), (&before.0, &before.1));
+        }
+    }
+
+    #[test]
+    fn z_index_math_delegates_into_the_existing_cumulative_context() {
+        let first = CssZIndexValue::Auto;
+        let second = CssZIndexValue::Integer(CssIntegerValue::Calculation(
+            CssIntegerCalculation::literal(2),
+        ));
+        let before = second.clone();
+        for (limits, failure) in [
+            (
+                CssSpecifiedValueSerializationLimits::new(100, 100, 12),
+                None,
+            ),
+            (
+                CssSpecifiedValueSerializationLimits::new(1, 100, 12),
+                Some(Kind::InputNodeLimit),
+            ),
+            (
+                CssSpecifiedValueSerializationLimits::new(100, 1, 12),
+                Some(Kind::ProjectionNodeLimit),
+            ),
+            (
+                CssSpecifiedValueSerializationLimits::new(100, 100, 11),
+                Some(Kind::ByteLimit),
+            ),
+        ] {
+            let mut context = SpecifiedSerializationContext::new(limits);
+            let mut output = String::new();
+            first.append_specified(&mut context, &mut output).unwrap();
+            context.append(&mut output, " ").unwrap();
+            let result = second.append_specified(&mut context, &mut output);
+            if let Some(kind) = failure {
+                assert_eq!(result.unwrap_err().kind(), kind);
+                // Internal math appends incrementally. Public serialization
+                // discards this scratch output on error; it does not promise
+                // rollback of a caller's private buffer.
+                assert!(output.starts_with("auto "));
+                assert!(output.len() <= limits.max_css_bytes());
+                assert_eq!(
+                    context.remaining_bytes(),
+                    limits.max_css_bytes() - output.len()
+                );
+            } else {
+                result.unwrap();
+                assert_eq!(output, "auto calc(2)");
+            }
+            assert_eq!(second, before);
+        }
+    }
 }

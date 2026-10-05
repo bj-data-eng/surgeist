@@ -4686,6 +4686,10 @@ pub enum CssIntegerValue {
     Calculation(CssIntegerCalculation),
 }
 
+/// An authored `z-index` value before contextual stacking or integer rounding.
+///
+/// CSS2 §9.9.1 defines `auto` or a signed integer. Integer literals preserve
+/// their exact component origins; calculations retain unresolved numeric input.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssZIndexValue {

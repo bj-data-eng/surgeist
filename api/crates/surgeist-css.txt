@@ -3007,6 +3007,7 @@ pub surgeist_css::CssLonghandValueRef::Width(&'a surgeist_css::CssSizeValue)
 pub surgeist_css::CssLonghandValueRef::WillChange(&'a surgeist_css::CssWillChange)
 pub surgeist_css::CssLonghandValueRef::WordSpacing(&'a surgeist_css::CssTextSpacingAdjustment)
 pub surgeist_css::CssLonghandValueRef::WritingMode(&'a surgeist_css::CssWritingMode)
+pub surgeist_css::CssLonghandValueRef::ZIndex(&'a surgeist_css::CssZIndexValue)
 #[non_exhaustive] pub enum surgeist_css::CssMarginValue
 pub surgeist_css::CssMarginValue::Auto
 pub surgeist_css::CssMarginValue::LengthPercentage(surgeist_css::CssSpecifiedLengthPercentage)
@@ -4554,6 +4555,9 @@ pub fn surgeist_css::CssWritingMode::serialize_specified_with_limits(&self, limi
 #[non_exhaustive] pub enum surgeist_css::CssZIndexValue
 pub surgeist_css::CssZIndexValue::Auto
 pub surgeist_css::CssZIndexValue::Integer(surgeist_css::CssIntegerValue)
+impl surgeist_css::CssZIndexValue
+pub fn surgeist_css::CssZIndexValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssZIndexValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::ErrorKind
 pub surgeist_css::ErrorKind::EscapeParseError(surgeist_css::CssEscapeError)
 pub surgeist_css::ErrorKind::InvalidAtRuleBody(surgeist_css::CssAtRuleSyntaxError)

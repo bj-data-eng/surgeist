@@ -35,6 +35,7 @@ const LONGHANDS: &[P] = &[
     P::ContainerName,
     P::ContainerType,
     P::Position,
+    P::ZIndex,
     P::WillChange,
     P::OverflowAnchor,
     P::BoxDecorationBreak,
@@ -823,6 +824,7 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         CssLonghandValueRef::ContentVisibility(v) => {
             assert_eq!(v, &CssContentVisibility::Visible)
         }
+        CssLonghandValueRef::ZIndex(v) => assert_eq!(v, &CssZIndexValue::Auto),
         CssLonghandValueRef::Order(v) => assert_eq!(v.serialize_specified().unwrap(), "0"),
         CssLonghandValueRef::AspectRatio(v) => {
             assert!(matches!(v, CssAspectRatioValue::Auto));
@@ -1073,7 +1075,7 @@ fn metadata_and_initials() {
             P::All,
         ])
         .collect();
-    assert_eq!(expected.len(), 304);
+    assert_eq!(expected.len(), 305);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {
