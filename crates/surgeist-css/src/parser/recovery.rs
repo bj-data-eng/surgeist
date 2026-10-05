@@ -124,7 +124,7 @@ struct DelimiterLimitTarget {
 fn scan_delimiters(source: &str, base_depth: u32) -> DelimiterScan {
     let mut offset = 0;
     let mut blocks: Vec<(BlockKind, usize)> = Vec::new();
-    let mut unclosed_url = None;
+    let mut unclosed_token = None;
     let mut maximum = base_depth;
     let mut unit_start = None;
     let mut first_root_curly = None;
@@ -144,15 +144,19 @@ fn scan_delimiters(source: &str, base_depth: u32) -> DelimiterScan {
             unit_start.get_or_insert(token_start);
         }
 
-        if matches!(token, Token::UnquotedUrl(_)) {
-            // The tokenizer consumes the entire URL, including punctuation that
-            // would open blocks or comments outside its payload. Its own EOF
-            // termination is retained without adding a structural nesting level.
-            if source
-                .get(token_start..token_end)
-                .is_some_and(|spelling| !url_token_is_closed(spelling))
-            {
-                unclosed_url = Some(token_start);
+        let token_closing = match &token {
+            Token::UnquotedUrl(_) => Some(b')'),
+            Token::QuotedString(_) => source.as_bytes().get(token_start).copied(),
+            _ => None,
+        };
+        if let Some(closing) = token_closing {
+            // URL and string tokens consume their own punctuation. Retained EOF
+            // termination reports recovery without adding structural nesting.
+            // Reuse the component owner's exact escaped-terminator predicate.
+            if source.get(token_start..token_end).is_some_and(|spelling| {
+                !crate::component_values::has_unescaped_final(spelling, closing)
+            }) {
+                unclosed_token = Some(token_start);
             }
             continue;
         }
@@ -201,24 +205,10 @@ fn scan_delimiters(source: &str, base_depth: u32) -> DelimiterScan {
         unclosed: blocks
             .into_iter()
             .map(|(_, offset)| offset)
-            .chain(unclosed_url)
+            .chain(unclosed_token)
             .collect(),
         eof_limit: target,
     }
-}
-
-fn url_token_is_closed(spelling: &str) -> bool {
-    // CSS Syntax's URL token ends only at an unescaped ')'. An escaped final
-    // parenthesis is payload, and the tokenizer then supplies EOF termination.
-    spelling.strip_suffix(')').is_some_and(|before_closing| {
-        before_closing
-            .bytes()
-            .rev()
-            .take_while(|byte| *byte == b'\\')
-            .count()
-            % 2
-            == 0
-    })
 }
 
 /// Parser-owned algorithm state shared by structural and component-value paths.

@@ -628,7 +628,7 @@ fn odd_trailing_backslashes(text: &str) -> bool {
     text.bytes().rev().take_while(|byte| *byte == b'\\').count() % 2 == 1
 }
 
-fn has_unescaped_final(text: &str, closing: u8) -> bool {
+pub(crate) fn has_unescaped_final(text: &str, closing: u8) -> bool {
     text.len() > 1
         && text.as_bytes().last() == Some(&closing)
         && !odd_trailing_backslashes(&text[..text.len() - 1])

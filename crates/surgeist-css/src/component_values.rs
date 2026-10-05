@@ -5,6 +5,7 @@
 //! independently originating replacement tokens remain available to consumers.
 
 mod parse;
+pub(crate) use parse::has_unescaped_final;
 mod serialize;
 pub(crate) use serialize::{CssCanonicalBuilder, CssCanonicalToken};
 
