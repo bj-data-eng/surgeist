@@ -10,6 +10,8 @@
 //! initially one `auto` breadth: https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#auto-tracks
 //! Grammar-handle identity, explicit unavailable metadata, and source occurrence
 //! retention are Surgeist public contracts. No contextual style is resolved.
+//! Selected Will Change 1, Scroll Anchoring 1, Fragmentation 3 and Scrollbars 1
+//! define auto/slice initials; only scrollbar-color inherits among these controls.
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
@@ -33,6 +35,11 @@ const LONGHANDS: &[P] = &[
     P::ContainerName,
     P::ContainerType,
     P::Position,
+    P::WillChange,
+    P::OverflowAnchor,
+    P::BoxDecorationBreak,
+    P::ScrollbarWidth,
+    P::ScrollbarColor,
     P::Top,
     P::Right,
     P::Bottom,
@@ -849,6 +856,13 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
             );
         }
         CssLonghandValueRef::ScrollBehavior(v) => assert_eq!(*v, CssScrollBehavior::Auto),
+        CssLonghandValueRef::WillChange(v) => assert_eq!(*v, CssWillChange::Auto),
+        CssLonghandValueRef::OverflowAnchor(v) => assert_eq!(*v, CssOverflowAnchor::Auto),
+        CssLonghandValueRef::BoxDecorationBreak(v) => {
+            assert_eq!(*v, CssBoxDecorationBreak::Slice)
+        }
+        CssLonghandValueRef::ScrollbarWidth(v) => assert_eq!(*v, CssScrollbarWidth::Auto),
+        CssLonghandValueRef::ScrollbarColor(v) => assert_eq!(*v, CssScrollbarColor::auto()),
         CssLonghandValueRef::ScrollbarGutter(v) => assert_eq!(*v, CssScrollbarGutter::Auto),
         CssLonghandValueRef::TextOverflow(v) => assert_eq!(*v, CssTextOverflow::Clip),
         CssLonghandValueRef::Width(v)
@@ -1052,7 +1066,7 @@ fn metadata_and_initials() {
             P::All,
         ])
         .collect();
-    assert_eq!(expected.len(), 295);
+    assert_eq!(expected.len(), 300);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {
@@ -1092,6 +1106,7 @@ fn metadata_and_initials() {
             matches!(
                 property,
                 P::Color
+                    | P::ScrollbarColor
                     | P::VoiceBalance
                     | P::VoiceVolume
                     | P::VoicePitch
