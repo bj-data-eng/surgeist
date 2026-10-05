@@ -3761,6 +3761,7 @@ pub fn surgeist_css::CssRule::to_specified_css_with_limits(&self, limits: surgei
 #[non_exhaustive] pub enum surgeist_css::CssRuleConstructionErrorKind
 pub surgeist_css::CssRuleConstructionErrorKind::CapacityOverflow
 pub surgeist_css::CssRuleConstructionErrorKind::DuplicateNamespace
+pub surgeist_css::CssRuleConstructionErrorKind::InvalidBoundaryAnchor
 pub surgeist_css::CssRuleConstructionErrorKind::InvalidPlacement
 pub surgeist_css::CssRuleConstructionErrorKind::InvalidPreludeOrder
 pub surgeist_css::CssRuleConstructionErrorKind::InvalidSelectorIdentifier
@@ -3797,6 +3798,15 @@ pub surgeist_css::CssScale::Values(surgeist_css::CssScaleValues)
 #[non_exhaustive] pub enum surgeist_css::CssScanMode
 pub surgeist_css::CssScanMode::Interlace
 pub surgeist_css::CssScanMode::Progressive
+pub enum surgeist_css::CssScopeNestingContext
+pub surgeist_css::CssScopeNestingContext::None
+pub surgeist_css::CssScopeNestingContext::Scope
+pub surgeist_css::CssScopeNestingContext::Style
+#[non_exhaustive] pub enum surgeist_css::CssScopeSelector
+pub surgeist_css::CssScopeSelector::Relative(surgeist_css::CssRelativeSelector)
+pub surgeist_css::CssScopeSelector::Selector(surgeist_css::CssSelector)
+impl surgeist_css::CssScopeSelector
+pub const fn surgeist_css::CssScopeSelector::selector(&self) -> &surgeist_css::CssSelector
 #[non_exhaustive] pub enum surgeist_css::CssScopedRule
 pub surgeist_css::CssScopedRule::ColorProfile(surgeist_css::CssColorProfileRule)
 pub surgeist_css::CssScopedRule::Container(surgeist_css::CssScopedContainerRule)
@@ -8767,11 +8777,11 @@ pub const fn surgeist_css::CssScopeRule::position(&self) -> core::option::Option
 pub const fn surgeist_css::CssScopeRule::root(&self) -> core::option::Option<&surgeist_css::CssScopeSelectorList>
 pub const fn surgeist_css::CssScopeRule::rules(&self) -> &surgeist_css::CssScopedRuleList
 impl surgeist_css::CssScopeRule
-pub fn surgeist_css::CssScopeRule::try_new(root: core::option::Option<surgeist_css::CssScopeSelectorList>, limit: core::option::Option<surgeist_css::CssScopeSelectorList>, rules: alloc::vec::Vec<surgeist_css::CssScopedRule>, context: &surgeist_css::CssNamespaceContext) -> core::result::Result<Self, surgeist_css::CssRuleConstructionError>
+pub fn surgeist_css::CssScopeRule::try_new(root: core::option::Option<surgeist_css::CssScopeSelectorList>, limit: core::option::Option<surgeist_css::CssScopeSelectorList>, rules: alloc::vec::Vec<surgeist_css::CssScopedRule>, context: &surgeist_css::CssNamespaceContext, nesting: surgeist_css::CssScopeNestingContext) -> core::result::Result<Self, surgeist_css::CssRuleConstructionError>
 pub struct surgeist_css::CssScopeSelectorList
 impl surgeist_css::CssScopeSelectorList
-pub fn surgeist_css::CssScopeSelectorList::selectors(&self) -> &[surgeist_css::CssSelector]
-pub fn surgeist_css::CssScopeSelectorList::try_new(selectors: alloc::vec::Vec<surgeist_css::CssSelector>) -> core::option::Option<Self>
+pub fn surgeist_css::CssScopeSelectorList::selectors(&self) -> &[surgeist_css::CssScopeSelector]
+pub fn surgeist_css::CssScopeSelectorList::try_new(selectors: alloc::vec::Vec<surgeist_css::CssScopeSelector>) -> core::option::Option<Self>
 pub struct surgeist_css::CssScopedContainerRule
 impl surgeist_css::CssScopedContainerRule
 pub const fn surgeist_css::CssScopedContainerRule::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>

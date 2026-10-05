@@ -21,7 +21,7 @@ fn counts(selector: &CssSelector, nesting: usize, scope: usize, present: bool) {
 }
 
 fn single(list: &CssScopeSelectorList) -> &CssSelector {
-    let [selector] = list.selectors() else {
+    let [CssScopeSelector::Selector(selector)] = list.selectors() else {
         panic!("one boundary member")
     };
     selector
@@ -45,7 +45,12 @@ fn scope_context(normalized: &CssNormalizedSheet, offset: usize) -> &CssRuleCont
 }
 
 fn check_three(list: &CssScopeSelectorList, nesting: bool) {
-    let [zero, one, multiple] = list.selectors() else {
+    let [
+        CssScopeSelector::Selector(zero),
+        CssScopeSelector::Selector(one),
+        CssScopeSelector::Selector(multiple),
+    ] = list.selectors()
+    else {
         panic!("all three authored members retained")
     };
     counts(zero, 0, 0, false);

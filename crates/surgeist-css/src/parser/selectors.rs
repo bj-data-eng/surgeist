@@ -147,15 +147,28 @@ pub(super) fn parse_scope_boundary_selector_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &mut SelectorRecovery<'_>,
     anchors: SelectorAnchorMode,
+    allow_relative: bool,
 ) -> std::result::Result<CssScopeSelectorList, ParseError<'i, Error>> {
     recovery
         .state
         .check_component_contents(recovery.source, input, "baseline.selector.complex")?;
-    let selectors = parse_rule_selector_list_with_options(
-        input,
-        SelectorParseOptions::scope_boundary(anchors),
-        recovery,
-    )?;
+    let options = SelectorParseOptions::scope_boundary(anchors);
+    let mut selectors = Vec::new();
+    loop {
+        let member = if allow_relative {
+            match parse_style_selector_with_options(input, options, recovery)? {
+                CssStyleSelector::Selector(selector) => CssScopeSelector::Selector(selector),
+                CssStyleSelector::Relative(selector) => CssScopeSelector::Relative(selector),
+            }
+        } else {
+            CssScopeSelector::Selector(parse_rule_selector_with_options(input, options, recovery)?)
+        };
+        selectors.push(member);
+        if input.try_parse(Parser::expect_comma).is_err() {
+            break;
+        }
+    }
+    input.expect_exhausted().map_err(selector_basic)?;
     CssScopeSelectorList::try_new(selectors)
         .ok_or_else(|| invalid_selector(input, "scope selector list must not be empty"))
 }
@@ -339,22 +352,6 @@ impl SelectorParseOptions {
             ..self
         }
     }
-}
-
-fn parse_rule_selector_list_with_options<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    options: SelectorParseOptions,
-    recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<Vec<CssSelector>, ParseError<'i, Error>> {
-    let mut selectors = Vec::new();
-    loop {
-        selectors.push(parse_rule_selector_with_options(input, options, recovery)?);
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
-        }
-    }
-    input.expect_exhausted().map_err(selector_basic)?;
-    Ok(selectors)
 }
 
 fn parse_rule_selector_with_options<'i, 't>(

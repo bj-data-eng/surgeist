@@ -27,7 +27,7 @@ fn classes(names: &[&str]) -> CssScopeSelectorList {
     CssScopeSelectorList::try_new(
         names
             .iter()
-            .map(|name| CssSelector::Class((*name).into()))
+            .map(|name| CssScopeSelector::Selector(CssSelector::Class((*name).into())))
             .collect(),
     )
     .unwrap()
@@ -122,6 +122,7 @@ fn checked_scope_preserves_boundary_omissions_and_descendant_origins() {
             limit.clone(),
             parsed.rules().rules().to_vec(),
             &CssNamespaceContext::default(),
+            CssScopeNestingContext::None,
         )
         .unwrap();
         assert_eq!(value.root(), root.as_ref());
@@ -275,11 +276,15 @@ fn checked_boundary_lists_reject_empty_and_recursive_pseudo_elements() {
             CssPseudoSelectorList::try_new(vec![selector.clone()]).unwrap(),
         )),
     ] {
-        assert!(CssScopeSelectorList::try_new(vec![selector]).is_none());
+        assert!(
+            CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(selector)]).is_none()
+        );
     }
     assert!(
-        CssScopeSelectorList::try_new(vec![CssSelector::PseudoClass(CssPseudoClass::Scope)])
-            .is_some()
+        CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(CssSelector::PseudoClass(
+            CssPseudoClass::Scope
+        ))])
+        .is_some()
     );
 }
 
@@ -367,6 +372,7 @@ fn ordinary_scope_rejects_declarations_while_style_nested_scope_retains_runs() {
         None,
         outer.rules().rules().to_vec(),
         &CssNamespaceContext::default(),
+        CssScopeNestingContext::None,
     )
     .unwrap_err();
     assert_eq!(
@@ -401,8 +407,14 @@ fn parsed_and_checked_scope_serialize_every_boundary_omission_explicitly() {
     ] {
         let parsed = CssRule::Scope(scope(source));
         let constructed = CssRule::Scope(
-            CssScopeRule::try_new(root, limit, Vec::new(), &CssNamespaceContext::default())
-                .unwrap(),
+            CssScopeRule::try_new(
+                root,
+                limit,
+                Vec::new(),
+                &CssNamespaceContext::default(),
+                CssScopeNestingContext::None,
+            )
+            .unwrap(),
         );
         for value in [parsed, constructed] {
             let before = value.clone();
@@ -428,6 +440,7 @@ fn scope_serialization_preserves_nested_rule_order_and_authored_origins() {
         parsed.limit().cloned(),
         parsed.rules().rules().to_vec(),
         &CssNamespaceContext::default(),
+        CssScopeNestingContext::None,
     )
     .unwrap();
     let expected = "@scope (.root) to (.stop) { @scope (.first) { } @scope to (.second) { } }";
@@ -462,7 +475,14 @@ fn style_nested_scope_serialization_preserves_direct_declaration_run_order() {
 #[test]
 fn scope_serialization_byte_limits_are_atomic_and_cumulative_across_sheet_rules() {
     let first = CssRule::Scope(
-        CssScopeRule::try_new(None, None, Vec::new(), &CssNamespaceContext::default()).unwrap(),
+        CssScopeRule::try_new(
+            None,
+            None,
+            Vec::new(),
+            &CssNamespaceContext::default(),
+            CssScopeNestingContext::None,
+        )
+        .unwrap(),
     );
     let input = CssSheet::try_from_rules(vec![first.clone(), first]).unwrap();
     let before = input.clone();

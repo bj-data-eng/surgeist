@@ -851,9 +851,13 @@ fn scope_rule_model_keeps_scoped_selectors_and_rules_separate() {
     assert_eq!(CssScopedStyleSelectorList::try_new(Vec::new()), None);
 
     let root_selector = CssSelector::Class("card".to_owned());
-    let root = CssScopeSelectorList::try_new(vec![root_selector.clone()]).unwrap();
+    let root =
+        CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(root_selector.clone())])
+            .unwrap();
     let limit_selector = CssSelector::Class("boundary".to_owned());
-    let limit = CssScopeSelectorList::try_new(vec![limit_selector.clone()]).unwrap();
+    let limit =
+        CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(limit_selector.clone())])
+            .unwrap();
 
     let implicit_selector =
         CssScopedStyleSelector::Selector(CssSelector::Class("title".to_owned()));
@@ -883,8 +887,14 @@ fn scope_rule_model_keeps_scoped_selectors_and_rules_separate() {
         location,
     );
 
-    assert_eq!(root.selectors(), &[root_selector]);
-    assert_eq!(limit.selectors(), &[limit_selector]);
+    assert_eq!(
+        root.selectors(),
+        &[CssScopeSelector::Selector(root_selector)]
+    );
+    assert_eq!(
+        limit.selectors(),
+        &[CssScopeSelector::Selector(limit_selector)]
+    );
     assert_eq!(
         selectors.selectors(),
         &[implicit_selector, relative_selector]
@@ -905,8 +915,12 @@ fn scope_rule_model_keeps_scoped_selectors_and_rules_separate() {
 #[test]
 fn scope_selector_list_constructor_rejects_pseudo_elements() {
     let ordinary = CssSelector::Class("card".to_owned());
-    let ordinary_list = CssScopeSelectorList::try_new(vec![ordinary.clone()]).unwrap();
-    assert_eq!(ordinary_list.selectors(), &[ordinary]);
+    let ordinary_list =
+        CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(ordinary.clone())]).unwrap();
+    assert_eq!(
+        ordinary_list.selectors(),
+        &[CssScopeSelector::Selector(ordinary)]
+    );
 
     let pseudo_element = CssPseudoElementSequence::try_new(vec![CssPseudoElement::Before]).unwrap();
     let selector = CssSelector::Compound(
@@ -921,7 +935,10 @@ fn scope_selector_list_constructor_rejects_pseudo_elements() {
         ),
     );
 
-    assert_eq!(CssScopeSelectorList::try_new(vec![selector]), None);
+    assert_eq!(
+        CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(selector)]),
+        None
+    );
 
     let first =
         CssCompoundSelector::new(None, None, vec!["card".to_owned()], Vec::new(), Vec::new());
@@ -939,7 +956,10 @@ fn scope_selector_list_constructor_rejects_pseudo_elements() {
     );
     let selector = CssSelector::Complex(CssComplexSelector::try_new(first, vec![part]).unwrap());
 
-    assert_eq!(CssScopeSelectorList::try_new(vec![selector]), None);
+    assert_eq!(
+        CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(selector)]),
+        None
+    );
 }
 
 #[test]

@@ -22,7 +22,7 @@ fn anchor_free_scope_boundary_parenthesis_counts_toward_structural_limit() {
             panic!("scope and following neighbor")
         };
         let boundary = if limit { scope.limit() } else { scope.root() }.unwrap();
-        let [selector] = boundary.selectors() else {
+        let [surgeist_css::CssScopeSelector::Selector(selector)] = boundary.selectors() else {
             panic!("one selector")
         };
         let mut selector = selector;

@@ -308,6 +308,7 @@ impl<'i> AtRuleParser<'i> for NestedStyleRuleParser<'i> {
                     &mut self.diagnostics,
                     &self.recovery,
                     SelectorAnchorMode::Nesting,
+                    true,
                 ).map_err(with_scope_prelude_context)?,
             )),
             "import" => Err(invalid_at_rule_placement(

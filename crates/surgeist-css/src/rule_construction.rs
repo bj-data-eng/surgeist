@@ -10,6 +10,7 @@ pub enum CssRuleConstructionErrorKind {
     DuplicateNamespace,
     NamespaceMismatch,
     InvalidSelectorIdentifier,
+    InvalidBoundaryAnchor,
     NestingLimit,
     SelectorNestingLimit,
     CapacityOverflow,
@@ -154,14 +155,18 @@ pub(crate) fn scope(
     limit: Option<&CssScopeSelectorList>,
     rules: &[CssScopedRule],
     context: &CssNamespaceContext,
+    nesting: CssScopeNestingContext,
 ) -> Result<(), CssRuleConstructionError> {
-    for list in [root, limit].into_iter().flatten() {
-        for selector in list.selectors() {
-            check_selector(selector, context)
-                .map_err(|kind| CssRuleConstructionError::new(kind, Vec::new(), None))?;
-        }
-    }
-    validate(List::Scoped(rules), context, Role::Scope, false, 1, None)
+    check_scope_boundaries(root, limit, context, nesting)
+        .map_err(|kind| CssRuleConstructionError::new(kind, Vec::new(), None))?;
+    validate(
+        List::Scoped(rules),
+        context,
+        Role::Scope,
+        nesting == CssScopeNestingContext::Style,
+        1,
+        None,
+    )
 }
 pub(crate) fn supports(
     condition: &CssSupportsCondition,
@@ -221,7 +226,9 @@ fn validate(
         if depth > crate::STRUCTURAL_NESTING_LIMIT {
             return Err(fail(CssRuleConstructionErrorKind::NestingLimit));
         }
-        let children = node.check(context, role, style).map_err(fail)?;
+        let scoped = matches!(list, List::Scoped(_))
+            || frames.iter().any(|frame| matches!(frame.role, Role::Scope));
+        let children = node.check(context, role, style, scoped).map_err(fail)?;
         if let Some((list, role, style)) = children {
             frames.try_reserve(1).map_err(|_| {
                 CssRuleConstructionError::new(
@@ -276,6 +283,7 @@ impl<'a> Node<'a> {
         context: &CssNamespaceContext,
         role: Role,
         style: bool,
+        scoped: bool,
     ) -> Result<Option<(List<'a>, Role, bool)>, CssRuleConstructionErrorKind> {
         use CssRuleConstructionErrorKind::InvalidPlacement;
         match self {
@@ -333,7 +341,7 @@ impl<'a> Node<'a> {
                 CssRule::LayerBlock(rule) => {
                     return Ok(Some((List::Ordinary(rule.rules()), Role::Group, style)));
                 }
-                CssRule::Scope(rule) => return scope_children(rule, context, style),
+                CssRule::Scope(rule) => return scope_children(rule, context, style, scoped),
                 _ => {}
             },
             Self::Scoped(rule) => match rule {
@@ -395,7 +403,7 @@ impl<'a> Node<'a> {
                         style,
                     )));
                 }
-                CssScopedRule::Scope(rule) => return scope_children(rule, context, style),
+                CssScopedRule::Scope(rule) => return scope_children(rule, context, style, scoped),
                 _ => {}
             },
         }
@@ -406,17 +414,47 @@ fn scope_children<'a>(
     rule: &'a CssScopeRule,
     context: &CssNamespaceContext,
     style: bool,
+    scoped: bool,
 ) -> Result<Option<(List<'a>, Role, bool)>, CssRuleConstructionErrorKind> {
-    for list in [rule.root(), rule.limit()].into_iter().flatten() {
-        for selector in list.selectors() {
-            check_selector(selector, context)?;
-        }
-    }
+    let nesting = if style {
+        CssScopeNestingContext::Style
+    } else if scoped {
+        CssScopeNestingContext::Scope
+    } else {
+        CssScopeNestingContext::None
+    };
+    check_scope_boundaries(rule.root(), rule.limit(), context, nesting)?;
     Ok(Some((
         List::Scoped(rule.rules().rules()),
         Role::Scope,
         style,
     )))
+}
+
+fn check_scope_boundaries(
+    root: Option<&CssScopeSelectorList>,
+    limit: Option<&CssScopeSelectorList>,
+    context: &CssNamespaceContext,
+    nesting: CssScopeNestingContext,
+) -> Result<(), CssRuleConstructionErrorKind> {
+    for (list, allow_relative, scope_anchors) in [
+        (
+            root,
+            nesting != CssScopeNestingContext::None,
+            nesting == CssScopeNestingContext::Scope,
+        ),
+        (limit, true, true),
+    ] {
+        if let Some(list) = list {
+            for member in list.selectors() {
+                if matches!(member, CssScopeSelector::Relative(_)) && !allow_relative {
+                    return Err(CssRuleConstructionErrorKind::InvalidPlacement);
+                }
+                check_selector_with_anchors(member.selector(), context, Some(scope_anchors))?;
+            }
+        }
+    }
+    Ok(())
 }
 fn ordinary_position(rule: &CssRule) -> Option<CssSourcePosition> {
     match rule {
@@ -551,6 +589,13 @@ fn check_selector(
     selector: &CssSelector,
     context: &CssNamespaceContext,
 ) -> Result<(), CssRuleConstructionErrorKind> {
+    check_selector_with_anchors(selector, context, None)
+}
+fn check_selector_with_anchors(
+    selector: &CssSelector,
+    context: &CssNamespaceContext,
+    scope_anchors: Option<bool>,
+) -> Result<(), CssRuleConstructionErrorKind> {
     let mut stack = CheckedStack::new(SelectorWork::Selector(selector, 0))?;
     while let Some(work) = stack.pop() {
         match work {
@@ -576,6 +621,15 @@ fn check_selector(
                 }
             },
             SelectorWork::Compound(compound, depth) => {
+                if scope_anchors.is_some_and(|scope| {
+                    if scope {
+                        compound.nesting_selectors() != 0
+                    } else {
+                        compound.has_scope_anchor()
+                    }
+                }) {
+                    return Err(CssRuleConstructionErrorKind::InvalidBoundaryAnchor);
+                }
                 if let Some(name) = compound.type_selector() {
                     if let Some(local) = name.local_name() {
                         identifier(local)?;

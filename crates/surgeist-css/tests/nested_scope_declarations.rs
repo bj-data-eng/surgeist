@@ -181,8 +181,13 @@ fn explicit_scope_boundaries_survive_without_rebinding_inherited_selectors() {
     else {
         panic!("both authored boundaries")
     };
-    assert_eq!(root.selectors(), &[CssSelector::Class("root".into())]);
-    let [CssSelector::Complex(limit)] = limit.selectors() else {
+    assert_eq!(
+        root.selectors(),
+        &[CssScopeSelector::Selector(CssSelector::Class(
+            "root".into()
+        ))]
+    );
+    let [CssScopeSelector::Selector(CssSelector::Complex(limit))] = limit.selectors() else {
         panic!("one descendant limit")
     };
     let start = limit.first();
@@ -247,7 +252,12 @@ fn scope_groups_and_inner_scopes_keep_full_ancestry_and_source_order() {
     else {
         panic!("inner boundary")
     };
-    assert_eq!(root.selectors(), &[CssSelector::Class("inner".into())]);
+    assert_eq!(
+        root.selectors(),
+        &[CssScopeSelector::Selector(CssSelector::Class(
+            "inner".into()
+        ))]
+    );
     assert!(!inner.same_context(outer));
     assert!(inner.parent().unwrap().same_context(outer));
     assert!(
@@ -360,7 +370,9 @@ fn public_style_fragments_admit_scope_runs_with_ordinary_boundaries() {
     };
     assert_eq!(
         scope.root().unwrap().selectors(),
-        &[CssSelector::Class("root".into())]
+        &[CssScopeSelector::Selector(CssSelector::Class(
+            "root".into()
+        ))]
     );
     fragment_child_value(scope);
     let block = parse_style_block("{@scope (.root){color:red;.child{color:blue}}}", &ns);
@@ -370,7 +382,9 @@ fn public_style_fragments_admit_scope_runs_with_ordinary_boundaries() {
     };
     assert_eq!(
         scope.root().unwrap().selectors(),
-        &[CssSelector::Class("root".into())]
+        &[CssScopeSelector::Selector(CssSelector::Class(
+            "root".into()
+        ))]
     );
     fragment_child_value(scope);
     // New authored run payload checks belong in the later new-variant tests.

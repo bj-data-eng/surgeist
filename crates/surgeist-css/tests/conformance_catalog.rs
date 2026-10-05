@@ -1824,12 +1824,12 @@ const EXPECTED: &[ExpectedFeature] = &[
     ExpectedFeature {
         id: "baseline.selector.nesting",
         kind: CssFeatureKind::Selector,
-        spelling: "nesting &, scoped selector anchors, and scoped relative selectors",
+        spelling: "nesting &, scoped selector anchors, and contextual relative selectors",
         source: ExpectedSource::Id("I-NESTING1"),
-        production: "#nest-selector",
+        production: "#nest-selector,#syntax-examples,#nesting-at-scope",
         status: CssSupportStatus::Partial,
         supported_subset: Some(
-            "Nesting &, scoped selector anchors, and scoped relative selectors are supported.",
+            "Nesting &, counted scope anchors, scoped relative selectors, and contextual relative scope boundaries are supported.",
         ),
         unsupported_remainder: Some(SELECTOR_REMAINDER),
         recognized_code: None,

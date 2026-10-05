@@ -1979,13 +1979,17 @@ impl CssScopeRule {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssScopeSelectorList {
-    selectors: Vec<CssSelector>,
+    selectors: Vec<CssScopeSelector>,
 }
 
 impl CssScopeSelectorList {
     #[must_use]
-    pub fn try_new(selectors: Vec<CssSelector>) -> Option<Self> {
-        if selectors.is_empty() || selectors.iter().any(CssSelector::has_pseudo_elements) {
+    pub fn try_new(selectors: Vec<CssScopeSelector>) -> Option<Self> {
+        if selectors.is_empty()
+            || selectors
+                .iter()
+                .any(|member| member.selector().has_pseudo_elements())
+        {
             None
         } else {
             Some(Self::new(selectors))
@@ -1993,16 +1997,55 @@ impl CssScopeSelectorList {
     }
 
     #[must_use]
-    pub(crate) fn new(selectors: Vec<CssSelector>) -> Self {
+    pub(crate) fn new(selectors: Vec<CssScopeSelector>) -> Self {
         debug_assert!(!selectors.is_empty());
-        debug_assert!(!selectors.iter().any(CssSelector::has_pseudo_elements));
+        debug_assert!(
+            !selectors
+                .iter()
+                .any(|member| member.selector().has_pseudo_elements())
+        );
         Self { selectors }
     }
 
     #[must_use]
-    pub fn selectors(&self) -> &[CssSelector] {
+    pub fn selectors(&self) -> &[CssScopeSelector] {
         &self.selectors
     }
+}
+
+/// One scope boundary member, retaining a leading combinator without fabricating
+/// an explicit anchor. Root relatives require an enclosing style or scope;
+/// limit relatives refer to the scope introduced by their rule.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub enum CssScopeSelector {
+    Selector(CssSelector),
+    Relative(CssRelativeSelector),
+}
+
+impl CssScopeSelector {
+    #[must_use]
+    pub const fn selector(&self) -> &CssSelector {
+        match self {
+            Self::Selector(selector) => selector,
+            Self::Relative(relative) => relative.selector(),
+        }
+    }
+}
+
+/// Validation context for checked scope construction, not a complete ancestry
+/// record. Final stylesheet or group assembly rechecks actual ancestry. The
+/// nearest enclosing style or scope binds implicit relative roots; explicit
+/// root `&` and declaration runs use any enclosing style ancestor.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CssScopeNestingContext {
+    /// No enclosing style or scope. Relative roots are invalid.
+    None,
+    /// A style ancestor supplies explicit root `&` and declaration runs, including
+    /// when another scope intervenes. Implicit relatives retain no synthetic anchor.
+    Style,
+    /// An enclosing scope supplies the root's scope context, without a style ancestor.
+    Scope,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -9210,14 +9253,16 @@ impl CssScopedLayerBlockRule {
 }
 
 impl CssScopeRule {
-    /// Assembles a direct scope body, checking boundaries and its stricter page placement.
+    /// Assembles boundaries and a direct scope body in the supplied authored
+    /// nesting context, checking selectors and the stricter page placement.
     pub fn try_new(
         root: Option<CssScopeSelectorList>,
         limit: Option<CssScopeSelectorList>,
         rules: Vec<CssScopedRule>,
         context: &crate::CssNamespaceContext,
+        nesting: CssScopeNestingContext,
     ) -> Result<Self, crate::CssRuleConstructionError> {
-        crate::rule_construction::scope(root.as_ref(), limit.as_ref(), &rules, context)?;
+        crate::rule_construction::scope(root.as_ref(), limit.as_ref(), &rules, context, nesting)?;
         Ok(Self {
             root,
             limit,

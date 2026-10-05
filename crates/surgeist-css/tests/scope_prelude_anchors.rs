@@ -3,7 +3,8 @@
 //! Parentless & and repeated anchors are authored selectors, not parse errors.
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nested-scope-rules
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nest-selector
-//! The unchanged optional selector-list bounds exclude pseudo-elements.
+//! Boundary lists exclude pseudo-elements. Limits admit leading combinators;
+//! roots admit them only with an enclosing style or scope context.
 //! https://www.w3.org/TR/2024/WD-css-cascade-6-20240906/#scope-syntax
 //! https://www.w3.org/TR/2024/WD-css-cascade-6-20240906/#scope-bounds
 use surgeist_css::*;
@@ -21,7 +22,7 @@ fn anchor(selector: &CssSelector, nesting: usize, scope: bool) {
 }
 
 fn single(list: &CssScopeSelectorList) -> &CssSelector {
-    let [selector] = list.selectors() else {
+    let [CssScopeSelector::Selector(selector)] = list.selectors() else {
         panic!("one boundary selector")
     };
     selector
@@ -415,7 +416,6 @@ fn invalid_boundary_lists_still_drop_scope_and_preserve_later_neighbor() {
         "(.root::before)",
         "(.root) to (::after)",
         "(> .root)",
-        "(.root) to (> .stop)",
         "(.root) junk",
         "(&div)",
     ] {
@@ -436,5 +436,35 @@ fn invalid_boundary_lists_still_drop_scope_and_preserve_later_neighbor() {
             source.find(".after").unwrap()
         );
         assert_eq!(after.declarations().len(), 1);
+    }
+}
+
+#[test]
+fn ordinary_limits_admit_all_relative_combinators_while_roots_reject_them() {
+    for (text, expected) in [
+        (">", CssSelectorCombinator::Child),
+        ("+", CssSelectorCombinator::NextSibling),
+        ("~", CssSelectorCombinator::SubsequentSibling),
+    ] {
+        let source = format!("@scope(.root) to ({text} .stop){{}}.after{{}}");
+        let report = parse_sheet(&source);
+        assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
+        let [CssRule::Scope(scope), CssRule::Style(_)] = report.syntax().rules() else {
+            panic!("scope and following neighbor")
+        };
+        let [CssScopeSelector::Relative(relative)] = scope.limit().unwrap().selectors() else {
+            panic!("retained leading combinator")
+        };
+        assert_eq!(relative.combinator(), expected);
+        assert_eq!(relative.selector(), &CssSelector::Class("stop".into()));
+
+        let source = format!("@scope({text} .root){{}}.after{{}}");
+        let report = parse_sheet(&source);
+        assert!(!report.is_clean());
+        assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));
+        assert_eq!(
+            report.diagnostics()[0].action(),
+            CssRecoveryAction::DropAtRule
+        );
     }
 }

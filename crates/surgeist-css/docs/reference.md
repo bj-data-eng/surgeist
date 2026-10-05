@@ -4079,8 +4079,23 @@ For a style-nested `@scope`, root `&` refers to the nearest ancestor style;
 limit `&` refers to the introduced scope. An ordinary root inside another scope
 uses that enclosing scope, while a root without either ancestor retains a
 parentless nesting anchor. Repeated anchors remain distinct, including within
-functional selector arguments. Boundary lists still exclude pseudo-elements
-and leading combinators. No parent selector list is expanded during parsing.
+functional selector arguments. Boundary lists exclude pseudo-elements. A
+`CssScopeSelectorList` preserves each `CssScopeSelector::Selector` or
+`Relative(CssRelativeSelector)` member, including its leading combinator without
+an invented explicit anchor. Limits admit relatives in every context, relative
+to the introduced scope. Roots admit relatives with a style or scope ancestor;
+ordinary top-level roots reject them. Cascade 6 §2.5.5 supplies the distinct
+nesting and scoping contexts, also reflected in Nesting 1 §3.2 examples.
+`CssScopeRule::try_new` takes an explicit `CssScopeNestingContext`; checked
+sheet/group assembly revalidates the actual ancestry, identifiers, namespaces
+and depth without changing supplied positions or anchor categories. This enum
+is a validation context, not a replacement for ordered ancestry. `Style` applies
+whenever a style ancestor exists, including with an intervening scope, for
+explicit root `&` and declaration runs. An implicit relative root instead binds
+to the nearest enclosing style or scope in the normalized rule-parent chain;
+the limit binds to the introduced scope. No parent
+selector list is expanded during parsing. Shared canonical scope output remains
+with the unfinished rule/stylesheet serializer.
 `CssScopedStyleRule` follows the same
 leading-declarations and ordered-child contract: its `rules()` returns ordinary `CssRule`
 nesting children relative to the scoped style parent. A scope with a style ancestor retains

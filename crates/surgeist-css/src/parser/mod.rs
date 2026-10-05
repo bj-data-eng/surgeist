@@ -2313,6 +2313,7 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
                     &mut self.diagnostics,
                     &self.recovery,
                     selectors::SelectorAnchorMode::Nesting,
+                    false,
                 ).map_err(with_scope_prelude_context)?,
             )),
             _ => Err(input.new_error(cssparser::BasicParseErrorKind::AtRuleInvalid(name))),
@@ -3639,12 +3640,13 @@ fn parse_scope_prelude<'i, 't>(
     diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
     state: &RecoveryState,
     root_anchors: selectors::SelectorAnchorMode,
+    relative_root: bool,
 ) -> std::result::Result<CssScopePrelude, ParseError<'i, Error>> {
     let root = if input.try_parse(Parser::expect_parenthesis_block).is_ok() {
         let _boundary_depth = state.enter_component_block(source, input, "baseline.rule.scope")?;
         Some(input.parse_nested_block(|input| {
             let mut recovery = SelectorRecovery::new(source, diagnostics, state.clone());
-            parse_scope_boundary_selector_list(input, &mut recovery, root_anchors)
+            parse_scope_boundary_selector_list(input, &mut recovery, root_anchors, relative_root)
         })?)
     } else {
         None
@@ -3662,6 +3664,7 @@ fn parse_scope_prelude<'i, 't>(
                 input,
                 &mut recovery,
                 selectors::SelectorAnchorMode::Scope,
+                true,
             )
         })?)
     } else {
@@ -3931,6 +3934,7 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
                     } else {
                         selectors::SelectorAnchorMode::Scope
                     },
+                    true,
                 ).map_err(with_scope_prelude_context)?,
             )),
             "import" => Err(invalid_at_rule_placement(

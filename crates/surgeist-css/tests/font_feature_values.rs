@@ -673,7 +673,9 @@ fn inherited_scope_keeps_scoped_declaration_and_selector_semantics_across_chunks
         };
         assert_eq!(
             root.unwrap().selectors(),
-            &[surgeist_css::CssSelector::Class("inner".into())]
+            &[surgeist_css::CssScopeSelector::Selector(
+                surgeist_css::CssSelector::Class("inner".into())
+            )]
         );
         assert!(limit.is_none());
         assert_eq!(ancestor.position().unwrap().byte_offset().value(), 8);

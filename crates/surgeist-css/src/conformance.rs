@@ -4356,10 +4356,10 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 672] = [
     CssFeatureMetadata::partial(
         "baseline.selector.nesting",
         CssFeatureKind::Selector,
-        "nesting &, scoped selector anchors, and scoped relative selectors",
+        "nesting &, scoped selector anchors, and contextual relative selectors",
         I_NESTING1,
-        "#nest-selector",
-        "Nesting &, scoped selector anchors, and scoped relative selectors are supported.",
+        "#nest-selector,#syntax-examples,#nesting-at-scope",
+        "Nesting &, counted scope anchors, scoped relative selectors, and contextual relative scope boundaries are supported.",
         SELECTOR_REMAINDER,
     ),
     CssFeatureMetadata::baseline_alias(
