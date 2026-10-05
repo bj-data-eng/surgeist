@@ -61,6 +61,7 @@ pub(crate) use queries::{construct_media_condition, construct_media_query};
 pub(crate) use supports::{construct_supports_condition, construct_supports_declaration};
 mod recovery;
 mod scroll_snap;
+mod scrollbar;
 mod selectors;
 mod sizing;
 mod sizing_controls;
@@ -133,6 +134,7 @@ use recovery::{
     preflight_structural_nesting, recovery_action_for_error,
 };
 use scroll_snap::*;
+use scrollbar::*;
 use selectors::{
     SelectorRecovery, parse_rule_selector_list, parse_scope_boundary_selector_list,
     parse_scoped_style_selector_list,

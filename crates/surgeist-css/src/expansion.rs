@@ -29,6 +29,7 @@ use crate::overflow_controls::{CssOverflowClipMargin, CssScrollBehavior, CssScro
 use crate::parser::contains_substitution;
 use crate::properties::{CssKnownDeclaration, CssKnownDeclaredValueRef, CssKnownPropertyValueRef};
 use crate::scroll_snap::*;
+use crate::scrollbar::CssScrollbarColor;
 use crate::sizing::{CssMaxSizeValue, CssSizeValue};
 use crate::sizing_controls::*;
 use crate::speech::{

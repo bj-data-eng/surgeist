@@ -2585,7 +2585,7 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         CssKnownProperty::BoxDecorationBreak => S_BREAK3,
         CssKnownProperty::Order => S_DISPLAY3,
         CssKnownProperty::AspectRatio => X_SIZING4_20260904,
-        CssKnownProperty::ScrollbarWidth => R_SCROLLBARS1,
+        CssKnownProperty::ScrollbarWidth | CssKnownProperty::ScrollbarColor => R_SCROLLBARS1,
         CssKnownProperty::ScrollSnapType
         | CssKnownProperty::ScrollSnapAlign
         | CssKnownProperty::ScrollSnapStop
@@ -2769,7 +2769,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 665] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 666] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -5841,10 +5841,15 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 665] = [
         "aspect-ratio",
         "baseline.property.aspect-ratio"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::ScrollbarWidth,
         "scrollbar-width",
         "baseline.property.scrollbar-width"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ScrollbarColor,
+        "scrollbar-color",
+        "official.property.scrollbar-color"
     ),
     property_feature!(
         CssKnownProperty::Cursor,

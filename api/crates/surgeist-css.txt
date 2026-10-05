@@ -2209,6 +2209,7 @@ pub surgeist_css::CssKnownProperty::ScrollPaddingTop
 pub surgeist_css::CssKnownProperty::ScrollSnapAlign
 pub surgeist_css::CssKnownProperty::ScrollSnapStop
 pub surgeist_css::CssKnownProperty::ScrollSnapType
+pub surgeist_css::CssKnownProperty::ScrollbarColor
 pub surgeist_css::CssKnownProperty::ScrollbarGutter
 pub surgeist_css::CssKnownProperty::ScrollbarWidth
 pub surgeist_css::CssKnownProperty::Size
@@ -2576,6 +2577,7 @@ pub surgeist_css::CssKnownPropertyValueRef::ScrollPaddingTop(&'a surgeist_css::C
 pub surgeist_css::CssKnownPropertyValueRef::ScrollSnapAlign(&'a surgeist_css::CssScrollSnapAlignPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ScrollSnapStop(&'a surgeist_css::CssScrollSnapStopPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ScrollSnapType(&'a surgeist_css::CssScrollSnapTypePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ScrollbarColor(&'a surgeist_css::CssScrollbarColorPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ScrollbarGutter(&'a surgeist_css::CssScrollbarGutterPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ScrollbarWidth(&'a surgeist_css::CssScrollbarWidthPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Size(&'a surgeist_css::CssSizePropertyValue)
@@ -2937,7 +2939,9 @@ pub surgeist_css::CssLonghandValueRef::ScrollPaddingTop(&'a surgeist_css::CssScr
 pub surgeist_css::CssLonghandValueRef::ScrollSnapAlign(&'a surgeist_css::CssScrollSnapAlign)
 pub surgeist_css::CssLonghandValueRef::ScrollSnapStop(&'a surgeist_css::CssScrollSnapStop)
 pub surgeist_css::CssLonghandValueRef::ScrollSnapType(&'a surgeist_css::CssScrollSnapType)
+pub surgeist_css::CssLonghandValueRef::ScrollbarColor(&'a surgeist_css::CssScrollbarColor)
 pub surgeist_css::CssLonghandValueRef::ScrollbarGutter(&'a surgeist_css::CssScrollbarGutter)
+pub surgeist_css::CssLonghandValueRef::ScrollbarWidth(&'a surgeist_css::CssScrollbarWidth)
 pub surgeist_css::CssLonghandValueRef::Speak(&'a surgeist_css::CssSpeak)
 pub surgeist_css::CssLonghandValueRef::SpeakAs(&'a surgeist_css::CssSpeakAs)
 pub surgeist_css::CssLonghandValueRef::TableLayout(&'a surgeist_css::CssTableLayout)
@@ -3813,6 +3817,9 @@ pub fn surgeist_css::CssScrollbarGutter::serialize_specified_with_limits(&self, 
 pub surgeist_css::CssScrollbarWidth::Auto
 pub surgeist_css::CssScrollbarWidth::None
 pub surgeist_css::CssScrollbarWidth::Thin
+impl surgeist_css::CssScrollbarWidth
+pub fn surgeist_css::CssScrollbarWidth::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssScrollbarWidth::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssSelector
 pub surgeist_css::CssSelector::Class(alloc::string::String)
 pub surgeist_css::CssSelector::Complex(surgeist_css::CssComplexSelector)
@@ -8852,6 +8859,18 @@ pub struct surgeist_css::CssScrollSnapTypePropertyValue
 impl surgeist_css::CssScrollSnapTypePropertyValue
 pub fn surgeist_css::CssScrollSnapTypePropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssScrollSnapTypePropertyValue::value(&self) -> &surgeist_css::CssScrollSnapType
+pub struct surgeist_css::CssScrollbarColor
+impl surgeist_css::CssScrollbarColor
+pub const fn surgeist_css::CssScrollbarColor::auto() -> Self
+pub const fn surgeist_css::CssScrollbarColor::new(thumb: surgeist_css::CssColor, track: surgeist_css::CssColor) -> Self
+pub fn surgeist_css::CssScrollbarColor::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssScrollbarColor::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub const fn surgeist_css::CssScrollbarColor::thumb(&self) -> core::option::Option<&surgeist_css::CssColor>
+pub const fn surgeist_css::CssScrollbarColor::track(&self) -> core::option::Option<&surgeist_css::CssColor>
+pub struct surgeist_css::CssScrollbarColorPropertyValue
+impl surgeist_css::CssScrollbarColorPropertyValue
+pub fn surgeist_css::CssScrollbarColorPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssScrollbarColorPropertyValue::value(&self) -> &surgeist_css::CssScrollbarColor
 pub struct surgeist_css::CssScrollbarGutterPropertyValue
 impl surgeist_css::CssScrollbarGutterPropertyValue
 pub fn surgeist_css::CssScrollbarGutterPropertyValue::as_css(&self) -> &str

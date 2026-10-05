@@ -179,6 +179,7 @@ fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
         ("order", "S-DISPLAY3"),
         ("aspect-ratio", "X-SIZING4-20260904"),
         ("scrollbar-width", "R-SCROLLBARS1"),
+        ("scrollbar-color", "R-SCROLLBARS1"),
         ("user-select", "X-UI4"),
         ("translate", "I-TRANSFORMS2"),
         ("filter", "I-FILTER1"),

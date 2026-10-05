@@ -1491,6 +1491,7 @@ pub use scroll_snap::{
     CssScrollPaddingValue, CssScrollSideKind, CssScrollSnapAlign, CssScrollSnapAlignment,
     CssScrollSnapAxis, CssScrollSnapStop, CssScrollSnapStrictness, CssScrollSnapType,
 };
+pub use scrollbar::CssScrollbarColor;
 pub use sizing::{CssBoxSize, CssMaxSizeValue, CssSizeValue};
 pub use sizing_controls::{CssFrameSizing, CssMaxSizePair, CssMinIntrinsicSizing, CssSizePair};
 pub use text_alignment::{
@@ -1501,6 +1502,7 @@ pub use text_spacing::CssTextSpacingAdjustment;
 mod float_clear;
 mod overflow;
 mod overflow_controls;
+mod scrollbar;
 mod specified_numeric;
 mod specified_serialization;
 mod writing_modes;

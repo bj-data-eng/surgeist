@@ -5393,6 +5393,36 @@ bounded canonical serializers. Grammar and expansion preserve declaration
 identity and source order; scroll execution, gutter geometry, and text painting
 belong to their downstream owners.
 
+## Authored scrollbar styling
+
+The selected [Scrollbars 1 CR §§2–3](https://www.w3.org/TR/2021/CR-css-scrollbars-1-20211209/)
+defines `scrollbar-width: auto | thin | none` and
+`scrollbar-color: auto | <color>{2}`. Both are complete authored longhands with
+initial `auto`; width is noninherited and color is inherited. Width applies to
+scroll containers, has the specified keyword as its computed value, accepts no
+percentages, and animates by computed value. Color also applies to scroll
+containers and animates by computed value; it accepts an exact ordered
+thumb/track pair from the shared checked `CssColor` grammar.
+
+`CssScrollbarWidth` writes a lowercase keyword through
+`serialize_specified[_with_limits]()`. `CssScrollbarColor::auto()` and
+`CssScrollbarColor::new(thumb, track)` construct the two valid forms;
+`thumb()` and `track()` return `None` for automatic coloring. Its specified
+writer emits both colors in role order, including equal colors, and delegates
+each child to the shared Standalone specified-color policy. `currentcolor`,
+system colors, relative colors, and contextual functions retain their symbolic
+graphs. One cumulative input-node, projection-node, and UTF-8 byte budget covers
+the root and both children; failure returns no partial output and leaves the
+authored value and source components unchanged.
+
+The shared declaration lifecycle retains CSS-wide values, whole-value pending
+substitution, strict replacement reentry, original occurrence and replacement
+provenance, importance, and ordered normalization. Cascade, inheritance
+application, forced-color overrides, computed color resolution, root-to-viewport
+application, scrollbar dimensions, contrast choices, and platform painting
+belong downstream. The dated Scrollbars CR supplies these authored contracts;
+the frozen WebKit corpus and its adapters remain unchanged.
+
 ## Four-side shorthand membership
 
 `border-color`, `border-style`, `border-width`, `inset`, `margin`, `padding`,

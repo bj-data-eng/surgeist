@@ -4276,6 +4276,11 @@ pub enum CssAspectRatioValue {
     AutoRatio(crate::CssSpecifiedRatio),
 }
 
+/// Authored scrollbar thickness preference, initially `auto` and noninherited.
+///
+/// CSS Scrollbars 1 applies this keyword to scroll containers; its computed
+/// value is the specified keyword and animation is by computed value. Actual
+/// scrollbar thickness and root-to-viewport application belong downstream.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssScrollbarWidth {
