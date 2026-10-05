@@ -440,9 +440,13 @@
 //! interpolate or evaluate easing, render shadows or filters, resolve URLs, compute
 //! shape geometry, perform layout or painting, or lower values into sibling crates.
 //! Basic shapes and `clip-path` expose complete authored grammar support; this does
-//! not establish contextual geometry or exact calculation projection. `transition`
-//! and `animation` retain explicit Partial metadata boundaries; support for a typed
-//! function does not promote an unselected production.
+//! not establish contextual geometry or exact calculation projection. The selected
+//! transition property family has intrinsic metadata and four ordered shorthand
+//! contributions, preserving one list entry per authored item. [`CssLonghandValueRef`]
+//! exposes property, duration, timing-function and delay lists, including explicit
+//! child origins and programmatic omission defaults. Animation retains its separate
+//! Partial metadata boundary; support for a typed function does not promote an
+//! unselected production.
 //!
 //! [`CssCustomIdent`] owns decoded custom-identifier admission. Timing names refine
 //! that checked value through [`CssKeyframesIdent`] (shared by keyframe definitions

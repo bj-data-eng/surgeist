@@ -12,10 +12,16 @@
 //! retention are Surgeist public contracts. No contextual style is resolved.
 //! Selected Will Change 1, Scroll Anchoring 1, Fragmentation 3 and Scrollbars 1
 //! define auto/slice initials; only scrollbar-color inherits among these controls.
+//! Transitions 1 WD 2026-01-08 §§2.1–2.5 defines four noninherited one-entry
+//! initials and the selected shorthand's four settable members without extra resets.
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
 const LONGHANDS: &[P] = &[
+    P::TransitionProperty,
+    P::TransitionDuration,
+    P::TransitionTimingFunction,
+    P::TransitionDelay,
     P::VoiceDuration,
     P::VoiceBalance,
     P::VoiceVolume,
@@ -258,6 +264,16 @@ const LONGHANDS: &[P] = &[
     P::TextCombineUpright,
 ];
 const SHORTHANDS: &[(P, &[P], &[P])] = &[
+    (
+        P::Transition,
+        &[
+            P::TransitionProperty,
+            P::TransitionDuration,
+            P::TransitionTimingFunction,
+            P::TransitionDelay,
+        ],
+        &[],
+    ),
     (P::ColorAdjust, &[P::PrintColorAdjust], &[]),
     (P::Pause, &[P::PauseBefore, P::PauseAfter], &[]),
     (P::Rest, &[P::RestBefore, P::RestAfter], &[]),
@@ -1055,6 +1071,24 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
                 matches!(v, CssOpacityValue::Scalar(value) if value.numeric().representation() == "1")
             );
         }
+        CssLonghandValueRef::TransitionProperty(v) => {
+            assert_eq!(v.properties(), &[CssTransitionProperty::All])
+        }
+        CssLonghandValueRef::TransitionDuration(v) => {
+            assert_eq!(v.values().len(), 1);
+            let literal = v.values()[0].time().literal().unwrap();
+            assert_eq!(literal.numeric().representation(), "0");
+            assert_eq!(literal.unit(), CssTimeUnit::Seconds);
+        }
+        CssLonghandValueRef::TransitionDelay(v) => {
+            assert_eq!(v.values().len(), 1);
+            let literal = v.values()[0].literal().unwrap();
+            assert_eq!(literal.numeric().representation(), "0");
+            assert_eq!(literal.unit(), CssTimeUnit::Seconds);
+        }
+        CssLonghandValueRef::TransitionTimingFunction(v) => {
+            assert_eq!(v.values(), &[CssEasing::Keyword(CssEasingKeyword::Ease)])
+        }
         other => panic!("unexpected ordinary initial: {other:?}"),
     }
 }
@@ -1075,7 +1109,7 @@ fn metadata_and_initials() {
             P::All,
         ])
         .collect();
-    assert_eq!(expected.len(), 305);
+    assert_eq!(expected.len(), 310);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {

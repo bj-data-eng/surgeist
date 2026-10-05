@@ -100,6 +100,9 @@ fn requires_closed_components(property: crate::CssKnownProperty) -> bool {
             | crate::CssKnownProperty::CueBefore
             | crate::CssKnownProperty::CueAfter
             | crate::CssKnownProperty::Cue
+            | crate::CssKnownProperty::TransitionProperty
+            | crate::CssKnownProperty::TransitionTimingFunction
+            | crate::CssKnownProperty::AnimationTimingFunction
             | crate::CssKnownProperty::TransitionDuration
             | crate::CssKnownProperty::TransitionDelay
             | crate::CssKnownProperty::AnimationDuration

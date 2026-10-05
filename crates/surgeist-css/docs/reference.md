@@ -908,7 +908,8 @@ the `border-image` shorthand and its five longhands, `border-collapse`, `border-
 `table-layout`, `flow-tolerance`, `color`, `font-family`,
 `text-orientation`, its legacy `glyph-orientation-vertical` grammar, `opacity`, `display`, `box-sizing`,
 `order`, `aspect-ratio`, `visibility`, `direction`, `unicode-bidi`, `writing-mode`, `text-combine-upright`,
-the `container` shorthand and its two longhands, and `all`.
+the `container` shorthand and its two longhands, the `transition` shorthand
+and its four longhands, and `all`.
 The shared property schema owns their
 member lists, initial values and reset-only components. Other known properties
 return typed unsupported errors preserving their identity. The stylesheet
@@ -1615,7 +1616,47 @@ around the time. Punctuation costs bytes only. Private append methods share the
 caller's cumulative context; suppressed children still perform checked work,
 and public failures return no partial CSS.
 
-Timing property expansion and contextual execution remain separate.
+`transition` expands to four ordered terminal contributions: property, duration,
+timing-function and delay. The order is Surgeist's public intrinsic projection
+contract; the selected specification defines membership and defaults. Each authored
+item contributes one entry to each list. Omitted slots use one scalar from the
+schema initial, so `opacity 1s, transform ease-in` contributes `opacity, transform`,
+`1s, 0s`, `ease, ease-in` and `0s, 0s`. The original shorthand keeps its omissions.
+The selected Level 1 shorthand has no additional reset-only members.
+
+| Terminal | Intrinsic initial | Inherited |
+| --- | --- | --- |
+| `transition-property` | `all` | No |
+| `transition-duration` | `0s` | No |
+| `transition-timing-function` | `ease` | No |
+| `transition-delay` | `0s` | No |
+
+The borrowed `CssLonghandValueRef` variants expose these existing typed lists.
+Explicit time children retain their spelling, branch and original component
+origins; synthesized initial times have programmatic origins. Ordinary expansion
+also preserves retained implicitly closed calculations and their recovery
+provenance. Normalizing a nonclean report preserves its diagnostics, while checked
+reconstruction and pending reentry remain strict. Neither expansion nor
+normalization repairs the authored graph.
+
+CSS-wide shorthand values produce exactly four global contributions. A pending
+whole value reenters the original property grammar with its replacement components,
+while every contribution retains the original source occurrence and importance.
+A failed replacement leaves the handle reusable. Normalization counts four
+terminal contributions for a shorthand regardless of its list lengths; specified
+serialization separately charges the lists and each retained or synthesized child.
+See the [expansion contract](../tests/transition_expansion_contract.rs) and
+[typed lifecycle tests](../tests/transition_expansion_lifecycle.rs).
+
+The selected Transitions 1 family applies to all elements and is not animatable.
+Its computed property value is `none` or an identifier list, its duration and delay
+values are duration lists, and easing is as specified; the shorthand follows its
+longhands. These applicability and computed-form clauses describe the downstream
+interface, rather than additional fields on `CssPropertyMetadata`. This crate
+retains authored units and symbolic calculations. Property/shorthand matching,
+last matching item selection, timing list repetition, combined duration, negative
+delay offsets, computed conversion and transition execution belong downstream.
+Animation metadata and expansion retain their separate unfinished boundary.
 
 ### Exact frequency and ordinary resolution
 
@@ -2480,8 +2521,8 @@ importance, order, source occurrence and replacement provenance.
 These are authored syntax values. This crate does not multiply transform
 matrices, interpolate or evaluate easing, render shadows or filters, resolve
 URLs, compute shape geometry, perform layout or painting, or lower values into
-sibling crates. `transition` and `animation` retain their own explicit Partial
-catalog boundaries.
+sibling crates. The selected Transitions 1 authored property family is Complete;
+`animation` retains its separate Partial catalog boundary.
 
 ## Authored colors
 

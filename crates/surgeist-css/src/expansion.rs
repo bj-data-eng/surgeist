@@ -424,6 +424,70 @@ macro_rules! define_expansion_schema {
 
 crate::properties::property_schema!(define_expansion_schema, expansion_input, numeric_input);
 
+pub(crate) fn initial_transition_time() -> crate::CssTimeValue {
+    crate::CssTimeValue::from_literal(
+        crate::CssTimeLiteral::try_new("0", CssTimeUnit::Seconds).expect("ordinary zero seconds"),
+    )
+}
+
+// Each authored item contributes one entry to each list, with a scalar schema
+// initial for each omitted slot. Parser-admitted time children may retain implicit
+// closure; projecting them must clone their graph rather than recheck construction.
+macro_rules! transition_list_projection {
+    ($function:ident, $property:ident, $list:ty, $items:ident, $project:expr, $construct:expr) => {
+        pub(crate) fn $function(transitions: &CssTransitionList) -> Option<$list> {
+            let initial = Longhand::$property.initial_value();
+            let InitialValue::Value(initial) = initial.value else {
+                unreachable!("transition list has an ordinary schema initial")
+            };
+            let OwnedLonghandValue::$property(initial) = *initial.value else {
+                unreachable!("schema initial belongs to its longhand")
+            };
+            let initial = &initial.$items()[0];
+            let values = transitions
+                .values()
+                .iter()
+                .map(|transition| ($project)(transition).unwrap_or_else(|| initial.clone()))
+                .collect();
+            Some(($construct)(values))
+        }
+    };
+}
+
+transition_list_projection!(
+    transition_properties,
+    TransitionProperty,
+    CssTransitionPropertyList,
+    properties,
+    |transition: &CssTransition| transition.property().cloned(),
+    |values| CssTransitionPropertyList::try_new(values)
+        .expect("admitted transitions are nonempty and none is singleton")
+);
+transition_list_projection!(
+    transition_durations,
+    TransitionDuration,
+    CssDurationList,
+    values,
+    |transition: &CssTransition| transition.duration().cloned(),
+    CssDurationList::from_parser
+);
+transition_list_projection!(
+    transition_timing_functions,
+    TransitionTimingFunction,
+    CssEasingList,
+    values,
+    |transition: &CssTransition| transition.timing_function().cloned(),
+    |values| CssEasingList::try_new(values).expect("admitted transitions are nonempty")
+);
+transition_list_projection!(
+    transition_delays,
+    TransitionDelay,
+    CssDelayList,
+    values,
+    |transition: &CssTransition| transition.delay().cloned(),
+    CssDelayList::from_parser
+);
+
 // Sparse authored layers need one scalar default per slot, not a whole-list fallback.
 // Each projection obtains its typed initial once from the central property schema.
 macro_rules! background_list_projection {

@@ -6006,7 +6006,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 670] = [
         "mask-repeat",
         "baseline.property.mask-repeat"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::TransitionProperty,
         "transition-property",
         "baseline.property.transition-property"
@@ -6032,14 +6032,12 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 670] = [
         "#propdef-transition-timing-function",
         &[],
     ),
-    CssFeatureMetadata::partial_property_with_boundary(
+    CssFeatureMetadata::complete_property(
         "baseline.property.transition",
         CssKnownProperty::Transition,
         "transition",
         "#propdef-transition",
         &[],
-        TIMING_SUBSET,
-        TIMING_REMAINDER,
     ),
     property_feature!(
         CssKnownProperty::AnimationName,

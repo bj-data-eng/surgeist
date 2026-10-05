@@ -558,15 +558,28 @@ fn parsed_recovered_math_is_retained_with_non_clean_validation() {
 }
 
 #[test]
-fn timing_substitution_remains_unsupported_for_terminal_expansion() {
+fn transition_substitution_is_pending_while_animation_expansion_is_unsupported() {
     for property in TIME_PROPERTIES {
         let source = format!("{}:var(--time)", property.canonical_name());
         let report = parse_style_attribute(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-        assert_eq!(
-            expand_declaration(&report.syntax()[0]).unwrap_err().kind(),
-            &CssExpansionErrorKind::UnsupportedProperty(property)
-        );
+        if matches!(
+            property,
+            CssKnownProperty::TransitionDuration
+                | CssKnownProperty::TransitionDelay
+                | CssKnownProperty::Transition
+        ) {
+            let CssExpansion::Pending(handle) = expand_declaration(&report.syntax()[0]).unwrap()
+            else {
+                panic!("transition substitution is pending")
+            };
+            assert!(handle.source().same_occurrence(&report.syntax()[0]));
+        } else {
+            assert_eq!(
+                expand_declaration(&report.syntax()[0]).unwrap_err().kind(),
+                &CssExpansionErrorKind::UnsupportedProperty(property)
+            );
+        }
     }
 }
 

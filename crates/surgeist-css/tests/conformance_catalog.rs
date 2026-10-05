@@ -3140,15 +3140,15 @@ fn animation_iteration_count_metadata_matches_typed_iteration_behavior() {
 }
 
 #[test]
-fn transition_metadata_matches_c03_shorthand_behavior_and_c05_remainder() {
+fn transition_metadata_matches_the_selected_complete_shorthand_grammar() {
     assert_c03_timing_metadata(
         "baseline.property.transition",
         "transition: opacity calc(1s + 250ms) linear -200ms",
         "I-TRANSITIONS1",
         "#propdef-transition",
-        CssSupportStatus::Partial,
-        Some(TIMING_SUBSET),
-        Some(TIMING_REMAINDER),
+        CssSupportStatus::Complete,
+        None,
+        None,
     );
 }
 
