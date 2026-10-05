@@ -18,28 +18,50 @@ use CssSpecifiedValueSerializationErrorKind::{ByteLimit, CapacityOverflow};
 /// supply only shifts 0, -2 and -3. Scanning borrows the coefficient; allocation
 /// is limited to final text, never an expanded input.
 pub(crate) fn format_css_number(text: &str, shift: i128, limit: usize) -> Result<String> {
+    format_css_number_with_sign(text, shift, false, limit).map(|number| number.text)
+}
+
+/// Formatting metadata comes from the decimal plan, before text is emitted.
+pub(crate) struct FormattedNumber {
+    pub(crate) text: String,
+    pub(crate) is_zero: bool,
+}
+
+/// Slot-owned sign inversion preserves exact input and the shared rounding policy.
+pub(crate) fn format_css_number_with_sign(
+    text: &str,
+    shift: i128,
+    negate: bool,
+    limit: usize,
+) -> Result<FormattedNumber> {
     let value = LexicalDecimal::new(text);
     if value.len == 0 {
-        return emit(value.digits(), 0, 0, false, limit);
+        return emit_with_metadata(value.digits(), 0, 0, false, limit);
     }
     let Some(exponent) = value.exponent else {
         // The input length and all callers' decimal shifts are bounded. An
         // exponent whose magnitude exceeds i128 dwarfs either adjustment.
         return if value.exponent_negative {
-            emit(std::iter::empty(), 0, 0, false, limit)
+            emit_with_metadata(std::iter::empty(), 0, 0, false, limit)
         } else {
             Err(Error::new(ByteLimit))
         };
     };
     let Some(exponent) = exponent.checked_add(shift) else {
         return if shift < 0 {
-            emit(std::iter::empty(), 0, 0, false, limit)
+            emit_with_metadata(std::iter::empty(), 0, 0, false, limit)
         } else {
             Err(Error::new(ByteLimit))
         };
     };
     if exponent >= -6 {
-        return emit(value.digits(), value.len, exponent, value.negative, limit);
+        return emit_with_metadata(
+            value.digits(),
+            value.len,
+            exponent,
+            value.negative != negate,
+            limit,
+        );
     }
     // The prefix before the six-place cutoff, including integer digits.
     // Since exponent < -6, this length is strictly smaller than value.len.
@@ -48,7 +70,7 @@ pub(crate) fn format_css_number(text: &str, shift: i128, limit: usize) -> Result
         .and_then(|point| point.checked_add(6))
         .ok_or_else(|| Error::new(ByteLimit))?;
     if kept < 0 {
-        return emit(std::iter::empty(), 0, 0, false, limit);
+        return emit_with_metadata(std::iter::empty(), 0, 0, false, limit);
     }
     let kept = usize::try_from(kept).map_err(|_| Error::new(CapacityOverflow))?;
     let mut last_nonzero = None;
@@ -74,7 +96,7 @@ pub(crate) fn format_css_number(text: &str, shift: i128, limit: usize) -> Result
     } else if let Some(index) = last_nonzero {
         (index + 1, kept - index - 1, None, false)
     } else {
-        return emit(std::iter::empty(), 0, 0, false, limit);
+        return emit_with_metadata(std::iter::empty(), 0, 0, false, limit);
     };
     let exponent = -6 + trailing as i128;
     let digits = value.digits().take(len).enumerate().map(|(index, digit)| {
@@ -86,7 +108,7 @@ pub(crate) fn format_css_number(text: &str, shift: i128, limit: usize) -> Result
             digit
         }
     });
-    emit(digits, len, exponent, value.negative, limit)
+    emit_with_metadata(digits, len, exponent, value.negative != negate, limit)
 }
 
 /// Rounds the actual finite binary value to millionths, without a float round
@@ -121,22 +143,12 @@ fn format_finite_number(value: f64, limit: usize, rounding: DecimalRounding) -> 
     let mut len = 0;
     let decimal_exponent;
     if exponent < 0 {
-        let numerator = u128::from(significand) * 1_000_000;
-        let shift = exponent.unsigned_abs();
-        let mut rounded = if shift >= 128 {
-            0
-        } else {
-            let denominator = 1_u128 << shift;
-            numerator / denominator
-                + u128::from(
-                    rounding.rounds_up((numerator % denominator).cmp(&(denominator / 2)), negative),
-                )
-        };
+        let mut rounded = rounded_millionths(significand, exponent, negative, rounding);
         if rounded == 0 {
             return emit(std::iter::empty(), 0, 0, false, limit);
         }
         let mut trailing = 0;
-        while rounded % 10 == 0 {
+        while rounded.is_multiple_of(10) {
             trailing += 1;
             rounded /= 10;
         }
@@ -175,6 +187,62 @@ fn format_finite_number(value: f64, limit: usize, rounding: DecimalRounding) -> 
         negative,
         limit,
     )
+}
+
+/// Tests the actual finite binary coefficient using the formatter's millionths
+/// kernel; this is emitted-zero metadata, not authored-value classification.
+pub(crate) fn projected_number_rounds_to_zero(value: f64) -> bool {
+    debug_assert!(value.is_finite());
+    let bits = value.to_bits();
+    let encoded_exponent = ((bits >> 52) & 0x7ff) as i32;
+    let fraction = bits & ((1_u64 << 52) - 1);
+    let (significand, exponent) = if encoded_exponent == 0 {
+        (fraction, -1074)
+    } else {
+        ((1_u64 << 52) | fraction, encoded_exponent - 1075)
+    };
+    if significand == 0 {
+        return true;
+    }
+    if exponent >= 0 {
+        return false;
+    }
+    rounded_millionths(
+        significand,
+        exponent,
+        bits >> 63 != 0,
+        DecimalRounding::AwayFromZero,
+    ) == 0
+}
+
+fn rounded_millionths(
+    significand: u64,
+    exponent: i32,
+    negative: bool,
+    rounding: DecimalRounding,
+) -> u128 {
+    debug_assert!(exponent < 0);
+    let numerator = u128::from(significand) * 1_000_000;
+    let shift = exponent.unsigned_abs();
+    if shift >= 128 {
+        return 0;
+    }
+    let denominator = 1_u128 << shift;
+    numerator / denominator
+        + u128::from(
+            rounding.rounds_up((numerator % denominator).cmp(&(denominator / 2)), negative),
+        )
+}
+
+fn emit_with_metadata(
+    digits: impl Iterator<Item = u8>,
+    len: usize,
+    exponent: i128,
+    negative: bool,
+    limit: usize,
+) -> Result<FormattedNumber> {
+    let is_zero = len == 0;
+    emit(digits, len, exponent, negative, limit).map(|text| FormattedNumber { text, is_zero })
 }
 
 /// Emits a normalized finite decimal whose fractional part is already rounded.

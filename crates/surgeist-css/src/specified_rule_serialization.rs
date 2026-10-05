@@ -419,13 +419,13 @@ mod value_error_tests {
     }
 
     #[test]
-    fn unrepresentable_precision_failure_explains_a_value_limit_without_a_resource_claim() {
+    fn unrepresentable_failure_explains_a_value_limit_without_a_resource_claim() {
         let error = CssSpecifiedValueSerializationError::new(
             CssSpecifiedValueSerializationErrorKind::UnrepresentableValue,
         );
         assert_eq!(
             error.to_string(),
-            "specified value cannot be represented within the selected serialization precision"
+            "specified value cannot be represented by the selected serializer"
         );
         assert!(error.source().is_none());
     }

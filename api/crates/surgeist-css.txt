@@ -215,6 +215,9 @@ pub surgeist_css::CssBlendMode::SoftLight
 impl surgeist_css::CssBlendMode
 pub const fn surgeist_css::CssBlendMode::as_css_str(self) -> &'static str
 pub fn surgeist_css::CssBlendMode::from_keyword(keyword: &str) -> core::option::Option<Self>
+impl surgeist_css::CssBlendMode
+pub fn surgeist_css::CssBlendMode::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBlendMode::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssBlockKind
 pub surgeist_css::CssBlockKind::CurlyBracket
 pub surgeist_css::CssBlockKind::Parenthesis
@@ -650,6 +653,8 @@ pub surgeist_css::CssContainerNames::Names(surgeist_css::CssContainerNameList)
 pub surgeist_css::CssContainerNames::None
 impl surgeist_css::CssContainerNames
 pub fn surgeist_css::CssContainerNames::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssContainerNames::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssContainerNames::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssContainerNames::serialize_with_limit(&self, max_bytes: usize) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
 pub fn surgeist_css::CssContainerNames::to_components(&self) -> core::result::Result<surgeist_css::CssComponentValues, surgeist_css::CssComponentValueError>
 pub fn surgeist_css::CssContainerNames::to_components_with_limits(&self, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<surgeist_css::CssComponentValues, surgeist_css::CssComponentValueError>
@@ -779,6 +784,8 @@ pub surgeist_css::CssContainerType::Size
 pub surgeist_css::CssContainerType::SizeScrollState
 impl surgeist_css::CssContainerType
 pub fn surgeist_css::CssContainerType::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssContainerType::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssContainerType::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssContainerType::serialize_with_limit(&self, max_bytes: usize) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
 pub fn surgeist_css::CssContainerType::to_components(&self) -> core::result::Result<surgeist_css::CssComponentValues, surgeist_css::CssComponentValueError>
 pub fn surgeist_css::CssContainerType::to_components_with_limits(&self, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<surgeist_css::CssComponentValues, surgeist_css::CssComponentValueError>
@@ -1813,6 +1820,9 @@ pub fn surgeist_css::CssImageOrientation::eq(&self, other: &Self) -> bool
 pub surgeist_css::CssImageRendering::Auto
 pub surgeist_css::CssImageRendering::CrispEdges
 pub surgeist_css::CssImageRendering::Pixelated
+impl surgeist_css::CssImageRendering
+pub fn surgeist_css::CssImageRendering::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssImageRendering::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssImageValue
 pub surgeist_css::CssImageValue::Gradient(surgeist_css::CssGradient)
 pub surgeist_css::CssImageValue::LightDark(alloc::boxed::Box<surgeist_css::CssLightDarkImage>)
@@ -1911,6 +1921,9 @@ pub surgeist_css::CssIntrinsicSizeKeyword::Stretch
 #[non_exhaustive] pub enum surgeist_css::CssIsolation
 pub surgeist_css::CssIsolation::Auto
 pub surgeist_css::CssIsolation::Isolate
+impl surgeist_css::CssIsolation
+pub fn surgeist_css::CssIsolation::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssIsolation::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssKeyframeSelector
 pub surgeist_css::CssKeyframeSelector::From
 pub surgeist_css::CssKeyframeSelector::Percent(surgeist_css::CssKeyframePercent)
@@ -3384,6 +3397,9 @@ pub surgeist_css::CssObjectFit::Cover
 pub surgeist_css::CssObjectFit::Fill
 pub surgeist_css::CssObjectFit::None
 pub surgeist_css::CssObjectFit::ScaleDown
+impl surgeist_css::CssObjectFit
+pub fn surgeist_css::CssObjectFit::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssObjectFit::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssOpacityScalarKind
 pub surgeist_css::CssOpacityScalarKind::Number
 pub surgeist_css::CssOpacityScalarKind::Percentage
@@ -3456,6 +3472,9 @@ pub surgeist_css::CssPointerCapability::None
 #[non_exhaustive] pub enum surgeist_css::CssPointerEvents
 pub surgeist_css::CssPointerEvents::Auto
 pub surgeist_css::CssPointerEvents::None
+impl surgeist_css::CssPointerEvents
+pub fn surgeist_css::CssPointerEvents::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssPointerEvents::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssPolarColorConversionError
 pub surgeist_css::CssPolarColorConversionError::NegativeChroma
 pub surgeist_css::CssPolarColorConversionError::NonFiniteInput
@@ -3719,6 +3738,9 @@ pub surgeist_css::CssResize::Both
 pub surgeist_css::CssResize::Horizontal
 pub surgeist_css::CssResize::None
 pub surgeist_css::CssResize::Vertical
+impl surgeist_css::CssResize
+pub fn surgeist_css::CssResize::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssResize::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssResolutionUnit
 pub surgeist_css::CssResolutionUnit::Dpcm
 pub surgeist_css::CssResolutionUnit::Dpi
@@ -3726,6 +3748,9 @@ pub surgeist_css::CssResolutionUnit::Dppx
 #[non_exhaustive] pub enum surgeist_css::CssRotate
 pub surgeist_css::CssRotate::None
 pub surgeist_css::CssRotate::Value(surgeist_css::CssRotateValues)
+impl surgeist_css::CssRotate
+pub fn surgeist_css::CssRotate::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssRotate::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssRotateAxis
 pub surgeist_css::CssRotateAxis::Vector([surgeist_css::CssSpecifiedNumber; 3])
 pub surgeist_css::CssRotateAxis::X
@@ -4204,6 +4229,9 @@ pub surgeist_css::CssTextDecorationStyle::Dotted
 pub surgeist_css::CssTextDecorationStyle::Double
 pub surgeist_css::CssTextDecorationStyle::Solid
 pub surgeist_css::CssTextDecorationStyle::Wavy
+impl surgeist_css::CssTextDecorationStyle
+pub fn surgeist_css::CssTextDecorationStyle::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextDecorationStyle::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssTextDecorationThickness
 pub surgeist_css::CssTextDecorationThickness::Auto
 pub surgeist_css::CssTextDecorationThickness::FromFont
@@ -4239,12 +4267,18 @@ pub surgeist_css::CssTextTransform::Capitalize
 pub surgeist_css::CssTextTransform::Lowercase
 pub surgeist_css::CssTextTransform::None
 pub surgeist_css::CssTextTransform::Uppercase
+impl surgeist_css::CssTextTransform
+pub fn surgeist_css::CssTextTransform::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextTransform::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssTextWrap
 pub surgeist_css::CssTextWrap::Balance
 pub surgeist_css::CssTextWrap::NoWrap
 pub surgeist_css::CssTextWrap::Pretty
 pub surgeist_css::CssTextWrap::Stable
 pub surgeist_css::CssTextWrap::Wrap
+impl surgeist_css::CssTextWrap
+pub fn surgeist_css::CssTextWrap::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextWrap::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssTimeUnit
 pub surgeist_css::CssTimeUnit::Milliseconds
 pub surgeist_css::CssTimeUnit::Seconds
@@ -4386,6 +4420,9 @@ pub surgeist_css::CssUserSelect::Auto
 pub surgeist_css::CssUserSelect::Contain
 pub surgeist_css::CssUserSelect::None
 pub surgeist_css::CssUserSelect::Text
+impl surgeist_css::CssUserSelect
+pub fn surgeist_css::CssUserSelect::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssUserSelect::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssValueOrigin
 pub surgeist_css::CssValueOrigin::ImplicitClosure
 pub surgeist_css::CssValueOrigin::ImplicitClosure::at: surgeist_css::CssParsedOrigin
@@ -4544,6 +4581,9 @@ pub surgeist_css::CssWhiteSpace::Normal
 pub surgeist_css::CssWhiteSpace::Pre
 pub surgeist_css::CssWhiteSpace::PreLine
 pub surgeist_css::CssWhiteSpace::PreWrap
+impl surgeist_css::CssWhiteSpace
+pub fn surgeist_css::CssWhiteSpace::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssWhiteSpace::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssWillChange
 pub surgeist_css::CssWillChange::Auto
 pub surgeist_css::CssWillChange::Features(surgeist_css::CssWillChangeFeatures)
@@ -4559,6 +4599,9 @@ pub surgeist_css::CssWordBreak::BreakAll
 pub surgeist_css::CssWordBreak::BreakWord
 pub surgeist_css::CssWordBreak::KeepAll
 pub surgeist_css::CssWordBreak::Normal
+impl surgeist_css::CssWordBreak
+pub fn surgeist_css::CssWordBreak::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssWordBreak::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssWritingMode
 pub surgeist_css::CssWritingMode::HorizontalTb
 pub surgeist_css::CssWritingMode::SidewaysLr
@@ -4694,6 +4737,9 @@ pub struct surgeist_css::CssAnimationDirectionList
 impl surgeist_css::CssAnimationDirectionList
 pub fn surgeist_css::CssAnimationDirectionList::directions(&self) -> &[surgeist_css::CssAnimationDirection]
 pub fn surgeist_css::CssAnimationDirectionList::try_new(directions: alloc::vec::Vec<surgeist_css::CssAnimationDirection>) -> core::option::Option<Self>
+impl surgeist_css::CssAnimationDirectionList
+pub fn surgeist_css::CssAnimationDirectionList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssAnimationDirectionList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssAnimationDirectionPropertyValue
 impl surgeist_css::CssAnimationDirectionPropertyValue
 pub fn surgeist_css::CssAnimationDirectionPropertyValue::as_css(&self) -> &str
@@ -4706,11 +4752,17 @@ pub struct surgeist_css::CssAnimationFillModeList
 impl surgeist_css::CssAnimationFillModeList
 pub fn surgeist_css::CssAnimationFillModeList::modes(&self) -> &[surgeist_css::CssAnimationFillMode]
 pub fn surgeist_css::CssAnimationFillModeList::try_new(modes: alloc::vec::Vec<surgeist_css::CssAnimationFillMode>) -> core::option::Option<Self>
+impl surgeist_css::CssAnimationFillModeList
+pub fn surgeist_css::CssAnimationFillModeList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssAnimationFillModeList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssAnimationFillModePropertyValue
 impl surgeist_css::CssAnimationFillModePropertyValue
 pub fn surgeist_css::CssAnimationFillModePropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssAnimationFillModePropertyValue::fill_modes(&self) -> &surgeist_css::CssAnimationFillModeList
 pub struct surgeist_css::CssAnimationIterationCountList
+impl surgeist_css::CssAnimationIterationCountList
+pub fn surgeist_css::CssAnimationIterationCountList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssAnimationIterationCountList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl surgeist_css::CssAnimationIterationCountList
 pub fn surgeist_css::CssAnimationIterationCountList::try_new(values: alloc::vec::Vec<surgeist_css::CssAnimationIterationCount>) -> core::option::Option<Self>
 pub fn surgeist_css::CssAnimationIterationCountList::values(&self) -> &[surgeist_css::CssAnimationIterationCount]
@@ -4720,17 +4772,26 @@ pub fn surgeist_css::CssAnimationIterationCountPropertyValue::as_css(&self) -> &
 pub const fn surgeist_css::CssAnimationIterationCountPropertyValue::iteration_counts(&self) -> &surgeist_css::CssAnimationIterationCountList
 pub struct surgeist_css::CssAnimationList
 impl surgeist_css::CssAnimationList
+pub fn surgeist_css::CssAnimationList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssAnimationList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssAnimationList
 pub fn surgeist_css::CssAnimationList::try_new(values: alloc::vec::Vec<surgeist_css::CssAnimation>) -> core::option::Option<Self>
 pub fn surgeist_css::CssAnimationList::values(&self) -> &[surgeist_css::CssAnimation]
 pub struct surgeist_css::CssAnimationNameList
 impl surgeist_css::CssAnimationNameList
 pub fn surgeist_css::CssAnimationNameList::names(&self) -> &[surgeist_css::CssAnimationName]
 pub fn surgeist_css::CssAnimationNameList::try_new(names: alloc::vec::Vec<surgeist_css::CssAnimationName>) -> core::option::Option<Self>
+impl surgeist_css::CssAnimationNameList
+pub fn surgeist_css::CssAnimationNameList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssAnimationNameList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssAnimationNamePropertyValue
 impl surgeist_css::CssAnimationNamePropertyValue
 pub fn surgeist_css::CssAnimationNamePropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssAnimationNamePropertyValue::names(&self) -> &surgeist_css::CssAnimationNameList
 pub struct surgeist_css::CssAnimationPlayStateList
+impl surgeist_css::CssAnimationPlayStateList
+pub fn surgeist_css::CssAnimationPlayStateList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssAnimationPlayStateList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl surgeist_css::CssAnimationPlayStateList
 pub fn surgeist_css::CssAnimationPlayStateList::states(&self) -> &[surgeist_css::CssAnimationPlayState]
 pub fn surgeist_css::CssAnimationPlayStateList::try_new(states: alloc::vec::Vec<surgeist_css::CssAnimationPlayState>) -> core::option::Option<Self>
@@ -5863,6 +5924,8 @@ pub const fn surgeist_css::CssContainer::names(&self) -> &surgeist_css::CssConta
 pub const fn surgeist_css::CssContainer::new(names: surgeist_css::CssContainerNames, container_type: surgeist_css::CssContainerType) -> Self
 impl surgeist_css::CssContainer
 pub fn surgeist_css::CssContainer::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssContainer::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssContainer::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssContainer::serialize_with_limit(&self, max_bytes: usize) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
 pub fn surgeist_css::CssContainer::to_components(&self) -> core::result::Result<surgeist_css::CssComponentValues, surgeist_css::CssComponentValueError>
 pub fn surgeist_css::CssContainer::to_components_with_limits(&self, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<surgeist_css::CssComponentValues, surgeist_css::CssComponentValueError>
@@ -6297,6 +6360,9 @@ pub type surgeist_css::CssDeclarationList::Target = [surgeist_css::CssDeclaratio
 pub fn surgeist_css::CssDeclarationList::deref(&self) -> &Self::Target
 pub struct surgeist_css::CssDelayList
 impl surgeist_css::CssDelayList
+pub fn surgeist_css::CssDelayList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssDelayList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssDelayList
 pub fn surgeist_css::CssDelayList::try_new(values: alloc::vec::Vec<surgeist_css::CssTimeValue>) -> core::option::Option<Self>
 pub fn surgeist_css::CssDelayList::values(&self) -> &[surgeist_css::CssTimeValue]
 impl core::cmp::PartialEq for surgeist_css::CssDelayList
@@ -6366,6 +6432,9 @@ impl core::cmp::Eq for surgeist_css::CssDuration
 impl core::cmp::PartialEq for surgeist_css::CssDuration
 pub fn surgeist_css::CssDuration::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssDurationList
+impl surgeist_css::CssDurationList
+pub fn surgeist_css::CssDurationList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssDurationList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl surgeist_css::CssDurationList
 pub fn surgeist_css::CssDurationList::try_new(values: alloc::vec::Vec<surgeist_css::CssDuration>) -> core::option::Option<Self>
 pub fn surgeist_css::CssDurationList::values(&self) -> &[surgeist_css::CssDuration]
@@ -9582,6 +9651,9 @@ pub struct surgeist_css::CssTransformBox
 impl surgeist_css::CssTransformBox
 pub const fn surgeist_css::CssTransformBox::edge(&self) -> surgeist_css::CssBoxEdgeKeyword
 pub const fn surgeist_css::CssTransformBox::try_new(edge: surgeist_css::CssBoxEdgeKeyword) -> core::option::Option<Self>
+impl surgeist_css::CssTransformBox
+pub fn surgeist_css::CssTransformBox::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTransformBox::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssTransformBoxPropertyValue
 impl surgeist_css::CssTransformBoxPropertyValue
 pub fn surgeist_css::CssTransformBoxPropertyValue::as_css(&self) -> &str
@@ -9681,12 +9753,18 @@ pub fn surgeist_css::CssTransitionDurationPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssTransitionDurationPropertyValue::durations(&self) -> &surgeist_css::CssDurationList
 pub struct surgeist_css::CssTransitionList
 impl surgeist_css::CssTransitionList
+pub fn surgeist_css::CssTransitionList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTransitionList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssTransitionList
 pub fn surgeist_css::CssTransitionList::try_new(values: alloc::vec::Vec<surgeist_css::CssTransition>) -> core::option::Option<Self>
 pub fn surgeist_css::CssTransitionList::values(&self) -> &[surgeist_css::CssTransition]
 pub struct surgeist_css::CssTransitionPropertyList
 impl surgeist_css::CssTransitionPropertyList
 pub fn surgeist_css::CssTransitionPropertyList::properties(&self) -> &[surgeist_css::CssTransitionProperty]
 pub fn surgeist_css::CssTransitionPropertyList::try_new(properties: alloc::vec::Vec<surgeist_css::CssTransitionProperty>) -> core::option::Option<Self>
+impl surgeist_css::CssTransitionPropertyList
+pub fn surgeist_css::CssTransitionPropertyList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTransitionPropertyList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssTransitionPropertyPropertyValue
 impl surgeist_css::CssTransitionPropertyPropertyValue
 pub fn surgeist_css::CssTransitionPropertyPropertyValue::as_css(&self) -> &str

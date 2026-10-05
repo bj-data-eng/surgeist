@@ -9,9 +9,10 @@ use std::fmt;
 
 mod projection;
 pub(crate) use projection::{
-    NumericComparisonCapture, NumericProjectionOutcome, NumericProjectionScale, capture_specified,
-    capture_specified_for_comparison, capture_specified_scaled, project_calc_size_sum_into,
-    project_specified, project_specified_into,
+    DeferredNumericProjection, NumericComparisonCapture, NumericProjectionOutcome,
+    NumericProjectionScale, capture_specified, capture_specified_for_comparison,
+    capture_specified_scaled, prepare_specified, project_calc_size_sum_into, project_specified,
+    project_specified_into,
 };
 
 /// Explicit provenance for an existing parser cursor; never ambient parser state.
@@ -3363,6 +3364,7 @@ impl CssProfileColorCalculation {
 
 #[derive(Clone, Copy)]
 pub(crate) enum SpecifiedCalculationRef<'a> {
+    Number(&'a CssNumberCalculation),
     Angle(&'a CssAngleCalculation),
     Time(&'a CssTimeCalculation),
     Frequency(&'a CssFrequencyCalculation),
@@ -3376,12 +3378,26 @@ pub(crate) fn project_calculation_specified_into(
     context: &mut crate::specified_serialization::SpecifiedSerializationContext,
     output: &mut String,
 ) -> std::result::Result<NumericProjectionOutcome, crate::CssSpecifiedValueSerializationError> {
-    let expression = match calculation {
-        SpecifiedCalculationRef::Angle(value) => &value.expression,
-        SpecifiedCalculationRef::Time(value) => &value.expression,
-        SpecifiedCalculationRef::Frequency(value) => &value.expression,
-    };
-    project_specified_into(expression, context, output)
+    project_specified_into(calculation.expression(), context, output)
+}
+
+impl SpecifiedCalculationRef<'_> {
+    fn expression(&self) -> &CssCalculationExpression {
+        match self {
+            Self::Number(value) => &value.expression,
+            Self::Angle(value) => &value.expression,
+            Self::Time(value) => &value.expression,
+            Self::Frequency(value) => &value.expression,
+        }
+    }
+}
+
+/// Builds once in the caller's cumulative context and defers numeric emission.
+pub(crate) fn prepare_calculation_specified(
+    calculation: SpecifiedCalculationRef<'_>,
+    context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+) -> std::result::Result<DeferredNumericProjection, crate::CssSpecifiedValueSerializationError> {
+    prepare_specified(calculation.expression(), context)
 }
 
 #[derive(Clone, Copy)]

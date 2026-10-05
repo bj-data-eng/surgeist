@@ -59,7 +59,9 @@ pub enum CssSpecifiedValueSerializationErrorKind {
     CapacityOverflow,
     /// Retained component boundaries cannot be emitted without changing tokens.
     UnserializableBoundary,
-    /// The selected numeric precision cannot emit a value allowed by its grammar.
+    /// The owning serializer cannot represent the value within its selected
+    /// capability or precision policy. This includes invalid retained selector
+    /// identity and numeric rounding that loses a required slot distinction.
     UnrepresentableValue,
 }
 
@@ -97,7 +99,7 @@ impl fmt::Display for CssSpecifiedValueSerializationError {
                 "specified-value component boundary cannot be serialized"
             }
             CssSpecifiedValueSerializationErrorKind::UnrepresentableValue => {
-                "specified value cannot be represented within the selected serialization precision"
+                "specified value cannot be represented by the selected serializer"
             }
         })
     }

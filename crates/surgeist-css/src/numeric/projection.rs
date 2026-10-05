@@ -688,8 +688,71 @@ fn project_specified_impl_mode(
     context: &mut SpecifiedSerializationContext,
     output: &mut String,
     (charge_output, outer_calc): (bool, bool),
-    mut emission: NumericEmission<'_>,
+    emission: NumericEmission<'_>,
 ) -> Result<NumericProjectionOutcome> {
+    let prepared = prepare_specified_scaled(expression, scale, context)?;
+    emit_prepared(
+        prepared,
+        context,
+        output,
+        charge_output,
+        outer_calc,
+        emission,
+    )
+}
+
+/// A checked projection waiting for its owning slot to choose emission.
+/// It owns only the existing bounded arena, never a second resource context.
+pub(crate) struct DeferredNumericProjection {
+    arena: Vec<Node>,
+    root: Id,
+    outcome: NumericProjectionOutcome,
+}
+impl DeferredNumericProjection {
+    pub(crate) fn outcome(&self) -> NumericProjectionOutcome {
+        self.outcome
+    }
+
+    /// Negation retains the dimensional type and charges derived projection work.
+    pub(crate) fn append(
+        self,
+        context: &mut SpecifiedSerializationContext,
+        output: &mut String,
+        negate: bool,
+    ) -> Result<()> {
+        let mut prepared = self;
+        if negate {
+            let mut projection = Projection {
+                arena: prepared.arena,
+                context: &mut *context,
+            };
+            prepared.root = projection.negate(prepared.root)?;
+            prepared.arena = projection.arena;
+        }
+        emit_prepared(
+            prepared,
+            context,
+            output,
+            true,
+            true,
+            NumericEmission::CssComponent(None),
+        )
+        .map(|_| ())
+    }
+}
+
+pub(crate) fn prepare_specified(
+    expression: &CssCalculationExpression,
+    context: &mut SpecifiedSerializationContext,
+) -> Result<DeferredNumericProjection> {
+    prepare_specified_scaled(expression, NumericProjectionScale::Identity, context)
+}
+
+fn prepare_specified_scaled(
+    expression: &CssCalculationExpression,
+    scale: NumericProjectionScale,
+    context: &mut SpecifiedSerializationContext,
+) -> Result<DeferredNumericProjection> {
     let mut projection = Projection {
         arena: Vec::new(),
         context,
@@ -809,6 +872,27 @@ fn project_specified_impl_mode(
     let outcome = NumericProjectionOutcome {
         context_dependent: projection.arena[root].resolved_magnitude.is_none(),
         scalar_value: projection.scalar(root).map(|value| value.value),
+    };
+    Ok(DeferredNumericProjection {
+        arena: projection.arena,
+        root,
+        outcome,
+    })
+}
+
+fn emit_prepared(
+    prepared: DeferredNumericProjection,
+    context: &mut SpecifiedSerializationContext,
+    output: &mut String,
+    charge_output: bool,
+    outer_calc: bool,
+    mut emission: NumericEmission<'_>,
+) -> Result<NumericProjectionOutcome> {
+    let outcome = prepared.outcome;
+    let root = prepared.root;
+    let mut projection = Projection {
+        arena: prepared.arena,
+        context,
     };
     emission = match emission {
         NumericEmission::ColorComponentCalculation if outcome.context_dependent => {

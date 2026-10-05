@@ -68,6 +68,28 @@ impl<'a> LexicalDecimal<'a> {
             .filter(|c| *c != b'.')
             .map(|c| c - b'0')
     }
+    /// Exact integral full turns in ordinary degree, gradian, or turn units.
+    /// The coefficient is borrowed; even an unbounded exponent is never expanded.
+    pub(crate) fn is_angle_full_turn(&self, units_per_turn: u16) -> bool {
+        assert!(matches!(units_per_turn, 1 | 360 | 400));
+        if self.len == 0 {
+            return true;
+        }
+        let exponent = match self.exponent {
+            Some(exponent) if exponent < 0 => return false,
+            Some(exponent) => exponent.min(4) as u32,
+            None if self.exponent_negative => return false,
+            None => 4,
+        };
+        let divisor = u32::from(units_per_turn);
+        let remainder = self.digits().fold(0, |remainder, digit| {
+            (remainder * 10 + u32::from(digit)) % divisor
+        });
+        // 10^n modulo 360 stabilizes at n=3, and modulo 400 at n=4.
+        let scale = (0..exponent).fold(1, |power, _| power * 10 % divisor);
+        remainder * scale % divisor == 0
+    }
+
     /// Applies an exact decimal unit exponent without materializing digits.
     /// The bounded shift leaves the borrowed coefficient and raw exponent
     /// available to the overflow-safe equality fallback.

@@ -1559,8 +1559,37 @@ lexical coefficients, units, branches, order and omissions distinct. Constructor
 and parsers retain absent shorthand fields; they do not insert initial values.
 Animation iteration counts and easing values use their own shared numeric models.
 This crate does not resolve relative units, evaluate computed ranges, run animation
-timelines, or lower values into sibling Surgeist crates. Whole timing aggregate
-specified writers and timing property expansion remain unfinished.
+timelines, or lower values into sibling Surgeist crates. The represented transition and animation list types expose
+`serialize_specified` and `serialize_specified_with_limits`. They retain item
+order and explicit optional fields. A delay without a duration emits a preceding
+`0s`: the selected
+[Transitions 1 shorthand](https://www.w3.org/TR/2026/WD-css-transitions-1-20260108/#transition-shorthand-property)
+and
+[Animations 1 shorthand](https://www.w3.org/TR/2023/WD-css-animations-1-20230302/#animation)
+assign the first time to duration and the second to delay.
+
+Transition output orders property, duration, easing and delay; animation output
+orders duration, easing, delay, count, direction, fill mode, play state and name.
+An animation identifier that resembles another field fills that field with its
+actual or initial value before emitting the name: a name `backwards` alone emits
+`none backwards`, while a name `ease` emits `ease ease`. Quoted names remain
+strings. A transition property that resembles easing is emitted last after the
+actual or default easing; `ease-out linear` preserves property `linear` and
+timing `ease-out`. Escaping preserves decoded identity and cannot turn a reserved
+keyword into a distinct ordinary name.
+
+The provider returns `UnrepresentableValue` for constructed decoded reserved
+custom-name variants, NUL-bearing name identities and transition lists mixing
+`None` with other items. NUL replacement would change the retained name.
+Their admission remains separate from output. Each list and shorthand item costs
+one input and projection node; retained names, keywords and count variants cost
+one each, with numeric children using their existing costs. Synthesized defaults
+cost one projection node and no input node. Duration wrappers add no extra node
+around the time. Punctuation costs bytes only. Private append methods share the
+caller's cumulative context; suppressed children still perform checked work,
+and public failures return no partial CSS.
+
+Timing property expansion and contextual execution remain separate.
 
 ### Exact frequency and ordinary resolution
 
@@ -1893,8 +1922,41 @@ The property admits its axis group before or after the angle, including typed
 angle and number calculations. Its strict angle grammar accepts `0deg` and
 rejects bare `0`; transform-function zero-angle grammar retains its separate
 `CssAngleOrZero` contract. This authored model replaces the former String payload.
-Canonical individual-rotate specified output and contextual rotation execution
-remain separate work; the model does not reconstruct output from authored text.
+`CssRotate::serialize_specified` and `serialize_specified_with_limits` follow
+[Transforms 2 §5.1](https://www.w3.org/TR/2021/WD-css-transforms-2-20211109/#individual-transform-serialization).
+Authored `none` remains `none`; proved identity emits `0deg`. This includes
+zero angles, integral full turns and an unnormalizable all-zero axis under
+[§12.2](https://www.w3.org/TR/2021/WD-css-transforms-2-20211109/#three-d-transform-functions).
+Degree, gradian and turn identity is checked from borrowed exact decimal
+coefficients without expanding exponents. Nonzero ordinary decimal radians
+cannot be exact integral full turns. Finite calculated identity uses projected
+degrees under the existing [calculation arithmetic policy](#calculated-number-output).
+
+Omitted and keyword z axes emit only the angle. Parallel x/y vectors emit their
+keyword; parallel z vectors omit the axis. Negative directed vectors invert the
+angle when reduced, preserving the directed-axis rotation. Other vectors emit
+three numbers followed by the angle. Ordinary axis zero/sign classification is
+exact, including huge or subrounding coefficients; calculated classification
+uses the numeric owner's outcome before formatting. Symbolic and nonfinite
+operands remain symbolic when they do not prove a reduction. Literal angle units
+retain their ordinary suffix; projected angle math uses its existing degree output.
+
+A general vector's proved nonzero component that rounds to zero returns
+`UnrepresentableValue`. This is the serializer's capability limit, rather than
+a CSS-mandated rejection or a guarantee of exact direction. Surviving components
+retain independent six-place rounding. Omitted parallel coefficients spend no
+output bytes; emitted huge coefficients retain the ordinary byte limit.
+All authored numeric children are checked once before choosing output.
+
+The rotation costs one input and projection node; an explicit axis adds one of
+each. Each ordinary vector/angle literal adds one of each, while calculation
+children use their existing projection costs. Identity replacement and ordinary
+angle inversion each add one projection node. Calculation inversion uses the
+existing numeric negation cost. Omitted implicit axes add no synthetic input,
+and punctuation costs bytes only. Deferred projection keeps the existing bounded
+numeric work and formats surviving operands through the same cumulative context.
+Failures preserve operands and provenance and return no partial CSS. Translate,
+scale, declaration traversal and contextual execution retain their own owners.
 
 `CssAngleLiteral` retains an exact decimal dimension, its authored unit, and
 original component provenance. `CssAngleValue` holds a checked literal or symbolic
@@ -4752,6 +4814,15 @@ programmatic origins and can enter the existing `parse_property_value` checked
 declaration boundary. Parsed wrapper `as_css()` and occurrence components retain
 the original spelling, comments, order and source origins independently of this
 semantic canonical output. See `examples/container_property_semantic_consumer.rs`.
+The same values also expose `serialize_specified` and
+`serialize_specified_with_limits` for cumulative input/projection/byte limits.
+They reuse the canonical visitor used by the component APIs. Each keyword or
+decoded name costs one input and projection node; a nonempty names list adds
+one aggregate node, and the shorthand adds one aggregate node. A combined
+size-axis/scroll-state type therefore costs two nodes. Omitted `Normal` still
+costs one suppressed keyword node. Spaces, slash and escape terminators cost
+bytes only; existing component-token limits remain independent.
+
 Container selection, containment effects and style evaluation remain downstream.
 
 ## Conditional rules and import preludes
@@ -6269,3 +6340,28 @@ Behavioral evidence is in
 [`selector_specified_serialization.rs`](../tests/selector_specified_serialization.rs)
 and the crate-private `specified_provider_composition_tests` module, alongside
 the existing owning providers' public serialization suites.
+
+## Represented keyword specified output
+
+`CssTextWrap`, `CssWhiteSpace`, `CssWordBreak`, `CssTextTransform`,
+`CssTextDecorationStyle`, `CssImageRendering`, `CssObjectFit`,
+`CssPointerEvents`, `CssUserSelect`, `CssResize`, `CssTransformBox`,
+`CssIsolation` and `CssBlendMode` expose `serialize_specified` and
+`serialize_specified_with_limits`. Each currently represented alternative emits
+its canonical CSS keyword and costs one input and projection node, plus final
+UTF-8 bytes. The same algorithm accepts a partially consumed rule writer;
+suppression preserves semantic costs without spending output bytes.
+
+These providers cover the existing typed alternatives. Broader Text, Images,
+UI and transform grammar/model work remains with those domains. They use the
+selected [Text 4](https://www.w3.org/TR/2026/WD-css-text-4-20260814/),
+[Text Decoration 3](https://www.w3.org/TR/2022/CRD-css-text-decor-3-20220505/),
+[Images 3](https://www.w3.org/TR/2023/CRD-css-images-3-20231218/),
+[UI 4](https://www.w3.org/TR/2026/WD-css-ui-4-20260120/),
+[Transforms 1](https://www.w3.org/TR/2019/CR-css-transforms-1-20190214/) and
+[Compositing 1](https://www.w3.org/TR/2024/CRD-compositing-1-20240321/) references.
+
+Shared `UnrepresentableValue` errors describe a value outside the owning
+serializer's capability, including invalid retained identity or a precision
+limit. Their message does not attribute every failure to numeric precision.
+Resource exhaustion keeps its distinct error kind and message.
