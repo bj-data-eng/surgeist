@@ -40,6 +40,9 @@ const LONGHANDS: &[P] = &[
     P::BoxDecorationBreak,
     P::ScrollbarWidth,
     P::ScrollbarColor,
+    P::ColorScheme,
+    P::ForcedColorAdjust,
+    P::PrintColorAdjust,
     P::Top,
     P::Right,
     P::Bottom,
@@ -254,6 +257,7 @@ const LONGHANDS: &[P] = &[
     P::TextCombineUpright,
 ];
 const SHORTHANDS: &[(P, &[P], &[P])] = &[
+    (P::ColorAdjust, &[P::PrintColorAdjust], &[]),
     (P::Pause, &[P::PauseBefore, P::PauseAfter], &[]),
     (P::Rest, &[P::RestBefore, P::RestAfter], &[]),
     (P::Cue, &[P::CueBefore, P::CueAfter], &[]),
@@ -863,6 +867,9 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         }
         CssLonghandValueRef::ScrollbarWidth(v) => assert_eq!(*v, CssScrollbarWidth::Auto),
         CssLonghandValueRef::ScrollbarColor(v) => assert_eq!(*v, CssScrollbarColor::auto()),
+        CssLonghandValueRef::ColorScheme(v) => assert_eq!(*v, CssColorScheme::normal()),
+        CssLonghandValueRef::ForcedColorAdjust(v) => assert_eq!(*v, CssForcedColorAdjust::Auto),
+        CssLonghandValueRef::PrintColorAdjust(v) => assert_eq!(*v, CssPrintColorAdjust::Economy),
         CssLonghandValueRef::ScrollbarGutter(v) => assert_eq!(*v, CssScrollbarGutter::Auto),
         CssLonghandValueRef::TextOverflow(v) => assert_eq!(*v, CssTextOverflow::Clip),
         CssLonghandValueRef::Width(v)
@@ -1066,7 +1073,7 @@ fn metadata_and_initials() {
             P::All,
         ])
         .collect();
-    assert_eq!(expected.len(), 300);
+    assert_eq!(expected.len(), 304);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {
@@ -1107,6 +1114,9 @@ fn metadata_and_initials() {
                 property,
                 P::Color
                     | P::ScrollbarColor
+                    | P::ColorScheme
+                    | P::ForcedColorAdjust
+                    | P::PrintColorAdjust
                     | P::VoiceBalance
                     | P::VoiceVolume
                     | P::VoicePitch

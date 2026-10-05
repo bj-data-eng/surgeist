@@ -846,6 +846,14 @@ profile_source!(
     "https://www.w3.org/TR/2021/CR-css-scrollbars-1-20211209/"
 );
 profile_source!(
+    R_COLORADJUST1,
+    "R-COLORADJUST1",
+    "CSS Color Adjustment",
+    "1",
+    CssSpecificationTier::Snapshot2026Reliable,
+    "https://www.w3.org/TR/2025/CR-css-color-adjust-1-20251216/"
+);
+profile_source!(
     R_SCROLLSNAP1,
     "R-SCROLLSNAP1",
     "CSS Scroll Snap",
@@ -1296,6 +1304,7 @@ static SPECIFICATION_SOURCES: &[CssSpecificationSource] = &[
     R_MEDIA4,
     R_SCROLLBARS1,
     R_SCROLLSNAP1,
+    R_COLORADJUST1,
     R_GRID1,
     R_GRID2,
     R_CASCADE5,
@@ -2606,6 +2615,10 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         CssKnownProperty::Order => S_DISPLAY3,
         CssKnownProperty::AspectRatio => X_SIZING4_20260904,
         CssKnownProperty::ScrollbarWidth | CssKnownProperty::ScrollbarColor => R_SCROLLBARS1,
+        CssKnownProperty::ColorScheme
+        | CssKnownProperty::ForcedColorAdjust
+        | CssKnownProperty::PrintColorAdjust
+        | CssKnownProperty::ColorAdjust => R_COLORADJUST1,
         CssKnownProperty::ScrollSnapType
         | CssKnownProperty::ScrollSnapAlign
         | CssKnownProperty::ScrollSnapStop
@@ -2789,7 +2802,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 668] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 672] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -5880,6 +5893,26 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 668] = [
         CssKnownProperty::ScrollbarColor,
         "scrollbar-color",
         "official.property.scrollbar-color"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ColorScheme,
+        "color-scheme",
+        "official.property.color-scheme"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ForcedColorAdjust,
+        "forced-color-adjust",
+        "official.property.forced-color-adjust"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::PrintColorAdjust,
+        "print-color-adjust",
+        "official.property.print-color-adjust"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ColorAdjust,
+        "color-adjust",
+        "official.property.color-adjust"
     ),
     property_feature!(
         CssKnownProperty::Cursor,

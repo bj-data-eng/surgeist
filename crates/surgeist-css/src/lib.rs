@@ -1308,6 +1308,11 @@ mod background_serialization;
 mod border_color;
 mod border_image_serialization;
 mod clip_path_serialization;
+mod color_adjustment;
+pub use color_adjustment::{
+    CssColorScheme, CssColorSchemeConstructionError, CssColorSchemeKeyword, CssColorSchemeName,
+    CssForcedColorAdjust, CssPrintColorAdjust,
+};
 mod color_profile;
 mod color_profile_serialization;
 mod common_serialization;

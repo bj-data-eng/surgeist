@@ -534,6 +534,16 @@ pub surgeist_css::CssColorProfileValueErrorKind::ResidualSubstitution
 #[non_exhaustive] pub enum surgeist_css::CssColorScalarErrorKind
 pub surgeist_css::CssColorScalarErrorKind::InvalidComponent
 pub surgeist_css::CssColorScalarErrorKind::OutOfRange
+#[non_exhaustive] pub enum surgeist_css::CssColorSchemeConstructionError
+pub surgeist_css::CssColorSchemeConstructionError::EmptySchemes
+pub surgeist_css::CssColorSchemeConstructionError::ReservedName
+impl core::error::Error for surgeist_css::CssColorSchemeConstructionError
+impl core::fmt::Display for surgeist_css::CssColorSchemeConstructionError
+pub fn surgeist_css::CssColorSchemeConstructionError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+#[non_exhaustive] pub enum surgeist_css::CssColorSchemeKeyword
+pub surgeist_css::CssColorSchemeKeyword::Custom(surgeist_css::CssColorSchemeName)
+pub surgeist_css::CssColorSchemeKeyword::Dark
+pub surgeist_css::CssColorSchemeKeyword::Light
 #[non_exhaustive] pub enum surgeist_css::CssColorSchemePreference
 pub surgeist_css::CssColorSchemePreference::Dark
 pub surgeist_css::CssColorSchemePreference::Light
@@ -1601,6 +1611,13 @@ pub surgeist_css::CssFontWidthKeyword::UltraCondensed
 pub surgeist_css::CssFontWidthKeyword::UltraExpanded
 impl surgeist_css::CssFontWidthKeyword
 pub fn surgeist_css::CssFontWidthKeyword::percentage(self) -> surgeist_css::CssSpecifiedNonNegativePercentage
+#[non_exhaustive] pub enum surgeist_css::CssForcedColorAdjust
+pub surgeist_css::CssForcedColorAdjust::Auto
+pub surgeist_css::CssForcedColorAdjust::None
+pub surgeist_css::CssForcedColorAdjust::PreserveParentColor
+impl surgeist_css::CssForcedColorAdjust
+pub fn surgeist_css::CssForcedColorAdjust::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssForcedColorAdjust::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssForcedColorsMode
 pub surgeist_css::CssForcedColorsMode::Active
 pub surgeist_css::CssForcedColorsMode::None
@@ -2009,6 +2026,8 @@ pub surgeist_css::CssKnownProperty::Clear
 pub surgeist_css::CssKnownProperty::Clip
 pub surgeist_css::CssKnownProperty::ClipPath
 pub surgeist_css::CssKnownProperty::Color
+pub surgeist_css::CssKnownProperty::ColorAdjust
+pub surgeist_css::CssKnownProperty::ColorScheme
 pub surgeist_css::CssKnownProperty::ColumnCount
 pub surgeist_css::CssKnownProperty::ColumnFill
 pub surgeist_css::CssKnownProperty::ColumnGap
@@ -2076,6 +2095,7 @@ pub surgeist_css::CssKnownProperty::FontVariantPosition
 pub surgeist_css::CssKnownProperty::FontVariationSettings
 pub surgeist_css::CssKnownProperty::FontWeight
 pub surgeist_css::CssKnownProperty::FontWidth
+pub surgeist_css::CssKnownProperty::ForcedColorAdjust
 pub surgeist_css::CssKnownProperty::FrameSizing
 pub surgeist_css::CssKnownProperty::Gap
 pub surgeist_css::CssKnownProperty::Grid
@@ -2182,6 +2202,7 @@ pub surgeist_css::CssKnownProperty::PlaceItems
 pub surgeist_css::CssKnownProperty::PlaceSelf
 pub surgeist_css::CssKnownProperty::PointerEvents
 pub surgeist_css::CssKnownProperty::Position
+pub surgeist_css::CssKnownProperty::PrintColorAdjust
 pub surgeist_css::CssKnownProperty::Quotes
 pub surgeist_css::CssKnownProperty::Resize
 pub surgeist_css::CssKnownProperty::Rest
@@ -2379,6 +2400,8 @@ pub surgeist_css::CssKnownPropertyValueRef::Clear(&'a surgeist_css::CssClearProp
 pub surgeist_css::CssKnownPropertyValueRef::Clip(&'a surgeist_css::CssClipPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ClipPath(&'a surgeist_css::CssClipPathPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Color(&'a surgeist_css::CssColorPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ColorAdjust(&'a surgeist_css::CssColorAdjustPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ColorScheme(&'a surgeist_css::CssColorSchemePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ColumnCount(&'a surgeist_css::CssColumnCountPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ColumnFill(&'a surgeist_css::CssColumnFillPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ColumnGap(&'a surgeist_css::CssColumnGapPropertyValue)
@@ -2446,6 +2469,7 @@ pub surgeist_css::CssKnownPropertyValueRef::FontVariantPosition(&'a surgeist_css
 pub surgeist_css::CssKnownPropertyValueRef::FontVariationSettings(&'a surgeist_css::CssFontVariationSettingsPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::FontWeight(&'a surgeist_css::CssFontWeightPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::FontWidth(&'a surgeist_css::CssFontWidthPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ForcedColorAdjust(&'a surgeist_css::CssForcedColorAdjustPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::FrameSizing(&'a surgeist_css::CssFrameSizingPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Gap(&'a surgeist_css::CssGapPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Grid(&'a surgeist_css::CssGridPropertyValue)
@@ -2552,6 +2576,7 @@ pub surgeist_css::CssKnownPropertyValueRef::PlaceItems(&'a surgeist_css::CssPlac
 pub surgeist_css::CssKnownPropertyValueRef::PlaceSelf(&'a surgeist_css::CssPlaceSelfPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::PointerEvents(&'a surgeist_css::CssPointerEventsPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Position(&'a surgeist_css::CssPositionPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::PrintColorAdjust(&'a surgeist_css::CssPrintColorAdjustPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Quotes(&'a surgeist_css::CssQuotesPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Resize(&'a surgeist_css::CssResizePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Rest(&'a surgeist_css::CssRestPropertyValue)
@@ -2808,6 +2833,7 @@ pub surgeist_css::CssLonghandValueRef::Clear(&'a surgeist_css::CssClear)
 pub surgeist_css::CssLonghandValueRef::Clip(&'a surgeist_css::CssClip)
 pub surgeist_css::CssLonghandValueRef::ClipPath(&'a surgeist_css::CssClipPath)
 pub surgeist_css::CssLonghandValueRef::Color(&'a surgeist_css::CssColor)
+pub surgeist_css::CssLonghandValueRef::ColorScheme(&'a surgeist_css::CssColorScheme)
 pub surgeist_css::CssLonghandValueRef::ColumnCount(&'a surgeist_css::CssColumnCount)
 pub surgeist_css::CssLonghandValueRef::ColumnFill(&'a surgeist_css::CssColumnFill)
 pub surgeist_css::CssLonghandValueRef::ColumnGap(&'a surgeist_css::CssGapValue)
@@ -2863,6 +2889,7 @@ pub surgeist_css::CssLonghandValueRef::FontVariantPosition(&'a surgeist_css::Css
 pub surgeist_css::CssLonghandValueRef::FontVariationSettings(&'a surgeist_css::CssFontVariationSettings)
 pub surgeist_css::CssLonghandValueRef::FontWeight(&'a surgeist_css::CssFontWeight)
 pub surgeist_css::CssLonghandValueRef::FontWidth(&'a surgeist_css::CssFontWidth)
+pub surgeist_css::CssLonghandValueRef::ForcedColorAdjust(&'a surgeist_css::CssForcedColorAdjust)
 pub surgeist_css::CssLonghandValueRef::FrameSizing(&'a surgeist_css::CssFrameSizing)
 pub surgeist_css::CssLonghandValueRef::GridAutoColumns(&'a surgeist_css::CssGridTrackSizeList)
 pub surgeist_css::CssLonghandValueRef::GridAutoFlow(&'a surgeist_css::CssGridAutoFlow)
@@ -2927,6 +2954,7 @@ pub surgeist_css::CssLonghandValueRef::PaddingTop(&'a surgeist_css::CssPaddingVa
 pub surgeist_css::CssLonghandValueRef::PauseAfter(&'a surgeist_css::CssSpeechBreak)
 pub surgeist_css::CssLonghandValueRef::PauseBefore(&'a surgeist_css::CssSpeechBreak)
 pub surgeist_css::CssLonghandValueRef::Position(&'a surgeist_css::CssLayoutPosition)
+pub surgeist_css::CssLonghandValueRef::PrintColorAdjust(&'a surgeist_css::CssPrintColorAdjust)
 pub surgeist_css::CssLonghandValueRef::Quotes(&'a surgeist_css::CssQuotes)
 pub surgeist_css::CssLonghandValueRef::RestAfter(&'a surgeist_css::CssSpeechBreak)
 pub surgeist_css::CssLonghandValueRef::RestBefore(&'a surgeist_css::CssSpeechBreak)
@@ -3467,6 +3495,12 @@ pub surgeist_css::CssPredefinedColorSpace::Srgb
 pub surgeist_css::CssPredefinedColorSpace::SrgbLinear
 pub surgeist_css::CssPredefinedColorSpace::XyzD50
 pub surgeist_css::CssPredefinedColorSpace::XyzD65
+#[non_exhaustive] pub enum surgeist_css::CssPrintColorAdjust
+pub surgeist_css::CssPrintColorAdjust::Economy
+pub surgeist_css::CssPrintColorAdjust::Exact
+impl surgeist_css::CssPrintColorAdjust
+pub fn surgeist_css::CssPrintColorAdjust::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssPrintColorAdjust::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssProfileColorExpressionRef<'a>
 pub surgeist_css::CssProfileColorExpressionRef::Calculation(&'a surgeist_css::CssProfileColorCalculation)
 pub surgeist_css::CssProfileColorExpressionRef::Literal(&'a surgeist_css::CssColorComponent)
@@ -5473,6 +5507,10 @@ pub const fn surgeist_css::CssColor::system(&self) -> core::option::Option<surge
 pub fn surgeist_css::CssColor::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssColor::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub const fn surgeist_css::CssColor::transparent() -> Self
+pub struct surgeist_css::CssColorAdjustPropertyValue
+impl surgeist_css::CssColorAdjustPropertyValue
+pub fn surgeist_css::CssColorAdjustPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssColorAdjustPropertyValue::value(&self) -> &surgeist_css::CssPrintColorAdjust
 pub struct surgeist_css::CssColorAlphaScalarRef<'a>
 impl<'a> surgeist_css::CssColorAlphaScalarRef<'a>
 pub fn surgeist_css::CssColorAlphaScalarRef<'a>::as_unit_f64(&self) -> f64
@@ -5588,6 +5626,23 @@ impl core::error::Error for surgeist_css::CssColorScalarError
 pub fn surgeist_css::CssColorScalarError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_css::CssColorScalarError
 pub fn surgeist_css::CssColorScalarError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_css::CssColorScheme
+impl surgeist_css::CssColorScheme
+pub fn surgeist_css::CssColorScheme::is_normal(&self) -> bool
+pub const fn surgeist_css::CssColorScheme::normal() -> Self
+pub const fn surgeist_css::CssColorScheme::only(&self) -> bool
+pub fn surgeist_css::CssColorScheme::schemes(&self) -> &[surgeist_css::CssColorSchemeKeyword]
+pub fn surgeist_css::CssColorScheme::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssColorScheme::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssColorScheme::try_new(schemes: alloc::vec::Vec<surgeist_css::CssColorSchemeKeyword>, only: bool) -> core::result::Result<Self, surgeist_css::CssColorSchemeConstructionError>
+pub struct surgeist_css::CssColorSchemeName(_)
+impl surgeist_css::CssColorSchemeName
+pub fn surgeist_css::CssColorSchemeName::as_str(&self) -> &str
+pub fn surgeist_css::CssColorSchemeName::try_new(name: surgeist_css::CssIdent) -> core::result::Result<Self, surgeist_css::CssColorSchemeConstructionError>
+pub struct surgeist_css::CssColorSchemePropertyValue
+impl surgeist_css::CssColorSchemePropertyValue
+pub fn surgeist_css::CssColorSchemePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssColorSchemePropertyValue::value(&self) -> &surgeist_css::CssColorScheme
 pub struct surgeist_css::CssColorStopList
 impl surgeist_css::CssColorStopList
 pub fn surgeist_css::CssColorStopList::items(&self) -> &[surgeist_css::CssColorStopListItem]
@@ -6910,6 +6965,10 @@ pub struct surgeist_css::CssFontWidthPropertyValue
 impl surgeist_css::CssFontWidthPropertyValue
 pub fn surgeist_css::CssFontWidthPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssFontWidthPropertyValue::value(&self) -> &surgeist_css::CssFontWidth
+pub struct surgeist_css::CssForcedColorAdjustPropertyValue
+impl surgeist_css::CssForcedColorAdjustPropertyValue
+pub fn surgeist_css::CssForcedColorAdjustPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssForcedColorAdjustPropertyValue::value(&self) -> &surgeist_css::CssForcedColorAdjust
 pub struct surgeist_css::CssFourSideShorthandMetadata
 impl surgeist_css::CssFourSideShorthandMetadata
 pub const fn surgeist_css::CssFourSideShorthandMetadata::members(&self, mode: surgeist_css::CssBoxSideKind) -> &'static [surgeist_css::CssLonghandProperty]
@@ -8403,6 +8462,10 @@ pub const fn surgeist_css::CssPredefinedColor::channels(&self) -> &[surgeist_css
 pub const fn surgeist_css::CssPredefinedColor::color_space(&self) -> surgeist_css::CssPredefinedColorSpace
 pub fn surgeist_css::CssPredefinedColor::parsed_alpha(&self) -> surgeist_css::CssParsedColorAlphaRef<'_>
 pub fn surgeist_css::CssPredefinedColor::try_new(color_space: surgeist_css::CssPredefinedColorSpace, channels: [surgeist_css::CssColorComponent; 3], alpha: core::option::Option<surgeist_css::CssColorComponent>) -> core::result::Result<Self, surgeist_css::CssColorConstructionError>
+pub struct surgeist_css::CssPrintColorAdjustPropertyValue
+impl surgeist_css::CssPrintColorAdjustPropertyValue
+pub fn surgeist_css::CssPrintColorAdjustPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssPrintColorAdjustPropertyValue::value(&self) -> &surgeist_css::CssPrintColorAdjust
 pub struct surgeist_css::CssProductionId(_)
 impl surgeist_css::CssProductionId
 pub const fn surgeist_css::CssProductionId::as_str(self) -> &'static str

@@ -36,6 +36,7 @@ pub use fragments::{
     parse_rule, parse_selector, parse_selector_list, parse_style_block,
 };
 mod color;
+mod color_adjustment;
 mod container_properties;
 mod container_query;
 mod container_scroll;
@@ -97,6 +98,7 @@ use box_model::*;
 use box_spacing::*;
 pub(crate) use color::numeric_relative_channel;
 use color::parse_color;
+use color_adjustment::*;
 use contain_intrinsic_size::*;
 use container_properties::*;
 #[cfg(test)]

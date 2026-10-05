@@ -5493,6 +5493,9 @@ belong to their downstream owners.
 
 ## Authored scrollbar styling
 
+See [authored color adjustment](#authored-color-adjustment) for symbolic scheme,
+forced-color, and output-device hints that affect scrollbar appearance downstream.
+
 The selected [Scrollbars 1 CR §§2–3](https://www.w3.org/TR/2021/CR-css-scrollbars-1-20211209/)
 defines `scrollbar-width: auto | thin | none` and
 `scrollbar-color: auto | <color>{2}`. Both are complete authored longhands with
@@ -5520,6 +5523,56 @@ application, forced-color overrides, computed color resolution, root-to-viewport
 application, scrollbar dimensions, contrast choices, and platform painting
 belong downstream. The dated Scrollbars CR supplies these authored contracts;
 the frozen WebKit corpus and its adapters remain unchanged.
+
+## Authored color adjustment
+
+The selected [Color Adjustment 1 CR](https://www.w3.org/TR/2025/CR-css-color-adjust-1-20251216/)
+defines three inherited longhands. `color-scheme` starts at `normal`,
+`forced-color-adjust` at `auto`, and `print-color-adjust` at `economy`. The shared
+declaration lifecycle supplies CSS-wide values, pending whole-value substitution,
+strict reentry, intrinsic expansion, and ordered normalization with original
+occurrence, replacement provenance, and importance.
+
+`CssColorScheme::normal()` constructs the normal branch.
+`CssColorScheme::try_new(entries, only)` checks a nonempty ordered list of
+`CssColorSchemeKeyword::Light`, `Dark`, and checked `Custom` names, preserving
+duplicates. `CssColorSchemeName::try_new(CssIdent)` retains decoded spelling and
+case while excluding CSS-wide keywords, `default`, and the local `normal`,
+`light`, `dark`, and `only` keywords. `none`, `auto`, and `span` remain valid
+unknown names; they acquire no scheme semantics. Parsed `only` may precede or
+follow the complete list, but cannot repeat or occur inside it. Canonical
+specified output places it last and escapes custom names through the shared
+CSSOM identifier writer. The media preference enum remains a separate domain.
+
+`CssForcedColorAdjust` retains exactly `Auto`, `None`, or `PreserveParentColor`.
+The last hint behaves like `none`, except that in forced colors mode, if `color`
+inherits from its parent because of no cascaded value, `currentcolor`, `inherit`,
+or another parent-inheriting keyword, downstream resolution computes it to the
+parent's used color. That exception does not apply outside forced colors mode.
+CSS ingestion does not execute palette forcing or parent-color selection.
+
+`CssPrintColorAdjust` retains `Economy` or `Exact` as an output-device hint.
+`color-adjust` remains a distinct, genuine deprecated CSS-standard shorthand
+with exactly `print-color-adjust` as its settable member and no reset-only
+members. Its initial and inheritance metadata refer to that longhand. Author
+guidance favors `print-color-adjust`; valid shorthand declarations remain
+accepted. Frozen WebKit at `73aa6c89e2cb77c46184a81aec944e4ab99d114d`
+represents that spelling as an alias and lacks `forced-color-adjust`; these
+implementation details do not narrow the selected specification. Its
+[scheme consumer](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/parser/CSSPropertyParserConsumer%2BColorAdjust.cpp)
+corroborates separate scheme entries and the `only` modifier.
+
+Each type provides `serialize_specified[_with_limits]()`. Keyword values and
+`normal` charge one input and projection node. A scheme list charges its root,
+every entry, and its optional modifier under one cumulative byte budget. Failure
+returns no partial CSS and does not mutate values or source components.
+The properties accept no percentages. Scheme and forced-color hints apply to
+all elements and text; print hints apply to all elements. Scheme computation
+retains `normal` or the ordered specified list and animates discretely; forced
+adjustment computes as specified and is not animatable; print adjustment retains
+the specified keyword and animates discretely. Negotiation, UA palettes and UI,
+viewport/SVG propagation, used-color adjustment, user print preferences,
+output-device decisions, and animation execution belong downstream.
 
 ## Four-side shorthand membership
 
