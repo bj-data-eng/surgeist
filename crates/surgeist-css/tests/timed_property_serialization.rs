@@ -131,7 +131,7 @@ fn longhand_lists_keep_item_order_and_charge_exact_nodes_and_bytes() {
         CssAnimationNameList::try_new(vec![
             CssAnimationName::None,
             name("ease"),
-            CssAnimationName::String(CssKeyframesString::try_new("ease").unwrap())
+            CssAnimationName::String(CssKeyframesString::new("ease"))
         ])
         .unwrap(),
         4,
@@ -505,7 +505,7 @@ fn transition_keyword_property_follows_the_actual_or_default_easing_slot() {
 fn escaped_identifiers_and_quoted_names_keep_their_distinct_forms_and_list_order() {
     let value = CssAnimationNameList::try_new(vec![
         name("a b"),
-        CssAnimationName::String(CssKeyframesString::try_new("a b").unwrap()),
+        CssAnimationName::String(CssKeyframesString::new("a b")),
         name("9spin"),
     ])
     .unwrap();
@@ -604,7 +604,7 @@ fn exact_duration_admission_and_signed_delay_projection_keep_distinct_domains() 
 
 #[test]
 fn nul_quoted_animation_identity_cannot_be_replaced_during_output() {
-    let original = CssAnimationName::String(CssKeyframesString::try_new("a\0b").unwrap());
+    let original = CssAnimationName::String(CssKeyframesString::new("a\0b"));
     let values = CssAnimationNameList::try_new(vec![original.clone()]).unwrap();
     assert_eq!(
         values.serialize_specified().unwrap_err().kind(),
@@ -616,9 +616,7 @@ fn nul_quoted_animation_identity_cannot_be_replaced_during_output() {
 #[test]
 fn nul_animation_shorthand_string_cannot_be_replaced_during_output() {
     let item = CssAnimation::try_new(CssAnimationComponents {
-        name: Some(CssAnimationName::String(
-            CssKeyframesString::try_new("a\0b").unwrap(),
-        )),
+        name: Some(CssAnimationName::String(CssKeyframesString::new("a\0b"))),
         ..CssAnimationComponents::default()
     })
     .unwrap();

@@ -6,12 +6,15 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
         assert_eq!(CssFiniteNumber::try_new(value), None);
         assert_eq!(CssRatio::try_new(value, 1.0), None);
         assert_eq!(CssRatio::try_new(1.0, value), None);
-        assert_eq!(CssKeyframePercent::try_new(value), None);
 
         assert!(
             CssResolutionLiteral::try_new(&value.to_string(), CssResolutionUnit::Dppx).is_err()
         );
         assert!(CssTimeLiteral::try_new(&value.to_string(), CssTimeUnit::Seconds).is_err());
+    }
+
+    for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        assert_eq!(CssKeyframePercent::try_new(value), None);
     }
 
     for invalid in ["NaN", "infinity", "-infinity"] {
@@ -84,8 +87,8 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
         0.0
     );
     assert_eq!(
-        CssKeyframePercent::try_new(100.0).unwrap().value().value(),
-        100.0
+        CssKeyframePercent::try_new(100.0).unwrap().literal_value(),
+        Some(100.0)
     );
     assert_eq!(
         CssFontWeightNumber::try_from_component(CssComponentValue::try_number("1").unwrap())

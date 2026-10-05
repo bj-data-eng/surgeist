@@ -2315,8 +2315,6 @@ const GRID_PROPERTY_SUBSET: &str = "The structural grammar supports non-recursiv
 const GRID_PROPERTY_REMAINDER: &str = "Subgrid name-repeat and remaining grid/grid-template shorthand alternatives remain unfinished; used track sizing belongs downstream.";
 const GRID_AUTO_FLOW_SUBSET: &str = "The authored grid-auto-flow grammar accepts exactly normal, dense, row, row dense, column, and column dense; axis and dense may appear in either order. Normal and bare dense remain symbolic; intrinsic longhand expansion and canonical specified serialization preserve the six states.";
 const GRID_AUTO_FLOW_REMAINDER: &str = "Grid 3 §2.3 issue #12803 has not settled whether its context-dependent orientation extends grid-auto-flow or belongs to a separate grid-lanes-direction property. The normal initial and implicit-direction dense choice follow the recorded WebKit behavior; runtime orientation and placement belong downstream.";
-const KEYFRAMES_SUBSET: &str = "Keyframe names, literal selectors, empty rules and blocks, duplicate selectors and blocks in authored order, and supported declarations with recovery are supported.";
-const KEYFRAMES_REMAINDER: &str = "Calculation selectors, string names, and declaration-processing grammar not selected by C07 remain unsupported.";
 
 const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
     match property {
@@ -2847,14 +2845,12 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 670] = [
         I_FONTS4_20260907,
         "#font-face-rule",
     ),
-    CssFeatureMetadata::partial(
+    CssFeatureMetadata::complete(
         "baseline.rule.keyframes",
         CssFeatureKind::Rule,
         "@keyframes",
         I_ANIMATIONS1,
         "#keyframes",
-        KEYFRAMES_SUBSET,
-        KEYFRAMES_REMAINDER,
     ),
     CssFeatureMetadata::partial(
         "baseline.rule.style",

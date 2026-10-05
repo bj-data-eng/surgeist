@@ -4547,6 +4547,28 @@ pub(super) fn parse_declaration_core<'i, 't>(
             property_name_error(declaration_start.source_location(), name.as_ref())
         })?;
         let known_property = resolved_property.property();
+        if matches!(mode, DeclarationMode::Keyframe)
+            && matches!(
+                known_property,
+                CssKnownProperty::AnimationName
+                    | CssKnownProperty::AnimationDuration
+                    | CssKnownProperty::AnimationDelay
+                    | CssKnownProperty::AnimationIterationCount
+                    | CssKnownProperty::AnimationDirection
+                    | CssKnownProperty::AnimationFillMode
+                    | CssKnownProperty::AnimationPlayState
+                    | CssKnownProperty::Animation
+            )
+        {
+            return Err(with_property_context(
+                crate::error::unsupported_value_at(
+                    declaration_start.source_location(),
+                    None,
+                    "animation property is not permitted in keyframes",
+                ),
+                known_property.canonical_name(),
+            ));
+        }
         let context = match mode {
             DeclarationMode::Ordinary => DeclarationBoundaryContext::OrdinaryKnown(known_property),
             DeclarationMode::Keyframe => DeclarationBoundaryContext::KeyframeKnown(known_property),

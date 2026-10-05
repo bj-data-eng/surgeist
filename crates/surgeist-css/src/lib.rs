@@ -542,8 +542,16 @@
 //! subgrid name-repeat, remaining `grid`/`grid-template` shorthand alternatives,
 //! and implicit-track lifecycle work. Repetition counts and used track
 //! sizes require downstream layout context and remain unresolved here.
-//! `@keyframes` remains Partial for calculation selectors, string names, and
-//! unselected declaration-processing grammar. This crate does not perform Grid
+//! `@keyframes` supports the complete selected authored production. Quoted names
+//! admit empty and whitespace-only text. Literal percentage offsets use checked
+//! binary64; percentage-valued calculations retain typed graphs and origins.
+//! [`CssKeyframePercent::literal_value`] and [`CssKeyframePercent::calculation`]
+//! expose those states, while [`CssKeyframeSelector::offset`] clones the authored
+//! domain without evaluating it. Keyframe mode drops the eight prohibited Animation
+//! declarations and retains animation-timing-function even at the final endpoint.
+//! Computed range clamping, endpoint easing use and name lookup remain downstream.
+//! Authored equality preserves quoted versus identifier form and calculation origins.
+//! This crate does not perform Grid
 //! layout, cascade declarations, evaluate or interpolate keyframes, run
 //! timelines, or lower either syntax family into sibling Surgeist crates.
 //!

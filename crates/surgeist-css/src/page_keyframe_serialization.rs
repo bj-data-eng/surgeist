@@ -6,6 +6,8 @@
 //! the shared authored occurrence costs. The blocks slice adds no wrapper node.
 //! Each of these costs applies to both input and projection work, including
 //! suppressed output. Punctuation and endpoint spelling cost only bytes.
+//! Calculated selectors also spend their shared percentage provider's input and
+//! projection work without resetting the caller's cumulative limits.
 
 use crate::{
     CssImportance, CssKeyframeBlock, CssKeyframeSelector, CssKeyframesName, CssKeyframesRule,
@@ -67,7 +69,7 @@ impl SpecifiedRuleWriter {
             if index != 0 {
                 self.append(", ")?;
             }
-            self.keyframe_selector(*selector)?;
+            self.keyframe_selector(selector)?;
         }
         self.append(" { ")?;
         self.node()?; // Declaration-list aggregate, including an empty list.
@@ -88,12 +90,15 @@ impl SpecifiedRuleWriter {
         self.append("}")
     }
 
-    fn keyframe_selector(&mut self, selector: CssKeyframeSelector) -> Result<()> {
+    fn keyframe_selector(&mut self, selector: &CssKeyframeSelector) -> Result<()> {
         self.node()?;
         match selector {
             CssKeyframeSelector::From => self.append("0%"),
             CssKeyframeSelector::To => self.append("100%"),
             CssKeyframeSelector::Percent(percent) => {
+                if let Some(calculation) = percent.specified_calculation() {
+                    return calculation.append_to_rule_writer(self);
+                }
                 if self.context.output_suppressed() {
                     return Ok(());
                 }
@@ -107,8 +112,11 @@ impl SpecifiedRuleWriter {
                         )
                     })?;
                 // CSSOM 1 number/percentage output uses the common finite-bit
-                // millionth formatter. The retained f32 value remains unchanged.
-                let number = format_projected_number(f64::from(percent.value().value()), limit)?;
+                // millionth formatter. The retained binary64 literal remains unchanged.
+                let number = format_projected_number(
+                    percent.literal_value().expect("checked literal selector"),
+                    limit,
+                )?;
                 self.append(&number)?;
                 self.append("%")
             }
@@ -250,5 +258,44 @@ mod tests {
             assert_eq!(writer.css, "x");
             assert_eq!(report, before);
         }
+    }
+
+    #[test]
+    fn suppressed_calculated_selectors_share_work_and_restore_output_after_failure() {
+        let report = parse_sheet("@keyframes k{calc(120%){}calc(-10%){} }");
+        assert!(report.is_clean());
+        let before = report.clone();
+        let rule = &report.syntax().rules()[0];
+        // Rule/name 2 + two block/list/selector/declaration-list groups of 4.
+        // Each calculation visits its function and leaf, projecting one leaf.
+        let mut writer = SpecifiedRuleWriter::new(Limits::new(14, 12, 2));
+        writer.append("[").unwrap();
+        writer
+            .without_output(|writer| {
+                writer.without_output(|writer| append_rule(writer, rule))?;
+                assert!(writer.context.output_suppressed());
+                Ok(())
+            })
+            .unwrap();
+        assert!(!writer.context.output_suppressed());
+        writer.append("]").unwrap();
+        assert_eq!(writer.css, "[]");
+        assert_eq!(writer.node().unwrap_err().kind(), Kind::InputNodeLimit);
+
+        for (limits, kind) in [
+            (Limits::new(13, 12, 1), Kind::InputNodeLimit),
+            (Limits::new(14, 11, 1), Kind::ProjectionNodeLimit),
+        ] {
+            let mut writer = SpecifiedRuleWriter::new(limits);
+            let error = writer
+                .without_output(|writer| writer.without_output(|writer| append_rule(writer, rule)))
+                .unwrap_err();
+            assert_eq!(error.kind(), kind);
+            assert!(!writer.context.output_suppressed());
+            writer.append("x").unwrap();
+            assert_eq!(writer.css, "x");
+            assert_eq!(report, before);
+        }
+        assert_eq!(report, before);
     }
 }

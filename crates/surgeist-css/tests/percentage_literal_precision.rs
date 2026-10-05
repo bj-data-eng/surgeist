@@ -197,7 +197,7 @@ fn keyframe_selector_keeps_authored_thirty_percent() {
         panic!("expected keyframes");
     };
     assert!(
-        matches!(keyframes.blocks()[0].selectors().selectors()[0], CssKeyframeSelector::Percent(number) if number.value().value() == 30.0)
+        matches!(&keyframes.blocks()[0].selectors().selectors()[0], CssKeyframeSelector::Percent(number) if number.literal_value() == Some(30.0))
     );
 }
 
@@ -264,7 +264,7 @@ fn invalid_unitless_negative_and_range_controls_still_recover_at_the_token() {
     };
     assert_eq!(keyframes.blocks().len(), 1);
     assert!(
-        matches!(keyframes.blocks()[0].selectors().selectors()[0], CssKeyframeSelector::Percent(number) if number.value().value() == 25.0)
+        matches!(&keyframes.blocks()[0].selectors().selectors()[0], CssKeyframeSelector::Percent(number) if number.literal_value() == Some(25.0))
     );
 }
 

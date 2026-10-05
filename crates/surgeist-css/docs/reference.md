@@ -1570,7 +1570,10 @@ Each consuming grammar applies its additional exclusions through a checked name:
 | Grid line placement and track-name group | `CssGridLineName::try_new(CssIdent)` | `auto`, `span` |
 
 Keyframe and animation names share the first type. Quoted names remain a distinct
-string alternative and can contain reserved identifier spellings. Transition
+string alternative and can contain reserved identifier spellings, empty text, or
+whitespace. `CssKeyframesString::new` preserves any decoded string without
+trimming it. Authored structural equality retains identifier versus string form;
+downstream keyframe lookup compares decoded codepoints and remains case-sensitive. Transition
 `None` and `All` remain keyword variants. Public list construction and parsing
 reject any multi-item transition-property or transition shorthand list containing
 `None`; singleton `None` remains valid. Unknown property names, duplicate entries
@@ -3251,6 +3254,64 @@ invalid selector still drops the smallest invalid keyframe block. These recovery
 observables replace older expectations that accepted structurally invalid Grid
 cross-products or discarded valid empty keyframe parents.
 
+The selected [Animations 1 keyframe grammar](https://www.w3.org/TR/2023/WD-css-animations-1-20230302/#keyframes)
+accepts checked custom identifiers or unrestricted quoted names. Quoted empty,
+space-only and reserved-word names remain authored values; `CssKeyframesString::new`
+is infallible. Constructed NUL remains observable as a specified-serialization
+failure. The frozen WebKit empty-name restriction is narrower than this selected
+publication, so it does not constrain this string domain.
+
+Literal keyframe percentages use binary64 conversion of the original coefficient,
+then finite inclusive `[0,100]` admission. This selected precision follows frozen
+[WebKit's tokenizer](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/parser/CSSTokenizer.cpp#L552-L599)
+and [percentage consumer](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/parser/CSSPropertyParserConsumer%2BAnimations.cpp#L42-L80).
+[Values 4](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#numeric-types)
+permits context-specific precision. `100.000001%` and `-1e-46%` fail this
+binary64 range check, whereas `99.999999%` and `1e-46%` retain distinct interior
+and positive values. Conversion happens first: a coefficient rounding to `100`
+and a negative coefficient underflowing to zero remain admitted.
+
+Percentage-valued math follows [Values 4 type checking](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-type-checking).
+`CssKeyframePercent::try_from_calculation` reuses the checked percentage owner;
+a bare percentage root reenters the same binary64 literal admission, while a
+function root retains its typed graph and original origins. Standalone checked
+calculation construction rejects implicit closures. Reusing a parser-produced
+calculation preserves its recovered closures and shared source snapshots; the
+percentage wrapper does not establish a clean report. Wrong dimensional results
+remain invalid. `calc(101%)` and `calc(-1%)` are authored-valid
+calculations: [mathematical range checking](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-range)
+and clamping belong to computed or used values. Context-dependent expressions
+remain symbolic. `literal_value()` returns an optional `f64`; `calculation()`
+borrows the retained percentage calculation. Neither the percentage owner nor
+its selector is `Copy`. `offset(&self)` clones the authored domain value, with
+proved zero and hundred endpoints for `from` and `to`; it performs no evaluation.
+Calculation equality includes authored origins and does not establish resolved
+offset equivalence.
+
+Keyframe declaration parsing ignores animation-name, animation-duration,
+animation-delay, animation-iteration-count, animation-direction,
+animation-fill-mode, animation-play-state and animation shorthand. It retains
+animation-timing-function, including at `to`/`100%`, other supported properties
+and custom declarations. Invalid and important declarations recover individually
+without discarding their valid empty parents. The endpoint timing function's
+execution effect, duplicate-offset composition, implicit endpoint generation and
+name lookup belong to animation execution. Invalid selector diagnostics identify
+the responsible token after trivia while dropping the complete owning block.
+
+```rust
+use surgeist_css::{CssKeyframesName, CssRule, parse_sheet};
+
+let report = parse_sheet(
+    r#"@keyframes "" { calc(120%) { opacity: .5; animation-timing-function: ease; } }"#,
+);
+assert!(report.is_clean());
+let [CssRule::Keyframes(rule)] = report.syntax().rules() else { panic!("keyframes") };
+assert!(matches!(rule.name(), CssKeyframesName::String(name) if name.as_str().is_empty()));
+let offset = rule.blocks()[0].selectors().selectors()[0].offset();
+assert_eq!(offset.literal_value(), None);
+assert!(offset.calculation().is_some());
+```
+
 Empty `[]` line-name groups are retained as ordered authored components in
 explicit tracks and repetitions.
 `CssGridLineNames::new(Vec<CssGridLineName>)` accepts the same empty group and
@@ -3306,8 +3367,7 @@ context, including when output is suppressed. Suppressed names spend no escape
 scratch or output bytes; checked decoded line names exclude NUL before entering
 output. Public errors return no partial CSS.
 
-The Grid repetition value, the six Grid property records, and the keyframe rule
-record remain `Partial`. Subgrid name-repeat, remaining `grid`/`grid-template`
+The Grid repetition value and the six Grid property records remain `Partial`. Subgrid name-repeat, remaining `grid`/`grid-template`
 shorthand alternatives, including area-string and absent track-child models,
 remain unfinished. Aggregate output does not complete their metadata, reset
 contributions or shared declaration dispatch.
@@ -3315,9 +3375,9 @@ contributions or shared declaration dispatch.
 values and expand to one intrinsic longhand contribution. CSS-wide keywords
 stay symbolic, and substituted values reenter the same repeat-free grammar
 strictly before producing contributions.
-Calculation keyframe selectors, string names, and unselected declaration-processing
-grammar remain outside the keyframe boundary. Repetition counts and used track
-sizes remain unresolved. This crate does not perform Grid layout, cascade
+The selected authored keyframe rule production has complete support, including
+quoted names, percentage math and keyframe-specific declaration recovery.
+Repetition counts and used track sizes remain unresolved. This crate does not perform Grid layout, cascade
 declarations, evaluate or interpolate keyframes, run timelines, or lower either
 syntax family into sibling Surgeist crates.
 
@@ -6771,7 +6831,10 @@ Keyframe `from` and `to` selectors emit `0%` and `100%`. Percentage output uses
 the existing selected numeric policy of at most six fractional decimal places.
 A tiny positive offset can emit `0%`; distinct offsets may emit the same rounded
 percentage. Every selector and block remains present and ordered, and the
-stored coefficients remain unchanged. Keyframe custom and pending declarations
+stored literal values remain unchanged. Percentage math forwards through the
+shared specified-percentage provider, preserving calculation syntax even when
+its simplified operand is outside the literal range. It shares the enclosing
+cumulative input, projection and byte budgets. Keyframe custom and pending declarations
 retain their complete component region, including comments and recovered
 implicit closure, and share the ordinary declaration punctuation/value provider.
 
@@ -6782,9 +6845,11 @@ and child-rule slices add no duplicate rule cost. Provider-owned lists and
 values keep their existing costs; declaration lists charge one aggregate.
 A present page selector and each keyframe name cost one node in each budget.
 Each keyframe block, its selector-list aggregate and every selector cost one
-node; the blocks slice adds no aggregate. Percentage punctuation costs bytes
-without another numeric carrier node. Suppressed values and omitted lexical edge trivia still consume work while
-spending no final bytes. Scratch output is bounded by remaining emitted bytes;
+node; the blocks slice adds no aggregate. Literal percentage punctuation costs
+bytes without another numeric carrier node. Calculated selectors additionally
+consume the shared percentage provider's input and projection work in the same
+cumulative context. Suppressed values and omitted lexical edge trivia still
+consume work while spending no final bytes. Scratch output is bounded by remaining emitted bytes;
 final UTF-8 text and inserted punctuation are charged once.
 
 Resource and value errors retain the enclosing top-level rule index and a typed

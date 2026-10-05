@@ -1137,20 +1137,11 @@ pub struct CssKeyframesString {
 }
 
 impl CssKeyframesString {
+    /// Preserves an unrestricted decoded animation name, including empty strings.
+    /// Unrepresentable string contents fail explicitly during specified serialization.
     #[must_use]
-    pub fn try_new(value: impl Into<String>) -> Option<Self> {
+    pub fn new(value: impl Into<String>) -> Self {
         let value = value.into();
-        if value.trim().is_empty() {
-            None
-        } else {
-            Some(Self::new(value))
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn new(value: impl Into<String>) -> Self {
-        let value = value.into();
-        debug_assert!(!value.trim().is_empty());
         Self { value }
     }
 
@@ -1228,7 +1219,7 @@ impl CssKeyframeSelectorList {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssKeyframeSelector {
     From,
@@ -1237,43 +1228,94 @@ pub enum CssKeyframeSelector {
 }
 
 impl CssKeyframeSelector {
+    /// Returns the authored percentage domain, without evaluating calculations.
     #[must_use]
-    pub fn offset(self) -> CssKeyframePercent {
+    pub fn offset(&self) -> CssKeyframePercent {
         match self {
-            Self::From => CssKeyframePercent::new(0.0),
-            Self::To => CssKeyframePercent::new(100.0),
-            Self::Percent(percent) => percent,
+            Self::From => CssKeyframePercent {
+                value: CssKeyframePercentData::Literal(0.0),
+            },
+            Self::To => CssKeyframePercent {
+                value: CssKeyframePercentData::Literal(100.0),
+            },
+            Self::Percent(percent) => percent.clone(),
         }
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// An authored keyframe percentage: a bounded binary64 literal or symbolic percentage math.
+///
+/// Literal admission converts to binary64 before checking the inclusive range. Calculations
+/// remain authored; their range is checked at computed or used value time downstream.
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssKeyframePercent {
-    value: CssFiniteNumber,
+    value: CssKeyframePercentData,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum CssKeyframePercentData {
+    Literal(f64),
+    Calculation(CssSpecifiedPercentage),
 }
 
 impl CssKeyframePercent {
+    /// Accepts a finite binary64 percentage within the inclusive range 0 through 100.
     #[must_use]
-    pub fn try_new(value: f32) -> Option<Self> {
-        if (0.0..=100.0).contains(&value) {
-            CssFiniteNumber::try_new(value).map(|value| Self { value })
+    pub fn try_new(value: f64) -> Option<Self> {
+        if value.is_finite() && (0.0..=100.0).contains(&value) {
+            Some(Self {
+                value: CssKeyframePercentData::Literal(value),
+            })
         } else {
             None
         }
     }
 
+    /// Retains a checked percentage function, or range-checks a bare percentage root.
+    ///
+    /// The shared percentage owner classifies the already checked root. Bare
+    /// roots use the same binary64 literal boundary as [`Self::try_new`]. Function roots retain
+    /// exact authored coefficients and provenance without evaluation or clamping.
     #[must_use]
-    pub(crate) fn new(value: f32) -> Self {
-        debug_assert!((0.0..=100.0).contains(&value));
-        debug_assert!(value.is_finite());
-        Self {
-            value: CssFiniteNumber::new_unchecked(value),
+    pub fn try_from_calculation(calculation: CssPercentageCalculation) -> Option<Self> {
+        let value = CssSpecifiedPercentage::try_from_calculation(calculation).ok()?;
+        if let Some(component) = value.literal_component() {
+            let crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Percentage(number)) =
+                component.view()
+            else {
+                return None;
+            };
+            Self::try_new(number.representation().parse::<f64>().ok()?)
+        } else {
+            Some(Self {
+                value: CssKeyframePercentData::Calculation(value),
+            })
         }
     }
 
+    /// Returns the supported literal scalar, or `None` for authored calculations.
     #[must_use]
-    pub const fn value(self) -> CssFiniteNumber {
-        self.value
+    pub const fn literal_value(&self) -> Option<f64> {
+        match &self.value {
+            CssKeyframePercentData::Literal(value) => Some(*value),
+            CssKeyframePercentData::Calculation(_) => None,
+        }
+    }
+
+    /// Borrows the symbolic percentage function without computing its offset.
+    #[must_use]
+    pub fn calculation(&self) -> Option<&CssPercentageCalculation> {
+        match &self.value {
+            CssKeyframePercentData::Literal(_) => None,
+            CssKeyframePercentData::Calculation(value) => value.calculation(),
+        }
+    }
+
+    pub(crate) fn specified_calculation(&self) -> Option<&CssSpecifiedPercentage> {
+        match &self.value {
+            CssKeyframePercentData::Literal(_) => None,
+            CssKeyframePercentData::Calculation(value) => Some(value),
+        }
     }
 }
 
@@ -3630,8 +3672,8 @@ impl std::ops::Deref for CssKeyframeDeclarationList {
 /// A parser-produced declaration in the authored keyframe syntax phase.
 ///
 /// The private fields retain property/value coupling, complete value components and the
-/// property-name position. Keyframe
-/// grammar rejects declaration importance, so this type intentionally has no importance field or
+/// property-name position. Keyframe grammar omits animation properties except timing-function
+/// and rejects declaration importance, so this type intentionally has no importance field or
 /// accessor. It does not interpolate, apply, cascade, or resolve the authored value.
 ///
 /// ```compile_fail
@@ -4315,11 +4357,6 @@ impl CssFiniteNumber {
         } else {
             None
         }
-    }
-
-    #[must_use]
-    pub(crate) const fn new_unchecked(value: f32) -> Self {
-        Self { value }
     }
 
     #[must_use]

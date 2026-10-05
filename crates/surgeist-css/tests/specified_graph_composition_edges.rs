@@ -163,7 +163,7 @@ fn tiny_keyframe_offsets_project_to_zero_without_discarding_selectors_or_blocks(
     let selectors = rule.blocks()[0].selectors().selectors();
     let offsets = selectors
         .iter()
-        .map(|selector| selector.offset().value().value())
+        .map(|selector| selector.offset().literal_value().unwrap())
         .collect::<Vec<_>>();
     assert!(offsets[0] > 0.0 && offsets[1] > offsets[0]);
     assert_eq!(offsets[2], 0.0);
@@ -190,12 +190,12 @@ fn distinct_keyframe_offsets_round_to_one_millionth_without_coalescing() {
     };
     let first = rule.blocks()[0].selectors().selectors()[0]
         .offset()
-        .value()
-        .value();
+        .literal_value()
+        .unwrap();
     let second = rule.blocks()[1].selectors().selectors()[0]
         .offset()
-        .value()
-        .value();
+        .literal_value()
+        .unwrap();
     assert!(second > first);
     let expected = "@keyframes k { 0.000001% { } 0.000001% { --v: A/**/B; } }";
     assert_eq!(input.to_specified_css().unwrap(), expected);

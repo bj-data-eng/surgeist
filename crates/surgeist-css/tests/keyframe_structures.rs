@@ -48,7 +48,7 @@ fn keyframes_preserve_empty_and_duplicate_authored_structure() {
     ));
     assert!(matches!(
         fade.blocks()[2].selectors().selectors(),
-        [CssKeyframeSelector::Percent(percent)] if percent.value().value() == 0.0
+        [CssKeyframeSelector::Percent(percent)] if percent.literal_value() == Some(0.0)
     ));
     assert_eq!(fade.blocks()[1].declarations().len(), 1);
     assert_eq!(fade.blocks()[2].declarations().len(), 1);

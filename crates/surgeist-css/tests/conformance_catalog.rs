@@ -145,8 +145,6 @@ const GRID_REPEAT_REMAINDER: &str =
     "Subgrid name-repeat remains unfinished; used repetition and track sizing belong downstream.";
 const GRID_PROPERTY_SUBSET: &str = "The structural grammar supports non-recursive integer track and fixed repeats, one Grid 3 automatic repeat with general track-size content and fixed-size surroundings where permitted, and repeat-free automatic track-size lists. The implicit track-size longhands have noninherited auto initials and intrinsic expansion. Shared track sizes retain exact ordinary flex/length/percentage quantities and checked symbolic math.";
 const GRID_PROPERTY_REMAINDER: &str = "Subgrid name-repeat and remaining grid/grid-template shorthand alternatives remain unfinished; used track sizing belongs downstream.";
-const KEYFRAMES_SUBSET: &str = "Keyframe names, literal selectors, empty rules and blocks, duplicate selectors and blocks in authored order, and supported declarations with recovery are supported.";
-const KEYFRAMES_REMAINDER: &str = "Calculation selectors, string names, and declaration-processing grammar not selected by C07 remain unsupported.";
 
 fn assert_complete_fonts3_feature(
     id: &str,
@@ -1095,7 +1093,7 @@ fn record_partial_metadata_mismatch(
 }
 
 #[test]
-fn grid_and_keyframe_metadata_matches_preserved_boundaries() {
+fn grid_metadata_matches_preserved_boundaries() {
     let grid = parse_style_attribute(concat!(
         "grid-template-columns: repeat(auto-fit, 10px); ",
         "grid-auto-rows: minmax(10px, auto)",
@@ -1205,19 +1203,9 @@ fn grid_and_keyframe_metadata_matches_preserved_boundaries() {
         ("R-GRID2", "#propdef-grid"),
         (GRID_PROPERTY_SUBSET, GRID_PROPERTY_REMAINDER),
     );
-    record_partial_metadata_mismatch(
-        &mut mismatches,
-        (
-            "baseline.rule.keyframes",
-            CssFeatureKind::Rule,
-            "@keyframes",
-        ),
-        ("I-ANIMATIONS1", "#keyframes"),
-        (KEYFRAMES_SUBSET, KEYFRAMES_REMAINDER),
-    );
 
     if !mismatches.is_empty() {
-        panic!("stale Grid/keyframe metadata:\n{}", mismatches.join("\n"));
+        panic!("stale Grid metadata:\n{}", mismatches.join("\n"));
     }
 }
 
@@ -1290,17 +1278,14 @@ const EXPECTED: &[ExpectedFeature] = &[
         spelling: "@keyframes",
         source: ExpectedSource::Id("I-ANIMATIONS1"),
         production: "#keyframes",
-        status: CssSupportStatus::Partial,
-        supported_subset: Some(KEYFRAMES_SUBSET),
-        unsupported_remainder: Some(KEYFRAMES_REMAINDER),
+        status: CssSupportStatus::Complete,
+        supported_subset: None,
+        unsupported_remainder: None,
         recognized_code: None,
         positive: Some(Input::Sheet(
             "@keyframes fade { from { opacity: 0; } to { opacity: 1; } }",
         )),
-        negative: Some((
-            Input::Sheet("@keyframes none { from { opacity: 0; } }"),
-            CssErrorCode::InvalidAtRulePrelude,
-        )),
+        negative: None,
     },
     ExpectedFeature {
         id: "baseline.rule.style",

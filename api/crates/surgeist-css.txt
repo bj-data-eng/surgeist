@@ -1962,7 +1962,7 @@ pub surgeist_css::CssKeyframeSelector::From
 pub surgeist_css::CssKeyframeSelector::Percent(surgeist_css::CssKeyframePercent)
 pub surgeist_css::CssKeyframeSelector::To
 impl surgeist_css::CssKeyframeSelector
-pub fn surgeist_css::CssKeyframeSelector::offset(self) -> surgeist_css::CssKeyframePercent
+pub fn surgeist_css::CssKeyframeSelector::offset(&self) -> surgeist_css::CssKeyframePercent
 #[non_exhaustive] pub enum surgeist_css::CssKeyframesName
 pub surgeist_css::CssKeyframesName::Ident(surgeist_css::CssKeyframesIdent)
 pub surgeist_css::CssKeyframesName::String(surgeist_css::CssKeyframesString)
@@ -7712,8 +7712,10 @@ pub type surgeist_css::CssKeyframeDeclarationList::Target = [surgeist_css::CssKe
 pub fn surgeist_css::CssKeyframeDeclarationList::deref(&self) -> &Self::Target
 pub struct surgeist_css::CssKeyframePercent
 impl surgeist_css::CssKeyframePercent
-pub fn surgeist_css::CssKeyframePercent::try_new(value: f32) -> core::option::Option<Self>
-pub const fn surgeist_css::CssKeyframePercent::value(self) -> surgeist_css::CssFiniteNumber
+pub fn surgeist_css::CssKeyframePercent::calculation(&self) -> core::option::Option<&surgeist_css::CssPercentageCalculation>
+pub const fn surgeist_css::CssKeyframePercent::literal_value(&self) -> core::option::Option<f64>
+pub fn surgeist_css::CssKeyframePercent::try_from_calculation(calculation: surgeist_css::CssPercentageCalculation) -> core::option::Option<Self>
+pub fn surgeist_css::CssKeyframePercent::try_new(value: f64) -> core::option::Option<Self>
 pub struct surgeist_css::CssKeyframeSelectorList
 impl surgeist_css::CssKeyframeSelectorList
 pub fn surgeist_css::CssKeyframeSelectorList::selectors(&self) -> &[surgeist_css::CssKeyframeSelector]
@@ -7730,7 +7732,7 @@ pub const fn surgeist_css::CssKeyframesRule::position(&self) -> surgeist_css::Cs
 pub struct surgeist_css::CssKeyframesString
 impl surgeist_css::CssKeyframesString
 pub fn surgeist_css::CssKeyframesString::as_str(&self) -> &str
-pub fn surgeist_css::CssKeyframesString::try_new(value: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+pub fn surgeist_css::CssKeyframesString::new(value: impl core::convert::Into<alloc::string::String>) -> Self
 pub struct surgeist_css::CssKnownDeclaration
 impl surgeist_css::CssKnownDeclaration
 pub const fn surgeist_css::CssKnownDeclaration::declared_value(&self) -> surgeist_css::CssKnownDeclaredValueRef<'_>

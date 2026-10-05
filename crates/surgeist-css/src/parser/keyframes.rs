@@ -4,7 +4,10 @@ use cssparser::{
 };
 
 use super::recovery::{RecoveryLoopOutcome, RecoveryProgress, RecoveryState};
-use super::values::{checked_percentage_value, parse_custom_ident_from_str_at};
+use super::values::{
+    CalculationRoot, checked_percentage_value, parse_custom_ident_from_str_at,
+    parse_numeric_function,
+};
 use super::{
     DeclarationMode, block_item_diagnostic, consume_failed_rule_block,
     is_declaration_recovery_unit, parse_declaration_core, structural_recovery_production,
@@ -33,9 +36,9 @@ pub(super) fn parse_keyframes_name<'i, 't>(
     }
 
     let value = input.expect_string_cloned().map_err(basic)?;
-    CssKeyframesString::try_new(value.to_string())
-        .map(CssKeyframesName::String)
-        .ok_or_else(|| unsupported_value(input, None, "keyframes string name is empty"))
+    Ok(CssKeyframesName::String(CssKeyframesString::new(
+        value.to_string(),
+    )))
 }
 
 pub(super) fn parse_keyframes_rule<'i, 't>(
@@ -125,7 +128,10 @@ impl<'i> QualifiedRuleParser<'i> for KeyframeBlockParser<'i> {
         &mut self,
         input: &mut Parser<'i, 't>,
     ) -> std::result::Result<Self::Prelude, ParseError<'i, Self::Error>> {
-        parse_keyframe_selector_list(input)
+        parse_keyframe_selector_list(
+            input,
+            &crate::numeric::NumericInputContext::parsed(self.recovery.source_snapshot()),
+        )
     }
 
     fn parse_block<'t>(
@@ -207,10 +213,11 @@ impl<'i> RuleBodyItemParser<'i, CssKeyframeBlock, Error> for KeyframeBlockParser
 
 fn parse_keyframe_selector_list<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssKeyframeSelectorList, ParseError<'i, Error>> {
     let mut selectors = Vec::new();
     loop {
-        selectors.push(parse_keyframe_selector(input)?);
+        selectors.push(parse_keyframe_selector(input, numeric)?);
         if input.try_parse(Parser::expect_comma).is_err() {
             break;
         }
@@ -229,9 +236,11 @@ fn parse_keyframe_selector_list<'i, 't>(
 
 fn parse_keyframe_selector<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssKeyframeSelector, ParseError<'i, Error>> {
-    let location = input.current_source_location();
     input.skip_whitespace();
+    let location = input.current_source_location();
+    let start = input.state();
     let token_start = input.position();
     match input.next().map_err(basic)? {
         Token::Ident(ident) => match_ignore_ascii_case! { ident,
@@ -264,6 +273,17 @@ fn parse_keyframe_selector<'i, 't>(
             None,
             "keyframe selector percentages must include `%`",
         )),
+        Token::Function(name) if crate::numeric::is_math_function(name) => {
+            let expression =
+                parse_numeric_function(input, &start, numeric, CalculationRoot::Percentage)?;
+            CssKeyframePercent::try_from_calculation(CssPercentageCalculation::from_expression(
+                expression,
+            ))
+            .map(CssKeyframeSelector::Percent)
+            .ok_or_else(|| {
+                unsupported_value_at(location, None, "invalid keyframe percentage calculation")
+            })
+        }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
 }

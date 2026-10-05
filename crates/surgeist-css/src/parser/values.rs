@@ -68,13 +68,13 @@ pub(super) fn checked_percentage_value<'i>(
     location: cssparser::SourceLocation,
     token_css: &str,
     non_finite_reason: impl Into<String>,
-) -> std::result::Result<f32, ParseError<'i, Error>> {
+) -> std::result::Result<f64, ParseError<'i, Error>> {
     // cssparser exposes percentages after dividing by 100 and rounding to f32.
     // Re-multiplication can change the authored magnitude (30% -> 30.000002).
     // The caller passes exactly the consumed percentage token, without trivia.
     let value = token_css
         .strip_suffix('%')
-        .and_then(|numeric| numeric.parse::<f32>().ok())
+        .and_then(|numeric| numeric.parse::<f64>().ok())
         .filter(|value| value.is_finite());
     value.ok_or_else(|| unsupported_value_at(location, None, non_finite_reason))
 }

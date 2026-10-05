@@ -605,8 +605,14 @@ fn keyframes_rule_accessors_expose_authored_structure() {
     assert_eq!(block.position(), source_position(2, 3));
     assert_eq!(block.selectors().selectors(), &[CssKeyframeSelector::From]);
     assert_eq!(block.declarations().as_slice(), &[declaration]);
-    assert_eq!(CssKeyframeSelector::From.offset().value().value(), 0.0);
-    assert_eq!(CssKeyframeSelector::To.offset().value().value(), 100.0);
+    assert_eq!(
+        CssKeyframeSelector::From.offset().literal_value(),
+        Some(0.0)
+    );
+    assert_eq!(
+        CssKeyframeSelector::To.offset().literal_value(),
+        Some(100.0)
+    );
 }
 
 #[test]
@@ -637,7 +643,9 @@ fn keyframes_rule_parser_accepts_strict_blocks() {
     );
     assert_eq!(
         rule.blocks()[1].selectors().selectors(),
-        &[CssKeyframeSelector::Percent(CssKeyframePercent::new(50.0))]
+        &[CssKeyframeSelector::Percent(
+            CssKeyframePercent::try_new(50.0).unwrap()
+        )]
     );
     assert_eq!(
         rule.blocks()[0].declarations()[0].property(),
@@ -667,8 +675,8 @@ fn keyframes_rule_parser_accepts_string_names_and_selector_lists() {
             .selectors()
             .selectors(),
         &[
-            CssKeyframeSelector::Percent(CssKeyframePercent::new(0.0)),
-            CssKeyframeSelector::Percent(CssKeyframePercent::new(100.0)),
+            CssKeyframeSelector::Percent(CssKeyframePercent::try_new(0.0).unwrap()),
+            CssKeyframeSelector::Percent(CssKeyframePercent::try_new(100.0).unwrap()),
         ]
     );
 
@@ -733,15 +741,12 @@ fn keyframes_rule_parser_rejects_invalid_names_selectors_and_placements() {
         "@keyframes fade;",
         "@keyframes { from { opacity: 0; } }",
         "@keyframes none { from { opacity: 0; } }",
-        r#"@keyframes "" { from { opacity: 0; } }"#,
         "@keyframes fade { 0 { opacity: 0; } }",
         "@keyframes fade { -1% { opacity: 0; } }",
         "@keyframes fade { 101% { opacity: 0; } }",
         "@keyframes fade { from { .nested { opacity: 0; } } }",
         "@keyframes fade { from { @media screen { opacity: 0; } } }",
         ".panel { @keyframes fade { from { opacity: 0; } } }",
-        r#".panel { animation-name: ""; }"#,
-        r#".panel { animation: "" 120ms ease; }"#,
     ] {
         assert!(parse_sheet(css).is_err(), "{css} should reject");
     }
@@ -755,15 +760,15 @@ fn keyframes_constructors_preserve_authored_empty_and_duplicate_states() {
     );
     let from = CssKeyframeSelectorList::try_new(vec![CssKeyframeSelector::From]).unwrap();
 
-    assert_eq!(CssKeyframesString::try_new(""), None);
-    assert_eq!(CssKeyframesString::try_new("   "), None);
+    assert_eq!(CssKeyframesString::new("").as_str(), "");
+    assert_eq!(CssKeyframesString::new("   ").as_str(), "   ");
     assert_eq!(CssKeyframePercent::try_new(-0.1), None);
     assert_eq!(CssKeyframePercent::try_new(100.1), None);
-    assert_eq!(CssKeyframePercent::try_new(f32::NAN), None);
+    assert_eq!(CssKeyframePercent::try_new(f64::NAN), None);
     assert_eq!(CssKeyframeSelectorList::try_new(Vec::new()), None);
     let duplicate_selectors = CssKeyframeSelectorList::try_new(vec![
         CssKeyframeSelector::From,
-        CssKeyframeSelector::Percent(CssKeyframePercent::new(0.0)),
+        CssKeyframeSelector::Percent(CssKeyframePercent::try_new(0.0).unwrap()),
     ])
     .unwrap();
     assert_eq!(duplicate_selectors.selectors().len(), 2);
