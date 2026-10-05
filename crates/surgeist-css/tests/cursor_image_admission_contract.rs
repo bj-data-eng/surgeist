@@ -3,7 +3,14 @@
 //! Independent authority: selected UI 4 WD 2026-01-20 §5.1.1,
 //! references/css-ui-4--WD-css-ui-4-20260120--42d9c51404fb.md:
 //! `<cursor-image> = [ <url> | <url-set> ] <number>{2}?`.
-//! A url-set restricts image-set candidates to URLs; the final keyword is required.
+//! A url-set restricts the image arm to URLs; the final keyword is required.
+//! Images 4 WD 2025-09-30 §2.4 separately admits strings representing URLs,
+//! optional resolution/type descriptors in either order, and authored options
+//! whose MIME type or duplicate resolution affects downstream selection.
+//! https://www.w3.org/TR/2025/WD-css-images-4-20250930/#image-set-notation
+//! Its Appendix A makes -webkit-image-set() a standard parse-time alias.
+//! Pinned Values 4 WD 2024-03-12 §§7.4, 10.12 excludes negative ordinary
+//! resolutions, admits zero, and defers mathematical range checking.
 //! Hotspot clamping and resource selection are downstream operations. These tests
 //! assert admission and retained authored components, without assuming a cursor
 //! carrier layout or a future model accessor or serialization API.
@@ -53,6 +60,76 @@ const URL_SETS: &[(&str, &[&str])] = &[
     ),
 ];
 
+const STRING_URL_SETS: &[(&str, &[&str])] = &[
+    ("image-set(\"cursor.png\" 1x), auto", &["cursor.png"]),
+    ("image-set(\"cursor.png\"), pointer", &["cursor.png"]),
+    (
+        "image-set(\"first.png\" 1x, url(second.png) 2x), move",
+        &["first.png"],
+    ),
+    (r#"image-set("cursor\2e png" 1x), auto"#, &["cursor.png"]),
+    ("image-set(\"\" 1x), none", &[""]),
+];
+
+const DESCRIPTOR_SETS: &[(&str, &[&str])] = &[
+    ("image-set(url(cursor.png)), auto", &[]),
+    (
+        "image-set(url(cursor.png) type(\"image/png\")), auto",
+        &["image/png"],
+    ),
+    (
+        "image-set(url(cursor.png) type(\"image/png\") 96dpi), auto",
+        &["image/png"],
+    ),
+    (
+        "image-set(url(cursor.png) 96dpi type(\"image/png\")), auto",
+        &["image/png"],
+    ),
+    ("image-set(url(cursor.png) type(\"\")), auto", &[""]),
+    (
+        "image-set(url(cursor.png) type(\"not a MIME type\")), auto",
+        &["not a MIME type"],
+    ),
+    (
+        "image-set(url(cursor.png) type(\"image/unregistered\")), auto",
+        &["image/unregistered"],
+    ),
+    (
+        "image-set(url(first.png) 1x, url(second.png) 96dpi), auto",
+        &[],
+    ),
+    ("image-set(url(first.png), url(second.png)), auto", &[]),
+];
+
+const RESOLUTION_SETS: &[(&str, &[(&str, &str)])] = &[
+    ("image-set(url(cursor.png) 0x), auto", &[("0", "x")]),
+    ("image-set(url(cursor.png) -0dppx), auto", &[("-0", "dppx")]),
+    ("image-set(url(cursor.png) calc(-1x)), auto", &[("-1", "x")]),
+    (
+        "image-set(url(cursor.png) min(-1dppx, 2dppx)), auto",
+        &[("-1", "dppx"), ("2", "dppx")],
+    ),
+    (
+        "image-set(url(cursor.png) calc(-1e999x)), auto",
+        &[("-1e999", "x")],
+    ),
+];
+
+const ALIAS_SETS: &[(&str, &str)] = &[
+    (
+        "-webkit-image-set(url(cursor.png) 1x), auto",
+        "-webkit-image-set",
+    ),
+    (
+        "-WEBKIT-IMAGE-SET(\"cursor.png\" type(\"image/png\") 2x), pointer",
+        "-WEBKIT-IMAGE-SET",
+    ),
+    (
+        r"-webkit-image-s\65 t(url(cursor.png)), auto",
+        "-webkit-image-set",
+    ),
+];
+
 const INVALID: &[&str] = &[
     "url(cursor.cur) 1, auto",
     "url(cursor.cur) 1 2 3, auto",
@@ -70,7 +147,18 @@ const INVALID: &[&str] = &[
     "image-set(url(cursor.png) 1x) 1 2 3, auto",
     "image-set(url(cursor.png) 1x)",
     "image-set(linear-gradient(red, blue) 1x), auto",
-    "image-set(\"cursor.png\" 1x), auto",
+    "image-set(image-set(url(cursor.png) 1x) 2x), auto",
+    "image-set(url(cursor.png) -1x), auto",
+    "image-set(\"cursor.png\" -1e999dpi), auto",
+    "image-set(url(cursor.png) 1x 2x), auto",
+    "image-set(url(cursor.png) type(\"image/png\") type(\"image/jpeg\")), auto",
+    "image-set(url(cursor.png) type()), auto",
+    "image-set(url(cursor.png) type(image/png)), auto",
+    "image-set(url(cursor.png) type(\"image/png\" \"image/jpeg\")), auto",
+    "image-set(), auto",
+    "image-set(url(cursor.png) 1x,), auto",
+    "-webkit-image-set(linear-gradient(red, blue) 1x), auto",
+    "-webkit-image-set(image-set(url(cursor.png)) 1x), auto",
 ];
 
 fn position(position: CssSourcePosition, source: &str, offset: usize) {
@@ -145,7 +233,7 @@ fn retained_components(declaration: &CssDeclaration, source: &str, expected_numb
     assert_eq!(numbers, expected_numbers);
 }
 
-fn parsed_accepts(value: &str, numbers: &[&str]) {
+fn parsed_accepts(value: &str, numbers: &[&str]) -> CssDeclaration {
     let source = format!("/* 🦀 */ color:red !important; cursor:{value} !important; width:1px");
     let report = parse_style_attribute(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
@@ -174,9 +262,10 @@ fn parsed_accepts(value: &str, numbers: &[&str]) {
     let retained = declaration.clone();
     drop(report);
     retained_components(&retained, &source, numbers);
+    retained
 }
 
-fn checked_accepts(value: &str, numbers: &[&str], grammar: bool) {
+fn checked_accepts(value: &str, numbers: &[&str], grammar: bool) -> CssDeclaration {
     let supplied = parse_component_values(value).expect("well-formed supplied components");
     let declaration = if grammar {
         parse_property_value_for_grammar(
@@ -199,6 +288,57 @@ fn checked_accepts(value: &str, numbers: &[&str], grammar: bool) {
     assert!(declaration.parsed_value().is_none());
     assert_eq!(declaration.value_components(), &supplied);
     retained_components(&declaration, value, numbers);
+    declaration
+}
+
+fn retained_tokens<'a>(values: &'a CssComponentValues, tokens: &mut Vec<CssValueTokenRef<'a>>) {
+    for component in values.items() {
+        match component.view() {
+            CssComponentValueRef::Token(token) => tokens.push(token),
+            CssComponentValueRef::Function(function) => retained_tokens(function.values(), tokens),
+            CssComponentValueRef::Block(block) => retained_tokens(block.values(), tokens),
+            _ => {}
+        }
+    }
+}
+
+fn retained_strings(declaration: &CssDeclaration, expected: &[&str]) {
+    let mut tokens = Vec::new();
+    retained_tokens(declaration.value_components(), &mut tokens);
+    let strings: Vec<_> = tokens
+        .into_iter()
+        .filter_map(|token| match token {
+            CssValueTokenRef::String(value) => Some(value),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(strings, expected);
+}
+
+fn retained_dimensions(declaration: &CssDeclaration, expected: &[(&str, &str)]) {
+    let mut tokens = Vec::new();
+    retained_tokens(declaration.value_components(), &mut tokens);
+    let dimensions: Vec<_> = tokens
+        .into_iter()
+        .filter_map(|token| match token {
+            CssValueTokenRef::Dimension { number, unit } => Some((number.representation(), unit)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(dimensions, expected);
+}
+
+fn retained_alias(declaration: &CssDeclaration, expected: &str) {
+    let function = declaration
+        .value_components()
+        .items()
+        .iter()
+        .find_map(|component| match component.view() {
+            CssComponentValueRef::Function(function) => Some(function),
+            _ => None,
+        })
+        .expect("retained authored alias function");
+    assert_eq!(function.name(), expected);
 }
 
 fn validator_accepts(value: &str) {
@@ -287,6 +427,118 @@ fn checked_property_admits_url_only_image_sets_and_preserves_supplied_components
 fn checked_grammar_admits_url_only_image_sets_and_preserves_supplied_components() {
     for &(value, numbers) in URL_SETS {
         checked_accepts(value, numbers, true);
+    }
+}
+
+#[test]
+fn string_url_candidates_are_admitted_with_decoded_targets_original_components_and_neighbors() {
+    for &(value, strings) in STRING_URL_SETS {
+        retained_strings(&parsed_accepts(value, &[]), strings);
+    }
+}
+
+#[test]
+fn validator_admits_string_url_candidates() {
+    for &(value, _) in STRING_URL_SETS {
+        validator_accepts(value);
+    }
+}
+
+#[test]
+fn checked_property_admits_string_url_candidates_and_preserves_supplied_origins() {
+    for &(value, strings) in STRING_URL_SETS {
+        retained_strings(&checked_accepts(value, &[], false), strings);
+    }
+}
+
+#[test]
+fn checked_grammar_admits_string_url_candidates_and_preserves_supplied_origins() {
+    for &(value, strings) in STRING_URL_SETS {
+        retained_strings(&checked_accepts(value, &[], true), strings);
+    }
+}
+
+#[test]
+fn descriptor_omissions_orders_and_selection_dependent_values_are_admitted() {
+    for &(value, strings) in DESCRIPTOR_SETS {
+        retained_strings(&parsed_accepts(value, &[]), strings);
+    }
+}
+
+#[test]
+fn validator_admits_omitted_ordered_and_selection_dependent_descriptors() {
+    for &(value, _) in DESCRIPTOR_SETS {
+        validator_accepts(value);
+    }
+}
+
+#[test]
+fn checked_property_admits_omitted_ordered_and_selection_dependent_descriptors() {
+    for &(value, strings) in DESCRIPTOR_SETS {
+        retained_strings(&checked_accepts(value, &[], false), strings);
+    }
+}
+
+#[test]
+fn checked_grammar_admits_omitted_ordered_and_selection_dependent_descriptors() {
+    for &(value, strings) in DESCRIPTOR_SETS {
+        retained_strings(&checked_accepts(value, &[], true), strings);
+    }
+}
+
+#[test]
+fn zero_ordinary_and_negative_math_resolutions_are_admitted_without_authored_clamping() {
+    for &(value, dimensions) in RESOLUTION_SETS {
+        retained_dimensions(&parsed_accepts(value, &[]), dimensions);
+    }
+}
+
+#[test]
+fn validator_admits_zero_ordinary_and_negative_math_resolutions() {
+    for &(value, _) in RESOLUTION_SETS {
+        validator_accepts(value);
+    }
+}
+
+#[test]
+fn checked_property_retains_zero_ordinary_and_negative_math_resolution_components() {
+    for &(value, dimensions) in RESOLUTION_SETS {
+        retained_dimensions(&checked_accepts(value, &[], false), dimensions);
+    }
+}
+
+#[test]
+fn checked_grammar_retains_zero_ordinary_and_negative_math_resolution_components() {
+    for &(value, dimensions) in RESOLUTION_SETS {
+        retained_dimensions(&checked_accepts(value, &[], true), dimensions);
+    }
+}
+
+#[test]
+fn standard_prefixed_image_set_alias_is_admitted_while_original_function_spelling_survives() {
+    for &(value, name) in ALIAS_SETS {
+        retained_alias(&parsed_accepts(value, &[]), name);
+    }
+}
+
+#[test]
+fn validator_admits_the_standard_prefixed_image_set_alias() {
+    for &(value, _) in ALIAS_SETS {
+        validator_accepts(value);
+    }
+}
+
+#[test]
+fn checked_property_retains_the_standard_prefixed_image_set_alias_components() {
+    for &(value, name) in ALIAS_SETS {
+        retained_alias(&checked_accepts(value, &[], false), name);
+    }
+}
+
+#[test]
+fn checked_grammar_retains_the_standard_prefixed_image_set_alias_components() {
+    for &(value, name) in ALIAS_SETS {
+        retained_alias(&checked_accepts(value, &[], true), name);
     }
 }
 
