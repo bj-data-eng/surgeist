@@ -2558,9 +2558,7 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::PlaceSelf
         | CssKnownProperty::Gap
         | CssKnownProperty::RowGap
-        | CssKnownProperty::ColumnGap
-        | CssKnownProperty::JustifyTracks
-        | CssKnownProperty::AlignTracks => S_ALIGN3,
+        | CssKnownProperty::ColumnGap => S_ALIGN3,
         CssKnownProperty::ContentVisibility => I_CONTAIN2,
         CssKnownProperty::CounterReset
         | CssKnownProperty::CounterIncrement
@@ -2802,7 +2800,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 672] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 670] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -5869,16 +5867,6 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 672] = [
         "baseline.property.flex",
         CssKnownProperty::Flex.aliases()
     ),
-    property_feature!(
-        CssKnownProperty::JustifyTracks,
-        "justify-tracks",
-        "baseline.property.justify-tracks"
-    ),
-    property_feature!(
-        CssKnownProperty::AlignTracks,
-        "align-tracks",
-        "baseline.property.align-tracks"
-    ),
     complete_property_feature!(
         CssKnownProperty::AspectRatio,
         "aspect-ratio",
@@ -6985,8 +6973,9 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 672] = [
 
 /// Returns the immutable support catalog in stable inventory order.
 ///
-/// Preserved I01 records retain their exact lookup identities, and later atomic
-/// records retain their source-specific identities.
+/// Retained I01 records keep their exact lookup identities, and later atomic
+/// records retain their source-specific identities. Properties removed by the
+/// selected standards are absent, even when historical captures contain them.
 #[must_use]
 pub fn feature_catalog() -> &'static [CssFeatureMetadata] {
     &FEATURE_CATALOG

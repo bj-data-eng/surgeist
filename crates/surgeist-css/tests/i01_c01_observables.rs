@@ -772,6 +772,7 @@ fn unescape(field: &str) -> Result<String, String> {
 #[test]
 fn authored_css_cases_match_selected_public_report_observables() {
     let rows = parse_fixture(FIXTURE).expect("valid I01 observable fixture");
+    let mut removed_track_cases = 0;
     let mut migrated_content_cases = 0;
     let mut migrated_container_cases = 0;
     let mut migrated_tolerance_cases = 0;
@@ -829,6 +830,11 @@ fn authored_css_cases_match_selected_public_report_observables() {
             assert_strict_parity(&row);
             continue;
         }
+        if assert_archived_track_alignment_rejection(&row) {
+            removed_track_cases += 1;
+            assert_strict_parity(&row);
+            continue;
+        }
         let actual = observe(&row);
         assert_eq!(actual.clean, row.clean, "{} clean report", row.case_id);
         assert_eq!(
@@ -861,6 +867,10 @@ fn authored_css_cases_match_selected_public_report_observables() {
     assert_eq!(migrated_overflow_auto_cases, 3);
     assert_eq!(migrated_alignment_cases, 1);
     assert_eq!(migrated_content_cases, 1);
+    assert_eq!(
+        removed_track_cases, 8,
+        "all eight obsolete track-property captures have current rejection witnesses"
+    );
 }
 
 // Content 3 admits `contents` as one generated-content item. The unchanged
@@ -1452,7 +1462,176 @@ fn assert_archived_flow_tolerance_rejection(row: &Row) -> bool {
             diagnostics
         ]
     );
-    let current_diagnostics = if entry == "style" {
+    assert_current_obsolete_property_rejection(row);
+    true
+}
+
+// CSSWG dropped both former Masonry properties on 4 October 2023; neither
+// selected Alignment 3 nor Grid 3 defines them. Preserve the eight historical
+// captures verbatim and assert today's unknown-property recovery independently.
+// https://github.com/w3c/csswg-drafts/issues/8207#issuecomment-1747805578
+fn assert_archived_track_alignment_rejection(row: &Row) -> bool {
+    let (entry, input, property, important, boundary) = match row.case_id.as_str() {
+        "catalog.property.baseline.property.align-tracks.boundary" => {
+            ("style", "align-tracks: auto", "align-tracks", false, true)
+        }
+        "catalog.property.baseline.property.align-tracks.positive" => (
+            "style",
+            "align-tracks: center",
+            "align-tracks",
+            false,
+            false,
+        ),
+        "catalog.property.baseline.property.justify-tracks.boundary" => (
+            "style",
+            "justify-tracks: auto",
+            "justify-tracks",
+            false,
+            true,
+        ),
+        "catalog.property.baseline.property.justify-tracks.positive" => (
+            "style",
+            "justify-tracks: space-evenly",
+            "justify-tracks",
+            false,
+            false,
+        ),
+        "focused.property-schema.baseline.property.align-tracks.important" => (
+            "sheet",
+            ".test { ALIGN-TRACKS: center !important; }",
+            "align-tracks",
+            true,
+            false,
+        ),
+        "focused.property-schema.baseline.property.align-tracks.ordinary" => (
+            "sheet",
+            ".test { ALIGN-TRACKS: center; }",
+            "align-tracks",
+            false,
+            false,
+        ),
+        "focused.property-schema.baseline.property.justify-tracks.important" => (
+            "sheet",
+            ".test { JUSTIFY-TRACKS: space-evenly !important; }",
+            "justify-tracks",
+            true,
+            false,
+        ),
+        "focused.property-schema.baseline.property.justify-tracks.ordinary" => (
+            "sheet",
+            ".test { JUSTIFY-TRACKS: space-evenly; }",
+            "justify-tracks",
+            false,
+            false,
+        ),
+        _ => return false,
+    };
+    let identity = format!("baseline.property.{property}");
+    let importance = if important { "important" } else { "normal" };
+    let (value, semantic) = if property == "align-tracks" {
+        ("center", "Center")
+    } else {
+        ("space-evenly", "SpaceEvenly")
+    };
+    let retained = if boundary {
+        "-".to_owned()
+    } else {
+        format!(
+            "{}property:{identity}",
+            if entry == "sheet" {
+                "rule:baseline.rule.style~"
+            } else {
+                ""
+            }
+        )
+    };
+    let values = if boundary {
+        "-".to_owned()
+    } else {
+        format!("{identity}=typed:{semantic}@{importance}")
+    };
+    let authored = if boundary {
+        "-".to_owned()
+    } else {
+        format!("{identity}=deferred-i01:{value}@public:{importance}")
+    };
+    let diagnostics = if !boundary {
+        "-"
+    } else if property == "align-tracks" {
+        "InvalidPropertyValue/InvalidPropertyValue:baseline.property.align-tracks:a value accepted by the property's grammar:Ident:auto/DropDeclaration@14:0:14>0:0:0-18:0:18:18"
+    } else {
+        "InvalidPropertyValue/InvalidPropertyValue:baseline.property.justify-tracks:a value accepted by the property's grammar:Ident:auto/DropDeclaration@16:0:16>0:0:0-20:0:20:20"
+    };
+    assert_eq!(
+        row.fields(),
+        [
+            row.case_id.as_str(),
+            entry,
+            "both",
+            input,
+            if boundary { "false" } else { "true" },
+            &retained,
+            &values,
+            &authored,
+            diagnostics
+        ]
+    );
+    assert_current_obsolete_property_rejection(row);
+    true
+}
+
+#[test]
+fn removed_track_declarations_preserve_adjacent_current_alignment_and_custom_semantics() {
+    let input = "color: red; align-tracks: center; align-content: first baseline !important; justify-tracks: var(--old); --align-tracks: center";
+    let report = parse_style_attribute(input);
+    assert!(!report.is_clean());
+    assert_eq!(report.diagnostics().len(), 2);
+    for (diagnostic, name) in report
+        .diagnostics()
+        .iter()
+        .zip(["align-tracks", "justify-tracks"])
+    {
+        let ErrorKind::UnknownProperty(detail) = diagnostic.error().kind() else {
+            panic!("unknown obsolete property")
+        };
+        assert_eq!(detail.name().as_str(), name);
+        assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
+        assert_eq!(
+            diagnostic.error().position().byte_offset().value(),
+            input.find(name).unwrap()
+        );
+    }
+    let [color, alignment, custom] = report.syntax().as_slice() else {
+        panic!("three adjacent declarations remain")
+    };
+    assert_eq!(
+        color.known().unwrap().property(),
+        surgeist_css::CssKnownProperty::Color
+    );
+    let Some(surgeist_css::CssKnownPropertyValueRef::Color(value)) =
+        color.known().unwrap().property_value()
+    else {
+        panic!("adjacent color")
+    };
+    assert_eq!(value.as_css(), "red");
+    assert_eq!(alignment.importance(), CssImportance::Important);
+    let Some(surgeist_css::CssKnownPropertyValueRef::AlignContent(value)) =
+        alignment.known().unwrap().property_value()
+    else {
+        panic!("current alignment")
+    };
+    assert_eq!(
+        value.value().value(),
+        surgeist_css::CssAlignmentValue::Baseline(surgeist_css::CssBaselinePosition::First)
+    );
+    assert_eq!(value.value().serialize_specified().unwrap(), "baseline");
+    let custom = custom.custom().unwrap();
+    assert_eq!(custom.name().as_str(), "--align-tracks");
+    assert_eq!(custom.value().value().unwrap().as_css(), "center");
+}
+
+fn assert_current_obsolete_property_rejection(row: &Row) {
+    let current_diagnostics = if row.entry == "style" {
         let report = parse_style_attribute(&row.input);
         assert!(!report.is_clean());
         assert!(
@@ -1485,7 +1664,7 @@ fn assert_archived_flow_tolerance_rejection(row: &Row) -> bool {
     let ErrorKind::UnknownProperty(detail) = diagnostic.error().kind() else {
         panic!("unknown authored property identity");
     };
-    let property_start = if entry == "style" {
+    let property_start = if row.entry == "style" {
         0
     } else {
         ".test { ".len()
@@ -1516,7 +1695,6 @@ fn assert_archived_flow_tolerance_rejection(row: &Row) -> bool {
         diagnostic.span().end().byte_offset().value(),
         declaration_end
     );
-    true
 }
 
 #[test]
@@ -5853,40 +6031,6 @@ fn assert_known_property_value(
                 None,
             );
             assert_archive_basis(components.basis().unwrap());
-        }
-        (CssKnownProperty::JustifyTracks, CssKnownPropertyValueRef::JustifyTracks(value)) => {
-            assert_archive_wrapper(property, value.as_css(), semantic, authored);
-            let expected = semantic
-                .expect("captured semantic value")
-                .payload
-                .strip_prefix("typed:")
-                .unwrap();
-            assert!(
-                matches!(expected, "SpaceEvenly"),
-                "unknown archived {property:?} expectation: {expected}"
-            );
-            let typed = value.value();
-            assert_eq!(*typed, CssAlignmentValue::SpaceEvenly);
-        }
-        (CssKnownProperty::AlignTracks, CssKnownPropertyValueRef::AlignTracks(value)) => {
-            assert_archive_wrapper(property, value.as_css(), semantic, authored);
-            let expected = semantic
-                .expect("captured semantic value")
-                .payload
-                .strip_prefix("typed:")
-                .unwrap();
-            assert!(
-                matches!(expected, "Center"),
-                "unknown archived {property:?} expectation: {expected}"
-            );
-            let typed = value.value();
-            assert_eq!(
-                *typed,
-                CssAlignmentValue::Position {
-                    overflow: None,
-                    position: CssAlignmentPosition::Center
-                }
-            );
         }
         (CssKnownProperty::AspectRatio, CssKnownPropertyValueRef::AspectRatio(value)) => {
             assert_archive_wrapper(property, value.as_css(), semantic, authored);

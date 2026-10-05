@@ -578,12 +578,6 @@ pub const PROPERTY_POSITIVE_VECTORS: &[PropertyVector] = &[
     vector!("baseline.property.flex-shrink", "flex-shrink", "0"),
     vector!("baseline.property.order", "order", "-2"),
     vector!("baseline.property.flex", "flex", "2 0 10rem"),
-    vector!(
-        "baseline.property.justify-tracks",
-        "justify-tracks",
-        "space-evenly"
-    ),
-    vector!("baseline.property.align-tracks", "align-tracks", "center"),
     vector!("baseline.property.aspect-ratio", "aspect-ratio", "1.5"),
     vector!(
         "baseline.property.scrollbar-width",
@@ -1186,8 +1180,6 @@ pub const PROPERTY_NEGATIVE_VECTORS: &[PropertyVector] = &[
     vector!("baseline.property.flex-shrink", "flex-shrink", "solid"),
     vector!("baseline.property.order", "order", "1.5"),
     vector!("baseline.property.flex", "flex", "-1"),
-    vector!("baseline.property.justify-tracks", "justify-tracks", "auto"),
-    vector!("baseline.property.align-tracks", "align-tracks", "auto"),
     vector!("baseline.property.aspect-ratio", "aspect-ratio", "solid"),
     vector!(
         "baseline.property.scrollbar-width",

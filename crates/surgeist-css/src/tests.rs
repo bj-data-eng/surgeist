@@ -4030,10 +4030,7 @@ fn assert_clear_value(value: CssKnownPropertyValueRef<'_>) {
 fn assert_alignment_value(value: CssKnownPropertyValueRef<'_>) {
     assert!(matches!(
         value,
-        CssKnownPropertyValueRef::AlignContent(_)
-            | CssKnownPropertyValueRef::JustifyContent(_)
-            | CssKnownPropertyValueRef::JustifyTracks(_)
-            | CssKnownPropertyValueRef::AlignTracks(_)
+        CssKnownPropertyValueRef::AlignContent(_) | CssKnownPropertyValueRef::JustifyContent(_)
     ));
 }
 
@@ -7162,20 +7159,6 @@ fn acceptance_position_alignment_flex_and_grid_matrix_accepts_supported_values()
             assert_flex_value
         ),
         value_case!(
-            "justify-tracks distribution",
-            "justify-tracks",
-            "space-evenly",
-            CssProperty::JustifyTracks,
-            assert_alignment_value
-        ),
-        value_case!(
-            "align-tracks center",
-            "align-tracks",
-            "center",
-            CssProperty::AlignTracks,
-            assert_alignment_value
-        ),
-        value_case!(
             "aspect-ratio number",
             "aspect-ratio",
             "1.5",
@@ -10125,7 +10108,7 @@ fn parses_grid_template_and_grid_shorthands() {
 }
 
 #[test]
-fn parses_order_flex_and_track_alignment() {
+fn parses_order_flex_and_content_alignment() {
     let order = declaration_value!(".panel { order: -2; }", Order);
     let CssIntegerValue::Literal(integer) = order else {
         panic!("exact order integer")
@@ -10158,11 +10141,11 @@ fn parses_order_flex_and_track_alignment() {
         CssFlexValue::Auto
     );
     assert_eq!(
-        declaration_value!(".panel { justify-tracks: space-evenly; }", JustifyTracks),
+        declaration_value!(".panel { align-content: space-evenly; }", AlignContent).value(),
         CssAlignmentValue::SpaceEvenly
     );
     assert_eq!(
-        declaration_value!(".panel { align-tracks: center; }", AlignTracks),
+        declaration_value!(".panel { justify-content: center; }", JustifyContent).value(),
         CssAlignmentValue::Position {
             overflow: None,
             position: CssAlignmentPosition::Center
@@ -10191,8 +10174,8 @@ fn grid_and_flex_property_families_accept_supported_values() {
             grid: auto-flow 12px / repeat(auto-fill, 10px);
             order: 2;
             flex: 1 1 auto;
-            justify-tracks: space-between;
-            align-tracks: stretch;
+            justify-content: space-between;
+            align-content: stretch;
         }",
     )
     .unwrap();
@@ -10216,8 +10199,8 @@ fn grid_and_flex_property_families_accept_supported_values() {
         CssProperty::Grid,
         CssProperty::Order,
         CssProperty::Flex,
-        CssProperty::JustifyTracks,
-        CssProperty::AlignTracks,
+        CssProperty::JustifyContent,
+        CssProperty::AlignContent,
     ] {
         assert!(
             declarations
@@ -10236,7 +10219,7 @@ fn grid_and_flex_properties_reject_cross_family_values() {
         ".panel { grid-template-areas: \"a a\" \"a .\"; }",
         ".panel { grid-row: 1 / / 2; }",
         ".panel { flex: solid; }",
-        ".panel { justify-tracks: auto; }",
+        ".panel { justify-content: auto; }",
     ] {
         let error = parse_sheet(input).expect_err(input);
         assert!(matches!(

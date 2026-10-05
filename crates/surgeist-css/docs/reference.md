@@ -4537,6 +4537,16 @@ lower values into another Surgeist crate.
 
 ## Flexbox, multicolumn, and catalog coverage
 
+The former Masonry `align-tracks` and `justify-tracks` properties are unknown
+properties in the selected grammar. The CSSWG
+[4 October 2023 resolution](https://github.com/w3c/csswg-drafts/issues/8207#issuecomment-1747805578)
+dropped both names, and neither selected Alignment 3 nor Grid 3 defines them.
+Parsing reports `UnknownProperty` and drops those declarations, including
+CSS-wide and pending values; strict validation rejects the same reports.
+Frozen I01 capture inputs remain unchanged, with explicit current rejection
+witnesses beside their historical observations. Current content alignment
+properties and custom names such as `--align-tracks` retain their own grammar.
+
 The nine selected Box Alignment 3 properties have checked authored values and
 intrinsic expansion. Six noninherited longhands keep their distinct domains and
 initials: `align-content`, `justify-content`, and `align-items` start at
@@ -4705,9 +4715,10 @@ cardinality comes from
 [`feature_catalog()`](../src/conformance.rs). That
 catalog cardinality is distinct from the immutable official inventory of
 exactly 162 property units (161 canonical properties plus the custom-property
-family), one normative legacy shorthand, and 167 non-property units. All 219
-preserved I01 baseline records retain their classifications, and the exclusion
-registry now contains exactly 130 rows.
+family), one normative legacy shorthand, and 167 non-property units. Historical
+I01 baseline observations remain in the frozen fixtures; the current catalog
+excludes properties removed by the selected standards. The exclusion registry
+contains exactly 130 rows.
 
 The crate owns authored syntax and canonical serialization. Cascade, substitution,
 selector matching, query evaluation, resource loading, layout, pagination,

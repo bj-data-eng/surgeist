@@ -2,6 +2,75 @@ use surgeist_css::CssTimeLiteral;
 use surgeist_css::*;
 
 #[test]
+fn removed_track_properties_have_no_current_catalogue_metadata() {
+    for id in [
+        "baseline.property.align-tracks",
+        "baseline.property.justify-tracks",
+    ] {
+        assert_eq!(feature_metadata(id), None);
+        assert!(
+            feature_catalog()
+                .iter()
+                .all(|feature| feature.id().as_str() != id)
+        );
+    }
+    for id in [
+        "baseline.property.align-content",
+        "baseline.property.justify-content",
+    ] {
+        let metadata = feature_metadata(id).unwrap();
+        assert_eq!(metadata.source().id().as_str(), "S-ALIGN3");
+        assert_eq!(metadata.status(), CssSupportStatus::Complete);
+    }
+}
+
+#[test]
+fn normalization_retains_current_alignment_contributions_after_obsolete_property_recovery() {
+    let report = parse_sheet(
+        ".x { align-tracks: initial; align-content: center !important; justify-tracks: var(--old); justify-content: space-between; }",
+    );
+    assert_eq!(report.diagnostics().len(), 2);
+    let normalized = normalize_report(&report).unwrap();
+    assert_eq!(normalized.diagnostics(), report.diagnostics());
+    let [
+        CssNormalizedItem::Rule(_),
+        CssNormalizedItem::Declaration(align),
+        CssNormalizedItem::Declaration(justify),
+    ] = normalized.syntax().items()
+    else {
+        panic!("one rule and two current declarations")
+    };
+    for (declaration, property, importance, order) in [
+        (
+            align,
+            CssKnownProperty::AlignContent,
+            CssImportance::Important,
+            0,
+        ),
+        (
+            justify,
+            CssKnownProperty::JustifyContent,
+            CssImportance::Normal,
+            1,
+        ),
+    ] {
+        assert_eq!(declaration.source().known().unwrap().property(), property);
+        assert_eq!(declaration.source().importance(), importance);
+        assert_eq!(declaration.order(), order);
+        let CssExpansion::Contributions(CssContributions::Longhands(values)) =
+            declaration.expansion()
+        else {
+            panic!("current typed longhand contribution")
+        };
+        let [value] = values.items() else {
+            panic!("one longhand")
+        };
+        assert_eq!(value.property(), property);
+        assert!(value.source().same_occurrence(declaration.source()));
+    }
+}
+
+#[test]
 fn display_sources_separate_base_grammar_from_grid_lanes_additions() {
     let base = feature_metadata("baseline.property.display").unwrap();
     assert_eq!(base.source().id().as_str(), "S-DISPLAY3");

@@ -41,82 +41,56 @@ fn all_keeps_only_global_and_substitution_dependent_declared_values() {
 }
 
 #[test]
-fn track_wrappers_expose_semantics_without_widening_the_selected_grammar() {
+fn content_alignment_wrappers_preserve_authored_and_typed_semantics() {
     let position = |overflow, position| CssAlignmentValue::Position { overflow, position };
-    for property in [
-        CssKnownProperty::JustifyTracks,
-        CssKnownProperty::AlignTracks,
+    let property = CssKnownProperty::AlignContent;
+    for (css, expected) in [
+        ("normal", CssAlignmentValue::Normal { overflow: None }),
+        ("start", position(None, CssAlignmentPosition::Start)),
+        (
+            "flex-start",
+            position(None, CssAlignmentPosition::FlexStart),
+        ),
+        (
+            "safe end",
+            position(Some(CssOverflowPosition::Safe), CssAlignmentPosition::End),
+        ),
+        (
+            "safe flex-end",
+            position(
+                Some(CssOverflowPosition::Safe),
+                CssAlignmentPosition::FlexEnd,
+            ),
+        ),
+        (
+            "safe center",
+            position(
+                Some(CssOverflowPosition::Safe),
+                CssAlignmentPosition::Center,
+            ),
+        ),
+        (
+            "first baseline",
+            CssAlignmentValue::Baseline(CssBaselinePosition::First),
+        ),
+        (
+            "last baseline",
+            CssAlignmentValue::Baseline(CssBaselinePosition::Last),
+        ),
+        ("space-between", CssAlignmentValue::SpaceBetween),
+        ("space-around", CssAlignmentValue::SpaceAround),
+        ("space-evenly", CssAlignmentValue::SpaceEvenly),
+        ("stretch", CssAlignmentValue::Stretch),
     ] {
-        for (css, expected) in [
-            ("normal", CssAlignmentValue::Normal { overflow: None }),
-            ("start", position(None, CssAlignmentPosition::Start)),
-            (
-                "flex-start",
-                position(None, CssAlignmentPosition::FlexStart),
-            ),
-            (
-                "safe end",
-                position(Some(CssOverflowPosition::Safe), CssAlignmentPosition::End),
-            ),
-            (
-                "safe flex-end",
-                position(
-                    Some(CssOverflowPosition::Safe),
-                    CssAlignmentPosition::FlexEnd,
-                ),
-            ),
-            (
-                "safe center",
-                position(
-                    Some(CssOverflowPosition::Safe),
-                    CssAlignmentPosition::Center,
-                ),
-            ),
-            (
-                "first baseline",
-                CssAlignmentValue::Baseline(CssBaselinePosition::First),
-            ),
-            (
-                "last baseline",
-                CssAlignmentValue::Baseline(CssBaselinePosition::Last),
-            ),
-            ("space-between", CssAlignmentValue::SpaceBetween),
-            ("space-around", CssAlignmentValue::SpaceAround),
-            ("space-evenly", CssAlignmentValue::SpaceEvenly),
-            ("stretch", CssAlignmentValue::Stretch),
-        ] {
-            let declaration = parsed(property, css);
-            let (authored, actual) = match declaration.known().unwrap().property_value().unwrap() {
-                CssKnownPropertyValueRef::JustifyTracks(value) => (value.as_css(), value.value()),
-                CssKnownPropertyValueRef::AlignTracks(value) => (value.as_css(), value.value()),
-                _ => panic!("track wrapper"),
-            };
-            assert_eq!(authored, css);
-            assert_eq!(actual, &expected);
-        }
-        for css in [
-            "unsafe end",
-            "unsafe center",
-            "unsafe flex-end",
-            "safe start",
-            "safe flex-start",
-            "safe baseline",
-            "safe first baseline",
-            "safe last baseline",
-            "safe normal",
-            "safe stretch",
-            "safe space-between",
-            "safe space-around",
-            "safe space-evenly",
-        ] {
-            let report = parse_style_attribute(&format!("{}:{css}", property.canonical_name()));
-            assert!(!report.is_clean(), "{property:?}: {css}");
-            assert_eq!(report.diagnostics().len(), 1);
-            assert_eq!(
-                report.diagnostics()[0].error().code(),
-                CssErrorCode::InvalidPropertyValue
-            );
-        }
+        let declaration = parsed(property, css);
+        let (authored, actual) = match declaration.known().unwrap().property_value().unwrap() {
+            CssKnownPropertyValueRef::AlignContent(value) => {
+                (value.as_css(), value.value().value())
+            }
+            _ => panic!("content alignment wrapper"),
+        };
+        assert_eq!(authored, css);
+        assert_eq!(actual, expected);
     }
 }
 

@@ -1928,7 +1928,6 @@ pub surgeist_css::CssKnownDeclaredValueRef::SubstitutionDependent(&'a surgeist_c
 pub surgeist_css::CssKnownProperty::AlignContent
 pub surgeist_css::CssKnownProperty::AlignItems
 pub surgeist_css::CssKnownProperty::AlignSelf
-pub surgeist_css::CssKnownProperty::AlignTracks
 pub surgeist_css::CssKnownProperty::All
 pub surgeist_css::CssKnownProperty::Animation
 pub surgeist_css::CssKnownProperty::AnimationDelay
@@ -2128,7 +2127,6 @@ pub surgeist_css::CssKnownProperty::Isolation
 pub surgeist_css::CssKnownProperty::JustifyContent
 pub surgeist_css::CssKnownProperty::JustifyItems
 pub surgeist_css::CssKnownProperty::JustifySelf
-pub surgeist_css::CssKnownProperty::JustifyTracks
 pub surgeist_css::CssKnownProperty::Left
 pub surgeist_css::CssKnownProperty::LetterSpacing
 pub surgeist_css::CssKnownProperty::LineHeight
@@ -2303,7 +2301,6 @@ pub fn surgeist_css::CssKnownProperty::metadata(self) -> core::result::Result<&'
 pub surgeist_css::CssKnownPropertyValueRef::AlignContent(&'a surgeist_css::CssAlignContentPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::AlignItems(&'a surgeist_css::CssAlignItemsPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::AlignSelf(&'a surgeist_css::CssAlignSelfPropertyValue)
-pub surgeist_css::CssKnownPropertyValueRef::AlignTracks(&'a surgeist_css::CssAlignTracksPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Animation(&'a surgeist_css::CssAnimationPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::AnimationDelay(&'a surgeist_css::CssAnimationDelayPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::AnimationDirection(&'a surgeist_css::CssAnimationDirectionPropertyValue)
@@ -2502,7 +2499,6 @@ pub surgeist_css::CssKnownPropertyValueRef::Isolation(&'a surgeist_css::CssIsola
 pub surgeist_css::CssKnownPropertyValueRef::JustifyContent(&'a surgeist_css::CssJustifyContentPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::JustifyItems(&'a surgeist_css::CssJustifyItemsPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::JustifySelf(&'a surgeist_css::CssJustifySelfPropertyValue)
-pub surgeist_css::CssKnownPropertyValueRef::JustifyTracks(&'a surgeist_css::CssJustifyTracksPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Left(&'a surgeist_css::CssLeftPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::LetterSpacing(&'a surgeist_css::CssLetterSpacingPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::LineHeight(&'a surgeist_css::CssLineHeightPropertyValue)
@@ -4633,10 +4629,6 @@ pub fn surgeist_css::CssAlignSelfValue::serialize_specified(&self) -> core::resu
 pub fn surgeist_css::CssAlignSelfValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub const fn surgeist_css::CssAlignSelfValue::try_new(value: surgeist_css::CssAlignmentValue) -> core::option::Option<Self>
 pub const fn surgeist_css::CssAlignSelfValue::value(&self) -> surgeist_css::CssAlignmentValue
-pub struct surgeist_css::CssAlignTracksPropertyValue
-impl surgeist_css::CssAlignTracksPropertyValue
-pub fn surgeist_css::CssAlignTracksPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssAlignTracksPropertyValue::value(&self) -> &surgeist_css::CssAlignmentValue
 pub struct surgeist_css::CssAlphaColor
 impl surgeist_css::CssAlphaColor
 pub const fn surgeist_css::CssAlphaColor::alpha(&self) -> core::option::Option<&surgeist_css::CssRelativeColorExpression>
@@ -7520,10 +7512,6 @@ pub fn surgeist_css::CssJustifySelfValue::serialize_specified(&self) -> core::re
 pub fn surgeist_css::CssJustifySelfValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub const fn surgeist_css::CssJustifySelfValue::try_new(value: surgeist_css::CssAlignmentValue) -> core::option::Option<Self>
 pub const fn surgeist_css::CssJustifySelfValue::value(&self) -> surgeist_css::CssAlignmentValue
-pub struct surgeist_css::CssJustifyTracksPropertyValue
-impl surgeist_css::CssJustifyTracksPropertyValue
-pub fn surgeist_css::CssJustifyTracksPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssJustifyTracksPropertyValue::value(&self) -> &surgeist_css::CssAlignmentValue
 pub struct surgeist_css::CssKeyframeBlock
 impl surgeist_css::CssKeyframeBlock
 pub const fn surgeist_css::CssKeyframeBlock::declarations(&self) -> &surgeist_css::CssKeyframeDeclarationList
