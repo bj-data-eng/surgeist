@@ -630,6 +630,52 @@
 //! assert_eq!(value.value().serialize_specified().unwrap(), "pre-wrap");
 //! ```
 //!
+//! # Authored text transformations, break preferences and tabs
+//!
+//! [`CssTextTransform`] distinguishes `none`, `math-auto` and a checked nonempty
+//! [`CssTextTransformSet`]. Case, width and kana roles retain independent presence;
+//! specified output emits them in that order. [`CssWrapInside`],
+//! [`CssWrapBoundary`] and [`CssLineBreak`] retain finite break preferences, while
+//! [`CssWordSpaceTransform`] retains `none` or a separator base and optional phrase flag.
+//! [`CssTabSize`] keeps checked Number and Length domains distinct: bare zero is
+//! a number, explicit `0px` a length, and typed calculation ranges remain deferred.
+//!
+//! These seven Text 4 longhands, [`CssTextIndent`] from Text 4 and
+//! [`CssVerticalAlign`] from CSS2 expose intrinsic initials, inheritance metadata
+//! and one typed contribution each. CSS-wide values stay symbolic; pending
+//! substitution uses strict, retryable reentry preserving original importance and
+//! replacement origins. Language processing, font metrics, indentation,
+//! alignment and tab-stop execution belong to downstream owners.
+//!
+//! ```rust
+//! use surgeist_css::{
+//!     CssKnownPropertyValueRef, CssTabSize, CssTextTransform, CssTextTransformCase,
+//!     CssTextTransformSet, parse_style_attribute,
+//! };
+//!
+//! let set = CssTextTransformSet::try_new(
+//!     Some(CssTextTransformCase::Uppercase), true, false,
+//! ).unwrap();
+//! assert_eq!(set.case(), Some(CssTextTransformCase::Uppercase));
+//! assert!(set.full_width());
+//! assert!(!set.full_size_kana());
+//! assert!(CssTextTransformSet::try_new(None, false, false).is_none());
+//! let transform = CssTextTransform::Transforms(set);
+//! assert_eq!(transform.serialize_specified().unwrap(), "uppercase full-width");
+//!
+//! let report = parse_style_attribute("text-transform:full-width uppercase;tab-size:0px");
+//! assert!(report.is_clean());
+//! let CssKnownPropertyValueRef::TextTransform(value) = report.syntax()[0]
+//!     .known().unwrap().property_value().unwrap()
+//! else { panic!("text-transform") };
+//! assert_eq!(value.value(), &transform);
+//! let CssKnownPropertyValueRef::TabSize(tab) = report.syntax()[1]
+//!     .known().unwrap().property_value().unwrap()
+//! else { panic!("tab-size") };
+//! assert!(matches!(tab.value(), CssTabSize::Length(_)));
+//! assert_eq!(tab.value().serialize_specified().unwrap(), "0px");
+//! ```
+//!
 //! # Typography, font families, and font-face
 //!
 //! Family lists, the `@font-face` family descriptor, and `local()` names follow

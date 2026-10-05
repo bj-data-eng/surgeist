@@ -2216,6 +2216,7 @@ pub surgeist_css::CssKnownProperty::JustifyItems
 pub surgeist_css::CssKnownProperty::JustifySelf
 pub surgeist_css::CssKnownProperty::Left
 pub surgeist_css::CssKnownProperty::LetterSpacing
+pub surgeist_css::CssKnownProperty::LineBreak
 pub surgeist_css::CssKnownProperty::LineHeight
 pub surgeist_css::CssKnownProperty::ListStyle
 pub surgeist_css::CssKnownProperty::ListStyleImage
@@ -2329,6 +2330,7 @@ pub surgeist_css::CssKnownProperty::ScrollbarWidth
 pub surgeist_css::CssKnownProperty::Size
 pub surgeist_css::CssKnownProperty::Speak
 pub surgeist_css::CssKnownProperty::SpeakAs
+pub surgeist_css::CssKnownProperty::TabSize
 pub surgeist_css::CssKnownProperty::TableLayout
 pub surgeist_css::CssKnownProperty::TextAlign
 pub surgeist_css::CssKnownProperty::TextAlignAll
@@ -2375,7 +2377,11 @@ pub surgeist_css::CssKnownProperty::Widows
 pub surgeist_css::CssKnownProperty::Width
 pub surgeist_css::CssKnownProperty::WillChange
 pub surgeist_css::CssKnownProperty::WordBreak
+pub surgeist_css::CssKnownProperty::WordSpaceTransform
 pub surgeist_css::CssKnownProperty::WordSpacing
+pub surgeist_css::CssKnownProperty::WrapAfter
+pub surgeist_css::CssKnownProperty::WrapBefore
+pub surgeist_css::CssKnownProperty::WrapInside
 pub surgeist_css::CssKnownProperty::WritingMode
 pub surgeist_css::CssKnownProperty::ZIndex
 impl surgeist_css::CssKnownProperty
@@ -2596,6 +2602,7 @@ pub surgeist_css::CssKnownPropertyValueRef::JustifyItems(&'a surgeist_css::CssJu
 pub surgeist_css::CssKnownPropertyValueRef::JustifySelf(&'a surgeist_css::CssJustifySelfPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Left(&'a surgeist_css::CssLeftPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::LetterSpacing(&'a surgeist_css::CssLetterSpacingPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::LineBreak(&'a surgeist_css::CssLineBreakPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::LineHeight(&'a surgeist_css::CssLineHeightPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ListStyle(&'a surgeist_css::CssListStylePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ListStyleImage(&'a surgeist_css::CssListStyleImagePropertyValue)
@@ -2709,6 +2716,7 @@ pub surgeist_css::CssKnownPropertyValueRef::ScrollbarWidth(&'a surgeist_css::Css
 pub surgeist_css::CssKnownPropertyValueRef::Size(&'a surgeist_css::CssSizePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Speak(&'a surgeist_css::CssSpeakPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::SpeakAs(&'a surgeist_css::CssSpeakAsPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::TabSize(&'a surgeist_css::CssTabSizePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TableLayout(&'a surgeist_css::CssTableLayoutPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextAlign(&'a surgeist_css::CssTextAlignPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextAlignAll(&'a surgeist_css::CssTextAlignAllPropertyValue)
@@ -2755,7 +2763,11 @@ pub surgeist_css::CssKnownPropertyValueRef::Widows(&'a surgeist_css::CssWidowsPr
 pub surgeist_css::CssKnownPropertyValueRef::Width(&'a surgeist_css::CssWidthPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::WillChange(&'a surgeist_css::CssWillChangePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::WordBreak(&'a surgeist_css::CssWordBreakPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::WordSpaceTransform(&'a surgeist_css::CssWordSpaceTransformPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::WordSpacing(&'a surgeist_css::CssWordSpacingPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::WrapAfter(&'a surgeist_css::CssWrapAfterPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::WrapBefore(&'a surgeist_css::CssWrapBeforePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::WrapInside(&'a surgeist_css::CssWrapInsidePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::WritingMode(&'a surgeist_css::CssWritingModePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ZIndex(&'a surgeist_css::CssZIndexPropertyValue)
 pub enum surgeist_css::CssLanguageRangeKind
@@ -2831,6 +2843,15 @@ pub surgeist_css::CssLengthUnit::Vmin
 pub surgeist_css::CssLengthUnit::Vw
 impl surgeist_css::CssLengthUnit
 pub const fn surgeist_css::CssLengthUnit::as_css_str(self) -> &'static str
+#[non_exhaustive] pub enum surgeist_css::CssLineBreak
+pub surgeist_css::CssLineBreak::Anywhere
+pub surgeist_css::CssLineBreak::Auto
+pub surgeist_css::CssLineBreak::Loose
+pub surgeist_css::CssLineBreak::Normal
+pub surgeist_css::CssLineBreak::Strict
+impl surgeist_css::CssLineBreak
+pub fn surgeist_css::CssLineBreak::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssLineBreak::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssLineHeight
 pub surgeist_css::CssLineHeight::HintedNumberCalculation(surgeist_css::CssHintedNumberCalculation)
 pub surgeist_css::CssLineHeight::LengthPercentage(surgeist_css::CssSpecifiedNonNegativeLengthPercentage)
@@ -3020,6 +3041,7 @@ pub surgeist_css::CssLonghandValueRef::JustifyItems(&'a surgeist_css::CssJustify
 pub surgeist_css::CssLonghandValueRef::JustifySelf(&'a surgeist_css::CssJustifySelfValue)
 pub surgeist_css::CssLonghandValueRef::Left(&'a surgeist_css::CssInsetValue)
 pub surgeist_css::CssLonghandValueRef::LetterSpacing(&'a surgeist_css::CssTextSpacingAdjustment)
+pub surgeist_css::CssLonghandValueRef::LineBreak(&'a surgeist_css::CssLineBreak)
 pub surgeist_css::CssLonghandValueRef::LineHeight(&'a surgeist_css::CssLineHeight)
 pub surgeist_css::CssLonghandValueRef::ListStyleImage(&'a surgeist_css::CssImageValue)
 pub surgeist_css::CssLonghandValueRef::ListStylePosition(&'a surgeist_css::CssListStylePosition)
@@ -3096,12 +3118,15 @@ pub surgeist_css::CssLonghandValueRef::ScrollbarGutter(&'a surgeist_css::CssScro
 pub surgeist_css::CssLonghandValueRef::ScrollbarWidth(&'a surgeist_css::CssScrollbarWidth)
 pub surgeist_css::CssLonghandValueRef::Speak(&'a surgeist_css::CssSpeak)
 pub surgeist_css::CssLonghandValueRef::SpeakAs(&'a surgeist_css::CssSpeakAs)
+pub surgeist_css::CssLonghandValueRef::TabSize(&'a surgeist_css::CssTabSize)
 pub surgeist_css::CssLonghandValueRef::TableLayout(&'a surgeist_css::CssTableLayout)
 pub surgeist_css::CssLonghandValueRef::TextAlignAll(&'a surgeist_css::CssTextAlignAllValue)
 pub surgeist_css::CssLonghandValueRef::TextAlignLast(&'a surgeist_css::CssTextAlignLastValue)
 pub surgeist_css::CssLonghandValueRef::TextCombineUpright(&'a surgeist_css::CssTextCombineUpright)
+pub surgeist_css::CssLonghandValueRef::TextIndent(&'a surgeist_css::CssTextIndent)
 pub surgeist_css::CssLonghandValueRef::TextOrientation(&'a surgeist_css::CssTextOrientation)
 pub surgeist_css::CssLonghandValueRef::TextOverflow(&'a surgeist_css::CssTextOverflow)
+pub surgeist_css::CssLonghandValueRef::TextTransform(&'a surgeist_css::CssTextTransform)
 pub surgeist_css::CssLonghandValueRef::TextWrapMode(&'a surgeist_css::CssTextWrapMode)
 pub surgeist_css::CssLonghandValueRef::TextWrapStyle(&'a surgeist_css::CssTextWrapStyle)
 pub surgeist_css::CssLonghandValueRef::Top(&'a surgeist_css::CssInsetValue)
@@ -3110,6 +3135,7 @@ pub surgeist_css::CssLonghandValueRef::TransitionDuration(&'a surgeist_css::CssD
 pub surgeist_css::CssLonghandValueRef::TransitionProperty(&'a surgeist_css::CssTransitionPropertyList)
 pub surgeist_css::CssLonghandValueRef::TransitionTimingFunction(&'a surgeist_css::CssEasingList)
 pub surgeist_css::CssLonghandValueRef::UnicodeBidi(&'a surgeist_css::CssUnicodeBidi)
+pub surgeist_css::CssLonghandValueRef::VerticalAlign(&'a surgeist_css::CssVerticalAlign)
 pub surgeist_css::CssLonghandValueRef::Visibility(&'a surgeist_css::CssVisibility)
 pub surgeist_css::CssLonghandValueRef::VoiceBalance(&'a surgeist_css::CssVoiceBalance)
 pub surgeist_css::CssLonghandValueRef::VoiceDuration(&'a surgeist_css::CssVoiceDuration)
@@ -3125,7 +3151,11 @@ pub surgeist_css::CssLonghandValueRef::Widows(&'a surgeist_css::CssPageLineMinim
 pub surgeist_css::CssLonghandValueRef::Width(&'a surgeist_css::CssSizeValue)
 pub surgeist_css::CssLonghandValueRef::WillChange(&'a surgeist_css::CssWillChange)
 pub surgeist_css::CssLonghandValueRef::WordBreak(&'a surgeist_css::CssWordBreak)
+pub surgeist_css::CssLonghandValueRef::WordSpaceTransform(&'a surgeist_css::CssWordSpaceTransform)
 pub surgeist_css::CssLonghandValueRef::WordSpacing(&'a surgeist_css::CssTextSpacingAdjustment)
+pub surgeist_css::CssLonghandValueRef::WrapAfter(&'a surgeist_css::CssWrapBoundary)
+pub surgeist_css::CssLonghandValueRef::WrapBefore(&'a surgeist_css::CssWrapBoundary)
+pub surgeist_css::CssLonghandValueRef::WrapInside(&'a surgeist_css::CssWrapInside)
 pub surgeist_css::CssLonghandValueRef::WritingMode(&'a surgeist_css::CssWritingMode)
 pub surgeist_css::CssLonghandValueRef::ZIndex(&'a surgeist_css::CssZIndexValue)
 #[non_exhaustive] pub enum surgeist_css::CssMarginValue
@@ -4300,6 +4330,14 @@ pub surgeist_css::CssSystemFont::Menu
 pub surgeist_css::CssSystemFont::MessageBox
 pub surgeist_css::CssSystemFont::SmallCaption
 pub surgeist_css::CssSystemFont::StatusBar
+#[non_exhaustive] pub enum surgeist_css::CssTabSize
+pub surgeist_css::CssTabSize::Length(surgeist_css::CssSpecifiedNonNegativeLength)
+pub surgeist_css::CssTabSize::Number(surgeist_css::CssSpecifiedNonNegativeNumber)
+impl surgeist_css::CssTabSize
+pub fn surgeist_css::CssTabSize::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTabSize::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl core::cmp::PartialEq for surgeist_css::CssTabSize
+pub fn surgeist_css::CssTabSize::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssTableLayout
 pub surgeist_css::CssTableLayout::Auto
 pub surgeist_css::CssTableLayout::Fixed
@@ -4400,13 +4438,16 @@ impl core::cmp::Eq for surgeist_css::CssTextSpacingAdjustment
 impl core::cmp::PartialEq for surgeist_css::CssTextSpacingAdjustment
 pub fn surgeist_css::CssTextSpacingAdjustment::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssTextTransform
-pub surgeist_css::CssTextTransform::Capitalize
-pub surgeist_css::CssTextTransform::Lowercase
+pub surgeist_css::CssTextTransform::MathAuto
 pub surgeist_css::CssTextTransform::None
-pub surgeist_css::CssTextTransform::Uppercase
+pub surgeist_css::CssTextTransform::Transforms(surgeist_css::CssTextTransformSet)
 impl surgeist_css::CssTextTransform
 pub fn surgeist_css::CssTextTransform::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssTextTransform::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssTextTransformCase
+pub surgeist_css::CssTextTransformCase::Capitalize
+pub surgeist_css::CssTextTransformCase::Lowercase
+pub surgeist_css::CssTextTransformCase::Uppercase
 #[non_exhaustive] pub enum surgeist_css::CssTextWrapMode
 pub surgeist_css::CssTextWrapMode::NoWrap
 pub surgeist_css::CssTextWrapMode::Wrap
@@ -4761,6 +4802,31 @@ pub surgeist_css::CssWordBreak::Normal
 impl surgeist_css::CssWordBreak
 pub fn surgeist_css::CssWordBreak::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssWordBreak::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssWordSpaceTransform
+pub surgeist_css::CssWordSpaceTransform::IdeographicSpace
+pub surgeist_css::CssWordSpaceTransform::IdeographicSpace::auto_phrase: bool
+pub surgeist_css::CssWordSpaceTransform::None
+pub surgeist_css::CssWordSpaceTransform::Space
+pub surgeist_css::CssWordSpaceTransform::Space::auto_phrase: bool
+impl surgeist_css::CssWordSpaceTransform
+pub fn surgeist_css::CssWordSpaceTransform::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssWordSpaceTransform::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssWrapBoundary
+pub surgeist_css::CssWrapBoundary::Auto
+pub surgeist_css::CssWrapBoundary::Avoid
+pub surgeist_css::CssWrapBoundary::AvoidFlex
+pub surgeist_css::CssWrapBoundary::AvoidLine
+pub surgeist_css::CssWrapBoundary::Flex
+pub surgeist_css::CssWrapBoundary::Line
+impl surgeist_css::CssWrapBoundary
+pub fn surgeist_css::CssWrapBoundary::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssWrapBoundary::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssWrapInside
+pub surgeist_css::CssWrapInside::Auto
+pub surgeist_css::CssWrapInside::Avoid
+impl surgeist_css::CssWrapInside
+pub fn surgeist_css::CssWrapInside::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssWrapInside::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssWritingMode
 pub surgeist_css::CssWritingMode::HorizontalTb
 pub surgeist_css::CssWritingMode::SidewaysLr
@@ -7976,6 +8042,10 @@ impl surgeist_css::CssLightDarkImage
 pub const fn surgeist_css::CssLightDarkImage::dark(&self) -> &surgeist_css::CssImageValue
 pub const fn surgeist_css::CssLightDarkImage::light(&self) -> &surgeist_css::CssImageValue
 pub fn surgeist_css::CssLightDarkImage::try_new(light: surgeist_css::CssImageValue, dark: surgeist_css::CssImageValue) -> core::result::Result<Self, surgeist_css::CssImageConstructionError>
+pub struct surgeist_css::CssLineBreakPropertyValue
+impl surgeist_css::CssLineBreakPropertyValue
+pub fn surgeist_css::CssLineBreakPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssLineBreakPropertyValue::value(&self) -> &surgeist_css::CssLineBreak
 pub struct surgeist_css::CssLineHeightPropertyValue
 impl surgeist_css::CssLineHeightPropertyValue
 pub fn surgeist_css::CssLineHeightPropertyValue::as_css(&self) -> &str
@@ -9760,6 +9830,10 @@ impl surgeist_css::CssSymbolsStyleValue
 pub fn surgeist_css::CssSymbolsStyleValue::symbols(&self) -> &[surgeist_css::CssCounterSymbolValue]
 pub const fn surgeist_css::CssSymbolsStyleValue::system(&self) -> core::option::Option<surgeist_css::CssSymbolsSystem>
 pub fn surgeist_css::CssSymbolsStyleValue::try_new(system: core::option::Option<surgeist_css::CssSymbolsSystem>, symbols: alloc::vec::Vec<surgeist_css::CssCounterSymbolValue>) -> core::option::Option<Self>
+pub struct surgeist_css::CssTabSizePropertyValue
+impl surgeist_css::CssTabSizePropertyValue
+pub fn surgeist_css::CssTabSizePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssTabSizePropertyValue::value(&self) -> &surgeist_css::CssTabSize
 pub struct surgeist_css::CssTableLayoutPropertyValue
 impl surgeist_css::CssTableLayoutPropertyValue
 pub fn surgeist_css::CssTableLayoutPropertyValue::as_css(&self) -> &str
@@ -9869,6 +9943,12 @@ pub struct surgeist_css::CssTextTransformPropertyValue
 impl surgeist_css::CssTextTransformPropertyValue
 pub fn surgeist_css::CssTextTransformPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssTextTransformPropertyValue::value(&self) -> &surgeist_css::CssTextTransform
+pub struct surgeist_css::CssTextTransformSet
+impl surgeist_css::CssTextTransformSet
+pub const fn surgeist_css::CssTextTransformSet::case(&self) -> core::option::Option<surgeist_css::CssTextTransformCase>
+pub const fn surgeist_css::CssTextTransformSet::full_size_kana(&self) -> bool
+pub const fn surgeist_css::CssTextTransformSet::full_width(&self) -> bool
+pub const fn surgeist_css::CssTextTransformSet::try_new(case: core::option::Option<surgeist_css::CssTextTransformCase>, full_width: bool, full_size_kana: bool) -> core::option::Option<Self>
 pub struct surgeist_css::CssTextWrap
 impl surgeist_css::CssTextWrap
 pub const fn surgeist_css::CssTextWrap::mode(&self) -> core::option::Option<surgeist_css::CssTextWrapMode>
@@ -10331,10 +10411,26 @@ pub struct surgeist_css::CssWordBreakPropertyValue
 impl surgeist_css::CssWordBreakPropertyValue
 pub fn surgeist_css::CssWordBreakPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssWordBreakPropertyValue::value(&self) -> &surgeist_css::CssWordBreak
+pub struct surgeist_css::CssWordSpaceTransformPropertyValue
+impl surgeist_css::CssWordSpaceTransformPropertyValue
+pub fn surgeist_css::CssWordSpaceTransformPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssWordSpaceTransformPropertyValue::value(&self) -> &surgeist_css::CssWordSpaceTransform
 pub struct surgeist_css::CssWordSpacingPropertyValue
 impl surgeist_css::CssWordSpacingPropertyValue
 pub fn surgeist_css::CssWordSpacingPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssWordSpacingPropertyValue::spacing(&self) -> &surgeist_css::CssTextSpacingAdjustment
+pub struct surgeist_css::CssWrapAfterPropertyValue
+impl surgeist_css::CssWrapAfterPropertyValue
+pub fn surgeist_css::CssWrapAfterPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssWrapAfterPropertyValue::value(&self) -> &surgeist_css::CssWrapBoundary
+pub struct surgeist_css::CssWrapBeforePropertyValue
+impl surgeist_css::CssWrapBeforePropertyValue
+pub fn surgeist_css::CssWrapBeforePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssWrapBeforePropertyValue::value(&self) -> &surgeist_css::CssWrapBoundary
+pub struct surgeist_css::CssWrapInsidePropertyValue
+impl surgeist_css::CssWrapInsidePropertyValue
+pub fn surgeist_css::CssWrapInsidePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssWrapInsidePropertyValue::value(&self) -> &surgeist_css::CssWrapInside
 pub struct surgeist_css::CssWritingModePropertyValue
 impl surgeist_css::CssWritingModePropertyValue
 pub fn surgeist_css::CssWritingModePropertyValue::as_css(&self) -> &str

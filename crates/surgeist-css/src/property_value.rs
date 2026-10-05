@@ -96,7 +96,16 @@ fn is_time_property(property: crate::CssKnownProperty) -> bool {
 fn requires_closed_components(property: crate::CssKnownProperty) -> bool {
     matches!(
         property,
-        crate::CssKnownProperty::ClipPath
+        crate::CssKnownProperty::TextTransform
+            | crate::CssKnownProperty::WrapInside
+            | crate::CssKnownProperty::WrapBefore
+            | crate::CssKnownProperty::WrapAfter
+            | crate::CssKnownProperty::LineBreak
+            | crate::CssKnownProperty::WordSpaceTransform
+            | crate::CssKnownProperty::TabSize
+            | crate::CssKnownProperty::TextIndent
+            | crate::CssKnownProperty::VerticalAlign
+            | crate::CssKnownProperty::ClipPath
             | crate::CssKnownProperty::TextWrap
             | crate::CssKnownProperty::TextWrapMode
             | crate::CssKnownProperty::TextWrapStyle

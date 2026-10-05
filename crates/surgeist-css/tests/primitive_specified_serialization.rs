@@ -133,9 +133,40 @@ fn text_transform_represented_states_emit_canonical_keywords() {
         value,
         [
             (CssTextTransform::None, "none"),
-            (CssTextTransform::Capitalize, "capitalize"),
-            (CssTextTransform::Uppercase, "uppercase"),
-            (CssTextTransform::Lowercase, "lowercase"),
+            (CssTextTransform::MathAuto, "math-auto"),
+            (
+                CssTextTransform::Transforms(
+                    CssTextTransformSet::try_new(
+                        Some(CssTextTransformCase::Capitalize),
+                        false,
+                        false
+                    )
+                    .unwrap()
+                ),
+                "capitalize"
+            ),
+            (
+                CssTextTransform::Transforms(
+                    CssTextTransformSet::try_new(
+                        Some(CssTextTransformCase::Uppercase),
+                        false,
+                        false
+                    )
+                    .unwrap()
+                ),
+                "uppercase"
+            ),
+            (
+                CssTextTransform::Transforms(
+                    CssTextTransformSet::try_new(
+                        Some(CssTextTransformCase::Lowercase),
+                        false,
+                        false
+                    )
+                    .unwrap()
+                ),
+                "lowercase"
+            ),
         ]
     );
 }

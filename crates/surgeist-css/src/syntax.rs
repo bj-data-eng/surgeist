@@ -6158,9 +6158,112 @@ impl PartialEq for CssTextDecorationThickness {
 #[non_exhaustive]
 pub enum CssTextTransform {
     None,
+    MathAuto,
+    Transforms(CssTextTransformSet),
+}
+
+/// The exclusive authored case transformation, before language-sensitive processing.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssTextTransformCase {
     Capitalize,
     Uppercase,
     Lowercase,
+}
+
+/// A nonempty authored combination of case, width and kana transformations.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CssTextTransformSet {
+    case: Option<CssTextTransformCase>,
+    full_width: bool,
+    full_size_kana: bool,
+}
+
+impl CssTextTransformSet {
+    /// Rejects the empty set; `none` and `math-auto` are separate whole values.
+    pub const fn try_new(
+        case: Option<CssTextTransformCase>,
+        full_width: bool,
+        full_size_kana: bool,
+    ) -> Option<Self> {
+        if case.is_none() && !full_width && !full_size_kana {
+            None
+        } else {
+            Some(Self {
+                case,
+                full_width,
+                full_size_kana,
+            })
+        }
+    }
+    pub const fn case(&self) -> Option<CssTextTransformCase> {
+        self.case
+    }
+    pub const fn full_width(&self) -> bool {
+        self.full_width
+    }
+    pub const fn full_size_kana(&self) -> bool {
+        self.full_size_kana
+    }
+}
+
+/// An authored preference for breaking within an inline box.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssWrapInside {
+    Auto,
+    Avoid,
+}
+
+/// An authored break preference used independently by `wrap-before` and `wrap-after`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssWrapBoundary {
+    Auto,
+    Avoid,
+    AvoidLine,
+    AvoidFlex,
+    Line,
+    Flex,
+}
+
+/// An authored line-breaking strictness, without language or layout execution.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssLineBreak {
+    Auto,
+    Loose,
+    Normal,
+    Strict,
+    Anywhere,
+}
+
+/// An authored separator transformation with a mandatory base outside `none`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssWordSpaceTransform {
+    None,
+    Space { auto_phrase: bool },
+    IdeographicSpace { auto_phrase: bool },
+}
+
+/// An authored tab interval: a space-advance multiplier or an exact length.
+/// Literal ranges are checked by the child; calculation ranges remain deferred.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub enum CssTabSize {
+    Number(CssSpecifiedNonNegativeNumber),
+    Length(CssSpecifiedNonNegativeLength),
+}
+
+impl PartialEq for CssTabSize {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Number(left), Self::Number(right)) => left.structural_eq(right),
+            (Self::Length(left), Self::Length(right)) => left.structural_eq(right),
+            _ => false,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

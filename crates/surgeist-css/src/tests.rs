@@ -8478,7 +8478,10 @@ fn parses_typography_and_text_keyword_families() {
     );
     assert_eq!(
         declaration_value!(".panel { text-transform: uppercase; }", TextTransform),
-        CssTextTransform::Uppercase
+        CssTextTransform::Transforms(
+            CssTextTransformSet::try_new(Some(CssTextTransformCase::Uppercase), false, false)
+                .unwrap()
+        )
     );
 }
 

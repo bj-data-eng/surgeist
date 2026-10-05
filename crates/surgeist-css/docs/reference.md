@@ -6842,10 +6842,105 @@ Behavioral evidence is in
 [`text_wrap_whitespace_lifecycle.rs`](../tests/text_wrap_whitespace_lifecycle.rs)
 and the owning private specified-provider composition tests.
 
+## Authored text transformations, break preferences and tabs
+
+The selected [Text 4 text-transform grammar](https://www.w3.org/TR/2026/WD-css-text-4-20260814/#propdef-text-transform)
+has 17 ordinary states. `CssTextTransform` retains exclusive `None` and
+`MathAuto` alternatives or `Transforms(CssTextTransformSet)`. The checked set's
+`try_new(case, full_width, full_size_kana)` returns `None` only for an empty set.
+`CssTextTransformCase` admits capitalize, uppercase and lowercase; its optional
+presence and both flags are exposed by `case()`, `full_width()` and
+`full_size_kana()`. Width or kana alone is valid, as is their pair without a
+case. Repeated roles, competing case keywords and combinations with `none` or
+`math-auto` reject atomically.
+
+Specified output emits present case, width and kana roles in that order. This
+is an explicit Surgeist canonical order; the selected source lists canonical
+order as n/a. Parsed components retain their original spelling and order.
+Language-sensitive case conversion, Unicode width/kana mappings and MathML's
+contextual math-auto processing remain downstream.
+
+Four independent break-preference longhands retain finite keyword domains:
+
+| Property | Typed value | Authored keywords |
+| --- | --- | --- |
+| wrap-inside | `CssWrapInside` | auto, avoid |
+| wrap-before, wrap-after | `CssWrapBoundary` | auto, avoid, avoid-line, avoid-flex, line, flex |
+| line-break | `CssLineBreak` | auto, loose, normal, strict, anywhere |
+
+The selected [wrap controls](https://www.w3.org/TR/2026/WD-css-text-4-20260814/#propdef-wrap-inside)
+distinguish conditional avoidance from forced line or flex breaks. Before and
+after share a value domain while their declarations keep separate property
+identities. [Line breaking](https://www.w3.org/TR/2026/WD-css-text-4-20260814/#propdef-line-break)
+retains language-dependent strictness; `anywhere` is its own alternative.
+Nested-box precedence, ancestor propagation, forced breaks, flex-line behavior,
+language rules and interactions with whitespace are execution responsibilities.
+
+`CssWordSpaceTransform` has five ordinary states: `None`, `Space` and
+`IdeographicSpace`, with each base's `auto_phrase` boolean independent. The
+[word-space-transform grammar](https://www.w3.org/TR/2026/WD-css-text-4-20260814/#propdef-word-space-transform)
+requires a base outside `none`. Either two-keyword order parses; canonical
+output places the base before `auto-phrase`, as specified per grammar.
+An absent flag stays absent. Phrase detection and replacement of separators
+with U+0020 or U+3000 belong to later text processing.
+
+`CssTabSize` retains `Number(CssSpecifiedNonNegativeNumber)` or
+`Length(CssSpecifiedNonNegativeLength)`. The selected
+[tab-size grammar](https://www.w3.org/TR/2026/WD-css-text-4-20260814/#propdef-tab-size)
+accepts nonnegative literals in those two domains, preserving exact coefficients,
+units and origins. Bare `0` selects Number; explicit `0px` selects Length.
+Negative nonzero literals reject exactly, including values too small for a
+floating-point projection; negative zero remains zero. Pure typed Number or
+Length calculations stay symbolic, including `calc(-1)` and `calc(-1px)`:
+[Values 4 range checking](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-range)
+defers their range evaluation. Percentage results and percentage-hinted
+lengths reject; intermediate unit algebra is checked by the shared numeric
+owner rather than by searching tokens. `calc(0 + 1px)` cannot add a Number to a
+Length. A number describes a space-advance multiplier, and a length describes
+an interval; CSS does not calculate tab stops or obtain font metrics.
+
+These seven properties, together with the
+[signed indent and CSS2 alignment longhands](#signed-text-values-and-represented-aggregate-output),
+have intrinsic metadata and one terminal contribution
+per ordinary or CSS-wide declaration:
+
+| Property | Intrinsic initial | Inherited by default |
+| --- | --- | --- |
+| text-transform | none | yes |
+| wrap-inside, wrap-before, wrap-after | auto | no |
+| line-break | auto | yes |
+| word-space-transform | none | yes |
+| tab-size | Number 8 | yes |
+| text-indent | 0, hanging absent, each-line absent | yes |
+| vertical-align | baseline | no |
+
+Each exposes its ordinary payload through `CssLonghandValueRef` and its property
+wrapper. None introduces shorthand members or resets a sibling. All five
+CSS-wide keywords stay symbolic. Whole-value var/env/attr forms remain one
+pending occurrence until strict reentry accepts a complete replacement without
+residual substitution. Both checked property/grammar front doors reject original
+implicit comment or function closures before ordinary/global/pending admission.
+Reentry uses the same check and remains reusable after failure. Contributions
+retain the original declaration's importance and occurrence alongside the
+replacement components' own origins. Normalization preserves duplicate order,
+contexts and recovery diagnostics; clean validators still reject recovered
+reports. Cascade, substitution and inheritance execution remain downstream.
+
+These values expose `serialize_specified` and
+`serialize_specified_with_limits` and participate in generic declaration/rule
+output. Each emitted transform or word-space keyword costs one input and
+projection node; their carriers add no work. Singletons cost 1/1, word-space
+pairs and transform pairs 2/2, and transform triples 3/3. Each finite wrap/line
+keyword costs 1/1. Tab-size delegates to its typed numeric child without a
+carrier node, so a literal tab value costs 1/1. Math retains its shared child
+costs. Declaration and property name add 2/2; spaces, punctuation and importance
+cost final UTF-8 bytes only. Suppressed output still visits and charges children;
+sibling output shares one cumulative context. Failures return no partial CSS
+and leave authored values available for retry.
+
 ## Represented keyword specified output
 
-`CssWordBreak`, `CssTextTransform`,
-`CssTextDecorationStyle`, `CssImageRendering`, `CssObjectFit`,
+`CssWordBreak`, `CssTextDecorationStyle`, `CssImageRendering`, `CssObjectFit`,
 `CssPointerEvents`, `CssUserSelect`, `CssResize`, `CssTransformBox`,
 `CssIsolation` and `CssBlendMode` expose `serialize_specified` and
 `serialize_specified_with_limits`. Each currently represented alternative emits
@@ -6891,8 +6986,18 @@ admits exactly one signed length-percentage and distinct optional `hanging` and
 `each-line` flags in any order. Canonical output places the numeric member first,
 then `hanging`, then `each-line`. Duplicate flags, a missing numeric member and
 multiple numeric members reject the entire declaration while preserving valid
-siblings. Vertical alignment emits its represented CSS2 keyword or signed numeric
-child without calculating the contextual line-height percentage basis.
+siblings. Its intrinsic initial is zero with both flags absent, and it inherits.
+The percentage basis is the block container's own inline-axis inner size, which
+remains unresolved in authored CSS.
+
+Vertical alignment uses the selected
+[CSS2 grammar](https://www.w3.org/TR/2011/REC-CSS2-20110607/visudet.html#propdef-vertical-align):
+baseline, sub, super, top, text-top, middle, bottom, text-bottom or a signed
+length/percentage. Its intrinsic initial is baseline and it does not inherit.
+The shared modern numeric owner also retains typed symbolic calculations.
+Output preserves a numeric `0%` or `0cm` rather than replacing it with baseline;
+contextual line-height percentages and line-box/table-cell alignment remain
+downstream. This authored property uses CSS2 rather than the Inline 3 shorthand.
 
 Decoration line output uses `underline overline line-through blink` grammar
 order while preserving the original component order in the value. `none` remains
@@ -6915,9 +7020,12 @@ public failure returns no partial CSS and leaves the input available for retry.
 
 The existing numeric specified precision policy still applies: a tiny exact
 `-1e-999%` can emit `0%` while the retained coefficient and origin remain intact.
-These providers do not complete decoration-line `spelling-error`/`grammar-error`,
-property metadata, shorthand resets, normalization or generic declaration
-dispatch. Full owning text lifecycle acceptance remains separate.
+The decoration family still has remaining grammar and intrinsic lifecycle work:
+decoration-line `spelling-error`/`grammar-error`, property metadata, shorthand
+resets and normalization. Its represented values already participate in generic
+declaration dispatch. Indent and vertical-align have the complete intrinsic
+longhand lifecycle described above; decoration's remaining work does not limit
+their metadata, expansion or normalization.
 
 ## Image orientation and represented caret, containment and blend output
 

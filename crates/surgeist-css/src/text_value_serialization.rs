@@ -8,7 +8,7 @@
 
 use crate::{
     CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,
-    CssSpecifiedValueSerializationLimits, CssTextDecoration, CssTextDecorationLine,
+    CssSpecifiedValueSerializationLimits, CssTabSize, CssTextDecoration, CssTextDecorationLine,
     CssTextDecorationLineComponent, CssTextDecorationThickness, CssTextIndent, CssVerticalAlign,
     specified_rule_serialization::SpecifiedRuleWriter,
 };
@@ -36,6 +36,16 @@ macro_rules! specified_methods {
             Ok(writer.css)
         }
     };
+}
+
+impl CssTabSize {
+    specified_methods!();
+    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        match self {
+            Self::Number(value) => value.append_to_rule_writer(writer),
+            Self::Length(value) => value.append_to_rule_writer(writer),
+        }
+    }
 }
 
 impl CssTextIndent {
@@ -358,5 +368,33 @@ mod tests {
         assert!(!writer.context.output_suppressed());
         writer.append("x").unwrap();
         assert_eq!(writer.css, "x");
+    }
+
+    #[test]
+    fn tab_size_numeric_carriers_share_existing_work_and_suppression_without_aggregate_cost() {
+        let number = CssTabSize::Number(
+            crate::CssSpecifiedNonNegativeNumber::try_from_component(
+                crate::CssComponentValue::try_number("8").unwrap(),
+            )
+            .unwrap(),
+        );
+        shared("8", 1, 1, |w| number.append_to_rule_writer(w));
+        let length = CssTabSize::Length(
+            crate::CssSpecifiedNonNegativeLength::try_from_component(
+                crate::CssComponentValue::try_dimension("0", "px").unwrap(),
+            )
+            .unwrap(),
+        );
+        shared("0px", 1, 1, |w| length.append_to_rule_writer(w));
+        let math = CssTabSize::Length(
+            crate::CssSpecifiedNonNegativeLength::try_from_calculation(
+                crate::CssLengthCalculation::try_from_components(
+                    crate::parse_component_values("calc(1px + 2em)").unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap(),
+        );
+        shared("calc(2em + 1px)", 4, 5, |w| math.append_to_rule_writer(w));
     }
 }

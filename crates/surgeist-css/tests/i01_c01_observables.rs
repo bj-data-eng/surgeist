@@ -5782,7 +5782,14 @@ fn assert_known_property_value(
             );
             let typed = value.value();
             let decoded = match expected {
-                "Uppercase" => CssTextTransform::Uppercase,
+                "Uppercase" => CssTextTransform::Transforms(
+                    CssTextTransformSet::try_new(
+                        Some(CssTextTransformCase::Uppercase),
+                        false,
+                        false,
+                    )
+                    .unwrap(),
+                ),
                 _ => panic!("unknown captured keyword"),
             };
             assert_eq!(typed, &decoded);

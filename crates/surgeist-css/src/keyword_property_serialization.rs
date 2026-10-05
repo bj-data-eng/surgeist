@@ -2,11 +2,12 @@
 //! This adds no grammar alternatives or computed-value behavior.
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::{
-    CssBlendMode, CssImageRendering, CssIsolation, CssObjectFit, CssPointerEvents, CssResize,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
-    CssTextDecorationStyle, CssTextTransform, CssTextWrap, CssTextWrapMode, CssTextWrapStyle,
-    CssTransformBox, CssUserSelect, CssWhiteSpace, CssWhiteSpaceCollapse, CssWhiteSpaceKeyword,
-    CssWhiteSpaceTrim, CssWordBreak,
+    CssBlendMode, CssImageRendering, CssIsolation, CssLineBreak, CssObjectFit, CssPointerEvents,
+    CssResize, CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
+    CssTextDecorationStyle, CssTextTransform, CssTextTransformCase, CssTextWrap, CssTextWrapMode,
+    CssTextWrapStyle, CssTransformBox, CssUserSelect, CssWhiteSpace, CssWhiteSpaceCollapse,
+    CssWhiteSpaceKeyword, CssWhiteSpaceTrim, CssWordBreak, CssWordSpaceTransform, CssWrapBoundary,
+    CssWrapInside,
 };
 
 type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
@@ -108,9 +109,50 @@ enum_keywords!(CssWordBreak,
     Normal => "normal", BreakAll => "break-all", KeepAll => "keep-all", Manual => "manual",
     AutoPhrase => "auto-phrase", BreakWord => "break-word",
 );
-enum_keywords!(CssTextTransform,
-    None => "none", Capitalize => "capitalize", Uppercase => "uppercase", Lowercase => "lowercase",
+
+enum_keywords!(CssWrapInside, Auto => "auto", Avoid => "avoid");
+enum_keywords!(CssWrapBoundary,
+    Auto => "auto", Avoid => "avoid", AvoidLine => "avoid-line",
+    AvoidFlex => "avoid-flex", Line => "line", Flex => "flex",
 );
+enum_keywords!(CssLineBreak,
+    Auto => "auto", Loose => "loose", Normal => "normal", Strict => "strict", Anywhere => "anywhere",
+);
+specified_provider!(CssTextTransform, value, writer => {
+    let set = match value {
+        Self::None => return writer.keyword("none"),
+        Self::MathAuto => return writer.keyword("math-auto"),
+        Self::Transforms(set) => set,
+    };
+    let mut separated = false;
+    if let Some(case) = set.case() {
+        writer.keyword(match case {
+            CssTextTransformCase::Capitalize => "capitalize",
+            CssTextTransformCase::Uppercase => "uppercase",
+            CssTextTransformCase::Lowercase => "lowercase",
+        })?;
+        separated = true;
+    }
+    for (present, text) in [(set.full_width(), "full-width"), (set.full_size_kana(), "full-size-kana")] {
+        if present {
+            if separated { writer.append(" ")?; }
+            writer.keyword(text)?;
+            separated = true;
+        }
+    }
+    Ok(())
+});
+specified_provider!(CssWordSpaceTransform, value, writer => {
+    let (base, auto_phrase) = match value {
+        Self::None => return writer.keyword("none"),
+        Self::Space { auto_phrase } => ("space", *auto_phrase),
+        Self::IdeographicSpace { auto_phrase } => ("ideographic-space", *auto_phrase),
+    };
+    writer.keyword(base)?;
+    if auto_phrase { writer.append(" ")?; writer.keyword("auto-phrase")?; }
+    Ok(())
+});
+
 enum_keywords!(CssTextDecorationStyle,
     Solid => "solid", Double => "double", Dotted => "dotted", Dashed => "dashed", Wavy => "wavy",
 );
@@ -178,7 +220,17 @@ mod tests {
                     .append_to_rule_writer(w)
             },
             |w| CssWordBreak::KeepAll.append_to_rule_writer(w),
-            |w| CssTextTransform::Capitalize.append_to_rule_writer(w),
+            |w| {
+                CssTextTransform::Transforms(
+                    crate::CssTextTransformSet::try_new(
+                        Some(CssTextTransformCase::Capitalize),
+                        false,
+                        false,
+                    )
+                    .unwrap(),
+                )
+                .append_to_rule_writer(w)
+            },
             |w| CssTextDecorationStyle::Wavy.append_to_rule_writer(w),
             |w| CssImageRendering::CrispEdges.append_to_rule_writer(w),
             |w| CssObjectFit::ScaleDown.append_to_rule_writer(w),
@@ -296,6 +348,127 @@ mod tests {
                         assert_eq!(writer.without_output(emit).unwrap_err().kind(), kind);
                         assert!(writer.context.output_suppressed());
                         writer.append("hidden")
+                    })
+                    .unwrap();
+                assert!(writer.css.is_empty());
+                assert!(!writer.context.output_suppressed());
+                writer.append("x").unwrap();
+                assert_eq!(writer.css, "x");
+            }
+        }
+    }
+
+    #[test]
+    fn typography_keyword_providers_share_suppressed_work_and_consumed_siblings() {
+        type Emit = fn(&mut SpecifiedRuleWriter) -> Result<()>;
+        let cases: [(Emit, usize, &str); 9] = [
+            (
+                |w| CssTextTransform::None.append_to_rule_writer(w),
+                1,
+                "none",
+            ),
+            (
+                |w| CssTextTransform::MathAuto.append_to_rule_writer(w),
+                1,
+                "math-auto",
+            ),
+            (
+                |w| {
+                    CssTextTransform::Transforms(
+                        crate::CssTextTransformSet::try_new(None, true, true).unwrap(),
+                    )
+                    .append_to_rule_writer(w)
+                },
+                2,
+                "full-width full-size-kana",
+            ),
+            (
+                |w| {
+                    CssTextTransform::Transforms(
+                        crate::CssTextTransformSet::try_new(
+                            Some(CssTextTransformCase::Uppercase),
+                            true,
+                            true,
+                        )
+                        .unwrap(),
+                    )
+                    .append_to_rule_writer(w)
+                },
+                3,
+                "uppercase full-width full-size-kana",
+            ),
+            (
+                |w| CssWrapInside::Avoid.append_to_rule_writer(w),
+                1,
+                "avoid",
+            ),
+            (
+                |w| CssWrapBoundary::AvoidFlex.append_to_rule_writer(w),
+                1,
+                "avoid-flex",
+            ),
+            (
+                |w| CssLineBreak::Anywhere.append_to_rule_writer(w),
+                1,
+                "anywhere",
+            ),
+            (
+                |w| CssWordSpaceTransform::None.append_to_rule_writer(w),
+                1,
+                "none",
+            ),
+            (
+                |w| {
+                    CssWordSpaceTransform::IdeographicSpace { auto_phrase: true }
+                        .append_to_rule_writer(w)
+                },
+                2,
+                "ideographic-space auto-phrase",
+            ),
+        ];
+        for (emit, work, expected) in cases {
+            let css = format!("prefix {expected};{expected}");
+            let mut writer = SpecifiedRuleWriter::new(Limits::new(work * 2, work * 2, css.len()));
+            writer.append("prefix ").unwrap();
+            emit(&mut writer).unwrap();
+            writer.append(";").unwrap();
+            emit(&mut writer).unwrap();
+            assert_eq!(writer.css, css);
+            for (limits, kind) in [
+                (
+                    Limits::new(work * 2 - 1, work * 2, css.len()),
+                    Kind::InputNodeLimit,
+                ),
+                (
+                    Limits::new(work * 2, work * 2 - 1, css.len()),
+                    Kind::ProjectionNodeLimit,
+                ),
+                (
+                    Limits::new(work * 2, work * 2, css.len() - 1),
+                    Kind::ByteLimit,
+                ),
+            ] {
+                let mut writer = SpecifiedRuleWriter::new(limits);
+                writer.append("prefix ").unwrap();
+                emit(&mut writer).unwrap();
+                writer.append(";").unwrap();
+                assert_eq!(emit(&mut writer).unwrap_err().kind(), kind);
+            }
+            let mut writer = SpecifiedRuleWriter::new(Limits::new(work, work, 0));
+            writer.without_output(|w| w.without_output(emit)).unwrap();
+            assert!(writer.css.is_empty());
+            assert!(!writer.context.output_suppressed());
+            assert_eq!(emit(&mut writer).unwrap_err().kind(), Kind::InputNodeLimit);
+            for (limits, kind) in [
+                (Limits::new(work - 1, work, 1), Kind::InputNodeLimit),
+                (Limits::new(work, work - 1, 1), Kind::ProjectionNodeLimit),
+            ] {
+                let mut writer = SpecifiedRuleWriter::new(limits);
+                writer
+                    .without_output(|w| {
+                        assert_eq!(w.without_output(emit).unwrap_err().kind(), kind);
+                        assert!(w.context.output_suppressed());
+                        w.append("hidden")
                     })
                     .unwrap();
                 assert!(writer.css.is_empty());

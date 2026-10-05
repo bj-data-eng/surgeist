@@ -22,6 +22,16 @@ macro_rules! vector {
 // Every non-`all` value is an ordinary typed value that must reach generated
 // property dispatch. The `all` row deliberately exercises its global contract.
 pub const PROPERTY_POSITIVE_VECTORS: &[PropertyVector] = &[
+    vector!("ext.property.wrap-inside", "wrap-inside", "avoid"),
+    vector!("ext.property.wrap-before", "wrap-before", "avoid-line"),
+    vector!("ext.property.wrap-after", "wrap-after", "flex"),
+    vector!("ext.property.line-break", "line-break", "anywhere"),
+    vector!(
+        "ext.property.word-space-transform",
+        "word-space-transform",
+        "auto-phrase ideographic-space"
+    ),
+    vector!("ext.property.tab-size", "tab-size", "calc(2 + 3)"),
     vector!(
         "ext.property.will-change",
         "will-change",
@@ -736,6 +746,16 @@ pub const PROPERTY_POSITIVE_VECTORS: &[PropertyVector] = &[
 // cardinality error, or numeric/range boundary. The `all` row deliberately uses
 // ordinary typed syntax so its generated dispatch arm rejects it.
 pub const PROPERTY_NEGATIVE_VECTORS: &[PropertyVector] = &[
+    vector!("ext.property.wrap-inside", "wrap-inside", "avoid-flex"),
+    vector!("ext.property.wrap-before", "wrap-before", "loose"),
+    vector!("ext.property.wrap-after", "wrap-after", "anywhere"),
+    vector!("ext.property.line-break", "line-break", "avoid"),
+    vector!(
+        "ext.property.word-space-transform",
+        "word-space-transform",
+        "auto-phrase"
+    ),
+    vector!("ext.property.tab-size", "tab-size", "-1e-999"),
     vector!("ext.property.will-change", "will-change", "opacity, none"),
     vector!("ext.property.overflow-anchor", "overflow-anchor", "smooth"),
     vector!("baseline.property.all", "all", "block"),

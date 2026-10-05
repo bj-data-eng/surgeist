@@ -2341,10 +2341,8 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::EmptyCells
         | CssKnownProperty::TableLayout
         | CssKnownProperty::LineHeight
-        | CssKnownProperty::TextIndent
         | CssKnownProperty::VerticalAlign
         | CssKnownProperty::TextDecoration
-        | CssKnownProperty::TextTransform
         | CssKnownProperty::ZIndex => O_CSS2,
         CssKnownProperty::BreakBefore
         | CssKnownProperty::BreakAfter
@@ -2589,7 +2587,15 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::WhiteSpaceTrim
         | CssKnownProperty::WordBreak
         | CssKnownProperty::WordSpacing
-        | CssKnownProperty::LetterSpacing => X_TEXT4,
+        | CssKnownProperty::LetterSpacing
+        | CssKnownProperty::TextIndent
+        | CssKnownProperty::TextTransform
+        | CssKnownProperty::WrapInside
+        | CssKnownProperty::WrapBefore
+        | CssKnownProperty::WrapAfter
+        | CssKnownProperty::LineBreak
+        | CssKnownProperty::WordSpaceTransform
+        | CssKnownProperty::TabSize => X_TEXT4,
         CssKnownProperty::TextDecorationLine
         | CssKnownProperty::TextDecorationColor
         | CssKnownProperty::TextDecorationStyle => S_TEXTDECOR3,
@@ -2716,14 +2722,7 @@ const fn property_production(property: CssKnownProperty, default: &'static str) 
             CssKnownProperty::VerticalAlign => "visudet.html#propdef-vertical-align",
             _ => default,
         },
-        CssKnownProperty::TextDecoration
-        | CssKnownProperty::TextIndent
-        | CssKnownProperty::TextTransform => match property {
-            CssKnownProperty::TextDecoration => "text.html#propdef-text-decoration",
-            CssKnownProperty::TextIndent => "text.html#propdef-text-indent",
-            CssKnownProperty::TextTransform => "text.html#propdef-text-transform",
-            _ => default,
-        },
+        CssKnownProperty::TextDecoration => "text.html#propdef-text-decoration",
         _ => default,
     }
 }
@@ -2797,7 +2796,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 678] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 684] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -5006,12 +5005,12 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 678] = [
         "text-align-last",
         "baseline.property.text-align-last"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::TextIndent,
         "text-indent",
         "baseline.property.text-indent"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::VerticalAlign,
         "vertical-align",
         "baseline.property.vertical-align"
@@ -5204,6 +5203,36 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 678] = [
         "baseline.property.letter-spacing"
     ),
     complete_property_feature!(
+        CssKnownProperty::WrapInside,
+        "wrap-inside",
+        "ext.property.wrap-inside"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::WrapBefore,
+        "wrap-before",
+        "ext.property.wrap-before"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::WrapAfter,
+        "wrap-after",
+        "ext.property.wrap-after"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::LineBreak,
+        "line-break",
+        "ext.property.line-break"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::WordSpaceTransform,
+        "word-space-transform",
+        "ext.property.word-space-transform"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::TabSize,
+        "tab-size",
+        "ext.property.tab-size"
+    ),
+    complete_property_feature!(
         CssKnownProperty::TextWrapMode,
         "text-wrap-mode",
         "ext.property.text-wrap-mode"
@@ -5274,7 +5303,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 678] = [
         "text-decoration-thickness",
         "baseline.property.text-decoration-thickness"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::TextTransform,
         "text-transform",
         "baseline.property.text-transform"

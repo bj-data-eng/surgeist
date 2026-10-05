@@ -1369,16 +1369,117 @@ pub(super) fn parse_text_decoration_thickness<'i, 't>(
 pub(super) fn parse_text_transform<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssTextTransform, ParseError<'i, Error>> {
+    let first = input.state();
+    let ident = input.expect_ident_cloned().map_err(basic)?;
+    if ident.eq_ignore_ascii_case("none") {
+        return Ok(CssTextTransform::None);
+    }
+    if ident.eq_ignore_ascii_case("math-auto") {
+        return Ok(CssTextTransform::MathAuto);
+    }
+    input.reset(&first);
+    let mut case = None;
+    let mut full_width = false;
+    let mut full_size_kana = false;
+    while !input.is_exhausted() {
+        let location = input.current_source_location();
+        let ident = input.expect_ident_cloned().map_err(basic)?;
+        match_ignore_ascii_case! { &ident,
+            "capitalize" if case.is_none() => case = Some(CssTextTransformCase::Capitalize),
+            "uppercase" if case.is_none() => case = Some(CssTextTransformCase::Uppercase),
+            "lowercase" if case.is_none() => case = Some(CssTextTransformCase::Lowercase),
+            "full-width" if !full_width => full_width = true,
+            "full-size-kana" if !full_size_kana => full_size_kana = true,
+            _ => return Err(location.new_unexpected_token_error::<Error>(Token::Ident(ident))),
+        }
+    }
+    CssTextTransformSet::try_new(case, full_width, full_size_kana)
+        .map(CssTextTransform::Transforms)
+        .ok_or_else(|| {
+            unsupported_value(
+                input,
+                None,
+                "text-transform requires a nonempty transform set",
+            )
+        })
+}
+
+pub(super) fn parse_wrap_inside<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> std::result::Result<CssWrapInside, ParseError<'i, Error>> {
+    let location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
-        "none" => Ok(CssTextTransform::None),
-        "capitalize" => Ok(CssTextTransform::Capitalize),
-        "uppercase" => Ok(CssTextTransform::Uppercase),
-        "lowercase" => Ok(CssTextTransform::Lowercase),
-        _ => Err(unsupported_value(
+        "auto" => Ok(CssWrapInside::Auto),
+        "avoid" => Ok(CssWrapInside::Avoid),
+        _ => Err(location.new_unexpected_token_error::<Error>(Token::Ident(ident))),
+    }
+}
+pub(super) fn parse_wrap_boundary<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> std::result::Result<CssWrapBoundary, ParseError<'i, Error>> {
+    let location = input.current_source_location();
+    let ident = input.expect_ident_cloned().map_err(basic)?;
+    match_ignore_ascii_case! { &ident,
+        "auto" => Ok(CssWrapBoundary::Auto), "avoid" => Ok(CssWrapBoundary::Avoid),
+        "avoid-line" => Ok(CssWrapBoundary::AvoidLine), "avoid-flex" => Ok(CssWrapBoundary::AvoidFlex),
+        "line" => Ok(CssWrapBoundary::Line), "flex" => Ok(CssWrapBoundary::Flex),
+        _ => Err(location.new_unexpected_token_error::<Error>(Token::Ident(ident))),
+    }
+}
+pub(super) fn parse_line_break<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> std::result::Result<CssLineBreak, ParseError<'i, Error>> {
+    let location = input.current_source_location();
+    let ident = input.expect_ident_cloned().map_err(basic)?;
+    match_ignore_ascii_case! { &ident,
+        "auto" => Ok(CssLineBreak::Auto), "loose" => Ok(CssLineBreak::Loose),
+        "normal" => Ok(CssLineBreak::Normal), "strict" => Ok(CssLineBreak::Strict),
+        "anywhere" => Ok(CssLineBreak::Anywhere),
+        _ => Err(location.new_unexpected_token_error::<Error>(Token::Ident(ident))),
+    }
+}
+pub(super) fn parse_word_space_transform<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> std::result::Result<CssWordSpaceTransform, ParseError<'i, Error>> {
+    let first = input.state();
+    let ident = input.expect_ident_cloned().map_err(basic)?;
+    if ident.eq_ignore_ascii_case("none") {
+        return Ok(CssWordSpaceTransform::None);
+    }
+    input.reset(&first);
+    let mut ideographic = None;
+    let mut auto_phrase = false;
+    while !input.is_exhausted() {
+        let location = input.current_source_location();
+        let ident = input.expect_ident_cloned().map_err(basic)?;
+        match_ignore_ascii_case! { &ident,
+            "space" if ideographic.is_none() => ideographic = Some(false),
+            "ideographic-space" if ideographic.is_none() => ideographic = Some(true),
+            "auto-phrase" if !auto_phrase => auto_phrase = true,
+            _ => return Err(location.new_unexpected_token_error::<Error>(Token::Ident(ident))),
+        }
+    }
+    match ideographic {
+        Some(false) => Ok(CssWordSpaceTransform::Space { auto_phrase }),
+        Some(true) => Ok(CssWordSpaceTransform::IdeographicSpace { auto_phrase }),
+        None => Err(unsupported_value(
             input,
             None,
-            unsupported_keyword_reason("text-transform", ident.as_ref()),
+            "word-space-transform requires a separator base",
         )),
     }
+}
+pub(super) fn parse_tab_size<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> std::result::Result<CssTabSize, ParseError<'i, Error>> {
+    // Number-first preserves the authored bare-zero choice. Typed math tries
+    // pure roots through the shared original numeric context, never a reparse.
+    if let Ok(number) =
+        input.try_parse(|input| super::values::parse_nonnegative_number(input, numeric, "tab-size"))
+    {
+        return Ok(CssTabSize::Number(number));
+    }
+    super::values::parse_nonnegative_length(input, numeric, "tab-size").map(CssTabSize::Length)
 }

@@ -20,10 +20,21 @@
 //! blend/isolation initials and background's reset-only background-blend-mode.
 //! Text 4 WD 2026-08-14 §§3–6 defines wrapping/whitespace constituents,
 //! their exact inherited initials and two/three-member shorthand projections.
+//! Text 4 §§2–9 defines transformation, separator, tab, breaking and indent
+//! longhands; CSS2 §10.8.1 defines the noninherited baseline vertical alignment.
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
 const LONGHANDS: &[P] = &[
+    P::TextTransform,
+    P::TextIndent,
+    P::VerticalAlign,
+    P::WrapInside,
+    P::WrapBefore,
+    P::WrapAfter,
+    P::LineBreak,
+    P::WordSpaceTransform,
+    P::TabSize,
     P::TextWrapMode,
     P::TextWrapStyle,
     P::WhiteSpaceCollapse,
@@ -703,6 +714,25 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
     };
     assert_eq!(value.property().known_property(), property);
     match value.view() {
+        CssLonghandValueRef::TextTransform(v) => assert_eq!(*v, CssTextTransform::None),
+        CssLonghandValueRef::TextIndent(v) => {
+            assert!(exact_literal(v.length().literal_component(), "0"));
+            assert!(!v.hanging());
+            assert!(!v.each_line());
+        }
+        CssLonghandValueRef::VerticalAlign(v) => assert_eq!(*v, CssVerticalAlign::Baseline),
+        CssLonghandValueRef::WrapInside(v) => assert_eq!(*v, CssWrapInside::Auto),
+        CssLonghandValueRef::WrapBefore(v) | CssLonghandValueRef::WrapAfter(v) => {
+            assert_eq!(*v, CssWrapBoundary::Auto);
+        }
+        CssLonghandValueRef::LineBreak(v) => assert_eq!(*v, CssLineBreak::Auto),
+        CssLonghandValueRef::WordSpaceTransform(v) => assert_eq!(*v, CssWordSpaceTransform::None),
+        CssLonghandValueRef::TabSize(v) => {
+            let CssTabSize::Number(number) = v else {
+                panic!("number tab initial")
+            };
+            assert!(exact_literal(number.literal_component(), "8"));
+        }
         CssLonghandValueRef::TextWrapMode(v) => assert_eq!(*v, CssTextWrapMode::Wrap),
         CssLonghandValueRef::TextWrapStyle(v) => assert_eq!(*v, CssTextWrapStyle::Auto),
         CssLonghandValueRef::WhiteSpaceCollapse(v) => {
@@ -1223,7 +1253,7 @@ fn metadata_and_initials() {
             P::All,
         ])
         .collect();
-    assert_eq!(expected.len(), 337);
+    assert_eq!(expected.len(), 346);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {
@@ -1262,7 +1292,12 @@ fn metadata_and_initials() {
             metadata.inherited_by_default(),
             matches!(
                 property,
-                P::TextWrapMode
+                P::TextTransform
+                    | P::TextIndent
+                    | P::WordSpaceTransform
+                    | P::TabSize
+                    | P::LineBreak
+                    | P::TextWrapMode
                     | P::TextWrapStyle
                     | P::WhiteSpaceCollapse
                     | P::WordBreak
