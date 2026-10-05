@@ -2677,6 +2677,73 @@ fn literal_weight(
 }
 
 #[cfg(test)]
+mod suppressed_color_output_tests {
+    use super::*;
+    use crate::specified_rule_serialization::SpecifiedRuleWriter;
+    use crate::{CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef};
+
+    fn assert_suppressed_color(source: &str) {
+        let declaration = crate::parse_property_value(
+            CssPropertyNameRef::Known(CssKnownProperty::Color),
+            crate::parse_component_values(source).unwrap(),
+            crate::CssImportance::Normal,
+        )
+        .unwrap();
+        let CssKnownPropertyValueRef::Color(value) =
+            declaration.known().unwrap().property_value().unwrap()
+        else {
+            panic!("checked color property");
+        };
+        let value = value.value();
+        let original = value.clone();
+        let mut writer = SpecifiedRuleWriter::new(Limits::new(1_000_000, 1_000_000, 7));
+        writer.append("prefix:").unwrap();
+        assert_eq!(writer.context.remaining_bytes(), 0);
+        let result = writer
+            .without_output(|writer| value.append_specified(&mut writer.context, &mut writer.css));
+        assert_eq!(writer.css, "prefix:");
+        assert!(!writer.context.output_suppressed());
+        assert_eq!(value, &original);
+        result.unwrap();
+    }
+
+    #[test]
+    fn suppressed_hex_does_not_format_output_with_an_exhausted_byte_budget() {
+        assert_suppressed_color("#123456");
+    }
+
+    #[test]
+    fn suppressed_rgb_does_not_format_output_with_an_exhausted_byte_budget() {
+        assert_suppressed_color("rgb(20 40 60 / .5)");
+    }
+
+    #[test]
+    fn suppressed_unequal_mix_weights_do_not_format_output_with_an_exhausted_byte_budget() {
+        assert_suppressed_color("color-mix(in oklab, red 20%, blue 80%)");
+    }
+
+    #[test]
+    fn suppressed_custom_mix_profile_does_not_escape_output_with_an_exhausted_byte_budget() {
+        assert_suppressed_color("color-mix(in --Profile, red, blue)");
+    }
+
+    #[test]
+    fn suppressed_custom_profile_calculation_needs_no_identifier_output_bytes() {
+        assert_suppressed_color("color(from red --P calc(Cyan / 3))");
+    }
+
+    #[test]
+    fn suppressed_keyword_color_preserves_the_enclosing_buffer() {
+        assert_suppressed_color("currentcolor");
+    }
+
+    #[test]
+    fn suppressed_equal_weight_mix_preserves_the_enclosing_buffer() {
+        assert_suppressed_color("color-mix(in oklab, red, blue)");
+    }
+}
+
+#[cfg(test)]
 mod declared_literal_tests {
     use super::*;
     use crate::{CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef};
