@@ -421,6 +421,9 @@ pub fn surgeist_css::CssCaptionSide::serialize_specified_with_limits(&self, limi
 #[non_exhaustive] pub enum surgeist_css::CssCaretColor
 pub surgeist_css::CssCaretColor::Auto
 pub surgeist_css::CssCaretColor::Color(alloc::boxed::Box<surgeist_css::CssColor>)
+impl surgeist_css::CssCaretColor
+pub fn surgeist_css::CssCaretColor::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssCaretColor::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssCharacterAlignmentErrorKind
 pub surgeist_css::CssCharacterAlignmentErrorKind::Component(surgeist_css::CssComponentValueErrorKind)
 pub surgeist_css::CssCharacterAlignmentErrorKind::InvalidCharacter
@@ -602,6 +605,9 @@ pub surgeist_css::CssContain::Components(surgeist_css::CssContainComponentList)
 pub surgeist_css::CssContain::Content
 pub surgeist_css::CssContain::None
 pub surgeist_css::CssContain::Strict
+impl surgeist_css::CssContain
+pub fn surgeist_css::CssContain::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssContain::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssContainComponent
 pub surgeist_css::CssContainComponent::Layout
 pub surgeist_css::CssContainComponent::Paint
@@ -1814,6 +1820,10 @@ pub fn surgeist_css::CssImageConstructionError::fmt(&self, f: &mut core::fmt::Fo
 pub surgeist_css::CssImageOrientation::Angle(surgeist_css::CssAngleValue)
 pub surgeist_css::CssImageOrientation::Flip(core::option::Option<surgeist_css::CssAngleValue>)
 pub surgeist_css::CssImageOrientation::FromImage
+pub surgeist_css::CssImageOrientation::None
+impl surgeist_css::CssImageOrientation
+pub fn surgeist_css::CssImageOrientation::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssImageOrientation::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl core::cmp::PartialEq for surgeist_css::CssImageOrientation
 pub fn surgeist_css::CssImageOrientation::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssImageRendering
@@ -4972,6 +4982,9 @@ pub struct surgeist_css::CssBlendModeList
 impl surgeist_css::CssBlendModeList
 pub fn surgeist_css::CssBlendModeList::modes(&self) -> &[surgeist_css::CssBlendMode]
 pub fn surgeist_css::CssBlendModeList::try_new(modes: alloc::vec::Vec<surgeist_css::CssBlendMode>) -> core::option::Option<Self>
+impl surgeist_css::CssBlendModeList
+pub fn surgeist_css::CssBlendModeList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBlendModeList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssBlockSizePropertyValue
 impl surgeist_css::CssBlockSizePropertyValue
 pub fn surgeist_css::CssBlockSizePropertyValue::as_css(&self) -> &str

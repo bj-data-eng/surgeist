@@ -81,7 +81,11 @@ fn schedule_authored<'a>(
         R::CurrentColor => work.push(Work::Text("currentcolor")),
         R::Transparent => work.push(Work::Text("transparent")),
         R::Hex(value) => work.push(Work::Owned(serialize_hex(value, mode, context)?)),
-        R::Named(value) => work.push(Work::Owned(value.name().to_ascii_lowercase())),
+        R::Named(value) => {
+            if !context.output_suppressed() {
+                work.push(Work::Owned(value.name().to_ascii_lowercase()));
+            }
+        }
         R::System(value) => work.push(Work::Text(authored_system_name(*value))),
         R::Rgb(value) => work.push(Work::Owned(serialize_rgb(value, mode, context)?)),
         R::Hsl(value) => work.push(Work::Owned(serialize_hsl(value, mode, context)?)),
@@ -212,7 +216,9 @@ fn schedule_relative<'a>(
         work.push(Work::Text(" "));
     }
     work.push(Work::Color(value.source(), Mode::Origin));
-    work.push(Work::Owned(format!("{name}(from ")));
+    if !context.output_suppressed() {
+        work.push(Work::Owned(format!("{name}(from ")));
+    }
     Ok(())
 }
 
@@ -260,7 +266,25 @@ pub(crate) fn is_default_mix(value: &CssColorInterpolation) -> bool {
 }
 
 fn escaped_identifier(value: &str, context: &SpecifiedSerializationContext) -> Result<String> {
+    if context.output_suppressed() {
+        return Ok(String::new());
+    }
     crate::numeric::capture_identifier(value, context)
+}
+
+fn ordinary_number(value: f64, context: &SpecifiedSerializationContext) -> Result<String> {
+    if context.output_suppressed() {
+        return Ok(String::new());
+    }
+    crate::numeric_formatting::format_ordinary_color_number(value, context.remaining_bytes())
+}
+
+fn output_text(value: &str, context: &SpecifiedSerializationContext) -> String {
+    if context.output_suppressed() {
+        String::new()
+    } else {
+        value.into()
+    }
 }
 
 fn relative_function(value: &CssRelativeColorFunction) -> (&'static str, Option<&'static str>) {
@@ -340,17 +364,22 @@ fn authored_system_name(value: CssSystemColor) -> &'static str {
 struct LocalCss {
     text: String,
     limit: usize,
+    suppressed: bool,
 }
 
 impl LocalCss {
-    fn new(limit: usize) -> Self {
+    fn new(context: &SpecifiedSerializationContext) -> Self {
         Self {
             text: String::new(),
-            limit,
+            limit: context.remaining_bytes(),
+            suppressed: context.output_suppressed(),
         }
     }
 
     fn push(&mut self, value: &str) -> Result<()> {
+        if self.suppressed {
+            return Ok(());
+        }
         use crate::CssSpecifiedValueSerializationErrorKind as K;
         let next = self
             .text
@@ -377,7 +406,7 @@ fn suffix_text(
     suffix: &str,
     context: &SpecifiedSerializationContext,
 ) -> Result<String> {
-    let mut output = LocalCss::new(context.remaining_bytes());
+    let mut output = LocalCss::new(context);
     output.push(&text)?;
     output.push(suffix)?;
     Ok(output.finish())
@@ -407,6 +436,9 @@ struct ProjectedScalar {
     missing: bool,
     percentage: bool,
     calculation: bool,
+    // A direct exact slot can defer its logical materialization until a
+    // contextual HSL/HWB branch selects it. Emitted text is not phase state.
+    direct_text_pending: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -593,6 +625,9 @@ fn generic_literal_text(
     };
     if let Some(shift) = shift {
         context.charge_projection(1)?;
+        if context.output_suppressed() {
+            return Ok(String::new());
+        }
         crate::numeric_formatting::format_css_number(
             representation,
             shift,
@@ -667,6 +702,7 @@ fn declared_component_projection(
                 missing: false,
                 percentage,
                 calculation: false,
+                direct_text_pending: false,
             });
         }
         let calculation = match value {
@@ -696,6 +732,7 @@ fn declared_component_projection(
                 missing: false,
                 percentage: false,
                 calculation: true,
+                direct_text_pending: false,
             });
         }
     }
@@ -787,7 +824,7 @@ fn lab_component_projection(
         })
     };
     if let Some(endpoint) = endpoint {
-        let mut text = LocalCss::new(context.remaining_bytes());
+        let mut text = LocalCss::new(context);
         text.push(endpoint)?;
         return Ok(ProjectedScalar {
             text: text.finish(),
@@ -798,6 +835,7 @@ fn lab_component_projection(
             missing: false,
             percentage: false,
             calculation: false,
+            direct_text_pending: false,
         });
     }
     direct_component_projection(representation, factor, false, true, context)
@@ -834,6 +872,7 @@ fn direct_component_projection(
         missing: false,
         percentage,
         calculation: false,
+        direct_text_pending: !materialize_direct,
     })
 }
 
@@ -852,13 +891,14 @@ fn component_projection_with_text(
             context.charge_projection(1)?;
             Ok(ProjectedScalar {
                 scalar_value: None,
-                text: "none".into(),
+                text: output_text("none", context),
                 number: None,
                 exact: None,
                 contextual: false,
                 missing: true,
                 percentage: target == ComponentTarget::Percentage,
                 calculation: false,
+                direct_text_pending: false,
             })
         }
         C::Number(value) => {
@@ -916,6 +956,7 @@ fn component_projection_with_text(
                 missing: false,
                 percentage: false,
                 calculation: true,
+                direct_text_pending: false,
             })
         }
     }
@@ -957,6 +998,7 @@ fn number_calculation_projection(
         missing: false,
         percentage: false,
         calculation: true,
+        direct_text_pending: false,
     })
 }
 
@@ -995,7 +1037,7 @@ fn serialize_alpha(
     if matches!(value, CssColorComponent::None) {
         context.charge_input(1)?;
         context.charge_projection(1)?;
-        return Ok(Some("none".into()));
+        return Ok(Some(output_text("none", context)));
     }
     match value {
         CssColorComponent::NumberCalculation(_)
@@ -1035,12 +1077,7 @@ fn serialize_alpha(
                 if clamped == 1.0 {
                     return Ok(None);
                 }
-                return Ok(Some(
-                    crate::numeric_formatting::format_ordinary_color_number(
-                        clamped,
-                        context.remaining_bytes(),
-                    )?,
-                ));
+                return Ok(Some(ordinary_number(clamped, context)?));
             }
             Ok(Some(text))
         }
@@ -1100,6 +1137,10 @@ fn serialize_hex(
     mode: Mode,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<String> {
+    // A checked hex leaf has no children or fallible projection to visit.
+    if context.output_suppressed() {
+        return Ok(String::new());
+    }
     let digits = value.digits();
     let expanded: Vec<u8> = match digits.len() {
         3 | 4 => digits
@@ -1114,7 +1155,7 @@ fn serialize_hex(
         _ => unreachable!("checked hex color"),
     };
     let alpha = expanded.get(3).copied().filter(|alpha| *alpha != 255);
-    let mut out = LocalCss::new(context.remaining_bytes());
+    let mut out = LocalCss::new(context);
     let modern = mode == Mode::Origin;
     out.push(if alpha.is_some() && !modern {
         "rgba("
@@ -1252,15 +1293,16 @@ fn finalize_rgb_channel(
         } else {
             number.clamp(0.0, upper as f64)
         };
-        value.text = crate::numeric_formatting::format_ordinary_color_number(
-            clipped,
-            context.remaining_bytes(),
-        )?;
+        value.text = ordinary_number(clipped, context)?;
     } else if let Some(exact) = &value.exact {
         value.text = if exact.compare_integer(0, context)?.is_le() {
-            "0".into()
+            output_text("0", context)
         } else if exact.compare_integer(upper, context)?.is_ge() {
-            upper.to_string()
+            if context.output_suppressed() {
+                String::new()
+            } else {
+                upper.to_string()
+            }
         } else if upper == 1 {
             exact.clone_with_budget(context)?.format_exact_or_rounded(
                 6,
@@ -1280,13 +1322,14 @@ fn materialize_direct(
     value: &mut ProjectedScalar,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<()> {
-    if value.text.is_empty() {
+    if value.direct_text_pending {
         value.text = value
             .exact
             .as_ref()
-            .expect("unmaterialized direct scalar")
+            .expect("pending direct exact scalar")
             .clone_with_budget(context)?
             .format_exact(context.remaining_bytes(), context)?;
+        value.direct_text_pending = false;
     }
     Ok(())
 }
@@ -1297,7 +1340,7 @@ fn modern_function(
     alpha: Option<&str>,
     context: &SpecifiedSerializationContext,
 ) -> Result<String> {
-    let mut out = LocalCss::new(context.remaining_bytes());
+    let mut out = LocalCss::new(context);
     out.push(name)?;
     if name.starts_with("color(") {
         out.push(" ")?;
@@ -1326,7 +1369,7 @@ fn legacy_rgb(
     alpha: Option<&str>,
     context: &SpecifiedSerializationContext,
 ) -> Result<String> {
-    let mut out = LocalCss::new(context.remaining_bytes());
+    let mut out = LocalCss::new(context);
     out.push(if alpha.is_some() { "rgba(" } else { "rgb(" })?;
     for (index, channel) in channels.iter().enumerate() {
         if index != 0 {
@@ -1356,12 +1399,9 @@ fn finalize_hue(
     context: &SpecifiedSerializationContext,
 ) -> Result<()> {
     if let Some(number) = value.scalar_value {
-        value.text = crate::numeric_formatting::format_ordinary_color_number(
-            normalized_numeric_hue(number),
-            context.remaining_bytes(),
-        )?;
+        value.text = ordinary_number(normalized_numeric_hue(number), context)?;
         if value.text == "360" {
-            value.text = "0".into();
+            value.text = output_text("0", context);
         }
     }
     Ok(())
@@ -1384,7 +1424,8 @@ fn finalize_hsl_saturation(
         && exact.compare_integer(0, context)?.is_lt()
     {
         value.number = Some(ScaledNumber::ZERO);
-        value.text = "0".into();
+        value.text = output_text("0", context);
+        value.direct_text_pending = false;
     }
     let number = value.scalar_value.map(|number| {
         if number.is_nan() || number < 0.0 {
@@ -1426,10 +1467,7 @@ fn finalize_hsl_hwb_number(
         number
     };
     if number.is_finite() {
-        value.text = crate::numeric_formatting::format_ordinary_color_number(
-            number,
-            context.remaining_bytes(),
-        )?;
+        value.text = ordinary_number(number, context)?;
         value.percentage = percentage;
     } else {
         let text = match (number.is_sign_negative(), percentage) {
@@ -1438,7 +1476,7 @@ fn finalize_hsl_hwb_number(
             (false, true) => "calc(infinity * 1%)",
             (true, true) => "calc(-infinity * 1%)",
         };
-        let mut output = LocalCss::new(context.remaining_bytes());
+        let mut output = LocalCss::new(context);
         output.push(text)?;
         value.text = output.finish();
         // Exceptional dimensional calculations already contain their unit.
@@ -1460,10 +1498,7 @@ fn converted_rgb_text(
 ) -> Result<[String; 3]> {
     let mut text = [String::new(), String::new(), String::new()];
     for (target, channel) in text.iter_mut().zip(channels) {
-        *target = crate::numeric_formatting::format_ordinary_color_number(
-            channel.clamp(0.0, 1.0).binary64() * 255.0,
-            context.remaining_bytes(),
-        )?;
+        *target = ordinary_number(channel.clamp(0.0, 1.0).binary64() * 255.0, context)?;
     }
     Ok(text)
 }
@@ -1598,7 +1633,7 @@ fn exact_hsl_text(
             (300, ["255", "0", "255"]),
         ] {
             if hue.compare_integer(angle, context)?.is_eq() {
-                return Ok(channels.map(str::to_owned));
+                return Ok(channels.map(|channel| output_text(channel, context)));
             }
         }
     }
@@ -1796,10 +1831,10 @@ fn exact_hwb_text(
     let one = Exact::integer(1, context)?;
     if sum.compare(&one, context)?.is_ge() {
         if white.compare_integer(0, context)?.is_le() {
-            return Ok(["0".into(), "0".into(), "0".into()]);
+            return Ok(std::array::from_fn(|_| output_text("0", context)));
         }
         if white.compare(&sum, context)?.is_ge() {
-            return Ok(["255".into(), "255".into(), "255".into()]);
+            return Ok(std::array::from_fn(|_| output_text("255", context)));
         }
         let rounded = white.rounded_positive_ratio(&sum, 255, 6, context)?;
         let text = Exact::integer(rounded, context)?
@@ -1853,6 +1888,7 @@ fn clone_scalar(value: &ProjectedScalar) -> ProjectedScalar {
         missing: value.missing,
         percentage: value.percentage,
         calculation: value.calculation,
+        direct_text_pending: value.direct_text_pending,
     }
 }
 
@@ -1884,6 +1920,7 @@ fn hue_projection(
                 missing: false,
                 percentage: false,
                 calculation: false,
+                direct_text_pending: false,
             });
         }
     }
@@ -1892,7 +1929,15 @@ fn hue_projection(
         H::None => {
             context.charge_input(1)?;
             context.charge_projection(1)?;
-            ("none".into(), None, None, None, false, true, false)
+            (
+                output_text("none", context),
+                None,
+                None,
+                None,
+                false,
+                true,
+                false,
+            )
         }
         H::Number(value) => {
             context.charge_input(1)?;
@@ -1985,6 +2030,7 @@ fn hue_projection(
         missing,
         percentage: false,
         calculation,
+        direct_text_pending: false,
     })
 }
 
@@ -2270,6 +2316,9 @@ fn serialize_predefined(
         },
         context,
     )?;
+    if context.output_suppressed() {
+        return Ok(String::new());
+    }
     let name = format!("color({}", predefined_name(value.color_space()));
     modern_function(&name, &channels, alpha.as_deref(), context)
 }
@@ -2358,7 +2407,7 @@ fn serialize_custom(
         context,
     )?;
     let profile = escaped_identifier(value.profile().as_str(), context)?;
-    let mut name = LocalCss::new(context.remaining_bytes());
+    let mut name = LocalCss::new(context);
     name.push("color(")?;
     name.push(&profile)?;
     let name = name.finish();
@@ -2376,12 +2425,12 @@ fn serialize_relative_expression(
         V::None => {
             context.charge_input(1)?;
             context.charge_projection(1)?;
-            Ok("none".into())
+            Ok(output_text("none", context))
         }
         V::Channel(channel) => {
             context.charge_input(1)?;
             context.charge_projection(1)?;
-            Ok(relative_channel(*channel).into())
+            Ok(output_text(relative_channel(*channel), context))
         }
         V::Number(value) => {
             context.charge_input(1)?;
@@ -2513,6 +2562,10 @@ pub(crate) fn serialize_interpolation(
     value: &CssColorInterpolation,
     context: &SpecifiedSerializationContext,
 ) -> Result<String> {
+    // The owning mix has charged this checked interpolation node already.
+    if context.output_suppressed() {
+        return Ok(String::new());
+    }
     if let Some(value) = value.predefined() {
         Ok(serialize_interpolation_method(&value))
     } else {
@@ -2740,6 +2793,268 @@ mod suppressed_color_output_tests {
     #[test]
     fn suppressed_equal_weight_mix_preserves_the_enclosing_buffer() {
         assert_suppressed_color("color-mix(in oklab, red, blue)");
+    }
+}
+
+#[cfg(test)]
+mod suppressed_color_semantics_tests {
+    use super::*;
+    use crate::CssSpecifiedValueSerializationErrorKind as K;
+    use crate::specified_rule_serialization::SpecifiedRuleWriter;
+    use crate::{CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef};
+
+    fn color(source: &str) -> CssColor {
+        let declaration = crate::parse_property_value(
+            CssPropertyNameRef::Known(CssKnownProperty::Color),
+            crate::parse_component_values(source).unwrap(),
+            crate::CssImportance::Important,
+        )
+        .unwrap_or_else(|error| panic!("{source}: {error:?}"));
+        let CssKnownPropertyValueRef::Color(value) =
+            declaration.known().unwrap().property_value().unwrap()
+        else {
+            panic!("checked color");
+        };
+        value.value().clone()
+    }
+
+    fn append(value: &CssColor, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        value.append_specified(&mut writer.context, &mut writer.css)
+    }
+
+    #[test]
+    fn every_authored_color_family_visits_without_output_bytes() {
+        for source in [
+            "currentcolor",
+            "transparent",
+            "Purple",
+            "CanvasText",
+            "#1234",
+            "rgb(20 40 60 / .5)",
+            "rgb(none calc(50%) 0)",
+            "hsl(1 50% 50%)",
+            "hsl(none 50% 50%)",
+            "hwb(0 20% 80%)",
+            "hwb(0 calc(1em / 1px) 20%)",
+            "hsl(calc(1em / 1px) 50% 50%)",
+            "hsl(calc(1em / 1px) -20% 50%)",
+            "lab(100% 100% -100% / .5)",
+            "lch(50% 30% 1rad)",
+            "oklab(100% 100% -100%)",
+            "oklch(100% 100% 0)",
+            "color(display-p3 calc(50%) 0 .2)",
+            "color(--P 0% 70% 20% 0%)",
+            "device-cmyk(0 .2 .4 .6 / .5)",
+            "alpha(from hsl(1turn 50% 50%) / calc(50%))",
+            "rgb(from rgb(1 2 3 / .2) calc(r / 3) g b / 1)",
+            "color(from red --P calc(Cyan / 3) / alpha)",
+            "color-mix(in --Profile, red 20%, blue 80%)",
+            "color-mix(red calc(20%), blue)",
+            "light-dark(alpha(from red), contrast-color(blue))",
+        ] {
+            let value = color(source);
+            let original = value.clone();
+            for prefix in ["", "prefix:"] {
+                let mut writer =
+                    SpecifiedRuleWriter::new(Limits::new(100_000, 100_000, prefix.len()));
+                writer.append(prefix).unwrap();
+                writer
+                    .without_output(|writer| append(&value, writer))
+                    .unwrap_or_else(|error| panic!("{source}: {error:?}"));
+                assert_eq!(writer.css, prefix, "{source}");
+                assert_eq!(writer.context.remaining_bytes(), 0);
+                assert!(!writer.context.output_suppressed());
+                assert_eq!(value, original, "{source}");
+            }
+        }
+    }
+
+    #[test]
+    fn suppressed_children_and_emitted_siblings_share_exact_work_limits() {
+        let nested = color("light-dark(currentcolor, transparent)");
+        let sibling = color("currentcolor");
+        let mut writer = SpecifiedRuleWriter::new(Limits::new(4, 4, 13));
+        writer.append("x").unwrap();
+        writer
+            .without_output(|writer| append(&nested, writer))
+            .unwrap();
+        assert_eq!(writer.context.remaining_bytes(), 12);
+        append(&sibling, &mut writer).unwrap();
+        assert_eq!(writer.css, "xcurrentcolor");
+        assert_eq!(writer.context.remaining_bytes(), 0);
+        assert_eq!(
+            writer.context.charge_input(1).unwrap_err().kind(),
+            K::InputNodeLimit
+        );
+        assert_eq!(
+            writer.context.charge_projection(1).unwrap_err().kind(),
+            K::ProjectionNodeLimit
+        );
+    }
+
+    #[test]
+    fn contextual_slots_have_identical_semantic_budget_boundaries_in_both_modes() {
+        for source in [
+            "hsl(0 100% 50%)",
+            "hsl(60 100% 50%)",
+            "hsl(120 100% 50%)",
+            "hsl(180 100% 50%)",
+            "hsl(240 100% 50%)",
+            "hsl(300 100% 50%)",
+            "hwb(0 calc(1em / 1px) 20%)",
+            "hsl(calc(1em / 1px) -20% 50%)",
+            "hsl(calc(1em / 1px) 50% 50%)",
+            "color(from red --P calc(Cyan / 3))",
+            "color-mix(in --Profile, red 20%, blue 80%)",
+        ] {
+            let value = color(source);
+            for input_is_bounded in [true, false] {
+                let mut reached_success = false;
+                for limit in 0..400 {
+                    let (input, projection) = if input_is_bounded {
+                        (limit, 10_000)
+                    } else {
+                        (10_000, limit)
+                    };
+                    let mut emitted =
+                        SpecifiedRuleWriter::new(Limits::new(input, projection, 1_000));
+                    let ordinary = append(&value, &mut emitted).map_err(|error| error.kind());
+                    let mut suppressed =
+                        SpecifiedRuleWriter::new(Limits::new(input, projection, 0));
+                    let discarded = suppressed
+                        .without_output(|writer| append(&value, writer))
+                        .map_err(|error| error.kind());
+                    assert_eq!(
+                        ordinary, discarded,
+                        "{source}, input bounded {input_is_bounded}, limit {limit}"
+                    );
+                    assert!(suppressed.css.is_empty());
+                    assert!(!suppressed.context.output_suppressed());
+                    if ordinary.is_ok() {
+                        // The shared threshold must include all successful
+                        // visits. A following node cannot consume a refund.
+                        let ordinary_next = if input_is_bounded {
+                            emitted.context.charge_input(1)
+                        } else {
+                            emitted.context.charge_projection(1)
+                        }
+                        .map_err(|error| error.kind());
+                        let discarded_next = if input_is_bounded {
+                            suppressed.context.charge_input(1)
+                        } else {
+                            suppressed.context.charge_projection(1)
+                        }
+                        .map_err(|error| error.kind());
+                        assert_eq!(ordinary_next, discarded_next);
+                        assert!(ordinary_next.is_err(), "first successful limit is exact");
+                        reached_success = true;
+                        break;
+                    }
+                }
+                assert!(reached_success, "{source}: bounded semantic witness");
+            }
+        }
+    }
+
+    #[test]
+    fn exact_hsl_vertices_never_materialize_discarded_channel_text() {
+        use crate::exact_decimal::ExactRational;
+
+        for (angle, expected) in [
+            ("0", ["255", "0", "0"]),
+            ("60", ["255", "255", "0"]),
+            ("120", ["0", "255", "0"]),
+            ("180", ["0", "255", "255"]),
+            ("240", ["0", "0", "255"]),
+            ("300", ["255", "0", "255"]),
+        ] {
+            for suppressed in [false, true] {
+                let mut context = SpecifiedSerializationContext::new(Limits::new(
+                    0,
+                    1_000,
+                    if suppressed { 0 } else { 100 },
+                ));
+                context.replace_output_suppression(suppressed);
+                let hue = ExactRational::from_lexical_factor(
+                    angle,
+                    exact_factor(Factor::ONE),
+                    &mut context,
+                )
+                .unwrap();
+                let saturation = ExactRational::from_lexical_factor(
+                    "100",
+                    exact_factor(Factor::ONE),
+                    &mut context,
+                )
+                .unwrap();
+                let lightness = ExactRational::from_lexical_factor(
+                    "50",
+                    exact_factor(Factor::ONE),
+                    &mut context,
+                )
+                .unwrap();
+                let channels = exact_hsl_text(&hue, &saturation, &lightness, &mut context).unwrap();
+                if suppressed {
+                    assert_eq!(channels, [String::new(), String::new(), String::new()]);
+                } else {
+                    assert_eq!(channels, expected);
+                }
+                assert_eq!(context.output_suppressed(), suppressed);
+            }
+        }
+    }
+
+    #[test]
+    fn nested_suppression_restores_both_modes_after_semantic_failure() {
+        let value = color("light-dark(currentcolor, transparent)");
+        for (input, projection, expected) in [
+            (2, 100, K::InputNodeLimit),
+            (100, 2, K::ProjectionNodeLimit),
+        ] {
+            let mut writer = SpecifiedRuleWriter::new(Limits::new(input, projection, 2));
+            writer.append("x").unwrap();
+            let error = writer
+                .without_output(|writer| {
+                    let error = writer
+                        .without_output(|writer| append(&value, writer))
+                        .unwrap_err();
+                    assert!(writer.context.output_suppressed());
+                    Err::<(), _>(error)
+                })
+                .unwrap_err();
+            assert_eq!(error.kind(), expected);
+            assert!(!writer.context.output_suppressed());
+            writer.append("y").unwrap();
+            assert_eq!(writer.css, "xy");
+        }
+    }
+
+    #[test]
+    fn suppression_preserves_checked_exact_arithmetic_errors() {
+        let value =
+            color("hsl(0 12345678901234567891e170141183460469231731687303715884105727% 50%)");
+        let mut writer = SpecifiedRuleWriter::new(Limits::new(100_000, 100_000, 0));
+        let error = writer
+            .without_output(|writer| append(&value, writer))
+            .unwrap_err();
+        assert_eq!(error.kind(), K::CapacityOverflow);
+        assert!(writer.css.is_empty());
+        assert!(!writer.context.output_suppressed());
+    }
+
+    #[test]
+    fn explicit_alpha_and_profile_metadata_survive_discarded_output() {
+        let source = "/* origin */color(from rgb(1 2 3 / .2) --P Cyan / alpha)";
+        let value = color(source);
+        let original = value.clone();
+        let expected = "color(from rgb(1 2 3 / 0.2) --P Cyan / alpha)";
+        let mut writer = SpecifiedRuleWriter::new(Limits::new(100_000, 100_000, expected.len()));
+        writer
+            .without_output(|writer| append(&value, writer))
+            .unwrap();
+        assert_eq!(value, original);
+        append(&value, &mut writer).unwrap();
+        assert_eq!(writer.css, expected);
     }
 }
 

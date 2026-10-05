@@ -1786,6 +1786,11 @@ impl ExactRational {
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
     ) -> Result<String, crate::CssSpecifiedValueSerializationError> {
         let self_ = self.into_terminating(context)?;
+        // Retain the checked rational conversion and its work/errors, but do
+        // not allocate decimal or expanded CSS text for a discarded value.
+        if context.output_suppressed() {
+            return Ok(String::new());
+        }
         if self_.coefficient.is_zero() {
             return crate::specified_serialization::format_digits(
                 std::iter::empty(),
@@ -1820,8 +1825,12 @@ impl ExactRational {
             return Err(Error::new(CapacityOverflow));
         }
         context.charge_projection(1)?;
+        let suppressed = context.output_suppressed();
         let lexical = LexicalDecimal::new(text);
         let zero = || {
+            if suppressed {
+                return Ok(String::new());
+            }
             crate::specified_serialization::format_digits(
                 std::iter::empty(),
                 0,
@@ -1866,7 +1875,7 @@ impl ExactRational {
         // integer. Reject before expanding a positive exponent or reserving.
         let bound =
             byte_limit as i128 + 6 + guard as i128 + factor.denominator.ilog10() as i128 + 1;
-        if kept > bound {
+        if !suppressed && kept > bound {
             return Err(Error::new(ByteLimit));
         }
         let kept = usize::try_from(kept).map_err(|_| Error::new(CapacityOverflow))?;
@@ -1921,6 +1930,9 @@ impl ExactRational {
                 rounded /= 10;
                 exponent += 1;
             }
+            if suppressed {
+                return Ok(String::new());
+            }
             let mut digits = [0_u8; 39];
             let mut len = 0;
             while rounded != 0 {
@@ -1937,8 +1949,9 @@ impl ExactRational {
             );
         }
         // Large integer text reuses the existing coefficient/division owner.
-        // Its retained storage is bounded by the current byte budget; discarded
-        // fractional digits and exponent-sized zero tails never enter storage.
+        // Emitted scratch is bounded by the current byte budget. Suppressed
+        // arithmetic instead retains the cumulative projection bound; discarded
+        // fractional digits never enter storage.
         let product_digits = kept
             .checked_add(factor.numerator.ilog10() as usize + 1)
             .ok_or_else(|| Error::new(CapacityOverflow))?;
@@ -1948,7 +1961,7 @@ impl ExactRational {
             .checked_add(1)
             .and_then(|n| n.checked_mul(4))
             .ok_or_else(|| Error::new(CapacityOverflow))?;
-        if scratch_bytes > byte_limit {
+        if !suppressed && scratch_bytes > byte_limit {
             return Err(Error::new(ByteLimit));
         }
         let end = lexical
@@ -1993,6 +2006,9 @@ impl ExactRational {
         if DecimalRounding::AwayFromZero.rounds_up(ordering, lexical.negative) {
             rounded.increment(context)?;
         }
+        if suppressed {
+            return Ok(String::new());
+        }
         Self::emit_rounded_coefficient(rounded, 6, lexical.negative, byte_limit)
     }
 
@@ -2002,7 +2018,11 @@ impl ExactRational {
         byte_limit: usize,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
     ) -> Result<String, crate::CssSpecifiedValueSerializationError> {
+        let suppressed = context.output_suppressed();
         if self.unbounded_tiny {
+            if suppressed {
+                return Ok(String::new());
+            }
             return crate::specified_serialization::format_digits(
                 std::iter::empty(),
                 0,
@@ -2012,6 +2032,9 @@ impl ExactRational {
             );
         }
         if self.coefficient.is_zero() {
+            if suppressed {
+                return Ok(String::new());
+            }
             return crate::specified_serialization::format_digits(
                 std::iter::empty(),
                 0,
@@ -2040,7 +2063,7 @@ impl ExactRational {
                         crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                     )
                 })?;
-            if shift > maximum_materialized_shift {
+            if !suppressed && shift > maximum_materialized_shift {
                 return Err(crate::CssSpecifiedValueSerializationError::new(
                     crate::CssSpecifiedValueSerializationErrorKind::ByteLimit,
                 ));
@@ -2103,6 +2126,11 @@ impl ExactRational {
         };
         if DecimalRounding::TowardPositiveInfinity.rounds_up(rounding, self.negative) {
             rounded.increment(context)?;
+        }
+        // Arithmetic storage is bounded by the existing cumulative projection
+        // budget. Only decimal-string and CSS emission are omitted.
+        if suppressed {
+            return Ok(String::new());
         }
         Self::emit_rounded_coefficient(rounded, places_i128, self.negative, byte_limit)
     }
@@ -3022,6 +3050,102 @@ mod tests {
         assert_eq!(
             exact_binary32_value(&format!("1{}e-4096", "0".repeat(4096))),
             Some(1.0)
+        );
+    }
+}
+
+#[cfg(test)]
+mod suppressed_format_tests {
+    use super::*;
+    use crate::specified_serialization::SpecifiedSerializationContext;
+    use crate::{
+        CssSpecifiedValueSerializationErrorKind as Kind,
+        CssSpecifiedValueSerializationLimits as Limits,
+    };
+
+    const UNIT: ExactFactor = ExactFactor {
+        numerator: 1,
+        denominator: 1,
+    };
+
+    #[test]
+    fn suppressed_exact_conversion_spends_the_same_semantic_work() {
+        let mut context = SpecifiedSerializationContext::new(Limits::new(0, 3, 0));
+        context.replace_output_suppression(true);
+        let value = ExactRational::from_lexical_factor(
+            "255",
+            ExactFactor {
+                numerator: 1,
+                denominator: 255,
+            },
+            &mut context,
+        )
+        .unwrap();
+        assert_eq!(value.format_exact(0, &mut context).unwrap(), "");
+        assert_eq!(
+            context.charge_projection(1).unwrap_err().kind(),
+            Kind::ProjectionNodeLimit
+        );
+        assert!(context.output_suppressed());
+    }
+
+    #[test]
+    fn suppressed_exact_conversion_retains_nonterminating_and_work_errors() {
+        let mut context = SpecifiedSerializationContext::new(Limits::new(0, 100, 0));
+        context.replace_output_suppression(true);
+        let value = ExactRational::from_lexical_factor(
+            "1",
+            ExactFactor {
+                numerator: 1,
+                denominator: 3,
+            },
+            &mut context,
+        )
+        .unwrap();
+        assert_eq!(
+            value.format_exact(0, &mut context).unwrap_err().kind(),
+            Kind::CapacityOverflow
+        );
+        let mut context = SpecifiedSerializationContext::new(Limits::new(0, 2, 0));
+        context.replace_output_suppression(true);
+        let value = ExactRational::from_lexical_factor(
+            "1",
+            ExactFactor {
+                numerator: 1,
+                denominator: 2,
+            },
+            &mut context,
+        )
+        .unwrap();
+        assert_eq!(
+            value.format_exact(0, &mut context).unwrap_err().kind(),
+            Kind::ProjectionNodeLimit
+        );
+    }
+
+    #[test]
+    fn suppressed_rounding_omits_text_but_keeps_bounded_arithmetic() {
+        for source in [
+            ".1234565",
+            "12345678901234567890123456789012345678901234567890",
+            "1e30",
+        ] {
+            let mut context = SpecifiedSerializationContext::new(Limits::new(0, 1_000, 0));
+            context.replace_output_suppression(true);
+            let value = ExactRational::from_lexical_factor(source, UNIT, &mut context).unwrap();
+            assert_eq!(value.format_rounded(6, 0, &mut context).unwrap(), "");
+            assert_eq!(
+                ExactRational::format_generic_number(source, UNIT, 0, &mut context).unwrap(),
+                ""
+            );
+        }
+        let mut context = SpecifiedSerializationContext::new(Limits::new(0, 100, 0));
+        context.replace_output_suppression(true);
+        assert_eq!(
+            ExactRational::format_generic_number("1e1000000000", UNIT, 0, &mut context)
+                .unwrap_err()
+                .kind(),
+            Kind::ProjectionNodeLimit
         );
     }
 }

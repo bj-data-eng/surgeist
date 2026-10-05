@@ -119,16 +119,25 @@ impl CssBorderWidthPair {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String> {
-        output(limits, |context, text| {
-            context.charge_input(1)?;
-            context.charge_projection(1)?;
-            self.start.append_specified(context, text)?;
-            if let Some(end) = &self.authored_end {
-                context.append(text, " ")?;
-                end.append_specified(context, text)?;
-            }
-            Ok(())
-        })
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> Result<()> {
+        let context = &mut writer.context;
+        let text = &mut writer.css;
+        context.charge_input(1)?;
+        context.charge_projection(1)?;
+        self.start.append_specified(context, text)?;
+        if let Some(end) = &self.authored_end {
+            context.append(text, " ")?;
+            end.append_specified(context, text)?;
+        }
+        Ok(())
     }
 }
 
@@ -174,20 +183,29 @@ impl CssBorderWidthShorthand {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String> {
-        output(limits, |context, text| {
-            context.charge_input(1)?;
-            context.charge_projection(1)?;
-            if self.kind == CssBoxSideKind::Logical {
-                context.append(text, "logical ")?;
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> Result<()> {
+        let context = &mut writer.context;
+        let text = &mut writer.css;
+        context.charge_input(1)?;
+        context.charge_projection(1)?;
+        if self.kind == CssBoxSideKind::Logical {
+            context.append(text, "logical ")?;
+        }
+        for (index, width) in self.authored_values.iter().enumerate() {
+            if index > 0 {
+                context.append(text, " ")?;
             }
-            for (index, width) in self.authored_values.iter().enumerate() {
-                if index > 0 {
-                    context.append(text, " ")?;
-                }
-                width.append_specified(context, text)?;
-            }
-            Ok(())
-        })
+            width.append_specified(context, text)?;
+        }
+        Ok(())
     }
 }
 
@@ -231,25 +249,182 @@ impl CssBorder {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String> {
-        output(limits, |context, text| {
-            context.charge_input(1)?;
-            context.charge_projection(1)?;
-            if let Some(width) = &self.width {
-                width.append_specified(context, text)?;
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> Result<()> {
+        let context = &mut writer.context;
+        let text = &mut writer.css;
+        context.charge_input(1)?;
+        context.charge_projection(1)?;
+        if let Some(width) = &self.width {
+            width.append_specified(context, text)?;
+        }
+        if let Some(style) = self.style {
+            if self.width.is_some() {
+                context.append(text, " ")?;
             }
-            if let Some(style) = self.style {
-                if !text.is_empty() {
-                    context.append(text, " ")?;
-                }
-                style.append_specified(context, text)?;
+            style.append_specified(context, text)?;
+        }
+        if let Some(color) = &self.color {
+            if self.width.is_some() || self.style.is_some() {
+                context.append(text, " ")?;
             }
-            if let Some(color) = &self.color {
-                if !text.is_empty() {
-                    context.append(text, " ")?;
-                }
-                color.append_specified(context, text)?;
-            }
-            Ok(())
-        })
+            color.append_specified(context, text)?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod cumulative_bridge_contract {
+    use super::*;
+    use crate::specified_rule_serialization::SpecifiedRuleWriter;
+    use crate::{
+        CssComponentValue, CssSpecifiedValueSerializationErrorKind as Kind,
+        CssSpecifiedValueSerializationLimits as Limits,
+    };
+
+    fn composition(
+        expected: &str,
+        nodes: usize,
+        append: impl Fn(&mut SpecifiedRuleWriter) -> Result<()>,
+    ) {
+        let mut writer =
+            SpecifiedRuleWriter::new(Limits::new(2 * nodes, 2 * nodes, 2 * expected.len() + 2));
+        writer.append("!").unwrap();
+        append(&mut writer).unwrap();
+        writer.append(";").unwrap();
+        append(&mut writer).unwrap();
+        assert_eq!(writer.css, format!("!{expected};{expected}"));
+        assert_eq!(
+            writer.context.charge_input(1).unwrap_err().kind(),
+            Kind::InputNodeLimit
+        );
+        assert_eq!(
+            writer.context.charge_projection(1).unwrap_err().kind(),
+            Kind::ProjectionNodeLimit
+        );
+        assert_eq!(writer.append("x").unwrap_err().kind(), Kind::ByteLimit);
+        let mut suppressed = SpecifiedRuleWriter::new(Limits::new(nodes, nodes, 0));
+        suppressed.without_output(|writer| append(writer)).unwrap();
+        assert!(suppressed.css.is_empty());
+        assert!(!suppressed.context.output_suppressed());
+        assert_eq!(
+            suppressed.context.charge_input(1).unwrap_err().kind(),
+            Kind::InputNodeLimit
+        );
+        assert_eq!(
+            suppressed.context.charge_projection(1).unwrap_err().kind(),
+            Kind::ProjectionNodeLimit
+        );
+    }
+
+    #[test]
+    fn border_separators_depend_on_this_border_components() {
+        for (value, expected, nodes) in [
+            (
+                CssBorder::try_new(None, Some(CssBorderStyle::Solid), None).unwrap(),
+                "solid",
+                2,
+            ),
+            (
+                CssBorder::try_new(None, None, Some(CssColor::current_color())).unwrap(),
+                "currentcolor",
+                2,
+            ),
+            (
+                CssBorder::try_new(
+                    None,
+                    Some(CssBorderStyle::Solid),
+                    Some(CssColor::current_color()),
+                )
+                .unwrap(),
+                "solid currentcolor",
+                3,
+            ),
+            (
+                CssBorder::try_new(
+                    Some(CssBorderWidth::Thin),
+                    Some(CssBorderStyle::Solid),
+                    Some(CssColor::current_color()),
+                )
+                .unwrap(),
+                "thin solid currentcolor",
+                4,
+            ),
+        ] {
+            assert_eq!(value.serialize_specified().unwrap(), expected);
+            composition(expected, nodes, |writer| {
+                value.append_to_rule_writer(writer)
+            });
+        }
+    }
+
+    #[test]
+    fn width_pairs_and_shorthands_keep_authored_slots() {
+        let pair = CssBorderWidthPair::new(CssBorderWidth::Thin, Some(CssBorderWidth::Thin));
+        assert_eq!(pair.serialize_specified().unwrap(), "thin thin");
+        composition("thin thin", 3, |writer| pair.append_to_rule_writer(writer));
+        let single = CssBorderWidthPair::new(CssBorderWidth::Medium, None);
+        composition("medium", 2, |writer| single.append_to_rule_writer(writer));
+        let quad = CssBorderWidthShorthand::try_new(
+            CssBoxSideKind::Logical,
+            vec![CssBorderWidth::Thin, CssBorderWidth::Thick],
+        )
+        .unwrap();
+        assert_eq!(quad.serialize_specified().unwrap(), "logical thin thick");
+        composition("logical thin thick", 3, |writer| {
+            quad.append_to_rule_writer(writer)
+        });
+    }
+
+    #[test]
+    fn suppressed_exact_width_retains_numeric_origin_and_uses_no_byte_scratch() {
+        let width = CssSpecifiedNonNegativeLength::try_from_component(
+            CssComponentValue::try_dimension("1e50", "px").unwrap(),
+        )
+        .unwrap();
+        let value = CssBorderWidthPair::new(CssBorderWidth::Length(width), None);
+        let before = value.clone();
+        let mut writer = SpecifiedRuleWriter::new(Limits::new(2, 2, 1));
+        writer.append("x").unwrap();
+        writer
+            .without_output(|writer| value.append_to_rule_writer(writer))
+            .unwrap();
+        assert_eq!(writer.css, "x");
+        assert_eq!(value, before);
+        assert!(matches!(
+            value.start().origin(),
+            Some(CssValueOrigin::Programmatic)
+        ));
+        assert_eq!(
+            writer.context.charge_input(1).unwrap_err().kind(),
+            Kind::InputNodeLimit
+        );
+    }
+
+    #[test]
+    fn suppressed_child_failure_restores_nested_output_mode() {
+        let value = CssBorderWidthPair::new(CssBorderWidth::Thin, Some(CssBorderWidth::Thick));
+        let mut writer = SpecifiedRuleWriter::new(Limits::new(2, 100, 1));
+        let error = writer
+            .without_output(|writer| {
+                let error = writer
+                    .without_output(|writer| value.append_to_rule_writer(writer))
+                    .unwrap_err();
+                assert!(writer.context.output_suppressed());
+                Err::<(), _>(error)
+            })
+            .unwrap_err();
+        assert_eq!(error.kind(), Kind::InputNodeLimit);
+        assert!(!writer.context.output_suppressed());
+        writer.append("x").unwrap();
+        assert_eq!(writer.css, "x");
     }
 }

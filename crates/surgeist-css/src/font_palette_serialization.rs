@@ -28,6 +28,16 @@ impl CssFontPalette {
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String, CssSpecifiedValueSerializationError> {
         let mut writer = SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    /// Visits the complete authored graph with the enclosing operation's
+    /// cumulative work, byte budget and emission mode.
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut SpecifiedRuleWriter,
+    ) -> Result<(), CssSpecifiedValueSerializationError> {
         let mut work = Vec::new();
         reserve_palette_work(&mut work, 1)?;
         work.push(PaletteWork::Palette(self));
@@ -43,12 +53,12 @@ impl CssFontPalette {
                         Self::Light => writer.append("light")?,
                         Self::Dark => writer.append("dark")?,
                         Self::Named(name) => writer.append_identifier(name.as_str())?,
-                        Self::Mix(value) => schedule_palette_mix(value, &mut work, &mut writer)?,
+                        Self::Mix(value) => schedule_palette_mix(value, &mut work, writer)?,
                     }
                 }
             }
         }
-        Ok(writer.css)
+        Ok(())
     }
 }
 
@@ -218,5 +228,154 @@ impl CssFontPaletteValuesRule {
         let mut writer = SpecifiedRuleWriter::new(limits);
         writer.palette(self)?;
         Ok(writer.css)
+    }
+}
+
+#[cfg(test)]
+mod composition_tests {
+    use super::*;
+    use crate::CssSpecifiedValueSerializationErrorKind as Kind;
+    use crate::{CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef};
+
+    fn palette(source: &str) -> CssFontPalette {
+        let declaration = crate::parse_property_value(
+            CssPropertyNameRef::Known(CssKnownProperty::FontPalette),
+            crate::parse_component_values(source).unwrap(),
+            crate::CssImportance::Normal,
+        )
+        .unwrap_or_else(|error| panic!("{source}: {error:?}"));
+        let CssKnownPropertyValueRef::FontPalette(value) =
+            declaration.known().unwrap().property_value().unwrap()
+        else {
+            panic!("checked font palette");
+        };
+        value.palette().clone()
+    }
+
+    #[test]
+    fn bridge_composes_with_the_callers_buffer_and_byte_limit() {
+        let value = palette("palette-mix(light 20%, dark 80%)");
+        let expected = "xpalette-mix(light 20%, dark 80%)y";
+        let mut writer = SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(
+            100_000,
+            100_000,
+            expected.len(),
+        ));
+        writer.append("x").unwrap();
+        value.append_to_rule_writer(&mut writer).unwrap();
+        writer.append("y").unwrap();
+        assert_eq!(writer.css, expected);
+        assert_eq!(writer.context.remaining_bytes(), 0);
+        assert_eq!(writer.append("z").unwrap_err().kind(), Kind::ByteLimit);
+    }
+
+    #[test]
+    fn suppressed_nested_mix_visits_named_and_calculated_children_with_no_bytes() {
+        for source in [
+            "normal",
+            "light",
+            "dark",
+            "--theme",
+            "palette-mix(in --Profile, light 20%, dark 80%)",
+            "palette-mix(light calc(10%), dark)",
+            "palette-mix(palette-mix(in srgb, light 30%, normal) 20%, dark)",
+            "palette-mix(palette-mix(dark), palette-mix(light, --theme), normal)",
+        ] {
+            let value = palette(source);
+            let original = value.clone();
+            let mut writer = SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(
+                100_000, 100_000, 1,
+            ));
+            writer.append("x").unwrap();
+            writer
+                .without_output(|writer| value.append_to_rule_writer(writer))
+                .unwrap_or_else(|error| panic!("{source}: {error:?}"));
+            assert_eq!(writer.css, "x");
+            assert!(!writer.context.output_suppressed());
+            assert_eq!(value, original);
+        }
+    }
+
+    #[test]
+    fn suppressed_palette_and_emitted_sibling_share_exact_semantic_budget() {
+        let mut writer =
+            SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(2, 2, 4));
+        writer
+            .without_output(|writer| CssFontPalette::Normal.append_to_rule_writer(writer))
+            .unwrap();
+        CssFontPalette::Dark
+            .append_to_rule_writer(&mut writer)
+            .unwrap();
+        assert_eq!(writer.css, "dark");
+        assert_eq!(
+            writer.context.charge_input(1).unwrap_err().kind(),
+            Kind::InputNodeLimit
+        );
+        assert_eq!(
+            writer.context.charge_projection(1).unwrap_err().kind(),
+            Kind::ProjectionNodeLimit
+        );
+    }
+
+    #[test]
+    fn deep_singleton_palette_bridge_keeps_iterative_suppressed_traversal() {
+        let mut value = CssFontPalette::Normal;
+        for _ in 0..256 {
+            value = CssFontPalette::Mix(Box::new(
+                CssFontPaletteMix::try_new(
+                    None,
+                    vec![CssFontPaletteMixComponent::new(value, None)],
+                )
+                .unwrap(),
+            ));
+        }
+        assert_eq!(
+            CssFontPaletteMix::try_new(
+                None,
+                vec![CssFontPaletteMixComponent::new(value.clone(), None)]
+            )
+            .unwrap_err(),
+            crate::CssFontPaletteMixConstructionError::NestingLimit,
+        );
+        let mut writer =
+            SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(257, 100_000, 0));
+        writer
+            .without_output(|writer| value.append_to_rule_writer(writer))
+            .unwrap();
+        assert!(writer.css.is_empty());
+        assert!(!writer.context.output_suppressed());
+        assert_eq!(
+            writer.context.charge_input(1).unwrap_err().kind(),
+            Kind::InputNodeLimit
+        );
+    }
+
+    #[test]
+    fn nested_palette_failure_restores_output_and_retains_consumed_work() {
+        let value = palette("palette-mix(light, dark)");
+        for (input, projection, expected) in [
+            (1, 100, Kind::InputNodeLimit),
+            (100, 1, Kind::ProjectionNodeLimit),
+        ] {
+            let mut writer = SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(
+                input, projection, 2,
+            ));
+            writer.append("x").unwrap();
+            let error = writer
+                .without_output(|writer| {
+                    let error = writer
+                        .without_output(|writer| value.append_to_rule_writer(writer))
+                        .unwrap_err();
+                    assert!(writer.context.output_suppressed());
+                    Err::<(), _>(error)
+                })
+                .unwrap_err();
+            assert_eq!(error.kind(), expected);
+            assert!(!writer.context.output_suppressed());
+            writer.append("y").unwrap();
+            assert_eq!(writer.css, "xy");
+            let result = CssFontPalette::Normal.append_to_rule_writer(&mut writer);
+            assert_eq!(result.unwrap_err().kind(), expected);
+        }
     }
 }

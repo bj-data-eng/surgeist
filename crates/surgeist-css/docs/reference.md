@@ -6447,3 +6447,30 @@ The existing numeric specified precision policy still applies: a tiny exact
 These providers do not complete decoration-line `spelling-error`/`grammar-error`,
 property metadata, shorthand resets, normalization or generic declaration
 dispatch. Full owning text lifecycle acceptance remains separate.
+
+## Image orientation and represented caret, containment and blend output
+
+`CssImageOrientation` retains `from-image`, explicit `none`, an authored angle,
+or `flip` with an optional angle. The selected
+[Images 3 grammar](https://www.w3.org/TR/2023/CRD-css-images-3-20231218/#the-image-orientation)
+accepts the angle and `flip` in either order; output places the angle first.
+Duplicate components and extra values reject the whole declaration while valid
+neighbors survive. An omitted angle and an explicit zero angle remain distinct.
+Serialization preserves exact authored coefficients and origins without applying
+computed quarter-turn rounding. Each explicit keyword costs one input and
+projection node; angles retain their shared numeric owner's costs, without an
+additional enum-carrier charge. Separators cost final UTF-8 bytes only.
+
+`CssCaretColor`, `CssContain` and `CssBlendModeList` also expose
+`serialize_specified` and `serialize_specified_with_limits`. Caret output emits
+`auto` or delegates to Color without resolving its rendering context or adding a
+carrier node. Represented containment emits `none`, `strict`, `content`, or the
+stored component subset in `size layout paint` grammar order, leaving the stored
+order unchanged. Keywords cost one node in each work budget; a containment list
+costs one aggregate plus each keyword. Blend output retains comma-list order and
+duplicates, costing one aggregate plus each primitive mode. All use one cumulative
+writer and return no partial public output on failure.
+
+These writers certify represented values. Broader containment alternatives,
+image-rendering alternatives, property metadata, expansion/normalization and
+generic declaration dispatch retain their existing owners.

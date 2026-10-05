@@ -635,10 +635,25 @@ pub(super) fn parse_image_orientation<'i, 't>(
         return Ok(CssImageOrientation::FromImage);
     }
     if input
+        .try_parse(|input| input.expect_ident_matching("none"))
+        .is_ok()
+    {
+        return Ok(CssImageOrientation::None);
+    }
+    if input
         .try_parse(|input| input.expect_ident_matching("flip"))
         .is_ok()
     {
-        return Ok(CssImageOrientation::Flip(None));
+        let angle = if input.is_exhausted() {
+            None
+        } else {
+            Some(super::values::parse_angle_value(
+                input,
+                numeric,
+                super::values::AngleParserContext::ImageOrientation,
+            )?)
+        };
+        return Ok(CssImageOrientation::Flip(angle));
     }
     let angle = super::values::parse_angle_value(
         input,

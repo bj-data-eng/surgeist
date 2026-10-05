@@ -345,12 +345,22 @@ impl CssScrollPaddingPair {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        serialize_pair(
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> SerializationResult<()> {
+        append_pair(
             self.start(),
             self.authored_end(),
-            limits,
+            writer,
             capture_padding_for_comparison,
             padding_equal,
+            visit_padding,
         )
     }
 }
@@ -388,12 +398,22 @@ impl CssScrollMarginPair {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        serialize_pair(
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> SerializationResult<()> {
+        append_pair(
             self.start(),
             self.authored_end(),
-            limits,
+            writer,
             capture_margin_for_comparison,
             margin_equal,
+            visit_margin,
         )
     }
 }
@@ -458,28 +478,39 @@ fn margin_equal(
     )
 }
 
-fn serialize_pair<T>(
+fn append_pair<T>(
     start: &T,
     end: Option<&T>,
-    limits: CssSpecifiedValueSerializationLimits,
+    writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     capture: impl Fn(
         &T,
         &mut SpecifiedSerializationContext,
     ) -> SerializationResult<CapturedNumericComponent>,
     component_equal: impl Fn(&T, &T, &CapturedNumericComponent, &CapturedNumericComponent) -> bool,
-) -> SerializationResult<String> {
-    let mut context = SpecifiedSerializationContext::new(limits);
-    let first = capture(start, &mut context)?;
-    let second = end.map(|end| capture(end, &mut context)).transpose()?;
-    let mut output = String::new();
-    context.append(&mut output, first.as_css())?;
+    visit: impl Fn(
+        &T,
+        &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> SerializationResult<()>,
+) -> SerializationResult<()> {
+    if writer.context.output_suppressed() {
+        visit(start, writer)?;
+        if let Some(end) = end {
+            visit(end, writer)?;
+        }
+        return Ok(());
+    }
+    let context = &mut writer.context;
+    let output = &mut writer.css;
+    let first = capture(start, context)?;
+    let second = end.map(|end| capture(end, context)).transpose()?;
+    context.append(output, first.as_css())?;
     if let (Some(end), Some(second)) = (end, second)
         && !component_equal(start, end, &first, &second)
     {
-        context.append(&mut output, " ")?;
-        context.append(&mut output, second.as_css())?;
+        context.append(output, " ")?;
+        context.append(output, second.as_css())?;
     }
-    Ok(output)
+    Ok(())
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -544,11 +575,21 @@ impl CssScrollPaddingShorthand {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        serialize_four(
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> SerializationResult<()> {
+        append_four(
             &self.0,
-            limits,
+            writer,
             capture_padding_for_comparison,
             padding_equal,
+            visit_padding,
         )
     }
 }
@@ -587,28 +628,54 @@ impl CssScrollMarginShorthand {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        serialize_four(&self.0, limits, capture_margin_for_comparison, margin_equal)
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> SerializationResult<()> {
+        append_four(
+            &self.0,
+            writer,
+            capture_margin_for_comparison,
+            margin_equal,
+            visit_margin,
+        )
     }
 }
 
-fn serialize_four<T>(
+fn append_four<T>(
     values: &ScrollFour<T>,
-    limits: CssSpecifiedValueSerializationLimits,
+    writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     capture: impl Fn(
         &T,
         &mut SpecifiedSerializationContext,
     ) -> SerializationResult<CapturedNumericComponent>,
     component_equal: impl Fn(&T, &T, &CapturedNumericComponent, &CapturedNumericComponent) -> bool,
-) -> SerializationResult<String> {
-    let mut context = SpecifiedSerializationContext::new(limits);
+    visit: impl Fn(
+        &T,
+        &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> SerializationResult<()>,
+) -> SerializationResult<()> {
+    let context = &mut writer.context;
     if values.kind == CssScrollSideKind::Logical {
         context.charge_input(1)?;
         context.charge_projection(1)?;
     }
+    if context.output_suppressed() {
+        for value in &values.authored {
+            visit(value, writer)?;
+        }
+        return Ok(());
+    }
+    let output = &mut writer.css;
     let authored = values
         .authored
         .iter()
-        .map(|value| capture(value, &mut context))
+        .map(|value| capture(value, context))
         .collect::<SerializationResult<Vec<_>>>()?;
     let role = |index: usize| -> &CapturedNumericComponent { &authored[values.role_index(index)] };
     let equal = |left: usize, right: usize| {
@@ -629,15 +696,188 @@ fn serialize_four<T>(
     } else {
         vec![first, second, third, fourth]
     };
-    let mut output = String::new();
     if values.kind == CssScrollSideKind::Logical {
-        context.append(&mut output, "logical ")?;
+        context.append(output, "logical ")?;
     }
     for (index, value) in selected.iter().enumerate() {
         if index > 0 {
-            context.append(&mut output, " ")?;
+            context.append(output, " ")?;
         }
-        context.append(&mut output, value.as_css())?;
+        context.append(output, value.as_css())?;
     }
-    Ok(output)
+    Ok(())
+}
+
+fn visit_padding(
+    value: &CssScrollPaddingValue,
+    writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+) -> SerializationResult<()> {
+    match value {
+        CssScrollPaddingValue::Auto => writer.keyword("auto"),
+        CssScrollPaddingValue::LengthPercentage(value) => value.append_to_rule_writer(writer),
+    }
+}
+
+fn visit_margin(
+    value: &CssSpecifiedLength,
+    writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+) -> SerializationResult<()> {
+    value.append_to_rule_writer(writer)
+}
+
+#[cfg(test)]
+mod cumulative_bridge_contract {
+    use super::*;
+    use crate::specified_rule_serialization::SpecifiedRuleWriter;
+    use crate::{
+        CssComponentValue, CssLengthCalculation, CssSpecifiedValueSerializationErrorKind as Kind,
+        CssSpecifiedValueSerializationLimits as Limits, CssValueOrigin,
+    };
+
+    fn length(text: &str) -> CssSpecifiedLength {
+        CssSpecifiedLength::try_from_component(
+            CssComponentValue::try_dimension(text, "px").unwrap(),
+        )
+        .unwrap()
+    }
+    fn padding(text: &str) -> CssScrollPaddingValue {
+        CssScrollPaddingValue::LengthPercentage(
+            CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+                CssComponentValue::try_dimension(text, "px").unwrap(),
+            )
+            .unwrap(),
+        )
+    }
+    fn composition(
+        expected: &str,
+        nodes: usize,
+        append: impl Fn(&mut SpecifiedRuleWriter) -> SerializationResult<()>,
+    ) {
+        let mut writer = SpecifiedRuleWriter::new(Limits::new(
+            2 * nodes + 1,
+            2 * nodes + 1,
+            2 * expected.len() + 2,
+        ));
+        writer.context.charge_input(1).unwrap();
+        writer.context.charge_projection(1).unwrap();
+        writer.append("!").unwrap();
+        append(&mut writer).unwrap();
+        writer.append(";").unwrap();
+        append(&mut writer).unwrap();
+        assert_eq!(writer.css, format!("!{expected};{expected}"));
+        assert_eq!(
+            writer.context.charge_input(1).unwrap_err().kind(),
+            Kind::InputNodeLimit
+        );
+        assert_eq!(
+            writer.context.charge_projection(1).unwrap_err().kind(),
+            Kind::ProjectionNodeLimit
+        );
+        assert_eq!(writer.append("x").unwrap_err().kind(), Kind::ByteLimit);
+        let mut suppressed = SpecifiedRuleWriter::new(Limits::new(nodes, nodes, 0));
+        suppressed.without_output(|writer| append(writer)).unwrap();
+        assert!(suppressed.css.is_empty());
+        assert!(!suppressed.context.output_suppressed());
+        assert_eq!(
+            suppressed.context.charge_input(1).unwrap_err().kind(),
+            Kind::InputNodeLimit
+        );
+        assert_eq!(
+            suppressed.context.charge_projection(1).unwrap_err().kind(),
+            Kind::ProjectionNodeLimit
+        );
+    }
+
+    #[test]
+    fn pairs_share_prefix_siblings_and_authored_child_costs() {
+        let margin = CssScrollMarginPair::new(length("1"), Some(length("1.0")));
+        assert_eq!(margin.serialize_specified().unwrap(), "1px");
+        composition("1px", 2, |writer| margin.append_to_rule_writer(writer));
+        let padding = CssScrollPaddingPair::new(CssScrollPaddingValue::Auto, None);
+        assert_eq!(padding.serialize_specified().unwrap(), "auto");
+        composition("auto", 1, |writer| padding.append_to_rule_writer(writer));
+    }
+
+    #[test]
+    fn shorthand_compression_preserves_authored_visits_and_logical_marker() {
+        let margin = CssScrollMarginShorthand::try_new(
+            CssScrollSideKind::Physical,
+            vec![length("1"), length("2"), length("1"), length("2")],
+        )
+        .unwrap();
+        assert_eq!(margin.serialize_specified().unwrap(), "1px 2px");
+        composition("1px 2px", 4, |writer| margin.append_to_rule_writer(writer));
+        let padding = CssScrollPaddingShorthand::try_new(
+            CssScrollSideKind::Logical,
+            vec![padding("1"), padding("1.0"), padding("1")],
+        )
+        .unwrap();
+        assert_eq!(padding.serialize_specified().unwrap(), "logical 1px");
+        composition("logical 1px", 4, |writer| {
+            padding.append_to_rule_writer(writer)
+        });
+    }
+
+    #[test]
+    fn unequal_exact_literals_with_equal_rounded_text_stay_separate() {
+        let value = CssScrollMarginPair::new(length(".12345641"), Some(length(".12345642")));
+        composition("0.123456px 0.123456px", 2, |writer| {
+            value.append_to_rule_writer(writer)
+        });
+        assert!(matches!(value.start().literal_component().unwrap().view(),
+            crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Dimension { number, unit })
+            if number.representation() == ".12345641" && unit == "px"));
+    }
+
+    #[test]
+    fn suppressed_symbolic_math_and_large_literals_need_no_remaining_bytes() {
+        let components = crate::parse_component_values("calc(10px + 1em)").unwrap();
+        let math = CssSpecifiedLength::try_from_calculation(
+            CssLengthCalculation::try_from_components(components.clone()).unwrap(),
+        )
+        .unwrap();
+        let value = CssScrollMarginPair::new(math, Some(length("1e50")));
+        let before = value.clone();
+        let mut writer = SpecifiedRuleWriter::new(Limits::new(100, 100, 1));
+        writer.append("x").unwrap();
+        writer
+            .without_output(|writer| value.append_to_rule_writer(writer))
+            .unwrap();
+        assert_eq!(writer.css, "x");
+        assert!(!writer.context.output_suppressed());
+        assert_eq!(value, before);
+        assert_eq!(
+            value.start().calculation().unwrap().components(),
+            &components
+        );
+        let CssValueOrigin::Parsed(origin) = value.start().origin() else {
+            panic!("parsed checked math origin");
+        };
+        assert_eq!(origin.source().as_str(), "calc(10px + 1em)");
+        assert_eq!(origin.span().start().byte_offset().value(), 0);
+        assert_eq!(origin.span().end().byte_offset().value(), "calc(".len());
+    }
+
+    #[test]
+    fn nested_suppressed_work_error_restores_enclosing_mode() {
+        let value = CssScrollPaddingShorthand::try_new(
+            CssScrollSideKind::Logical,
+            vec![CssScrollPaddingValue::Auto; 4],
+        )
+        .unwrap();
+        let mut writer = SpecifiedRuleWriter::new(Limits::new(2, 100, 1));
+        let error = writer
+            .without_output(|writer| {
+                let error = writer
+                    .without_output(|writer| value.append_to_rule_writer(writer))
+                    .unwrap_err();
+                assert!(writer.context.output_suppressed());
+                Err::<(), _>(error)
+            })
+            .unwrap_err();
+        assert_eq!(error.kind(), Kind::InputNodeLimit);
+        assert!(!writer.context.output_suppressed());
+        writer.append("x").unwrap();
+        assert_eq!(writer.css, "x");
+    }
 }

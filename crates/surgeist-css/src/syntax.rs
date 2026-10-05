@@ -6664,6 +6664,7 @@ impl CssBorderImage {
 #[non_exhaustive]
 pub enum CssImageOrientation {
     FromImage,
+    None,
     Angle(CssAngleValue),
     Flip(Option<CssAngleValue>),
 }
@@ -6672,6 +6673,7 @@ impl PartialEq for CssImageOrientation {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::FromImage, Self::FromImage) => true,
+            (Self::None, Self::None) => true,
             (Self::Angle(left), Self::Angle(right)) => left.structural_eq(right),
             (Self::Flip(left), Self::Flip(right)) => {
                 optional_numeric_eq(left.as_ref(), right.as_ref(), CssAngleValue::structural_eq)

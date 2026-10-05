@@ -211,18 +211,6 @@ impl SpecifiedSerializationContext {
     }
 }
 
-pub(crate) fn serialize_keyword_sequence(
-    text: &str,
-    limits: CssSpecifiedValueSerializationLimits,
-) -> Result<String> {
-    let mut context = SpecifiedSerializationContext::new(limits);
-    context.charge_input(1)?;
-    context.charge_projection(1)?;
-    let mut output = String::new();
-    context.append(&mut output, text)?;
-    Ok(output)
-}
-
 impl crate::CssAngleLiteral {
     pub(crate) fn append_specified(
         &self,
