@@ -3437,7 +3437,8 @@ preservation of a character that CSS replaces with U+FFFD.
 
 `parse_font_face_descriptor_value(source, kind)` parses a complete raw value
 using the selected `CssFontFaceDescriptorKind` grammar. It returns an owned
-`CssFontFaceDescriptorValue` without an invented descriptor-name position.
+`CssAuthoredFontFaceDescriptorValue::Ordinary` or `Pending` without an invented
+descriptor-name position.
 Diagnostics refer directly to the supplied source, including actual EOF; keep
 the source when interpreting those positions. Descriptor names, semicolons and
 `!important` are outside this value input. Grammar rejection returns `None` with
@@ -3686,9 +3687,10 @@ while preserving supplied parsed, programmatic or mixed origins. Only a pending
 value exposes `reparse_after_substitution`, which checks caller-supplied
 replacement components and returns an ordinary value; residual `var()` or
 `env()`, recovered components and invalid ordinary grammar are typed failures.
-This API never executes substitution. Intrinsic `font` shorthand expansion/reset
-semantics remain unfinished.
-Selected descriptors including `font-named-instance` and metric overrides remain unfinished.
+This API never executes substitution. The authored `font` shorthand supplies
+checked values, intrinsic expansion/reset contributions and bounded specified
+serialization. Named-instance, language and metric descriptors use the complete
+[shared payload providers](#named-instance-language-and-metric-descriptors).
 The source-list URL branch accepts both `url()` and `src()` from the referenced
 Values 4 `<url>` production, retaining their authored function identity and
 ordered modifiers without resolving or loading the resource. Other historical
@@ -3696,8 +3698,76 @@ Fonts 3 and Fonts 4 support records
 retain their existing classifications pending reconciliation with the complete
 selected profile; their dates bound those claims. These authored models do
 not load or match fonts, resolve fallback or feature application, shape glyphs,
-apply cascade or substitution, evaluate computed values, expose CSSOM, serialize
-composed font rules, or lower into another Surgeist crate.
+apply cascade or substitution, evaluate computed values, expose live CSSOM, or
+lower into another Surgeist crate. Checked composed Fonts rules use the
+[shared specified writer](#checked-fonts-rule-composition).
+
+### Grammar providers for font-loading adapters
+
+The selected [Font Loading 3 constructor](../../../references/css-font-loading-3--WD-css-font-loading-3-20230406--1a443ea0a7f6.md#font-face-constructor)
+references individual `@font-face` descriptor grammars. Use
+`parse_font_face_descriptor_value` for original-string reports and
+`CssAuthoredFontFaceDescriptorValue::try_from_components` for strict checked
+values. The latter rejects recovered `src` members and implicit closures;
+pending descriptor reentry rejects residual substitution and invalid ordinary
+grammar. Raw parsing preserves valid recovery syntax and diagnostics, including
+EOF-ended strings. A bare source URL is invalid; the `src` descriptor accepts
+source lists containing `url()`, `src()` or `local()` branches.
+
+Every ordinary `CssFontFaceDescriptorValue` exposes `serialize_specified()` and
+`serialize_specified_with_limits()`. These dispatch all fourteen concrete kinds,
+including display and unicode range, through the same Fonts writer used by
+checked rule composition. They produce individual attribute-value strings
+without constructing a synthetic rule. String/numeric/URL payloads reuse their
+existing providers, including equal-range shortening and authored URL function
+identity. Input and projection visits accumulate across every retained child;
+only emitted UTF-8 bytes consume the final byte budget. Failure returns no
+partial CSS and preserves values and origins. Pending descriptor values retain
+their existing component and substitution-reentry owner rather than acquiring
+an ordinary serializer.
+
+For the [font-query algorithm](../../../references/css-font-loading-3--WD-css-font-loading-3-20230406--1a443ea0a7f6.md#find-the-matching-font-faces),
+call `parse_property_value_text` with
+`CssPropertyNameRef::Known(CssKnownProperty::Font)` and `CssImportance::Normal`,
+then inspect `known().declared_value()`. This parses
+the original value without adding a declaration-name prefix. Ordinary `Font`
+values expose the existing explicit or system branch and bounded authored
+serialization. Relative sizes and weights stay symbolic. CSS-wide keywords
+and substitution-dependent `var()`/`env()`/`attr()` values are distinct authored
+branches; valid parsing does not promise they are usable loading queries.
+Loading adapters reject CSS-wide keywords as the pinned source requires and
+select ordinary-only admission for unresolved substitutions. This integration
+policy uses no inherited-page substitution environment or duplicate font parser.
+
+Loading adapters also select `into_validation_result()` for clean-report
+admission: it accepts exactly reports with zero recovery diagnostics. This is
+an explicit Surgeist application policy, not a claim that every EOF recovery
+is a Font Loading grammar mismatch. Component-based `Font` construction alone
+does not establish absence of recovery. The shared parser continues to expose
+valid recovered syntax and original diagnostics.
+
+Loading 2023 retains a `variant` IDL field, but selected
+[Fonts 4 removes the `font-variant` descriptor](../../../references/css-fonts-4--WD-css-fonts-4-20260907--03626a0c8565.md#changes-2018-09-20).
+CSS therefore supplies no corresponding descriptor kind, property-grammar
+substitute or compatibility shim. Root must retain this source-version gap
+before claiming complete variant constructor/setter coverage. The selected
+`font-stretch` legacy descriptor name remains a real alias of `font-width`.
+
+Root-owned [face integration](https://github.com/bj-data-eng/surgeist/issues/768)
+must convert parse failures to rejection of `[[FontStatusPromise]]` with
+`SyntaxError`, empty corresponding attributes and error status, then return the
+face and terminate construction. Success stores serialized descriptor strings
+and returns the face before asynchronously assigning `[[Urls]]` or `[[Data]]`
+and queuing binary parsing. The pinned URL-base question, including workers,
+remains open. Attribute synchronization and CSS-connected identity also stay
+with that owner. Root-owned
+[query integration](https://github.com/bj-data-eng/surgeist/issues/769) must
+absolutize relative values against initial properties, including `bolder`
+against initial `normal`; default omitted text to U+0020 SPACE; select available
+and optional system faces; set the found-faces flag before unicode/text
+filtering; and return ordered faces and that flag. Empty text filters all faces.
+Shared grammar completion does not implement matching, loading, binary parsing,
+CSS-connected object synchronization or those asynchronous algorithms.
 
 ### Authored font-synthesis
 
