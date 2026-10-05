@@ -21,7 +21,7 @@ macro_rules! vector {
 
 // Every non-`all` value is an ordinary typed value that must reach generated
 // property dispatch. The `all` row deliberately exercises its global contract.
-pub const PROPERTY_POSITIVE_VECTORS: &[PropertyVector] = &[
+const OTHER_PROPERTY_POSITIVE_VECTORS: &[PropertyVector] = &[
     vector!("ext.property.wrap-inside", "wrap-inside", "avoid"),
     vector!("ext.property.wrap-before", "wrap-before", "avoid-line"),
     vector!("ext.property.wrap-after", "wrap-after", "flex"),
@@ -326,25 +326,6 @@ pub const PROPERTY_POSITIVE_VECTORS: &[PropertyVector] = &[
         "letter-spacing",
         "0.1em"
     ),
-    vector!("ext.property.text-wrap-mode", "text-wrap-mode", "nowrap"),
-    vector!(
-        "ext.property.text-wrap-style",
-        "text-wrap-style",
-        "avoid-short-last-line"
-    ),
-    vector!(
-        "ext.property.white-space-collapse",
-        "white-space-collapse",
-        "discard"
-    ),
-    vector!(
-        "ext.property.white-space-trim",
-        "white-space-trim",
-        "discard-after discard-before"
-    ),
-    vector!("baseline.property.text-wrap", "text-wrap", "balance"),
-    vector!("baseline.property.white-space", "white-space", "pre-wrap"),
-    vector!("baseline.property.word-break", "word-break", "keep-all"),
     vector!(
         "baseline.property.overflow-wrap",
         "overflow-wrap",
@@ -745,7 +726,7 @@ pub const PROPERTY_POSITIVE_VECTORS: &[PropertyVector] = &[
 // Every rejection is a property-specific wrong keyword, cross-family value,
 // cardinality error, or numeric/range boundary. The `all` row deliberately uses
 // ordinary typed syntax so its generated dispatch arm rejects it.
-pub const PROPERTY_NEGATIVE_VECTORS: &[PropertyVector] = &[
+const OTHER_PROPERTY_NEGATIVE_VECTORS: &[PropertyVector] = &[
     vector!("ext.property.wrap-inside", "wrap-inside", "avoid-flex"),
     vector!("ext.property.wrap-before", "wrap-before", "loose"),
     vector!("ext.property.wrap-after", "wrap-after", "anywhere"),
@@ -978,21 +959,6 @@ pub const PROPERTY_NEGATIVE_VECTORS: &[PropertyVector] = &[
         "\"abc\" on"
     ),
     vector!("baseline.property.letter-spacing", "letter-spacing", "auto"),
-    vector!("ext.property.text-wrap-mode", "text-wrap-mode", "balance"),
-    vector!("ext.property.text-wrap-style", "text-wrap-style", "nowrap"),
-    vector!(
-        "ext.property.white-space-collapse",
-        "white-space-collapse",
-        "pre"
-    ),
-    vector!(
-        "ext.property.white-space-trim",
-        "white-space-trim",
-        "discard-before discard-before"
-    ),
-    vector!("baseline.property.text-wrap", "text-wrap", "nowrap wrap"),
-    vector!("baseline.property.white-space", "white-space", "balance"),
-    vector!("baseline.property.word-break", "word-break", "nowrap"),
     vector!(
         "baseline.property.overflow-wrap",
         "overflow-wrap",
@@ -1353,3 +1319,29 @@ pub const PROPERTY_NEGATIVE_VECTORS: &[PropertyVector] = &[
     ),
     vector!("baseline.property.animation", "animation", "fade 1s 2s 3s"),
 ];
+
+// The remaining properties retain their existing independently authored rows.
+// The pilot family's names, IDs, and stimuli have one owner.
+pub fn positive_vectors() -> impl Iterator<Item = PropertyVector> {
+    OTHER_PROPERTY_POSITIVE_VECTORS.iter().copied().chain(
+        crate::property_expectations::CASES
+            .iter()
+            .map(|case| PropertyVector {
+                id: case.feature_id,
+                canonical_name: case.name,
+                authored_value: case.positive,
+            }),
+    )
+}
+
+pub fn negative_vectors() -> impl Iterator<Item = PropertyVector> {
+    OTHER_PROPERTY_NEGATIVE_VECTORS.iter().copied().chain(
+        crate::property_expectations::CASES
+            .iter()
+            .map(|case| PropertyVector {
+                id: case.feature_id,
+                canonical_name: case.name,
+                authored_value: case.negative,
+            }),
+    )
+}

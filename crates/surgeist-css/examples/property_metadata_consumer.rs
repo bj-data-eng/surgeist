@@ -22,10 +22,14 @@
 //! their exact inherited initials and two/three-member shorthand projections.
 //! Text 4 §§2–9 defines transformation, separator, tab, breaking and indent
 //! longhands; CSS2 §10.8.1 defines the noninherited baseline vertical alignment.
+#[path = "../tests/common/property_expectations.rs"]
+mod property_expectations;
+use property_expectations::MetadataExpectation;
+
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
-const LONGHANDS: &[P] = &[
+const OTHER_LONGHANDS: &[P] = &[
     P::TextTransform,
     P::TextIndent,
     P::VerticalAlign,
@@ -35,11 +39,6 @@ const LONGHANDS: &[P] = &[
     P::LineBreak,
     P::WordSpaceTransform,
     P::TabSize,
-    P::TextWrapMode,
-    P::TextWrapStyle,
-    P::WhiteSpaceCollapse,
-    P::WhiteSpaceTrim,
-    P::WordBreak,
     P::BackgroundBlendMode,
     P::Isolation,
     P::MixBlendMode,
@@ -301,13 +300,7 @@ const LONGHANDS: &[P] = &[
     P::WritingMode,
     P::TextCombineUpright,
 ];
-const SHORTHANDS: &[(P, &[P], &[P])] = &[
-    (P::TextWrap, &[P::TextWrapMode, P::TextWrapStyle], &[]),
-    (
-        P::WhiteSpace,
-        &[P::WhiteSpaceCollapse, P::TextWrapMode, P::WhiteSpaceTrim],
-        &[],
-    ),
+const OTHER_SHORTHANDS: &[(P, &[P], &[P])] = &[
     (
         P::ItemFlow,
         &[P::ItemDirection, P::ItemWrap, P::ItemPack, P::FlowTolerance],
@@ -713,6 +706,13 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         panic!("fixed intrinsic initial")
     };
     assert_eq!(value.property().known_property(), property);
+    if let Some(case) = property_expectations::find(property) {
+        let MetadataExpectation::Longhand { assert_initial, .. } = case.metadata else {
+            panic!("expected longhand initial record");
+        };
+        assert_initial(value.view());
+        return;
+    }
     match value.view() {
         CssLonghandValueRef::TextTransform(v) => assert_eq!(*v, CssTextTransform::None),
         CssLonghandValueRef::TextIndent(v) => {
@@ -733,13 +733,6 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
             };
             assert!(exact_literal(number.literal_component(), "8"));
         }
-        CssLonghandValueRef::TextWrapMode(v) => assert_eq!(*v, CssTextWrapMode::Wrap),
-        CssLonghandValueRef::TextWrapStyle(v) => assert_eq!(*v, CssTextWrapStyle::Auto),
-        CssLonghandValueRef::WhiteSpaceCollapse(v) => {
-            assert_eq!(*v, CssWhiteSpaceCollapse::Collapse)
-        }
-        CssLonghandValueRef::WhiteSpaceTrim(v) => assert_eq!(*v, CssWhiteSpaceTrim::none()),
-        CssLonghandValueRef::WordBreak(v) => assert_eq!(*v, CssWordBreak::Normal),
         CssLonghandValueRef::VoiceDuration(value) => {
             assert!(matches!(value, CssVoiceDuration::Auto))
         }
@@ -1236,11 +1229,39 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         other => panic!("unexpected ordinary initial: {other:?}"),
     }
 }
-fn metadata_and_initials() {
-    let expected: Vec<_> = LONGHANDS
+fn longhand_properties() -> impl Iterator<Item = P> {
+    OTHER_LONGHANDS
         .iter()
         .copied()
-        .chain(SHORTHANDS.iter().map(|(p, _, _)| *p))
+        .chain(
+            property_expectations::CASES
+                .iter()
+                .filter_map(|case| match case.metadata {
+                    MetadataExpectation::Longhand { .. } => Some(case.property),
+                    MetadataExpectation::Shorthand { .. } => None,
+                }),
+        )
+}
+
+fn shorthand_expectations() -> impl Iterator<Item = (P, &'static [P], &'static [P])> {
+    OTHER_SHORTHANDS
+        .iter()
+        .copied()
+        .chain(
+            property_expectations::CASES
+                .iter()
+                .filter_map(|case| match case.metadata {
+                    MetadataExpectation::Shorthand { settable, reset } => {
+                        Some((case.property, settable, reset))
+                    }
+                    MetadataExpectation::Longhand { .. } => None,
+                }),
+        )
+}
+
+fn metadata_and_initials() {
+    let expected: Vec<_> = longhand_properties()
+        .chain(shorthand_expectations().map(|(property, _, _)| property))
         .chain([
             P::BorderColor,
             P::BorderStyle,
@@ -1259,6 +1280,10 @@ fn metadata_and_initials() {
     for &property in P::all() {
         let handle = property.grammar();
         assert_eq!(handle.target_property(), property);
+        if let Some(case) = property_expectations::find(property) {
+            assert_eq!(handle.name(), case.name);
+            assert_eq!(handle.feature_id().as_str(), case.feature_id);
+        }
         assert_eq!(handle.name(), property.canonical_name());
         assert_eq!(
             grammar(&property.canonical_name().to_ascii_uppercase()),
@@ -1285,11 +1310,15 @@ fn metadata_and_initials() {
     }
     assert!(unexpected.is_empty(), "unexpected metadata: {unexpected:?}");
     assert_eq!(observed.len(), expected.len());
-    for &property in LONGHANDS {
+    for property in longhand_properties() {
         let metadata = longhand(property);
         assert_eq!(metadata.property().known_property(), property);
-        assert_eq!(
-            metadata.inherited_by_default(),
+        let expected_inherited = if let Some(case) = property_expectations::find(property) {
+            let MetadataExpectation::Longhand { inherited, .. } = case.metadata else {
+                panic!("expected longhand record");
+            };
+            inherited
+        } else {
             matches!(
                 property,
                 P::TextTransform
@@ -1297,10 +1326,6 @@ fn metadata_and_initials() {
                     | P::WordSpaceTransform
                     | P::TabSize
                     | P::LineBreak
-                    | P::TextWrapMode
-                    | P::TextWrapStyle
-                    | P::WhiteSpaceCollapse
-                    | P::WordBreak
                     | P::Color
                     | P::ScrollbarColor
                     | P::ColorScheme
@@ -1361,6 +1386,12 @@ fn metadata_and_initials() {
                     | P::WritingMode
                     | P::TextCombineUpright
             )
+        };
+        assert_eq!(
+            metadata.inherited_by_default(),
+            expected_inherited,
+            "{} inheritance",
+            property.canonical_name()
         );
         let initial = metadata.initial_value();
         if matches!(property, P::FontFamily | P::VoiceFamily) {
@@ -1415,13 +1446,23 @@ fn metadata_and_initials() {
     println!("metadata recognition, inheritance and intrinsic initial values: ok");
 }
 fn memberships_and_resets() {
-    for &(property, settable, reset) in SHORTHANDS {
+    for (property, settable, reset) in shorthand_expectations() {
         let CssPropertyKindRef::Shorthand(meta) = property.metadata().unwrap().kind() else {
             panic!("shorthand")
         };
         assert!(!meta.is_legacy());
-        assert_eq!(names(meta.settable_members()), settable);
-        assert_eq!(names(meta.reset_only_members()), reset);
+        assert_eq!(
+            names(meta.settable_members()),
+            settable,
+            "{} settable members",
+            property.canonical_name()
+        );
+        assert_eq!(
+            names(meta.reset_only_members()),
+            reset,
+            "{} reset-only members",
+            property.canonical_name()
+        );
         let expected: Vec<_> = settable.iter().chain(reset).copied().collect();
         assert_eq!(names(meta.members()), expected);
         for (index, member) in expected.iter().enumerate() {

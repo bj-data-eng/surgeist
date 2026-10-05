@@ -1,8 +1,11 @@
+#[path = "common/property_expectations.rs"]
+mod property_expectations;
+
 mod catalog_inventory {
     pub mod vectors;
 }
 
-use catalog_inventory::vectors::{PROPERTY_NEGATIVE_VECTORS, PROPERTY_POSITIVE_VECTORS};
+use catalog_inventory::vectors::{negative_vectors, positive_vectors};
 use surgeist_css::{
     CssErrorCode, CssFeatureKind, CssKnownPropertyValueRef, CssOverflow, CssSupportStatus,
     ErrorKind, feature_metadata, parse_style_attribute, property_support_metadata,
@@ -28,7 +31,7 @@ fn contains_substitution(authored_value: &str) -> bool {
 
 #[test]
 fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
-    for vector in PROPERTY_POSITIVE_VECTORS {
+    for vector in positive_vectors() {
         let metadata = property_support_metadata(vector.canonical_name)
             .unwrap_or_else(|| panic!("missing metadata for `{}`", vector.canonical_name));
         let feature = metadata.feature();
@@ -180,13 +183,6 @@ fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
         ("text-indent", "X-TEXT4"),
         ("text-transform", "X-TEXT4"),
         ("vertical-align", "O-CSS2"),
-        ("word-break", "X-TEXT4"),
-        ("text-wrap", "X-TEXT4"),
-        ("text-wrap-mode", "X-TEXT4"),
-        ("text-wrap-style", "X-TEXT4"),
-        ("white-space", "X-TEXT4"),
-        ("white-space-collapse", "X-TEXT4"),
-        ("white-space-trim", "X-TEXT4"),
         ("quotes", "X-CONTENT3"),
         ("word-spacing", "X-TEXT4"),
         ("letter-spacing", "X-TEXT4"),
@@ -212,7 +208,11 @@ fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
         ("transition", "I-TRANSITIONS1"),
         ("animation", "I-ANIMATIONS1"),
     ];
-    for (property, source_id) in exact_source_cases {
+    for (property, source_id) in exact_source_cases.into_iter().chain(
+        property_expectations::CASES
+            .iter()
+            .map(|case| (case.name, case.source_id)),
+    ) {
         let feature = property_support_metadata(property)
             .expect("representative property")
             .feature();
@@ -222,7 +222,7 @@ fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
 
 #[test]
 fn authored_property_cases_exercise_public_parser_behavior() {
-    for vector in PROPERTY_POSITIVE_VECTORS {
+    for vector in positive_vectors() {
         if vector.canonical_name == "all" {
             assert!(
                 CSS_WIDE_KEYWORDS
@@ -266,7 +266,7 @@ fn authored_property_cases_exercise_public_parser_behavior() {
         assert_eq!(known.property().stable_id(), vector.id);
     }
 
-    for vector in PROPERTY_NEGATIVE_VECTORS {
+    for vector in negative_vectors() {
         if vector.canonical_name == "all" {
             assert_eq!(vector.authored_value, "block");
         } else {

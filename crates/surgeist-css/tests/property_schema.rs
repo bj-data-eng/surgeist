@@ -1,4 +1,6 @@
 mod common;
+#[path = "common/property_expectations.rs"]
+mod property_expectations;
 
 use common::CssParseReportTestExt;
 use surgeist_css::*;
@@ -318,6 +320,9 @@ fn direct_color_wrappers_preserve_typed_relative_channels() {
 macro_rules! assert_property_specific_css {
     ($declaration:expr, $value:expr, $expected:expr; $($variant:ident),+ $(,)?) => {
         match ($declaration.property(), $value) {
+            (property, value) if property_expectations::find(property).is_some() => {
+                property_expectations::assert_wrapper($declaration, value, $expected);
+            }
             $(
                 (CssKnownProperty::$variant, CssKnownPropertyValueRef::$variant(value)) => {
                     assert_eq!(value.as_css(), $expected)
@@ -425,19 +430,12 @@ macro_rules! with_property_value_variants {
             FontSynthesisPosition,
             FontPalette,
             LetterSpacing,
-            TextWrap,
             WrapInside,
             WrapBefore,
             WrapAfter,
             LineBreak,
             WordSpaceTransform,
             TabSize,
-            TextWrapMode,
-            TextWrapStyle,
-            WhiteSpace,
-            WhiteSpaceCollapse,
-            WhiteSpaceTrim,
-            WordBreak,
             OverflowWrap,
             TextOverflow,
             TextDecoration,
@@ -568,7 +566,7 @@ macro_rules! with_property_value_variants {
 
 #[test]
 fn property_schema_dispatch_exposes_property_specific_authored_wrappers() {
-    for vector in PROPERTY_DISPATCH_VECTORS.iter().skip(1) {
+    for vector in dispatch_vectors().skip(1) {
         let source = format!("{}: {}", vector.property_name, vector.authored_value);
         let report = parse_style_attribute(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
@@ -607,7 +605,7 @@ macro_rules! dispatch_vector {
 // Each authored case is an explicit public parser stimulus. Ordinary values must
 // expose their concrete property wrapper, while `all` exercises its typed error
 // and global-keyword paths.
-const PROPERTY_DISPATCH_VECTORS: &[DispatchVector] = &[
+const OTHER_PROPERTY_DISPATCH_VECTORS: &[DispatchVector] = &[
     dispatch_vector!("all", "block"),
     dispatch_vector!("speak", "always"),
     dispatch_vector!("speak-as", "digits spell-out no-punctuation"),
@@ -711,13 +709,6 @@ const PROPERTY_DISPATCH_VECTORS: &[DispatchVector] = &[
     dispatch_vector!("font-synthesis-small-caps", "none"),
     dispatch_vector!("font-synthesis-position", "auto"),
     dispatch_vector!("letter-spacing", "0.1em"),
-    dispatch_vector!("text-wrap-mode", "nowrap"),
-    dispatch_vector!("text-wrap-style", "avoid-short-last-line"),
-    dispatch_vector!("white-space-collapse", "discard"),
-    dispatch_vector!("white-space-trim", "discard-inner discard-before"),
-    dispatch_vector!("text-wrap", "balance"),
-    dispatch_vector!("white-space", "pre-wrap"),
-    dispatch_vector!("word-break", "keep-all"),
     dispatch_vector!("overflow-wrap", "anywhere"),
     dispatch_vector!("text-overflow", "ellipsis"),
     dispatch_vector!("text-decoration", "underline dotted white 3px"),
@@ -837,9 +828,23 @@ const PROPERTY_DISPATCH_VECTORS: &[DispatchVector] = &[
     ),
 ];
 
+fn dispatch_vectors() -> impl Iterator<Item = DispatchVector> {
+    OTHER_PROPERTY_DISPATCH_VECTORS
+        .iter()
+        .copied()
+        .chain(
+            property_expectations::CASES
+                .iter()
+                .map(|case| DispatchVector {
+                    property_name: case.name,
+                    authored_value: case.dispatch,
+                }),
+        )
+}
+
 #[test]
 fn explicit_property_dispatch_cases_preserve_ordinary_and_important_behavior() {
-    for vector in PROPERTY_DISPATCH_VECTORS {
+    for vector in dispatch_vectors() {
         let name = vector.property_name;
         assert!(
             !["inherit", "initial", "unset", "revert", "revert-layer"]
