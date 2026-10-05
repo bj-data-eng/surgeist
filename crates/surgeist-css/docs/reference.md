@@ -1880,6 +1880,22 @@ scalar equality retains provenance. The independent `scale` property accepts
 one to three ordinary shared numbers and retains its literal-only subset.
 Transform evaluation remains downstream.
 
+The individual `rotate` property exposes `CssRotate::None` or
+`CssRotate::Value(CssRotateValues)`. `CssRotateValues::new` takes a checked
+`CssAngleValue` and an optional `CssRotateAxis`: X, Y, Z, or an exact three-number
+vector. Omission retains the implicit positive z axis; zero vectors remain valid
+authored syntax. Parsed keyword axes retain their original provenance through
+`keyword_axis_origin()`, while checked keyword construction uses programmatic
+provenance and vector operands retain their own origins. Structural value equality
+ignores source origins and preserves the authored axis choice and numeric structure.
+
+The property admits its axis group before or after the angle, including typed
+angle and number calculations. Its strict angle grammar accepts `0deg` and
+rejects bare `0`; transform-function zero-angle grammar retains its separate
+`CssAngleOrZero` contract. This authored model replaces the former String payload.
+Canonical individual-rotate specified output and contextual rotation execution
+remain separate work; the model does not reconstruct output from authored text.
+
 `CssAngleLiteral` retains an exact decimal dimension, its authored unit, and
 original component provenance. `CssAngleValue` holds a checked literal or symbolic
 `CssAngleCalculation`; it excludes bare number zero. Transforms, hue-rotate

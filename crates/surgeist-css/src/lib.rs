@@ -1407,6 +1407,7 @@ mod pending_serialization;
 mod position_serialization;
 mod rectangular_color_conversion;
 mod resolution;
+mod rotate;
 mod scroll_snap;
 mod sizing;
 mod sizing_controls;

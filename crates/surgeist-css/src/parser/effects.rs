@@ -2,7 +2,7 @@ use super::values::{
     parse_length, parse_length_percentage, parse_nonnegative_length,
     parse_nonnegative_length_percentage,
 };
-use cssparser::{ParseError, Parser, ToCss, Token, match_ignore_ascii_case};
+use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
 use super::background::{parse_background_repeat, parse_background_size, parse_image_value};
 use super::box_model::parse_drop_shadow;
@@ -10,9 +10,11 @@ use super::position::{parse_full_position, parse_physical_position};
 use super::url::parse_url;
 use super::values::{
     AngleParserContext, next_is_comma, next_is_delim, next_is_ident, parse_angle_or_zero,
-    parse_hinted_number_calculation, parse_nonnegative_number, parse_nonnegative_percentage,
-    parse_specified_number, parse_specified_number_literal, parse_specified_percentage,
+    parse_angle_value, parse_hinted_number_calculation, parse_nonnegative_number,
+    parse_nonnegative_percentage, parse_specified_number, parse_specified_number_literal,
+    parse_specified_percentage,
 };
+use crate::CssValueOrigin;
 use crate::error::{CssFeatureId, Error, basic, unsupported_value, unsupported_value_at};
 use crate::syntax::*;
 use crate::validation::unsupported_keyword_reason;
@@ -807,28 +809,67 @@ pub(super) fn parse_translate<'i, 't>(
 
 pub(super) fn parse_rotate<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssRotate, ParseError<'i, Error>> {
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Result<CssRotate, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("none"))
         .is_ok()
     {
+        input.expect_exhausted().map_err(basic)?;
         return Ok(CssRotate::None);
     }
-    let location = input.current_source_location();
-    let token = input.next().map_err(basic)?;
-    let value = match token {
-        Token::Dimension { unit, .. }
-            if unit.eq_ignore_ascii_case("deg")
-                || unit.eq_ignore_ascii_case("rad")
-                || unit.eq_ignore_ascii_case("grad")
-                || unit.eq_ignore_ascii_case("turn") =>
-        {
-            token.to_css_string()
-        }
-        Token::Number { value, .. } if *value == 0.0 => token.to_css_string(),
-        _ => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
+    // The axis is one consecutive group, unordered relative to the strict angle.
+    let (angle, axis) = if let Ok(angle) =
+        input.try_parse(|input| parse_angle_value(input, numeric, AngleParserContext::Transform))
+    {
+        let axis = if input.is_exhausted() {
+            None
+        } else {
+            Some(parse_rotate_axis(input, numeric)?)
+        };
+        (angle, axis)
+    } else {
+        let axis = parse_rotate_axis(input, numeric)?;
+        let angle = parse_angle_value(input, numeric, AngleParserContext::Transform)?;
+        (angle, Some(axis))
     };
-    Ok(CssRotate::Value(value))
+    input.expect_exhausted().map_err(basic)?;
+    let values = match axis {
+        Some((axis, Some(origin))) => CssRotateValues::from_keyword_axis(angle, axis, origin),
+        Some((axis, None)) => CssRotateValues::new(angle, Some(axis)),
+        None => CssRotateValues::new(angle, None),
+    };
+    Ok(CssRotate::Value(values))
+}
+
+fn parse_rotate_axis<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Result<(CssRotateAxis, Option<CssValueOrigin>), ParseError<'i, Error>> {
+    if next_is_ident(input, "x") || next_is_ident(input, "y") || next_is_ident(input, "z") {
+        input.skip_whitespace();
+        let location = input.current_source_location();
+        let component = numeric
+            .collect(input)
+            .map_err(|_| unsupported_value_at(location, None, "invalid rotate axis keyword"))?;
+        let crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Ident(keyword)) =
+            component.view()
+        else {
+            unreachable!("axis lookahead established an identifier");
+        };
+        let axis = if keyword.eq_ignore_ascii_case("x") {
+            CssRotateAxis::X
+        } else if keyword.eq_ignore_ascii_case("y") {
+            CssRotateAxis::Y
+        } else {
+            CssRotateAxis::Z
+        };
+        return Ok((axis, Some(component.origin().clone())));
+    }
+    let x = parse_specified_number(input, numeric, "rotate axis x")?;
+    let y = parse_specified_number(input, numeric, "rotate axis y")?;
+    let z = parse_specified_number(input, numeric, "rotate axis z")?;
+    Ok((CssRotateAxis::Vector([x, y, z]), None))
 }
 
 pub(super) fn parse_scale<'i, 't>(

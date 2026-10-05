@@ -6033,8 +6033,14 @@ fn assert_known_property_value(
                 matches!(expected, "Value(\"45deg\")"),
                 "unknown archived {property:?} expectation: {expected}"
             );
-            let typed = value.value();
-            assert_eq!(typed, &CssRotate::Value("45deg".to_owned()));
+            let CssRotate::Value(typed) = value.value() else {
+                panic!("archived ordinary rotation");
+            };
+            assert!(typed.axis().is_none());
+            assert!(typed.keyword_axis_origin().is_none());
+            let literal = typed.angle().literal().expect("archived ordinary angle");
+            assert_eq!(literal.numeric().representation(), "45");
+            assert_eq!(literal.unit(), CssAngleUnit::Degrees);
         }
         (CssKnownProperty::Scale, CssKnownPropertyValueRef::Scale(value)) => {
             assert_archive_wrapper(property, value.as_css(), semantic, authored);

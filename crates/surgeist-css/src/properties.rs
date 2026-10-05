@@ -367,7 +367,7 @@ macro_rules! property_schema {
             TransformBox, "transform-box", [], "official.property.transform-box", crate::CssTransformBox, CssTransformBoxPropertyValue, reference_box, parse_transform_box, { parse_transform_box($input)? };
             TransformOrigin, "transform-origin", [], "baseline.property.transform-origin", crate::CssTransformOrigin, CssTransformOriginPropertyValue, origin, parse_transform_origin, { parse_transform_origin($input, $numeric)? };
             Translate, "translate", [], "baseline.property.translate", crate::CssTranslate, CssTranslatePropertyValue, value, parse_translate, { parse_translate($input, $numeric)? };
-            Rotate, "rotate", [], "baseline.property.rotate", crate::CssRotate, CssRotatePropertyValue, value, parse_rotate, { parse_rotate($input)? };
+            Rotate, "rotate", [], "baseline.property.rotate", crate::CssRotate, CssRotatePropertyValue, value, parse_rotate, { parse_rotate($input, $numeric)? };
             Scale, "scale", [], "baseline.property.scale", crate::CssScale, CssScalePropertyValue, value, parse_scale, { parse_scale($input, $numeric)? };
             Filter, "filter", [], "baseline.property.filter", crate::CssFilter, CssFilterPropertyValue, value, parse_filter, { parse_filter($input, $numeric)? }, expansion = longhand { value: CssFilter, accessor: value, inherited: false, initial_kind: value, initial: CssFilter::None };
             BackdropFilter, "backdrop-filter", [], "baseline.property.backdrop-filter", crate::CssFilter, CssBackdropFilterPropertyValue, value, parse_filter, { parse_filter($input, $numeric)? }, expansion = longhand { value: CssFilter, accessor: value, inherited: false, initial_kind: value, initial: CssFilter::None };

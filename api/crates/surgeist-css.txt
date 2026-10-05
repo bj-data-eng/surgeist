@@ -3729,7 +3729,14 @@ pub surgeist_css::CssResolutionUnit::Dpi
 pub surgeist_css::CssResolutionUnit::Dppx
 #[non_exhaustive] pub enum surgeist_css::CssRotate
 pub surgeist_css::CssRotate::None
-pub surgeist_css::CssRotate::Value(alloc::string::String)
+pub surgeist_css::CssRotate::Value(surgeist_css::CssRotateValues)
+#[non_exhaustive] pub enum surgeist_css::CssRotateAxis
+pub surgeist_css::CssRotateAxis::Vector([surgeist_css::CssSpecifiedNumber; 3])
+pub surgeist_css::CssRotateAxis::X
+pub surgeist_css::CssRotateAxis::Y
+pub surgeist_css::CssRotateAxis::Z
+impl core::cmp::PartialEq for surgeist_css::CssRotateAxis
+pub fn surgeist_css::CssRotateAxis::eq(&self, other: &Self) -> bool
 pub enum surgeist_css::CssRoundingStrategy
 pub surgeist_css::CssRoundingStrategy::Down
 pub surgeist_css::CssRoundingStrategy::Nearest
@@ -8745,6 +8752,14 @@ pub struct surgeist_css::CssRotatePropertyValue
 impl surgeist_css::CssRotatePropertyValue
 pub fn surgeist_css::CssRotatePropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssRotatePropertyValue::value(&self) -> &surgeist_css::CssRotate
+pub struct surgeist_css::CssRotateValues
+impl surgeist_css::CssRotateValues
+pub const fn surgeist_css::CssRotateValues::angle(&self) -> &surgeist_css::CssAngleValue
+pub const fn surgeist_css::CssRotateValues::axis(&self) -> core::option::Option<&surgeist_css::CssRotateAxis>
+pub const fn surgeist_css::CssRotateValues::keyword_axis_origin(&self) -> core::option::Option<&surgeist_css::CssValueOrigin>
+pub fn surgeist_css::CssRotateValues::new(angle: surgeist_css::CssAngleValue, axis: core::option::Option<surgeist_css::CssRotateAxis>) -> Self
+impl core::cmp::PartialEq for surgeist_css::CssRotateValues
+pub fn surgeist_css::CssRotateValues::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssRowGapPropertyValue
 impl surgeist_css::CssRowGapPropertyValue
 pub fn surgeist_css::CssRowGapPropertyValue::as_css(&self) -> &str

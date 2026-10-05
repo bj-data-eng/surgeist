@@ -15,6 +15,7 @@ pub(crate) use crate::media::*;
 pub(crate) use crate::media_features::*;
 pub(crate) use crate::numeric::*;
 pub use crate::page_line_minimum::CssPageLineMinimum;
+pub use crate::rotate::{CssRotate, CssRotateAxis, CssRotateValues};
 use crate::{
     CssAngleLiteral, CssAngleOrZero, CssAngleValue, CssColorNumberLiteral,
     CssColorPercentageLiteral, CssColorScalarError, CssDuration, CssFontSize, CssFontStyle,
@@ -7962,13 +7963,6 @@ impl CssTranslateValues {
     pub const fn z(&self) -> Option<&CssSpecifiedLength> {
         self.z.as_ref()
     }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssRotate {
-    None,
-    Value(String),
 }
 
 #[derive(Clone, Debug, PartialEq)]
