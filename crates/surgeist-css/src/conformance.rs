@@ -4867,14 +4867,10 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 670] = [
         "columns",
         "official.property.columns"
     ),
-    CssFeatureMetadata::partial_property_with_boundary(
-        "ext.property.flow-tolerance",
+    complete_property_feature!(
         CssKnownProperty::FlowTolerance,
         "flow-tolerance",
-        "#propdef-flow-tolerance",
-        &[],
-        "normal, infinite, signed literal length-percentages and supported typed calc() expressions remain authored and symbolic",
-        "full Values 4 length-percentage math-function grammar is not yet implemented; used-value resolution belongs downstream",
+        "ext.property.flow-tolerance"
     ),
     complete_property_feature!(
         CssKnownProperty::GridTemplateRows,

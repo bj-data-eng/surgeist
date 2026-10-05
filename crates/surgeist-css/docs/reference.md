@@ -870,10 +870,11 @@ checked `CssFlowTolerance`; `as_ref()` returns `Normal`, `Infinite`, or a borrow
 `Default` is symbolic `normal`. Its 1em used value in grid lanes and 0 used value
 in other layout modes require downstream context and are not computed here.
 
-The scalar owner accepts signed exact lengths, percentages, zero, and
-supported calculations. It rejects unrelated keywords. Signed
-operands, later subtraction and typed calculations remain valid and symbolic;
-no computed range evaluation occurs at this boundary.
+The scalar owner accepts signed exact lengths, percentages, zero, and all
+21 mathematical functions in the selected Values 4 grammar. It rejects
+unrelated keywords and invalid calculation arities or types. Signed operands,
+later subtraction and typed calculations remain valid and symbolic; no
+contextual used-value evaluation occurs at this boundary.
 
 `serialize_specified()` emits canonical specified CSS: `normal` and `infinite`
 stay keywords, ordinary numbers use
@@ -889,14 +890,22 @@ projection-node, and output-byte budget, returning a typed
 mutation. A keyword or literal costs one input and one projection node;
 calculations use the scalar owner's existing costs.
 
-Migration: use `flow-tolerance` and `CssKnownProperty::FlowTolerance`. Both
-`grid-flow-tolerance` and `item-tolerance` are unknown properties, without aliases.
-The obsolete `CssGridFlowTolerance`/`CssGridFlowToleranceValue` types and their
-I01 wrapper projection are removed. Historical source records and captured test
-inputs retain their original identities. The effective property feature is
-`ext.property.flow-tolerance`, sourced from the dated Grid3 publication.
-Support remains `Partial`: the broader Values 4 math-function grammar is still
-unfinished. This property migration does not complete the other Grid3 families.
+Both checked declaration front doors reject implicit closures in the original
+components before grammar admission, including comments after ordinary,
+CSS-wide and whole-pending values. Substitution reentry uses the same strict
+boundary, preserves replacement origins and permits a successful retry after
+failure. Browser parsing still retains recoverable values and their diagnostics.
+The noninherited symbolic `normal` initial and each ordinary or CSS-wide value
+contribute one longhand; whole pending values retain their source until reentry.
+Normalization preserves occurrence order and importance while charging cumulative
+terminal limits.
+
+The property feature `ext.property.flow-tolerance` has complete authored support
+under the dated Grid3 publication. The public property name is `flow-tolerance`;
+`grid-flow-tolerance` and `item-tolerance` are unknown properties. Historical
+source records and captured test inputs retain their original identities.
+Contextual thresholds, percentage bases and execution belong downstream;
+other Grid3 families retain their separate authored contracts.
 
 ## Intrinsic declaration expansion
 

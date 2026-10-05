@@ -97,6 +97,7 @@ fn requires_closed_components(property: crate::CssKnownProperty) -> bool {
     matches!(
         property,
         crate::CssKnownProperty::ClipPath
+            | crate::CssKnownProperty::FlowTolerance
             | crate::CssKnownProperty::GridTemplateRows
             | crate::CssKnownProperty::GridTemplateColumns
             | crate::CssKnownProperty::GridTemplate
