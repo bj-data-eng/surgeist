@@ -1163,7 +1163,7 @@ pub const PROPERTY_NEGATIVE_VECTORS: &[PropertyVector] = &[
     vector!(
         "official.property.image-orientation",
         "image-orientation",
-        "flip 90deg"
+        "flip 90deg flip"
     ),
     vector!(
         "official.property.image-rendering",
