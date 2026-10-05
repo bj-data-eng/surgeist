@@ -1061,3 +1061,98 @@ impl GridSpecified for CssGridTrackSizeList {
         grid_items(&self.sizes, context, output)
     }
 }
+
+#[cfg(test)]
+mod line_name_composition_contract {
+    use super::*;
+    use crate::specified_rule_serialization::SpecifiedRuleWriter;
+    use crate::{
+        CssSpecifiedValueSerializationErrorKind as ErrorKind,
+        CssSpecifiedValueSerializationLimits as Limits,
+    };
+
+    fn names(value: &str) -> CssGridTrackList {
+        CssGridTrackList::general(
+            CssGridGeneralTrackList::try_new(vec![
+                CssGridGeneralTrackComponent::LineNames(CssGridLineNames::new(vec![
+                    CssCustomIdent::try_new(value).unwrap(),
+                ])),
+                CssGridGeneralTrackComponent::TrackSize(CssGridTrackSize::from_breadth(
+                    CssGridTrackBreadth::auto(),
+                )),
+            ])
+            .unwrap(),
+        )
+    }
+
+    fn retained_name(value: &CssGridTrackList) -> &str {
+        let CssGridGeneralTrackComponent::LineNames(group) =
+            &value.general_list().unwrap().components()[0]
+        else {
+            panic!("retained line names");
+        };
+        group.names()[0].as_str()
+    }
+
+    #[test]
+    fn suppressed_names_visit_nodes_without_needing_escape_bytes() {
+        let mut writer = SpecifiedRuleWriter::new(Limits::new(4, 4, 0));
+        let result = writer.without_output(|writer| names("a b").append_to_rule_writer(writer));
+        assert!(result.is_ok(), "suppressed names emit no bytes: {result:?}");
+        assert!(writer.css.is_empty());
+        assert!(!writer.context.output_suppressed());
+        assert_eq!(
+            writer.context.charge_input(1).unwrap_err().kind(),
+            ErrorKind::InputNodeLimit
+        );
+        assert_eq!(writer.append("x").unwrap_err().kind(), ErrorKind::ByteLimit);
+    }
+
+    #[test]
+    fn suppressed_names_preserve_a_fully_consumed_sibling_byte_budget() {
+        let mut writer = SpecifiedRuleWriter::new(Limits::new(4, 4, 1));
+        writer.append("x").unwrap();
+        let result = writer.without_output(|writer| names("a").append_to_rule_writer(writer));
+        assert!(
+            result.is_ok(),
+            "suppression spends no remaining bytes: {result:?}"
+        );
+        assert_eq!(writer.css, "x");
+        assert!(!writer.context.output_suppressed());
+    }
+
+    #[test]
+    fn suppressed_names_still_charge_semantic_work_and_restore_output() {
+        let mut writer = SpecifiedRuleWriter::new(Limits::new(2, 4, 1));
+        let error = writer
+            .without_output(|writer| names("a").append_to_rule_writer(writer))
+            .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::InputNodeLimit);
+        assert!(writer.css.is_empty());
+        assert!(!writer.context.output_suppressed());
+        writer.append("x").unwrap();
+        assert_eq!(writer.css, "x");
+    }
+
+    #[test]
+    fn emitted_names_escape_identity_and_fail_atomically_at_byte_limit() {
+        let value = names("a b");
+        assert_eq!(value.serialize_specified().unwrap(), "[a\\ b] auto");
+        assert_eq!(
+            value
+                .serialize_specified_with_limits(Limits::new(4, 4, 10))
+                .unwrap_err()
+                .kind(),
+            ErrorKind::ByteLimit,
+        );
+        assert_eq!(retained_name(&value), "a b");
+    }
+
+    #[test]
+    fn nul_line_name_cannot_succeed_with_a_different_decoded_identity() {
+        let value = names("a\0b");
+        let error = value.serialize_specified().unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::UnrepresentableValue);
+        assert_eq!(retained_name(&value), "a\0b");
+    }
+}
