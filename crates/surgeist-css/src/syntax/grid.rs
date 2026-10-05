@@ -350,7 +350,7 @@ pub enum CssGridTrackRepeatComponent {
     TrackSize(CssGridTrackSize),
 }
 
-/// Non-empty, non-recursive integer or automatic track-repeat content.
+/// A nonempty repeat-free sequence for repeat bodies or explicit area columns.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct CssGridTrackRepeatContent {
@@ -422,20 +422,25 @@ impl CssGridFixedRepeatContent {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct CssGridIntegerTrackRepeat {
-    count: crate::CssPositiveIntegerLiteral,
+    count: crate::CssPositiveIntegerValue,
     content: CssGridTrackRepeatContent,
 }
 
 impl CssGridIntegerTrackRepeat {
-    pub const fn new(
-        count: crate::CssPositiveIntegerLiteral,
+    /// Checks ordinary positive counts while retaining function math symbolically.
+    /// Typed child recovery remains observable; this does not certify original CSS.
+    pub fn try_new(
+        count: crate::CssPositiveIntegerValue,
         content: CssGridTrackRepeatContent,
-    ) -> Self {
-        Self { count, content }
+    ) -> Option<Self> {
+        Some(Self {
+            count: count.normalized_positive_root()?,
+            content,
+        })
     }
 
     #[must_use]
-    pub const fn count(&self) -> &crate::CssPositiveIntegerLiteral {
+    pub const fn count(&self) -> &crate::CssPositiveIntegerValue {
         &self.count
     }
 
@@ -449,20 +454,24 @@ impl CssGridIntegerTrackRepeat {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct CssGridIntegerFixedRepeat {
-    count: crate::CssPositiveIntegerLiteral,
+    count: crate::CssPositiveIntegerValue,
     content: CssGridFixedRepeatContent,
 }
 
 impl CssGridIntegerFixedRepeat {
-    pub const fn new(
-        count: crate::CssPositiveIntegerLiteral,
+    /// Checks ordinary positive counts while retaining function math symbolically.
+    pub fn try_new(
+        count: crate::CssPositiveIntegerValue,
         content: CssGridFixedRepeatContent,
-    ) -> Self {
-        Self { count, content }
+    ) -> Option<Self> {
+        Some(Self {
+            count: count.normalized_positive_root()?,
+            content,
+        })
     }
 
     #[must_use]
-    pub const fn count(&self) -> &crate::CssPositiveIntegerLiteral {
+    pub const fn count(&self) -> &crate::CssPositiveIntegerValue {
         &self.count
     }
 
@@ -590,11 +599,13 @@ impl CssGridAutoTrackList {
 
 #[derive(Clone, Debug, PartialEq)]
 enum CssGridTrackListRepresentation {
+    None,
     General(CssGridGeneralTrackList),
     Auto(CssGridAutoTrackList),
+    Subgrid(Vec<CssGridSubgridComponent>),
 }
 
-/// An authored Grid track list, classified as general or automatic.
+/// An authored Grid axis: none, sized tracks, or subgrid line names.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct CssGridTrackList {
@@ -602,6 +613,42 @@ pub struct CssGridTrackList {
 }
 
 impl CssGridTrackList {
+    #[must_use]
+    pub const fn none() -> Self {
+        Self {
+            representation: CssGridTrackListRepresentation::None,
+        }
+    }
+
+    #[must_use]
+    pub const fn is_none(&self) -> bool {
+        matches!(self.representation, CssGridTrackListRepresentation::None)
+    }
+
+    /// Constructs a subgrid line-name list, including bare `subgrid`.
+    /// At most one automatic name repetition is permitted across the list.
+    pub fn try_subgrid(components: Vec<CssGridSubgridComponent>) -> Option<Self> {
+        (components
+            .iter()
+            .filter(|component| {
+                matches!(component,
+            CssGridSubgridComponent::Repeat(value) if value.is_auto_fill())
+            })
+            .count()
+            <= 1)
+            .then_some(Self {
+                representation: CssGridTrackListRepresentation::Subgrid(components),
+            })
+    }
+
+    #[must_use]
+    pub fn subgrid_components(&self) -> Option<&[CssGridSubgridComponent]> {
+        match &self.representation {
+            CssGridTrackListRepresentation::Subgrid(components) => Some(components),
+            _ => None,
+        }
+    }
+
     pub const fn general(value: CssGridGeneralTrackList) -> Self {
         Self {
             representation: CssGridTrackListRepresentation::General(value),
@@ -618,7 +665,7 @@ impl CssGridTrackList {
     pub const fn general_list(&self) -> Option<&CssGridGeneralTrackList> {
         match &self.representation {
             CssGridTrackListRepresentation::General(value) => Some(value),
-            CssGridTrackListRepresentation::Auto(_) => None,
+            _ => None,
         }
     }
 
@@ -626,8 +673,71 @@ impl CssGridTrackList {
     pub const fn auto_list(&self) -> Option<&CssGridAutoTrackList> {
         match &self.representation {
             CssGridTrackListRepresentation::Auto(value) => Some(value),
-            CssGridTrackListRepresentation::General(_) => None,
+            _ => None,
         }
+    }
+}
+
+/// One group or non-recursive name repetition in a subgrid axis.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub enum CssGridSubgridComponent {
+    LineNames(CssGridLineNames),
+    Repeat(CssGridNameRepeat),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum CssGridNameRepeatCount {
+    Counted(crate::CssPositiveIntegerValue),
+    AutoFill,
+}
+
+/// A nonempty sequence of line-name groups repeated symbolically.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub struct CssGridNameRepeat {
+    count: CssGridNameRepeatCount,
+    groups: Vec<CssGridLineNames>,
+}
+
+impl CssGridNameRepeat {
+    /// Checks a positive ordinary count and at least one group, including `[]`.
+    /// Function math retains its exact graph and deferred count range/rounding.
+    pub fn try_new(
+        count: crate::CssPositiveIntegerValue,
+        groups: Vec<CssGridLineNames>,
+    ) -> Option<Self> {
+        let count = count.normalized_positive_root()?;
+        (!groups.is_empty()).then_some(Self {
+            count: CssGridNameRepeatCount::Counted(count),
+            groups,
+        })
+    }
+
+    /// Constructs automatic name repetition with at least one authored group.
+    pub fn try_auto_fill(groups: Vec<CssGridLineNames>) -> Option<Self> {
+        (!groups.is_empty()).then_some(Self {
+            count: CssGridNameRepeatCount::AutoFill,
+            groups,
+        })
+    }
+
+    #[must_use]
+    pub const fn count(&self) -> Option<&crate::CssPositiveIntegerValue> {
+        match &self.count {
+            CssGridNameRepeatCount::Counted(count) => Some(count),
+            CssGridNameRepeatCount::AutoFill => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn is_auto_fill(&self) -> bool {
+        matches!(self.count, CssGridNameRepeatCount::AutoFill)
+    }
+
+    #[must_use]
+    pub fn groups(&self) -> &[CssGridLineNames] {
+        &self.groups
     }
 }
 
@@ -660,6 +770,53 @@ enum CssGridTemplateRepresentation {
         rows: CssGridTrackList,
         columns: CssGridTrackList,
     },
+    Areas {
+        rows: Vec<CssGridTemplateAreaTrack>,
+        columns: Option<CssGridTrackRepeatContent>,
+    },
+}
+
+/// One area-string row with its authored optional size and boundary groups.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub struct CssGridTemplateAreaTrack {
+    area: crate::CssGridTemplateAreaRow,
+    size: Option<CssGridTrackSize>,
+    before: Option<CssGridLineNames>,
+    after: Option<CssGridLineNames>,
+}
+
+impl CssGridTemplateAreaTrack {
+    #[must_use]
+    pub fn new(
+        area: crate::CssGridTemplateAreaRow,
+        size: Option<CssGridTrackSize>,
+        before: Option<CssGridLineNames>,
+        after: Option<CssGridLineNames>,
+    ) -> Self {
+        Self {
+            area,
+            size,
+            before,
+            after,
+        }
+    }
+    #[must_use]
+    pub const fn area(&self) -> &crate::CssGridTemplateAreaRow {
+        &self.area
+    }
+    #[must_use]
+    pub const fn size(&self) -> Option<&CssGridTrackSize> {
+        self.size.as_ref()
+    }
+    #[must_use]
+    pub const fn before(&self) -> Option<&CssGridLineNames> {
+        self.before.as_ref()
+    }
+    #[must_use]
+    pub const fn after(&self) -> Option<&CssGridLineNames> {
+        self.after.as_ref()
+    }
 }
 
 /// The authored `grid-template` aggregate.
@@ -670,15 +827,42 @@ pub struct CssGridTemplate {
 }
 
 impl CssGridTemplate {
-    pub(crate) const fn none() -> Self {
+    pub const fn none() -> Self {
         Self {
             representation: CssGridTemplateRepresentation::None,
         }
     }
 
-    pub(crate) const fn rows_columns(rows: CssGridTrackList, columns: CssGridTrackList) -> Self {
+    pub const fn rows_columns(rows: CssGridTrackList, columns: CssGridTrackList) -> Self {
         Self {
             representation: CssGridTemplateRepresentation::RowsColumns { rows, columns },
+        }
+    }
+
+    /// Checks the decoded rectangular area matrix without constraining column count.
+    pub fn try_areas(
+        rows: Vec<CssGridTemplateAreaTrack>,
+        columns: Option<CssGridTrackRepeatContent>,
+    ) -> Result<Self, crate::CssGridTemplateAreaError> {
+        crate::CssGridTemplateAreas::try_rows(rows.iter().map(|row| row.area.clone()).collect())?;
+        Ok(Self {
+            representation: CssGridTemplateRepresentation::Areas { rows, columns },
+        })
+    }
+
+    #[must_use]
+    pub fn area_rows(&self) -> Option<&[CssGridTemplateAreaTrack]> {
+        match &self.representation {
+            CssGridTemplateRepresentation::Areas { rows, .. } => Some(rows),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn area_columns(&self) -> Option<&CssGridTrackRepeatContent> {
+        match &self.representation {
+            CssGridTemplateRepresentation::Areas { columns, .. } => columns.as_ref(),
+            _ => None,
         }
     }
 
@@ -691,7 +875,7 @@ impl CssGridTemplate {
     pub const fn rows(&self) -> Option<&CssGridTrackList> {
         match &self.representation {
             CssGridTemplateRepresentation::RowsColumns { rows, .. } => Some(rows),
-            CssGridTemplateRepresentation::None => None,
+            _ => None,
         }
     }
 
@@ -699,7 +883,7 @@ impl CssGridTemplate {
     pub const fn columns(&self) -> Option<&CssGridTrackList> {
         match &self.representation {
             CssGridTemplateRepresentation::RowsColumns { columns, .. } => Some(columns),
-            CssGridTemplateRepresentation::None => None,
+            _ => None,
         }
     }
 }
@@ -722,13 +906,13 @@ pub struct CssGrid {
 }
 
 impl CssGrid {
-    pub(crate) const fn template(value: CssGridTemplate) -> Self {
+    pub const fn template(value: CssGridTemplate) -> Self {
         Self {
             representation: CssGridRepresentation::Template(value),
         }
     }
 
-    pub(crate) const fn from_auto_flow(
+    pub const fn from_auto_flow(
         flow: CssGridAutoFlowMode,
         auto_tracks: Option<CssGridTrackSizeList>,
         explicit_tracks: CssGridTrackList,
@@ -962,7 +1146,7 @@ impl GridSpecified for CssGridIntegerTrackRepeat {
     ) -> GridSerializationResult<()> {
         grid_node(context)?;
         context.append(output, "repeat(")?;
-        self.count.integer().append_specified(context, output)?;
+        self.count.serialize_specified_into(context, output)?;
         context.append(output, ", ")?;
         grid_items(&self.content.components, context, output)?;
         context.append(output, ")")
@@ -977,7 +1161,7 @@ impl GridSpecified for CssGridIntegerFixedRepeat {
     ) -> GridSerializationResult<()> {
         grid_node(context)?;
         context.append(output, "repeat(")?;
-        self.count.integer().append_specified(context, output)?;
+        self.count.serialize_specified_into(context, output)?;
         context.append(output, ", ")?;
         grid_items(&self.content.components, context, output)?;
         context.append(output, ")")
@@ -1042,11 +1226,44 @@ impl GridSpecified for CssGridTrackList {
     ) -> GridSerializationResult<()> {
         grid_node(context)?;
         match &self.representation {
+            CssGridTrackListRepresentation::None => context.append(output, "none"),
             CssGridTrackListRepresentation::General(value) => {
                 grid_items(&value.components, context, output)
             }
             CssGridTrackListRepresentation::Auto(value) => {
                 grid_items(&value.components, context, output)
+            }
+            CssGridTrackListRepresentation::Subgrid(components) => {
+                context.append(output, "subgrid")?;
+                if !components.is_empty() {
+                    context.append(output, " ")?;
+                }
+                grid_items(components, context, output)
+            }
+        }
+    }
+}
+
+impl GridSpecified for CssGridSubgridComponent {
+    fn write_grid(
+        &self,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> GridSerializationResult<()> {
+        match self {
+            Self::LineNames(names) => names.write_grid(context, output),
+            Self::Repeat(value) => {
+                grid_node(context)?;
+                context.append(output, "repeat(")?;
+                match &value.count {
+                    CssGridNameRepeatCount::Counted(count) => {
+                        count.serialize_specified_into(context, output)?
+                    }
+                    CssGridNameRepeatCount::AutoFill => context.append(output, "auto-fill")?,
+                }
+                context.append(output, ", ")?;
+                grid_items(&value.groups, context, output)?;
+                context.append(output, ")")
             }
         }
     }
@@ -1076,6 +1293,32 @@ impl GridSpecified for CssGridTemplate {
                 rows.write_grid(context, output)?;
                 context.append(output, " / ")?;
                 columns.write_grid(context, output)
+            }
+            CssGridTemplateRepresentation::Areas { rows, columns } => {
+                for (index, row) in rows.iter().enumerate() {
+                    if index != 0 {
+                        context.append(output, " ")?;
+                    }
+                    if let Some(names) = &row.before {
+                        names.write_grid(context, output)?;
+                        context.append(output, " ")?;
+                    }
+                    crate::grid_template_areas::write_area_row(&row.area, context, output, false)?;
+                    if let Some(size) = &row.size {
+                        context.append(output, " ")?;
+                        size.write_grid(context, output)?;
+                    }
+                    if let Some(names) = &row.after {
+                        context.append(output, " ")?;
+                        names.write_grid(context, output)?;
+                    }
+                }
+                if let Some(columns) = columns {
+                    context.append(output, " / ")?;
+                    grid_node(context)?;
+                    grid_items(&columns.components, context, output)?;
+                }
+                Ok(())
             }
         }
     }
@@ -1384,5 +1627,70 @@ mod aggregate_composition_contract {
         writer.append("x").unwrap();
         assert_eq!(writer.css, "x");
         assert_eq!(value, before);
+    }
+
+    #[test]
+    fn subgrid_and_area_suppression_preserves_semantic_work_and_restores_output() {
+        for (text, nodes) in [
+            ("subgrid repeat(2, [a] []) / none", 8),
+            ("\"a\" auto / 1px", 6),
+        ] {
+            let value = template(text);
+            let before = value.clone();
+            let mut writer = SpecifiedRuleWriter::new(Limits::new(nodes, nodes, 1));
+            writer.append("x").unwrap();
+            writer
+                .without_output(|writer| value.append_to_rule_writer(writer))
+                .unwrap();
+            assert_eq!(writer.css, "x");
+            assert!(!writer.context.output_suppressed());
+            assert_eq!(
+                writer.context.charge_input(1).unwrap_err().kind(),
+                Kind::InputNodeLimit
+            );
+            assert_eq!(
+                writer.context.charge_projection(1).unwrap_err().kind(),
+                Kind::ProjectionNodeLimit
+            );
+            for (input, projection, kind) in [
+                (nodes - 1, nodes, Kind::InputNodeLimit),
+                (nodes, nodes - 1, Kind::ProjectionNodeLimit),
+            ] {
+                let mut short = SpecifiedRuleWriter::new(Limits::new(input, projection, 1));
+                let error = short
+                    .without_output(|writer| value.append_to_rule_writer(writer))
+                    .unwrap_err();
+                assert_eq!(error.kind(), kind);
+                assert!(!short.context.output_suppressed());
+                short.append("x").unwrap();
+                assert_eq!(short.css, "x");
+            }
+            assert_eq!(value, before);
+            assert_eq!(value.serialize_specified().unwrap(), text);
+        }
+    }
+
+    #[test]
+    fn area_rows_and_subgrid_siblings_share_partly_consumed_work_and_bytes() {
+        let first = template("subgrid [] [a] / none"); // 1 + 4 + 1
+        let second = template("\"a\""); // 1 + row + cell
+        let expected = "xsubgrid [] [a] / none;\"a\"";
+        let mut writer = SpecifiedRuleWriter::new(Limits::new(10, 10, expected.len()));
+        writer.context.charge_input(1).unwrap();
+        writer.context.charge_projection(1).unwrap();
+        writer.append("x").unwrap();
+        first.append_to_rule_writer(&mut writer).unwrap();
+        writer.append(";").unwrap();
+        second.append_to_rule_writer(&mut writer).unwrap();
+        assert_eq!(writer.css, expected);
+        assert_eq!(
+            writer.context.charge_input(1).unwrap_err().kind(),
+            Kind::InputNodeLimit
+        );
+        assert_eq!(
+            writer.context.charge_projection(1).unwrap_err().kind(),
+            Kind::ProjectionNodeLimit
+        );
+        assert_eq!(writer.append("x").unwrap_err().kind(), Kind::ByteLimit);
     }
 }

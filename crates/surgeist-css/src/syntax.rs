@@ -4438,6 +4438,31 @@ pub enum CssPositiveIntegerValue {
     Calculation(CssIntegerCalculation),
 }
 
+impl CssPositiveIntegerValue {
+    // Typed function math stays symbolic. A bare Integer calculation token
+    // must cross the same positive-literal boundary as ordinary parsed input.
+    pub(crate) fn normalized_positive_root(self) -> Option<Self> {
+        match self {
+            Self::Literal(literal) => Some(Self::Literal(literal)),
+            Self::Calculation(calculation) => {
+                let root =
+                    crate::specified_numeric::significant_root(calculation.components()).ok()?;
+                match root.view() {
+                    crate::CssComponentValueRef::Token(_) => {
+                        let integer =
+                            crate::CssIntegerLiteral::try_from_component(root.clone()).ok()?;
+                        CssPositiveIntegerLiteral::try_new(integer).map(Self::Literal)
+                    }
+                    crate::CssComponentValueRef::Function(_) => {
+                        Some(Self::Calculation(calculation))
+                    }
+                    _ => None,
+                }
+            }
+        }
+    }
+}
+
 /// A positive integer whose ordinary authored magnitude is not machine-bounded.
 #[derive(Clone, Debug)]
 pub struct CssPositiveIntegerLiteral {
@@ -8523,26 +8548,7 @@ impl CssSteps {
         count: CssPositiveIntegerValue,
         position: Option<CssStepPosition>,
     ) -> Option<Self> {
-        let count = match count {
-            CssPositiveIntegerValue::Literal(literal) => CssPositiveIntegerValue::Literal(literal),
-            CssPositiveIntegerValue::Calculation(calculation) => {
-                let root =
-                    crate::specified_numeric::significant_root(calculation.components()).ok()?;
-                match root.view() {
-                    crate::CssComponentValueRef::Token(_) => {
-                        let integer =
-                            crate::CssIntegerLiteral::try_from_component(root.clone()).ok()?;
-                        CssPositiveIntegerValue::Literal(CssPositiveIntegerLiteral::try_new(
-                            integer,
-                        )?)
-                    }
-                    crate::CssComponentValueRef::Function(_) => {
-                        CssPositiveIntegerValue::Calculation(calculation)
-                    }
-                    _ => return None,
-                }
-            }
-        };
+        let count = count.normalized_positive_root()?;
         if matches!(position, Some(CssStepPosition::JumpNone))
             && let CssPositiveIntegerValue::Literal(literal) = &count
             && literal

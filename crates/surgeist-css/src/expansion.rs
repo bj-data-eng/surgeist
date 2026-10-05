@@ -44,6 +44,121 @@ use crate::{
     CssAbsoluteFontWeight, CssFontSize, CssFontStyle, CssFontStyleKeyword, CssFontWeight,
     CssFontWidth, CssFontWidthKeyword, CssLineHeight, CssSpecifiedLength,
 };
+
+// Grid alternatives project typed children into the existing schema. Omitted
+// values request that terminal's central initial; no CSS is serialized/reparsed.
+pub(crate) fn grid_template_rows(value: &CssGridTemplate) -> Option<CssGridTrackList> {
+    if let Some(rows) = value.rows() {
+        return Some(rows.clone());
+    }
+    let rows = value.area_rows()?;
+    let mut components = Vec::new();
+    let mut previous_after: Option<&CssGridLineNames> = None;
+    for row in rows {
+        if previous_after.is_some() || row.before().is_some() {
+            let names = previous_after
+                .into_iter()
+                .chain(row.before())
+                .flat_map(|group| group.names().iter().cloned())
+                .collect();
+            components.push(CssGridGeneralTrackComponent::LineNames(
+                CssGridLineNames::new(names),
+            ));
+        }
+        components.push(CssGridGeneralTrackComponent::TrackSize(
+            row.size()
+                .cloned()
+                .unwrap_or_else(|| CssGridTrackSize::from_breadth(CssGridTrackBreadth::auto())),
+        ));
+        previous_after = row.after();
+    }
+    if let Some(names) = previous_after {
+        components.push(CssGridGeneralTrackComponent::LineNames(names.clone()));
+    }
+    Some(CssGridTrackList::general(
+        CssGridGeneralTrackList::try_new(components)
+            .expect("validated area rows supply nonadjacent boundaries and track sizes"),
+    ))
+}
+
+pub(crate) fn grid_template_columns(value: &CssGridTemplate) -> Option<CssGridTrackList> {
+    if let Some(columns) = value.columns() {
+        return Some(columns.clone());
+    }
+    value.area_columns().map(|columns| {
+        let components = columns
+            .components()
+            .iter()
+            .map(|component| match component {
+                CssGridTrackRepeatComponent::LineNames(names) => {
+                    CssGridGeneralTrackComponent::LineNames(names.clone())
+                }
+                CssGridTrackRepeatComponent::TrackSize(size) => {
+                    CssGridGeneralTrackComponent::TrackSize(size.clone())
+                }
+            })
+            .collect();
+        CssGridTrackList::general(
+            CssGridGeneralTrackList::try_new(components)
+                .expect("checked repeat-free area columns are a general track list"),
+        )
+    })
+}
+
+pub(crate) fn grid_template_areas(value: &CssGridTemplate) -> Option<crate::CssGridTemplateAreas> {
+    value.area_rows().map(|rows| {
+        crate::CssGridTemplateAreas::try_rows(rows.iter().map(|row| row.area().clone()).collect())
+            .expect("immutable template area matrix was checked at construction")
+    })
+}
+
+pub(crate) fn grid_rows(value: &CssGrid) -> Option<CssGridTrackList> {
+    if let Some(template) = value.template_value() {
+        return grid_template_rows(template);
+    }
+    (value.auto_flow()?.axis() == CssGridAutoFlowAxis::Column).then(|| {
+        value
+            .explicit_tracks()
+            .expect("auto-flow branch has an explicit axis")
+            .clone()
+    })
+}
+
+pub(crate) fn grid_columns(value: &CssGrid) -> Option<CssGridTrackList> {
+    if let Some(template) = value.template_value() {
+        return grid_template_columns(template);
+    }
+    (value.auto_flow()?.axis() == CssGridAutoFlowAxis::Row).then(|| {
+        value
+            .explicit_tracks()
+            .expect("auto-flow branch has an explicit axis")
+            .clone()
+    })
+}
+
+pub(crate) fn grid_areas(value: &CssGrid) -> Option<crate::CssGridTemplateAreas> {
+    grid_template_areas(value.template_value()?)
+}
+
+pub(crate) fn grid_auto_rows(value: &CssGrid) -> Option<CssGridTrackSizeList> {
+    if value.auto_flow()?.axis() == CssGridAutoFlowAxis::Row {
+        value.auto_tracks().cloned()
+    } else {
+        None
+    }
+}
+
+pub(crate) fn grid_auto_columns(value: &CssGrid) -> Option<CssGridTrackSizeList> {
+    if value.auto_flow()?.axis() == CssGridAutoFlowAxis::Column {
+        value.auto_tracks().cloned()
+    } else {
+        None
+    }
+}
+
+pub(crate) fn grid_auto_flow(value: &CssGrid) -> Option<CssGridAutoFlow> {
+    value.auto_flow().map(CssGridAutoFlow::ExplicitAxis)
+}
 use crate::{
     CssComponentValues, CssContainer, CssContainerNames, CssContainerType, CssKnownProperty,
     CssPropertyValueParseError, CssSpecifiedLengthPercentage,

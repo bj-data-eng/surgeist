@@ -2713,7 +2713,9 @@ fn assert_captured_grid_columns(list: &surgeist_css::CssGridTrackList) {
     let [GeneralTrack::Repeat(repeat)] = list.general_list().unwrap().components() else {
         panic!("one captured integer repeat")
     };
-    assert_eq!(repeat.count().integer().numeric().representation(), "2");
+    assert!(
+        matches!(repeat.count(), surgeist_css::CssPositiveIntegerValue::Literal(count) if count.integer().numeric().representation() == "2")
+    );
     let [RepeatMember::TrackSize(size)] = repeat.content().components() else {
         panic!("one repeated minmax")
     };

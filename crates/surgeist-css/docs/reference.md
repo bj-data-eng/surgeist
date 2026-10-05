@@ -910,7 +910,9 @@ the `border-image` shorthand and its five longhands, `border-collapse`, `border-
 `order`, `aspect-ratio`, `visibility`, `direction`, `unicode-bidi`, `writing-mode`, `text-combine-upright`,
 the `container` shorthand and its two longhands, the `transition` shorthand
 and its four longhands, the `animation` shorthand and its eight longhands,
-`background-blend-mode`, `isolation`, `mix-blend-mode`, and `all`.
+`background-blend-mode`, `isolation`, `mix-blend-mode`, the Grid template axes,
+`grid-template-areas`, implicit track sizes and flow, `grid-template`, `grid`,
+and `all`.
 The shared property schema owns their
 member lists, initial values and reset-only components. Other known properties
 return typed unsupported errors preserving their identity. The stylesheet
@@ -3201,11 +3203,19 @@ to a later phase.
 
 ## Authored Grid repetition and keyframe structure
 
-Grid property wrappers expose authored values through `value()`. The parallel
-Grid graphs and `i01_subset()` methods are removed. Checked `CssGrid*` models
-are the sole Grid API. Track breadth and size accessors expose exact scalars
-through `length_percentage()`, `flex()`, and
-`fit_content()`.
+Grid property wrappers expose checked authored `CssGrid*` values through
+`value()`. `CssGridTrackList` represents `none`, ordinary tracks, automatic
+repetition and subgrid line names. Track breadth and size accessors expose exact
+scalars through `length_percentage()`, `flex()`, and `fit_content()`.
+
+`CssGridTrackList::try_subgrid` accepts ordered `CssGridSubgridComponent` values:
+line-name groups or checked `CssGridNameRepeat` values. An empty component list
+represents bare `subgrid`; adjacent and empty groups remain distinct authored
+components. Counted name repeats require a nonempty list of groups, though each
+group may be empty. `try_auto_fill` has the same group requirement, and the
+subgrid constructor allows at most one auto-fill repeat. Track sizes, nested
+repeats and auto-fit are not subgrid name-repeat alternatives. `count()`,
+`is_auto_fill()` and `groups()` expose the retained choice without expanding it.
 
 `grid-auto-flow` accepts six authored meanings: `normal`, `dense`, `row`,
 `row dense`, `column`, and `column dense`. The axis and `dense` keywords may be
@@ -3247,8 +3257,8 @@ between cells and one period for each empty cell under cumulative input-node,
 projection-node, and CSS-byte budgets. The property wrapper's `as_css()` retains
 the authored source. CSS-wide values, `all`, and pending substitutions use the
 same intrinsic expansion and strict grammar reentry as other completed
-longhands. This does not complete the `grid-template` or `grid` shorthand's
-ASCII-art grammar or perform layout.
+longhands. The template shorthand reuses this same row and matrix validation;
+its authored row options are described below. Layout remains downstream.
 
 The four Grid placement longhands (`grid-row-start`, `grid-row-end`,
 `grid-column-start`, and `grid-column-end`) and the `grid-row`, `grid-column`,
@@ -3278,13 +3288,19 @@ the complete line or shorthand.
 The six Grid repetition consumers expose their authored value through `value()`.
 Grid track lists distinguish general lists from lists containing exactly
 one automatic repetition. Integer and automatic repetitions are non-recursive.
-Integer repeat counts are `CssPositiveIntegerLiteral` values in both
-`CssGridIntegerTrackRepeat` and `CssGridIntegerFixedRepeat`. Constructors store the
-checked exact token, including its sign, leading zeros and origin; `count()`
-borrows that value. Counts remain literal-only and strictly positive. Canonical
-serialization removes redundant plus signs and leading zeros without narrowing
-the magnitude, and charges the count within the enclosing cumulative input,
-projection and output budgets.
+Integer track, fixed and name repeats retain `CssPositiveIntegerValue` counts.
+Their checked `try_new` constructors normalize a bare integer calculation root
+to an exact positive literal, retaining its origin and rejecting bare zero or
+negative values. Function roots retain their symbolic graphs: `calc(1.5)`,
+`calc(0)` and `calc(-1)` are authored math, with integer rounding and range
+handling deferred to computed or used values under
+[Values 4](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-range).
+The shared positive-integer owner supplies this check to repeats and `steps()`.
+`count()` borrows the retained literal or calculation; it does not evaluate it.
+Canonical literal serialization removes redundant plus signs and leading zeros
+without narrowing the magnitude, and charges every count through the enclosing
+cumulative input, projection and output budgets. The old literal-only `new`
+constructors are replaced by `try_new`; no compatibility constructor remains.
 
 The [selected Grid 3 publication](https://www.w3.org/TR/2026/WD-css-grid-3-20260121/#intrinsic-auto-repeat)
 admits general track sizes inside automatic repetition, including intrinsic
@@ -3303,8 +3319,10 @@ structure. Historical captured inputs
 and observations remain unchanged; semantic witnesses apply the selected grammar.
 
 The shared repeat feature cites the Grid 3 extension. The containing property
-records retain their Grid 2 property grammar sources and document the extension
-in their supported subset. Source identities are immutable.
+records retain their Grid 2 property grammar sources. The repeat value, template
+axes, template shorthand, grid shorthand and implicit track-size records have
+complete selected authored support. Source identities are immutable; the separate
+`grid-auto-flow` orientation boundary remains explicit.
 
 Keyframe rules preserve authored structure rather than a merged animation
 timeline. Empty rules and blocks remain present. Repeated selector blocks,
@@ -3380,8 +3398,11 @@ preserves duplicate names and their case. Its borrowed `names()` slice contains
 the existing checked Grid line-name type, also used for placement. CSS-wide words,
 `default`, `auto` and `span` are excluded at construction and parsing. A group
 does not supply a required track size.
-Two adjacent `[...]` groups cannot occupy one track boundary, including inside
-integer and automatic repetitions.
+Two adjacent `[...]` groups cannot occupy one ordinary sized-track boundary,
+including inside sized integer and automatic repetitions. Subgrid line-name lists
+allow adjacent groups. Area-template rows retain separate trailing and leading
+groups at a shared row boundary; intrinsic row projection merges their names in
+order, preserving duplicates and the presence of empty groups.
 
 The shared Grid track-size model keeps exact ordinary nonnegative `fr`, length,
 and percentage quantities until a consumer has a finite conversion policy.
@@ -3401,13 +3422,25 @@ scalar without floating-point narrowing.
 `serialize_specified()` on typed track sizes and lists emits bounded canonical
 CSS from retained values, whereas declaration `as_css()` preserves authored text.
 
-`CssGridTemplate` and `CssGrid` expose `serialize_specified` and
-`serialize_specified_with_limits` for represented `none`, rows/columns and
-auto-flow aggregates. The rows/columns form requires a slash and both lists,
-following [Grid 2 §7.4](https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#explicit-grid-shorthand).
-The private model enforces that requirement; the public row/column getters
-remain optional because the aggregate may be `none`. Keyword-start lists such
-as `auto / min-content` use the owning track grammar.
+`CssGridTemplate` and `CssGrid` expose bounded canonical specified serialization
+for `none`, rows/columns, area-string templates and auto-flow aggregates.
+The rows/columns form requires a slash and both complete axis values, following
+[Grid 2 §7.4](https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#explicit-grid-shorthand).
+The public `none()` and `rows_columns()` constructors preserve that invariant;
+`rows()` and `columns()` borrow only the rows/columns branch. Keyword-start lists
+such as `auto / min-content` use the owning track grammar.
+
+`CssGridTemplate::try_areas` accepts nonempty `CssGridTemplateAreaTrack` rows and
+optional repeat-free columns as `CssGridTrackRepeatContent`. Each row retains its
+checked decoded area cells, optional size and optional before/after line-name
+groups. `area_rows()` and `area_columns()` expose this authored branch; omitted
+sizes remain absent, distinct from explicit `auto`. Matrix validation uses the
+existing area owner, including rectangular names and equal row widths. Explicit
+column-track count need not equal the matrix width. Serialization preserves
+ordered rows and explicit options; effective row projection supplies `auto` for
+omitted sizes and merges names at row boundaries. Absent columns project to
+`none`. Public `CssGrid::template` and `from_auto_flow` compose checked children
+without serializing and reparsing them.
 
 Both [Grid 2 §7.8 auto-flow forms](https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#grid-shorthand)
 admit either order of `auto-flow` and `dense`. Canonical output uses
@@ -3428,14 +3461,33 @@ context, including when output is suppressed. Suppressed names spend no escape
 scratch or output bytes; checked decoded line names exclude NUL before entering
 output. Public errors return no partial CSS.
 
-The Grid repetition value and the six Grid property records remain `Partial`. Subgrid name-repeat, remaining `grid`/`grid-template`
-shorthand alternatives, including area-string and absent track-child models,
-remain unfinished. Aggregate output does not complete their metadata, reset
-contributions or shared declaration dispatch.
-`grid-auto-rows` and `grid-auto-columns` have noninherited `auto` initial
-values and expand to one intrinsic longhand contribution. CSS-wide keywords
-stay symbolic, and substituted values reenter the same repeat-free grammar
-strictly before producing contributions.
+Subgrid uses the existing axis-list root charge; name repeats charge one repeat
+node plus their retained count and groups. An area template charges its aggregate,
+each row and decoded cell, explicit groups, explicit sizes and any column list.
+Omitted sizes add no synthetic authored work. The area row writer shares the
+same cumulative context as the existing matrix serializer. For example,
+`subgrid [] [a]` costs four nodes in each work budget and fourteen bytes;
+`subgrid repeat(2, [a] [])` costs six nodes and twenty-five bytes. `"a"` costs
+three nodes and three bytes, and `"a" auto / 1px` costs six nodes and fourteen
+bytes. Serialization never expands repetition counts.
+
+The template axes and areas have noninherited `none` initials; implicit row and
+column tracks have noninherited `auto` initials. `grid-template` emits three
+settable members in stable order: rows, columns, areas. `grid` emits those three,
+then auto-rows, auto-columns and auto-flow. All six are settable; neither shorthand
+has static reset-only members. The template alternative resets implicit tracks
+to `auto` and flow to the accepted `normal` initial. Auto-flow alternatives set
+the explicit axis and reset the remaining template/implicit members according to
+[Grid 2 §7.8](https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#grid-shorthand).
+Gutters and placement properties are outside this member list.
+
+These families use shared declaration dispatch and strict original-component
+admission. Recovered typed children retain their origins without certifying a
+clean original declaration. CSS-wide keywords stay symbolic across every member;
+pending substitutions remain one unresolved occurrence and reenter the owning
+grammar before projection. Normalization counts one, three or six terminal
+contributions independently of repeat magnitude or track count, with cumulative
+limits and atomic failure shared across declarations and rules.
 The selected authored keyframe rule production has complete support, including
 quoted names, percentage math and keyframe-specific declaration recovery.
 Repetition counts and used track sizes remain unresolved. This crate does not perform Grid layout, cascade

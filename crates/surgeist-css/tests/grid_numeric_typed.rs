@@ -205,10 +205,14 @@ fn checked_lists_reject_empty_tracks_and_repeat_cross_products() {
         size.clone(),
     )])
     .unwrap();
-    let repeat = CssGridIntegerTrackRepeat::new(
-        CssPositiveIntegerLiteral::try_new(surgeist_css::CssIntegerLiteral::from_i32(2)).unwrap(),
+    let repeat = CssGridIntegerTrackRepeat::try_new(
+        surgeist_css::CssPositiveIntegerValue::Literal(
+            CssPositiveIntegerLiteral::try_new(surgeist_css::CssIntegerLiteral::from_i32(2))
+                .unwrap(),
+        ),
         content.clone(),
-    );
+    )
+    .unwrap();
     let general = CssGridTrackList::general(
         CssGridGeneralTrackList::try_new(vec![CssGridGeneralTrackComponent::Repeat(repeat)])
             .unwrap(),

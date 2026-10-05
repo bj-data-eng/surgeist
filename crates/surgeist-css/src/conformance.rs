@@ -2305,11 +2305,6 @@ const COLOR5_RELATIVE_SUBSET: &str = "Relative rgb()/rgba(), hsl()/hsla(), hwb()
 const COLOR5_RELATIVE_REMAINDER: &str = "Unselected CSS Color 5 source-color functions remain unsupported; profile binding and color evaluation belong to downstream resolution.";
 const COLOR5_MIX_SUBSET: &str = "Authored color-mix() supports an optional interpolation method, ordered nonempty color lists, literal or calculated percentage weights before or after colors, and predefined, polar or symbolic custom spaces.";
 const COLOR5_MIX_REMAINDER: &str = "Unselected contextual Color 5 alternatives and downstream color evaluation remain outside this authored subset.";
-const GRID_REPEAT_SUBSET: &str = "Non-recursive integer track and fixed repeats, plus one Grid 3 automatic repeat with general track-size content and fixed-size surroundings where the consumer permits it, are supported.";
-const GRID_REPEAT_REMAINDER: &str =
-    "Subgrid name-repeat remains unfinished; used repetition and track sizing belong downstream.";
-const GRID_PROPERTY_SUBSET: &str = "The structural grammar supports non-recursive integer track and fixed repeats, one Grid 3 automatic repeat with general track-size content and fixed-size surroundings where permitted, and repeat-free automatic track-size lists. The implicit track-size longhands have noninherited auto initials and intrinsic expansion. Shared track sizes retain exact ordinary flex/length/percentage quantities and checked symbolic math.";
-const GRID_PROPERTY_REMAINDER: &str = "Subgrid name-repeat and remaining grid/grid-template shorthand alternatives remain unfinished; used track sizing belongs downstream.";
 const GRID_AUTO_FLOW_SUBSET: &str = "The authored grid-auto-flow grammar accepts exactly normal, dense, row, row dense, column, and column dense; axis and dense may appear in either order. Normal and bare dense remain symbolic; intrinsic longhand expansion and canonical specified serialization preserve the six states.";
 const GRID_AUTO_FLOW_REMAINDER: &str = "Grid 3 §2.3 issue #12803 has not settled whether its context-dependent orientation extends grid-auto-flow or belongs to a separate grid-lanes-direction property. The normal initial and implicit-direction dense choice follow the recorded WebKit behavior; runtime orientation and placement belong downstream.";
 
@@ -3422,14 +3417,12 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 670] = [
         X_SIZING4_20260904,
         "#column-sizing",
     ),
-    CssFeatureMetadata::partial(
+    CssFeatureMetadata::complete(
         "ext.value.grid-repeat",
         CssFeatureKind::Value,
         "repeat()",
         X_GRID3_20260121,
         "#intrinsic-auto-repeat",
-        GRID_REPEAT_SUBSET,
-        GRID_REPEAT_REMAINDER,
     ),
     CssFeatureMetadata::complete(
         "official.value.position",
@@ -4883,55 +4876,35 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 670] = [
         "normal, infinite, signed literal length-percentages and supported typed calc() expressions remain authored and symbolic",
         "full Values 4 length-percentage math-function grammar is not yet implemented; used-value resolution belongs downstream",
     ),
-    CssFeatureMetadata::partial_property_with_boundary(
-        "baseline.property.grid-template-rows",
+    complete_property_feature!(
         CssKnownProperty::GridTemplateRows,
         "grid-template-rows",
-        "#propdef-grid-template-rows",
-        &[],
-        GRID_PROPERTY_SUBSET,
-        GRID_PROPERTY_REMAINDER,
+        "baseline.property.grid-template-rows"
     ),
-    CssFeatureMetadata::partial_property_with_boundary(
-        "baseline.property.grid-template-columns",
+    complete_property_feature!(
         CssKnownProperty::GridTemplateColumns,
         "grid-template-columns",
-        "#propdef-grid-template-columns",
-        &[],
-        GRID_PROPERTY_SUBSET,
-        GRID_PROPERTY_REMAINDER,
+        "baseline.property.grid-template-columns"
     ),
     complete_property_feature!(
         CssKnownProperty::GridTemplateAreas,
         "grid-template-areas",
         "baseline.property.grid-template-areas"
     ),
-    CssFeatureMetadata::partial_property_with_boundary(
-        "baseline.property.grid-template",
+    complete_property_feature!(
         CssKnownProperty::GridTemplate,
         "grid-template",
-        "#propdef-grid-template",
-        &[],
-        GRID_PROPERTY_SUBSET,
-        GRID_PROPERTY_REMAINDER,
+        "baseline.property.grid-template"
     ),
-    CssFeatureMetadata::partial_property_with_boundary(
-        "baseline.property.grid-auto-rows",
+    complete_property_feature!(
         CssKnownProperty::GridAutoRows,
         "grid-auto-rows",
-        "#propdef-grid-auto-rows",
-        &[],
-        GRID_PROPERTY_SUBSET,
-        GRID_PROPERTY_REMAINDER,
+        "baseline.property.grid-auto-rows"
     ),
-    CssFeatureMetadata::partial_property_with_boundary(
-        "baseline.property.grid-auto-columns",
+    complete_property_feature!(
         CssKnownProperty::GridAutoColumns,
         "grid-auto-columns",
-        "#propdef-grid-auto-columns",
-        &[],
-        GRID_PROPERTY_SUBSET,
-        GRID_PROPERTY_REMAINDER,
+        "baseline.property.grid-auto-columns"
     ),
     CssFeatureMetadata::partial_property_with_boundary(
         "baseline.property.grid-auto-flow",
@@ -4977,15 +4950,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 670] = [
         "grid-area",
         "baseline.property.grid-area"
     ),
-    CssFeatureMetadata::partial_property_with_boundary(
-        "baseline.property.grid",
-        CssKnownProperty::Grid,
-        "grid",
-        "#propdef-grid",
-        &[],
-        GRID_PROPERTY_SUBSET,
-        GRID_PROPERTY_REMAINDER,
-    ),
+    complete_property_feature!(CssKnownProperty::Grid, "grid", "baseline.property.grid"),
     CssFeatureMetadata::complete_property(
         "baseline.property.font-size",
         CssKnownProperty::FontSize,

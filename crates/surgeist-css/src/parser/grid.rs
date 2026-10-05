@@ -1,7 +1,7 @@
 use super::values::parse_length_percentage;
 use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
-use super::values::{next_is_delim, parse_integer_literal};
+use super::values::{next_is_delim, parse_positive_integer_value};
 use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
 use crate::syntax::*;
 use crate::validation::unsupported_keyword_reason;
@@ -46,6 +46,18 @@ fn parse_grid_track_list_with_mode<'i, 't>(
     numeric: &crate::numeric::NumericInputContext<'_>,
     stop_at_slash: bool,
 ) -> std::result::Result<CssGridTrackList, ParseError<'i, Error>> {
+    if input
+        .try_parse(|input| input.expect_ident_matching("none"))
+        .is_ok()
+    {
+        return Ok(CssGridTrackList::none());
+    }
+    if input
+        .try_parse(|input| input.expect_ident_matching("subgrid"))
+        .is_ok()
+    {
+        return parse_grid_subgrid(input, numeric, stop_at_slash);
+    }
     let mut components = Vec::new();
     while !input.is_exhausted() {
         if stop_at_slash && next_is_delim(input, '/') {
@@ -84,6 +96,88 @@ fn parse_grid_track_list_with_mode<'i, 't>(
     }
 
     build_grid_track_list(components)
+}
+
+fn parse_grid_subgrid<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+    stop_at_slash: bool,
+) -> Result<CssGridTrackList, ParseError<'i, Error>> {
+    let mut components = Vec::new();
+    let mut has_auto_fill = false;
+    while !input.is_exhausted() && !(stop_at_slash && next_is_delim(input, '/')) {
+        let location = input.current_source_location();
+        let component = match input.next().map_err(basic)? {
+            Token::SquareBracketBlock => {
+                CssGridSubgridComponent::LineNames(input.parse_nested_block(parse_grid_line_names)?)
+            }
+            Token::Function(name) if name.eq_ignore_ascii_case("repeat") => {
+                let repeat = input.parse_nested_block(|input| {
+                    let count = if input
+                        .try_parse(|input| input.expect_ident_matching("auto-fill"))
+                        .is_ok()
+                    {
+                        None
+                    } else {
+                        Some(parse_positive_integer_value(
+                            input,
+                            numeric,
+                            "grid name repeat count",
+                        )?)
+                    };
+                    input.expect_comma().map_err(basic)?;
+                    let mut groups = Vec::new();
+                    while !input.is_exhausted() {
+                        groups.push(parse_optional_grid_line_names(input)?.ok_or_else(|| {
+                            unsupported_value(
+                                input,
+                                None,
+                                "name repetition requires line-name groups",
+                            )
+                        })?);
+                    }
+                    let value = match count {
+                        Some(count) => CssGridNameRepeat::try_new(count, groups),
+                        None => CssGridNameRepeat::try_auto_fill(groups),
+                    };
+                    value.ok_or_else(|| {
+                        unsupported_value(
+                            input,
+                            None,
+                            "name repetition requires a nonempty group list",
+                        )
+                    })
+                })?;
+                if repeat.is_auto_fill() && has_auto_fill {
+                    return Err(unsupported_value_at(
+                        location,
+                        None,
+                        "subgrid contains more than one automatic name repetition",
+                    ));
+                }
+                has_auto_fill |= repeat.is_auto_fill();
+                CssGridSubgridComponent::Repeat(repeat)
+            }
+            token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
+        };
+        components.push(component);
+    }
+    Ok(CssGridTrackList::try_subgrid(components).expect("checked subgrid name repetitions"))
+}
+
+fn parse_optional_grid_line_names<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> Result<Option<CssGridLineNames>, ParseError<'i, Error>> {
+    if input.is_exhausted() {
+        return Ok(None);
+    }
+    let state = input.state();
+    if matches!(input.next().map_err(basic)?, Token::SquareBracketBlock) {
+        input.parse_nested_block(parse_grid_line_names).map(Some)
+    } else {
+        input.reset(&state);
+        Ok(None)
+    }
 }
 
 #[derive(Clone)]
@@ -145,7 +239,7 @@ fn parse_grid_repeat<'i, 't>(
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<ParsedGridTrackComponent, ParseError<'i, Error>> {
     enum Count {
-        Integer(CssPositiveIntegerLiteral),
+        Integer(CssPositiveIntegerValue),
         Auto(CssGridAutoRepeatKind),
     }
 
@@ -160,16 +254,11 @@ fn parse_grid_repeat<'i, 't>(
             )),
         }
     } else {
-        let location = input.current_source_location();
-        let integer = parse_integer_literal(input, numeric)?;
-        let count = CssPositiveIntegerLiteral::try_new(integer).ok_or_else(|| {
-            unsupported_value_at(
-                location,
-                None,
-                "grid repeat count must be a positive integer",
-            )
-        })?;
-        Count::Integer(count)
+        Count::Integer(parse_positive_integer_value(
+            input,
+            numeric,
+            "grid repeat count",
+        )?)
     };
 
     input.expect_comma().map_err(basic)?;
@@ -182,7 +271,7 @@ fn parse_grid_repeat<'i, 't>(
 fn parse_integer_grid_repeat<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-    count: CssPositiveIntegerLiteral,
+    count: CssPositiveIntegerValue,
 ) -> std::result::Result<ParsedGridTrackComponent, ParseError<'i, Error>> {
     let mut track_components = Vec::new();
     let mut fixed_components = Vec::new();
@@ -225,16 +314,18 @@ fn parse_integer_grid_repeat<'i, 't>(
         ));
     }
     Ok(ParsedGridTrackComponent::IntegerRepeat {
-        track: CssGridIntegerTrackRepeat::new(
+        track: CssGridIntegerTrackRepeat::try_new(
             count.clone(),
             CssGridTrackRepeatContent::try_new(track_components).expect("checked repeat content"),
-        ),
+        )
+        .expect("parsed positive repeat count"),
         fixed: fixed.then(|| {
-            CssGridIntegerFixedRepeat::new(
+            CssGridIntegerFixedRepeat::try_new(
                 count,
                 CssGridFixedRepeatContent::try_new(fixed_components)
                     .expect("checked fixed repeat content"),
             )
+            .expect("parsed positive fixed repeat count")
         }),
     })
 }
@@ -622,15 +713,99 @@ pub(super) fn parse_grid_template<'i, 't>(
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssGridTemplate, ParseError<'i, Error>> {
     if input
-        .try_parse(|input| input.expect_ident_matching("none"))
+        .try_parse(|input| {
+            input.expect_ident_matching("none")?;
+            input.expect_exhausted()
+        })
         .is_ok()
     {
         return Ok(CssGridTemplate::none());
+    }
+    if next_is_grid_area_row(input) {
+        return parse_grid_area_template(input, numeric);
     }
     let rows = parse_grid_track_list_with_mode(input, numeric, true)?;
     input.expect_delim('/').map_err(basic)?;
     let columns = parse_grid_track_list_with_mode(input, numeric, false)?;
     Ok(CssGridTemplate::rows_columns(rows, columns))
+}
+
+fn next_is_grid_area_row(input: &mut Parser<'_, '_>) -> bool {
+    let state = input.state();
+    let result = input
+        .try_parse(|input| {
+            parse_optional_grid_line_names(input)?;
+            input.expect_string_cloned().map_err(basic)
+        })
+        .is_ok();
+    input.reset(&state);
+    result
+}
+
+fn parse_grid_area_template<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Result<CssGridTemplate, ParseError<'i, Error>> {
+    let mut rows = Vec::new();
+    while !input.is_exhausted() && !next_is_delim(input, '/') {
+        let before = parse_optional_grid_line_names(input)?;
+        let location = input.current_source_location();
+        let text = input.expect_string_cloned().map_err(basic)?;
+        let area = crate::grid_template_areas::parse_decoded_row(text.as_ref())
+            .map_err(|error| unsupported_value_at(location, None, area_error_message(error)))?;
+        let state = input.state();
+        let omitted = input.is_exhausted()
+            || matches!(
+                input.next(),
+                Ok(Token::QuotedString(_) | Token::SquareBracketBlock | Token::Delim('/'))
+            );
+        input.reset(&state);
+        let size = if omitted {
+            None
+        } else {
+            Some(parse_grid_track_size(input, numeric)?)
+        };
+        // Greedy trailing group gives a deterministic view of a single shared
+        // boundary; a second group belongs to the following row's leading slot.
+        let after = parse_optional_grid_line_names(input)?;
+        rows.push(CssGridTemplateAreaTrack::new(area, size, before, after));
+    }
+    let columns = if !input.is_exhausted() {
+        input.expect_delim('/').map_err(basic)?;
+        let mut components = Vec::new();
+        while !input.is_exhausted() {
+            let location = input.current_source_location();
+            let component = match parse_optional_grid_line_names(input)? {
+                Some(names) => CssGridTrackRepeatComponent::LineNames(names),
+                None => {
+                    CssGridTrackRepeatComponent::TrackSize(parse_grid_track_size(input, numeric)?)
+                }
+            };
+            if adjacent_line_names(components.last(), &component, |item| {
+                matches!(item, CssGridTrackRepeatComponent::LineNames(_))
+            }) {
+                return Err(unsupported_value_at(
+                    location,
+                    None,
+                    "adjacent explicit column line-name blocks",
+                ));
+            }
+            components.push(component);
+        }
+        Some(
+            CssGridTrackRepeatContent::try_new(components).ok_or_else(|| {
+                unsupported_value(
+                    input,
+                    None,
+                    "area template columns require an explicit track list",
+                )
+            })?,
+        )
+    } else {
+        None
+    };
+    CssGridTemplate::try_areas(rows, columns)
+        .map_err(|error| unsupported_value(input, None, area_error_message(error)))
 }
 
 pub(super) fn parse_grid_auto_flow<'i, 't>(
@@ -678,10 +853,16 @@ pub(super) fn parse_grid<'i, 't>(
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssGrid, ParseError<'i, Error>> {
     if input
-        .try_parse(|input| input.expect_ident_matching("none"))
+        .try_parse(|input| {
+            input.expect_ident_matching("none")?;
+            input.expect_exhausted()
+        })
         .is_ok()
     {
         return Ok(CssGrid::template(CssGridTemplate::none()));
+    }
+    if next_is_grid_area_row(input) {
+        return parse_grid_area_template(input, numeric).map(CssGrid::template);
     }
     if next_is_auto_flow_prefix(input) {
         let dense = parse_grid_auto_flow_prefix(input)?;

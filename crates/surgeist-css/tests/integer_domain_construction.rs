@@ -42,7 +42,7 @@ fn auto_repeat(count: CssPositiveIntegerLiteral) -> CssGridIntegerTrackRepeat {
         CssGridTrackSize::from_breadth(CssGridTrackBreadth::auto()),
     )])
     .unwrap();
-    CssGridIntegerTrackRepeat::new(count, content)
+    CssGridIntegerTrackRepeat::try_new(CssPositiveIntegerValue::Literal(count), content).unwrap()
 }
 
 #[test]
@@ -136,8 +136,15 @@ fn both_grid_repeat_owners_retain_checked_count_components_and_origins() {
                     CssGridFixedSize::try_new(size).unwrap(),
                 )])
                 .unwrap();
-            let fixed = CssGridIntegerFixedRepeat::new(count, content);
+            let fixed = CssGridIntegerFixedRepeat::try_new(
+                CssPositiveIntegerValue::Literal(count),
+                content,
+            )
+            .unwrap();
             for retained in [track.count(), fixed.count()] {
+                let CssPositiveIntegerValue::Literal(retained) = retained else {
+                    panic!("ordinary exact positive count");
+                };
                 assert_eq!(retained.integer().component(), &component);
                 assert_eq!(retained.integer().numeric().representation(), text);
                 assert_eq!(retained.integer().origin(), component.origin());
@@ -162,7 +169,10 @@ fn parsed_repeat_count_keeps_original_snapshot_and_precise_token_span() {
     else {
         panic!("one integer repeat");
     };
-    let count = repeat.count().integer();
+    let CssPositiveIntegerValue::Literal(count) = repeat.count() else {
+        panic!("ordinary exact positive count");
+    };
+    let count = count.integer();
     assert_eq!(count.numeric().representation(), "+0007");
     parsed_origin(count.origin(), source, "+0007");
     let CssValueOrigin::Parsed(origin) = count.origin() else {

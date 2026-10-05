@@ -168,6 +168,8 @@ const LONGHANDS: &[P] = &[
     P::GridAutoRows,
     P::GridAutoColumns,
     P::GridAutoFlow,
+    P::GridTemplateRows,
+    P::GridTemplateColumns,
     P::GridTemplateAreas,
     P::GridRowStart,
     P::GridRowEnd,
@@ -279,6 +281,27 @@ const LONGHANDS: &[P] = &[
     P::TextCombineUpright,
 ];
 const SHORTHANDS: &[(P, &[P], &[P])] = &[
+    (
+        P::GridTemplate,
+        &[
+            P::GridTemplateRows,
+            P::GridTemplateColumns,
+            P::GridTemplateAreas,
+        ],
+        &[],
+    ),
+    (
+        P::Grid,
+        &[
+            P::GridTemplateRows,
+            P::GridTemplateColumns,
+            P::GridTemplateAreas,
+            P::GridAutoRows,
+            P::GridAutoColumns,
+            P::GridAutoFlow,
+        ],
+        &[],
+    ),
     (
         P::Animation,
         &[
@@ -706,6 +729,12 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
                 size.breadth().unwrap().kind(),
                 CssGridTrackBreadthKind::Auto
             );
+        }
+        CssLonghandValueRef::GridTemplateRows(v) | CssLonghandValueRef::GridTemplateColumns(v) => {
+            assert!(v.is_none());
+            assert!(v.general_list().is_none());
+            assert!(v.auto_list().is_none());
+            assert!(v.subgrid_components().is_none());
         }
         CssLonghandValueRef::GridTemplateAreas(v) => {
             assert_eq!(v, &CssGridTemplateAreas::None)
@@ -1161,7 +1190,7 @@ fn metadata_and_initials() {
             P::All,
         ])
         .collect();
-    assert_eq!(expected.len(), 322);
+    assert_eq!(expected.len(), 326);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {
@@ -1411,6 +1440,30 @@ fn memberships_and_resets() {
             };
             assert_eq!(ordinary.view(), expected.view());
         }
+    }
+    for property in [P::GridTemplate, P::Grid] {
+        let values = expanded(&construct(property.grammar(), "none"));
+        for value in values.items() {
+            let initial = longhand(value.property()).initial_value();
+            let CssInitialValueRef::Value(expected) = initial.view() else {
+                panic!("fixed Grid initial");
+            };
+            assert_eq!(value.ordinary_value().unwrap().view(), expected.view());
+        }
+        let source = construct(property.grammar(), "[top] \"a\" [end] / 1px");
+        let values = expanded(&source);
+        let CssContributionValueRef::Ordinary(CssLonghandValueRef::GridTemplateRows(rows)) =
+            values.items()[0].value()
+        else {
+            panic!("effective rows");
+        };
+        assert_eq!(rows.serialize_specified().unwrap(), "[top] auto [end]");
+        let CssContributionValueRef::Ordinary(CssLonghandValueRef::GridTemplateColumns(columns)) =
+            values.items()[1].value()
+        else {
+            panic!("effective columns");
+        };
+        assert_eq!(columns.serialize_specified().unwrap(), "1px");
     }
     println!("terminal membership, omissions, reset-only values and all exclusions: ok");
 }

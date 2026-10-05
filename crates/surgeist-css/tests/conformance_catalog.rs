@@ -137,12 +137,6 @@ const COLOR5_RELATIVE_SUBSET: &str = "Relative rgb()/rgba(), hsl()/hsla(), hwb()
 const COLOR5_RELATIVE_REMAINDER: &str = "Unselected CSS Color 5 source-color functions remain unsupported; profile binding and color evaluation belong to downstream resolution.";
 const COLOR5_MIX_SUBSET: &str = "Authored color-mix() supports an optional interpolation method, ordered nonempty color lists, literal or calculated percentage weights before or after colors, and predefined, polar or symbolic custom spaces.";
 const COLOR5_MIX_REMAINDER: &str = "Unselected contextual Color 5 alternatives and downstream color evaluation remain outside this authored subset.";
-const GRID_REPEAT_SUBSET: &str = "Non-recursive integer track and fixed repeats, plus one Grid 3 automatic repeat with general track-size content and fixed-size surroundings where the consumer permits it, are supported.";
-const GRID_REPEAT_REMAINDER: &str =
-    "Subgrid name-repeat remains unfinished; used repetition and track sizing belong downstream.";
-const GRID_PROPERTY_SUBSET: &str = "The structural grammar supports non-recursive integer track and fixed repeats, one Grid 3 automatic repeat with general track-size content and fixed-size surroundings where permitted, and repeat-free automatic track-size lists. The implicit track-size longhands have noninherited auto initials and intrinsic expansion. Shared track sizes retain exact ordinary flex/length/percentage quantities and checked symbolic math.";
-const GRID_PROPERTY_REMAINDER: &str = "Subgrid name-repeat and remaining grid/grid-template shorthand alternatives remain unfinished; used track sizing belongs downstream.";
-
 fn assert_complete_fonts3_feature(
     id: &str,
     kind: CssFeatureKind,
@@ -1041,54 +1035,6 @@ fn color_mix_preserved_subset_rejects_cross_space_hue_methods() {
     );
 }
 
-fn record_partial_metadata_mismatch(
-    mismatches: &mut Vec<String>,
-    identity: (&str, CssFeatureKind, &str),
-    provenance: (&str, &str),
-    boundary: (&str, &str),
-) {
-    let (id, kind, spelling) = identity;
-    let (source, production) = provenance;
-    let (subset, remainder) = boundary;
-    let Some(metadata) = feature_metadata(id) else {
-        mismatches.push(format!("{id} is absent"));
-        return;
-    };
-    if metadata.kind() != kind {
-        mismatches.push(format!("{id} has stale kind {:?}", metadata.kind()));
-    }
-    if metadata.spelling() != spelling {
-        mismatches.push(format!("{id} has stale spelling {:?}", metadata.spelling()));
-    }
-    if metadata.source().id().as_str() != source {
-        mismatches.push(format!(
-            "{id} has stale source {:?}",
-            metadata.source().id().as_str()
-        ));
-    }
-    if metadata.production() != production {
-        mismatches.push(format!(
-            "{id} has stale production {:?}",
-            metadata.production()
-        ));
-    }
-    if metadata.status() != CssSupportStatus::Partial {
-        mismatches.push(format!("{id} has stale status {:?}", metadata.status()));
-    }
-    if metadata.supported_subset() != Some(subset) {
-        mismatches.push(format!(
-            "{id} has stale supported subset {:?}",
-            metadata.supported_subset()
-        ));
-    }
-    if metadata.unsupported_remainder() != Some(remainder) {
-        mismatches.push(format!(
-            "{id} has stale unsupported remainder {:?}",
-            metadata.unsupported_remainder()
-        ));
-    }
-}
-
 #[test]
 fn grid_metadata_matches_preserved_boundaries() {
     let grid = parse_style_attribute(concat!(
@@ -1137,72 +1083,66 @@ fn grid_metadata_matches_preserved_boundaries() {
     assert!(fade.blocks()[0].declarations().is_empty());
     assert!(empty.blocks().is_empty());
 
-    let mut mismatches = Vec::new();
-    record_partial_metadata_mismatch(
-        &mut mismatches,
-        ("ext.value.grid-repeat", CssFeatureKind::Value, "repeat()"),
-        ("X-GRID3-20260121", "#intrinsic-auto-repeat"),
-        (GRID_REPEAT_SUBSET, GRID_REPEAT_REMAINDER),
-    );
-    record_partial_metadata_mismatch(
-        &mut mismatches,
+    for (id, kind, spelling, source, production) in [
+        (
+            "ext.value.grid-repeat",
+            CssFeatureKind::Value,
+            "repeat()",
+            "X-GRID3-20260121",
+            "#intrinsic-auto-repeat",
+        ),
         (
             "baseline.property.grid-template-rows",
             CssFeatureKind::Property,
             "grid-template-rows",
+            "R-GRID2",
+            "#propdef-grid-template-rows",
         ),
-        ("R-GRID2", "#propdef-grid-template-rows"),
-        (GRID_PROPERTY_SUBSET, GRID_PROPERTY_REMAINDER),
-    );
-    record_partial_metadata_mismatch(
-        &mut mismatches,
         (
             "baseline.property.grid-template-columns",
             CssFeatureKind::Property,
             "grid-template-columns",
+            "R-GRID2",
+            "#propdef-grid-template-columns",
         ),
-        ("R-GRID2", "#propdef-grid-template-columns"),
-        (GRID_PROPERTY_SUBSET, GRID_PROPERTY_REMAINDER),
-    );
-    record_partial_metadata_mismatch(
-        &mut mismatches,
         (
             "baseline.property.grid-template",
             CssFeatureKind::Property,
             "grid-template",
+            "R-GRID2",
+            "#propdef-grid-template",
         ),
-        ("R-GRID2", "#propdef-grid-template"),
-        (GRID_PROPERTY_SUBSET, GRID_PROPERTY_REMAINDER),
-    );
-    record_partial_metadata_mismatch(
-        &mut mismatches,
         (
             "baseline.property.grid-auto-rows",
             CssFeatureKind::Property,
             "grid-auto-rows",
+            "R-GRID2",
+            "#propdef-grid-auto-rows",
         ),
-        ("R-GRID2", "#propdef-grid-auto-rows"),
-        (GRID_PROPERTY_SUBSET, GRID_PROPERTY_REMAINDER),
-    );
-    record_partial_metadata_mismatch(
-        &mut mismatches,
         (
             "baseline.property.grid-auto-columns",
             CssFeatureKind::Property,
             "grid-auto-columns",
+            "R-GRID2",
+            "#propdef-grid-auto-columns",
         ),
-        ("R-GRID2", "#propdef-grid-auto-columns"),
-        (GRID_PROPERTY_SUBSET, GRID_PROPERTY_REMAINDER),
-    );
-    record_partial_metadata_mismatch(
-        &mut mismatches,
-        ("baseline.property.grid", CssFeatureKind::Property, "grid"),
-        ("R-GRID2", "#propdef-grid"),
-        (GRID_PROPERTY_SUBSET, GRID_PROPERTY_REMAINDER),
-    );
-
-    if !mismatches.is_empty() {
-        panic!("stale Grid metadata:\n{}", mismatches.join("\n"));
+        (
+            "baseline.property.grid",
+            CssFeatureKind::Property,
+            "grid",
+            "R-GRID2",
+            "#propdef-grid",
+        ),
+    ] {
+        let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing `{id}` metadata"));
+        assert_eq!(metadata.kind(), kind, "{id} kind");
+        assert_eq!(metadata.spelling(), spelling, "{id} spelling");
+        assert_eq!(metadata.source().id().as_str(), source, "{id} source");
+        assert_eq!(metadata.production(), production, "{id} production");
+        assert_eq!(metadata.status(), CssSupportStatus::Complete, "{id} status");
+        assert_eq!(metadata.supported_subset(), None, "{id} subset");
+        assert_eq!(metadata.unsupported_remainder(), None, "{id} remainder");
+        assert_eq!(metadata.recognized_unsupported_code(), None, "{id} code");
     }
 }
 
@@ -2091,7 +2031,6 @@ fn c14_amended_ledger_public_metadata_is_reconciled() {
     for id in [
         "ext.value.relative-color",
         "ext.value.color-mix",
-        "ext.value.grid-repeat",
         "ext.supports.selector",
     ] {
         let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing `{id}` metadata"));
@@ -2525,11 +2464,6 @@ fn c14_retained_partial_extensions_have_direct_public_evidence() {
             "ext.value.color-mix",
             CssFeatureKind::Value,
             Input::Style("color: color-mix(in oklch longer hue, red 25%, blue 75%)"),
-        ),
-        (
-            "ext.value.grid-repeat",
-            CssFeatureKind::Value,
-            Input::Style("grid-template-columns: repeat(auto-fit, 10px)"),
         ),
         (
             "ext.supports.selector",

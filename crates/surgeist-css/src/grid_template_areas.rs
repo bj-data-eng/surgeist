@@ -140,35 +140,43 @@ impl CssGridTemplateAreas {
             Self::None => context.append(output, "none")?,
             Self::Rows(rows) => {
                 for (row_index, row) in rows.rows().iter().enumerate() {
-                    context.charge_input(1)?;
-                    context.charge_projection(1)?;
-                    if row_index > 0 {
-                        context.append(output, " ")?;
-                    }
-                    context.append(output, "\"")?;
-                    for (cell_index, cell) in row.cells().iter().enumerate() {
-                        context.charge_input(1)?;
-                        context.charge_projection(1)?;
-                        if cell_index > 0 {
-                            context.append(output, " ")?;
-                        }
-                        match cell {
-                            CssGridTemplateAreaCell::Empty => context.append(output, ".")?,
-                            // Checked names contain only ident code points: no ASCII
-                            // quote, backslash, line break, or CSS whitespace can
-                            // disturb the enclosing CSS string token. Non-ASCII
-                            // code points, including U+0085 and NBSP, remain data.
-                            CssGridTemplateAreaCell::Named(name) => {
-                                context.append(output, name.as_str())?
-                            }
-                        }
-                    }
-                    context.append(output, "\"")?;
+                    write_area_row(row, context, output, row_index > 0)?;
                 }
             }
         }
         Ok(())
     }
+}
+
+// Shared with authored area-template rows; no fresh budget or aggregate charge.
+pub(crate) fn write_area_row(
+    row: &CssGridTemplateAreaRow,
+    context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+    output: &mut String,
+    leading_space: bool,
+) -> Result<(), CssSpecifiedValueSerializationError> {
+    context.charge_input(1)?;
+    context.charge_projection(1)?;
+    // Matrix row charges precede its separator, preserving failure precedence
+    // when both a node budget and the next separator byte are exhausted.
+    if leading_space {
+        context.append(output, " ")?;
+    }
+    context.append(output, "\"")?;
+    for (cell_index, cell) in row.cells().iter().enumerate() {
+        context.charge_input(1)?;
+        context.charge_projection(1)?;
+        if cell_index > 0 {
+            context.append(output, " ")?;
+        }
+        match cell {
+            CssGridTemplateAreaCell::Empty => context.append(output, ".")?,
+            // Checked names contain only ident code points. Non-ASCII space-like
+            // code points remain data; ASCII quoting/escape delimiters cannot occur.
+            CssGridTemplateAreaCell::Named(name) => context.append(output, name.as_str())?,
+        }
+    }
+    context.append(output, "\"")
 }
 
 /// Tokenizes a decoded CSS string with Grid 2 longest-run semantics.

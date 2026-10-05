@@ -519,8 +519,13 @@
 //! # Authored Grid repetition and keyframe structure
 //!
 //! The six Grid repetition consumers expose authored values through
-//! their `value()` accessors. [`CssGridTrackList`] distinguishes general track
-//! lists from lists containing exactly one [`CssGridAutoRepeat`]. Integer
+//! their `value()` accessors. [`CssGridTrackList`] represents `none`, general
+//! track lists, lists containing exactly one [`CssGridAutoRepeat`], and subgrid
+//! line-name lists. [`CssGridSubgridComponent`] retains ordered groups and
+//! [`CssGridNameRepeat`] values, allowing at most one auto-fill name repeat.
+//! Counted repeats use checked [`CssPositiveIntegerValue`] children: bare roots
+//! must be positive, while function math retains its graph and deferred range.
+//! Integer
 //! and automatic repetition are non-recursive. Under the
 //! [selected Grid 3 grammar](https://www.w3.org/TR/2026/WD-css-grid-3-20260121/#intrinsic-auto-repeat),
 //! automatic bodies admit general track sizes, including intrinsic and flexible
@@ -547,10 +552,15 @@
 //! the smallest invalid block. The parser does not sort, merge, or deduplicate
 //! keyframes.
 //!
-//! Grid repetition and the six consuming Grid properties remain Partial for
-//! subgrid name-repeat, remaining `grid`/`grid-template` shorthand alternatives,
-//! and implicit-track lifecycle work. Repetition counts and used track
-//! sizes require downstream layout context and remain unresolved here.
+//! [`CssGridTemplate`] also retains area-string rows with optional authored
+//! sizes and boundary names through [`CssGridTemplateAreaTrack`], reusing the
+//! existing checked area matrix and repeat-free column list. Intrinsic expansion
+//! emits three ordered template members or six grid members through shared
+//! metadata, strict pending reentry and normalization. Template axes and areas
+//! start at `none`; implicit sizes start at `auto`, with the accepted flow initial
+//! `normal`. The selected authored repeat and six consuming property productions
+//! are Complete. `grid-auto-flow` retains its separate unresolved orientation
+//! boundary. Repeat evaluation and used track sizing remain downstream.
 //! `@keyframes` supports the complete selected authored production. Quoted names
 //! admit empty and whitespace-only text. Literal percentage offsets use checked
 //! binary64; percentage-valued calculations retain typed graphs and origins.
@@ -1224,7 +1234,6 @@
 //! `calc()` from Partial to Complete.
 //!
 //! The preserved `ext.value.relative-color`, `ext.value.color-mix`,
-//! `ext.value.grid-repeat`,
 //! `ext.descriptor.font-weight-range`, `ext.descriptor.font-style-oblique-range`,
 //! `ext.descriptor.font-stretch-range`, `ext.value.font-source-modern-hints`,
 //! `ext.property.font-weight-range`, `ext.supports.selector`,
@@ -1238,8 +1247,9 @@
 //! subsequent selected records extend the catalog. [`feature_catalog`] owns its
 //! current cardinality, which is distinct from the immutable official
 //! inventory of exactly 162 property units, one normative legacy shorthand, and
-//! 167 non-property units. All 219 I01 baseline records retain their
-//! classifications, and the exclusion registry now contains exactly 130 rows.
+//! 167 non-property units. The 219 I01 baseline records retained their
+//! classifications at that checkpoint; later authored-family completion refines
+//! individual records. The exclusion registry contains exactly 130 rows.
 //!
 //! # Support metadata and application policy
 //!
