@@ -125,7 +125,7 @@ fn supports_nodes_preserve_exact_non_bmp_byte_and_utf16_positions() {
     let rule_offset = source.find("@supports").unwrap();
     let condition_offset = source.find("(D\\69splay").unwrap();
     let declaration_offset = source.find("D\\69splay").unwrap();
-    assert_position(rule.position(), rule_offset, 1, 0);
+    assert_position(rule.position().unwrap(), rule_offset, 1, 0);
     assert_position(
         rule.condition().position().unwrap(),
         condition_offset,

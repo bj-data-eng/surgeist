@@ -30,7 +30,7 @@ fn selected_font_source_records_reference_the_pinned_published_edition() {
         (
             "baseline.rule.font-face",
             "#font-face-rule",
-            CssSupportStatus::Partial,
+            CssSupportStatus::Complete,
         ),
         (
             "baseline.descriptor.src",

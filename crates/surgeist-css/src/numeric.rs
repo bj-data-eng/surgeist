@@ -759,23 +759,48 @@ impl CssCalculationExpression {
     /// coordinates and the redundant raw root graph. This is deliberately
     /// separate from the provenance-sensitive raw calculation `PartialEq`.
     pub(crate) fn structural_eq(&self, other: &Self) -> bool {
+        self.structural_eq_with(other, true, |a, b| {
+            Ok::<_, std::convert::Infallible>(a.structural_eq_ignoring_origin(b))
+        })
+        .unwrap_or_else(|never| match never {})
+    }
+
+    /// Exact retained leaf identity within the same checked expression structure.
+    /// Does not solve differing expression trees or use projected magnitudes.
+    pub(crate) fn specified_identity_eq(
+        &self,
+        other: &Self,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+    ) -> std::result::Result<bool, crate::CssSpecifiedValueSerializationError> {
+        self.structural_eq_with(other, false, |a, b| {
+            exact_numeric_leaf_identity(a, b, context)
+        })
+    }
+
+    fn structural_eq_with<E>(
+        &self,
+        other: &Self,
+        compare_raw_syntax: bool,
+        mut value_eq: impl FnMut(&CssComponentValue, &CssComponentValue) -> std::result::Result<bool, E>,
+    ) -> std::result::Result<bool, E> {
         let mut pending = vec![(self, other)];
         while let Some((left, right)) = pending.pop() {
             if left.ty != right.ty
-                || left.syntax.len() != right.syntax.len()
-                || !left
-                    .syntax
-                    .iter()
-                    .zip(&right.syntax)
-                    .all(|(a, b)| a.structural_eq_ignoring_origin(b))
+                || (compare_raw_syntax
+                    && (left.syntax.len() != right.syntax.len()
+                        || !left
+                            .syntax
+                            .iter()
+                            .zip(&right.syntax)
+                            .all(|(a, b)| a.structural_eq_ignoring_origin(b))))
                 || left.closing.is_some() != right.closing.is_some()
             {
-                return false;
+                return Ok(false);
             }
             match (&left.kind, &right.kind) {
                 (NodeKind::Value(a), NodeKind::Value(b)) => {
-                    if !a.structural_eq_ignoring_origin(b) {
-                        return false;
+                    if !value_eq(a, b)? {
+                        return Ok(false);
                     }
                 }
                 (NodeKind::Size, NodeKind::Size) => {}
@@ -786,7 +811,7 @@ impl CssCalculationExpression {
                 (NodeKind::Sum(a), NodeKind::Sum(b)) if a.len() == b.len() => {
                     for ((a_operator, a_child), (b_operator, b_child)) in a.iter().zip(b).rev() {
                         if a_operator != b_operator {
-                            return false;
+                            return Ok(false);
                         }
                         pending.push((a_child, b_child));
                     }
@@ -794,7 +819,7 @@ impl CssCalculationExpression {
                 (NodeKind::Product(a), NodeKind::Product(b)) if a.len() == b.len() => {
                     for ((a_operator, a_child), (b_operator, b_child)) in a.iter().zip(b).rev() {
                         if a_operator != b_operator {
-                            return false;
+                            return Ok(false);
                         }
                         pending.push((a_child, b_child));
                     }
@@ -819,14 +844,14 @@ impl CssCalculationExpression {
                         match (a, b) {
                             (Some(a), Some(b)) => pending.push((a, b)),
                             (None, None) => {}
-                            _ => return false,
+                            _ => return Ok(false),
                         }
                     }
                 }
-                _ => return false,
+                _ => return Ok(false),
             }
         }
-        true
+        Ok(true)
     }
 
     pub(crate) fn component_nesting_depth(&self) -> u32 {
@@ -4287,4 +4312,120 @@ mod container_context_tests {
             assert_eq!(error.component_error().unwrap().kind(), expected);
         }
     }
+}
+
+fn exact_numeric_leaf_identity(
+    a: &CssComponentValue,
+    b: &CssComponentValue,
+    context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+) -> std::result::Result<bool, crate::CssSpecifiedValueSerializationError> {
+    let coefficients = match (a.view(), b.view()) {
+        (
+            CssComponentValueRef::Token(CssValueTokenRef::Number(a)),
+            CssComponentValueRef::Token(CssValueTokenRef::Number(b)),
+        )
+        | (
+            CssComponentValueRef::Token(CssValueTokenRef::Percentage(a)),
+            CssComponentValueRef::Token(CssValueTokenRef::Percentage(b)),
+        ) => Some((a, b)),
+        (
+            CssComponentValueRef::Token(CssValueTokenRef::Dimension { .. }),
+            CssComponentValueRef::Token(CssValueTokenRef::Dimension { .. }),
+        ) => {
+            return Ok(exact_dimension_identity(Some(a), Some(b), context)?.unwrap_or(false));
+        }
+        _ => None,
+    };
+    Ok(coefficients.is_some_and(|(a, b)| {
+        crate::exact_decimal::LexicalDecimal::new(a.representation()).value_eq(
+            &crate::exact_decimal::LexicalDecimal::new(b.representation()),
+        )
+    }))
+}
+
+pub(crate) fn exact_dimension_identity(
+    a: Option<&CssComponentValue>,
+    b: Option<&CssComponentValue>,
+    context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+) -> std::result::Result<Option<bool>, crate::CssSpecifiedValueSerializationError> {
+    let (Some(a), Some(b)) = (a, b) else {
+        return Ok(None);
+    };
+    let (
+        CssComponentValueRef::Token(CssValueTokenRef::Dimension {
+            number: a,
+            unit: au,
+        }),
+        CssComponentValueRef::Token(CssValueTokenRef::Dimension {
+            number: b,
+            unit: bu,
+        }),
+    ) = (a.view(), b.view())
+    else {
+        return Ok(Some(false));
+    };
+    if unit_dimension(au) != unit_dimension(bu) {
+        return Ok(Some(false));
+    }
+    let (a, b) = (a.representation(), b.representation());
+    let (al, bl) = (
+        crate::exact_decimal::LexicalDecimal::new(a),
+        crate::exact_decimal::LexicalDecimal::new(b),
+    );
+    if au.eq_ignore_ascii_case(bu) {
+        return Ok(Some(al.value_eq(&bl)));
+    }
+    // A finite nonzero decimal radian cannot equal a rational multiple of a
+    // degree exactly. Angle units share exact zero; contextual units remain distinct.
+    if unit_dimension(au) == Some(CssNumericDimension::Angle)
+        && al.value_eq(&crate::exact_decimal::LexicalDecimal::new("0"))
+        && bl.value_eq(&crate::exact_decimal::LexicalDecimal::new("0"))
+    {
+        return Ok(Some(true));
+    }
+    let (Some(af), Some(bf)) = (
+        exact_absolute_unit_factor(au),
+        exact_absolute_unit_factor(bu),
+    ) else {
+        return Ok(Some(false));
+    };
+    Ok(Some(al.value_eq_scaled(bl, af, bf, context)?))
+}
+
+// Values4 §6.3/7 fixes these rational ratios; binary64 projection remains
+// independent. Relative units and nonzero radian conversions have no exact ratio here.
+fn exact_absolute_unit_factor(unit: &str) -> Option<crate::exact_decimal::ExactFactor> {
+    let (numerator, denominator) = match unit.to_ascii_lowercase().as_str() {
+        "px" | "deg" | "s" | "hz" => (1, 1),
+        "in" => (96, 1),
+        "cm" => (4800, 127),
+        "mm" => (480, 127),
+        "q" => (120, 127),
+        "pt" => (4, 3),
+        "pc" => (16, 1),
+        "grad" => (9, 10),
+        "turn" => (360, 1),
+        "ms" => (1, 1000),
+        "khz" => (1000, 1),
+        "dpi" => {
+            return Some(crate::resolution::exact_factor(
+                crate::CssResolutionUnit::Dpi,
+            ));
+        }
+        "dpcm" => {
+            return Some(crate::resolution::exact_factor(
+                crate::CssResolutionUnit::Dpcm,
+            ));
+        }
+        "dppx" | "x" => {
+            return Some(crate::resolution::exact_factor(
+                crate::CssResolutionUnit::Dppx,
+            ));
+        }
+        _ => return None,
+    };
+    Some(crate::exact_decimal::ExactFactor {
+        numerator,
+        denominator,
+    })
 }

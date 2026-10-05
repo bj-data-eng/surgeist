@@ -3244,8 +3244,8 @@ wrapper's `value()` returns a borrowed `&CssFontStyle`, and
 explicit `font` shorthand accepts this selected style component, including
 optional oblique angle math, while retaining its other documented component
 limits. Property, descriptor, scalar, and range values have bounded canonical
-specified serializers; no font matching, computed-style resolution, or complete
-font-face rule serialization is implied.
+specified serializers; Fonts rule composition uses the shared owner described
+[below](#checked-fonts-rule-composition), without matching or computed resolution.
 
 The selected Fonts 4 `font-size` property accepts the eight absolute keywords
 from `xx-small` through `xxx-large`, the relative `larger` and `smaller`
@@ -3436,7 +3436,7 @@ blocks recover locally, while an invalid family prelude drops the outer rule.
 `CssFontFeatureValuesRule::try_new`, `CssFontFeatureValueBlock::try_new`, and
 `CssFontFeatureValueDefinition::try_new` enforce the same grammar as parsing.
 A standalone definition validates its nonempty list; the block constructor also
-validates kind-specific count/range constraints. `CssFontFeatureValueIndex`
+validates kind-specific cardinality constraints. `CssFontFeatureValueIndex`
 stores exact normalized decimal digits without a machine-integer maximum.
 `try_from_decimal` accepts only an optional ASCII sign and digits, rejects
 negative nonzero values, and normalizes leading zeros and negative zero.
@@ -3461,8 +3461,8 @@ named rule; any style-rule ancestor forbids it, including through intervening
 groups. Normalization emits one opaque rule payload with its parent contexts;
 it preserves complete body order and emits no property contributions. Payload
 members do not individually consume normalization declaration/rule budgets, and
-those budgets do not cap allocation. Font matching, mapping winners and cascade
-remain downstream; canonical serialization of this rule kind is unfinished.
+those budgets do not cap allocation. Font matching, mapping winners across rules and cascade remain downstream; canonical specified
+serialization projects effective tuples within this single rule.
 
 `@font-palette-values <dashed-ident>` retains a decoded, case-sensitive name,
 including bare `--`, and every valid descriptor occurrence in authored order.
@@ -3540,9 +3540,8 @@ provider. Keywords emit lowercase and strings use shared CSSOM escaping.
 Metrics reuse the exact percentage/calculation provider. Keyword/string payloads
 charge one input and projection node; metric percentages reuse their provider's
 complete visits with no extra enum-dispatch node. Output uses one actual UTF-8
-byte budget and failure returns no partial text or input mutation. Complete
-font-face rule construction and canonical effective-descriptor rule serialization
-remain separate work.
+byte budget and failure returns no partial text or input mutation. The same
+providers serve [checked Fonts rule composition](#checked-fonts-rule-composition).
 
 `@font-face` retains every valid descriptor occurrence in authored order;
 `effective(kind)` returns the last admitted ordinary or pending occurrence.
@@ -3611,7 +3610,8 @@ and modern-source-hint records cite the September 7, 2026 edition as
 modern-source-hint record are `Complete`; the weight, style and width properties
 and descriptors and the size property are also `Complete` for their authored
 grammars. The shorthand and source-list records are `Complete` for their
-authored grammars; the broader `@font-face` rule remains `Partial`.
+authored grammars; the selected authored `@font-face` rule is `Complete`, including
+checked assembly and canonical effective specified serialization.
 The older `I-FONTS4` identity keeps its April 22 edition; `O-FONTS3` also
 remains available for historical source records. These immutable identities
 must not be repointed when adopting a newer production.
@@ -3625,14 +3625,14 @@ nonnegative percentages, preserves authored numeric and math values, and has an
 inherited `normal` initial value. CSS provides the exact keyword-to-percentage
 mapping without resolving a font face. The `@font-face` descriptor accepts `auto` or
 one or two ordinary width values under either descriptor name and retains the
-authored endpoint order. Its initial is `auto`. All eight recognized
+authored endpoint order. Its initial is `auto`. All fourteen recognized
 `@font-face` descriptor kinds admit valid `env()` as a pending whole value before
 their ordinary grammar; standalone `var()` does not qualify. The pending value
 retains its complete component stream and original token origins. CSS does not
 perform environment lookup or substitution. Computed endpoint ordering and face
 selection remain downstream. Direct
-specified-value serializers cover these width values, without providing a
-complete font-face rule serializer. The `font` shorthand continues to accept
+specified-value serializers cover these width values and feed the shared
+Fonts rule writer. The `font` shorthand continues to accept
 only the Fonts 3 width keywords. The breaking public property migration replaces
 `CssKnownProperty::FontStretch` and `CssKnownPropertyValueRef::FontStretch` with
 their `FontWidth` variants; the wrapper's `value()` returns `CssFontWidth`.
@@ -4511,9 +4511,9 @@ assert!(extension.unsupported_remainder().is_some());
 
 let feature_values = feature_metadata("later.rule.font-feature-values")
     .expect("authored font-feature-values metadata");
-assert_eq!(feature_values.status(), CssSupportStatus::Partial);
+assert_eq!(feature_values.status(), CssSupportStatus::Complete);
 assert_eq!(feature_values.source().id().as_str(), "I-FONTS4-20260907");
-assert!(feature_values.unsupported_remainder().is_some());
+assert!(feature_values.unsupported_remainder().is_none());
 ```
 
 The generic Syntax 3 at-rule, qualified-rule, declaration, stylesheet,
@@ -4537,11 +4537,11 @@ and `ext.supports.selector` remain `Partial`,
 with both subset and remainder metadata. The five `ext.media.range.*` records
 for width, height, resolution, color and monochrome are now `Complete`, covering
 signed symbolic operands and source-ordered chained comparisons.
-The `@font-feature-values` record is `Partial`: its authored parser,
-checked model and normalization use the selected section 6.9.2/frozen WebKit
-authored index policy. The contradictory section 6.9.1 wording remains explicit.
-Rule serialization for `@font-feature-values` remains unfinished; the selected
-palette rule kind has a canonical specified writer.
+The selected authored `@font-face` and `@font-feature-values` records are
+`Complete`, including checked assembly and canonical effective specified rule
+serialization. The selected section 6.9.2/frozen WebKit authored index policy and
+contradictory section 6.9.1 wording remain explicit. Live CSSOM mutation and
+font activation remain downstream. Generic group output is a separate boundary.
 
 The public support catalog includes grammar-specific rule, descriptor and value
 records, including four palette and four color-profile records. Its current
@@ -5871,3 +5871,62 @@ certify uncovered feature serialization. Numeric/value phase limitations remain
 with their existing owners. Focused public evidence is in
 [`cssom_media_queries_lifecycle.rs`](../tests/cssom_media_queries_lifecycle.rs)
 and [`cssom_media_projection_contract.rs`](../tests/cssom_media_projection_contract.rs).
+
+
+## Checked Fonts rule composition
+
+`CssFontFaceRule::new(descriptors)` is total: empty and repeated valid descriptor
+occurrences remain authored data. Constructed enclosing positions are `None`;
+parsed descriptor and child origins remain unchanged. `CssSheet::try_from_rules`
+checks ordered existing rules and derives namespace bindings from valid leading
+declarations. `try_new` on ordinary and scoped media/supports/container/layer
+blocks and scope rules uses the existing namespace context and typed preludes.
+Scoped constructors accept ordered `Vec<CssScopedRule>` children and validate
+that actual body role directly; a direct scope constructor additionally rejects
+page definitions. The rule-list wrapper remains internally assembled, without
+public collection mutation or a rule-list builder.
+
+One iterative validator checks import/namespace phases, duplicate decoded
+namespace prefixes/default declarations, style ancestry, explicit relative
+selectors, nested declaration runs, global definitions, and direct-scope page
+placement. Names retain their authored prefix/Any/Default/Named constraint
+structure. The enclosing construction supplies namespace URI bindings; the
+selector model does not store an original URI identity. Selector-bearing supports
+conditions and scope boundaries share these checks. Raw decoded selector names
+must be nonempty and contain no NUL, including functional arguments; escaped
+names such as leading digits and spaces remain valid decoded identifiers.
+
+`CssRuleConstructionError` exposes a typed reason, zero-based child path, and
+real parsed position when available. The first failure follows authored traversal
+order. The shared structural ceiling is 256 block-bearing rule levels, counting
+new wrappers and existing descendants but not the stylesheet. Selector functional
+depth is checked separately against the existing structural ceiling. Validation
+uses checked iterative stacks before constructing a new enclosing tree.
+
+`CssRule::to_specified_css` and the stylesheet front door dispatch both Fonts
+rule kinds through one cumulative writer. Font-face output emits only present
+effective descriptors and permits an empty body. Fonts 4 §4.1 selects the last
+occurrence, and §13.2 shortens semantically equal range endpoints. Equality uses
+proved retained literal or checked-expression identity, not rounded output.
+Within matching checked expression structure, exact scalar magnitudes and unit
+factors establish identity despite different numeric spellings. Differing
+expression structures remain distinct unless an existing numeric owner supplies
+an exact proof; equal-looking rounded unequal endpoints remain two values. The older CSSOM-listed descriptor kinds preserve
+their relative order, with additional Fonts 4 kinds appended in descriptor-kind
+declaration order as an explicit project ordering policy.
+
+Feature-values output keeps all seven selected block kinds and effective outer
+`font-display`. Repeated types merge in first-occurrence type order (project
+policy); names retain only their last definition in last-occurrence order, as in
+the selected Fonts 4 §13.2 example. Authored occurrences and provenance remain
+unchanged; reparsing compares effective semantics rather than duplicate identity.
+Live CSSOM maps, font activation, matching, and cross-rule cascade stay downstream.
+
+`CssFontFaceDescriptorValue::serialize_specified` and `_with_limits` expose the
+same descriptor dispatch for all fourteen concrete kinds, including display and
+unicode ranges, without a synthetic rule. Existing authored pending values use
+the shared pending-component owner in full rules. URL/source values stay in the
+authored phase. All suppressed duplicate values and endpoints still consume
+cumulative input/projection work; discarded output consumes no final bytes.
+Failures are atomic. Generic groups continue to return `UnsupportedRule` until
+their separate serialization owner supplies wrappers and complete dispatch.

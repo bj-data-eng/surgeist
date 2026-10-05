@@ -834,7 +834,7 @@ fn layer_rule_models_preserve_authored_statement_and_block_shapes() {
     assert_eq!(style_rule(&nested).position(), nested_location);
     assert_eq!(named_block.name(), Some(&components));
     assert_eq!(named_block.rules(), &[nested]);
-    assert_eq!(named_block.position(), block_location);
+    assert_eq!(named_block.position(), Some(block_location));
 
     let anonymous_block = CssLayerBlockRule::new(None, Vec::new(), block_location);
     assert_eq!(anonymous_block.name(), None);
@@ -895,7 +895,7 @@ fn scope_rule_model_keeps_scoped_selectors_and_rules_separate() {
     assert_eq!(scope.root(), Some(&root));
     assert_eq!(scope.limit(), Some(&limit));
     assert_eq!(scope.rules(), &scoped_rules);
-    assert_eq!(scope.position(), location);
+    assert_eq!(scope.position(), Some(location));
     assert_eq!(CssRule::Scope(scope.clone()), CssRule::Scope(scope));
 
     let empty_rules = CssScopedRuleList::new();
@@ -965,7 +965,7 @@ fn scoped_group_rule_models_keep_scoped_children() {
     let media = CssScopedMediaRule::new(query.clone(), scoped_children.clone(), location);
     assert_eq!(media.query(), &query);
     assert_eq!(media.rules(), &scoped_children);
-    assert_eq!(media.position(), location);
+    assert_eq!(media.position(), Some(location));
 
     let prelude = CssContainerPrelude::try_from_components(
         crate::parse_component_values("sidebar (inline-size > 30rem)").unwrap(),
@@ -977,7 +977,7 @@ fn scoped_group_rule_models_keep_scoped_children() {
     assert_eq!(container.prelude().entries()[0].name(), Some(&name));
     assert_eq!(container.prelude().entries()[0].query(), Some(&condition));
     assert_eq!(container.rules(), &scoped_children);
-    assert_eq!(container.position(), location);
+    assert_eq!(container.position(), Some(location));
 
     let layer_name = CssLayerName::try_new(["theme"]).unwrap();
     let layer_names = CssLayerNameList::try_new(vec![layer_name.clone()]).unwrap();
@@ -989,7 +989,7 @@ fn scoped_group_rule_models_keep_scoped_children() {
         CssScopedLayerBlockRule::new(Some(layer_name.clone()), scoped_children.clone(), location);
     assert_eq!(block.name(), Some(&layer_name));
     assert_eq!(block.rules(), &scoped_children);
-    assert_eq!(block.position(), location);
+    assert_eq!(block.position(), Some(location));
 
     assert_eq!(
         CssScopedRule::Media(media.clone()),
@@ -5551,10 +5551,10 @@ fn font_face_rule_accessors_expose_authored_structure() {
         ),
     ]);
     let location = source_position(9, 5);
-    let rule = CssFontFaceRule::new(descriptors.clone(), location);
+    let rule = CssFontFaceRule::new(descriptors.clone()).with_position(location);
 
     assert_eq!(rule.descriptors(), &descriptors);
-    assert_eq!(rule.position(), location);
+    assert_eq!(rule.position(), Some(location));
     assert_eq!(CssRule::FontFace(rule.clone()), CssRule::FontFace(rule));
 }
 
@@ -5892,7 +5892,7 @@ fn container_rule_accessors_expose_authored_structure() {
     assert_eq!(rule.prelude().entries()[0].name(), Some(&name));
     assert_eq!(rule.prelude().entries()[0].query().unwrap(), &condition);
     assert_eq!(rule.rules(), &[nested]);
-    assert_eq!(rule.position(), location);
+    assert_eq!(rule.position(), Some(location));
     assert_eq!(CssRule::Container(rule.clone()), CssRule::Container(rule));
 }
 
@@ -5905,9 +5905,9 @@ fn container_rule_parser_accepts_unnamed_named_and_style_conditions() {
     };
     let rule = container_rule(rule);
     assert_eq!(rule.prelude().entries()[0].name(), None);
-    assert_eq!(rule.position().byte_offset().value(), 0);
-    assert_eq!(rule.position().line().value(), 0);
-    assert_eq!(rule.position().column().value(), 0);
+    assert_eq!(rule.position().unwrap().byte_offset().value(), 0);
+    assert_eq!(rule.position().unwrap().line().value(), 0);
+    assert_eq!(rule.position().unwrap().column().value(), 0);
     assert!(matches!(
         rule.prelude().entries()[0].query().unwrap().kind(),
         CssContainerConditionKind::Feature(CssContainerFeatureQuery::InlineSize(_))
@@ -6014,9 +6014,9 @@ fn media_rule_parser_accepts_style_rule_body() {
     };
     assert_eq!(query.media_type(), CssMediaType::Screen);
     assert!(query.condition().is_some());
-    assert_eq!(rule.position().byte_offset().value(), 0);
-    assert_eq!(rule.position().line().value(), 0);
-    assert_eq!(rule.position().column().value(), 0);
+    assert_eq!(rule.position().unwrap().byte_offset().value(), 0);
+    assert_eq!(rule.position().unwrap().line().value(), 0);
+    assert_eq!(rule.position().unwrap().column().value(), 0);
 
     let [nested] = rule.rules() else {
         panic!("expected one nested style rule");

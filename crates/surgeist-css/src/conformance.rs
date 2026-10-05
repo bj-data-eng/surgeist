@@ -2290,8 +2290,6 @@ const GRID_AUTO_FLOW_SUBSET: &str = "The authored grid-auto-flow grammar accepts
 const GRID_AUTO_FLOW_REMAINDER: &str = "Grid 3 §2.3 issue #12803 has not settled whether its context-dependent orientation extends grid-auto-flow or belongs to a separate grid-lanes-direction property. The normal initial and implicit-direction dense choice follow the recorded WebKit behavior; runtime orientation and placement belong downstream.";
 const KEYFRAMES_SUBSET: &str = "Keyframe names, literal selectors, empty rules and blocks, duplicate selectors and blocks in authored order, and supported declarations with recovery are supported.";
 const KEYFRAMES_REMAINDER: &str = "Calculation selectors, string names, and declaration-processing grammar not selected by C07 remain unsupported.";
-const FONT_FACE_RULE_SUBSET: &str = "Empty font-face rules and ordered valid descriptor occurrences are retained. Family, source, weight, style, width, display, unicode-range, feature-settings, variation-settings, named-instance, language-override and metric-override descriptors have typed ordinary representations and admit pending whole values for valid env(); invalid descriptors recover independently.";
-const FONT_FACE_RULE_REMAINDER: &str = "Checked font-face rule composition and canonical effective-value rule serialization remain unfinished.";
 
 const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
     match property {
@@ -2811,14 +2809,12 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 665] = [
         BASELINE_RULE_SUBSET,
         BASELINE_RULE_REMAINDER,
     ),
-    CssFeatureMetadata::partial(
+    CssFeatureMetadata::complete(
         "baseline.rule.font-face",
         CssFeatureKind::Rule,
         "@font-face",
         I_FONTS4_20260907,
         "#font-face-rule",
-        FONT_FACE_RULE_SUBSET,
-        FONT_FACE_RULE_REMAINDER,
     ),
     CssFeatureMetadata::partial(
         "baseline.rule.keyframes",
@@ -4055,14 +4051,12 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 665] = [
         O_CSS2,
         "page.html#page-selectors",
     ),
-    CssFeatureMetadata::partial(
+    CssFeatureMetadata::complete(
         "later.rule.font-feature-values",
         CssFeatureKind::Rule,
         "@font-feature-values",
         I_FONTS4_20260907,
         "#font-feature-values-syntax",
-        "Ordered family lists, all seven subsidiary blocks, font-display, exact unbounded nonnegative integer tokens, shared checked/parsed one-or-two character-variant and nonempty styleset index policy, local recovery, ordinary group placement, and opaque normalization.",
-        "The selected section 6.9.2/frozen WebKit authored index policy resolves implementation behavior; the contradictory section 6.9.1 cardinality and feature-range wording remains unresolved. General rule serialization is unfinished; live CSSOM map mutation and font activation remain downstream.",
     ),
     CssFeatureMetadata::complete(
         "interop.rule.color-profile",

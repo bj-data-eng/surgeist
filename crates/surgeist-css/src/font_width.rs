@@ -158,19 +158,74 @@ impl CssFontFaceWidth {
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
         let mut context = SpecifiedSerializationContext::new(limits);
+        let mut output = String::new();
+        self.append_specified(&mut context, &mut output)?;
+        Ok(output)
+    }
+
+    pub(crate) fn append_specified(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> SerializationResult<()> {
         context.charge_input(1)?;
         context.charge_projection(1)?;
-        let mut output = String::new();
         match self {
-            Self::Auto => context.append(&mut output, "auto")?,
+            Self::Auto => context.append(output, "auto")?,
             Self::Range { start, end } => {
-                start.append_specified(&mut context, &mut output)?;
+                start.append_specified(context, output)?;
                 if let Some(end) = end {
-                    context.append(&mut output, " ")?;
-                    end.append_specified(&mut context, &mut output)?;
+                    let omit_end = context.output_suppressed()
+                        || start.specified_semantically_eq(end, context)?;
+                    let previous = context.replace_output_suppression(omit_end);
+                    let result = (|| {
+                        context.append(output, " ")?;
+                        end.append_specified(context, output)
+                    })();
+                    context.replace_output_suppression(previous);
+                    result?;
                 }
             }
         }
-        Ok(output)
+        Ok(())
+    }
+}
+
+impl CssFontWidth {
+    fn specified_semantically_eq(
+        &self,
+        other: &Self,
+        context: &mut SpecifiedSerializationContext,
+    ) -> SerializationResult<bool> {
+        if let (Self::Percentage(a), Self::Percentage(b)) = (self, other)
+            && let (Some(a), Some(b)) = (a.calculation(), b.calculation())
+        {
+            return a.expression.specified_identity_eq(&b.expression, context);
+        }
+        Ok(match (self, other) {
+            (Self::Percentage(a), Self::Percentage(b)) => {
+                crate::font_rule_serialization::equal_literals(
+                    a.literal_component(),
+                    b.literal_component(),
+                )
+                .unwrap_or_else(|| a == b)
+            }
+            (Self::Keyword(keyword), Self::Percentage(value))
+            | (Self::Percentage(value), Self::Keyword(keyword)) => {
+                let magnitude = match keyword {
+                    CssFontWidthKeyword::UltraCondensed => "50",
+                    CssFontWidthKeyword::ExtraCondensed => "62.5",
+                    CssFontWidthKeyword::Condensed => "75",
+                    CssFontWidthKeyword::SemiCondensed => "87.5",
+                    CssFontWidthKeyword::Normal => "100",
+                    CssFontWidthKeyword::SemiExpanded => "112.5",
+                    CssFontWidthKeyword::Expanded => "125",
+                    CssFontWidthKeyword::ExtraExpanded => "150",
+                    CssFontWidthKeyword::UltraExpanded => "200",
+                };
+                crate::font_rule_serialization::literal_equals(value.literal_component(), magnitude)
+            }
+            _ => self == other,
+        })
     }
 }

@@ -164,7 +164,7 @@ impl CssFontObliqueAngle {
         Ok(output)
     }
 
-    fn append_specified(
+    pub(crate) fn append_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
         output: &mut String,
@@ -173,6 +173,9 @@ impl CssFontObliqueAngle {
             ObliqueAngleValue::Literal(component) => {
                 context.charge_input(1)?;
                 context.charge_projection(1)?;
+                if context.output_suppressed() {
+                    return Ok(());
+                }
                 let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) =
                     component.view()
                 else {
@@ -251,7 +254,7 @@ impl CssFontFaceObliqueRange {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
 
-    /// Charges both endpoints and their separator to one cumulative budget.
+    /// Charges both endpoints cumulatively; equal retained endpoints emit only the first.
     pub fn serialize_specified_with_limits(
         &self,
         limits: CssSpecifiedValueSerializationLimits,
@@ -262,15 +265,25 @@ impl CssFontFaceObliqueRange {
         Ok(output)
     }
 
-    fn append_specified(
+    pub(crate) fn append_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
         output: &mut String,
     ) -> SerializationResult<()> {
         self.start.append_specified(context, output)?;
         if let Some(end) = &self.end {
-            context.append(output, " ")?;
-            end.append_specified(context, output)?;
+            let omit_end = if context.output_suppressed() {
+                true
+            } else {
+                self.start.specified_semantically_eq(end, context)?
+            };
+            let previous = context.replace_output_suppression(omit_end);
+            let result = (|| {
+                context.append(output, " ")?;
+                end.append_specified(context, output)
+            })();
+            context.replace_output_suppression(previous);
+            result?;
         }
         Ok(())
     }
@@ -348,18 +361,27 @@ impl CssFontFaceStyle {
     ) -> SerializationResult<String> {
         let mut context = SpecifiedSerializationContext::new(limits);
         let mut output = String::new();
+        self.append_specified(&mut context, &mut output)?;
+        Ok(output)
+    }
+
+    pub(crate) fn append_specified(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> SerializationResult<()> {
         match self {
-            Self::Auto => append_text("auto", &mut context, &mut output)?,
-            Self::Keyword(keyword) => append_keyword(*keyword, &mut context, &mut output)?,
+            Self::Auto => append_text("auto", context, output)?,
+            Self::Keyword(keyword) => append_keyword(*keyword, context, output)?,
             Self::Oblique { range } => {
-                append_text("oblique", &mut context, &mut output)?;
+                append_text("oblique", context, output)?;
                 if let Some(range) = range {
-                    context.append(&mut output, " ")?;
-                    range.append_specified(&mut context, &mut output)?;
+                    context.append(output, " ")?;
+                    range.append_specified(context, output)?;
                 }
             }
         }
-        Ok(output)
+        Ok(())
     }
 }
 
@@ -371,4 +393,22 @@ fn append_text(
     context.charge_input(1)?;
     context.charge_projection(1)?;
     context.append(output, text)
+}
+
+impl CssFontObliqueAngle {
+    fn specified_semantically_eq(
+        &self,
+        other: &Self,
+        context: &mut SpecifiedSerializationContext,
+    ) -> SerializationResult<bool> {
+        if let (Some(a), Some(b)) = (self.calculation(), other.calculation()) {
+            return a.expression.specified_identity_eq(&b.expression, context);
+        }
+        Ok(crate::numeric::exact_dimension_identity(
+            self.literal_component(),
+            other.literal_component(),
+            context,
+        )?
+        .unwrap_or_else(|| self == other))
+    }
 }

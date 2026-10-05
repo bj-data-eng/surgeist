@@ -817,6 +817,11 @@ fn project_specified_impl_mode(
         NumericEmission::ColorComponentCalculation => NumericEmission::ColorCalculation,
         emission => emission,
     };
+    // Discarded values still perform the same checked projection and arithmetic.
+    // Their formatting does not consume the surviving value's output budget.
+    if projection.context.output_suppressed() {
+        return Ok(outcome);
+    }
     if outer_calc {
         projection.serialize(root, output, charge_output, &mut emission)?;
     } else {

@@ -180,15 +180,23 @@ impl CssFontLanguageOverride {
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
         let mut writer = SpecifiedRuleWriter::new(limits);
+        self.append_specified(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_specified(
+        &self,
+        writer: &mut SpecifiedRuleWriter,
+    ) -> SerializationResult<()> {
         match self {
-            Self::Normal => keyword(&mut writer, "normal")?,
+            Self::Normal => keyword(writer, "normal")?,
             Self::String(value) => {
                 writer.context.charge_input(1)?;
                 writer.context.charge_projection(1)?;
                 writer.append_string(value.as_str())?;
             }
         }
-        Ok(writer.css)
+        Ok(())
     }
 }
 

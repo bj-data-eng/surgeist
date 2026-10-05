@@ -11,7 +11,13 @@ fn retained_count(source: &str) -> usize {
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("one font-face rule: {source}")
     };
-    assert_eq!(rule.position().byte_offset().value(), 0);
+    assert_eq!(
+        rule.position()
+            .expect("parsed rule position")
+            .byte_offset()
+            .value(),
+        0
+    );
     assert!(
         validate_sheet(source).is_ok(),
         "strict validation: {source}"

@@ -283,6 +283,9 @@ pub(crate) fn capture_literal(
     context: &mut SpecifiedSerializationContext,
 ) -> SerializationResult<String> {
     let (number, suffix) = visit_literal(component, context)?;
+    if context.output_suppressed() {
+        return Ok(String::new());
+    }
     let coefficient_limit = context
         .remaining_bytes()
         .checked_sub(suffix.len())
@@ -1211,12 +1214,6 @@ macro_rules! append_checked_numeric {
     ($($owner:ident),* $(,)?) => { $(
         impl $owner {
             pub(crate) fn append_specified(&self, context: &mut SpecifiedSerializationContext, output: &mut String) -> SerializationResult<()> {
-                if context.output_suppressed() {
-                    // Suppression is selected only for independently proved literal initials.
-                    let literal = self.literal_component().expect("suppressed simple literal");
-                    visit_literal(literal, context)?;
-                    return Ok(());
-                }
                 let captured = self.capture_specified(context)?;
                 context.append(output, &captured)
             }

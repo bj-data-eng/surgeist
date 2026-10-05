@@ -91,6 +91,9 @@ impl<'a> LexicalDecimal<'a> {
         {
             return false;
         }
+        self.exponent_eq(other)
+    }
+    fn exponent_eq(&self, other: &Self) -> bool {
         if let (Some(left), Some(right)) = (self.exponent, other.exponent) {
             return left == right;
         }
@@ -124,6 +127,47 @@ impl<'a> LexicalDecimal<'a> {
             }
             carry = digit.div_euclid(10);
         }
+    }
+    /// Exact rational-factor equality, retaining arbitrarily long exponent text.
+    /// Coefficient work uses the existing checked decimal owner and projection budget.
+    pub(crate) fn value_eq_scaled(
+        self,
+        other: Self,
+        left: ExactFactor,
+        right: ExactFactor,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+    ) -> Result<bool, crate::CssSpecifiedValueSerializationError> {
+        let overflow = || {
+            crate::CssSpecifiedValueSerializationError::new(
+                crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
+            )
+        };
+        if left.denominator == 0 || right.denominator == 0 {
+            return Err(overflow());
+        }
+        let a_zero = self.len == 0 || left.numerator == 0;
+        let b_zero = other.len == 0 || right.numerator == 0;
+        if a_zero || b_zero {
+            return Ok(a_zero == b_zero);
+        }
+        if self.negative != other.negative {
+            return Ok(false);
+        }
+        let left_multiplier = left
+            .numerator
+            .checked_mul(right.denominator)
+            .ok_or_else(overflow)?;
+        let right_multiplier = right
+            .numerator
+            .checked_mul(left.denominator)
+            .ok_or_else(overflow)?;
+        let mut a =
+            BigCoefficient::from_lexical(&self, context)?.mul_small(left_multiplier, context)?;
+        let mut b =
+            BigCoefficient::from_lexical(&other, context)?.mul_small(right_multiplier, context)?;
+        let a_shift = i32::try_from(a.strip_decimal_zeros()).map_err(|_| overflow())?;
+        let b_shift = i32::try_from(b.strip_decimal_zeros()).map_err(|_| overflow())?;
+        Ok(a == b && self.shifted(a_shift).exponent_eq(&other.shifted(b_shift)))
     }
     pub(crate) fn in_percentage_range(&self) -> bool {
         if self.len == 0 {

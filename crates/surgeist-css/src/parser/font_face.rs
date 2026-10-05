@@ -106,8 +106,7 @@ pub(super) fn parse_font_face_rule<'i, 't>(
     diagnostics.extend(descriptor_parser.diagnostics);
     let descriptors = CssFontFaceDescriptors::new(descriptors);
 
-    Ok(CssFontFaceRule::new(
-        descriptors,
+    Ok(CssFontFaceRule::new(descriptors).with_position(
         crate::source::CssSourcePosition::from_cssparser(start.position(), start.source_location()),
     ))
 }

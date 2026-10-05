@@ -20,6 +20,9 @@ pub(crate) fn append_pending_specified(
     })?;
     context.charge_input(nodes)?;
     context.charge_projection(nodes)?;
+    if context.output_suppressed() {
+        return Ok(());
+    }
     let serialized = values
         .serialize_with_limit(context.remaining_bytes())
         .map_err(|error| {

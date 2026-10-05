@@ -172,6 +172,9 @@ impl SpecifiedRuleWriter {
         value: &str,
         kind: EscapedKind,
     ) -> Result<(), CssSpecifiedValueSerializationError> {
+        if self.context.output_suppressed() {
+            return Ok(());
+        }
         let mut scratch = String::new();
         let mut bounded = BoundedEscaped {
             context: &self.context,
@@ -293,6 +296,12 @@ fn append_rule(
     index: Option<usize>,
 ) -> Result<(), CssSpecifiedRuleSerializationError> {
     match rule {
+        CssRule::FontFace(rule) => writer
+            .font_face(rule)
+            .map_err(|error| CssSpecifiedRuleSerializationError::value_error(error, index)),
+        CssRule::FontFeatureValues(rule) => writer
+            .font_features(rule)
+            .map_err(|error| CssSpecifiedRuleSerializationError::value_error(error, index)),
         CssRule::Namespace(rule) => writer
             .namespace(rule)
             .map_err(|error| CssSpecifiedRuleSerializationError::value_error(error, index)),

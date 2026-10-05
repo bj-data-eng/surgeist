@@ -110,15 +110,20 @@ impl CssFontNamedInstance {
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String> {
         let mut writer = SpecifiedRuleWriter::new(limits);
+        self.append_specified(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self {
             Self::Auto => {
                 writer.context.charge_input(1)?;
                 writer.context.charge_projection(1)?;
                 writer.append("auto")?;
             }
-            Self::String(value) => value.append_specified(&mut writer)?,
+            Self::String(value) => value.append_specified(writer)?,
         }
-        Ok(writer.css)
+        Ok(())
     }
 }
 
@@ -144,6 +149,11 @@ impl CssFontMetricOverride {
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String> {
         let mut writer = SpecifiedRuleWriter::new(limits);
+        self.append_specified(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self {
             Self::Normal => {
                 writer.context.charge_input(1)?;
@@ -155,6 +165,6 @@ impl CssFontMetricOverride {
                 writer.append(&captured)?;
             }
         }
-        Ok(writer.css)
+        Ok(())
     }
 }

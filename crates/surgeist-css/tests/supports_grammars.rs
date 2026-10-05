@@ -21,7 +21,13 @@ fn supports_conditions_and_group_rules_follow_conditional3() {
     assert!(declaration.known().is_some());
     assert_eq!(declaration.position().unwrap().byte_offset().value(), 11);
     assert!(matches!(rule.rules(), [CssRule::Style(_)]));
-    assert_eq!(rule.position().byte_offset().value(), 0);
+    assert_eq!(
+        rule.position()
+            .expect("parsed rule position")
+            .byte_offset()
+            .value(),
+        0
+    );
 }
 
 #[test]
@@ -320,6 +326,20 @@ fn supports_non_bmp_positions_and_repeated_failures_remain_ordered() {
     let CssRule::Supports(first) = &report.syntax().rules()[0] else {
         unreachable!()
     };
-    assert_eq!(first.position().line().value(), 1);
-    assert_eq!(first.position().column().value(), 0);
+    assert_eq!(
+        first
+            .position()
+            .expect("parsed rule position")
+            .line()
+            .value(),
+        1
+    );
+    assert_eq!(
+        first
+            .position()
+            .expect("parsed rule position")
+            .column()
+            .value(),
+        0
+    );
 }

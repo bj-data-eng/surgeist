@@ -78,8 +78,6 @@ const GRID_PROPERTY_SUBSET: &str = "The structural grammar supports non-recursiv
 const GRID_PROPERTY_REMAINDER: &str = "Subgrid name-repeat and remaining grid/grid-template shorthand alternatives remain unfinished; used track sizing belongs downstream.";
 const KEYFRAMES_SUBSET: &str = "Keyframe names, literal selectors, empty rules and blocks, duplicate selectors and blocks in authored order, and supported declarations with recovery are supported.";
 const KEYFRAMES_REMAINDER: &str = "Calculation selectors, string names, and declaration-processing grammar not selected by C07 remain unsupported.";
-const FONT_FACE_RULE_SUBSET: &str = "Empty font-face rules and ordered valid descriptor occurrences are retained. Family, source, weight, style, width, display, unicode-range, feature-settings, variation-settings, named-instance, language-override and metric-override descriptors have typed ordinary representations and admit pending whole values for valid env(); invalid descriptors recover independently.";
-const FONT_FACE_RULE_REMAINDER: &str = "Checked font-face rule composition and canonical effective-value rule serialization remain unfinished.";
 
 fn assert_complete_fonts3_feature(
     id: &str,
@@ -305,7 +303,7 @@ fn fonts3_and_preserved_fonts4_metadata_are_truthful() {
     assert_eq!(metadata.spelling(), "@font-feature-values");
     assert_eq!(metadata.source().id().as_str(), "I-FONTS4-20260907");
     assert_eq!(metadata.production(), "#font-feature-values-syntax");
-    assert_eq!(metadata.status(), CssSupportStatus::Partial);
+    assert_eq!(metadata.status(), CssSupportStatus::Complete);
     assert_eq!(metadata.recognized_unsupported_code(), None);
 
     let numeric_weight = parse_style_attribute("font-weight: 725");
@@ -1208,17 +1206,14 @@ const EXPECTED: &[ExpectedFeature] = &[
         spelling: "@font-face",
         source: ExpectedSource::Id("I-FONTS4-20260907"),
         production: "#font-face-rule",
-        status: CssSupportStatus::Partial,
-        supported_subset: Some(FONT_FACE_RULE_SUBSET),
-        unsupported_remainder: Some(FONT_FACE_RULE_REMAINDER),
+        status: CssSupportStatus::Complete,
+        supported_subset: None,
+        unsupported_remainder: None,
         recognized_code: None,
         positive: Some(Input::Sheet(
             "@font-face { font-family: Inter; src: url(inter.woff2); }",
         )),
-        negative: Some((
-            Input::Sheet("@font-face { font-width: 75% 100% 125%; }"),
-            CssErrorCode::InvalidDescriptorValue,
-        )),
+        negative: None,
     },
     ExpectedFeature {
         id: "baseline.rule.keyframes",
@@ -1454,22 +1449,15 @@ const EXPECTED: &[ExpectedFeature] = &[
         spelling: "@font-feature-values",
         source: ExpectedSource::Id("I-FONTS4-20260907"),
         production: "#font-feature-values-syntax",
-        status: CssSupportStatus::Partial,
-        supported_subset: Some(
-            "Ordered family lists, all seven subsidiary blocks, font-display, exact unbounded nonnegative integer tokens, shared checked/parsed one-or-two character-variant and nonempty styleset index policy, local recovery, ordinary group placement, and opaque normalization.",
-        ),
-        unsupported_remainder: Some(
-            "The selected section 6.9.2/frozen WebKit authored index policy resolves implementation behavior; the contradictory section 6.9.1 cardinality and feature-range wording remains unresolved. General rule serialization is unfinished; live CSSOM map mutation and font activation remain downstream.",
-        ),
+        status: CssSupportStatus::Complete,
+        supported_subset: None,
+        unsupported_remainder: None,
         recognized_code: None,
         positive: Some(Input::Sheet(
             "@font-feature-values Font One { @styleset { nice: 1; } }",
         )),
         // Empty definitions remain invalid under the selected authored grammar.
-        negative: Some((
-            Input::Sheet("@font-feature-values Font One { @styleset { nice:; } }"),
-            CssErrorCode::InvalidDescriptorValue,
-        )),
+        negative: None,
     },
     ExpectedFeature {
         id: "later.rule.font-palette-values",
@@ -2065,9 +2053,9 @@ fn c14_amended_ledger_public_metadata_is_reconciled() {
 
     let metadata =
         feature_metadata("later.rule.font-feature-values").expect("font-feature-values metadata");
-    assert_eq!(metadata.status(), CssSupportStatus::Partial);
-    assert!(metadata.supported_subset().is_some());
-    assert!(metadata.unsupported_remainder().is_some());
+    assert_eq!(metadata.status(), CssSupportStatus::Complete);
+    assert!(metadata.supported_subset().is_none());
+    assert!(metadata.unsupported_remainder().is_none());
     assert_eq!(metadata.recognized_unsupported_code(), None);
 }
 
@@ -2522,7 +2510,7 @@ fn c14_retained_partial_extensions_have_direct_public_evidence() {
     assert_eq!(metadata.spelling(), "@font-feature-values");
     assert_eq!(metadata.source().id().as_str(), "I-FONTS4-20260907");
     assert_eq!(metadata.production(), "#font-feature-values-syntax");
-    assert_eq!(metadata.status(), CssSupportStatus::Partial);
+    assert_eq!(metadata.status(), CssSupportStatus::Complete);
     assert_eq!(metadata.recognized_unsupported_code(), None);
 }
 

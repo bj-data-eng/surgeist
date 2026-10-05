@@ -260,19 +260,63 @@ impl CssFontFaceWeight {
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
         let mut context = SpecifiedSerializationContext::new(limits);
+        let mut output = String::new();
+        self.append_specified(&mut context, &mut output)?;
+        Ok(output)
+    }
+
+    pub(crate) fn append_specified(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> SerializationResult<()> {
         context.charge_input(1)?;
         context.charge_projection(1)?;
-        let mut output = String::new();
         match self {
-            Self::Auto => context.append(&mut output, "auto")?,
+            Self::Auto => context.append(output, "auto")?,
             Self::Range { start, end } => {
-                start.append_specified(&mut context, &mut output)?;
+                start.append_specified(context, output)?;
                 if let Some(end) = end {
-                    context.append(&mut output, " ")?;
-                    end.append_specified(&mut context, &mut output)?;
+                    let omit_end = context.output_suppressed()
+                        || start.specified_semantically_eq(end, context)?;
+                    let suppressed = context.replace_output_suppression(omit_end);
+                    let result = (|| {
+                        context.append(output, " ")?;
+                        end.append_specified(context, output)
+                    })();
+                    context.replace_output_suppression(suppressed);
+                    result?;
                 }
             }
         }
-        Ok(output)
+        Ok(())
+    }
+}
+
+impl CssAbsoluteFontWeight {
+    fn specified_semantically_eq(
+        &self,
+        other: &Self,
+        context: &mut SpecifiedSerializationContext,
+    ) -> SerializationResult<bool> {
+        if let (Self::Number(a), Self::Number(b)) = (self, other)
+            && let (Some(a), Some(b)) = (a.calculation(), b.calculation())
+        {
+            return a.expression.specified_identity_eq(&b.expression, context);
+        }
+        Ok(match (self, other) {
+            (Self::Number(a), Self::Number(b)) => crate::font_rule_serialization::equal_literals(
+                a.literal_component(),
+                b.literal_component(),
+            )
+            .unwrap_or_else(|| a == b),
+            (Self::Normal, Self::Number(value)) | (Self::Number(value), Self::Normal) => {
+                crate::font_rule_serialization::literal_equals(value.literal_component(), "400")
+            }
+            (Self::Bold, Self::Number(value)) | (Self::Number(value), Self::Bold) => {
+                crate::font_rule_serialization::literal_equals(value.literal_component(), "700")
+            }
+            _ => self == other,
+        })
     }
 }

@@ -1450,13 +1450,13 @@ impl CssLayerStatementRule {
 pub struct CssLayerBlockRule {
     name: Option<CssLayerName>,
     rules: Vec<CssRule>,
-    position: CssSourcePosition,
+    position: Option<CssSourcePosition>,
 }
 
 impl CssLayerBlockRule {
     #[must_use]
     #[allow(dead_code)] // Staged for @layer parser construction.
-    pub(crate) const fn new(
+    pub(crate) fn new(
         name: Option<CssLayerName>,
         rules: Vec<CssRule>,
         position: CssSourcePosition,
@@ -1464,7 +1464,7 @@ impl CssLayerBlockRule {
         Self {
             name,
             rules,
-            position,
+            position: Some(position),
         }
     }
 
@@ -1479,7 +1479,7 @@ impl CssLayerBlockRule {
     }
 
     #[must_use]
-    pub const fn position(&self) -> CssSourcePosition {
+    pub const fn position(&self) -> Option<CssSourcePosition> {
         self.position
     }
 }
@@ -1508,12 +1508,12 @@ fn is_exact_css_identifier(value: &str) -> bool {
 pub struct CssMediaRule {
     query: CssMediaQueryList,
     rules: Vec<CssRule>,
-    position: CssSourcePosition,
+    position: Option<CssSourcePosition>,
 }
 
 impl CssMediaRule {
     #[must_use]
-    pub(crate) const fn new(
+    pub(crate) fn new(
         query: CssMediaQueryList,
         rules: Vec<CssRule>,
         position: CssSourcePosition,
@@ -1521,7 +1521,7 @@ impl CssMediaRule {
         Self {
             query,
             rules,
-            position,
+            position: Some(position),
         }
     }
 
@@ -1536,7 +1536,7 @@ impl CssMediaRule {
     }
 
     #[must_use]
-    pub const fn position(&self) -> CssSourcePosition {
+    pub const fn position(&self) -> Option<CssSourcePosition> {
         self.position
     }
 }
@@ -1549,12 +1549,12 @@ impl CssMediaRule {
 pub struct CssSupportsRule {
     condition: CssSupportsCondition,
     rules: Vec<CssRule>,
-    position: CssSourcePosition,
+    position: Option<CssSourcePosition>,
 }
 
 impl CssSupportsRule {
     #[must_use]
-    pub(crate) const fn new(
+    pub(crate) fn new(
         condition: CssSupportsCondition,
         rules: Vec<CssRule>,
         position: CssSourcePosition,
@@ -1562,7 +1562,7 @@ impl CssSupportsRule {
         Self {
             condition,
             rules,
-            position,
+            position: Some(position),
         }
     }
 
@@ -1577,7 +1577,7 @@ impl CssSupportsRule {
     }
 
     #[must_use]
-    pub const fn position(&self) -> CssSourcePosition {
+    pub const fn position(&self) -> Option<CssSourcePosition> {
         self.position
     }
 }
@@ -1897,12 +1897,12 @@ impl CssGeneralEnclosed {
 pub struct CssContainerRule {
     prelude: CssContainerPrelude,
     rules: Vec<CssRule>,
-    position: CssSourcePosition,
+    position: Option<CssSourcePosition>,
 }
 
 impl CssContainerRule {
     #[must_use]
-    pub(crate) const fn new(
+    pub(crate) fn new(
         prelude: CssContainerPrelude,
         rules: Vec<CssRule>,
         position: CssSourcePosition,
@@ -1910,7 +1910,7 @@ impl CssContainerRule {
         Self {
             prelude,
             rules,
-            position,
+            position: Some(position),
         }
     }
 
@@ -1926,7 +1926,7 @@ impl CssContainerRule {
     }
 
     #[must_use]
-    pub const fn position(&self) -> CssSourcePosition {
+    pub const fn position(&self) -> Option<CssSourcePosition> {
         self.position
     }
 }
@@ -1936,13 +1936,13 @@ pub struct CssScopeRule {
     root: Option<CssScopeSelectorList>,
     limit: Option<CssScopeSelectorList>,
     rules: CssScopedRuleList,
-    position: CssSourcePosition,
+    position: Option<CssSourcePosition>,
 }
 
 impl CssScopeRule {
     #[must_use]
     #[allow(dead_code)] // Staged for @scope parser construction.
-    pub(crate) const fn new(
+    pub(crate) fn new(
         root: Option<CssScopeSelectorList>,
         limit: Option<CssScopeSelectorList>,
         rules: CssScopedRuleList,
@@ -1952,7 +1952,7 @@ impl CssScopeRule {
             root,
             limit,
             rules,
-            position,
+            position: Some(position),
         }
     }
 
@@ -1972,7 +1972,7 @@ impl CssScopeRule {
     }
 
     #[must_use]
-    pub const fn position(&self) -> CssSourcePosition {
+    pub const fn position(&self) -> Option<CssSourcePosition> {
         self.position
     }
 }
@@ -2154,13 +2154,13 @@ pub enum CssScopedStyleSelector {
 pub struct CssScopedMediaRule {
     query: CssMediaQueryList,
     rules: CssScopedRuleList,
-    position: CssSourcePosition,
+    position: Option<CssSourcePosition>,
 }
 
 impl CssScopedMediaRule {
     #[must_use]
     #[allow(dead_code)] // Staged for @scope parser construction.
-    pub(crate) const fn new(
+    pub(crate) fn new(
         query: CssMediaQueryList,
         rules: CssScopedRuleList,
         position: CssSourcePosition,
@@ -2168,7 +2168,7 @@ impl CssScopedMediaRule {
         Self {
             query,
             rules,
-            position,
+            position: Some(position),
         }
     }
 
@@ -2183,7 +2183,7 @@ impl CssScopedMediaRule {
     }
 
     #[must_use]
-    pub const fn position(&self) -> CssSourcePosition {
+    pub const fn position(&self) -> Option<CssSourcePosition> {
         self.position
     }
 }
@@ -2193,12 +2193,12 @@ impl CssScopedMediaRule {
 pub struct CssScopedSupportsRule {
     condition: CssSupportsCondition,
     rules: CssScopedRuleList,
-    position: CssSourcePosition,
+    position: Option<CssSourcePosition>,
 }
 
 impl CssScopedSupportsRule {
     #[must_use]
-    pub(crate) const fn new(
+    pub(crate) fn new(
         condition: CssSupportsCondition,
         rules: CssScopedRuleList,
         position: CssSourcePosition,
@@ -2206,7 +2206,7 @@ impl CssScopedSupportsRule {
         Self {
             condition,
             rules,
-            position,
+            position: Some(position),
         }
     }
 
@@ -2221,7 +2221,7 @@ impl CssScopedSupportsRule {
     }
 
     #[must_use]
-    pub const fn position(&self) -> CssSourcePosition {
+    pub const fn position(&self) -> Option<CssSourcePosition> {
         self.position
     }
 }
@@ -2230,13 +2230,13 @@ impl CssScopedSupportsRule {
 pub struct CssScopedContainerRule {
     prelude: CssContainerPrelude,
     rules: CssScopedRuleList,
-    position: CssSourcePosition,
+    position: Option<CssSourcePosition>,
 }
 
 impl CssScopedContainerRule {
     #[must_use]
     #[allow(dead_code)] // Staged for @scope parser construction.
-    pub(crate) const fn new(
+    pub(crate) fn new(
         prelude: CssContainerPrelude,
         rules: CssScopedRuleList,
         position: CssSourcePosition,
@@ -2244,7 +2244,7 @@ impl CssScopedContainerRule {
         Self {
             prelude,
             rules,
-            position,
+            position: Some(position),
         }
     }
 
@@ -2260,7 +2260,7 @@ impl CssScopedContainerRule {
     }
 
     #[must_use]
-    pub const fn position(&self) -> CssSourcePosition {
+    pub const fn position(&self) -> Option<CssSourcePosition> {
         self.position
     }
 }
@@ -2293,13 +2293,13 @@ impl CssScopedLayerStatementRule {
 pub struct CssScopedLayerBlockRule {
     name: Option<CssLayerName>,
     rules: CssScopedRuleList,
-    position: CssSourcePosition,
+    position: Option<CssSourcePosition>,
 }
 
 impl CssScopedLayerBlockRule {
     #[must_use]
     #[allow(dead_code)] // Staged for scoped @layer parser construction.
-    pub(crate) const fn new(
+    pub(crate) fn new(
         name: Option<CssLayerName>,
         rules: CssScopedRuleList,
         position: CssSourcePosition,
@@ -2307,7 +2307,7 @@ impl CssScopedLayerBlockRule {
         Self {
             name,
             rules,
-            position,
+            position: Some(position),
         }
     }
 
@@ -2322,7 +2322,7 @@ impl CssScopedLayerBlockRule {
     }
 
     #[must_use]
-    pub const fn position(&self) -> CssSourcePosition {
+    pub const fn position(&self) -> Option<CssSourcePosition> {
         self.position
     }
 }
@@ -9047,5 +9047,173 @@ impl PartialEq for CssAnimationComponents {
                 other.delay.as_ref(),
                 CssTimeValue::structural_eq,
             )
+    }
+}
+
+impl CssSheet {
+    /// Checks ordered authored rules, deriving bindings from leading namespace declarations.
+    /// No encoding or enclosing parsed position is invented.
+    pub fn try_from_rules(rules: Vec<CssRule>) -> Result<Self, crate::CssRuleConstructionError> {
+        crate::rule_construction::sheet(&rules)?;
+        Ok(Self {
+            encoding: None,
+            rules,
+        })
+    }
+}
+
+impl CssMediaRule {
+    /// Assembles an ordinary group with explicit namespace bindings and absent enclosing provenance.
+    /// Parsed descendants retain their own positions; nested placement is rechecked by enclosing assembly.
+    pub fn try_new(
+        query: CssMediaQueryList,
+        rules: Vec<CssRule>,
+        context: &crate::CssNamespaceContext,
+    ) -> Result<Self, crate::CssRuleConstructionError> {
+        crate::rule_construction::ordinary_group(&rules, context)?;
+        Ok(Self {
+            query,
+            rules,
+            position: None,
+        })
+    }
+}
+
+impl CssSupportsRule {
+    /// Assembles an ordinary group with explicit namespace bindings and absent enclosing provenance.
+    /// Parsed descendants retain their own positions; nested placement is rechecked by enclosing assembly.
+    pub fn try_new(
+        condition: CssSupportsCondition,
+        rules: Vec<CssRule>,
+        context: &crate::CssNamespaceContext,
+    ) -> Result<Self, crate::CssRuleConstructionError> {
+        crate::rule_construction::supports(&condition, context)?;
+        crate::rule_construction::ordinary_group(&rules, context)?;
+        Ok(Self {
+            condition,
+            rules,
+            position: None,
+        })
+    }
+}
+
+impl CssContainerRule {
+    /// Assembles an ordinary group with explicit namespace bindings and absent enclosing provenance.
+    /// Parsed descendants retain their own positions; nested placement is rechecked by enclosing assembly.
+    pub fn try_new(
+        prelude: CssContainerPrelude,
+        rules: Vec<CssRule>,
+        context: &crate::CssNamespaceContext,
+    ) -> Result<Self, crate::CssRuleConstructionError> {
+        crate::rule_construction::ordinary_group(&rules, context)?;
+        Ok(Self {
+            prelude,
+            rules,
+            position: None,
+        })
+    }
+}
+
+impl CssLayerBlockRule {
+    /// Assembles an ordinary group with explicit namespace bindings and absent enclosing provenance.
+    /// Parsed descendants retain their own positions; nested placement is rechecked by enclosing assembly.
+    pub fn try_new(
+        name: Option<CssLayerName>,
+        rules: Vec<CssRule>,
+        context: &crate::CssNamespaceContext,
+    ) -> Result<Self, crate::CssRuleConstructionError> {
+        crate::rule_construction::ordinary_group(&rules, context)?;
+        Ok(Self {
+            name,
+            rules,
+            position: None,
+        })
+    }
+}
+
+impl CssScopedMediaRule {
+    /// Assembles an ordinary group with explicit namespace bindings and absent enclosing provenance.
+    /// Parsed descendants retain their own positions; nested placement is rechecked by enclosing assembly.
+    pub fn try_new(
+        query: CssMediaQueryList,
+        rules: Vec<CssScopedRule>,
+        context: &crate::CssNamespaceContext,
+    ) -> Result<Self, crate::CssRuleConstructionError> {
+        crate::rule_construction::scoped_group(&rules, context)?;
+        Ok(Self {
+            query,
+            rules: CssScopedRuleList::from_rules(rules),
+            position: None,
+        })
+    }
+}
+
+impl CssScopedSupportsRule {
+    /// Assembles an ordinary group with explicit namespace bindings and absent enclosing provenance.
+    /// Parsed descendants retain their own positions; nested placement is rechecked by enclosing assembly.
+    pub fn try_new(
+        condition: CssSupportsCondition,
+        rules: Vec<CssScopedRule>,
+        context: &crate::CssNamespaceContext,
+    ) -> Result<Self, crate::CssRuleConstructionError> {
+        crate::rule_construction::supports(&condition, context)?;
+        crate::rule_construction::scoped_group(&rules, context)?;
+        Ok(Self {
+            condition,
+            rules: CssScopedRuleList::from_rules(rules),
+            position: None,
+        })
+    }
+}
+
+impl CssScopedContainerRule {
+    /// Assembles an ordinary group with explicit namespace bindings and absent enclosing provenance.
+    /// Parsed descendants retain their own positions; nested placement is rechecked by enclosing assembly.
+    pub fn try_new(
+        prelude: CssContainerPrelude,
+        rules: Vec<CssScopedRule>,
+        context: &crate::CssNamespaceContext,
+    ) -> Result<Self, crate::CssRuleConstructionError> {
+        crate::rule_construction::scoped_group(&rules, context)?;
+        Ok(Self {
+            prelude,
+            rules: CssScopedRuleList::from_rules(rules),
+            position: None,
+        })
+    }
+}
+
+impl CssScopedLayerBlockRule {
+    /// Assembles an ordinary group with explicit namespace bindings and absent enclosing provenance.
+    /// Parsed descendants retain their own positions; nested placement is rechecked by enclosing assembly.
+    pub fn try_new(
+        name: Option<CssLayerName>,
+        rules: Vec<CssScopedRule>,
+        context: &crate::CssNamespaceContext,
+    ) -> Result<Self, crate::CssRuleConstructionError> {
+        crate::rule_construction::scoped_group(&rules, context)?;
+        Ok(Self {
+            name,
+            rules: CssScopedRuleList::from_rules(rules),
+            position: None,
+        })
+    }
+}
+
+impl CssScopeRule {
+    /// Assembles a direct scope body, checking boundaries and its stricter page placement.
+    pub fn try_new(
+        root: Option<CssScopeSelectorList>,
+        limit: Option<CssScopeSelectorList>,
+        rules: Vec<CssScopedRule>,
+        context: &crate::CssNamespaceContext,
+    ) -> Result<Self, crate::CssRuleConstructionError> {
+        crate::rule_construction::scope(root.as_ref(), limit.as_ref(), &rules, context)?;
+        Ok(Self {
+            root,
+            limit,
+            rules: CssScopedRuleList::from_rules(rules),
+            position: None,
+        })
     }
 }

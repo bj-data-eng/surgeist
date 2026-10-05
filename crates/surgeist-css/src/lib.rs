@@ -583,8 +583,8 @@
 //! style-rule ancestry rejects them. Normalization retains one opaque payload and
 //! its parent contexts, without emitting property contributions or applying font
 //! mapping/cascade. Normalization limits do not count payload declarations or bound
-//! payload allocation. General rule serialization beyond the supported palette
-//! rule kind remains unfinished.
+//! payload allocation. Fonts rules have canonical effective specified writers;
+//! generic group/sheet wrapper coverage remains with its separate owner.
 //!
 //! [`CssFontFaceDescriptors::occurrences`] exposes valid descriptor occurrences
 //! in authored order, while typed effective accessors return the last valid
@@ -595,8 +595,8 @@
 //!
 //! Family, font, source-list, and font-face records cite `I-FONTS4-20260907`.
 //! Family grammar, the font shorthand, and modern source hints are Complete;
-//! source list is Complete; the font-face rule remains Partial because checked
-//! rule composition and effective-value rule serialization remain unfinished.
+//! source list and selected authored font-face rule are Complete, including
+//! checked composition and canonical effective-value rule serialization.
 //! Named-instance, language and metric descriptors retain typed ordinary values
 //! or whole-descriptor environment values. Their payload serializers are bounded
 //! and context independent. Values 4 `url()` and `src()` preserve authored
@@ -1171,9 +1171,9 @@
 //!
 //! let feature_values = feature_metadata("later.rule.font-feature-values")
 //!     .expect("authored font-feature-values metadata");
-//! assert_eq!(feature_values.status(), CssSupportStatus::Partial);
+//! assert_eq!(feature_values.status(), CssSupportStatus::Complete);
 //! assert_eq!(feature_values.source().id().as_str(), "I-FONTS4-20260907");
-//! assert!(feature_values.unsupported_remainder().is_some());
+//! assert!(feature_values.unsupported_remainder().is_none());
 //! ```
 //!
 //! C14 makes all 31 records that entered the cycle as Reserved public Complete
@@ -1195,9 +1195,9 @@
 //! `ext.media.range.width`, `ext.media.range.height`,
 //! `ext.media.range.resolution`, `ext.media.range.color`, and
 //! `ext.media.range.monochrome` records remain Partial with explicit subset and
-//! remainder metadata. `@font-feature-values` is Partial under its documented
-//! selected section 6.9.2/frozen WebKit authored index policy, with the normative
-//! contradiction explicit and rule serialization unfinished. C13's
+//! remainder metadata. `@font-face` and `@font-feature-values` provide complete
+//! selected authored rule construction and effective specified serialization.
+//! The Fonts 4 index-source contradiction remains explicit in the reference. C13's
 //! 456 public catalog records plus C14's 31 additions reached 487 at that point;
 //! subsequent selected records extend the catalog. [`feature_catalog`] owns its
 //! current cardinality, which is distinct from the immutable official
@@ -1327,6 +1327,7 @@ mod font_feature_values;
 mod font_palette;
 mod font_palette_serialization;
 mod font_palette_values;
+mod font_rule_serialization;
 mod font_source_serialization;
 mod font_synthesis;
 mod font_variant;
@@ -1355,8 +1356,10 @@ mod supports;
 pub use supports::CssSupportsConstructionError;
 mod media;
 mod named_supports_serialization;
+mod rule_construction;
 mod shadow_serialization;
 mod specified_rule_serialization;
+pub use rule_construction::{CssRuleConstructionError, CssRuleConstructionErrorKind};
 mod url_serialization;
 pub use media::*;
 mod media_features;

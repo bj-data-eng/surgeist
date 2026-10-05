@@ -100,7 +100,11 @@ fn style_nested_root_and_limit_keep_distinct_anchor_categories() {
     };
     simple_bounds(scope, 1, false);
     assert_eq!(
-        scope.position().byte_offset().value(),
+        scope
+            .position()
+            .expect("parsed rule position")
+            .byte_offset()
+            .value(),
         source.find("@scope").unwrap()
     );
     let normalized = normalize_sheet(report.syntax()).unwrap();

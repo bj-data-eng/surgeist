@@ -31,7 +31,7 @@ fn missing_matching_descriptors_preserves_clean_authored_font_face() {
             ordinary_face!(rule.descriptors(), Src).is_some(),
             source.contains("src:")
         );
-        assert_eq!(rule.position().byte_offset().value(), 0);
+        assert_eq!(rule.position().unwrap().byte_offset().value(), 0);
     }
 }
 

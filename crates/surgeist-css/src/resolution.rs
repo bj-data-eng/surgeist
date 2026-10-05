@@ -16,6 +16,18 @@ const fn suffix(unit: CssResolutionUnit) -> &'static str {
         CssResolutionUnit::Dppx => "dppx",
     }
 }
+pub(crate) const fn exact_factor(unit: CssResolutionUnit) -> crate::exact_decimal::ExactFactor {
+    let (numerator, denominator) = match unit {
+        CssResolutionUnit::Dpi => (1, 96),
+        CssResolutionUnit::Dpcm => (127, 4800),
+        CssResolutionUnit::Dppx => (1, 1),
+    };
+    crate::exact_decimal::ExactFactor {
+        numerator,
+        denominator,
+    }
+}
+
 fn invalid(component: &CssComponentValue) -> CssNumericConstructionError {
     CssNumericConstructionError::component(CssComponentValueError::new(
         CssComponentValueErrorKind::InvalidToken,
@@ -139,18 +151,7 @@ impl CssResolutionLiteral {
                     CssSpecifiedValueSerializationErrorKind::ByteLimit,
                 )
             })?;
-            let factor = crate::exact_decimal::ExactFactor {
-                numerator: if self.unit() == CssResolutionUnit::Dpi {
-                    1
-                } else {
-                    127
-                },
-                denominator: if self.unit() == CssResolutionUnit::Dpi {
-                    96
-                } else {
-                    4800
-                },
-            };
+            let factor = exact_factor(self.unit());
             let number = crate::exact_decimal::ExactRational::format_generic_number(
                 self.numeric().representation(),
                 factor,

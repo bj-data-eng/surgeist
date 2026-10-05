@@ -92,7 +92,10 @@ fn assert_payload(context: &CssRuleContext, source: &str, expected: &str) {
                     .position()
                     .unwrap(),
             );
-            ("@font-face", rule.position())
+            (
+                "@font-face",
+                rule.position().expect("parsed font-face position"),
+            )
         }
         CssRuleContextKindRef::Keyframes(rule) => {
             assert!(

@@ -25,7 +25,14 @@ fn c14_generic_authored_shells_retain_structure() {
     let [CssRule::Media(media), CssRule::Style(non_bmp)] = report.syntax().rules() else {
         panic!("expected an at-rule and qualified-rule stylesheet");
     };
-    assert_eq!(media.position().byte_offset().value(), 0);
+    assert_eq!(
+        media
+            .position()
+            .expect("parsed rule position")
+            .byte_offset()
+            .value(),
+        0
+    );
     let [CssRule::Style(inside)] = media.rules() else {
         panic!("expected the retained nested rule-list member");
     };

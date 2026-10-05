@@ -11,19 +11,22 @@ pub use pending::{CssFontFaceValueError, CssFontFaceValueErrorKind};
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssFontFaceRule {
     descriptors: CssFontFaceDescriptors,
-    position: CssSourcePosition,
+    position: Option<CssSourcePosition>,
 }
 
 impl CssFontFaceRule {
+    /// Assembles ordered checked descriptors without inventing parsed provenance.
     #[must_use]
-    pub(crate) const fn new(
-        descriptors: CssFontFaceDescriptors,
-        position: CssSourcePosition,
-    ) -> Self {
+    pub const fn new(descriptors: CssFontFaceDescriptors) -> Self {
         Self {
             descriptors,
-            position,
+            position: None,
         }
+    }
+
+    pub(crate) const fn with_position(mut self, position: CssSourcePosition) -> Self {
+        self.position = Some(position);
+        self
     }
 
     #[must_use]
@@ -32,7 +35,7 @@ impl CssFontFaceRule {
     }
 
     #[must_use]
-    pub const fn position(&self) -> CssSourcePosition {
+    pub const fn position(&self) -> Option<CssSourcePosition> {
         self.position
     }
 }

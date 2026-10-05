@@ -757,7 +757,7 @@ fn structural_preflight_orders_empty_scoped_styles_around_recovered_chunks() {
         );
         assert!(recovered.rules().rules().is_empty());
         assert_ascii_position(
-            recovered.position(),
+            recovered.position().expect("parsed rule position"),
             source.find("@layer").expect("recovered scoped layer start"),
         );
         assert_eq!(selector_classes(after_selector), ["after-empty"]);

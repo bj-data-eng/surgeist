@@ -86,7 +86,7 @@ fn checked_ranges_preserve_mixed_values_descending_order_and_authored_arity() {
     };
     assert_ne!(single, repeated);
     assert_eq!(single.serialize_specified().unwrap(), "75%");
-    assert_eq!(repeated.serialize_specified().unwrap(), "75% 75%");
+    assert_eq!(repeated.serialize_specified().unwrap(), "75%");
     assert_eq!(raw("75%"), single);
     assert_eq!(raw("75% 75%"), repeated);
     let mixed = CssFontFaceWidth::Range {

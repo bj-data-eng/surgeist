@@ -132,6 +132,11 @@ See [getting started](docs/getting-started.md) for local setup and verification.
 - [Reference](docs/reference.md): public interfaces, authored grammar families, and support metadata.
 - [Explanation](docs/explanation.md): recovery, symbolic values, compatibility, and ownership.
 
+Checked Fonts rule assembly and effective specified serialization preserve ordered
+authored occurrences and source provenance. See the
+[composition reference](docs/reference.md#checked-fonts-rule-composition) for
+placement, namespace, nesting and cumulative resource contracts.
+
 ## License and attribution
 
 See the [MIT license](LICENSE) and [third-party notices](NOTICE.md).

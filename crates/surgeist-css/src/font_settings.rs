@@ -300,8 +300,16 @@ impl CssAuthoredFontFeatureSettings {
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
         let mut writer = SpecifiedRuleWriter::new(limits);
+        self.append_specified(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_specified(
+        &self,
+        writer: &mut SpecifiedRuleWriter,
+    ) -> SerializationResult<()> {
         match self {
-            Self::Normal => keyword(&mut writer, "normal")?,
+            Self::Normal => keyword(writer, "normal")?,
             Self::Features(list) => {
                 for (index, feature) in list.features().iter().enumerate() {
                     if index != 0 {
@@ -314,11 +322,11 @@ impl CssAuthoredFontFeatureSettings {
                         CssAuthoredFontFeatureValue::Omitted => {}
                         CssAuthoredFontFeatureValue::On => {
                             writer.append(" ")?;
-                            keyword(&mut writer, "on")?;
+                            keyword(writer, "on")?;
                         }
                         CssAuthoredFontFeatureValue::Off => {
                             writer.append(" ")?;
-                            keyword(&mut writer, "off")?;
+                            keyword(writer, "off")?;
                         }
                         CssAuthoredFontFeatureValue::Index(value) => {
                             writer.append(" ")?;
@@ -328,7 +336,7 @@ impl CssAuthoredFontFeatureSettings {
                 }
             }
         }
-        Ok(writer.css)
+        Ok(())
     }
 }
 
@@ -341,8 +349,16 @@ impl CssFontVariationSettings {
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
         let mut writer = SpecifiedRuleWriter::new(limits);
+        self.append_specified(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_specified(
+        &self,
+        writer: &mut SpecifiedRuleWriter,
+    ) -> SerializationResult<()> {
         match self {
-            Self::Normal => keyword(&mut writer, "normal")?,
+            Self::Normal => keyword(writer, "normal")?,
             Self::Variations(list) => {
                 for (index, variation) in list.variations().iter().enumerate() {
                     if index != 0 {
@@ -357,6 +373,6 @@ impl CssFontVariationSettings {
                 }
             }
         }
-        Ok(writer.css)
+        Ok(())
     }
 }

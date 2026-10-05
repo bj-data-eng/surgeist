@@ -3345,11 +3345,29 @@ mod tests {
             panic!("expected retained media rule");
         };
         assert_eq!(
-            media.position().byte_offset().value(),
+            media
+                .position()
+                .expect("parsed rule position")
+                .byte_offset()
+                .value(),
             source.find('@').unwrap()
         );
-        assert_eq!(media.position().line().value(), 1);
-        assert_eq!(media.position().column().value(), 5);
+        assert_eq!(
+            media
+                .position()
+                .expect("parsed rule position")
+                .line()
+                .value(),
+            1
+        );
+        assert_eq!(
+            media
+                .position()
+                .expect("parsed rule position")
+                .column()
+                .value(),
+            5
+        );
         let [surgeist_css::CssRule::Style(style)] = media.rules() else {
             panic!("expected retained style child");
         };
