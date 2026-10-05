@@ -579,7 +579,9 @@ fn keyframes_rule(rule: &CssRule) -> &CssKeyframesRule {
 
 #[test]
 fn keyframes_rule_accessors_expose_authored_structure() {
-    let name = CssKeyframesName::Ident(CssCustomIdent::new("fade"));
+    let name = CssKeyframesName::Ident(
+        CssKeyframesIdent::try_new(CssCustomIdent::try_new("fade").unwrap()).unwrap(),
+    );
     let selector = CssKeyframeSelectorList::try_new(vec![CssKeyframeSelector::From]).unwrap();
     let keyframes = parse_sheet("@keyframes fade { from { opacity: 0; } }").unwrap();
     let declaration = keyframes_rule(&keyframes.rules()[0]).blocks()[0].declarations()[0].clone();
@@ -592,7 +594,9 @@ fn keyframes_rule_accessors_expose_authored_structure() {
 
     assert_eq!(
         rule.name(),
-        &CssKeyframesName::Ident(CssCustomIdent::new("fade"))
+        &CssKeyframesName::Ident(
+            CssKeyframesIdent::try_new(CssCustomIdent::try_new("fade").unwrap()).unwrap()
+        )
     );
     assert_eq!(rule.position(), source_position(1, 1));
     let [block] = rule.blocks() else {
@@ -622,7 +626,9 @@ fn keyframes_rule_parser_accepts_strict_blocks() {
 
     assert_eq!(
         rule.name(),
-        &CssKeyframesName::Ident(CssCustomIdent::new("fade"))
+        &CssKeyframesName::Ident(
+            CssKeyframesIdent::try_new(CssCustomIdent::try_new("fade").unwrap()).unwrap()
+        )
     );
     assert_eq!(rule.blocks().len(), 3);
     assert_eq!(
@@ -709,11 +715,15 @@ fn keyframes_rule_parser_accepts_keyframes_inside_conditional_groups() {
 
     assert_eq!(
         keyframes_rule(media_keyframes).name(),
-        &CssKeyframesName::Ident(CssCustomIdent::new("fade"))
+        &CssKeyframesName::Ident(
+            CssKeyframesIdent::try_new(CssCustomIdent::try_new("fade").unwrap()).unwrap()
+        )
     );
     assert_eq!(
         keyframes_rule(container_keyframes).name(),
-        &CssKeyframesName::Ident(CssCustomIdent::new("slide"))
+        &CssKeyframesName::Ident(
+            CssKeyframesIdent::try_new(CssCustomIdent::try_new("slide").unwrap()).unwrap()
+        )
     );
 }
 
@@ -740,7 +750,9 @@ fn keyframes_rule_parser_rejects_invalid_names_selectors_and_placements() {
 #[test]
 fn keyframes_constructors_preserve_authored_empty_and_duplicate_states() {
     let location = source_position(1, 1);
-    let name = CssKeyframesName::Ident(CssCustomIdent::new("fade"));
+    let name = CssKeyframesName::Ident(
+        CssKeyframesIdent::try_new(CssCustomIdent::try_new("fade").unwrap()).unwrap(),
+    );
     let from = CssKeyframeSelectorList::try_new(vec![CssKeyframeSelector::From]).unwrap();
 
     assert_eq!(CssKeyframesString::try_new(""), None);
@@ -772,7 +784,9 @@ fn keyframes_constructors_preserve_authored_empty_and_duplicate_states() {
     );
 
     let empty = CssKeyframesRule::new(
-        CssKeyframesName::Ident(CssCustomIdent::new("empty")),
+        CssKeyframesName::Ident(
+            CssKeyframesIdent::try_new(CssCustomIdent::try_new("empty").unwrap()).unwrap(),
+        ),
         Vec::new(),
         location,
     );
@@ -6282,7 +6296,9 @@ fn keyframes_and_authored_nesting_are_structurally_accessible() {
     };
     assert_eq!(
         keyframes.name(),
-        &CssKeyframesName::Ident(CssCustomIdent::new("fade"))
+        &CssKeyframesName::Ident(
+            CssKeyframesIdent::try_new(CssCustomIdent::try_new("fade").unwrap()).unwrap()
+        )
     );
     let [from, to] = keyframes.blocks() else {
         panic!("expected two keyframe blocks");
@@ -9136,10 +9152,17 @@ fn parses_transition_properties_and_preserves_comma_lists() {
             TransitionProperty,
             properties
         ),
-        CssTransitionPropertyList::new(vec![
-            CssTransitionProperty::Custom(CssCustomIdent::new("opacity")),
-            CssTransitionProperty::Custom(CssCustomIdent::new("transform")),
+        CssTransitionPropertyList::try_new(vec![
+            CssTransitionProperty::Custom(
+                CssTransitionPropertyName::try_new(CssCustomIdent::try_new("opacity").unwrap())
+                    .unwrap()
+            ),
+            CssTransitionProperty::Custom(
+                CssTransitionPropertyName::try_new(CssCustomIdent::try_new("transform").unwrap())
+                    .unwrap()
+            ),
         ])
+        .unwrap()
     );
     assert_eq!(
         timing_value!(
@@ -9189,7 +9212,9 @@ fn parses_animation_properties_and_preserves_comma_lists() {
             names
         ),
         CssAnimationNameList::new(vec![
-            CssAnimationName::Custom(CssCustomIdent::new("fade")),
+            CssAnimationName::Custom(
+                CssKeyframesIdent::try_new(CssCustomIdent::try_new("fade").unwrap()).unwrap()
+            ),
             CssAnimationName::None,
         ])
     );
@@ -10249,7 +10274,10 @@ fn grid_and_flex_properties_reject_cross_family_values() {
 #[test]
 fn checked_grid_constructors_reject_parser_invalid_states() {
     assert_eq!(CssCustomIdent::try_new(""), None);
-    assert_eq!(CssCustomIdent::try_new("auto"), None);
+    assert_eq!(
+        CssGridLineName::try_new(CssIdent::try_new("auto").unwrap()),
+        None
+    );
     assert_eq!(CssGridLineNames::new(Vec::new()).names(), &[]);
     assert_eq!(CssGridGeneralTrackList::try_new(Vec::new()), None);
     assert_eq!(

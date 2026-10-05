@@ -6,24 +6,16 @@ use crate::{
     specified_rule_serialization::SpecifiedRuleWriter,
 };
 
-/// A decoded Grid placement line name with Values 4 and Grid reserved words excluded.
+/// A decoded Grid line name with Values 4 and Grid reserved words excluded.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssGridLineName(CssIdent);
 
 impl CssGridLineName {
     #[must_use]
     pub fn try_new(value: CssIdent) -> Option<Self> {
-        (!matches!(
-            value.as_str().to_ascii_lowercase().as_str(),
-            "inherit"
-                | "initial"
-                | "unset"
-                | "revert"
-                | "revert-layer"
-                | "default"
-                | "auto"
-                | "span"
-        ))
+        (!super::is_reserved_custom_ident(value.as_str())
+            && !value.as_str().eq_ignore_ascii_case("auto")
+            && !value.as_str().eq_ignore_ascii_case("span"))
         .then_some(Self(value))
     }
 

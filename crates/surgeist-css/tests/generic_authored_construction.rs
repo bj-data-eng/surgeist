@@ -136,15 +136,15 @@ fn unitless_zero_has_no_fabricated_unit_and_explicit_zero_keeps_its_unit() {
 fn checked_grid_names_keep_empty_groups_order_and_repetitions() {
     assert!(CssGridLineNames::new(Vec::new()).names().is_empty());
     let names = CssGridLineNames::new(vec![
-        CssCustomIdent::try_new("start").unwrap(),
-        CssCustomIdent::try_new("end").unwrap(),
-        CssCustomIdent::try_new("start").unwrap(),
+        CssGridLineName::try_new(CssIdent::try_new("start").unwrap()).unwrap(),
+        CssGridLineName::try_new(CssIdent::try_new("end").unwrap()).unwrap(),
+        CssGridLineName::try_new(CssIdent::try_new("start").unwrap()).unwrap(),
     ]);
     assert_eq!(
         names
             .names()
             .iter()
-            .map(CssCustomIdent::as_str)
+            .map(|name| name.ident().as_str())
             .collect::<Vec<_>>(),
         ["start", "end", "start"]
     );

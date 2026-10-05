@@ -258,8 +258,14 @@ pub(super) fn parse_transition_property_list<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssTransitionPropertyList, ParseError<'i, Error>> {
     let mut properties = Vec::new();
+    let mut none_location = None;
     loop {
-        properties.push(parse_transition_property(input)?);
+        let location = input.current_source_location();
+        let property = parse_transition_property(input)?;
+        if matches!(property, CssTransitionProperty::None) {
+            none_location.get_or_insert(location);
+        }
+        properties.push(property);
         if input.try_parse(Parser::expect_comma).is_err() {
             break;
         }
@@ -271,8 +277,13 @@ pub(super) fn parse_transition_property_list<'i, 't>(
             ));
         }
     }
-    CssTransitionPropertyList::try_new(properties)
-        .ok_or_else(|| unsupported_value(input, None, "transition-property list is empty"))
+    CssTransitionPropertyList::try_new(properties).ok_or_else(|| {
+        unsupported_value_at(
+            none_location.unwrap_or_else(|| input.current_source_location()),
+            None,
+            "none must stand alone in a transition-property list",
+        )
+    })
 }
 
 pub(super) fn parse_transition_property<'i, 't>(
@@ -284,6 +295,11 @@ pub(super) fn parse_transition_property<'i, 't>(
         "all" => Ok(CssTransitionProperty::All),
         "none" => Ok(CssTransitionProperty::None),
         _ => parse_custom_ident_from_str_at("transition property", ident.as_ref(), location)
+            .and_then(|name| {
+                CssTransitionPropertyName::try_new(name).ok_or_else(|| {
+                    unsupported_value_at(location, None, "reserved transition property name")
+                })
+            })
             .map(CssTransitionProperty::Custom),
     }
 }
@@ -293,8 +309,13 @@ pub(super) fn parse_transition_value_list<'i, 't>(
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssTransitionList, ParseError<'i, Error>> {
     let mut items = Vec::new();
+    let mut none_location = None;
     loop {
-        items.push(parse_single_transition_value(input, numeric)?);
+        let (item, location) = parse_single_transition_value(input, numeric)?;
+        if none_location.is_none() {
+            none_location = location;
+        }
+        items.push(item);
         if input.try_parse(Parser::expect_comma).is_err() {
             break;
         }
@@ -306,14 +327,22 @@ pub(super) fn parse_transition_value_list<'i, 't>(
             ));
         }
     }
-    Ok(CssTransitionList::from_parser(items))
+    CssTransitionList::from_parser(items).ok_or_else(|| {
+        unsupported_value_at(
+            none_location.unwrap_or_else(|| input.current_source_location()),
+            None,
+            "none must stand alone in a transition list",
+        )
+    })
 }
 
 pub(super) fn parse_single_transition_value<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssTransition, ParseError<'i, Error>> {
+) -> std::result::Result<(CssTransition, Option<cssparser::SourceLocation>), ParseError<'i, Error>>
+{
     let mut property = None;
+    let mut none_location = None;
     let mut duration = None;
     let mut delay = None;
     let mut timing_function = None;
@@ -337,9 +366,13 @@ pub(super) fn parse_single_transition_value<'i, 't>(
             timing_function = Some(easing);
             continue;
         }
+        let location = input.current_source_location();
         if property.is_none()
             && let Ok(parsed_property) = input.try_parse(parse_transition_property)
         {
+            if matches!(parsed_property, CssTransitionProperty::None) {
+                none_location = Some(location);
+            }
             property = Some(parsed_property);
             continue;
         }
@@ -350,6 +383,7 @@ pub(super) fn parse_single_transition_value<'i, 't>(
         ));
     }
     CssTransition::from_parser(property, duration, delay, timing_function)
+        .map(|value| (value, none_location))
         .ok_or_else(|| unsupported_value(input, None, "transition item is empty"))
 }
 
@@ -389,6 +423,11 @@ pub(super) fn parse_animation_name<'i, 't>(
         Ok(CssAnimationName::None)
     } else {
         parse_custom_ident_from_str_at("animation name", ident.as_ref(), location)
+            .and_then(|name| {
+                CssKeyframesIdent::try_new(name).ok_or_else(|| {
+                    unsupported_value_at(location, None, "reserved animation identifier")
+                })
+            })
             .map(CssAnimationName::Custom)
     }
 }

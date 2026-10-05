@@ -23,14 +23,12 @@ pub(super) fn parse_keyframes_name<'i, 't>(
 ) -> std::result::Result<CssKeyframesName, ParseError<'i, Error>> {
     let location = input.current_source_location();
     if let Ok(name) = input.try_parse(Parser::expect_ident_cloned) {
-        if name.eq_ignore_ascii_case("none") {
-            return Err(unsupported_value_at(
-                location,
-                None,
-                "`none` is reserved and cannot be a keyframes name",
-            ));
-        }
         return parse_custom_ident_from_str_at("keyframes name", name.as_ref(), location)
+            .and_then(|name| {
+                CssKeyframesIdent::try_new(name).ok_or_else(|| {
+                    unsupported_value_at(location, None, "reserved keyframes identifier")
+                })
+            })
             .map(CssKeyframesName::Ident);
     }
 

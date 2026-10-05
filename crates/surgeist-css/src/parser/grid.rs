@@ -1,7 +1,7 @@
 use super::values::parse_length_percentage;
 use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
-use super::values::{next_is_delim, parse_custom_ident_from_str_at, parse_integer_literal};
+use super::values::{next_is_delim, parse_integer_literal};
 use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
 use crate::syntax::*;
 use crate::validation::unsupported_keyword_reason;
@@ -132,11 +132,10 @@ pub(super) fn parse_grid_line_names<'i, 't>(
     while !input.is_exhausted() {
         let location = input.current_source_location();
         let ident = input.expect_ident_cloned().map_err(basic)?;
-        names.push(parse_custom_ident_from_str_at(
-            "grid line name",
-            ident.as_ref(),
-            location,
-        )?);
+        names.push(
+            CssGridLineName::try_new(CssIdent::new(ident.as_ref()))
+                .ok_or_else(|| unsupported_value_at(location, None, "reserved grid line name"))?,
+        );
     }
     Ok(CssGridLineNames::new(names))
 }

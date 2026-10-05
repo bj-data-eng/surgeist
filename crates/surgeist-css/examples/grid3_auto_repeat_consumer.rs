@@ -56,7 +56,7 @@ fn assert_name(body: &CssGridTrackRepeatContent, index: usize, expected: &str) {
     let [name] = names.names() else {
         panic!("one authored line name");
     };
-    assert_eq!(name.as_str(), expected);
+    assert_eq!(name.ident().as_str(), expected);
 }
 
 fn assert_keyword(size: &CssGridTrackSize, expected: BreadthKind) {
@@ -92,9 +92,9 @@ fn intrinsic_body_and_fixed_surroundings_remain_distinct() {
         panic!("fixed surroundings and automatic body retain their distinct branches");
     };
     assert_eq!(outer.names().len(), 1);
-    assert_eq!(outer.names()[0].as_str(), "outer");
+    assert_eq!(outer.names()[0].ident().as_str(), "outer");
     assert_eq!(end.names().len(), 1);
-    assert_eq!(end.names()[0].as_str(), "end");
+    assert_eq!(end.names()[0].ident().as_str(), "end");
     assert_eq!(
         before
             .size()

@@ -74,7 +74,7 @@ pub surgeist_css::CssAnimationIterationCount::Number(surgeist_css::CssSpecifiedN
 impl core::cmp::PartialEq for surgeist_css::CssAnimationIterationCount
 pub fn surgeist_css::CssAnimationIterationCount::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssAnimationName
-pub surgeist_css::CssAnimationName::Custom(surgeist_css::CssCustomIdent)
+pub surgeist_css::CssAnimationName::Custom(surgeist_css::CssKeyframesIdent)
 pub surgeist_css::CssAnimationName::None
 pub surgeist_css::CssAnimationName::String(surgeist_css::CssKeyframesString)
 #[non_exhaustive] pub enum surgeist_css::CssAnimationPlayState
@@ -1964,7 +1964,7 @@ pub surgeist_css::CssKeyframeSelector::To
 impl surgeist_css::CssKeyframeSelector
 pub fn surgeist_css::CssKeyframeSelector::offset(self) -> surgeist_css::CssKeyframePercent
 #[non_exhaustive] pub enum surgeist_css::CssKeyframesName
-pub surgeist_css::CssKeyframesName::Ident(surgeist_css::CssCustomIdent)
+pub surgeist_css::CssKeyframesName::Ident(surgeist_css::CssKeyframesIdent)
 pub surgeist_css::CssKeyframesName::String(surgeist_css::CssKeyframesString)
 #[non_exhaustive] pub enum surgeist_css::CssKnownDeclaredValueRef<'a>
 pub surgeist_css::CssKnownDeclaredValueRef::Global(surgeist_css::CssGlobalKeyword)
@@ -4440,7 +4440,7 @@ impl core::cmp::PartialEq for surgeist_css::CssTransformScaleComponent
 pub fn surgeist_css::CssTransformScaleComponent::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssTransitionProperty
 pub surgeist_css::CssTransitionProperty::All
-pub surgeist_css::CssTransitionProperty::Custom(surgeist_css::CssCustomIdent)
+pub surgeist_css::CssTransitionProperty::Custom(surgeist_css::CssTransitionPropertyName)
 pub surgeist_css::CssTransitionProperty::None
 #[non_exhaustive] pub enum surgeist_css::CssTranslate
 pub surgeist_css::CssTranslate::None
@@ -6373,7 +6373,7 @@ pub fn surgeist_css::CssCustomColor::try_new(profile: surgeist_css::CssColorProf
 impl surgeist_css::CssCustomDeclaration
 pub const fn surgeist_css::CssCustomDeclaration::name(&self) -> &surgeist_css::CssCustomPropertyName
 pub const fn surgeist_css::CssCustomDeclaration::value(&self) -> &surgeist_css::CssCustomPropertyDeclaredValue
-pub struct surgeist_css::CssCustomIdent
+pub struct surgeist_css::CssCustomIdent(_)
 impl surgeist_css::CssCustomIdent
 pub fn surgeist_css::CssCustomIdent::as_str(&self) -> &str
 pub fn surgeist_css::CssCustomIdent::try_new(value: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
@@ -7354,8 +7354,8 @@ pub fn surgeist_css::CssGridLineName::ident(&self) -> &surgeist_css::CssIdent
 pub fn surgeist_css::CssGridLineName::try_new(value: surgeist_css::CssIdent) -> core::option::Option<Self>
 pub struct surgeist_css::CssGridLineNames
 impl surgeist_css::CssGridLineNames
-pub fn surgeist_css::CssGridLineNames::names(&self) -> &[surgeist_css::CssCustomIdent]
-pub fn surgeist_css::CssGridLineNames::new(names: alloc::vec::Vec<surgeist_css::CssCustomIdent>) -> Self
+pub fn surgeist_css::CssGridLineNames::names(&self) -> &[surgeist_css::CssGridLineName]
+pub fn surgeist_css::CssGridLineNames::new(names: alloc::vec::Vec<surgeist_css::CssGridLineName>) -> Self
 pub struct surgeist_css::CssGridLineRange
 impl surgeist_css::CssGridLineRange
 pub const fn surgeist_css::CssGridLineRange::authored_end(&self) -> core::option::Option<&surgeist_css::CssGridLine>
@@ -7714,6 +7714,10 @@ pub struct surgeist_css::CssKeyframeSelectorList
 impl surgeist_css::CssKeyframeSelectorList
 pub fn surgeist_css::CssKeyframeSelectorList::selectors(&self) -> &[surgeist_css::CssKeyframeSelector]
 pub fn surgeist_css::CssKeyframeSelectorList::try_new(selectors: alloc::vec::Vec<surgeist_css::CssKeyframeSelector>) -> core::option::Option<Self>
+pub struct surgeist_css::CssKeyframesIdent(_)
+impl surgeist_css::CssKeyframesIdent
+pub fn surgeist_css::CssKeyframesIdent::as_str(&self) -> &str
+pub fn surgeist_css::CssKeyframesIdent::try_new(value: surgeist_css::CssCustomIdent) -> core::option::Option<Self>
 pub struct surgeist_css::CssKeyframesRule
 impl surgeist_css::CssKeyframesRule
 pub fn surgeist_css::CssKeyframesRule::blocks(&self) -> &[surgeist_css::CssKeyframeBlock]
@@ -9887,6 +9891,10 @@ pub fn surgeist_css::CssTransitionPropertyList::try_new(properties: alloc::vec::
 impl surgeist_css::CssTransitionPropertyList
 pub fn surgeist_css::CssTransitionPropertyList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssTransitionPropertyList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssTransitionPropertyName(_)
+impl surgeist_css::CssTransitionPropertyName
+pub fn surgeist_css::CssTransitionPropertyName::as_str(&self) -> &str
+pub fn surgeist_css::CssTransitionPropertyName::try_new(value: surgeist_css::CssCustomIdent) -> core::option::Option<Self>
 pub struct surgeist_css::CssTransitionPropertyPropertyValue
 impl surgeist_css::CssTransitionPropertyPropertyValue
 pub fn surgeist_css::CssTransitionPropertyPropertyValue::as_css(&self) -> &str

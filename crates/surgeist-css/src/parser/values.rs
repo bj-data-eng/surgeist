@@ -2,7 +2,6 @@ use cssparser::{ParseError, Parser, Token};
 
 use crate::error::{CssFeatureId, Error, basic, unsupported_value_at};
 use crate::syntax::*;
-use crate::validation::parse_global_keyword;
 
 pub(crate) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
     CssFeatureId::new("official.value.syntax-token-stream"),
@@ -323,19 +322,9 @@ pub(super) fn parse_custom_ident_from_str_at<'i>(
     ident: &str,
     location: cssparser::SourceLocation,
 ) -> std::result::Result<CssCustomIdent, ParseError<'i, Error>> {
-    if ident.is_empty()
-        || parse_global_keyword(ident).is_some()
-        || ident.eq_ignore_ascii_case("span")
-        || ident.eq_ignore_ascii_case("auto")
-    {
-        Err(unsupported_value_at(
-            location,
-            None,
-            format!("unsupported {context} `{ident}`"),
-        ))
-    } else {
-        Ok(CssCustomIdent::new(ident))
-    }
+    CssCustomIdent::try_from_ident(CssIdent::new(ident)).ok_or_else(|| {
+        unsupported_value_at(location, None, format!("unsupported {context} `{ident}`"))
+    })
 }
 
 pub(super) fn next_is_delim<'i, 't>(input: &mut Parser<'i, 't>, delim: char) -> bool {

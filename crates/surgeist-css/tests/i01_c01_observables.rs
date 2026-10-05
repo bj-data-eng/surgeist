@@ -783,9 +783,15 @@ fn authored_css_cases_match_selected_public_report_observables() {
     let mut migrated_alignment_cases = 0;
     let mut migrated_feature_tag_cases = 0;
     let mut migrated_thickness_cases = 0;
+    let mut migrated_timing_name_cases = 0;
     for row in rows {
         // Fixture feature labels record the original capture profile. Validation is
         // now unconditional, so every historical profile runs through the same API.
+        if assert_archived_timing_auto_name_rejection(&row) {
+            migrated_timing_name_cases += 1;
+            assert_strict_parity(&row);
+            continue;
+        }
         if assert_content3_contents_acceptance(&row) {
             migrated_content_cases += 1;
             assert_strict_parity(&row);
@@ -860,6 +866,7 @@ fn authored_css_cases_match_selected_public_report_observables() {
         "all three archived unknown-container rejections have explicit current witnesses"
     );
     assert_eq!(migrated_feature_tag_cases, 1);
+    assert_eq!(migrated_timing_name_cases, 2);
     assert_eq!(
         migrated_thickness_cases, 1,
         "the archived negative thickness rejection has an exact current acceptance witness"
@@ -881,6 +888,111 @@ fn authored_css_cases_match_selected_public_report_observables() {
         removed_track_cases, 8,
         "all eight obsolete track-property captures have current rejection witnesses"
     );
+}
+
+// Values 4 §4.2 reserves CSS-wide keywords and `default`, so `auto` is a
+// case-sensitive custom name in Animations 1 §3 and Transitions 1 §2.1.
+// Pin each archived rejection and independently check current authored syntax.
+// https://www.w3.org/TR/2024/WD-css-values-4-20240312/#custom-idents
+// https://www.w3.org/TR/2023/WD-css-animations-1-20230302/#keyframes
+// https://www.w3.org/TR/2026/WD-css-transitions-1-20260108/#transition-property-property
+fn assert_archived_timing_auto_name_rejection(row: &Row) -> bool {
+    let (property, name_end, token_start, source_end, diagnostic) = match row.case_id.as_str() {
+        "catalog.property.baseline.property.animation-name.boundary" => (
+            "animation-name",
+            14,
+            16,
+            20,
+            "InvalidPropertyValue/InvalidPropertyValue:baseline.property.animation-name:a value accepted by the property's grammar:Ident:auto/DropDeclaration@16:0:16>0:0:0-20:0:20:20",
+        ),
+        "catalog.property.baseline.property.transition-property.boundary" => (
+            "transition-property",
+            19,
+            21,
+            25,
+            "InvalidPropertyValue/InvalidPropertyValue:baseline.property.transition-property:a value accepted by the property's grammar:Ident:auto/DropDeclaration@21:0:21>0:0:0-25:0:25:25",
+        ),
+        _ => return false,
+    };
+    let input = format!("{property}: auto");
+    assert_eq!(
+        row.fields(),
+        [
+            row.case_id.as_str(),
+            "style",
+            "both",
+            input.as_str(),
+            "false",
+            "-",
+            "-",
+            "-",
+            diagnostic
+        ],
+    );
+    let report = parse_style_attribute(&row.input);
+    assert!(report.is_clean(), "{:?}", report.diagnostics());
+    assert!(report.diagnostics().is_empty());
+    let [declaration] = report.syntax().as_slice() else {
+        panic!("one retained timing name declaration");
+    };
+    let occurrence = declaration.clone();
+    assert_eq!(declaration.importance(), CssImportance::Normal);
+    let known = declaration.known().expect("known timing property");
+    assert_eq!(known.property().canonical_name(), property);
+    match known.property_value().expect("typed timing name") {
+        surgeist_css::CssKnownPropertyValueRef::AnimationName(value) => {
+            assert!(
+                matches!(value.names().names(), [surgeist_css::CssAnimationName::Custom(name)] if name.as_str() == "auto")
+            );
+            assert_eq!(value.as_css(), "auto");
+            assert_eq!(value.names().serialize_specified().unwrap(), "auto");
+        }
+        surgeist_css::CssKnownPropertyValueRef::TransitionProperty(value) => {
+            assert!(
+                matches!(value.properties().properties(), [surgeist_css::CssTransitionProperty::Custom(name)] if name.as_str() == "auto")
+            );
+            assert_eq!(value.as_css(), "auto");
+            assert_eq!(value.properties().serialize_specified().unwrap(), "auto");
+        }
+        other => panic!("unexpected timing name value: {other:?}"),
+    }
+    let name = declaration.parsed_name().expect("parsed name provenance");
+    assert_eq!(name.source().as_str(), row.input);
+    assert_eq!(name.span().start().byte_offset().value(), 0);
+    assert_eq!(name.span().end().byte_offset().value(), name_end);
+    assert_eq!(declaration.position(), Some(name.span().start()));
+    let parsed = declaration.parsed_value().expect("parsed value provenance");
+    assert_eq!(parsed.source().as_str(), row.input);
+    assert_eq!(parsed.span().start().byte_offset().value(), token_start - 1);
+    assert_eq!(parsed.span().end().byte_offset().value(), source_end);
+    let surgeist_css::CssValueOrigin::Parsed(token) = declaration
+        .value_components()
+        .items()
+        .last()
+        .unwrap()
+        .origin()
+    else {
+        panic!("parsed name token provenance");
+    };
+    assert_eq!(token.source().as_str(), row.input);
+    assert_eq!(token.span().start().byte_offset().value(), token_start);
+    assert_eq!(token.span().end().byte_offset().value(), source_end);
+    let canonical = format!("{property}: auto;");
+    assert_eq!(declaration.to_specified_css().unwrap(), canonical);
+    assert!(declaration.same_occurrence(&occurrence));
+    assert_eq!(
+        surgeist_css::validate_style_attribute(&row.input),
+        Ok(report.syntax().clone())
+    );
+    assert_eq!(
+        report.clone().into_validation_result(),
+        Ok(report.syntax().clone())
+    );
+    let reparsed = parse_style_attribute(&canonical);
+    assert!(reparsed.is_clean());
+    assert_eq!(reparsed.syntax()[0].body(), declaration.body());
+    assert_eq!(reparsed.syntax()[0].to_specified_css().unwrap(), canonical);
+    true
 }
 
 // Content 3 admits `contents` as one generated-content item. The unchanged
@@ -4299,7 +4411,7 @@ fn assert_known_property_value(
             else {
                 panic!("captured row tracks")
             };
-            assert_eq!(names.names()[0].as_str(), "top");
+            assert_eq!(names.names()[0].ident().as_str(), "top");
             assert_eq!(
                 length
                     .breadth()

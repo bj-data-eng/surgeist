@@ -5,8 +5,9 @@
 //! Empty groups are authored components, not absent components or empty tracks.
 
 use surgeist_css::{
-    CssCustomIdent, CssGridAutoTrackComponent, CssGridGeneralTrackComponent, CssGridLineNames,
-    CssGridTrackRepeatComponent, CssImportance, CssKnownPropertyValueRef, parse_style_attribute,
+    CssGridAutoTrackComponent, CssGridGeneralTrackComponent, CssGridLineName, CssGridLineNames,
+    CssGridTrackRepeatComponent, CssIdent, CssImportance, CssKnownPropertyValueRef,
+    parse_style_attribute,
 };
 
 #[test]
@@ -14,8 +15,8 @@ fn construction_preserves_an_empty_line_name_group() {
     let empty = CssGridLineNames::new(Vec::new());
     assert!(empty.names().is_empty());
     let names = CssGridLineNames::new(vec![
-        CssCustomIdent::try_new("start").unwrap(),
-        CssCustomIdent::try_new("start").unwrap(),
+        CssGridLineName::try_new(CssIdent::try_new("start").unwrap()).unwrap(),
+        CssGridLineName::try_new(CssIdent::try_new("start").unwrap()).unwrap(),
     ]);
     assert_eq!(names.names().len(), 2);
 }

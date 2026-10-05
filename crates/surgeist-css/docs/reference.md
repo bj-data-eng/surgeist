@@ -1552,6 +1552,32 @@ implicitly closed math with diagnostics; clean validators reject those reports.
 Checked property construction rejects the first original implicit closure for
 all four time longhands and both timing shorthands, including pending envelopes.
 
+`CssCustomIdent::try_new` accepts decoded identifier content through `CssIdent`.
+It preserves case and excludes empty/NUL content, CSS-wide keywords and `default`
+in every ASCII case permutation, following
+[Values 4 §4.2](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#custom-idents).
+`auto` and `span` remain valid generic custom identifiers. A backslash passed to
+this constructor is decoded content; CSS parsing performs token escape decoding
+before checked construction.
+
+Each consuming grammar applies its additional exclusions through a checked name:
+
+| Authored use | Checked name | Additional exclusions |
+| --- | --- | --- |
+| Keyframe rule identifier and animation identifier name | `CssKeyframesIdent::try_new(CssCustomIdent)` | `none` |
+| Transition custom property name | `CssTransitionPropertyName::try_new(CssCustomIdent)` | `none`, `all` |
+| Grid line placement and track-name group | `CssGridLineName::try_new(CssIdent)` | `auto`, `span` |
+
+Keyframe and animation names share the first type. Quoted names remain a distinct
+string alternative and can contain reserved identifier spellings. Transition
+`None` and `All` remain keyword variants. Public list construction and parsing
+reject any multi-item transition-property or transition shorthand list containing
+`None`; singleton `None` remains valid. Unknown property names, duplicate entries
+and case retain their original identity and list indices. Invalid values recover
+as a whole declaration while preserving the following declaration and original
+responsible token position. See the
+[identifier admission tests](../tests/custom_ident_domain_admission.rs).
+
 Raw time literals, values and calculation trees compare original token spelling
 and provenance. Duration wrappers, timing lists and transition/animation
 aggregates compare their time children without source coordinates while keeping
@@ -1578,10 +1604,10 @@ actual or default easing; `ease-out linear` preserves property `linear` and
 timing `ease-out`. Escaping preserves decoded identity and cannot turn a reserved
 keyword into a distinct ordinary name.
 
-The provider returns `UnrepresentableValue` for constructed decoded reserved
-custom-name variants, NUL-bearing name identities and transition lists mixing
-`None` with other items. NUL replacement would change the retained name.
-Their admission remains separate from output. Each list and shorthand item costs
+Checked identifier and list construction prevents reserved custom-name variants,
+NUL-bearing identifiers and mixed `None` transition lists from reaching output.
+A string-name alternative with NUL still fails with `UnrepresentableValue` because
+replacement would change its retained identity. Each list and shorthand item costs
 one input and projection node; retained names, keywords and count variants cost
 one each, with numeric children using their existing costs. Synthesized defaults
 cost one projection node and no input node. Duration wrappers add no extra node
@@ -3186,8 +3212,11 @@ cross-products or discarded valid empty keyframe parents.
 
 Empty `[]` line-name groups are retained as ordered authored components in
 explicit tracks and repetitions.
-`CssGridLineNames::new(Vec::new())` accepts the same empty group. A group
-does not supply a required track size; reserved line names remain rejected.
+`CssGridLineNames::new(Vec<CssGridLineName>)` accepts the same empty group and
+preserves duplicate names and their case. Its borrowed `names()` slice contains
+the existing checked Grid line-name type, also used for placement. CSS-wide words,
+`default`, `auto` and `span` are excluded at construction and parsing. A group
+does not supply a required track size.
 Two adjacent `[...]` groups cannot occupy one track boundary, including inside
 integer and automatic repetitions.
 
@@ -3233,9 +3262,8 @@ nodes, and punctuation costs bytes only. Thus `none` costs one node in each
 work budget, `10px / 20px` costs five, `auto-flow / 10px` costs four and
 `auto-flow dense 20px / 10px` costs seven. All children use the same cumulative
 context, including when output is suppressed. Suppressed names spend no escape
-scratch or output bytes; NUL-bearing decoded line names fail with
-`UnrepresentableValue` before escaping because replacement would change
-identity. Public errors return no partial CSS.
+scratch or output bytes; checked decoded line names exclude NUL before entering
+output. Public errors return no partial CSS.
 
 The Grid repetition value, the six Grid property records, and the keyframe rule
 record remain `Partial`. Subgrid name-repeat, remaining `grid`/`grid-template`

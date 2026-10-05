@@ -118,7 +118,7 @@ fn assert_repeat(authored: &str, mode: RepeatMode, case: ContentCase) {
         panic!("{source}: exactly one authored line name must remain");
     };
     assert_eq!(
-        name.as_str(),
+        name.ident().as_str(),
         match case {
             ContentCase::TypedLeading => "start",
             ContentCase::LiteralTrailing | ContentCase::TypedTrailing => "end",

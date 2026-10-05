@@ -46,7 +46,7 @@ macro_rules! list_provider {
                     if index != 0 {
                         writer.append(", ")?;
                     }
-                    ($append)(writer, value, values.len())?;
+                    ($append)(writer, value)?;
                 }
                 Ok(())
             }
@@ -54,62 +54,36 @@ macro_rules! list_provider {
     };
 }
 
-list_provider!(
-    CssTransitionPropertyList,
-    properties,
-    |writer, value: &CssTransitionProperty, count| {
-        if count > 1 && matches!(value, CssTransitionProperty::None) {
-            return Err(unrepresentable());
-        }
-        transition_property(writer, value)
-    }
-);
+list_provider!(CssTransitionPropertyList, properties, transition_property);
 list_provider!(
     CssDurationList,
     values,
-    |writer, value: &crate::CssDuration, _| { value.append_to_rule_writer(writer) }
+    |writer, value: &crate::CssDuration| { value.append_to_rule_writer(writer) }
 );
 list_provider!(
     CssDelayList,
     values,
-    |writer, value: &crate::CssTimeValue, _| { value.append_to_rule_writer(writer) }
+    |writer, value: &crate::CssTimeValue| { value.append_to_rule_writer(writer) }
 );
-list_provider!(
-    CssTransitionList,
-    values,
-    |writer, value: &CssTransition, count| {
-        if count > 1 && matches!(value.property(), Some(CssTransitionProperty::None)) {
-            return Err(unrepresentable());
-        }
-        transition(writer, value)
-    }
-);
-list_provider!(CssAnimationNameList, names, |writer, value, _| {
-    animation_name(writer, value)
-});
-list_provider!(
-    CssAnimationIterationCountList,
-    values,
-    |writer, value, _| iteration_count(writer, value)
-);
+list_provider!(CssTransitionList, values, transition);
+list_provider!(CssAnimationNameList, names, animation_name);
+list_provider!(CssAnimationIterationCountList, values, iteration_count);
 list_provider!(
     CssAnimationDirectionList,
     directions,
-    |writer, value: &CssAnimationDirection, _| { direction(writer, *value) }
+    |writer, value: &CssAnimationDirection| { direction(writer, *value) }
 );
 list_provider!(
     CssAnimationFillModeList,
     modes,
-    |writer, value: &CssAnimationFillMode, _| { fill_mode(writer, *value) }
+    |writer, value: &CssAnimationFillMode| { fill_mode(writer, *value) }
 );
 list_provider!(
     CssAnimationPlayStateList,
     states,
-    |writer, value: &CssAnimationPlayState, _| { play_state(writer, *value) }
+    |writer, value: &CssAnimationPlayState| { play_state(writer, *value) }
 );
-list_provider!(CssAnimationList, values, |writer, value, _| animation(
-    writer, value
-));
+list_provider!(CssAnimationList, values, animation);
 
 fn node(writer: &mut SpecifiedRuleWriter) -> Result<()> {
     writer.context.charge_input(1)?;
@@ -130,12 +104,7 @@ fn transition_property(
     match value {
         CssTransitionProperty::All => writer.append("all"),
         CssTransitionProperty::None => writer.append("none"),
-        CssTransitionProperty::Custom(name) => {
-            if name.as_str().contains('\0') || keyword(name.as_str(), &["none", "all"]) {
-                return Err(unrepresentable());
-            }
-            writer.append_identifier(name.as_str())
-        }
+        CssTransitionProperty::Custom(name) => writer.append_identifier(name.as_str()),
     }
 }
 
@@ -143,12 +112,7 @@ fn animation_name(writer: &mut SpecifiedRuleWriter, value: &CssAnimationName) ->
     node(writer)?;
     match value {
         CssAnimationName::None => writer.append("none"),
-        CssAnimationName::Custom(name) => {
-            if name.as_str().contains('\0') || name.as_str().eq_ignore_ascii_case("none") {
-                return Err(unrepresentable());
-            }
-            writer.append_identifier(name.as_str())
-        }
+        CssAnimationName::Custom(name) => writer.append_identifier(name.as_str()),
         CssAnimationName::String(name) => {
             if name.as_str().contains('\0') {
                 return Err(unrepresentable());

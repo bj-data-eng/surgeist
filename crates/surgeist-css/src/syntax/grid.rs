@@ -1,4 +1,4 @@
-use super::CssCustomIdent;
+use super::CssGridLineName;
 use crate::{CssSpecifiedNonNegativeFlex, CssSpecifiedNonNegativeLengthPercentage};
 
 pub(crate) fn adjacent_line_names<T>(
@@ -11,18 +11,18 @@ pub(crate) fn adjacent_line_names<T>(
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssGridLineNames {
-    names: Vec<CssCustomIdent>,
+    names: Vec<CssGridLineName>,
 }
 
 impl CssGridLineNames {
     /// Creates an authored line-name group, including the valid empty group `[]`.
     #[must_use]
-    pub fn new(names: Vec<CssCustomIdent>) -> Self {
+    pub fn new(names: Vec<CssGridLineName>) -> Self {
         Self { names }
     }
 
     #[must_use]
-    pub fn names(&self) -> &[CssCustomIdent] {
+    pub fn names(&self) -> &[CssGridLineName] {
         &self.names
     }
 }
@@ -905,13 +905,8 @@ impl GridSpecified for CssGridLineNames {
                 context.append(output, " ")?;
             }
             grid_node(context)?;
-            if name.as_str().contains('\0') {
-                return Err(crate::CssSpecifiedValueSerializationError::new(
-                    crate::CssSpecifiedValueSerializationErrorKind::UnrepresentableValue,
-                ));
-            }
             if !context.output_suppressed() {
-                let escaped = crate::numeric::capture_identifier(name.as_str(), context)?;
+                let escaped = crate::numeric::capture_identifier(name.ident().as_str(), context)?;
                 context.append(output, &escaped)?;
             }
         }
@@ -1138,7 +1133,7 @@ mod line_name_composition_contract {
         CssGridTrackList::general(
             CssGridGeneralTrackList::try_new(vec![
                 CssGridGeneralTrackComponent::LineNames(CssGridLineNames::new(vec![
-                    CssCustomIdent::try_new(value).unwrap(),
+                    CssGridLineName::try_new(crate::CssIdent::try_new(value).unwrap()).unwrap(),
                 ])),
                 CssGridGeneralTrackComponent::TrackSize(CssGridTrackSize::from_breadth(
                     CssGridTrackBreadth::auto(),
@@ -1154,7 +1149,7 @@ mod line_name_composition_contract {
         else {
             panic!("retained line names");
         };
-        group.names()[0].as_str()
+        group.names()[0].ident().as_str()
     }
 
     #[test]
@@ -1212,11 +1207,13 @@ mod line_name_composition_contract {
     }
 
     #[test]
-    fn nul_line_name_cannot_succeed_with_a_different_decoded_identity() {
-        let value = names("a\0b");
-        let error = value.serialize_specified().unwrap_err();
-        assert_eq!(error.kind(), ErrorKind::UnrepresentableValue);
-        assert_eq!(retained_name(&value), "a\0b");
+    fn nul_line_name_is_rejected_before_group_construction() {
+        let error = crate::CssIdent::try_new("a\0b").unwrap_err();
+        assert_eq!(
+            error.kind(),
+            crate::CssComponentValueErrorKind::InvalidIdentifier,
+        );
+        assert_eq!(error.origin(), &crate::CssValueOrigin::Programmatic);
     }
 }
 
@@ -1372,28 +1369,16 @@ mod aggregate_composition_contract {
     }
 
     #[test]
-    fn suppressed_invalid_identity_fails_and_restores_enclosing_output() {
-        let rows = CssGridTrackList::general(
-            CssGridGeneralTrackList::try_new(vec![
-                CssGridGeneralTrackComponent::LineNames(CssGridLineNames::new(vec![
-                    CssCustomIdent::try_new("a\0b").unwrap(),
-                ])),
-                CssGridGeneralTrackComponent::TrackSize(CssGridTrackSize::from_breadth(
-                    CssGridTrackBreadth::auto(),
-                )),
-            ])
-            .unwrap(),
-        );
-        let value =
-            CssGridTemplate::rows_columns(rows, template("auto / auto").columns().unwrap().clone());
+    fn suppressed_input_limit_failure_restores_enclosing_output() {
+        let value = template("auto / auto");
         let before = value.clone();
-        let mut writer = SpecifiedRuleWriter::new(Limits::new(100, 100, 1));
+        let mut writer = SpecifiedRuleWriter::new(Limits::new(0, 100, 1));
         assert_eq!(
             writer
                 .without_output(|writer| value.append_to_rule_writer(writer))
                 .unwrap_err()
                 .kind(),
-            Kind::UnrepresentableValue
+            Kind::InputNodeLimit
         );
         assert!(!writer.context.output_suppressed());
         writer.append("x").unwrap();

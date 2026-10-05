@@ -1225,7 +1225,7 @@ pub const PROPERTY_NEGATIVE_VECTORS: &[PropertyVector] = &[
     vector!(
         "baseline.property.transition-property",
         "transition-property",
-        "auto"
+        "default"
     ),
     vector!(
         "baseline.property.transition-duration",
@@ -1247,7 +1247,11 @@ pub const PROPERTY_NEGATIVE_VECTORS: &[PropertyVector] = &[
         "transition",
         "opacity 1s 2s 3s"
     ),
-    vector!("baseline.property.animation-name", "animation-name", "auto"),
+    vector!(
+        "baseline.property.animation-name",
+        "animation-name",
+        "default"
+    ),
     vector!(
         "baseline.property.animation-duration",
         "animation-duration",

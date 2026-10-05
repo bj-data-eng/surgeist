@@ -16,11 +16,15 @@ fn duration(text: &str) -> CssDuration {
 }
 
 fn name(text: &str) -> CssAnimationName {
-    CssAnimationName::Custom(CssCustomIdent::try_new(text).unwrap())
+    CssAnimationName::Custom(
+        CssKeyframesIdent::try_new(CssCustomIdent::try_new(text).unwrap()).unwrap(),
+    )
 }
 
 fn property(text: &str) -> CssTransitionProperty {
-    CssTransitionProperty::Custom(CssCustomIdent::try_new(text).unwrap())
+    CssTransitionProperty::Custom(
+        CssTransitionPropertyName::try_new(CssCustomIdent::try_new(text).unwrap()).unwrap(),
+    )
 }
 
 fn count(text: &str) -> CssAnimationIterationCount {
@@ -516,36 +520,27 @@ fn escaped_identifiers_and_quoted_names_keep_their_distinct_forms_and_list_order
 }
 
 #[test]
-fn unrecoverable_keyword_variants_and_none_lists_fail_closed() {
+fn checked_keyword_names_and_mixed_none_lists_are_rejected() {
     for reserved in ["all", "ALL", "none", "NoNe"] {
-        let value = CssTransitionPropertyList::try_new(vec![property(reserved)]).unwrap();
-        assert_eq!(
-            value.serialize_specified().unwrap_err().kind(),
-            K::UnrepresentableValue
+        assert!(
+            CssTransitionPropertyName::try_new(CssCustomIdent::try_new(reserved).unwrap())
+                .is_none()
         );
     }
-    let names = CssAnimationNameList::try_new(vec![name("none")]).unwrap();
-    assert_eq!(
-        names.serialize_specified().unwrap_err().kind(),
-        K::UnrepresentableValue
+    assert!(CssKeyframesIdent::try_new(CssCustomIdent::try_new("none").unwrap()).is_none());
+    assert!(
+        CssTransitionPropertyList::try_new(vec![
+            CssTransitionProperty::None,
+            CssTransitionProperty::All,
+        ])
+        .is_none()
     );
-    let properties = CssTransitionPropertyList::try_new(vec![
-        CssTransitionProperty::None,
-        CssTransitionProperty::All,
-    ])
-    .unwrap();
-    assert_eq!(
-        properties.serialize_specified().unwrap_err().kind(),
-        K::UnrepresentableValue
-    );
-    let transitions = CssTransitionList::try_new(vec![
-        CssTransition::try_new(Some(CssTransitionProperty::None), None, None, None).unwrap(),
-        CssTransition::try_new(Some(CssTransitionProperty::All), None, None, None).unwrap(),
-    ])
-    .unwrap();
-    assert_eq!(
-        transitions.serialize_specified().unwrap_err().kind(),
-        K::UnrepresentableValue
+    assert!(
+        CssTransitionList::try_new(vec![
+            CssTransition::try_new(Some(CssTransitionProperty::None), None, None, None).unwrap(),
+            CssTransition::try_new(Some(CssTransitionProperty::All), None, None, None).unwrap(),
+        ])
+        .is_none()
     );
 }
 
@@ -608,26 +603,6 @@ fn exact_duration_admission_and_signed_delay_projection_keep_distinct_domains() 
 }
 
 #[test]
-fn nul_transition_property_identity_cannot_be_replaced_during_output() {
-    let values = CssTransitionPropertyList::try_new(vec![property("a\0b")]).unwrap();
-    assert_eq!(
-        values.serialize_specified().unwrap_err().kind(),
-        K::UnrepresentableValue
-    );
-    assert_eq!(values.properties()[0], property("a\0b"));
-}
-
-#[test]
-fn nul_animation_identifier_identity_cannot_be_replaced_during_output() {
-    let values = CssAnimationNameList::try_new(vec![name("a\0b")]).unwrap();
-    assert_eq!(
-        values.serialize_specified().unwrap_err().kind(),
-        K::UnrepresentableValue
-    );
-    assert_eq!(values.names()[0], name("a\0b"));
-}
-
-#[test]
 fn nul_quoted_animation_identity_cannot_be_replaced_during_output() {
     let original = CssAnimationName::String(CssKeyframesString::try_new("a\0b").unwrap());
     let values = CssAnimationNameList::try_new(vec![original.clone()]).unwrap();
@@ -636,30 +611,6 @@ fn nul_quoted_animation_identity_cannot_be_replaced_during_output() {
         K::UnrepresentableValue
     );
     assert_eq!(values.names()[0], original);
-}
-
-#[test]
-fn nul_transition_shorthand_identity_cannot_be_replaced_during_output() {
-    let item = CssTransition::try_new(Some(property("a\0b")), None, None, None).unwrap();
-    let values = CssTransitionList::try_new(vec![item]).unwrap();
-    assert_eq!(
-        values.serialize_specified().unwrap_err().kind(),
-        K::UnrepresentableValue
-    );
-}
-
-#[test]
-fn nul_animation_shorthand_identifier_cannot_be_replaced_during_output() {
-    let item = CssAnimation::try_new(CssAnimationComponents {
-        name: Some(name("a\0b")),
-        ..CssAnimationComponents::default()
-    })
-    .unwrap();
-    let values = CssAnimationList::try_new(vec![item]).unwrap();
-    assert_eq!(
-        values.serialize_specified().unwrap_err().kind(),
-        K::UnrepresentableValue
-    );
 }
 
 #[test]

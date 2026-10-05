@@ -444,6 +444,12 @@
 //! and `animation` retain explicit Partial metadata boundaries; support for a typed
 //! function does not promote an unselected production.
 //!
+//! [`CssCustomIdent`] owns decoded custom-identifier admission. Timing names refine
+//! that checked value through [`CssKeyframesIdent`] (shared by keyframe definitions
+//! and animation names) and [`CssTransitionPropertyName`]. [`CssGridLineNames`]
+//! contains checked [`CssGridLineName`] values with the Grid exclusions. Parsing
+//! and public construction both reject mixed `None` transition lists.
+//!
 //! Both filter properties are noninherited terminals with an intrinsic `none`
 //! initial. [`CssFilterHueRotate`] retains an omitted angle separately from its
 //! effective `0deg`; [`CssFilterBlur`] likewise retains omission and effective `0px`.

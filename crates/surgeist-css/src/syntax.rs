@@ -1127,7 +1127,7 @@ impl CssKeyframesRule {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssKeyframesName {
-    Ident(CssCustomIdent),
+    Ident(CssKeyframesIdent),
     String(CssKeyframesString),
 }
 
@@ -4685,41 +4685,69 @@ impl Default for CssFlowTolerance {
     }
 }
 
+/// A representable decoded Values 4 custom identifier, preserving authored case.
+/// CSS-wide keywords and `default` are excluded; consuming grammars own any
+/// additional keyword exclusions.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssCustomIdent {
-    value: String,
-}
+pub struct CssCustomIdent(CssIdent);
 
 impl CssCustomIdent {
     #[must_use]
     pub fn try_new(value: impl Into<String>) -> Option<Self> {
-        let value = value.into();
-        if is_valid_custom_ident(&value) {
-            Some(Self::new(value))
-        } else {
-            None
-        }
+        Self::try_from_ident(CssIdent::try_new(value).ok()?)
     }
 
-    #[must_use]
-    pub(crate) fn new(value: impl Into<String>) -> Self {
-        Self {
-            value: value.into(),
-        }
+    pub(crate) fn try_from_ident(value: CssIdent) -> Option<Self> {
+        (!is_reserved_custom_ident(value.as_str())).then_some(Self(value))
     }
 
     #[must_use]
     pub fn as_str(&self) -> &str {
-        &self.value
+        self.0.as_str()
     }
 }
 
-fn is_valid_custom_ident(value: &str) -> bool {
-    !value.is_empty()
-        && !matches!(
-            value.to_ascii_lowercase().as_str(),
-            "inherit" | "initial" | "unset" | "revert" | "revert-layer" | "span" | "auto"
-        )
+fn is_reserved_custom_ident(value: &str) -> bool {
+    matches!(
+        value.to_ascii_lowercase().as_str(),
+        "inherit" | "initial" | "unset" | "revert" | "revert-layer" | "default"
+    )
+}
+
+/// A checked identifier shared by keyframes definitions and animation names.
+/// Animations 1 excludes `none` in addition to the Values 4 reserved words.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssKeyframesIdent(CssCustomIdent);
+
+impl CssKeyframesIdent {
+    #[must_use]
+    pub fn try_new(value: CssCustomIdent) -> Option<Self> {
+        (!value.as_str().eq_ignore_ascii_case("none")).then_some(Self(value))
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
+/// A checked custom transition property name, retaining unknown names and case.
+/// `none` and `all` use their distinct keyword variants instead.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssTransitionPropertyName(CssCustomIdent);
+
+impl CssTransitionPropertyName {
+    #[must_use]
+    pub fn try_new(value: CssCustomIdent) -> Option<Self> {
+        (!value.as_str().eq_ignore_ascii_case("none")
+            && !value.as_str().eq_ignore_ascii_case("all"))
+        .then_some(Self(value))
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
 }
 
 mod grid;
@@ -8534,7 +8562,7 @@ impl CssEasingList {
 pub enum CssTransitionProperty {
     All,
     None,
-    Custom(CssCustomIdent),
+    Custom(CssTransitionPropertyName),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -8543,18 +8571,10 @@ pub struct CssTransitionPropertyList {
 }
 
 impl CssTransitionPropertyList {
+    /// Rejects an empty list or `none` mixed with other items.
     #[must_use]
     pub fn try_new(properties: Vec<CssTransitionProperty>) -> Option<Self> {
-        if properties.is_empty() {
-            None
-        } else {
-            Some(Self::new(properties))
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn new(properties: Vec<CssTransitionProperty>) -> Self {
-        Self { properties }
+        transition_properties_are_valid(properties.iter().map(Some)).then_some(Self { properties })
     }
 
     #[must_use]
@@ -8563,11 +8583,20 @@ impl CssTransitionPropertyList {
     }
 }
 
+fn transition_properties_are_valid<'a>(
+    mut properties: impl ExactSizeIterator<Item = Option<&'a CssTransitionProperty>>,
+) -> bool {
+    let count = properties.len();
+    count > 0
+        && (count == 1
+            || !properties.any(|property| matches!(property, Some(CssTransitionProperty::None))))
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssAnimationName {
     None,
-    Custom(CssCustomIdent),
+    Custom(CssKeyframesIdent),
     String(CssKeyframesString),
 }
 
@@ -8816,25 +8845,24 @@ pub struct CssTransitionList {
 }
 
 impl CssTransitionList {
-    /// Rejects an empty list or retained recovery in any time child.
+    /// Rejects an empty list, mixed `none`, or retained recovery in any time child.
     #[must_use]
     pub fn try_new(values: Vec<CssTransition>) -> Option<Self> {
-        if values.is_empty()
-            || values.iter().any(|v| {
-                v.duration()
-                    .is_some_and(|d| d.time().first_implicit_origin().is_some())
-                    || v.delay()
-                        .is_some_and(|d| d.first_implicit_origin().is_some())
-            })
-        {
+        if values.iter().any(|v| {
+            v.duration()
+                .is_some_and(|d| d.time().first_implicit_origin().is_some())
+                || v.delay()
+                    .is_some_and(|d| d.first_implicit_origin().is_some())
+        }) {
             None
         } else {
-            Some(Self { values })
+            Self::from_parser(values)
         }
     }
 
-    pub(crate) fn from_parser(values: Vec<CssTransition>) -> Self {
-        Self { values }
+    pub(crate) fn from_parser(values: Vec<CssTransition>) -> Option<Self> {
+        transition_properties_are_valid(values.iter().map(CssTransition::property))
+            .then_some(Self { values })
     }
 
     #[must_use]
