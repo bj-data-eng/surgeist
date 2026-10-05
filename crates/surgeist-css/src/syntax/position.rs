@@ -541,6 +541,14 @@ pub struct CssTransformOrigin {
 }
 numeric_fields_eq!(CssTransformOrigin, [], [z], [position]);
 impl CssTransformOrigin {
+    /// Borrows the checked planar owner without exposing another public getter.
+    pub(crate) fn append_planar_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> Result<(), crate::CssSpecifiedValueSerializationError> {
+        self.position.append_to_rule_writer(writer)
+    }
+
     /// Rejects planar edge offsets while retaining the optional checked Z length.
     #[must_use]
     pub fn try_new(position: CssPhysicalPosition, z: Option<CssSpecifiedLength>) -> Option<Self> {

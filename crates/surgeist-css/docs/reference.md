@@ -6474,3 +6474,70 @@ writer and return no partial public output on failure.
 These writers certify represented values. Broader containment alternatives,
 image-rendering alternatives, property metadata, expansion/normalization and
 generic declaration dispatch retain their existing owners.
+
+## Cursor images and represented transform, mask and outline output
+
+`CssCursor::Images` holds a checked nonempty image list and a required fallback.
+Each image has an optional complete Number pair for its hotspot. URL sets hold
+checked nonempty options, each with a URL or string reference and distinct
+optional Resolution and `type()` descriptors. The selected
+[UI 4 cursor grammar](https://www.w3.org/TR/2026/WD-css-ui-4-20260120/#cursor)
+restricts image-set's image arm to URLs; its string arm still denotes a URL.
+The [Images 4 option grammar](https://www.w3.org/TR/2025/WD-css-images-4-20250930/#image-set-notation)
+allows either descriptor order. Unsupported MIME strings and duplicate candidate
+resolutions are retained for downstream resource selection. Omitted resolution
+and explicit `1x` remain distinct. Ordinary negative resolutions reject; symbolic
+resolution calculations retain the shared numeric owner's range policy.
+
+Cursor output preserves image and option order, emits Resolution before `type()`,
+and canonicalizes the standard `-webkit-image-set()` alias to `image-set()`.
+It neither loads resources nor clamps hotspots. Explicit zero hotspots remain
+distinct from omission. The previous URL-list carrier is replaced directly.
+Keywords cost one input and projection node. Image lists, entries, sets and
+options each cost one aggregate node; source, descriptor and hotspot-pair
+carriers add no charge. URL and numeric children retain their costs; a string
+reference costs one node, and `type()` costs a function plus a string node.
+
+`CssTransform`, `CssTransformOrigin`, `CssTranslate` and `CssScale` emit their
+represented specified syntax through the same cumulative writer. Numeric
+children retain the existing six-place projection policy and exact stored
+coefficients. Optional ordinary defaults are compared exactly before formatting;
+a rounded zero or equality cannot cause omission. Translate retains percentage
+and calculation components, including zero percentages. Origin retains its
+optional Z value. Scale function percentages use the numeric owner's percentage
+conversion, while Number-hinted calculations keep their existing Number basis.
+Selected [Values 4 specified calculation serialization](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-serialize)
+retains the calculation wrapper; serialization does not execute matrices or
+resolve reference boxes. `rotate3d()` shares Rotate's axis/sign preparation and
+representability policy. A list, individual value, origin and function each cost
+one input and projection node; retained operands are visited even when ordinary
+defaults are omitted. Synthesized rotation operands cost projection work only.
+
+`CssMaskList` emits represented fields in image, position/size and repeat order,
+preserving layer order and stored omissions. A constructed size without position
+emits `0% 0% /` before that size to satisfy the
+[Masking 1 shorthand grammar](https://www.w3.org/TR/2021/CRD-css-masking-1-20210805/#the-mask).
+The generated position costs two projection nodes and no authored input nodes;
+it does not alter the layer. The list and each layer cost one node in each work
+budget, and children retain their own costs. Geometry boxes, mode, composite,
+shorthand resets and the full property lifecycle remain outside this represented
+provider.
+
+Outline has a property-specific finite style domain excluding `hidden`, plus
+`CssOutlineColor::Auto` or the shared Color owner. The selected
+[UI 4 outline grammar](https://www.w3.org/TR/2026/WD-css-ui-4-20260120/#outline)
+allows width, style and color in any order. An otherwise ambiguous single `auto`
+sets both style and color; separate explicit components determine the remaining
+slot. Canonical output orders width, style and color. A constructed Auto color
+with omitted style emits `none auto` to retain the omitted style's meaning.
+That synthesized `none` costs one projection node and no input node. When both
+retained fields are Auto, output can use one `auto` but visits both fields.
+Width, style, color and shorthand expose bounded specified serializers without
+resolving Auto or Color against rendering context. The shorthand costs one node
+in each budget; keywords cost one, and numeric/Color variants delegate their
+child costs. The inherited image-1D color alternative remains unrepresented.
+
+All these public providers return either complete CSS or a typed error, preserve
+the original value and origins, and share child input, projection and final
+UTF-8 byte limits. Suppressed output still visits retained children under the
+work limits without spending output bytes. Punctuation costs bytes only.

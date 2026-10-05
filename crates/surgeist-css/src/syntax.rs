@@ -7357,77 +7357,6 @@ pub enum CssCursorKeyword {
     ZoomOut,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssCursor {
-    Keyword(CssCursorKeyword),
-    Urls(CssCursorUrls),
-}
-
-impl CssCursor {
-    #[must_use]
-    pub fn try_urls(urls: Vec<CssUrl>, fallback: CssCursorKeyword) -> Option<Self> {
-        CssCursorUrlList::try_new(urls).map(|urls| Self::Urls(CssCursorUrls::new(urls, fallback)))
-    }
-
-    #[must_use]
-    pub(crate) fn urls(urls: Vec<CssUrl>, fallback: CssCursorKeyword) -> Self {
-        match Self::try_urls(urls, fallback) {
-            Some(value) => value,
-            None => panic!("cursor URL fallback must include at least one URL"),
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssCursorUrls {
-    urls: CssCursorUrlList,
-    fallback: CssCursorKeyword,
-}
-
-impl CssCursorUrls {
-    #[must_use]
-    pub const fn new(urls: CssCursorUrlList, fallback: CssCursorKeyword) -> Self {
-        Self { urls, fallback }
-    }
-
-    #[must_use]
-    pub const fn urls(&self) -> &CssCursorUrlList {
-        &self.urls
-    }
-
-    #[must_use]
-    pub const fn fallback(&self) -> CssCursorKeyword {
-        self.fallback
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssCursorUrlList {
-    urls: Vec<CssUrl>,
-}
-
-impl CssCursorUrlList {
-    #[must_use]
-    pub fn try_new(urls: Vec<CssUrl>) -> Option<Self> {
-        if urls.is_empty() {
-            None
-        } else {
-            Some(Self::new(urls))
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn new(urls: Vec<CssUrl>) -> Self {
-        Self { urls }
-    }
-
-    #[must_use]
-    pub fn urls(&self) -> &[CssUrl] {
-        &self.urls
-    }
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssPointerEvents {
@@ -7445,11 +7374,42 @@ pub enum CssUserSelect {
     Contain,
 }
 
+/// Authored UI4 outline styles. Hidden is excluded from this semantic domain.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssOutlineStyle {
     Auto,
-    Border(CssBorderStyle),
+    None,
+    Dotted,
+    Dashed,
+    Solid,
+    Double,
+    Groove,
+    Ridge,
+    Inset,
+    Outset,
+}
+
+/// The represented authored UI4 outline-color domain: automatic or shared color.
+/// The inherited image-1D branch is not represented. Automatic color stays
+/// symbolic; accent-color and currentColor computation belong downstream.
+#[derive(Clone, Debug, Default, PartialEq)]
+#[non_exhaustive]
+pub enum CssOutlineColor {
+    #[default]
+    Auto,
+    Color(Box<CssColor>),
+}
+
+impl CssOutlineColor {
+    /// Borrows the shared authored color, when this is not the automatic branch.
+    #[must_use]
+    pub fn color(&self) -> Option<&CssColor> {
+        match self {
+            Self::Auto => None,
+            Self::Color(color) => Some(color),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -7477,7 +7437,7 @@ impl PartialEq for CssOutlineWidth {
 pub struct CssOutline {
     width: Option<CssOutlineWidth>,
     style: Option<CssOutlineStyle>,
-    color: Option<Box<CssColor>>,
+    color: Option<CssOutlineColor>,
 }
 
 impl CssOutline {
@@ -7485,7 +7445,7 @@ impl CssOutline {
     pub fn try_new(
         width: Option<CssOutlineWidth>,
         style: Option<CssOutlineStyle>,
-        color: Option<CssColor>,
+        color: Option<CssOutlineColor>,
     ) -> Option<Self> {
         if width.is_none() && style.is_none() && color.is_none() {
             None
@@ -7497,12 +7457,12 @@ impl CssOutline {
     pub(crate) fn new(
         width: Option<CssOutlineWidth>,
         style: Option<CssOutlineStyle>,
-        color: Option<CssColor>,
+        color: Option<CssOutlineColor>,
     ) -> Self {
         Self {
             width,
             style,
-            color: color.map(Box::new),
+            color,
         }
     }
 
@@ -7517,8 +7477,8 @@ impl CssOutline {
     }
 
     #[must_use]
-    pub fn color(&self) -> Option<&CssColor> {
-        self.color.as_deref()
+    pub const fn color(&self) -> Option<&CssOutlineColor> {
+        self.color.as_ref()
     }
 }
 
@@ -8234,6 +8194,7 @@ mod shape_commands;
 pub use shape_commands::*;
 mod shapes;
 pub use shapes::*;
+mod mask_serialization;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssMaskLayer {

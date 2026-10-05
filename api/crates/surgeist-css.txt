@@ -918,10 +918,16 @@ impl surgeist_css::CssCue
 pub fn surgeist_css::CssCue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssCue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssCursor
+pub surgeist_css::CssCursor::Images(surgeist_css::CssCursorImages)
 pub surgeist_css::CssCursor::Keyword(surgeist_css::CssCursorKeyword)
-pub surgeist_css::CssCursor::Urls(surgeist_css::CssCursorUrls)
 impl surgeist_css::CssCursor
-pub fn surgeist_css::CssCursor::try_urls(urls: alloc::vec::Vec<surgeist_css::CssUrl>, fallback: surgeist_css::CssCursorKeyword) -> core::option::Option<Self>
+pub fn surgeist_css::CssCursor::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssCursor::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssCursor
+pub fn surgeist_css::CssCursor::try_images(images: alloc::vec::Vec<surgeist_css::CssCursorImage>, fallback: surgeist_css::CssCursorKeyword) -> core::option::Option<Self>
+#[non_exhaustive] pub enum surgeist_css::CssCursorImageSource
+pub surgeist_css::CssCursorImageSource::Url(surgeist_css::CssUrl)
+pub surgeist_css::CssCursorImageSource::UrlSet(surgeist_css::CssCursorUrlSet)
 #[non_exhaustive] pub enum surgeist_css::CssCursorKeyword
 pub surgeist_css::CssCursorKeyword::Alias
 pub surgeist_css::CssCursorKeyword::AllScroll
@@ -959,6 +965,12 @@ pub surgeist_css::CssCursorKeyword::WResize
 pub surgeist_css::CssCursorKeyword::Wait
 pub surgeist_css::CssCursorKeyword::ZoomIn
 pub surgeist_css::CssCursorKeyword::ZoomOut
+#[non_exhaustive] pub enum surgeist_css::CssCursorUrlSetDescriptor
+pub surgeist_css::CssCursorUrlSetDescriptor::Resolution(surgeist_css::CssResolutionValue)
+pub surgeist_css::CssCursorUrlSetDescriptor::Type(surgeist_css::CssContentString)
+#[non_exhaustive] pub enum surgeist_css::CssCursorUrlSetReference
+pub surgeist_css::CssCursorUrlSetReference::String(surgeist_css::CssContentString)
+pub surgeist_css::CssCursorUrlSetReference::Url(surgeist_css::CssUrl)
 pub enum surgeist_css::CssCustomMediaBody
 pub surgeist_css::CssCustomMediaBody::False
 pub surgeist_css::CssCustomMediaBody::Media(surgeist_css::CssMediaQueryList)
@@ -3424,14 +3436,36 @@ pub fn surgeist_css::CssOpacityValue::serialize_specified_with_limits(&self, lim
 #[non_exhaustive] pub enum surgeist_css::CssOrientation
 pub surgeist_css::CssOrientation::Landscape
 pub surgeist_css::CssOrientation::Portrait
+#[non_exhaustive] pub enum surgeist_css::CssOutlineColor
+pub surgeist_css::CssOutlineColor::Auto
+pub surgeist_css::CssOutlineColor::Color(alloc::boxed::Box<surgeist_css::CssColor>)
+impl surgeist_css::CssOutlineColor
+pub fn surgeist_css::CssOutlineColor::color(&self) -> core::option::Option<&surgeist_css::CssColor>
+impl surgeist_css::CssOutlineColor
+pub fn surgeist_css::CssOutlineColor::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssOutlineColor::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssOutlineStyle
 pub surgeist_css::CssOutlineStyle::Auto
-pub surgeist_css::CssOutlineStyle::Border(surgeist_css::CssBorderStyle)
+pub surgeist_css::CssOutlineStyle::Dashed
+pub surgeist_css::CssOutlineStyle::Dotted
+pub surgeist_css::CssOutlineStyle::Double
+pub surgeist_css::CssOutlineStyle::Groove
+pub surgeist_css::CssOutlineStyle::Inset
+pub surgeist_css::CssOutlineStyle::None
+pub surgeist_css::CssOutlineStyle::Outset
+pub surgeist_css::CssOutlineStyle::Ridge
+pub surgeist_css::CssOutlineStyle::Solid
+impl surgeist_css::CssOutlineStyle
+pub fn surgeist_css::CssOutlineStyle::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssOutlineStyle::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssOutlineWidth
 pub surgeist_css::CssOutlineWidth::Length(surgeist_css::CssSpecifiedNonNegativeLength)
 pub surgeist_css::CssOutlineWidth::Medium
 pub surgeist_css::CssOutlineWidth::Thick
 pub surgeist_css::CssOutlineWidth::Thin
+impl surgeist_css::CssOutlineWidth
+pub fn surgeist_css::CssOutlineWidth::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssOutlineWidth::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl core::cmp::PartialEq for surgeist_css::CssOutlineWidth
 pub fn surgeist_css::CssOutlineWidth::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssOverflow
@@ -3833,6 +3867,9 @@ pub surgeist_css::CssRuleContextKindRef::SupportsCondition(&'a surgeist_css::Css
 #[non_exhaustive] pub enum surgeist_css::CssScale
 pub surgeist_css::CssScale::None
 pub surgeist_css::CssScale::Values(surgeist_css::CssScaleValues)
+impl surgeist_css::CssScale
+pub fn surgeist_css::CssScale::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssScale::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssScanMode
 pub surgeist_css::CssScanMode::Interlace
 pub surgeist_css::CssScanMode::Progressive
@@ -4330,6 +4367,9 @@ pub surgeist_css::CssTokenKind::Whitespace
 #[non_exhaustive] pub enum surgeist_css::CssTransform
 pub surgeist_css::CssTransform::Functions(surgeist_css::CssTransformFunctionList)
 pub surgeist_css::CssTransform::None
+impl surgeist_css::CssTransform
+pub fn surgeist_css::CssTransform::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTransform::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssTransformFunction
 pub surgeist_css::CssTransformFunction::Matrix(surgeist_css::CssTransformMatrix)
 pub surgeist_css::CssTransformFunction::Matrix3d(alloc::boxed::Box<surgeist_css::CssTransformMatrix3d>)
@@ -4396,6 +4436,9 @@ pub surgeist_css::CssTransitionProperty::None
 #[non_exhaustive] pub enum surgeist_css::CssTranslate
 pub surgeist_css::CssTranslate::None
 pub surgeist_css::CssTranslate::Values(surgeist_css::CssTranslateValues)
+impl surgeist_css::CssTranslate
+pub fn surgeist_css::CssTranslate::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTranslate::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub enum surgeist_css::CssTreeCountingFunction
 pub surgeist_css::CssTreeCountingFunction::SiblingCount
 pub surgeist_css::CssTreeCountingFunction::SiblingIndex
@@ -6277,19 +6320,31 @@ pub struct surgeist_css::CssCuePropertyValue
 impl surgeist_css::CssCuePropertyValue
 pub fn surgeist_css::CssCuePropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssCuePropertyValue::value(&self) -> &surgeist_css::CssCuePair
+pub struct surgeist_css::CssCursorImage
+impl surgeist_css::CssCursorImage
+pub const fn surgeist_css::CssCursorImage::hotspot(&self) -> core::option::Option<&[surgeist_css::CssSpecifiedNumber; 2]>
+pub const fn surgeist_css::CssCursorImage::new(source: surgeist_css::CssCursorImageSource, hotspot: core::option::Option<[surgeist_css::CssSpecifiedNumber; 2]>) -> Self
+pub const fn surgeist_css::CssCursorImage::source(&self) -> &surgeist_css::CssCursorImageSource
+pub struct surgeist_css::CssCursorImages
+impl surgeist_css::CssCursorImages
+pub const fn surgeist_css::CssCursorImages::fallback(&self) -> surgeist_css::CssCursorKeyword
+pub fn surgeist_css::CssCursorImages::images(&self) -> &[surgeist_css::CssCursorImage]
+pub fn surgeist_css::CssCursorImages::try_new(images: alloc::vec::Vec<surgeist_css::CssCursorImage>, fallback: surgeist_css::CssCursorKeyword) -> core::option::Option<Self>
 pub struct surgeist_css::CssCursorPropertyValue
 impl surgeist_css::CssCursorPropertyValue
 pub fn surgeist_css::CssCursorPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssCursorPropertyValue::value(&self) -> &surgeist_css::CssCursor
-pub struct surgeist_css::CssCursorUrlList
-impl surgeist_css::CssCursorUrlList
-pub fn surgeist_css::CssCursorUrlList::try_new(urls: alloc::vec::Vec<surgeist_css::CssUrl>) -> core::option::Option<Self>
-pub fn surgeist_css::CssCursorUrlList::urls(&self) -> &[surgeist_css::CssUrl]
-pub struct surgeist_css::CssCursorUrls
-impl surgeist_css::CssCursorUrls
-pub const fn surgeist_css::CssCursorUrls::fallback(&self) -> surgeist_css::CssCursorKeyword
-pub const fn surgeist_css::CssCursorUrls::new(urls: surgeist_css::CssCursorUrlList, fallback: surgeist_css::CssCursorKeyword) -> Self
-pub const fn surgeist_css::CssCursorUrls::urls(&self) -> &surgeist_css::CssCursorUrlList
+pub struct surgeist_css::CssCursorUrlSet
+impl surgeist_css::CssCursorUrlSet
+pub fn surgeist_css::CssCursorUrlSet::options(&self) -> &[surgeist_css::CssCursorUrlSetOption]
+pub fn surgeist_css::CssCursorUrlSet::try_new(options: alloc::vec::Vec<surgeist_css::CssCursorUrlSetOption>) -> core::option::Option<Self>
+pub struct surgeist_css::CssCursorUrlSetOption
+impl surgeist_css::CssCursorUrlSetOption
+pub fn surgeist_css::CssCursorUrlSetOption::descriptors(&self) -> &[surgeist_css::CssCursorUrlSetDescriptor]
+pub fn surgeist_css::CssCursorUrlSetOption::image_type(&self) -> core::option::Option<&surgeist_css::CssContentString>
+pub const fn surgeist_css::CssCursorUrlSetOption::reference(&self) -> &surgeist_css::CssCursorUrlSetReference
+pub fn surgeist_css::CssCursorUrlSetOption::resolution(&self) -> core::option::Option<&surgeist_css::CssResolutionValue>
+pub fn surgeist_css::CssCursorUrlSetOption::try_new(reference: surgeist_css::CssCursorUrlSetReference, descriptors: alloc::vec::Vec<surgeist_css::CssCursorUrlSetDescriptor>) -> core::option::Option<Self>
 pub struct surgeist_css::CssCustomColor
 impl surgeist_css::CssCustomColor
 pub const fn surgeist_css::CssCustomColor::alpha(&self) -> core::option::Option<&surgeist_css::CssColorComponent>
@@ -7888,6 +7943,9 @@ pub struct surgeist_css::CssMaskList
 impl surgeist_css::CssMaskList
 pub fn surgeist_css::CssMaskList::layers(&self) -> &[surgeist_css::CssMaskLayer]
 pub fn surgeist_css::CssMaskList::try_new(layers: alloc::vec::Vec<surgeist_css::CssMaskLayer>) -> core::option::Option<Self>
+impl surgeist_css::CssMaskList
+pub fn surgeist_css::CssMaskList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssMaskList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssMaskPositionPropertyValue
 impl surgeist_css::CssMaskPositionPropertyValue
 pub fn surgeist_css::CssMaskPositionPropertyValue::as_css(&self) -> &str
@@ -8206,14 +8264,17 @@ pub fn surgeist_css::CssOrphansPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssOrphansPropertyValue::minimum(&self) -> &surgeist_css::CssPageLineMinimum
 pub struct surgeist_css::CssOutline
 impl surgeist_css::CssOutline
-pub fn surgeist_css::CssOutline::color(&self) -> core::option::Option<&surgeist_css::CssColor>
+pub const fn surgeist_css::CssOutline::color(&self) -> core::option::Option<&surgeist_css::CssOutlineColor>
 pub const fn surgeist_css::CssOutline::style(&self) -> core::option::Option<surgeist_css::CssOutlineStyle>
-pub fn surgeist_css::CssOutline::try_new(width: core::option::Option<surgeist_css::CssOutlineWidth>, style: core::option::Option<surgeist_css::CssOutlineStyle>, color: core::option::Option<surgeist_css::CssColor>) -> core::option::Option<Self>
+pub fn surgeist_css::CssOutline::try_new(width: core::option::Option<surgeist_css::CssOutlineWidth>, style: core::option::Option<surgeist_css::CssOutlineStyle>, color: core::option::Option<surgeist_css::CssOutlineColor>) -> core::option::Option<Self>
 pub const fn surgeist_css::CssOutline::width(&self) -> core::option::Option<&surgeist_css::CssOutlineWidth>
+impl surgeist_css::CssOutline
+pub fn surgeist_css::CssOutline::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssOutline::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssOutlineColorPropertyValue
 impl surgeist_css::CssOutlineColorPropertyValue
 pub fn surgeist_css::CssOutlineColorPropertyValue::as_css(&self) -> &str
-pub const fn surgeist_css::CssOutlineColorPropertyValue::value(&self) -> &surgeist_css::CssColor
+pub const fn surgeist_css::CssOutlineColorPropertyValue::value(&self) -> &surgeist_css::CssOutlineColor
 pub struct surgeist_css::CssOutlineOffsetPropertyValue
 impl surgeist_css::CssOutlineOffsetPropertyValue
 pub fn surgeist_css::CssOutlineOffsetPropertyValue::as_css(&self) -> &str
@@ -9714,6 +9775,9 @@ pub const fn surgeist_css::CssTransformOrigin::horizontal(&self) -> &surgeist_cs
 pub fn surgeist_css::CssTransformOrigin::try_new(position: surgeist_css::CssPhysicalPosition, z: core::option::Option<surgeist_css::CssSpecifiedLength>) -> core::option::Option<Self>
 pub const fn surgeist_css::CssTransformOrigin::vertical(&self) -> &surgeist_css::CssVerticalPosition
 pub const fn surgeist_css::CssTransformOrigin::z(&self) -> core::option::Option<&surgeist_css::CssSpecifiedLength>
+impl surgeist_css::CssTransformOrigin
+pub fn surgeist_css::CssTransformOrigin::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTransformOrigin::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl core::cmp::PartialEq for surgeist_css::CssTransformOrigin
 pub fn surgeist_css::CssTransformOrigin::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssTransformOriginPropertyValue

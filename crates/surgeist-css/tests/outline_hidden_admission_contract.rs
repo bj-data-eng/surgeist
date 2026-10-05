@@ -259,8 +259,8 @@ fn admitted(property: CssKnownProperty, value: &str) -> Vec<CssDeclaration> {
 fn auto_none_and_solid_outline_controls_remain_admitted() {
     for (value, expected) in [
         ("auto", CssOutlineStyle::Auto),
-        ("none", CssOutlineStyle::Border(CssBorderStyle::None)),
-        ("solid", CssOutlineStyle::Border(CssBorderStyle::Solid)),
+        ("none", CssOutlineStyle::None),
+        ("solid", CssOutlineStyle::Solid),
     ] {
         for property in [CssKnownProperty::OutlineStyle, CssKnownProperty::Outline] {
             for declaration in admitted(property, value) {
@@ -282,13 +282,16 @@ fn auto_none_and_solid_outline_controls_remain_admitted() {
         else {
             unreachable!()
         };
-        assert_eq!(
-            value.value().style(),
-            Some(CssOutlineStyle::Border(CssBorderStyle::Solid))
-        );
+        assert_eq!(value.value().style(), Some(CssOutlineStyle::Solid));
         assert!(value.value().width().is_some());
         assert_eq!(
-            value.value().color().unwrap().keyword_srgba8(),
+            value
+                .value()
+                .color()
+                .unwrap()
+                .color()
+                .unwrap()
+                .keyword_srgba8(),
             Some([255, 0, 0, 255])
         );
     }

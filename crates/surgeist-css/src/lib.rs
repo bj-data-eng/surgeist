@@ -1322,6 +1322,8 @@ mod content_serialization;
 mod content_values;
 mod counter_changes;
 mod counter_changes_serialization;
+mod cursor_serialization;
+mod cursor_values;
 mod easing_serialization;
 mod error;
 mod expansion;
@@ -1344,10 +1346,12 @@ mod keyword_property_serialization;
 mod list_style_serialization;
 mod list_styles;
 mod misc_property_serialization;
+mod outline_serialization;
 mod quotes;
 mod shape_serialization;
 mod text_value_serialization;
 mod timed_property_serialization;
+mod transform_value_serialization;
 pub use imports::*;
 mod custom_media;
 pub use custom_media::*;
@@ -1580,6 +1584,7 @@ pub use component_values::{
 pub use conformance::*;
 pub use content_values::*;
 pub use counter_changes::{CssCounterChangeValue, CssCounterChangesValue, CssCounterProperty};
+pub use cursor_values::*;
 pub use error::*;
 pub use expansion::{
     CssContributionValueRef, CssContributions, CssCustomPropertyContribution, CssExpansion,

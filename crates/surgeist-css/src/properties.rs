@@ -357,7 +357,7 @@ macro_rules! property_schema {
             Resize, "resize", [], "official.property.resize", crate::CssResize, CssResizePropertyValue, resize, parse_resize, { parse_resize($input)? };
             Contain, "contain", [], "official.property.contain", crate::CssContain, CssContainPropertyValue, containment, parse_contain, { parse_contain($input)? };
             Outline, "outline", [], "baseline.property.outline", crate::CssOutline, CssOutlinePropertyValue, value, parse_outline, { parse_outline($input, $numeric)? };
-            OutlineColor, "outline-color", [], "baseline.property.outline-color", crate::CssColor, CssOutlineColorPropertyValue, value, parse_color, { parse_color($input, $numeric)? };
+            OutlineColor, "outline-color", [], "baseline.property.outline-color", crate::CssOutlineColor, CssOutlineColorPropertyValue, value, parse_outline_color, { parse_outline_color($input, $numeric)? };
             OutlineOffset, "outline-offset", [], "official.property.outline-offset", crate::CssSpecifiedLength, CssOutlineOffsetPropertyValue, offset, parse_outline_offset, { parse_outline_offset($input, $numeric)? };
             OutlineStyle, "outline-style", [], "baseline.property.outline-style", crate::CssOutlineStyle, CssOutlineStylePropertyValue, value, parse_outline_style, { parse_outline_style($input)? };
             OutlineWidth, "outline-width", [], "baseline.property.outline-width", crate::CssOutlineWidth, CssOutlineWidthPropertyValue, value, parse_outline_width, { parse_outline_width($input, $numeric)? };

@@ -4,7 +4,6 @@ use super::values::{
 };
 use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
-use super::border_style::parse_border_style;
 use super::position::{
     next_starts_background_position, parse_background_position_prefix, parse_physical_position,
 };
@@ -230,7 +229,7 @@ fn next_starts_background_repeat<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
     starts
 }
 
-fn parse_background_repeat_prefix<'i, 't>(
+pub(super) fn parse_background_repeat_prefix<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssBackgroundRepeat, ParseError<'i, Error>> {
     let first = input.expect_ident_cloned().map_err(basic)?;
@@ -250,7 +249,7 @@ fn parse_background_repeat_prefix<'i, 't>(
     }
 }
 
-fn parse_background_size_prefix<'i, 't>(
+pub(super) fn parse_background_size_prefix<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBackgroundSize, ParseError<'i, Error>> {
@@ -1360,21 +1359,117 @@ pub(super) fn parse_background_attachment<'i, 't>(
     }
 }
 
+use crate::cursor_values::{
+    CssCursor, CssCursorImage, CssCursorImageSource, CssCursorImages, CssCursorUrlSet,
+    CssCursorUrlSetDescriptor, CssCursorUrlSetOption, CssCursorUrlSetReference,
+};
+
 pub(super) fn parse_cursor<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssCursor, ParseError<'i, Error>> {
-    let mut urls = Vec::new();
-    while let Ok(url) = input.try_parse(|input| parse_url(input, numeric)) {
-        urls.push(url);
+    let mut images = Vec::new();
+    while let Ok(source) = input.try_parse(|input| parse_cursor_image_source(input, numeric)) {
+        let hotspot = if let Ok(x) = input.try_parse(|input| {
+            super::values::parse_specified_number(input, numeric, "cursor hotspot")
+        }) {
+            let y = super::values::parse_specified_number(input, numeric, "cursor hotspot")?;
+            Some([x, y])
+        } else {
+            None
+        };
+        images.push(CssCursorImage::new(source, hotspot));
         input.expect_comma().map_err(basic)?;
     }
     let fallback = parse_cursor_keyword(input)?;
-    if urls.is_empty() {
+    if images.is_empty() {
         Ok(CssCursor::Keyword(fallback))
     } else {
-        Ok(CssCursor::urls(urls, fallback))
+        let images = CssCursorImages::try_new(images, fallback)
+            .expect("at least one cursor image was parsed");
+        Ok(CssCursor::Images(images))
     }
+}
+
+fn parse_cursor_image_source<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Result<CssCursorImageSource, ParseError<'i, Error>> {
+    if let Ok(url) = input.try_parse(|input| parse_url(input, numeric)) {
+        return Ok(CssCursorImageSource::Url(url));
+    }
+    let name = input.expect_function().map_err(basic)?.clone();
+    if !name.eq_ignore_ascii_case("image-set") && !name.eq_ignore_ascii_case("-webkit-image-set") {
+        return Err(unsupported_value(
+            input,
+            None,
+            "cursor requires a URL or URL image set",
+        ));
+    }
+    let options = input.parse_nested_block(|input| {
+        let mut options = Vec::new();
+        loop {
+            let reference = if let Ok(url) = input.try_parse(|input| parse_url(input, numeric)) {
+                CssCursorUrlSetReference::Url(url)
+            } else {
+                let string = input.expect_string_cloned().map_err(basic)?;
+                let string = CssContentString::try_new(string.to_string())
+                    .ok_or_else(|| unsupported_value(input, None, "invalid cursor URL string"))?;
+                CssCursorUrlSetReference::String(string)
+            };
+            let mut descriptors = Vec::new();
+            // Only two descriptor kinds exist. A third token is rejected by the
+            // required comma/end boundary; duplicate kinds cross the same checked constructor.
+            for _ in 0..2 {
+                if let Ok(value) = input.try_parse(|input| {
+                    super::values::parse_ordinary_resolution(
+                        input,
+                        numeric,
+                        "cursor image resolution",
+                    )
+                }) {
+                    descriptors.push(CssCursorUrlSetDescriptor::Resolution(value));
+                } else if let Ok(value) = input.try_parse(parse_cursor_image_type) {
+                    descriptors.push(CssCursorUrlSetDescriptor::Type(value));
+                } else {
+                    break;
+                }
+            }
+            let option =
+                CssCursorUrlSetOption::try_new(reference, descriptors).ok_or_else(|| {
+                    unsupported_value(input, None, "duplicate cursor image-set descriptor")
+                })?;
+            options.push(option);
+            if input.is_exhausted() {
+                break;
+            }
+            input.expect_comma().map_err(basic)?;
+        }
+        Ok(options)
+    })?;
+    let set =
+        CssCursorUrlSet::try_new(options).expect("at least one cursor image-set option was parsed");
+    Ok(CssCursorImageSource::UrlSet(set))
+}
+
+fn parse_cursor_image_type<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> Result<CssContentString, ParseError<'i, Error>> {
+    let name = input.expect_function().map_err(basic)?.clone();
+    if !name.eq_ignore_ascii_case("type") {
+        return Err(unsupported_value(
+            input,
+            None,
+            "cursor image-set type requires type()",
+        ));
+    }
+    input.parse_nested_block(|input| {
+        let value = input.expect_string_cloned().map_err(basic)?;
+        let value = CssContentString::try_new(value.to_string())
+            .ok_or_else(|| unsupported_value(input, None, "invalid cursor image type string"))?;
+        input.expect_exhausted().map_err(basic)?;
+        Ok(value)
+    })
 }
 
 pub(super) fn parse_cursor_keyword<'i, 't>(
@@ -1466,12 +1561,32 @@ pub(super) fn parse_outline<'i, 't>(
     let mut width = None;
     let mut style = None;
     let mut color = None;
+    let mut autos = 0;
     while !input.is_exhausted() {
-        if width.is_none()
-            && let Ok(parsed_width) = input.try_parse(|input| parse_outline_width(input, numeric))
+        let location = input.current_source_location();
+        if input
+            .try_parse(|input| input.expect_ident_matching("auto"))
+            .is_ok()
         {
-            width = Some(parsed_width);
+            autos += 1;
+            if autos > 2 {
+                return Err(crate::error::unsupported_value_at(
+                    location,
+                    None,
+                    "outline has too many auto components",
+                ));
+            }
             continue;
+        }
+        if width.is_none() {
+            match input.try_parse(|input| parse_outline_width(input, numeric)) {
+                Ok(parsed_width) => {
+                    width = Some(parsed_width);
+                    continue;
+                }
+                Err(error) if crate::error::is_resource_parse_error(&error) => return Err(error),
+                Err(_) => {}
+            }
         }
         if style.is_none()
             && let Ok(parsed_style) = input.try_parse(parse_outline_style)
@@ -1479,17 +1594,45 @@ pub(super) fn parse_outline<'i, 't>(
             style = Some(parsed_style);
             continue;
         }
-        if color.is_none()
-            && let Ok(parsed_color) = input.try_parse(|input| parse_color(input, numeric))
-        {
-            color = Some(parsed_color);
-            continue;
+        if color.is_none() {
+            match input.try_parse(|input| parse_outline_color(input, numeric)) {
+                Ok(parsed_color) => {
+                    color = Some(parsed_color);
+                    continue;
+                }
+                Err(error) if crate::error::is_resource_parse_error(&error) => return Err(error),
+                Err(_) => {}
+            }
         }
         return Err(unsupported_value(
             input,
             None,
             "unsupported outline component",
         ));
+    }
+    // Resolve auto only after the unordered explicit slots are known. One lone
+    // auto (with optional width) sets both semantic slots under selected UI4 §3.1.
+    match autos {
+        0 => {}
+        1 if style.is_none() || color.is_none() => {
+            if style.is_none() {
+                style = Some(CssOutlineStyle::Auto);
+            }
+            if color.is_none() {
+                color = Some(CssOutlineColor::Auto);
+            }
+        }
+        2 if style.is_none() && color.is_none() => {
+            style = Some(CssOutlineStyle::Auto);
+            color = Some(CssOutlineColor::Auto);
+        }
+        _ => {
+            return Err(unsupported_value(
+                input,
+                None,
+                "outline auto duplicates an explicit component",
+            ));
+        }
     }
     if width.is_none() && style.is_none() && color.is_none() {
         None
@@ -1502,14 +1645,34 @@ pub(super) fn parse_outline<'i, 't>(
 pub(super) fn parse_outline_style<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssOutlineStyle, ParseError<'i, Error>> {
+    let location = input.current_source_location();
+    let ident = input.expect_ident_cloned().map_err(basic)?;
+    match_ignore_ascii_case! { &ident,
+        "auto" => Ok(CssOutlineStyle::Auto),
+        "none" => Ok(CssOutlineStyle::None),
+        "dotted" => Ok(CssOutlineStyle::Dotted),
+        "dashed" => Ok(CssOutlineStyle::Dashed),
+        "solid" => Ok(CssOutlineStyle::Solid),
+        "double" => Ok(CssOutlineStyle::Double),
+        "groove" => Ok(CssOutlineStyle::Groove),
+        "ridge" => Ok(CssOutlineStyle::Ridge),
+        "inset" => Ok(CssOutlineStyle::Inset),
+        "outset" => Ok(CssOutlineStyle::Outset),
+        _ => Err(crate::error::unsupported_value_at(location, None, unsupported_keyword_reason("outline-style", ident.as_ref()))),
+    }
+}
+
+pub(super) fn parse_outline_color<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> std::result::Result<CssOutlineColor, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("auto"))
         .is_ok()
     {
-        Ok(CssOutlineStyle::Auto)
-    } else {
-        parse_border_style(input).map(CssOutlineStyle::Border)
+        return Ok(CssOutlineColor::Auto);
     }
+    parse_color(input, numeric).map(|color| CssOutlineColor::Color(Box::new(color)))
 }
 
 pub(super) fn parse_outline_width<'i, 't>(

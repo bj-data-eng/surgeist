@@ -1521,11 +1521,15 @@ fn every_aggregate_color_consumer_retains_typed_color_mix() {
     else {
         panic!("expected outline wrapper");
     };
-    assert_srgb_mix_with_lab_and_blue(outline.value().color().expect("outline color"));
-    assert_eq!(
-        outline.value().style(),
-        Some(CssOutlineStyle::Border(CssBorderStyle::Solid))
+    assert_srgb_mix_with_lab_and_blue(
+        outline
+            .value()
+            .color()
+            .expect("outline color")
+            .color()
+            .expect("explicit color"),
     );
+    assert_eq!(outline.value().style(), Some(CssOutlineStyle::Solid));
     assert!(outline.value().width().is_none());
 
     let CssKnownPropertyValueRef::BoxShadow(shadow) = report.syntax()[7]

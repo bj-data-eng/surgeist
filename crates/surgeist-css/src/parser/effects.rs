@@ -4,9 +4,11 @@ use super::values::{
 };
 use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
-use super::background::{parse_background_repeat, parse_background_size, parse_image_value};
+use super::background::{
+    parse_background_repeat_prefix, parse_background_size_prefix, parse_image_value,
+};
 use super::box_model::parse_drop_shadow;
-use super::position::{parse_full_position, parse_physical_position};
+use super::position::{parse_full_position, parse_physical_position_prefix};
 use super::url::parse_url;
 use super::values::{
     AngleParserContext, next_is_comma, next_is_delim, next_is_ident, parse_angle_or_zero,
@@ -1141,20 +1143,23 @@ pub(super) fn parse_mask_layer<'i, 't>(
             }
         }
         if repeat.is_none()
-            && let Ok(parsed_repeat) = input.try_parse(parse_background_repeat)
+            && let Ok(parsed_repeat) = input.try_parse(parse_background_repeat_prefix)
         {
             repeat = Some(parsed_repeat);
             continue;
         }
-        if position.is_none()
-            && let Ok(parsed_position) =
-                input.try_parse(|input| parse_physical_position(input, numeric))
-        {
-            position = Some(parsed_position);
-            if input.try_parse(|input| input.expect_delim('/')).is_ok() {
-                size = Some(parse_background_size(input, numeric)?);
+        if position.is_none() {
+            match input.try_parse(|input| parse_physical_position_prefix(input, numeric)) {
+                Ok(parsed_position) => {
+                    position = Some(parsed_position);
+                    if input.try_parse(|input| input.expect_delim('/')).is_ok() {
+                        size = Some(parse_background_size_prefix(input, numeric)?);
+                    }
+                    continue;
+                }
+                Err(error) if crate::error::is_resource_parse_error(&error) => return Err(error),
+                Err(_) => {}
             }
-            continue;
         }
         return Err(unsupported_value(input, None, "unsupported mask component"));
     }

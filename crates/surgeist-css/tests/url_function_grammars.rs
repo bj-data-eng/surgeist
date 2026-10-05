@@ -8,11 +8,11 @@
 mod font_face_support;
 
 use surgeist_css::{
-    CssClipPath, CssContentValue, CssContentValueItem, CssCursor, CssCursorKeyword, CssFilter,
-    CssFilterFunction, CssFontFaceSource, CssFontFormatHint, CssFontTechHint, CssImageValue,
-    CssImportTarget, CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssRecoveryAction,
-    CssRule, CssUrlModifier, parse_sheet, parse_style_attribute, validate_sheet,
-    validate_style_attribute,
+    CssClipPath, CssContentValue, CssContentValueItem, CssCursor, CssCursorImageSource,
+    CssCursorKeyword, CssFilter, CssFilterFunction, CssFontFaceSource, CssFontFormatHint,
+    CssFontTechHint, CssImageValue, CssImportTarget, CssImportance, CssKnownProperty,
+    CssKnownPropertyValueRef, CssRecoveryAction, CssRule, CssUrlModifier, parse_sheet,
+    parse_style_attribute, validate_sheet, validate_style_attribute,
 };
 
 fn assert_url_payload(value: CssKnownPropertyValueRef<'_>, expected: &str) {
@@ -35,9 +35,9 @@ fn assert_url_payload(value: CssKnownPropertyValueRef<'_>, expected: &str) {
         )),
         CssKnownPropertyValueRef::Cursor(value) => assert!(matches!(
             value.value(),
-            CssCursor::Urls(urls)
-                if matches!(urls.urls().urls(), [url] if url.as_str() == expected)
-                    && urls.fallback() == CssCursorKeyword::Auto
+            CssCursor::Images(images)
+                if matches!(images.images(), [image] if matches!(image.source(), CssCursorImageSource::Url(url) if url.as_str() == expected) && image.hotspot().is_none())
+                    && images.fallback() == CssCursorKeyword::Auto
         )),
         CssKnownPropertyValueRef::Content(value) => assert!(matches!(
             value.value(),

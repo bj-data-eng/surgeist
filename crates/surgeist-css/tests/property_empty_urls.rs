@@ -5,9 +5,10 @@
 
 use surgeist_css::{
     CssComponentValue, CssComponentValues, CssContentValue, CssContentValueItem, CssCursor,
-    CssCursorKeyword, CssImageValue, CssImportance, CssKnownProperty, CssKnownPropertyValueRef,
-    CssMaskLayer, CssMaskList, CssPropertyNameRef, CssRecoveryAction, CssUrl, CssUrlModifier,
-    CssValueOrigin, parse_property_value, parse_style_attribute, validate_style_attribute,
+    CssCursorImageSource, CssCursorKeyword, CssImageValue, CssImportance, CssKnownProperty,
+    CssKnownPropertyValueRef, CssMaskLayer, CssMaskList, CssPropertyNameRef, CssRecoveryAction,
+    CssUrl, CssUrlModifier, CssValueOrigin, parse_property_value, parse_style_attribute,
+    validate_style_attribute,
 };
 
 fn assert_url_payload(name: &str, value: CssKnownPropertyValueRef<'_>, expected: &str) {
@@ -35,9 +36,9 @@ fn assert_url_payload(name: &str, value: CssKnownPropertyValueRef<'_>, expected:
         )),
         CssKnownPropertyValueRef::Cursor(value) => assert!(matches!(
             value.value(),
-            CssCursor::Urls(urls)
-                if matches!(urls.urls().urls(), [url] if url.as_str() == expected)
-                    && urls.fallback() == CssCursorKeyword::Auto
+            CssCursor::Images(images)
+                if matches!(images.images(), [image] if matches!(image.source(), CssCursorImageSource::Url(url) if url.as_str() == expected) && image.hotspot().is_none())
+                    && images.fallback() == CssCursorKeyword::Auto
         )),
         CssKnownPropertyValueRef::Background(value) => assert!(matches!(
             value.background().layers(),

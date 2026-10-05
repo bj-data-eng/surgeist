@@ -782,6 +782,7 @@ fn authored_css_cases_match_selected_public_report_observables() {
     let mut migrated_overflow_auto_cases = 0;
     let mut migrated_alignment_cases = 0;
     let mut migrated_feature_tag_cases = 0;
+    let mut migrated_thickness_cases = 0;
     for row in rows {
         // Fixture feature labels record the original capture profile. Validation is
         // now unconditional, so every historical profile runs through the same API.
@@ -807,6 +808,11 @@ fn authored_css_cases_match_selected_public_report_observables() {
         }
         if assert_archived_feature_tag_rejection(&row) {
             migrated_feature_tag_cases += 1;
+            assert_strict_parity(&row);
+            continue;
+        }
+        if assert_archived_signed_thickness_acceptance(&row) {
+            migrated_thickness_cases += 1;
             assert_strict_parity(&row);
             continue;
         }
@@ -854,6 +860,10 @@ fn authored_css_cases_match_selected_public_report_observables() {
         "all three archived unknown-container rejections have explicit current witnesses"
     );
     assert_eq!(migrated_feature_tag_cases, 1);
+    assert_eq!(
+        migrated_thickness_cases, 1,
+        "the archived negative thickness rejection has an exact current acceptance witness"
+    );
     assert_eq!(
         migrated_tolerance_cases, 4,
         "all four archived old-name cases require current rejection witnesses"
@@ -926,6 +936,63 @@ fn assert_content3_contents_acceptance(row: &Row) -> bool {
         declaration.value_components().items()[0].origin(),
         surgeist_css::CssValueOrigin::Parsed(_)
     ));
+    true
+}
+
+// Selected Text Decoration 4 §2.4 admits unrestricted <length>/<percentage>
+// authored thicknesses; the actual device-pixel floor belongs downstream.
+// Preserve the archived rejection and inspect the exact signed specified value.
+// https://www.w3.org/TR/2022/WD-css-text-decor-4-20220504/#text-decoration-thickness-property
+fn assert_archived_signed_thickness_acceptance(row: &Row) -> bool {
+    if row.case_id != "catalog.property.baseline.property.text-decoration-thickness.boundary" {
+        return false;
+    }
+    assert_eq!(
+        row.fields(),
+        [
+            row.case_id.as_str(),
+            "style",
+            "both",
+            "text-decoration-thickness: -1px",
+            "false",
+            "-",
+            "-",
+            "-",
+            "InvalidPropertyValue/InvalidPropertyValue:baseline.property.text-decoration-thickness:a value accepted by the property's grammar:Dimension:-1px/DropDeclaration@27:0:27>0:0:0-31:0:31:31",
+        ]
+    );
+    let report = parse_style_attribute(&row.input);
+    assert!(report.is_clean(), "{:?}", report.diagnostics());
+    assert!(report.diagnostics().is_empty());
+    let [declaration] = report.syntax().as_slice() else {
+        panic!("one retained signed thickness declaration")
+    };
+    assert_eq!(declaration.importance(), CssImportance::Normal);
+    let known = declaration.known().expect("known thickness property");
+    assert_eq!(
+        known.property(),
+        surgeist_css::CssKnownProperty::TextDecorationThickness
+    );
+    let Some(surgeist_css::CssKnownPropertyValueRef::TextDecorationThickness(value)) =
+        known.property_value()
+    else {
+        panic!("typed signed thickness")
+    };
+    let surgeist_css::CssTextDecorationThickness::Length(length) = value.value() else {
+        panic!("signed length branch")
+    };
+    assert_captured_px(length.literal_component(), "-1");
+    assert_eq!(value.as_css(), "-1px");
+    let name = declaration.parsed_name().expect("original name provenance");
+    assert_eq!(name.source().as_str(), row.input);
+    assert_eq!(name.span().start().byte_offset().value(), 0);
+    assert_eq!(name.span().end().byte_offset().value(), 25);
+    let parsed = declaration
+        .parsed_value()
+        .expect("original value provenance");
+    assert_eq!(parsed.source().as_str(), row.input);
+    assert_eq!(parsed.span().start().byte_offset().value(), 26);
+    assert_eq!(parsed.span().end().byte_offset().value(), 31);
     true
 }
 
@@ -2830,8 +2897,8 @@ fn assert_known_property_value(
     frozen: &mut FrozenDeclarationCursor<'_>,
 ) {
     use surgeist_css::{
-        CssBorderStyle as BorderStyle, CssBoxShadow, CssFilter, CssFilterAmount, CssFilterFunction,
-        CssOutlineStyle, CssOutlineWidth, CssTextDecorationLineComponent, CssTextDecorationStyle,
+        CssBoxShadow, CssFilter, CssFilterAmount, CssFilterFunction, CssOutlineStyle,
+        CssOutlineWidth, CssTextDecorationLineComponent, CssTextDecorationStyle,
         CssTextDecorationThickness,
     };
     // Captured scalar inputs now use the sole checked lexical owners. Keep the
@@ -3095,7 +3162,10 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::OutlineColor,
             surgeist_css::CssKnownPropertyValueRef::OutlineColor(value),
         ) => {
-            assert_captured_color(value.value(), "black");
+            assert_captured_color(
+                value.value().color().expect("explicit outline color"),
+                "black",
+            );
             Some(value.as_css())
         }
         (
@@ -3162,11 +3232,15 @@ fn assert_known_property_value(
         ) => {
             let outline = value.value();
             assert!(matches!(outline.width(), Some(CssOutlineWidth::Thick)));
-            assert_eq!(
-                outline.style(),
-                Some(CssOutlineStyle::Border(BorderStyle::Dotted))
+            assert_eq!(outline.style(), Some(CssOutlineStyle::Dotted));
+            assert_captured_color(
+                outline
+                    .color()
+                    .expect("outline color")
+                    .color()
+                    .expect("explicit color"),
+                "white",
             );
-            assert_captured_color(outline.color().expect("outline color"), "white");
             Some(value.as_css())
         }
         (

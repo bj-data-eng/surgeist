@@ -640,6 +640,47 @@ specified_scalar_parser!(
     Percentage
 );
 
+/// Ordinary resolution reuses the exact nonnegative literal and symbolic Resolution owners.
+pub(super) fn parse_ordinary_resolution<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &NumericInputContext<'_>,
+    context: &str,
+) -> Result<crate::CssResolutionValue, ParseError<'i, Error>> {
+    input.skip_whitespace();
+    let start = input.state();
+    let location = input.current_source_location();
+    let root_offset = input.position().byte_index();
+    let value = match input.next().map_err(basic)? {
+        Token::Dimension { .. } => {
+            input.reset(&start);
+            let component = numeric.collect(input).map_err(|error| {
+                unsupported_value_at(
+                    numeric.error_location(&error, location, root_offset),
+                    None,
+                    format!("invalid {context}"),
+                )
+            })?;
+            crate::CssResolutionLiteral::try_from_component(component)
+                .map(crate::CssResolutionValue::from_literal)
+        }
+        Token::Function(name) if is_math_function(name) => {
+            let expression =
+                parse_numeric_function(input, &start, numeric, CalculationRoot::Resolution)?;
+            crate::CssResolutionValue::try_from_calculation(
+                crate::CssResolutionCalculation::from_expression(expression),
+            )
+        }
+        token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
+    };
+    value.map_err(|error| {
+        unsupported_value_at(
+            numeric.error_location(&error, location, root_offset),
+            None,
+            format!("invalid {context}"),
+        )
+    })
+}
+
 pub(super) fn parse_specified_number_literal<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,

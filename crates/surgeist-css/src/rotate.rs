@@ -348,9 +348,24 @@ impl PreparedAxis<'_> {
 
 enum PreparedAngle<'a> {
     Literal(&'a CssAngleLiteral),
+    Zero,
     Calculation(DeferredNumericProjection),
 }
 impl<'a> PreparedAngle<'a> {
+    fn from_transform_angle(
+        angle: &'a crate::CssAngleOrZero,
+        context: &mut SpecifiedSerializationContext,
+    ) -> SerializationResult<Self> {
+        match angle {
+            crate::CssAngleOrZero::Angle(value) => Self::new(value, context),
+            crate::CssAngleOrZero::Zero(_) => {
+                context.charge_input(1)?;
+                context.charge_projection(1)?;
+                Ok(Self::Zero)
+            }
+        }
+    }
+
     fn new(
         angle: &'a CssAngleValue,
         context: &mut SpecifiedSerializationContext,
@@ -371,6 +386,7 @@ impl<'a> PreparedAngle<'a> {
     }
     fn is_identity(&self) -> bool {
         match self {
+            Self::Zero => true,
             Self::Literal(literal) => {
                 let decimal = LexicalDecimal::new(literal.numeric().representation());
                 match literal.unit() {
@@ -388,6 +404,7 @@ impl<'a> PreparedAngle<'a> {
     }
     fn append(self, writer: &mut SpecifiedRuleWriter, negate: bool) -> SerializationResult<()> {
         match self {
+            Self::Zero => writer.append("0"),
             Self::Literal(literal) => {
                 if negate {
                     writer.context.charge_projection(1)?;
@@ -415,6 +432,48 @@ impl<'a> PreparedAngle<'a> {
                 writer.append(suffix)
             }
             Self::Calculation(value) => value.append(&mut writer.context, &mut writer.css, negate),
+        }
+    }
+}
+
+impl crate::CssTransformRotate3d {
+    /// The rotation owner prepares all operands once and emits mandatory function
+    /// arguments. Parallel/identity reduction shares the individual rotation's
+    /// policy; general vectors retain its documented six-place capability guard.
+    pub(crate) fn append_rotation_arguments_to_rule_writer(
+        &self,
+        writer: &mut SpecifiedRuleWriter,
+    ) -> SerializationResult<()> {
+        let axis = PreparedAxis::Vector([
+            PreparedNumber::new(self.x(), &mut writer.context)?,
+            PreparedNumber::new(self.y(), &mut writer.context)?,
+            PreparedNumber::new(self.z(), &mut writer.context)?,
+        ]);
+        let angle = PreparedAngle::from_transform_angle(self.angle(), &mut writer.context)?;
+        let axis = axis.reduce();
+        if matches!(axis, PreparedAxis::Zero) || angle.is_identity() {
+            // Three replacement axis components and one identity angle.
+            writer.context.charge_projection(4)?;
+            return writer.append("0, 0, 1, 0deg");
+        }
+        match axis {
+            PreparedAxis::Zero => unreachable!("identity emitted above"),
+            PreparedAxis::Parallel { keyword, negate } => {
+                writer.context.charge_projection(3)?;
+                writer.append(match keyword {
+                    Some("x") => "1, 0, 0, ",
+                    Some("y") => "0, 1, 0, ",
+                    _ => "0, 0, 1, ",
+                })?;
+                angle.append(writer, negate)
+            }
+            PreparedAxis::Vector(vector) => {
+                for number in vector {
+                    number.append(writer)?;
+                    writer.append(", ")?;
+                }
+                angle.append(writer, false)
+            }
         }
     }
 }

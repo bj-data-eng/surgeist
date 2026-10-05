@@ -25,16 +25,8 @@ pub(super) fn parse_background_position_prefix<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBackgroundPosition, ParseError<'i, Error>> {
-    let mut atoms = Vec::new();
-    let mut states = Vec::new();
-    while atoms.len() < 4 && next_starts_background_position(input) {
-        states.push(input.state());
-        atoms.push(parse_generic_position_atom(
-            input,
-            numeric,
-            PositionGrammar::Physical,
-        )?);
-    }
+    let (atoms, states) =
+        collect_position_atoms(input, numeric, PositionGrammar::Physical, &[], true)?;
     build_background_position(&atoms).ok_or_else(|| {
         invalid_generic_position_atom(input, &states[invalid_background_atom_index(&atoms)])
     })
@@ -178,6 +170,19 @@ pub(super) fn parse_physical_position<'i, 't>(
         .ok_or_else(|| invalid_generic_position_atom(input, &states[invalid_atom_index(&atoms)]))
 }
 
+/// Parses physical atoms while leaving the next shorthand component unconsumed.
+/// The physical builder retains its one-, two- and four-component grammar;
+/// Background's distinct three-component model is not used for Mask layers.
+pub(super) fn parse_physical_position_prefix<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> std::result::Result<CssPhysicalPosition, ParseError<'i, Error>> {
+    let (atoms, states) =
+        collect_position_atoms(input, numeric, PositionGrammar::Physical, &[], true)?;
+    build_physical_position(&atoms)
+        .ok_or_else(|| invalid_generic_position_atom(input, &states[invalid_atom_index(&atoms)]))
+}
+
 fn parse_position_atoms<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
@@ -191,6 +196,16 @@ fn parse_position_atoms_bounded<'i, 't>(
     grammar: PositionGrammar,
     boundaries: &[&str],
 ) -> std::result::Result<(Vec<GenericPositionAtom>, Vec<ParserState>), ParseError<'i, Error>> {
+    collect_position_atoms(input, numeric, grammar, boundaries, false)
+}
+
+fn collect_position_atoms<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+    grammar: PositionGrammar,
+    boundaries: &[&str],
+    prefix_only: bool,
+) -> std::result::Result<(Vec<GenericPositionAtom>, Vec<ParserState>), ParseError<'i, Error>> {
     let mut atoms = Vec::new();
     let mut states = Vec::new();
     while !input.is_exhausted()
@@ -199,6 +214,7 @@ fn parse_position_atoms_bounded<'i, 't>(
         && !boundaries
             .iter()
             .any(|word| super::values::next_is_ident(input, word))
+        && (!prefix_only || (atoms.len() < 4 && next_starts_background_position(input)))
     {
         states.push(input.state());
         atoms.push(parse_generic_position_atom(input, numeric, grammar)?);

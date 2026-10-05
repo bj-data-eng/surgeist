@@ -345,7 +345,10 @@ fn parses_css_system_colors_symbolically() {
     );
 
     let color = semantic_value!(".panel { outline-color: HighlightText; }", OutlineColor);
-    assert_eq!(color.system(), Some(CssSystemColor::HighlightText));
+    assert_eq!(
+        color.color().expect("explicit outline color").system(),
+        Some(CssSystemColor::HighlightText)
+    );
 }
 
 #[test]
@@ -8966,10 +8969,10 @@ fn parses_interaction_and_outline_properties_as_authored_syntax() {
         declaration_value!(".panel { outline: thick dotted white; }", Outline),
         CssOutline::new(
             Some(CssOutlineWidth::Thick),
-            Some(CssOutlineStyle::Border(CssBorderStyle::Dotted)),
-            Some(CssColor::from_named(
+            Some(CssOutlineStyle::Dotted),
+            Some(CssOutlineColor::Color(Box::new(CssColor::from_named(
                 CssNamedColor::try_new("white").unwrap()
-            )),
+            )))),
         )
     );
     assert_eq!(
@@ -9217,8 +9220,11 @@ fn parses_animation_properties_and_preserves_comma_lists() {
 #[test]
 fn background_effect_and_animation_constructors_reject_invalid_states() {
     assert_eq!(CssImageValueList::try_new(Vec::new()), None);
-    assert_eq!(CssCursorUrlList::try_new(Vec::new()), None);
-    assert!(CssCursor::try_urls(Vec::new(), CssCursorKeyword::Pointer).is_none());
+    assert_eq!(
+        CssCursorImages::try_new(Vec::new(), CssCursorKeyword::Pointer),
+        None
+    );
+    assert!(CssCursor::try_images(Vec::new(), CssCursorKeyword::Pointer).is_none());
     let horizontal = signed_length_percentage("1px");
     assert!(
         CssPhysicalPosition::try_new(
