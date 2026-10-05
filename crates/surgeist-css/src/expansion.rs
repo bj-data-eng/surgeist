@@ -45,6 +45,33 @@ use crate::{
     CssFontWidth, CssFontWidthKeyword, CssLineHeight, CssSpecifiedLength,
 };
 
+// Text4's special spellings project source-defined constituents. Components
+// retain omissions so the existing terminal owner supplies intrinsic initials.
+pub(crate) fn white_space_collapse(value: &CssWhiteSpace) -> Option<CssWhiteSpaceCollapse> {
+    match value.keyword() {
+        Some(CssWhiteSpaceKeyword::Normal) => Some(CssWhiteSpaceCollapse::Collapse),
+        Some(CssWhiteSpaceKeyword::Pre | CssWhiteSpaceKeyword::PreWrap) => {
+            Some(CssWhiteSpaceCollapse::Preserve)
+        }
+        Some(CssWhiteSpaceKeyword::PreLine) => Some(CssWhiteSpaceCollapse::PreserveBreaks),
+        None => value.collapse(),
+    }
+}
+pub(crate) fn white_space_mode(value: &CssWhiteSpace) -> Option<CssTextWrapMode> {
+    match value.keyword() {
+        Some(CssWhiteSpaceKeyword::Pre) => Some(CssTextWrapMode::NoWrap),
+        Some(_) => Some(CssTextWrapMode::Wrap),
+        None => value.mode(),
+    }
+}
+pub(crate) fn white_space_trim(value: &CssWhiteSpace) -> Option<CssWhiteSpaceTrim> {
+    if value.keyword().is_some() {
+        Some(CssWhiteSpaceTrim::none())
+    } else {
+        value.trim()
+    }
+}
+
 // Grid alternatives project typed children into the existing schema. Omitted
 // values request that terminal's central initial; no CSS is serialized/reparsed.
 pub(crate) fn grid_template_rows(value: &CssGridTemplate) -> Option<CssGridTrackList> {

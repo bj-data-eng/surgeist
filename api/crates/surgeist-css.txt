@@ -2344,6 +2344,8 @@ pub surgeist_css::CssKnownProperty::TextOrientation
 pub surgeist_css::CssKnownProperty::TextOverflow
 pub surgeist_css::CssKnownProperty::TextTransform
 pub surgeist_css::CssKnownProperty::TextWrap
+pub surgeist_css::CssKnownProperty::TextWrapMode
+pub surgeist_css::CssKnownProperty::TextWrapStyle
 pub surgeist_css::CssKnownProperty::Top
 pub surgeist_css::CssKnownProperty::Transform
 pub surgeist_css::CssKnownProperty::TransformBox
@@ -2367,6 +2369,8 @@ pub surgeist_css::CssKnownProperty::VoiceRate
 pub surgeist_css::CssKnownProperty::VoiceStress
 pub surgeist_css::CssKnownProperty::VoiceVolume
 pub surgeist_css::CssKnownProperty::WhiteSpace
+pub surgeist_css::CssKnownProperty::WhiteSpaceCollapse
+pub surgeist_css::CssKnownProperty::WhiteSpaceTrim
 pub surgeist_css::CssKnownProperty::Widows
 pub surgeist_css::CssKnownProperty::Width
 pub surgeist_css::CssKnownProperty::WillChange
@@ -2720,6 +2724,8 @@ pub surgeist_css::CssKnownPropertyValueRef::TextOrientation(&'a surgeist_css::Cs
 pub surgeist_css::CssKnownPropertyValueRef::TextOverflow(&'a surgeist_css::CssTextOverflowPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextTransform(&'a surgeist_css::CssTextTransformPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextWrap(&'a surgeist_css::CssTextWrapPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::TextWrapMode(&'a surgeist_css::CssTextWrapModePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::TextWrapStyle(&'a surgeist_css::CssTextWrapStylePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Top(&'a surgeist_css::CssTopPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Transform(&'a surgeist_css::CssTransformPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TransformBox(&'a surgeist_css::CssTransformBoxPropertyValue)
@@ -2743,6 +2749,8 @@ pub surgeist_css::CssKnownPropertyValueRef::VoiceRate(&'a surgeist_css::CssVoice
 pub surgeist_css::CssKnownPropertyValueRef::VoiceStress(&'a surgeist_css::CssVoiceStressPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::VoiceVolume(&'a surgeist_css::CssVoiceVolumePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::WhiteSpace(&'a surgeist_css::CssWhiteSpacePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::WhiteSpaceCollapse(&'a surgeist_css::CssWhiteSpaceCollapsePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::WhiteSpaceTrim(&'a surgeist_css::CssWhiteSpaceTrimPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Widows(&'a surgeist_css::CssWidowsPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Width(&'a surgeist_css::CssWidthPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::WillChange(&'a surgeist_css::CssWillChangePropertyValue)
@@ -3094,6 +3102,8 @@ pub surgeist_css::CssLonghandValueRef::TextAlignLast(&'a surgeist_css::CssTextAl
 pub surgeist_css::CssLonghandValueRef::TextCombineUpright(&'a surgeist_css::CssTextCombineUpright)
 pub surgeist_css::CssLonghandValueRef::TextOrientation(&'a surgeist_css::CssTextOrientation)
 pub surgeist_css::CssLonghandValueRef::TextOverflow(&'a surgeist_css::CssTextOverflow)
+pub surgeist_css::CssLonghandValueRef::TextWrapMode(&'a surgeist_css::CssTextWrapMode)
+pub surgeist_css::CssLonghandValueRef::TextWrapStyle(&'a surgeist_css::CssTextWrapStyle)
 pub surgeist_css::CssLonghandValueRef::Top(&'a surgeist_css::CssInsetValue)
 pub surgeist_css::CssLonghandValueRef::TransitionDelay(&'a surgeist_css::CssDelayList)
 pub surgeist_css::CssLonghandValueRef::TransitionDuration(&'a surgeist_css::CssDurationList)
@@ -3109,9 +3119,12 @@ pub surgeist_css::CssLonghandValueRef::VoiceRange(&'a surgeist_css::CssVoicePitc
 pub surgeist_css::CssLonghandValueRef::VoiceRate(&'a surgeist_css::CssVoiceRate)
 pub surgeist_css::CssLonghandValueRef::VoiceStress(&'a surgeist_css::CssVoiceStress)
 pub surgeist_css::CssLonghandValueRef::VoiceVolume(&'a surgeist_css::CssVoiceVolume)
+pub surgeist_css::CssLonghandValueRef::WhiteSpaceCollapse(&'a surgeist_css::CssWhiteSpaceCollapse)
+pub surgeist_css::CssLonghandValueRef::WhiteSpaceTrim(&'a surgeist_css::CssWhiteSpaceTrim)
 pub surgeist_css::CssLonghandValueRef::Widows(&'a surgeist_css::CssPageLineMinimum)
 pub surgeist_css::CssLonghandValueRef::Width(&'a surgeist_css::CssSizeValue)
 pub surgeist_css::CssLonghandValueRef::WillChange(&'a surgeist_css::CssWillChange)
+pub surgeist_css::CssLonghandValueRef::WordBreak(&'a surgeist_css::CssWordBreak)
 pub surgeist_css::CssLonghandValueRef::WordSpacing(&'a surgeist_css::CssTextSpacingAdjustment)
 pub surgeist_css::CssLonghandValueRef::WritingMode(&'a surgeist_css::CssWritingMode)
 pub surgeist_css::CssLonghandValueRef::ZIndex(&'a surgeist_css::CssZIndexValue)
@@ -4394,15 +4407,21 @@ pub surgeist_css::CssTextTransform::Uppercase
 impl surgeist_css::CssTextTransform
 pub fn surgeist_css::CssTextTransform::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssTextTransform::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
-#[non_exhaustive] pub enum surgeist_css::CssTextWrap
-pub surgeist_css::CssTextWrap::Balance
-pub surgeist_css::CssTextWrap::NoWrap
-pub surgeist_css::CssTextWrap::Pretty
-pub surgeist_css::CssTextWrap::Stable
-pub surgeist_css::CssTextWrap::Wrap
-impl surgeist_css::CssTextWrap
-pub fn surgeist_css::CssTextWrap::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
-pub fn surgeist_css::CssTextWrap::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssTextWrapMode
+pub surgeist_css::CssTextWrapMode::NoWrap
+pub surgeist_css::CssTextWrapMode::Wrap
+impl surgeist_css::CssTextWrapMode
+pub fn surgeist_css::CssTextWrapMode::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextWrapMode::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssTextWrapStyle
+pub surgeist_css::CssTextWrapStyle::Auto
+pub surgeist_css::CssTextWrapStyle::AvoidShortLastLine
+pub surgeist_css::CssTextWrapStyle::Balance
+pub surgeist_css::CssTextWrapStyle::Pretty
+pub surgeist_css::CssTextWrapStyle::Stable
+impl surgeist_css::CssTextWrapStyle
+pub fn surgeist_css::CssTextWrapStyle::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextWrapStyle::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssTimeUnit
 pub surgeist_css::CssTimeUnit::Milliseconds
 pub surgeist_css::CssTimeUnit::Seconds
@@ -4707,16 +4726,21 @@ pub surgeist_css::CssVoiceVolumeLevel::Medium
 pub surgeist_css::CssVoiceVolumeLevel::Soft
 pub surgeist_css::CssVoiceVolumeLevel::XLoud
 pub surgeist_css::CssVoiceVolumeLevel::XSoft
-#[non_exhaustive] pub enum surgeist_css::CssWhiteSpace
-pub surgeist_css::CssWhiteSpace::BreakSpaces
-pub surgeist_css::CssWhiteSpace::NoWrap
-pub surgeist_css::CssWhiteSpace::Normal
-pub surgeist_css::CssWhiteSpace::Pre
-pub surgeist_css::CssWhiteSpace::PreLine
-pub surgeist_css::CssWhiteSpace::PreWrap
-impl surgeist_css::CssWhiteSpace
-pub fn surgeist_css::CssWhiteSpace::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
-pub fn surgeist_css::CssWhiteSpace::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssWhiteSpaceCollapse
+pub surgeist_css::CssWhiteSpaceCollapse::BreakSpaces
+pub surgeist_css::CssWhiteSpaceCollapse::Collapse
+pub surgeist_css::CssWhiteSpaceCollapse::Discard
+pub surgeist_css::CssWhiteSpaceCollapse::Preserve
+pub surgeist_css::CssWhiteSpaceCollapse::PreserveBreaks
+pub surgeist_css::CssWhiteSpaceCollapse::PreserveSpaces
+impl surgeist_css::CssWhiteSpaceCollapse
+pub fn surgeist_css::CssWhiteSpaceCollapse::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssWhiteSpaceCollapse::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssWhiteSpaceKeyword
+pub surgeist_css::CssWhiteSpaceKeyword::Normal
+pub surgeist_css::CssWhiteSpaceKeyword::Pre
+pub surgeist_css::CssWhiteSpaceKeyword::PreLine
+pub surgeist_css::CssWhiteSpaceKeyword::PreWrap
 #[non_exhaustive] pub enum surgeist_css::CssWillChange
 pub surgeist_css::CssWillChange::Auto
 pub surgeist_css::CssWillChange::Features(surgeist_css::CssWillChangeFeatures)
@@ -4728,9 +4752,11 @@ pub surgeist_css::CssWillChangeFeature::Contents
 pub surgeist_css::CssWillChangeFeature::Property(surgeist_css::CssWillChangePropertyName)
 pub surgeist_css::CssWillChangeFeature::ScrollPosition
 #[non_exhaustive] pub enum surgeist_css::CssWordBreak
+pub surgeist_css::CssWordBreak::AutoPhrase
 pub surgeist_css::CssWordBreak::BreakAll
 pub surgeist_css::CssWordBreak::BreakWord
 pub surgeist_css::CssWordBreak::KeepAll
+pub surgeist_css::CssWordBreak::Manual
 pub surgeist_css::CssWordBreak::Normal
 impl surgeist_css::CssWordBreak
 pub fn surgeist_css::CssWordBreak::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
@@ -9843,10 +9869,26 @@ pub struct surgeist_css::CssTextTransformPropertyValue
 impl surgeist_css::CssTextTransformPropertyValue
 pub fn surgeist_css::CssTextTransformPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssTextTransformPropertyValue::value(&self) -> &surgeist_css::CssTextTransform
+pub struct surgeist_css::CssTextWrap
+impl surgeist_css::CssTextWrap
+pub const fn surgeist_css::CssTextWrap::mode(&self) -> core::option::Option<surgeist_css::CssTextWrapMode>
+pub const fn surgeist_css::CssTextWrap::style(&self) -> core::option::Option<surgeist_css::CssTextWrapStyle>
+pub const fn surgeist_css::CssTextWrap::try_new(mode: core::option::Option<surgeist_css::CssTextWrapMode>, style: core::option::Option<surgeist_css::CssTextWrapStyle>) -> core::option::Option<Self>
+impl surgeist_css::CssTextWrap
+pub fn surgeist_css::CssTextWrap::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextWrap::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssTextWrapModePropertyValue
+impl surgeist_css::CssTextWrapModePropertyValue
+pub fn surgeist_css::CssTextWrapModePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssTextWrapModePropertyValue::value(&self) -> &surgeist_css::CssTextWrapMode
 pub struct surgeist_css::CssTextWrapPropertyValue
 impl surgeist_css::CssTextWrapPropertyValue
 pub fn surgeist_css::CssTextWrapPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssTextWrapPropertyValue::value(&self) -> &surgeist_css::CssTextWrap
+pub struct surgeist_css::CssTextWrapStylePropertyValue
+impl surgeist_css::CssTextWrapStylePropertyValue
+pub fn surgeist_css::CssTextWrapStylePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssTextWrapStylePropertyValue::value(&self) -> &surgeist_css::CssTextWrapStyle
 pub struct surgeist_css::CssTimeCalculation
 impl surgeist_css::CssTimeCalculation
 pub fn surgeist_css::CssTimeCalculation::components(&self) -> &surgeist_css::CssComponentValues
@@ -10231,10 +10273,40 @@ pub struct surgeist_css::CssVoiceVolumePropertyValue
 impl surgeist_css::CssVoiceVolumePropertyValue
 pub fn surgeist_css::CssVoiceVolumePropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssVoiceVolumePropertyValue::value(&self) -> &surgeist_css::CssVoiceVolume
+pub struct surgeist_css::CssWhiteSpace
+impl surgeist_css::CssWhiteSpace
+pub const fn surgeist_css::CssWhiteSpace::collapse(&self) -> core::option::Option<surgeist_css::CssWhiteSpaceCollapse>
+pub const fn surgeist_css::CssWhiteSpace::from_keyword(keyword: surgeist_css::CssWhiteSpaceKeyword) -> Self
+pub const fn surgeist_css::CssWhiteSpace::keyword(&self) -> core::option::Option<surgeist_css::CssWhiteSpaceKeyword>
+pub const fn surgeist_css::CssWhiteSpace::mode(&self) -> core::option::Option<surgeist_css::CssTextWrapMode>
+pub const fn surgeist_css::CssWhiteSpace::trim(&self) -> core::option::Option<surgeist_css::CssWhiteSpaceTrim>
+pub const fn surgeist_css::CssWhiteSpace::try_new(collapse: core::option::Option<surgeist_css::CssWhiteSpaceCollapse>, mode: core::option::Option<surgeist_css::CssTextWrapMode>, trim: core::option::Option<surgeist_css::CssWhiteSpaceTrim>) -> core::option::Option<Self>
+impl surgeist_css::CssWhiteSpace
+pub fn surgeist_css::CssWhiteSpace::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssWhiteSpace::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssWhiteSpaceCollapsePropertyValue
+impl surgeist_css::CssWhiteSpaceCollapsePropertyValue
+pub fn surgeist_css::CssWhiteSpaceCollapsePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssWhiteSpaceCollapsePropertyValue::value(&self) -> &surgeist_css::CssWhiteSpaceCollapse
 pub struct surgeist_css::CssWhiteSpacePropertyValue
 impl surgeist_css::CssWhiteSpacePropertyValue
 pub fn surgeist_css::CssWhiteSpacePropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssWhiteSpacePropertyValue::value(&self) -> &surgeist_css::CssWhiteSpace
+pub struct surgeist_css::CssWhiteSpaceTrim
+impl surgeist_css::CssWhiteSpaceTrim
+pub const fn surgeist_css::CssWhiteSpaceTrim::discard_after(&self) -> bool
+pub const fn surgeist_css::CssWhiteSpaceTrim::discard_before(&self) -> bool
+pub const fn surgeist_css::CssWhiteSpaceTrim::discard_inner(&self) -> bool
+pub const fn surgeist_css::CssWhiteSpaceTrim::is_none(&self) -> bool
+pub const fn surgeist_css::CssWhiteSpaceTrim::new(discard_before: bool, discard_after: bool, discard_inner: bool) -> Self
+pub const fn surgeist_css::CssWhiteSpaceTrim::none() -> Self
+impl surgeist_css::CssWhiteSpaceTrim
+pub fn surgeist_css::CssWhiteSpaceTrim::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssWhiteSpaceTrim::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssWhiteSpaceTrimPropertyValue
+impl surgeist_css::CssWhiteSpaceTrimPropertyValue
+pub fn surgeist_css::CssWhiteSpaceTrimPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssWhiteSpaceTrimPropertyValue::value(&self) -> &surgeist_css::CssWhiteSpaceTrim
 pub struct surgeist_css::CssWidowsPropertyValue
 impl surgeist_css::CssWidowsPropertyValue
 pub fn surgeist_css::CssWidowsPropertyValue::as_css(&self) -> &str

@@ -601,6 +601,35 @@
 //! assert_eq!(order_only.serialize_specified().unwrap(), "reverse");
 //! ```
 //!
+//! # Authored wrapping and whitespace
+//!
+//! Selected Text 4 wrapping and whitespace shorthands preserve authored fields
+//! separately from their intrinsic two/three-member projections. Missing fields
+//! reset to longhand initials during expansion. White-space's four special forms
+//! keep their spelling, while trim flags form one contiguous constituent group.
+//! Word breaking includes manual, auto-phrase and the deprecated CSS break-word.
+//! These values do not execute text processing or resolve contextual wrapping.
+//!
+//! ```rust
+//! use surgeist_css::{
+//!     CssKnownPropertyValueRef, CssTextWrap, CssTextWrapMode, CssTextWrapStyle,
+//!     CssWhiteSpaceKeyword, parse_style_attribute,
+//! };
+//!
+//! let wrapping = CssTextWrap::try_new(
+//!     Some(CssTextWrapMode::NoWrap), Some(CssTextWrapStyle::Balance),
+//! ).unwrap();
+//! assert_eq!(wrapping.serialize_specified().unwrap(), "nowrap balance");
+//! assert!(CssTextWrap::try_new(None, None).is_none());
+//! let report = parse_style_attribute("white-space: pre-wrap");
+//! assert!(report.is_clean());
+//! let CssKnownPropertyValueRef::WhiteSpace(value) = report.syntax()[0]
+//!     .known().unwrap().property_value().unwrap()
+//! else { panic!("white-space") };
+//! assert_eq!(value.value().keyword(), Some(CssWhiteSpaceKeyword::PreWrap));
+//! assert_eq!(value.value().serialize_specified().unwrap(), "pre-wrap");
+//! ```
+//!
 //! # Typography, font families, and font-face
 //!
 //! Family lists, the `@font-face` family descriptor, and `local()` names follow

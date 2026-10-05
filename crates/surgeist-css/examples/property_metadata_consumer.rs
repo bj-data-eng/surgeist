@@ -18,10 +18,17 @@
 //! one-entry initials and eight shorthand members without extra resets.
 //! Compositing 1 CRD 2024-03-21 §§3.1, 3.4.2, 3.4.3 defines noninherited
 //! blend/isolation initials and background's reset-only background-blend-mode.
+//! Text 4 WD 2026-08-14 §§3–6 defines wrapping/whitespace constituents,
+//! their exact inherited initials and two/three-member shorthand projections.
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
 const LONGHANDS: &[P] = &[
+    P::TextWrapMode,
+    P::TextWrapStyle,
+    P::WhiteSpaceCollapse,
+    P::WhiteSpaceTrim,
+    P::WordBreak,
     P::BackgroundBlendMode,
     P::Isolation,
     P::MixBlendMode,
@@ -284,6 +291,12 @@ const LONGHANDS: &[P] = &[
     P::TextCombineUpright,
 ];
 const SHORTHANDS: &[(P, &[P], &[P])] = &[
+    (P::TextWrap, &[P::TextWrapMode, P::TextWrapStyle], &[]),
+    (
+        P::WhiteSpace,
+        &[P::WhiteSpaceCollapse, P::TextWrapMode, P::WhiteSpaceTrim],
+        &[],
+    ),
     (
         P::ItemFlow,
         &[P::ItemDirection, P::ItemWrap, P::ItemPack, P::FlowTolerance],
@@ -690,6 +703,13 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
     };
     assert_eq!(value.property().known_property(), property);
     match value.view() {
+        CssLonghandValueRef::TextWrapMode(v) => assert_eq!(*v, CssTextWrapMode::Wrap),
+        CssLonghandValueRef::TextWrapStyle(v) => assert_eq!(*v, CssTextWrapStyle::Auto),
+        CssLonghandValueRef::WhiteSpaceCollapse(v) => {
+            assert_eq!(*v, CssWhiteSpaceCollapse::Collapse)
+        }
+        CssLonghandValueRef::WhiteSpaceTrim(v) => assert_eq!(*v, CssWhiteSpaceTrim::none()),
+        CssLonghandValueRef::WordBreak(v) => assert_eq!(*v, CssWordBreak::Normal),
         CssLonghandValueRef::VoiceDuration(value) => {
             assert!(matches!(value, CssVoiceDuration::Auto))
         }
@@ -1203,7 +1223,7 @@ fn metadata_and_initials() {
             P::All,
         ])
         .collect();
-    assert_eq!(expected.len(), 330);
+    assert_eq!(expected.len(), 337);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {
@@ -1242,7 +1262,11 @@ fn metadata_and_initials() {
             metadata.inherited_by_default(),
             matches!(
                 property,
-                P::Color
+                P::TextWrapMode
+                    | P::TextWrapStyle
+                    | P::WhiteSpaceCollapse
+                    | P::WordBreak
+                    | P::Color
                     | P::ScrollbarColor
                     | P::ColorScheme
                     | P::ForcedColorAdjust

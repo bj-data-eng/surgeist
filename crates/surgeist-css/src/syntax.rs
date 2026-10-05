@@ -5788,25 +5788,196 @@ pub enum CssFontValue {
     System(CssSystemFont),
 }
 
+/// The authored unforced-wrapping mode, independent of the line selection style.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum CssTextWrap {
+pub enum CssTextWrapMode {
     Wrap,
     NoWrap,
-    Balance,
-    Pretty,
-    Stable,
 }
 
+/// The authored line selection style; no wrapping algorithm is executed here.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum CssWhiteSpace {
+pub enum CssTextWrapStyle {
+    Auto,
+    Balance,
+    Stable,
+    Pretty,
+    AvoidShortLastLine,
+}
+
+/// Nonempty authored text-wrap constituents, retaining omitted whole roles.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CssTextWrap {
+    mode: Option<CssTextWrapMode>,
+    style: Option<CssTextWrapStyle>,
+}
+impl CssTextWrap {
+    /// Admits at least one constituent without inserting projection defaults.
+    #[must_use]
+    pub const fn try_new(
+        mode: Option<CssTextWrapMode>,
+        style: Option<CssTextWrapStyle>,
+    ) -> Option<Self> {
+        if mode.is_none() && style.is_none() {
+            None
+        } else {
+            Some(Self { mode, style })
+        }
+    }
+    /// Returns the authored mode, or its original omission.
+    #[must_use]
+    pub const fn mode(&self) -> Option<CssTextWrapMode> {
+        self.mode
+    }
+    /// Returns the authored style, or its original omission.
+    #[must_use]
+    pub const fn style(&self) -> Option<CssTextWrapStyle> {
+        self.style
+    }
+}
+
+/// The authored whitespace preservation/collapse choice.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssWhiteSpaceCollapse {
+    Collapse,
+    Discard,
+    Preserve,
+    PreserveBreaks,
+    PreserveSpaces,
+    BreakSpaces,
+}
+
+/// Independent trim flags; the empty set is the authored none value.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CssWhiteSpaceTrim {
+    discard_before: bool,
+    discard_after: bool,
+    discard_inner: bool,
+}
+impl CssWhiteSpaceTrim {
+    /// Constructs any of the eight intrinsically valid trim sets.
+    #[must_use]
+    pub const fn new(discard_before: bool, discard_after: bool, discard_inner: bool) -> Self {
+        Self {
+            discard_before,
+            discard_after,
+            discard_inner,
+        }
+    }
+    /// Constructs the empty none set.
+    #[must_use]
+    pub const fn none() -> Self {
+        Self::new(false, false, false)
+    }
+    /// Whether leading whitespace is marked for discarding.
+    #[must_use]
+    pub const fn discard_before(&self) -> bool {
+        self.discard_before
+    }
+    /// Whether trailing whitespace is marked for discarding.
+    #[must_use]
+    pub const fn discard_after(&self) -> bool {
+        self.discard_after
+    }
+    /// Whether inner whitespace is marked for discarding.
+    #[must_use]
+    pub const fn discard_inner(&self) -> bool {
+        self.discard_inner
+    }
+    /// Whether this is the empty none set.
+    #[must_use]
+    pub const fn is_none(&self) -> bool {
+        !self.discard_before && !self.discard_after && !self.discard_inner
+    }
+}
+
+/// The four special white-space spellings, distinct from constituent forms.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssWhiteSpaceKeyword {
     Normal,
-    NoWrap,
     Pre,
     PreWrap,
     PreLine,
-    BreakSpaces,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WhiteSpaceValue {
+    Keyword(CssWhiteSpaceKeyword),
+    Components {
+        collapse: Option<CssWhiteSpaceCollapse>,
+        mode: Option<CssTextWrapMode>,
+        trim: Option<CssWhiteSpaceTrim>,
+    },
+}
+
+/// A special white-space spelling or nonempty authored constituent composition.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CssWhiteSpace {
+    value: WhiteSpaceValue,
+}
+impl CssWhiteSpace {
+    /// Retains a special spelling without manufacturing authored constituents.
+    #[must_use]
+    pub const fn from_keyword(keyword: CssWhiteSpaceKeyword) -> Self {
+        Self {
+            value: WhiteSpaceValue::Keyword(keyword),
+        }
+    }
+    /// Admits a nonempty constituent composition, retaining each omission.
+    #[must_use]
+    pub const fn try_new(
+        collapse: Option<CssWhiteSpaceCollapse>,
+        mode: Option<CssTextWrapMode>,
+        trim: Option<CssWhiteSpaceTrim>,
+    ) -> Option<Self> {
+        if collapse.is_none() && mode.is_none() && trim.is_none() {
+            None
+        } else {
+            Some(Self {
+                value: WhiteSpaceValue::Components {
+                    collapse,
+                    mode,
+                    trim,
+                },
+            })
+        }
+    }
+    /// Returns the special spelling, if this is the special-form branch.
+    #[must_use]
+    pub const fn keyword(&self) -> Option<CssWhiteSpaceKeyword> {
+        match self.value {
+            WhiteSpaceValue::Keyword(value) => Some(value),
+            WhiteSpaceValue::Components { .. } => None,
+        }
+    }
+    /// Returns only an authored component; special forms have no such field.
+    #[must_use]
+    pub const fn collapse(&self) -> Option<CssWhiteSpaceCollapse> {
+        match self.value {
+            WhiteSpaceValue::Components { collapse, .. } => collapse,
+            WhiteSpaceValue::Keyword(_) => None,
+        }
+    }
+    /// Returns only an authored component; special forms have no such field.
+    #[must_use]
+    pub const fn mode(&self) -> Option<CssTextWrapMode> {
+        match self.value {
+            WhiteSpaceValue::Components { mode, .. } => mode,
+            WhiteSpaceValue::Keyword(_) => None,
+        }
+    }
+    /// Returns only an authored component; special forms have no such field.
+    #[must_use]
+    pub const fn trim(&self) -> Option<CssWhiteSpaceTrim> {
+        match self.value {
+            WhiteSpaceValue::Components { trim, .. } => trim,
+            WhiteSpaceValue::Keyword(_) => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -5815,6 +5986,8 @@ pub enum CssWordBreak {
     Normal,
     BreakAll,
     KeepAll,
+    Manual,
+    AutoPhrase,
     BreakWord,
 }
 

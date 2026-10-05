@@ -50,11 +50,26 @@ fn text_wrap_represented_states_emit_canonical_keywords() {
         TextWrap,
         value,
         [
-            (CssTextWrap::Wrap, "wrap"),
-            (CssTextWrap::NoWrap, "nowrap"),
-            (CssTextWrap::Balance, "balance"),
-            (CssTextWrap::Pretty, "pretty"),
-            (CssTextWrap::Stable, "stable"),
+            (
+                CssTextWrap::try_new(Some(CssTextWrapMode::Wrap), None).unwrap(),
+                "wrap"
+            ),
+            (
+                CssTextWrap::try_new(Some(CssTextWrapMode::NoWrap), None).unwrap(),
+                "nowrap"
+            ),
+            (
+                CssTextWrap::try_new(None, Some(CssTextWrapStyle::Balance)).unwrap(),
+                "balance"
+            ),
+            (
+                CssTextWrap::try_new(None, Some(CssTextWrapStyle::Pretty)).unwrap(),
+                "pretty"
+            ),
+            (
+                CssTextWrap::try_new(None, Some(CssTextWrapStyle::Stable)).unwrap(),
+                "stable"
+            ),
         ]
     );
 }
@@ -66,12 +81,31 @@ fn white_space_represented_states_emit_canonical_keywords() {
         WhiteSpace,
         value,
         [
-            (CssWhiteSpace::Normal, "normal"),
-            (CssWhiteSpace::NoWrap, "nowrap"),
-            (CssWhiteSpace::Pre, "pre"),
-            (CssWhiteSpace::PreWrap, "pre-wrap"),
-            (CssWhiteSpace::PreLine, "pre-line"),
-            (CssWhiteSpace::BreakSpaces, "break-spaces"),
+            (
+                CssWhiteSpace::from_keyword(CssWhiteSpaceKeyword::Normal),
+                "normal"
+            ),
+            (
+                CssWhiteSpace::try_new(None, Some(CssTextWrapMode::NoWrap), None).unwrap(),
+                "nowrap"
+            ),
+            (
+                CssWhiteSpace::from_keyword(CssWhiteSpaceKeyword::Pre),
+                "pre"
+            ),
+            (
+                CssWhiteSpace::from_keyword(CssWhiteSpaceKeyword::PreWrap),
+                "pre-wrap"
+            ),
+            (
+                CssWhiteSpace::from_keyword(CssWhiteSpaceKeyword::PreLine),
+                "pre-line"
+            ),
+            (
+                CssWhiteSpace::try_new(Some(CssWhiteSpaceCollapse::BreakSpaces), None, None)
+                    .unwrap(),
+                "break-spaces"
+            ),
         ]
     );
 }

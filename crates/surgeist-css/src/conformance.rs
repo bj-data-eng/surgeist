@@ -2343,7 +2343,6 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::LineHeight
         | CssKnownProperty::TextIndent
         | CssKnownProperty::VerticalAlign
-        | CssKnownProperty::WhiteSpace
         | CssKnownProperty::TextDecoration
         | CssKnownProperty::TextTransform
         | CssKnownProperty::ZIndex => O_CSS2,
@@ -2578,11 +2577,17 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::GridColumn
         | CssKnownProperty::GridArea
         | CssKnownProperty::Grid => R_GRID2,
-        CssKnownProperty::WordBreak | CssKnownProperty::OverflowWrap => S_TEXT3,
+        CssKnownProperty::OverflowWrap => S_TEXT3,
         CssKnownProperty::TextAlign
         | CssKnownProperty::TextAlignAll
         | CssKnownProperty::TextAlignLast
         | CssKnownProperty::TextWrap
+        | CssKnownProperty::TextWrapMode
+        | CssKnownProperty::TextWrapStyle
+        | CssKnownProperty::WhiteSpace
+        | CssKnownProperty::WhiteSpaceCollapse
+        | CssKnownProperty::WhiteSpaceTrim
+        | CssKnownProperty::WordBreak
         | CssKnownProperty::WordSpacing
         | CssKnownProperty::LetterSpacing => X_TEXT4,
         CssKnownProperty::TextDecorationLine
@@ -2713,12 +2718,10 @@ const fn property_production(property: CssKnownProperty, default: &'static str) 
         },
         CssKnownProperty::TextDecoration
         | CssKnownProperty::TextIndent
-        | CssKnownProperty::TextTransform
-        | CssKnownProperty::WhiteSpace => match property {
+        | CssKnownProperty::TextTransform => match property {
             CssKnownProperty::TextDecoration => "text.html#propdef-text-decoration",
             CssKnownProperty::TextIndent => "text.html#propdef-text-indent",
             CssKnownProperty::TextTransform => "text.html#propdef-text-transform",
-            CssKnownProperty::WhiteSpace => "text.html#propdef-white-space",
             _ => default,
         },
         _ => default,
@@ -2794,7 +2797,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 674] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 678] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -5200,17 +5203,37 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 674] = [
         "letter-spacing",
         "baseline.property.letter-spacing"
     ),
-    property_feature!(
+    complete_property_feature!(
+        CssKnownProperty::TextWrapMode,
+        "text-wrap-mode",
+        "ext.property.text-wrap-mode"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::TextWrapStyle,
+        "text-wrap-style",
+        "ext.property.text-wrap-style"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::WhiteSpaceCollapse,
+        "white-space-collapse",
+        "ext.property.white-space-collapse"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::WhiteSpaceTrim,
+        "white-space-trim",
+        "ext.property.white-space-trim"
+    ),
+    complete_property_feature!(
         CssKnownProperty::TextWrap,
         "text-wrap",
         "baseline.property.text-wrap"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::WhiteSpace,
         "white-space",
         "baseline.property.white-space"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::WordBreak,
         "word-break",
         "baseline.property.word-break"

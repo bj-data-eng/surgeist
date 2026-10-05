@@ -316,6 +316,22 @@ pub const PROPERTY_POSITIVE_VECTORS: &[PropertyVector] = &[
         "letter-spacing",
         "0.1em"
     ),
+    vector!("ext.property.text-wrap-mode", "text-wrap-mode", "nowrap"),
+    vector!(
+        "ext.property.text-wrap-style",
+        "text-wrap-style",
+        "avoid-short-last-line"
+    ),
+    vector!(
+        "ext.property.white-space-collapse",
+        "white-space-collapse",
+        "discard"
+    ),
+    vector!(
+        "ext.property.white-space-trim",
+        "white-space-trim",
+        "discard-after discard-before"
+    ),
     vector!("baseline.property.text-wrap", "text-wrap", "balance"),
     vector!("baseline.property.white-space", "white-space", "pre-wrap"),
     vector!("baseline.property.word-break", "word-break", "keep-all"),
@@ -942,7 +958,19 @@ pub const PROPERTY_NEGATIVE_VECTORS: &[PropertyVector] = &[
         "\"abc\" on"
     ),
     vector!("baseline.property.letter-spacing", "letter-spacing", "auto"),
-    vector!("baseline.property.text-wrap", "text-wrap", "auto"),
+    vector!("ext.property.text-wrap-mode", "text-wrap-mode", "balance"),
+    vector!("ext.property.text-wrap-style", "text-wrap-style", "nowrap"),
+    vector!(
+        "ext.property.white-space-collapse",
+        "white-space-collapse",
+        "pre"
+    ),
+    vector!(
+        "ext.property.white-space-trim",
+        "white-space-trim",
+        "discard-before discard-before"
+    ),
+    vector!("baseline.property.text-wrap", "text-wrap", "nowrap wrap"),
     vector!("baseline.property.white-space", "white-space", "balance"),
     vector!("baseline.property.word-break", "word-break", "nowrap"),
     vector!(

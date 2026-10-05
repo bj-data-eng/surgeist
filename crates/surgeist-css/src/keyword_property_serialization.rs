@@ -4,22 +4,23 @@ use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::{
     CssBlendMode, CssImageRendering, CssIsolation, CssObjectFit, CssPointerEvents, CssResize,
     CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
-    CssTextDecorationStyle, CssTextTransform, CssTextWrap, CssTransformBox, CssUserSelect,
-    CssWhiteSpace, CssWordBreak,
+    CssTextDecorationStyle, CssTextTransform, CssTextWrap, CssTextWrapMode, CssTextWrapStyle,
+    CssTransformBox, CssUserSelect, CssWhiteSpace, CssWhiteSpaceCollapse, CssWhiteSpaceKeyword,
+    CssWhiteSpaceTrim, CssWordBreak,
 };
 
 type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
 
-macro_rules! keyword_provider {
-    ($ty:ty, $value:ident => $text:expr) => {
+macro_rules! specified_provider {
+    ($ty:ty, $value:ident, $writer:ident => $body:expr) => {
         impl $ty {
-            /// Emits the canonical spelling of the represented specified keyword.
+            /// Emits canonical authored keywords without resolving contextual values.
             pub fn serialize_specified(&self) -> Result<String> {
                 self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
             }
 
-            /// Emits atomically, charging one input node, one projection node,
-            /// and the final UTF-8 bytes. No contextual value is resolved.
+            /// Emits atomically, charging each emitted keyword once for input and
+            /// projection work, plus the final UTF-8 bytes. Carriers add no work.
             pub fn serialize_specified_with_limits(
                 &self,
                 limits: CssSpecifiedValueSerializationLimits,
@@ -31,9 +32,15 @@ macro_rules! keyword_provider {
 
             pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
                 let $value = self;
-                writer.keyword($text)
+                let $writer = writer;
+                $body
             }
         }
+    };
+}
+macro_rules! keyword_provider {
+    ($ty:ty, $value:ident => $text:expr) => {
+        specified_provider!($ty, $value, writer => writer.keyword($text));
     };
 }
 macro_rules! enum_keywords {
@@ -42,15 +49,64 @@ macro_rules! enum_keywords {
     };
 }
 
-enum_keywords!(CssTextWrap,
-    Wrap => "wrap", NoWrap => "nowrap", Balance => "balance", Pretty => "pretty", Stable => "stable",
+enum_keywords!(CssTextWrapMode, Wrap => "wrap", NoWrap => "nowrap");
+enum_keywords!(CssTextWrapStyle,
+    Auto => "auto", Balance => "balance", Stable => "stable", Pretty => "pretty",
+    AvoidShortLastLine => "avoid-short-last-line",
 );
-enum_keywords!(CssWhiteSpace,
-    Normal => "normal", NoWrap => "nowrap", Pre => "pre", PreWrap => "pre-wrap",
-    PreLine => "pre-line", BreakSpaces => "break-spaces",
+enum_keywords!(CssWhiteSpaceCollapse,
+    Collapse => "collapse", Discard => "discard", Preserve => "preserve",
+    PreserveBreaks => "preserve-breaks", PreserveSpaces => "preserve-spaces", BreakSpaces => "break-spaces",
 );
+specified_provider!(CssWhiteSpaceTrim, value, writer => {
+    if value.is_none() {
+        return writer.keyword("none");
+    }
+    let mut separated = false;
+    for (present, text) in [
+        (value.discard_before(), "discard-before"),
+        (value.discard_after(), "discard-after"),
+        (value.discard_inner(), "discard-inner"),
+    ] {
+        if present {
+            if separated { writer.append(" ")?; }
+            writer.keyword(text)?;
+            separated = true;
+        }
+    }
+    Ok(())
+});
+specified_provider!(CssTextWrap, value, writer => {
+    if let Some(mode) = value.mode() { mode.append_to_rule_writer(writer)?; }
+    if let Some(style) = value.style() {
+        if value.mode().is_some() { writer.append(" ")?; }
+        style.append_to_rule_writer(writer)?;
+    }
+    Ok(())
+});
+specified_provider!(CssWhiteSpace, value, writer => {
+    if let Some(keyword) = value.keyword() {
+        return writer.keyword(match keyword {
+            CssWhiteSpaceKeyword::Normal => "normal",
+            CssWhiteSpaceKeyword::Pre => "pre",
+            CssWhiteSpaceKeyword::PreWrap => "pre-wrap",
+            CssWhiteSpaceKeyword::PreLine => "pre-line",
+        });
+    }
+    if let Some(collapse) = value.collapse() { collapse.append_to_rule_writer(writer)?; }
+    if let Some(mode) = value.mode() {
+        if value.collapse().is_some() { writer.append(" ")?; }
+        mode.append_to_rule_writer(writer)?;
+    }
+    if let Some(trim) = value.trim() {
+        if value.collapse().is_some() || value.mode().is_some() { writer.append(" ")?; }
+        trim.append_to_rule_writer(writer)?;
+    }
+    Ok(())
+});
 enum_keywords!(CssWordBreak,
-    Normal => "normal", BreakAll => "break-all", KeepAll => "keep-all", BreakWord => "break-word",
+    Normal => "normal", BreakAll => "break-all", KeepAll => "keep-all", Manual => "manual",
+    AutoPhrase => "auto-phrase", BreakWord => "break-word",
 );
 enum_keywords!(CssTextTransform,
     None => "none", Capitalize => "capitalize", Uppercase => "uppercase", Lowercase => "lowercase",
@@ -84,7 +140,9 @@ mod tests {
 
     fn compose(writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.append("prefix ")?;
-        CssTextWrap::Balance.append_to_rule_writer(writer)?;
+        CssTextWrap::try_new(None, Some(CssTextWrapStyle::Balance))
+            .unwrap()
+            .append_to_rule_writer(writer)?;
         writer.append(" ")?;
         CssBlendMode::ColorBurn.append_to_rule_writer(writer)
     }
@@ -109,8 +167,16 @@ mod tests {
     fn every_provider_suppresses_bytes_but_consumes_work_and_restores_modes() {
         type Emit = fn(&mut SpecifiedRuleWriter) -> Result<()>;
         let emitters: [Emit; 13] = [
-            |w| CssTextWrap::Pretty.append_to_rule_writer(w),
-            |w| CssWhiteSpace::BreakSpaces.append_to_rule_writer(w),
+            |w| {
+                CssTextWrap::try_new(None, Some(CssTextWrapStyle::Pretty))
+                    .unwrap()
+                    .append_to_rule_writer(w)
+            },
+            |w| {
+                CssWhiteSpace::try_new(Some(CssWhiteSpaceCollapse::BreakSpaces), None, None)
+                    .unwrap()
+                    .append_to_rule_writer(w)
+            },
             |w| CssWordBreak::KeepAll.append_to_rule_writer(w),
             |w| CssTextTransform::Capitalize.append_to_rule_writer(w),
             |w| CssTextDecorationStyle::Wavy.append_to_rule_writer(w),
@@ -148,6 +214,92 @@ mod tests {
                     .unwrap();
                 assert!(!writer.context.output_suppressed());
                 assert!(writer.css.is_empty());
+                writer.append("x").unwrap();
+                assert_eq!(writer.css, "x");
+            }
+        }
+    }
+
+    #[test]
+    fn text_constituents_and_transparent_carriers_charge_all_suppressed_keywords() {
+        type Emit = fn(&mut SpecifiedRuleWriter) -> Result<()>;
+        let cases: [(Emit, usize, &str); 7] = [
+            (
+                |w| CssTextWrapMode::NoWrap.append_to_rule_writer(w),
+                1,
+                "nowrap",
+            ),
+            (
+                |w| CssTextWrapStyle::AvoidShortLastLine.append_to_rule_writer(w),
+                1,
+                "avoid-short-last-line",
+            ),
+            (
+                |w| CssWhiteSpaceCollapse::Discard.append_to_rule_writer(w),
+                1,
+                "discard",
+            ),
+            (
+                |w| CssWhiteSpaceTrim::none().append_to_rule_writer(w),
+                1,
+                "none",
+            ),
+            (
+                |w| CssWhiteSpaceTrim::new(true, true, true).append_to_rule_writer(w),
+                3,
+                "discard-before discard-after discard-inner",
+            ),
+            (
+                |w| {
+                    CssTextWrap::try_new(
+                        Some(CssTextWrapMode::NoWrap),
+                        Some(CssTextWrapStyle::Balance),
+                    )
+                    .unwrap()
+                    .append_to_rule_writer(w)
+                },
+                2,
+                "nowrap balance",
+            ),
+            (
+                |w| {
+                    CssWhiteSpace::try_new(
+                        Some(CssWhiteSpaceCollapse::Preserve),
+                        Some(CssTextWrapMode::NoWrap),
+                        Some(CssWhiteSpaceTrim::new(true, true, true)),
+                    )
+                    .unwrap()
+                    .append_to_rule_writer(w)
+                },
+                5,
+                "preserve nowrap discard-before discard-after discard-inner",
+            ),
+        ];
+        for (emit, work, expected) in cases {
+            let mut writer = SpecifiedRuleWriter::new(Limits::new(work, work, expected.len()));
+            emit(&mut writer).unwrap();
+            assert_eq!(writer.css, expected);
+            let mut writer = SpecifiedRuleWriter::new(Limits::new(work, work, 0));
+            writer
+                .without_output(|writer| writer.without_output(emit))
+                .unwrap();
+            assert!(writer.css.is_empty());
+            assert!(!writer.context.output_suppressed());
+            assert_eq!(emit(&mut writer).unwrap_err().kind(), Kind::InputNodeLimit);
+            for (limits, kind) in [
+                (Limits::new(work - 1, work, 1), Kind::InputNodeLimit),
+                (Limits::new(work, work - 1, 1), Kind::ProjectionNodeLimit),
+            ] {
+                let mut writer = SpecifiedRuleWriter::new(limits);
+                writer
+                    .without_output(|writer| {
+                        assert_eq!(writer.without_output(emit).unwrap_err().kind(), kind);
+                        assert!(writer.context.output_suppressed());
+                        writer.append("hidden")
+                    })
+                    .unwrap();
+                assert!(writer.css.is_empty());
+                assert!(!writer.context.output_suppressed());
                 writer.append("x").unwrap();
                 assert_eq!(writer.css, "x");
             }

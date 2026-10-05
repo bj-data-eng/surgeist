@@ -8458,11 +8458,11 @@ fn parses_typography_and_text_keyword_families() {
     );
     assert_eq!(
         declaration_value!(".panel { text-wrap: balance; }", TextWrap),
-        CssTextWrap::Balance
+        CssTextWrap::try_new(None, Some(CssTextWrapStyle::Balance)).unwrap()
     );
     assert_eq!(
         declaration_value!(".panel { white-space: pre-wrap; }", WhiteSpace),
-        CssWhiteSpace::PreWrap
+        CssWhiteSpace::from_keyword(CssWhiteSpaceKeyword::PreWrap)
     );
     assert_eq!(
         declaration_value!(".panel { word-break: keep-all; }", WordBreak),

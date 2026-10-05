@@ -97,6 +97,13 @@ fn requires_closed_components(property: crate::CssKnownProperty) -> bool {
     matches!(
         property,
         crate::CssKnownProperty::ClipPath
+            | crate::CssKnownProperty::TextWrap
+            | crate::CssKnownProperty::TextWrapMode
+            | crate::CssKnownProperty::TextWrapStyle
+            | crate::CssKnownProperty::WhiteSpace
+            | crate::CssKnownProperty::WhiteSpaceCollapse
+            | crate::CssKnownProperty::WhiteSpaceTrim
+            | crate::CssKnownProperty::WordBreak
             | crate::CssKnownProperty::ItemDirection
             | crate::CssKnownProperty::ItemWrap
             | crate::CssKnownProperty::ItemPack

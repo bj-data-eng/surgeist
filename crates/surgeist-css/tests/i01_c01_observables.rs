@@ -784,11 +784,17 @@ fn authored_css_cases_match_selected_public_report_observables() {
     let mut migrated_feature_tag_cases = 0;
     let mut migrated_thickness_cases = 0;
     let mut migrated_timing_name_cases = 0;
+    let mut migrated_text_wrap_cases = 0;
     for row in rows {
         // Fixture feature labels record the original capture profile. Validation is
         // now unconditional, so every historical profile runs through the same API.
         if assert_archived_timing_auto_name_rejection(&row) {
             migrated_timing_name_cases += 1;
+            assert_strict_parity(&row);
+            continue;
+        }
+        if assert_archived_text_wrap_auto_acceptance(&row) {
+            migrated_text_wrap_cases += 1;
             assert_strict_parity(&row);
             continue;
         }
@@ -867,6 +873,7 @@ fn authored_css_cases_match_selected_public_report_observables() {
     );
     assert_eq!(migrated_feature_tag_cases, 1);
     assert_eq!(migrated_timing_name_cases, 2);
+    assert_eq!(migrated_text_wrap_cases, 1);
     assert_eq!(
         migrated_thickness_cases, 1,
         "the archived negative thickness rejection has an exact current acceptance witness"
@@ -888,6 +895,50 @@ fn authored_css_cases_match_selected_public_report_observables() {
         removed_track_cases, 8,
         "all eight obsolete track-property captures have current rejection witnesses"
     );
+}
+
+// Text 4 §5.5 admits the style-only shorthand `auto`. Preserve the archived
+// rejection and assert the selected authored constituent and provenance.
+// https://www.w3.org/TR/2026/WD-css-text-4-20260814/#propdef-text-wrap
+fn assert_archived_text_wrap_auto_acceptance(row: &Row) -> bool {
+    if row.case_id != "catalog.property.baseline.property.text-wrap.boundary" {
+        return false;
+    }
+    assert_eq!(row.entry, "style");
+    assert_eq!(row.feature, "both");
+    assert_eq!(row.input, "text-wrap: auto");
+    assert_eq!(row.clean, "false");
+    assert_eq!(row.retained, "-");
+    assert_eq!(row.values, "-");
+    assert_eq!(row.authored_declarations, "-");
+    assert_eq!(
+        row.diagnostics,
+        "InvalidPropertyValue/InvalidPropertyValue:baseline.property.text-wrap:a value accepted by the property's grammar:Ident:auto/DropDeclaration@11:0:11>0:0:0-15:0:15:15"
+    );
+    let report = parse_style_attribute(&row.input);
+    assert!(report.is_clean());
+    let [declaration] = report.syntax().as_slice() else {
+        panic!("one retained text-wrap declaration")
+    };
+    assert_eq!(declaration.importance(), CssImportance::Normal);
+    let known = declaration.known().expect("known text-wrap property");
+    assert_eq!(known.property(), surgeist_css::CssKnownProperty::TextWrap);
+    let surgeist_css::CssKnownPropertyValueRef::TextWrap(value) = known.property_value().unwrap()
+    else {
+        panic!("typed text-wrap value")
+    };
+    assert_eq!(value.value().mode(), None);
+    assert_eq!(
+        value.value().style(),
+        Some(surgeist_css::CssTextWrapStyle::Auto)
+    );
+    assert_eq!(value.as_css(), "auto");
+    let parsed = declaration
+        .parsed_value()
+        .expect("original value provenance");
+    assert_eq!(parsed.span().start().byte_offset().value(), 10);
+    assert_eq!(parsed.span().end().byte_offset().value(), 15);
+    true
 }
 
 // Values 4 §4.2 reserves CSS-wide keywords and `default`, so `auto` is a
@@ -5570,7 +5621,7 @@ fn assert_known_property_value(
             );
             let typed = value.value();
             let decoded = match expected {
-                "Balance" => CssTextWrap::Balance,
+                "Balance" => CssTextWrap::try_new(None, Some(CssTextWrapStyle::Balance)).unwrap(),
                 _ => panic!("unknown captured keyword"),
             };
             assert_eq!(typed, &decoded);
@@ -5588,7 +5639,7 @@ fn assert_known_property_value(
             );
             let typed = value.value();
             let decoded = match expected {
-                "PreWrap" => CssWhiteSpace::PreWrap,
+                "PreWrap" => CssWhiteSpace::from_keyword(CssWhiteSpaceKeyword::PreWrap),
                 _ => panic!("unknown captured keyword"),
             };
             assert_eq!(typed, &decoded);

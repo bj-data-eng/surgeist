@@ -394,9 +394,9 @@ fn specified_serialization_is_canonical_and_atomically_bounded() {
 }
 
 #[test]
-fn shared_text4_source_advances_text_wrap_provenance_without_claiming_its_full_grammar() {
+fn shared_text4_source_matches_complete_text_wrap_authored_grammar() {
     let metadata = property_support_metadata("text-wrap").expect("existing Text 4 property");
-    assert_eq!(metadata.feature().status(), CssSupportStatus::Partial);
+    assert_eq!(metadata.feature().status(), CssSupportStatus::Complete);
     assert_eq!(metadata.feature().source().id().as_str(), "X-TEXT4");
     assert_eq!(
         metadata.feature().source().url(),
@@ -405,5 +405,7 @@ fn shared_text4_source_advances_text_wrap_provenance_without_claiming_its_full_g
     let report = parse_style_attribute("text-wrap:balance");
     assert!(report.is_clean());
     let report = parse_style_attribute("text-wrap:auto");
+    assert!(report.is_clean());
+    let report = parse_style_attribute("text-wrap:wrap nowrap");
     assert!(!report.is_clean());
 }

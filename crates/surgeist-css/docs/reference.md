@@ -6774,9 +6774,77 @@ Behavioral evidence is in
 and the crate-private `specified_provider_composition_tests` module, alongside
 the existing owning providers' public serialization suites.
 
+## Authored wrapping and whitespace
+
+The selected [Text 4 draft (2026-08-14)](https://www.w3.org/TR/2026/WD-css-text-4-20260814/)
+defines `text-wrap` as mode/style and `white-space` as four special forms or
+collapse/mode/trim composition. `CssTextWrap` retains optional
+`CssTextWrapMode` and `CssTextWrapStyle`; `try_new` returns `None` only when both
+are absent. Its getters preserve authored presence. `CssWhiteSpace` retains
+`CssWhiteSpaceKeyword::{Normal, Pre, PreWrap, PreLine}` through `from_keyword`,
+or optional `CssWhiteSpaceCollapse`, mode and `CssWhiteSpaceTrim` through
+`try_new`, rejecting only an empty composition. Keyword getters and component
+getters expose the authored branch. Equivalent special/component forms remain
+distinct; omitted fields are not serialized as invented explicit defaults.
+
+Mode admits wrap/nowrap. Style admits auto, balance, stable, pretty and
+avoid-short-last-line. Collapse admits collapse, discard, preserve,
+preserve-breaks, preserve-spaces and break-spaces. Trim has eight boolean sets:
+`new(discard_before, discard_after, discard_inner)` is total, and `none()` is
+all false. Its getters expose each flag. Parsed duplicates reject rather than
+silently deduplicate. `CssWordBreak` admits normal, break-all, keep-all, manual,
+auto-phrase and the selected deprecated break-word. That CSS spelling remains a
+single longhand and does not reset overflow-wrap or hyphens.
+
+The [quoted whitespace production](https://www.w3.org/TR/2026/WD-css-text-4-20260814/#propdef-white-space)
+keeps each constituent contiguous under
+[Values 4's nonassociative grouping](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#component-combinators).
+Trim flags may permute inside their group, and that group may move among the
+other two roles. `discard-after discard-before nowrap preserve` and
+`nowrap preserve discard-before discard-after` are valid;
+`discard-before nowrap discard-after` is invalid. Special forms cannot mix
+with components, and repeated roles/flags and none-plus-trim flags reject.
+`white-space: nowrap` and `white-space: break-spaces` remain valid singleton
+constituents. Contextual wrapping, phrase detection and whitespace processing
+remain downstream.
+
+Five longhands have intrinsic initials: mode wrap, style auto, collapse collapse,
+trim none and word-break normal. All inherit except trim. Text-wrap contributes
+exactly mode/style; white-space contributes exactly collapse/mode/trim, with no
+style spill and no static reset-only members. Omitted whole members receive
+those initials during expansion. The four special forms project to
+collapse/wrap/none, preserve/nowrap/none, preserve/wrap/none and
+preserve-breaks/wrap/none respectively. The models keep those projection
+defaults separate from authored presence.
+
+Both checked front doors and pending reentry reject original implicit comment
+or function closures before repaired component text can admit an ordinary,
+CSS-wide or whole pending value. Globals propagate to exactly two/three/one
+terminals; var/env/attr stays one original pending occurrence until successful
+strict replacement. Original grammar, importance, order, source occurrence and
+replacement origins remain observable, including reusable failure. Browser
+recovery retains its diagnostics independently of strict checked admission.
+
+All seven models expose `serialize_specified` and
+`serialize_specified_with_limits`. Canonical output emits authored mode/style,
+collapse/mode/trim and trim flags before/after/inner. Special forms retain their
+spelling. White-space's component order is an explicit Surgeist choice: the
+selected source lists canonical order as n/a. Each emitted keyword charges one
+input and projection node; aggregate carriers are transparent. A two-keyword
+text-wrap costs 2/2; collapse/mode/all three trim flags costs 5/5. Declarations
+and names add the existing two nodes, while spaces/importance charge final UTF-8
+bytes. Child work, suppression and sibling output use one cumulative writer;
+exact and one-short failures remain atomic and values reusable. Normalization
+independently counts two/three/one terminals and one pending occurrence.
+
+Behavioral evidence is in
+[`text_wrap_whitespace_authored_contract.rs`](../tests/text_wrap_whitespace_authored_contract.rs),
+[`text_wrap_whitespace_lifecycle.rs`](../tests/text_wrap_whitespace_lifecycle.rs)
+and the owning private specified-provider composition tests.
+
 ## Represented keyword specified output
 
-`CssTextWrap`, `CssWhiteSpace`, `CssWordBreak`, `CssTextTransform`,
+`CssWordBreak`, `CssTextTransform`,
 `CssTextDecorationStyle`, `CssImageRendering`, `CssObjectFit`,
 `CssPointerEvents`, `CssUserSelect`, `CssResize`, `CssTransformBox`,
 `CssIsolation` and `CssBlendMode` expose `serialize_specified` and
