@@ -708,10 +708,16 @@ fn pending_contract(p: P, value: &str, expected: &[(&str, &str)], invalid_values
                 )
                 .unwrap_err();
                 let error = handle.reenter(components).unwrap_err();
-                let CssExpansionErrorKind::InvalidReplacement(actual) = error.kind() else {
-                    panic!("original grammar failure")
-                };
-                assert_eq!(actual, &expected_error);
+                if *bad == "var(--again)/*" {
+                    // Residual detection precedes replacement grammar, even
+                    // when direct checked admission rejects original closure.
+                    assert_eq!(error.kind(), &CssExpansionErrorKind::ResidualSubstitution);
+                } else {
+                    let CssExpansionErrorKind::InvalidReplacement(actual) = error.kind() else {
+                        panic!("original grammar failure")
+                    };
+                    assert_eq!(actual, &expected_error);
+                }
                 let CssContributions::Longhands(values) =
                     handle.reenter(replacement.clone()).unwrap()
                 else {
