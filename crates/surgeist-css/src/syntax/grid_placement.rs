@@ -143,9 +143,17 @@ impl CssGridLine {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        self.append_specified(&mut writer)?;
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
         Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        self.append_specified(writer)?;
+        Ok(())
     }
 
     fn append_specified(
@@ -236,13 +244,21 @@ impl CssGridLineRange {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        self.start.append_specified(&mut writer)?;
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        self.start.append_specified(writer)?;
         if let Some(end) = &self.end {
             writer.append(" / ")?;
-            end.append_specified(&mut writer)?;
+            end.append_specified(writer)?;
         }
-        Ok(writer.css)
+        Ok(())
     }
 }
 
@@ -316,15 +332,23 @@ impl CssGridArea {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        self.row_start.append_specified(&mut writer)?;
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        self.row_start.append_specified(writer)?;
         for line in [&self.column_start, &self.row_end, &self.column_end]
             .into_iter()
             .flatten()
         {
             writer.append(" / ")?;
-            line.append_specified(&mut writer)?;
+            line.append_specified(writer)?;
         }
-        Ok(writer.css)
+        Ok(())
     }
 }

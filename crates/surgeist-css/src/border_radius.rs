@@ -9,16 +9,6 @@ use crate::{
 
 type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
 
-fn serialize(
-    limits: CssSpecifiedValueSerializationLimits,
-    append: impl FnOnce(&mut SpecifiedSerializationContext, &mut String) -> Result<()>,
-) -> Result<String> {
-    let mut context = SpecifiedSerializationContext::new(limits);
-    let mut output = String::new();
-    append(&mut context, &mut output)?;
-    Ok(output)
-}
-
 fn append_scalar(
     value: &CssSpecifiedNonNegativeLengthPercentage,
     context: &mut SpecifiedSerializationContext,
@@ -74,16 +64,26 @@ impl CssCornerRadiusValue {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String> {
-        serialize(limits, |context, output| {
-            context.charge_input(1)?;
-            context.charge_projection(1)?;
-            append_scalar(&self.horizontal, context, output)?;
-            if let Some(vertical) = &self.authored_vertical {
-                context.append(output, " ")?;
-                append_scalar(vertical, context, output)?;
-            }
-            Ok(())
-        })
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+
+        context.charge_input(1)?;
+        context.charge_projection(1)?;
+        append_scalar(&self.horizontal, context, output)?;
+        if let Some(vertical) = &self.authored_vertical {
+            context.append(output, " ")?;
+            append_scalar(vertical, context, output)?;
+        }
+        Ok(())
     }
 }
 
@@ -194,9 +194,17 @@ impl CssBorderRadiusShorthand {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        self.append_specified(&mut writer)?;
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
         Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        self.append_specified(writer)?;
+        Ok(())
     }
 
     /// Shares the owning shape's cumulative budget without changing authored radii.

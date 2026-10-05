@@ -110,6 +110,9 @@ impl CssRatioOperand {
             RatioOperandValue::Number(component) => {
                 context.charge_input(1)?;
                 context.charge_projection(1)?;
+                if context.output_suppressed() {
+                    return Ok(());
+                }
                 let CssComponentValueRef::Token(CssValueTokenRef::Number(number)) =
                     component.view()
                 else {
@@ -160,10 +163,19 @@ impl CssSpecifiedRatio {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut context = SpecifiedSerializationContext::new(limits);
-        let mut output = String::new();
-        self.append_specified(&mut context, &mut output)?;
-        Ok(output)
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        self.append_specified(context, output)?;
+        Ok(())
     }
 
     fn append_specified(
@@ -193,22 +205,31 @@ impl crate::CssAspectRatioValue {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut context = SpecifiedSerializationContext::new(limits);
-        let mut output = String::new();
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
         match self {
             Self::Auto => {
                 context.charge_input(1)?;
                 context.charge_projection(1)?;
-                context.append(&mut output, "auto")?;
+                context.append(output, "auto")?;
             }
-            Self::Ratio(ratio) => ratio.append_specified(&mut context, &mut output)?,
+            Self::Ratio(ratio) => ratio.append_specified(context, output)?,
             Self::AutoRatio(ratio) => {
                 context.charge_input(1)?;
                 context.charge_projection(1)?;
-                context.append(&mut output, "auto ")?;
-                ratio.append_specified(&mut context, &mut output)?;
+                context.append(output, "auto ")?;
+                ratio.append_specified(context, output)?;
             }
         }
-        Ok(output)
+        Ok(())
     }
 }

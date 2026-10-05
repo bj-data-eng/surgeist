@@ -2,8 +2,6 @@
 
 use std::fmt;
 
-use crate::specified_rule_serialization::SpecifiedRuleWriter;
-use crate::specified_serialization::serialize_keyword_sequence;
 use crate::{CssIdent, CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits};
 
 /// Why a checked scheme name or list cannot express the selected property grammar.
@@ -121,7 +119,15 @@ impl CssColorScheme {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         writer.context.charge_input(1)?;
         writer.context.charge_projection(1)?;
         if self.is_normal() {
@@ -147,7 +153,7 @@ impl CssColorScheme {
                 writer.append(" only")?;
             }
         }
-        Ok(writer.css)
+        Ok(())
     }
 }
 
@@ -174,14 +180,20 @@ impl CssForcedColorAdjust {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String, CssSpecifiedValueSerializationError> {
-        serialize_keyword_sequence(
-            match self {
-                Self::Auto => "auto",
-                Self::None => "none",
-                Self::PreserveParentColor => "preserve-parent-color",
-            },
-            limits,
-        )
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        writer.keyword(match self {
+            Self::Auto => "auto",
+            Self::None => "none",
+            Self::PreserveParentColor => "preserve-parent-color",
+        })
     }
 }
 
@@ -207,12 +219,18 @@ impl CssPrintColorAdjust {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String, CssSpecifiedValueSerializationError> {
-        serialize_keyword_sequence(
-            match self {
-                Self::Economy => "economy",
-                Self::Exact => "exact",
-            },
-            limits,
-        )
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        writer.keyword(match self {
+            Self::Economy => "economy",
+            Self::Exact => "exact",
+        })
     }
 }

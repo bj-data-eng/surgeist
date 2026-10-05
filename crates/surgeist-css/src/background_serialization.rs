@@ -29,15 +29,23 @@ impl CssBackground {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        charge(&mut writer)?;
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        charge(writer)?;
         for (index, layer) in self.layers().iter().enumerate() {
             if index != 0 {
                 writer.append(", ")?;
             }
-            append_layer(layer, &mut writer)?;
+            append_layer(layer, writer)?;
         }
-        Ok(writer.css)
+        Ok(())
     }
 }
 

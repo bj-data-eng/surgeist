@@ -1,7 +1,6 @@
 //! Bounded specified serialization for the authored Fonts 4 shorthand.
 //! System font selection and font matching remain external to this crate.
 
-use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::{
     CssAbsoluteFontWeight, CssExplicitFont, CssFontStyle, CssFontStyleKeyword, CssFontValue,
     CssFontVariant, CssFontWeight, CssFontWidthKeyword, CssSpecifiedValueSerializationError,
@@ -34,14 +33,22 @@ impl CssFontValue {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String> {
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         match self {
-            Self::Explicit(font) => font.serialize_specified_with_limits(limits),
+            Self::Explicit(font) => font.append_to_rule_writer(writer),
             Self::System(system) => {
-                let mut writer = SpecifiedRuleWriter::new(limits);
                 writer.context.charge_input(1)?;
                 writer.context.charge_projection(1)?;
                 writer.append(system.as_css())?;
-                Ok(writer.css)
+                Ok(())
             }
         }
     }
@@ -60,7 +67,15 @@ impl CssExplicitFont {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         if let Some(style) = self.style() {
             if matches!(style, CssFontStyle::Keyword(CssFontStyleKeyword::Normal)) {
                 writer.context.charge_input(1)?;
@@ -106,7 +121,7 @@ impl CssExplicitFont {
             }
         }
         writer.append(" ")?;
-        self.families().append_specified(&mut writer)?;
-        Ok(writer.css)
+        self.families().append_specified(writer)?;
+        Ok(())
     }
 }

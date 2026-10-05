@@ -1,6 +1,5 @@
 //! Exact authored line minima for `orphans` and `widows`.
 
-use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{
     CssComponentValue, CssComponentValueRef, CssIntegerCalculation, CssIntegerLiteral,
     CssNumericConstructionError, CssNumericConstructionErrorKind, CssPositiveIntegerLiteral,
@@ -136,18 +135,25 @@ impl CssPageLineMinimum {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut context = SpecifiedSerializationContext::new(limits);
-        let mut output = String::new();
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
         match &self.value {
             PageLineMinimumValue::Literal(value) => {
-                value
-                    .integer()
-                    .append_specified(&mut context, &mut output)?;
+                value.integer().append_specified(context, output)?;
             }
             PageLineMinimumValue::Calculation(value) => {
-                value.serialize_specified_into(&mut context, &mut output)?;
+                value.serialize_specified_into(context, output)?;
             }
         }
-        Ok(output)
+        Ok(())
     }
 }

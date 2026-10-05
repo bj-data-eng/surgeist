@@ -1,7 +1,6 @@
 //! Current authored Display3 and Containment2 visibility values, plus the
 //! selected standalone Grid3 extensions.
 
-use crate::specified_serialization::serialize_keyword_sequence;
 use crate::{
     CssContentVisibility, CssSpecifiedValueSerializationError,
     CssSpecifiedValueSerializationLimits, CssVisibility,
@@ -107,7 +106,16 @@ impl CssDisplayValue {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String, CssSpecifiedValueSerializationError> {
-        serialize_keyword_sequence(self.specified_keyword_sequence(), limits)
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        writer.keyword(self.specified_keyword_sequence())
     }
 
     fn specified_keyword_sequence(self) -> &'static str {
@@ -246,12 +254,21 @@ impl CssVisibility {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String, CssSpecifiedValueSerializationError> {
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         let text = match self {
             Self::Visible => "visible",
             Self::Hidden => "hidden",
             Self::Collapse => "collapse",
         };
-        serialize_keyword_sequence(text, limits)
+        writer.keyword(text)
     }
 }
 
@@ -268,11 +285,20 @@ impl CssContentVisibility {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String, CssSpecifiedValueSerializationError> {
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         let text = match self {
             Self::Visible => "visible",
             Self::Hidden => "hidden",
             Self::Auto => "auto",
         };
-        serialize_keyword_sequence(text, limits)
+        writer.keyword(text)
     }
 }

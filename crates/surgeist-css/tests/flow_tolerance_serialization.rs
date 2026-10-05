@@ -60,7 +60,9 @@ fn parsed_and_constructed_tolerance_emit_independent_canonical_values() {
         ("calc(-2px - 3%)", "calc(-3% - 2px)"),
         ("calc(2 * 3em)", "calc(6em)"),
         ("min(-2px, 3px)", "calc(-2px)"),
-        ("max(-2%, -3%)", "calc(-2%)"),
+        // Values 4 §10.10.1 keeps comparisons symbolic while the percentage
+        // basis is unresolved; coefficient order alone is not a proof.
+        ("max(-2%, -3%)", "max(-2%, -3%)"),
         ("clamp(-2px, 1px, 3px)", "calc(1px)"),
         ("min(1px, 2em)", "min(1px, 2em)"),
         ("max(1px, 2%)", "max(1px, 2%)"),

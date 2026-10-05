@@ -19,11 +19,20 @@ impl CssDirection {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String, CssSpecifiedValueSerializationError> {
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         let text = match self {
             Self::Ltr => "ltr",
             Self::Rtl => "rtl",
         };
-        serialize_keyword_sequence(text, limits)
+        writer.keyword(text)
     }
 }
 
@@ -40,6 +49,15 @@ impl CssUnicodeBidi {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String, CssSpecifiedValueSerializationError> {
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         let text = match self {
             Self::Normal => "normal",
             Self::Embed => "embed",
@@ -48,7 +66,7 @@ impl CssUnicodeBidi {
             Self::IsolateOverride => "isolate-override",
             Self::Plaintext => "plaintext",
         };
-        serialize_keyword_sequence(text, limits)
+        writer.keyword(text)
     }
 }
 
@@ -65,6 +83,15 @@ impl CssWritingMode {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String, CssSpecifiedValueSerializationError> {
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         let text = match self {
             Self::HorizontalTb => "horizontal-tb",
             Self::VerticalRl => "vertical-rl",
@@ -72,7 +99,7 @@ impl CssWritingMode {
             Self::SidewaysRl => "sideways-rl",
             Self::SidewaysLr => "sideways-lr",
         };
-        serialize_keyword_sequence(text, limits)
+        writer.keyword(text)
     }
 }
 
@@ -89,12 +116,21 @@ impl CssTextOrientation {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String, CssSpecifiedValueSerializationError> {
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         let text = match self {
             Self::Mixed => "mixed",
             Self::Upright => "upright",
             Self::Sideways => "sideways",
         };
-        serialize_keyword_sequence(text, limits)
+        writer.keyword(text)
     }
 }
 

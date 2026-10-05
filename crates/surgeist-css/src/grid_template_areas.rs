@@ -2,7 +2,6 @@
 
 use std::collections::BTreeMap;
 
-use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits};
 
 /// A semantic failure in a decoded template-area name or row matrix.
@@ -124,42 +123,51 @@ impl CssGridTemplateAreas {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut context = SpecifiedSerializationContext::new(limits);
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        let context = &mut writer.context;
         context.charge_input(1)?;
         context.charge_projection(1)?;
-        let mut output = String::new();
+        let output = &mut writer.css;
         match self {
-            Self::None => context.append(&mut output, "none")?,
+            Self::None => context.append(output, "none")?,
             Self::Rows(rows) => {
                 for (row_index, row) in rows.rows().iter().enumerate() {
                     context.charge_input(1)?;
                     context.charge_projection(1)?;
                     if row_index > 0 {
-                        context.append(&mut output, " ")?;
+                        context.append(output, " ")?;
                     }
-                    context.append(&mut output, "\"")?;
+                    context.append(output, "\"")?;
                     for (cell_index, cell) in row.cells().iter().enumerate() {
                         context.charge_input(1)?;
                         context.charge_projection(1)?;
                         if cell_index > 0 {
-                            context.append(&mut output, " ")?;
+                            context.append(output, " ")?;
                         }
                         match cell {
-                            CssGridTemplateAreaCell::Empty => context.append(&mut output, ".")?,
+                            CssGridTemplateAreaCell::Empty => context.append(output, ".")?,
                             // Checked names contain only ident code points: no ASCII
                             // quote, backslash, line break, or CSS whitespace can
                             // disturb the enclosing CSS string token. Non-ASCII
                             // code points, including U+0085 and NBSP, remain data.
                             CssGridTemplateAreaCell::Named(name) => {
-                                context.append(&mut output, name.as_str())?
+                                context.append(output, name.as_str())?
                             }
                         }
                     }
-                    context.append(&mut output, "\"")?;
+                    context.append(output, "\"")?;
                 }
             }
         }
-        Ok(output)
+        Ok(())
     }
 }
 

@@ -87,10 +87,19 @@ impl CssContainIntrinsicSizeValue {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        let mut context = SpecifiedSerializationContext::new(limits);
-        let mut output = String::new();
-        self.serialize_specified_into(&mut context, &mut output)?;
-        Ok(output)
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        self.serialize_specified_into(context, output)?;
+        Ok(())
     }
 
     fn serialize_specified_into(
@@ -157,14 +166,22 @@ impl CssContainIntrinsicSize {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        let mut context = SpecifiedSerializationContext::new(limits);
-        let mut output = String::new();
-        self.width
-            .serialize_specified_into(&mut context, &mut output)?;
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        self.width.serialize_specified_into(context, output)?;
         if let Some(height) = &self.authored_height {
-            context.append(&mut output, " ")?;
-            height.serialize_specified_into(&mut context, &mut output)?;
+            context.append(output, " ")?;
+            height.serialize_specified_into(context, output)?;
         }
-        Ok(output)
+        Ok(())
     }
 }

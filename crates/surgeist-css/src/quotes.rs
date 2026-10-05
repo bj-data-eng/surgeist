@@ -56,11 +56,19 @@ impl CssQuotePair {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         writer.context.charge_input(1)?;
         writer.context.charge_projection(1)?;
-        append_pair_contents(&mut writer, self)?;
-        Ok(writer.css)
+        append_pair_contents(writer, self)?;
+        Ok(())
     }
 }
 
@@ -75,9 +83,17 @@ impl CssQuotePairList {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        append_pairs(&mut writer, self)?;
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
         Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        append_pairs(writer, self)?;
+        Ok(())
     }
 }
 
@@ -92,13 +108,21 @@ impl CssQuotes {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        match self {
-            Self::Auto => append_keyword(&mut writer, "auto")?,
-            Self::None => append_keyword(&mut writer, "none")?,
-            Self::MatchParent => append_keyword(&mut writer, "match-parent")?,
-            Self::Pairs(pairs) => append_pairs(&mut writer, pairs)?,
-        }
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
         Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        match self {
+            Self::Auto => append_keyword(writer, "auto")?,
+            Self::None => append_keyword(writer, "none")?,
+            Self::MatchParent => append_keyword(writer, "match-parent")?,
+            Self::Pairs(pairs) => append_pairs(writer, pairs)?,
+        }
+        Ok(())
     }
 }

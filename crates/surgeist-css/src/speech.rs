@@ -8,7 +8,7 @@
 //! `auto` and `normal`. Speech 1's property tables label computed values as the
 //! specified value; the prose additionally gives contextual rules for `auto`.
 
-use crate::specified_serialization::{SpecifiedSerializationContext, serialize_keyword_sequence};
+use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{
     CssDuration, CssNumericConstructionError, CssSpecifiedValueSerializationError,
     CssSpecifiedValueSerializationLimits, CssTimeValue,
@@ -39,14 +39,20 @@ impl CssSpeak {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult {
-        serialize_keyword_sequence(
-            match self {
-                Self::Auto => "auto",
-                Self::Never => "never",
-                Self::Always => "always",
-            },
-            limits,
-        )
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        writer.keyword(match self {
+            Self::Auto => "auto",
+            Self::Never => "never",
+            Self::Always => "always",
+        })
     }
 }
 
@@ -155,6 +161,15 @@ impl CssSpeakAs {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult {
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         use CssSpeakAsPunctuation::{Literal, None as Omit};
         let text = match self.state {
             SpeakAsState::Normal => "normal",
@@ -177,7 +192,7 @@ impl CssSpeakAs {
                 (false, false, None) => unreachable!("checked nonempty modifier composition"),
             },
         };
-        serialize_keyword_sequence(text, limits)
+        writer.keyword(text)
     }
 }
 
@@ -251,10 +266,19 @@ impl CssSpeechBreak {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult {
-        let mut context = SpecifiedSerializationContext::new(limits);
-        let mut output = String::new();
-        self.append_specified(&mut context, &mut output)?;
-        Ok(output)
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        self.append_specified(context, output)?;
+        Ok(())
     }
 
     fn append_specified(
@@ -334,21 +358,34 @@ impl CssSpeechBreakPair {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult {
-        let mut context = SpecifiedSerializationContext::new(limits);
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        let context = &mut writer.context;
         context.charge_input(1)?;
         context.charge_projection(1)?;
-        let mut output = String::new();
-        self.before.append_specified(&mut context, &mut output)?;
+        let output = &mut writer.css;
+        self.before.append_specified(context, output)?;
         if let Some(after) = &self.after {
             let omit = after.specified_value_eq(&self.before);
-            let previous = context.replace_output_suppression(omit);
-            if !omit {
-                context.append(&mut output, " ")?;
-            }
-            after.append_specified(&mut context, &mut output)?;
+            let suppress = context.output_suppressed() || omit;
+            let previous = context.replace_output_suppression(suppress);
+            let result = (|| {
+                if !omit {
+                    context.append(output, " ")?;
+                }
+                after.append_specified(context, output)
+            })();
             context.replace_output_suppression(previous);
+            result?;
         }
-        Ok(output)
+        Ok(())
     }
 }
 
@@ -430,8 +467,16 @@ impl CssDecibelLiteral {
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult {
         let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_specified(&mut writer)?;
+        self.append_to_rule_writer(&mut writer)?;
         Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        self.append_specified(writer)?;
+        Ok(())
     }
 
     fn append_specified(
@@ -529,8 +574,16 @@ impl CssAudioCue {
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult {
         let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_specified(&mut writer)?;
+        self.append_to_rule_writer(&mut writer)?;
         Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        self.append_specified(writer)?;
+        Ok(())
     }
 
     fn append_specified(
@@ -587,8 +640,16 @@ impl CssCue {
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult {
         let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_specified(&mut writer)?;
+        self.append_to_rule_writer(&mut writer)?;
         Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        self.append_specified(writer)?;
+        Ok(())
     }
 
     fn append_specified(
@@ -660,18 +721,26 @@ impl CssCuePair {
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult {
         let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         writer.context.charge_input(1)?;
         writer.context.charge_projection(1)?;
-        self.before.append_specified(&mut writer)?;
+        self.before.append_specified(writer)?;
         if let Some(after) = &self.after {
             if self.before.equivalent(after) {
                 writer.without_output(|writer| after.append_specified(writer))?;
             } else {
                 writer.append(" ")?;
-                after.append_specified(&mut writer)?;
+                after.append_specified(writer)?;
             }
         }
-        Ok(writer.css)
+        Ok(())
     }
 }
 
@@ -695,16 +764,22 @@ impl CssVoiceStress {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult {
-        serialize_keyword_sequence(
-            match self {
-                Self::Normal => "normal",
-                Self::Strong => "strong",
-                Self::Moderate => "moderate",
-                Self::None => "none",
-                Self::Reduced => "reduced",
-            },
-            limits,
-        )
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        writer.keyword(match self {
+            Self::Normal => "normal",
+            Self::Strong => "strong",
+            Self::Moderate => "moderate",
+            Self::None => "none",
+            Self::Reduced => "reduced",
+        })
     }
 }
 
@@ -931,6 +1006,15 @@ impl CssVoiceFamily {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult {
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         use crate::specified_rule_serialization::SpecifiedRuleWriter;
         fn leaf(
             writer: &mut SpecifiedRuleWriter,
@@ -938,8 +1022,8 @@ impl CssVoiceFamily {
             writer.context.charge_input(1)?;
             writer.context.charge_projection(1)
         }
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        leaf(&mut writer)?;
+
+        leaf(writer)?;
         match self {
             Self::Preserve => writer.append("preserve")?,
             Self::Voices(list) => {
@@ -947,11 +1031,11 @@ impl CssVoiceFamily {
                     if index > 0 {
                         writer.append(", ")?;
                     }
-                    leaf(&mut writer)?;
+                    leaf(writer)?;
                     match entry {
                         CssVoiceFamilyEntry::Name(name) => match name.view() {
                             CssVoiceFamilyNameRef::Quoted(value) => {
-                                leaf(&mut writer)?;
+                                leaf(writer)?;
                                 writer.append_string(value)?;
                             }
                             CssVoiceFamilyNameRef::Identifiers(values) => {
@@ -959,18 +1043,18 @@ impl CssVoiceFamily {
                                     if index > 0 {
                                         writer.append(" ")?;
                                     }
-                                    leaf(&mut writer)?;
+                                    leaf(writer)?;
                                     writer.append_identifier(value.as_str())?;
                                 }
                             }
                         },
                         CssVoiceFamilyEntry::Generic(value) => {
                             if let Some(age) = value.age {
-                                leaf(&mut writer)?;
+                                leaf(writer)?;
                                 writer.append(age.keyword())?;
                                 writer.append(" ")?;
                             }
-                            leaf(&mut writer)?;
+                            leaf(writer)?;
                             writer.append(value.gender.keyword())?;
                             if let Some(variant) = &value.variant {
                                 writer.append(" ")?;
@@ -990,7 +1074,7 @@ impl CssVoiceFamily {
                 }
             }
         }
-        Ok(writer.css)
+        Ok(())
     }
 }
 
@@ -1015,13 +1099,20 @@ impl CssVoiceDuration {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult {
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         match self {
-            Self::Auto => serialize_keyword_sequence("auto", limits),
+            Self::Auto => writer.keyword("auto"),
             Self::Time(value) => {
-                let mut writer =
-                    crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
                 value.append_specified(&mut writer.context, &mut writer.css)?;
-                Ok(writer.css)
+                Ok(())
             }
         }
     }
@@ -1100,8 +1191,16 @@ impl CssSemitoneLiteral {
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult {
         let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_specified(&mut writer)?;
+        self.append_to_rule_writer(&mut writer)?;
         Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        self.append_specified(writer)?;
+        Ok(())
     }
     fn append_specified(
         &self,
@@ -1330,6 +1429,14 @@ impl CssVoicePitchRange {
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult {
         let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         writer.context.charge_input(1)?;
         writer.context.charge_projection(1)?;
         match &self.state {
@@ -1360,11 +1467,11 @@ impl CssVoicePitchRange {
                     if level.is_some() {
                         writer.append(" ")?;
                     }
-                    offset.append_specified(&mut writer)?;
+                    offset.append_specified(writer)?;
                 }
             }
         }
-        Ok(writer.css)
+        Ok(())
     }
 }
 
@@ -1455,6 +1562,14 @@ impl CssVoiceRate {
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult {
         let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         writer.context.charge_input(1)?;
         writer.context.charge_projection(1)?;
         if let Some(keyword) = self.keyword {
@@ -1478,7 +1593,7 @@ impl CssVoiceRate {
                 percentage.append_specified(&mut writer.context, &mut writer.css)?;
             }
         }
-        Ok(writer.css)
+        Ok(())
     }
 }
 
@@ -1570,11 +1685,18 @@ impl CssVoiceBalance {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult {
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         match &self.state {
-            VoiceBalanceState::Keyword(value) => {
-                serialize_keyword_sequence(value.keyword(), limits)
-            }
-            VoiceBalanceState::Number(value) => value.serialize_specified_with_limits(limits),
+            VoiceBalanceState::Keyword(value) => writer.keyword(value.keyword()),
+            VoiceBalanceState::Number(value) => value.append_to_rule_writer(writer),
         }
     }
 }
@@ -1624,12 +1746,19 @@ impl CssVoiceVolume {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult {
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         match self {
-            Self::Silent => serialize_keyword_sequence("silent", limits),
-            Self::Offset(value) => value.serialize_specified_with_limits(limits),
+            Self::Silent => writer.keyword("silent"),
+            Self::Offset(value) => value.append_to_rule_writer(writer),
             Self::Level { level, decibel } => {
-                let mut writer =
-                    crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
                 writer.context.charge_input(1)?;
                 writer.context.charge_projection(1)?;
                 writer.context.charge_input(1)?;
@@ -1640,10 +1769,10 @@ impl CssVoiceVolume {
                         writer.without_output(|writer| value.append_specified(writer))?;
                     } else {
                         writer.append(" ")?;
-                        value.append_specified(&mut writer)?;
+                        value.append_specified(writer)?;
                     }
                 }
-                Ok(writer.css)
+                Ok(())
             }
         }
     }

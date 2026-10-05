@@ -39,20 +39,29 @@ impl CssCounterChangesValue {
         property: CssCounterProperty,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(property, &mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        property: CssCounterProperty,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         let Some(changes) = self.changes() else {
-            charge(&mut writer)?;
+            charge(writer)?;
             writer.append("none")?;
-            return Ok(writer.css);
+            return Ok(());
         };
 
-        charge(&mut writer)?; // Nonempty ordered list.
+        charge(writer)?; // Nonempty ordered list.
         for (index, change) in changes.iter().enumerate() {
             if index != 0 {
                 writer.append(" ")?;
             }
-            charge(&mut writer)?; // One coupled name/integer entry.
-            charge(&mut writer)?; // Checked decoded name.
+            charge(writer)?; // One coupled name/integer entry.
+            charge(writer)?; // Checked decoded name.
             writer.append_identifier(change.name().as_str())?;
             writer.append(" ")?;
             if let Some(number) = change.value() {
@@ -65,6 +74,6 @@ impl CssCounterChangesValue {
                 })?;
             }
         }
-        Ok(writer.css)
+        Ok(())
     }
 }

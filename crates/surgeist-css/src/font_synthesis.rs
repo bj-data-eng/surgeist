@@ -130,9 +130,9 @@ impl CssFontSynthesis {
         }
     }
 
-    fn write(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+    fn write(&self, writer: &mut SpecifiedRuleWriter, start: usize) -> Result<()> {
         match self {
-            Self::None => word(writer, "none"),
+            Self::None => word(writer, start, "none"),
             Self::Values(values) => {
                 for (selected, keyword) in [
                     (values.weight(), "weight"),
@@ -141,7 +141,7 @@ impl CssFontSynthesis {
                     (values.position(), "position"),
                 ] {
                     if selected {
-                        word(writer, keyword)?;
+                        word(writer, start, keyword)?;
                     }
                 }
                 Ok(())
@@ -150,10 +150,10 @@ impl CssFontSynthesis {
     }
 }
 
-fn word(writer: &mut SpecifiedRuleWriter, value: &str) -> Result<()> {
+fn word(writer: &mut SpecifiedRuleWriter, start: usize, value: &str) -> Result<()> {
     writer.context.charge_input(1)?;
     writer.context.charge_projection(1)?;
-    if !writer.css.is_empty() {
+    if writer.css.len() != start {
         writer.append(" ")?;
     }
     writer.append(value)
@@ -162,8 +162,8 @@ fn word(writer: &mut SpecifiedRuleWriter, value: &str) -> Result<()> {
 macro_rules! keyword_writer {
     ($value:ty, $($variant:ident => $keyword:literal),+ $(,)?) => {
         impl $value {
-            fn write(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-                word(writer, match self { $(Self::$variant => $keyword),+ })
+            fn write(&self, writer: &mut SpecifiedRuleWriter, start: usize) -> Result<()> {
+                word(writer, start, match self { $(Self::$variant => $keyword),+ })
             }
         }
     };
@@ -184,9 +184,19 @@ macro_rules! public_serializer {
 
             /// Serializes under a cumulative input, projection, and output budget.
             pub fn serialize_specified_with_limits(&self, limits: Limits) -> Result<String> {
-                let mut writer = SpecifiedRuleWriter::new(limits);
-                self.write(&mut writer)?;
+                let mut writer =
+                    crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+                self.append_to_rule_writer(&mut writer)?;
                 Ok(writer.css)
+            }
+
+            pub(crate) fn append_to_rule_writer(
+                &self,
+                writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+            ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+                let start = writer.css.len();
+                self.write(writer, start)?;
+                Ok(())
             }
         }
     };

@@ -1,6 +1,6 @@
 //! Exact authored positioned offsets before writing-mode and layout resolution.
 
-use crate::specified_serialization::{SpecifiedSerializationContext, serialize_keyword_sequence};
+use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{
     CssBoxSideKind, CssSpecifiedLengthPercentage, CssSpecifiedValueSerializationError,
     CssSpecifiedValueSerializationLimits, CssValueOrigin,
@@ -43,10 +43,19 @@ impl CssInsetValue {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        let mut context = SpecifiedSerializationContext::new(limits);
-        let mut output = String::new();
-        self.serialize_into(&mut context, &mut output)?;
-        Ok(output)
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        self.serialize_into(context, output)?;
+        Ok(())
     }
 
     fn serialize_into(
@@ -121,14 +130,23 @@ impl CssInsetPair {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        let mut context = SpecifiedSerializationContext::new(limits);
-        let mut output = String::new();
-        self.start.serialize_into(&mut context, &mut output)?;
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        self.start.serialize_into(context, output)?;
         if let Some(end) = &self.authored_end {
-            context.append(&mut output, " ")?;
-            end.serialize_into(&mut context, &mut output)?;
+            context.append(output, " ")?;
+            end.serialize_into(context, output)?;
         }
-        Ok(output)
+        Ok(())
     }
 }
 
@@ -182,20 +200,29 @@ impl CssInsetShorthand {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        let mut context = SpecifiedSerializationContext::new(limits);
-        let mut output = String::new();
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
         if self.kind == CssBoxSideKind::Logical {
             context.charge_input(1)?;
             context.charge_projection(1)?;
-            context.append(&mut output, "logical ")?;
+            context.append(output, "logical ")?;
         }
         for (index, value) in self.authored_values.iter().enumerate() {
             if index > 0 {
-                context.append(&mut output, " ")?;
+                context.append(output, " ")?;
             }
-            value.serialize_into(&mut context, &mut output)?;
+            value.serialize_into(context, output)?;
         }
-        Ok(output)
+        Ok(())
     }
 }
 
@@ -210,6 +237,15 @@ impl crate::CssLayoutPosition {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         let text = match self {
             Self::Static => "static",
             Self::Relative => "relative",
@@ -217,6 +253,6 @@ impl crate::CssLayoutPosition {
             Self::Fixed => "fixed",
             Self::Sticky => "sticky",
         };
-        serialize_keyword_sequence(text, limits)
+        writer.keyword(text)
     }
 }

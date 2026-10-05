@@ -27,10 +27,19 @@ impl CssGapValue {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        let mut context = SpecifiedSerializationContext::new(limits);
-        let mut output = String::new();
-        self.serialize_specified_into(&mut context, &mut output)?;
-        Ok(output)
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        self.serialize_specified_into(context, output)?;
+        Ok(())
     }
 
     pub(crate) fn serialize_specified_into(
@@ -113,16 +122,24 @@ impl CssGapShorthand {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        let mut context = SpecifiedSerializationContext::new(limits);
-        let mut output = String::new();
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
         context.charge_input(1)?;
         context.charge_projection(1)?;
-        self.row
-            .serialize_specified_into(&mut context, &mut output)?;
+        self.row.serialize_specified_into(context, output)?;
         if let Some(column) = &self.authored_column {
-            context.append(&mut output, " ")?;
-            column.serialize_specified_into(&mut context, &mut output)?;
+            context.append(output, " ")?;
+            column.serialize_specified_into(context, output)?;
         }
-        Ok(output)
+        Ok(())
     }
 }

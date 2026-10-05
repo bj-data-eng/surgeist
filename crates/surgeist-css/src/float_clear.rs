@@ -1,6 +1,5 @@
 //! Canonical authored float and clear keywords, before writing-mode mapping.
 
-use crate::specified_serialization::serialize_keyword_sequence;
 use crate::{
     CssClear, CssFloat, CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
 };
@@ -16,6 +15,15 @@ impl CssFloat {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String, CssSpecifiedValueSerializationError> {
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         let text = match self {
             Self::None => "none",
             Self::Left => "left",
@@ -23,7 +31,7 @@ impl CssFloat {
             Self::InlineStart => "inline-start",
             Self::InlineEnd => "inline-end",
         };
-        serialize_keyword_sequence(text, limits)
+        writer.keyword(text)
     }
 }
 
@@ -38,6 +46,15 @@ impl CssClear {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String, CssSpecifiedValueSerializationError> {
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         let text = match self {
             Self::None => "none",
             Self::Left => "left",
@@ -46,6 +63,6 @@ impl CssClear {
             Self::InlineStart => "inline-start",
             Self::InlineEnd => "inline-end",
         };
-        serialize_keyword_sequence(text, limits)
+        writer.keyword(text)
     }
 }

@@ -96,11 +96,20 @@ impl CssSpecifiedNonNegativeFlex {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        let mut context = SpecifiedSerializationContext::new(limits);
-        let captured = self.capture_specified(&mut context)?;
-        let mut output = String::new();
-        context.append(&mut output, &captured)?;
-        Ok(output)
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        let context = &mut writer.context;
+        let captured = self.capture_specified(context)?;
+        let output = &mut writer.css;
+        context.append(output, &captured)?;
+        Ok(())
     }
 
     pub(crate) fn capture_specified(
@@ -111,6 +120,9 @@ impl CssSpecifiedNonNegativeFlex {
             SpecifiedNumericValue::Literal(value) => {
                 context.charge_input(1)?;
                 context.charge_projection(1)?;
+                if context.output_suppressed() {
+                    return Ok(String::new());
+                }
                 let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, .. }) =
                     value.view()
                 else {
@@ -384,11 +396,20 @@ impl CssSpecifiedNumber {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        let mut context = SpecifiedSerializationContext::new(limits);
-        let captured = self.capture_specified(&mut context)?;
-        let mut output = String::new();
-        context.append(&mut output, &captured)?;
-        Ok(output)
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        let context = &mut writer.context;
+        let captured = self.capture_specified(context)?;
+        let output = &mut writer.css;
+        context.append(output, &captured)?;
+        Ok(())
     }
 
     pub(crate) fn capture_specified(
@@ -493,11 +514,20 @@ impl CssSpecifiedPercentage {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        let mut context = SpecifiedSerializationContext::new(limits);
-        let captured = self.capture_specified(&mut context)?;
-        let mut output = String::new();
-        context.append(&mut output, &captured)?;
-        Ok(output)
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        let context = &mut writer.context;
+        let captured = self.capture_specified(context)?;
+        let output = &mut writer.css;
+        context.append(output, &captured)?;
+        Ok(())
     }
 
     pub(crate) fn capture_specified(
@@ -610,11 +640,20 @@ impl CssSpecifiedNonNegativeNumber {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        let mut context = SpecifiedSerializationContext::new(limits);
-        let captured = self.capture_specified(&mut context)?;
-        let mut output = String::new();
-        context.append(&mut output, &captured)?;
-        Ok(output)
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        let context = &mut writer.context;
+        let captured = self.capture_specified(context)?;
+        let output = &mut writer.css;
+        context.append(output, &captured)?;
+        Ok(())
     }
 
     pub(crate) fn capture_specified(
@@ -735,11 +774,20 @@ impl CssSpecifiedLength {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        let mut context = SpecifiedSerializationContext::new(limits);
-        let captured = self.capture_specified(&mut context)?;
-        let mut output = String::new();
-        context.append(&mut output, &captured)?;
-        Ok(output)
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        let context = &mut writer.context;
+        let captured = self.capture_specified(context)?;
+        let output = &mut writer.css;
+        context.append(output, &captured)?;
+        Ok(())
     }
 
     pub(crate) fn capture_specified(
@@ -835,11 +883,20 @@ impl CssSpecifiedNonNegativeLength {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        let mut context = SpecifiedSerializationContext::new(limits);
-        let captured = self.capture_specified(&mut context)?;
-        let mut output = String::new();
-        context.append(&mut output, &captured)?;
-        Ok(output)
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        let context = &mut writer.context;
+        let captured = self.capture_specified(context)?;
+        let output = &mut writer.css;
+        context.append(output, &captured)?;
+        Ok(())
     }
 
     pub(crate) fn capture_specified(
@@ -950,11 +1007,20 @@ impl CssSpecifiedLengthPercentage {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        let mut context = SpecifiedSerializationContext::new(limits);
-        let captured = self.capture_specified(&mut context)?;
-        let mut output = String::new();
-        context.append(&mut output, &captured)?;
-        Ok(output)
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        let context = &mut writer.context;
+        let captured = self.capture_specified(context)?;
+        let output = &mut writer.css;
+        context.append(output, &captured)?;
+        Ok(())
     }
 
     pub(crate) fn capture_specified(
@@ -1065,11 +1131,20 @@ impl CssSpecifiedNonNegativeLengthPercentage {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        let mut context = SpecifiedSerializationContext::new(limits);
-        let captured = self.capture_specified(&mut context)?;
-        let mut output = String::new();
-        context.append(&mut output, &captured)?;
-        Ok(output)
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        let context = &mut writer.context;
+        let captured = self.capture_specified(context)?;
+        let output = &mut writer.css;
+        context.append(output, &captured)?;
+        Ok(())
     }
 
     pub(crate) fn capture_specified(
@@ -1188,11 +1263,20 @@ impl CssSpecifiedNonNegativePercentage {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        let mut context = SpecifiedSerializationContext::new(limits);
-        let captured = self.capture_specified(&mut context)?;
-        let mut output = String::new();
-        context.append(&mut output, &captured)?;
-        Ok(output)
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        let context = &mut writer.context;
+        let captured = self.capture_specified(context)?;
+        let output = &mut writer.css;
+        context.append(output, &captured)?;
+        Ok(())
     }
 
     pub(crate) fn capture_specified(

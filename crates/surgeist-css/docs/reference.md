@@ -63,6 +63,21 @@ match the context's scope elements and contribute zero specificity. They are not
 rewritten into `:scope`. Relative leading combinators still require their owning
 stylesheet contexts. Normalized `ExplicitAnchors` bindings retain an optional
 parent through `CssSelectorContext::parent()` rather than manufacturing one.
+`CssSelector::to_specified_css()` emits canonical authored selector text.
+`to_specified_css_with_limits()` applies cumulative semantic-node and final UTF-8
+byte limits, returning a typed error atomically while retaining the input graph.
+Escapes, namespace prefixes, selector order and symbolic `&`/`:scope` identity
+remain meaningful. Reparse qualified output with the corresponding namespace
+bindings; emission does not resolve ancestry or match elements.
+
+Selector input and projection work each count scalar selectors, compound and
+complex nodes, qualified type names, anchor occurrences, attributes, pseudo
+nodes, relative members, nth patterns, and language/part items. Enum carriers,
+list continuations and punctuation add no work nodes. These units apply through
+nested arguments under one cumulative budget. Value composition likewise keeps
+owning leaf policies cumulative: omitted output still visits its semantic work
+without consuming final output bytes.
+
 An invalid outer selector or unforgiving root list produces `None` and a
 `RejectInput` diagnostic spanning the complete input. A valid `:is()` or
 `:where()` can retain its valid members while reporting discarded forgiving
@@ -6173,3 +6188,57 @@ remains pending until strict reentry. Normalization retains authored declaration
 order. Their public support records are `Complete` for the authored lifecycle.
 The catalog adds two feature records and two pinned specification sources;
 `box-decoration-break` retains its baseline identity and Fragmentation 3 source.
+
+
+## Authored selector emission and cumulative value composition
+
+`CssSelector::to_specified_css()` and `to_specified_css_with_limits()` emit
+checked selector grammar without resolving its symbolic ancestry. The provider
+retains authored qualified prefixes, universal selectors, ID/class identity,
+logical-list order, relative combinators in `:has()`, and ordered pseudo-element
+attachment. Nesting and scope anchors remain `&`; explicit `:scope` remains a
+pseudo-class. Identifier and string escaping use the same bounded CSS escaping
+owner as the existing namespace writer. An unchecked empty or NUL-containing
+scalar name returns `UnrepresentableValue` rather than changing its identity.
+
+The selected [CSSOM selector algorithms](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serializing-selectors)
+supply identifier/string escaping, attribute-value strings, quoted `:lang()`
+arguments, comma-space lists and combinator spacing. The selected
+[Syntax 3 An+B algorithm](https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#serializing-anb)
+emits `odd` as `2n+1`, `even` as `2n`, omits zero coefficients and emits signed
+integer offsets without surrounding spaces. Authored qualified-name retention
+continues the existing namespace provider policy. This selector operation is
+an authored graph provider; it does not implement live CSSOM rule formatting,
+selector matching or object mutation.
+
+Every logical selector, compound, pseudo-class/pseudo-element, attribute,
+qualified type name, anchor and explicit ID/class entry charges a semantic visit
+to both cumulative node budgets. Simple scalar selectors charge one visit; enum carriers do not additionally
+charge their compound or pseudo-class payload.
+Language ranges and nth-pattern arguments also charge visits. Child work is
+scheduled incrementally with checked allocation, including wide logical lists
+and deep nesting; no independent serialization depth ceiling is introduced.
+Failure returns no partial public text and leaves the graph available for retry.
+
+Existing specified-value front doors now share their owning algorithm through
+crate-private append operations on the cumulative specified writer. These
+operations keep provider-specific canonical phases, duplicate/suppressed work,
+precision and typed errors; they do not call a fresh public serializer and
+concatenate its result. Font variant/synthesis and column-rule providers use a
+local value start when inserting separators, so an enclosing prefix cannot add
+spurious value whitespace. Counter changes continue to receive their property
+identity because omitted integers differ between increment and reset/set.
+
+This checkpoint supplies reusable providers for the shared rule writer tracked
+in [#505](https://github.com/bj-data-eng/surgeist/issues/505), selector authored
+subsets in [#834](https://github.com/bj-data-eng/surgeist/issues/834), and later
+schema-coupled declaration composition in
+[#831](https://github.com/bj-data-eng/surgeist/issues/831). Complete ordinary
+property dispatch, missing semantic value families, all-rule traversal and
+stylesheet encoding policy remain pending. Existing generic rule/sheet
+front-door support is unchanged at this checkpoint.
+
+Behavioral evidence is in
+[`selector_specified_serialization.rs`](../tests/selector_specified_serialization.rs)
+and the crate-private `specified_provider_composition_tests` module, alongside
+the existing owning providers' public serialization suites.

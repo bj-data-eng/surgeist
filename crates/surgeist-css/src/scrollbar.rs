@@ -1,6 +1,5 @@
 //! Authored CSS Scrollbars 1 values, before contextual color or UI resolution.
 
-use crate::specified_serialization::{SpecifiedSerializationContext, serialize_keyword_sequence};
 use crate::{
     CssColor, CssScrollbarWidth, CssSpecifiedValueSerializationError,
     CssSpecifiedValueSerializationLimits,
@@ -62,19 +61,28 @@ impl CssScrollbarColor {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut context = SpecifiedSerializationContext::new(limits);
-        let mut output = String::new();
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
         context.charge_input(1)?;
         context.charge_projection(1)?;
         match &self.colors {
-            None => context.append(&mut output, "auto")?,
+            None => context.append(output, "auto")?,
             Some([thumb, track]) => {
-                thumb.append_specified(&mut context, &mut output)?;
-                context.append(&mut output, " ")?;
-                track.append_specified(&mut context, &mut output)?;
+                thumb.append_specified(context, output)?;
+                context.append(output, " ")?;
+                track.append_specified(context, output)?;
             }
         }
-        Ok(output)
+        Ok(())
     }
 }
 
@@ -89,13 +97,19 @@ impl CssScrollbarWidth {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String, CssSpecifiedValueSerializationError> {
-        serialize_keyword_sequence(
-            match self {
-                Self::Auto => "auto",
-                Self::Thin => "thin",
-                Self::None => "none",
-            },
-            limits,
-        )
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        writer.keyword(match self {
+            Self::Auto => "auto",
+            Self::Thin => "thin",
+            Self::None => "none",
+        })
     }
 }

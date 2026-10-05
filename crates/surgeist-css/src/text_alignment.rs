@@ -94,9 +94,16 @@ impl CssCharacterAlignment {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        serialize(limits, |context, output| {
-            self.append_specified(context, output)
-        })
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        self.append_specified(&mut writer.context, &mut writer.css)
     }
 
     pub fn try_new(
@@ -226,16 +233,6 @@ pub enum CssTextAlignLastValue {
     Keyword(CssTextAlign),
 }
 
-fn serialize(
-    limits: CssSpecifiedValueSerializationLimits,
-    append: impl FnOnce(&mut SpecifiedSerializationContext, &mut String) -> SerializationResult<()>,
-) -> SerializationResult<String> {
-    let mut context = SpecifiedSerializationContext::new(limits);
-    let mut output = String::new();
-    append(&mut context, &mut output)?;
-    Ok(output)
-}
-
 impl CssTextAlignAllValue {
     #[must_use]
     pub const fn initial() -> Self {
@@ -250,9 +247,16 @@ impl CssTextAlignAllValue {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        serialize(limits, |context, output| {
-            self.append_specified(context, output)
-        })
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        self.append_specified(&mut writer.context, &mut writer.css)
     }
 
     fn append_specified(
@@ -276,10 +280,21 @@ impl CssTextAlignValue {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        serialize(limits, |context, output| match self {
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        match self {
             Self::Alignment(value) => value.append_specified(context, output),
             Self::JustifyAll => append_raw_keyword("justify-all", context, output),
-        })
+        }
     }
 }
 
@@ -297,10 +312,21 @@ impl CssTextAlignLastValue {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        serialize(limits, |context, output| match self {
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        match self {
             Self::Auto => append_raw_keyword("auto", context, output),
             Self::Keyword(value) => append_keyword(*value, context, output),
-        })
+        }
     }
 }
 

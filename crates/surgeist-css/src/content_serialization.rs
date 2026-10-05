@@ -108,9 +108,17 @@ impl CssCounterStyleValue {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        style(&mut writer, self)?;
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
         Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        style(writer, self)?;
+        Ok(())
     }
 }
 
@@ -262,24 +270,32 @@ impl CssContentValue {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         match self {
-            CssContentValue::Normal => keyword(&mut writer, "normal")?,
-            CssContentValue::None => keyword(&mut writer, "none")?,
+            CssContentValue::Normal => keyword(writer, "normal")?,
+            CssContentValue::None => keyword(writer, "none")?,
             CssContentValue::Generated(value) => {
-                charge(&mut writer)?;
+                charge(writer)?;
                 for (index, item_value) in value.items().iter().enumerate() {
                     if index != 0 {
                         writer.append(" ")?;
                     }
-                    item(&mut writer, item_value)?;
+                    item(writer, item_value)?;
                 }
                 if let Some(value) = value.alternative() {
                     writer.append(" / ")?;
-                    alternative(&mut writer, value)?;
+                    alternative(writer, value)?;
                 }
             }
         }
-        Ok(writer.css)
+        Ok(())
     }
 }

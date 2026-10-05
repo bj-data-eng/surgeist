@@ -3895,6 +3895,9 @@ pub surgeist_css::CssSelector::PseudoClass(surgeist_css::CssPseudoClass)
 pub surgeist_css::CssSelector::Tag(alloc::string::String)
 impl surgeist_css::CssSelector
 pub fn surgeist_css::CssSelector::has_pseudo_elements(&self) -> bool
+impl surgeist_css::CssSelector
+pub fn surgeist_css::CssSelector::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssSelector::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssSelectorBinding
 pub surgeist_css::CssSelectorBinding::Absolute
 pub surgeist_css::CssSelectorBinding::ExplicitAnchors

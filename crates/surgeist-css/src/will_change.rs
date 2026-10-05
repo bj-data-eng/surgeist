@@ -1,7 +1,5 @@
 //! Checked authored optimization hints from CSS Will Change 1 §2.
 
-use crate::specified_rule_serialization::SpecifiedRuleWriter;
-use crate::specified_serialization::serialize_keyword_sequence;
 use crate::{
     CssComponentValue, CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
 };
@@ -92,10 +90,19 @@ impl CssWillChange {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         let Self::Features(features) = self else {
-            return serialize_keyword_sequence("auto", limits);
+            return writer.keyword("auto");
         };
-        let mut writer = SpecifiedRuleWriter::new(limits);
+
         writer.context.charge_input(1)?;
         writer.context.charge_projection(1)?;
         for (index, feature) in features.items().iter().enumerate() {
@@ -110,6 +117,6 @@ impl CssWillChange {
                 CssWillChangeFeature::Property(name) => writer.append_identifier(name.as_str())?,
             }
         }
-        Ok(writer.css)
+        Ok(())
     }
 }

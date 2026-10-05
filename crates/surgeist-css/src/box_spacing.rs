@@ -16,16 +16,6 @@ trait SpacingValue {
     ) -> SerializationResult<()>;
 }
 
-fn serialize<S: SpacingValue>(
-    value: &S,
-    limits: CssSpecifiedValueSerializationLimits,
-) -> SerializationResult<String> {
-    let mut context = SpecifiedSerializationContext::new(limits);
-    let mut output = String::new();
-    value.serialize_into(&mut context, &mut output)?;
-    Ok(output)
-}
-
 fn append_auto(
     context: &mut SpecifiedSerializationContext,
     output: &mut String,
@@ -70,7 +60,16 @@ impl CssMarginValue {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        serialize(self, limits)
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        self.serialize_into(&mut writer.context, &mut writer.css)
     }
 }
 
@@ -135,7 +134,16 @@ impl CssPaddingValue {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        serialize(self, limits)
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        self.serialize_into(&mut writer.context, &mut writer.css)
     }
 }
 
@@ -241,7 +249,16 @@ impl CssMarginPair {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        serialize(&self.0, limits)
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        self.0.serialize_into(&mut writer.context, &mut writer.css)
     }
 }
 
@@ -284,7 +301,16 @@ impl CssPaddingPair {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        serialize(&self.0, limits)
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        self.0.serialize_into(&mut writer.context, &mut writer.css)
     }
 }
 
@@ -375,7 +401,16 @@ impl CssMarginShorthand {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        serialize(&self.0, limits)
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        self.0.serialize_into(&mut writer.context, &mut writer.css)
     }
 }
 
@@ -416,6 +451,15 @@ impl CssPaddingShorthand {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        serialize(&self.0, limits)
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        self.0.serialize_into(&mut writer.context, &mut writer.css)
     }
 }

@@ -1,6 +1,5 @@
 //! Checked authored overflow values before writing-mode or computed-value resolution.
 
-use crate::specified_serialization::{SpecifiedSerializationContext, serialize_keyword_sequence};
 use crate::{
     CssOverflow, CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
 };
@@ -18,7 +17,16 @@ impl CssOverflow {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        serialize_keyword_sequence(self.as_css(), limits)
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        writer.keyword(self.as_css())
     }
 
     pub(crate) const fn as_css(self) -> &'static str {
@@ -77,19 +85,28 @@ impl CssOverflowValue {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> SerializationResult<String> {
-        let mut context = SpecifiedSerializationContext::new(limits);
-        let mut output = String::new();
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
         context.charge_input(1)?;
         context.charge_projection(1)?;
         context.charge_input(1)?;
         context.charge_projection(1)?;
-        context.append(&mut output, self.x.as_css())?;
+        context.append(output, self.x.as_css())?;
         if let Some(y) = self.authored_y {
             context.charge_input(1)?;
             context.charge_projection(1)?;
-            context.append(&mut output, " ")?;
-            context.append(&mut output, y.as_css())?;
+            context.append(output, " ")?;
+            context.append(output, y.as_css())?;
         }
-        Ok(output)
+        Ok(())
     }
 }

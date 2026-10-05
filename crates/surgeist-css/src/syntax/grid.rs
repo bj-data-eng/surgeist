@@ -95,7 +95,15 @@ impl CssGridAutoFlow {
         self,
         limits: crate::CssSpecifiedValueSerializationLimits,
     ) -> Result<String, crate::CssSpecifiedValueSerializationError> {
-        use crate::specified_serialization::SpecifiedSerializationContext;
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         let (text, nodes) = match self {
             Self::Normal => ("normal", 1),
             Self::Dense => ("dense", 1),
@@ -106,12 +114,10 @@ impl CssGridAutoFlow {
                 (CssGridAutoFlowAxis::Column, true) => ("column dense", 2),
             },
         };
-        let mut context = SpecifiedSerializationContext::new(limits);
+        let context = &mut writer.context;
         context.charge_input(nodes)?;
         context.charge_projection(nodes)?;
-        let mut css = String::new();
-        context.append(&mut css, text)?;
-        Ok(css)
+        context.append(&mut writer.css, text)
     }
 }
 
@@ -795,11 +801,22 @@ macro_rules! grid_serialization {
                 &self,
                 limits: crate::CssSpecifiedValueSerializationLimits,
             ) -> GridSerializationResult<String> {
-                let mut context = crate::specified_serialization::SpecifiedSerializationContext::new(limits);
-                let mut output = String::new();
-                self.write_grid(&mut context, &mut output)?;
-                Ok(output)
-            }
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+
+                let context = &mut writer.context;
+                let output = &mut writer.css;
+                self.write_grid(context, output)?;
+                Ok(())
+
+    }
         }
     )+};
 }

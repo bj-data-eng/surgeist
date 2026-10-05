@@ -8,16 +8,6 @@ use crate::{
 
 type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
 
-fn serialize(
-    limits: CssSpecifiedValueSerializationLimits,
-    append: impl FnOnce(&mut SpecifiedSerializationContext, &mut String) -> Result<()>,
-) -> Result<String> {
-    let mut context = SpecifiedSerializationContext::new(limits);
-    let mut output = String::new();
-    append(&mut context, &mut output)?;
-    Ok(output)
-}
-
 impl CssBorderStyle {
     /// Serializes one specified line-style keyword under the default budget.
     pub fn serialize_specified(&self) -> Result<String> {
@@ -29,9 +19,16 @@ impl CssBorderStyle {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String> {
-        serialize(limits, |context, output| {
-            self.append_specified(context, output)
-        })
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        self.append_specified(&mut writer.context, &mut writer.css)
     }
 
     pub(crate) fn append_specified(
@@ -95,16 +92,26 @@ impl CssBorderStylePair {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String> {
-        serialize(limits, |context, output| {
-            context.charge_input(1)?;
-            context.charge_projection(1)?;
-            self.start.append_specified(context, output)?;
-            if let Some(end) = &self.authored_end {
-                context.append(output, " ")?;
-                end.append_specified(context, output)?;
-            }
-            Ok(())
-        })
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+
+        context.charge_input(1)?;
+        context.charge_projection(1)?;
+        self.start.append_specified(context, output)?;
+        if let Some(end) = &self.authored_end {
+            context.append(output, " ")?;
+            end.append_specified(context, output)?;
+        }
+        Ok(())
     }
 }
 
@@ -154,19 +161,29 @@ impl CssBorderStyleShorthand {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String> {
-        serialize(limits, |context, output| {
-            context.charge_input(1)?;
-            context.charge_projection(1)?;
-            if self.kind == CssBoxSideKind::Logical {
-                context.append(output, "logical ")?;
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+
+        context.charge_input(1)?;
+        context.charge_projection(1)?;
+        if self.kind == CssBoxSideKind::Logical {
+            context.append(output, "logical ")?;
+        }
+        for (index, style) in self.authored_values.iter().enumerate() {
+            if index > 0 {
+                context.append(output, " ")?;
             }
-            for (index, style) in self.authored_values.iter().enumerate() {
-                if index > 0 {
-                    context.append(output, " ")?;
-                }
-                style.append_specified(context, output)?;
-            }
-            Ok(())
-        })
+            style.append_specified(context, output)?;
+        }
+        Ok(())
     }
 }

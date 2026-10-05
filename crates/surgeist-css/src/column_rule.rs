@@ -1,6 +1,5 @@
 //! Exact authored `column-rule` components and specified shorthand serialization.
 
-use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{
     CssBorder, CssBorderStyle, CssBorderWidth, CssColor, CssSpecifiedValueSerializationError,
     CssSpecifiedValueSerializationLimits,
@@ -56,8 +55,18 @@ impl CssColumnRule {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String> {
-        let mut context = SpecifiedSerializationContext::new(limits);
-        let mut output = String::new();
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        let start = output.len();
         context.charge_input(1)?;
         context.charge_projection(1)?;
         let emit_width = self
@@ -70,21 +79,21 @@ impl CssColumnRule {
         let all_initial = !(emit_width || emit_style || emit_color);
         if let Some(width) = self.width() {
             if emit_width || all_initial {
-                width.append_specified(&mut context, &mut output)?;
+                width.append_specified(context, output)?;
             } else {
                 context.charge_input(1)?;
                 context.charge_projection(1)?;
             }
         } else if all_initial {
             context.charge_projection(1)?;
-            context.append(&mut output, "medium")?;
+            context.append(output, "medium")?;
         }
         if let Some(style) = self.style() {
             if emit_style {
-                if !output.is_empty() {
-                    context.append(&mut output, " ")?;
+                if output.len() != start {
+                    context.append(output, " ")?;
                 }
-                style.append_specified(&mut context, &mut output)?;
+                style.append_specified(context, output)?;
             } else {
                 context.charge_input(1)?;
                 context.charge_projection(1)?;
@@ -92,15 +101,15 @@ impl CssColumnRule {
         }
         if let Some(color) = self.color() {
             if emit_color {
-                if !output.is_empty() {
-                    context.append(&mut output, " ")?;
+                if output.len() != start {
+                    context.append(output, " ")?;
                 }
-                color.append_specified(&mut context, &mut output)?;
+                color.append_specified(context, output)?;
             } else {
                 context.charge_input(1)?;
                 context.charge_projection(1)?;
             }
         }
-        Ok(output)
+        Ok(())
     }
 }

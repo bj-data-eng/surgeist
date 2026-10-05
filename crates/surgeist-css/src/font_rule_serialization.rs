@@ -65,9 +65,17 @@ impl CssFontFaceDescriptorValue {
     }
     /// One cumulative input/projection/output budget; failures return no partial CSS.
     pub fn serialize_specified_with_limits(&self, limits: Limits) -> Result<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        self.append_specified(&mut writer)?;
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
         Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        self.append_specified(writer)?;
+        Ok(())
     }
     pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self {

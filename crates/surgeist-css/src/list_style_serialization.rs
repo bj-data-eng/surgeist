@@ -30,15 +30,23 @@ impl CssMarkerSide {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         keyword(
-            &mut writer,
+            writer,
             match self {
                 Self::MatchSelf => "match-self",
                 Self::MatchParent => "match-parent",
             },
         )?;
-        Ok(writer.css)
+        Ok(())
     }
 }
 
@@ -82,9 +90,17 @@ impl CssListStylePosition {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        append_position(&mut writer, *self)?;
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
         Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        append_position(writer, *self)?;
+        Ok(())
     }
 }
 
@@ -99,9 +115,17 @@ impl CssListStyleTypeValue {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        append_type(&mut writer, self)?;
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
         Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        append_type(writer, self)?;
+        Ok(())
     }
 }
 
@@ -122,8 +146,16 @@ impl CssListStyleValue {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        charge(&mut writer)?; // The checked shorthand aggregate.
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        charge(writer)?; // The checked shorthand aggregate.
 
         let emit_type = self.style_type().is_some_and(|value| !is_disc(value));
         let emit_image = self
@@ -139,14 +171,14 @@ impl CssListStyleValue {
         let mut emitted = false;
         if emit_position {
             if let Some(value) = position {
-                append_position(&mut writer, value)?;
+                append_position(writer, value)?;
             } else {
                 writer.context.charge_projection(1)?;
                 writer.append("outside")?;
             }
             emitted = true;
         } else if position.is_some() {
-            charge(&mut writer)?;
+            charge(writer)?;
         }
 
         if let Some(image) = self.image() {
@@ -154,10 +186,10 @@ impl CssListStyleValue {
                 if emitted {
                     writer.append(" ")?;
                 }
-                image.append_specified(&mut writer)?;
+                image.append_specified(writer)?;
                 emitted = true;
             } else {
-                charge(&mut writer)?;
+                charge(writer)?;
             }
         }
 
@@ -166,11 +198,11 @@ impl CssListStyleValue {
                 if emitted {
                     writer.append(" ")?;
                 }
-                append_type(&mut writer, style_type)?;
+                append_type(writer, style_type)?;
             } else {
-                charge(&mut writer)?;
+                charge(writer)?;
             }
         }
-        Ok(writer.css)
+        Ok(())
     }
 }

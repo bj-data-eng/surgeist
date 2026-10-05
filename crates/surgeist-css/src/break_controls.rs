@@ -1,6 +1,5 @@
 //! Bounded specified keyword rendering for fragmentation controls.
 
-use crate::specified_serialization::serialize_keyword_sequence;
 use crate::{
     CssBreakBetween, CssBreakInside, CssSpecifiedValueSerializationError,
     CssSpecifiedValueSerializationLimits,
@@ -17,23 +16,29 @@ impl CssBreakBetween {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String, CssSpecifiedValueSerializationError> {
-        serialize_keyword_sequence(
-            match self {
-                Self::Auto => "auto",
-                Self::Avoid => "avoid",
-                Self::AvoidPage => "avoid-page",
-                Self::Page => "page",
-                Self::Left => "left",
-                Self::Right => "right",
-                Self::Recto => "recto",
-                Self::Verso => "verso",
-                Self::AvoidColumn => "avoid-column",
-                Self::Column => "column",
-                Self::AvoidRegion => "avoid-region",
-                Self::Region => "region",
-            },
-            limits,
-        )
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        writer.keyword(match self {
+            Self::Auto => "auto",
+            Self::Avoid => "avoid",
+            Self::AvoidPage => "avoid-page",
+            Self::Page => "page",
+            Self::Left => "left",
+            Self::Right => "right",
+            Self::Recto => "recto",
+            Self::Verso => "verso",
+            Self::AvoidColumn => "avoid-column",
+            Self::Column => "column",
+            Self::AvoidRegion => "avoid-region",
+            Self::Region => "region",
+        })
     }
 }
 
@@ -48,16 +53,22 @@ impl CssBreakInside {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String, CssSpecifiedValueSerializationError> {
-        serialize_keyword_sequence(
-            match self {
-                Self::Auto => "auto",
-                Self::Avoid => "avoid",
-                Self::AvoidPage => "avoid-page",
-                Self::AvoidColumn => "avoid-column",
-                Self::AvoidRegion => "avoid-region",
-            },
-            limits,
-        )
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        writer.keyword(match self {
+            Self::Auto => "auto",
+            Self::Avoid => "avoid",
+            Self::AvoidPage => "avoid-page",
+            Self::AvoidColumn => "avoid-column",
+            Self::AvoidRegion => "avoid-region",
+        })
     }
 }
 
@@ -72,12 +83,18 @@ impl crate::CssBoxDecorationBreak {
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String, CssSpecifiedValueSerializationError> {
-        serialize_keyword_sequence(
-            match self {
-                Self::Slice => "slice",
-                Self::Clone => "clone",
-            },
-            limits,
-        )
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+
+    pub(crate) fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        writer.keyword(match self {
+            Self::Slice => "slice",
+            Self::Clone => "clone",
+        })
     }
 }
