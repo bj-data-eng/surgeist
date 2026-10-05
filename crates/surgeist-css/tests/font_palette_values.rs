@@ -666,7 +666,7 @@ fn checked_components_preserve_mixed_origins_without_fabricating_occurrence_posi
 }
 
 #[test]
-fn whole_rule_and_sheet_share_limits_and_unsupported_rules_fail_closed() {
+fn whole_rule_and_sheet_share_limits_with_a_style_sibling() {
     let source = "@font-palette-values --one { font-family: Demo; override-colors: 0 red, 1 blue; }\n\
                   @font-palette-values --two { font-family: Other; }";
     let report = parse_sheet(source);
@@ -735,10 +735,10 @@ fn whole_rule_and_sheet_share_limits_and_unsupported_rules_fail_closed() {
 
     let mixed = parse_sheet(&format!("{source}\n.after {{ color: red; }}"));
     assert!(mixed.is_clean(), "{:?}", mixed.diagnostics());
-    let err = mixed.syntax().to_specified_css().unwrap_err();
+    let before = mixed.clone();
     assert_eq!(
-        err.kind(),
-        CssSpecifiedRuleSerializationErrorKind::UnsupportedRule
+        mixed.syntax().to_specified_css().unwrap(),
+        "@font-palette-values --one { font-family: Demo; override-colors: 0 red, 1 blue; }\n@font-palette-values --two { font-family: Other; }\n.after { color: red; }"
     );
-    assert_eq!(err.rule_index(), Some(2));
+    assert_eq!(mixed, before);
 }

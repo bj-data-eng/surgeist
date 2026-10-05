@@ -13,6 +13,10 @@ enum Event<'a> {
     Attribute(&'a CssAttributeSelector),
     List(&'a [CssSelector], usize),
     RelativeList(&'a [CssRelativeSelector], usize),
+    StyleList(&'a [CssStyleSelector], usize),
+    ScopedStyleList(&'a [CssScopedStyleSelector], usize),
+    ScopeList(&'a [CssScopeSelector], usize),
+    Relative(&'a CssRelativeSelector),
     Text(&'a str),
     Nth(CssNthPattern),
 }
@@ -83,8 +87,33 @@ impl SpecifiedRuleWriter {
         }
     }
     pub(crate) fn selector(&mut self, selector: &CssSelector) -> Result<()> {
+        self.selector_events(Event::Selector(selector))
+    }
+
+    /// Each authored list charges one aggregate. Enum member carriers are
+    /// transparent; a relative selector charges its leading-combinator node
+    /// before consuming the same selector provider as an absolute member.
+    pub(crate) fn style_selectors(&mut self, list: &CssStyleSelectorList) -> Result<()> {
+        self.node()?;
+        self.selector_events(Event::StyleList(list.selectors(), 0))
+    }
+
+    pub(crate) fn scoped_style_selectors(
+        &mut self,
+        list: &CssScopedStyleSelectorList,
+    ) -> Result<()> {
+        self.node()?;
+        self.selector_events(Event::ScopedStyleList(list.selectors(), 0))
+    }
+
+    pub(crate) fn scope_selectors(&mut self, list: &CssScopeSelectorList) -> Result<()> {
+        self.node()?;
+        self.selector_events(Event::ScopeList(list.selectors(), 0))
+    }
+
+    fn selector_events(&mut self, initial: Event<'_>) -> Result<()> {
         let mut work = Vec::new();
-        push(&mut work, Event::Selector(selector))?;
+        push(&mut work, initial)?;
         while let Some(event) = work.pop() {
             match event {
                 Event::Text(value) => self.append(value)?,
@@ -182,11 +211,59 @@ impl SpecifiedRuleWriter {
                         if index != 0 {
                             self.append(", ")?;
                         }
-                        self.node()?;
-                        self.combinator(value.combinator(), true)?;
                         push(&mut work, Event::RelativeList(values, index + 1))?;
-                        push(&mut work, Event::Selector(value.selector()))?;
+                        push(&mut work, Event::Relative(value))?;
                     }
+                }
+                Event::StyleList(values, index) => {
+                    if let Some(value) = values.get(index) {
+                        if index != 0 {
+                            self.append(", ")?;
+                        }
+                        push(&mut work, Event::StyleList(values, index + 1))?;
+                        push(
+                            &mut work,
+                            match value {
+                                CssStyleSelector::Selector(value) => Event::Selector(value),
+                                CssStyleSelector::Relative(value) => Event::Relative(value),
+                            },
+                        )?;
+                    }
+                }
+                Event::ScopedStyleList(values, index) => {
+                    if let Some(value) = values.get(index) {
+                        if index != 0 {
+                            self.append(", ")?;
+                        }
+                        push(&mut work, Event::ScopedStyleList(values, index + 1))?;
+                        push(
+                            &mut work,
+                            match value {
+                                CssScopedStyleSelector::Selector(value) => Event::Selector(value),
+                                CssScopedStyleSelector::Relative(value) => Event::Relative(value),
+                            },
+                        )?;
+                    }
+                }
+                Event::ScopeList(values, index) => {
+                    if let Some(value) = values.get(index) {
+                        if index != 0 {
+                            self.append(", ")?;
+                        }
+                        push(&mut work, Event::ScopeList(values, index + 1))?;
+                        push(
+                            &mut work,
+                            match value {
+                                CssScopeSelector::Selector(value) => Event::Selector(value),
+                                CssScopeSelector::Relative(value) => Event::Relative(value),
+                            },
+                        )?;
+                    }
+                }
+                Event::Relative(value) => {
+                    self.node()?;
+                    self.combinator(value.combinator(), true)?;
+                    push(&mut work, Event::Selector(value.selector()))?;
                 }
                 Event::Attribute(value) => {
                     self.node()?;

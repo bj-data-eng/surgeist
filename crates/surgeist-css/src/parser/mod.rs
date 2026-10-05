@@ -4473,6 +4473,10 @@ impl ParsedDeclaration {
             self.value_origin,
         )
     }
+
+    fn into_keyframe_declaration(self) -> CssKeyframeDeclaration {
+        CssKeyframeDeclaration::new(self.body, self.components, self.position)
+    }
 }
 
 enum DeclarationBoundaryContext<'a> {

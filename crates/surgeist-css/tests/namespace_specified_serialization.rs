@@ -191,13 +191,13 @@ fn namespace_output_uses_shared_cumulative_resource_budgets() {
 }
 
 #[test]
-fn namespace_support_keeps_unsupported_sibling_rules_fail_closed() {
+fn namespace_and_qualified_style_sibling_share_canonical_output() {
     let report = parse_sheet("@namespace svg 'urn:svg';svg|leaf {}");
     assert!(report.is_clean(), "{report:?}");
-    let error = report.syntax().to_specified_css().unwrap_err();
+    let before = report.clone();
     assert_eq!(
-        error.kind(),
-        CssSpecifiedRuleSerializationErrorKind::UnsupportedRule
+        report.syntax().to_specified_css().unwrap(),
+        "@namespace svg url(\"urn:svg\");\nsvg|leaf { }"
     );
-    assert_eq!(error.rule_index(), Some(1));
+    assert_eq!(report, before);
 }

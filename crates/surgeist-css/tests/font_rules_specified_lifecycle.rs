@@ -269,9 +269,12 @@ fn authored_duplicates_provenance_and_normalized_payloads_are_retained() {
 }
 
 #[test]
-fn generic_group_writer_remains_outside_the_font_rule_boundary() {
+fn generic_group_composes_the_existing_font_rule_provider() {
     let input = sheet("@media all { @font-face { font-family: Demo; } }");
-    let error = input.to_specified_css().unwrap_err();
-    assert_eq!(error.kind(), RuleError::UnsupportedRule);
-    assert_eq!(error.rule_index(), Some(0));
+    let before = input.clone();
+    assert_eq!(
+        input.to_specified_css().unwrap(),
+        "@media all { @font-face { font-family: Demo; } }"
+    );
+    assert_eq!(input, before);
 }

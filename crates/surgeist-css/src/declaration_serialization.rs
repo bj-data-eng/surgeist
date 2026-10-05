@@ -219,35 +219,52 @@ impl CssDeclaration {
     }
 
     pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        writer.node()?;
-        writer.node()?; // One semantic property name.
-        match self.body() {
-            CssDeclarationBody::Known(known) => {
-                writer.append(known.grammar().name())?;
-                writer.append(": ")?;
-                match known.declared_value() {
-                    CssKnownDeclaredValueRef::Property(value) => {
-                        append_property_value(value, known.grammar(), writer)?;
-                    }
-                    CssKnownDeclaredValueRef::Global(keyword) => append_global(keyword, writer)?,
-                    CssKnownDeclaredValueRef::SubstitutionDependent(_) => {
-                        append_retained_value(self.value_components(), writer)?;
-                    }
+        append_authored_declaration(
+            self.body(),
+            self.value_components(),
+            self.importance(),
+            writer,
+        )
+    }
+}
+
+/// Shared authored body/value/punctuation owner for ordinary and keyframe
+/// occurrences. Keyframe grammar supplies normal importance; its private model
+/// cannot represent an important declaration. No occurrence is selected away.
+pub(crate) fn append_authored_declaration(
+    body: &CssDeclarationBody,
+    value_components: &CssComponentValues,
+    importance: CssImportance,
+    writer: &mut SpecifiedRuleWriter,
+) -> Result<()> {
+    writer.node()?;
+    writer.node()?; // One semantic property name.
+    match body {
+        CssDeclarationBody::Known(known) => {
+            writer.append(known.grammar().name())?;
+            writer.append(": ")?;
+            match known.declared_value() {
+                CssKnownDeclaredValueRef::Property(value) => {
+                    append_property_value(value, known.grammar(), writer)?;
+                }
+                CssKnownDeclaredValueRef::Global(keyword) => append_global(keyword, writer)?,
+                CssKnownDeclaredValueRef::SubstitutionDependent(_) => {
+                    append_retained_value(value_components, writer)?;
                 }
             }
-            CssDeclarationBody::Custom(custom) => {
-                writer.append_identifier(custom.name().as_str())?;
-                writer.append(": ")?;
-                // Variables 1 §4.1 requires exact specified token spelling even
-                // for the retained CSS-wide branch of a custom declaration.
-                append_retained_value(self.value_components(), writer)?;
-            }
         }
-        if self.importance() == CssImportance::Important {
-            writer.append(" !important")?;
+        CssDeclarationBody::Custom(custom) => {
+            writer.append_identifier(custom.name().as_str())?;
+            writer.append(": ")?;
+            // Variables 1 §4.1 requires exact specified token spelling even
+            // for the retained CSS-wide branch of a custom declaration.
+            append_retained_value(value_components, writer)?;
         }
-        writer.append(";")
     }
+    if importance == CssImportance::Important {
+        writer.append(" !important")?;
+    }
+    writer.append(";")
 }
 
 impl SpecifiedRuleWriter {

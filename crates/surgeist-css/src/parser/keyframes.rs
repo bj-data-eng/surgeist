@@ -330,6 +330,6 @@ impl<'i> DeclarationParser<'i> for KeyframeDeclarationParser<'i> {
             self.recovery.source_snapshot(),
         )?;
         self.recovery.retain_component_closures(implicit_closures);
-        Ok(CssKeyframeDeclaration::new(parsed.body, parsed.position))
+        Ok(parsed.into_keyframe_declaration())
     }
 }

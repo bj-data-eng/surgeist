@@ -4096,8 +4096,6 @@ pub surgeist_css::CssSpecificationTier::Snapshot2026Stable
 pub surgeist_css::CssSpecificationTier::SurgeistExtension
 #[non_exhaustive] pub enum surgeist_css::CssSpecifiedRuleSerializationErrorKind
 pub surgeist_css::CssSpecifiedRuleSerializationErrorKind::Resource(surgeist_css::CssSpecifiedValueSerializationErrorKind)
-pub surgeist_css::CssSpecifiedRuleSerializationErrorKind::UnsupportedEncoding
-pub surgeist_css::CssSpecifiedRuleSerializationErrorKind::UnsupportedRule
 pub surgeist_css::CssSpecifiedRuleSerializationErrorKind::Value(surgeist_css::CssSpecifiedValueSerializationErrorKind)
 #[non_exhaustive] pub enum surgeist_css::CssSpecifiedValueSerializationErrorKind
 pub surgeist_css::CssSpecifiedValueSerializationErrorKind::ByteLimit

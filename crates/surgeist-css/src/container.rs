@@ -88,6 +88,28 @@ impl CssContainerPrelude {
             crate::parser::construct_container_prelude(values, limits)
         })
     }
+    pub(crate) fn append_specified(
+        &self,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> Result<(), CssSpecifiedValueSerializationError> {
+        // Entries and conditions are views of this single lexical region.
+        context.charge_input(1)?;
+        context.charge_projection(1)?;
+        crate::component_values::charge_specified_components(context, self.components())?;
+        if context.output_suppressed() {
+            return Ok(());
+        }
+        let mut out = CssCanonicalBuilder::new(context.remaining_bytes());
+        out.push_components(crate::component_values::specified_root_components(
+            self.components(),
+        ))
+        .map_err(crate::component_values::specified_component_error)?;
+        let value = out
+            .finish()
+            .map_err(crate::component_values::specified_component_error)?;
+        context.append(output, value.as_css())
+    }
     /// Emits the complete authored prelude, including separators and grouping.
     pub fn serialize(&self) -> Result<CssSerializedValue, CssComponentValueError> {
         self.serialize_with_limit(usize::MAX)

@@ -183,6 +183,39 @@ impl CssSupportsCondition {
         max_css_bytes: usize,
     ) -> Result<CssSerializedValue, CssComponentValueError> {
         let mut out = CssCanonicalBuilder::new(max_css_bytes);
+        self.emit_lexical(&mut out, self.components())?;
+        out.finish()
+    }
+    pub(crate) fn append_specified(
+        &self,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> Result<(), CssSpecifiedValueSerializationError> {
+        // The lexical region owns one aggregate; typed views do not add nodes.
+        // Standalone parentheses for bare import forms are owner punctuation:
+        // they consume bytes, without inventing retained/projection graph nodes.
+        context.charge_input(1)?;
+        context.charge_projection(1)?;
+        crate::component_values::charge_specified_components(context, self.components())?;
+        if context.output_suppressed() {
+            return Ok(());
+        }
+        let mut out = CssCanonicalBuilder::new(context.remaining_bytes());
+        self.emit_lexical(
+            &mut out,
+            crate::component_values::specified_root_components(self.components()),
+        )
+        .map_err(crate::component_values::specified_component_error)?;
+        let value = out
+            .finish()
+            .map_err(crate::component_values::specified_component_error)?;
+        context.append(output, value.as_css())
+    }
+    fn emit_lexical(
+        &self,
+        out: &mut CssCanonicalBuilder,
+        components: &[CssComponentValue],
+    ) -> Result<(), CssComponentValueError> {
         if matches!(
             self.authored_form(),
             crate::syntax::SupportsAuthoredForm::BareDeclaration
@@ -190,7 +223,7 @@ impl CssSupportsCondition {
         ) {
             out.push_grammar(CssCanonicalToken::OpenParen, &CssValueOrigin::Programmatic)?;
         }
-        out.push_components(self.components())?;
+        out.push_components(components)?;
         if matches!(
             self.authored_form(),
             crate::syntax::SupportsAuthoredForm::BareDeclaration
@@ -198,7 +231,7 @@ impl CssSupportsCondition {
         ) {
             out.push_grammar(CssCanonicalToken::CloseParen, &CssValueOrigin::Programmatic)?;
         }
-        out.finish()
+        Ok(())
     }
 }
 impl CssSupportsDeclaration {

@@ -2915,10 +2915,10 @@ parsing can retain them with recovery diagnostics. CSS performs no substitution.
 Descriptor values, descriptor occurrences, and profile rules expose
 `to_specified_css` and bounded variants. The generic `CssRule` and `CssSheet`
 writers compose profile, palette and named-supports leaves under one cumulative
-input/projection/UTF-8 budget. Rule punctuation and newline joining follow the
-deterministic specified serialization policy. Style, ordinary groups and scopes
-retain typed atomic `UnsupportedRule` failures; their general emission remains
-unfinished. Four `interop.rule.color-profile` / `interop.descriptor.color-profile.*`
+input/projection/UTF-8 budget. Style rules, ordinary groups and scopes reuse
+these providers through the [complete authored graph writer](#authored-rule-and-stylesheet-specified-output).
+Rule punctuation and newline joining follow its deterministic specified
+serialization policy; resource and value failures return no partial CSS. Four `interop.rule.color-profile` / `interop.descriptor.color-profile.*`
 records cite `I-COLOR5-20260908`; these describe one authored rule and three
 descriptor productions, without claiming complete Color 5 support.
 
@@ -3656,9 +3656,10 @@ descriptors and override pairs, normalize keywords and exact integers, and use
 the shared numeric and color serializers; pending values keep their complete
 token stream. Their `_with_limits` forms charge input, projection, and bytes
 across the whole value or rule. The shared `CssRule` and `CssSheet` specified
-writers compose supported palette rules under one cumulative budget, joining
-sheet rules with a newline; unsupported rule kinds and legacy encoding metadata
-return typed errors rather than partial output. Palette rule brace spacing,
+writers compose palette rules with every represented ordinary and scoped rule
+under one cumulative budget, joining top-level sheet rules with a newline.
+The [authored graph writer](#authored-rule-and-stylesheet-specified-output) omits
+transport encoding metadata and returns typed atomic resource or value errors. Palette rule brace spacing,
 descriptor punctuation, and sheet joining are deterministic product policy:
 the selected CSSOM does not define a palette-specific `cssText` algorithm.
 Ordinary media/supports/container/layer/scope rule lists retain the authored
@@ -5925,8 +5926,8 @@ emitted-byte limits. A declaration charges one node for the rule, one for an
 optional prefix and one for its literal name in each node budget. A supported
 sheet also charges its enclosing aggregate and shares the budgets across every
 rule. Failure returns no partial CSS. `CssRule` and `CssSheet` use this same
-namespace provider, retaining declaration order and duplicates; unsupported
-sibling rules still fail closed. Literal names remain unresolved, including empty
+namespace provider, retaining declaration order and duplicates alongside
+[ordinary and scoped siblings](#authored-rule-and-stylesheet-specified-output). Literal names remain unresolved, including empty
 and non-URI names. CSSOM string serialization replaces programmatic NUL with
 U+FFFD in output, while the stored authored value remains unchanged. Parsed
 source positions and normalization diagnostics remain available without being
@@ -6298,8 +6299,8 @@ unicode ranges, without a synthetic rule. Existing authored pending values use
 the shared pending-component owner in full rules. URL/source values stay in the
 authored phase. All suppressed duplicate values and endpoints still consume
 cumulative input/projection work; discarded output consumes no final bytes.
-Failures are atomic. Generic groups continue to return `UnsupportedRule` until
-their separate serialization owner supplies wrappers and complete dispatch.
+Failures are atomic. [Generic groups](#authored-rule-and-stylesheet-specified-output)
+reuse these owning providers through the shared iterative graph writer.
 
 ## Optimization, anchoring, and fragmentation-decoration controls
 
@@ -6623,3 +6624,61 @@ provider. Serialization neither executes counters nor generates markers.
 Evidence is in
 [`counter_style_rule_serialization.rs`](../tests/counter_style_rule_serialization.rs)
 and its private shared-writer checks.
+
+## Authored rule and stylesheet specified output
+
+`CssRule::to_specified_css` and `CssSheet::to_specified_css`, with their
+`_with_limits` forms, serialize the complete represented authored graph. The
+writer traverses ordinary and scoped rules in order and reuses owning providers
+for selectors, declarations, descriptors, names, values and query preludes.
+It emits compact blocks with single spaces between contents and newlines between
+top-level rules. Declaration occurrences, duplicates, importance and nested
+runs remain in their authored order. Existing descriptor owners retain their
+selected effective-value rules.
+
+This output follows [Syntax 3 serialization](https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#serialization)
+and Surgeist's deterministic specified-output policy. It preserves symbolic
+values without cascade, substitution, query evaluation, resource loading or
+layout. It does not apply live CSSOM declaration selection or shorthand
+recombination to the immutable authored graph. The retained leading encoding
+label is transport provenance: [Syntax 3 §9.3](https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#charset-rule)
+defines it outside actual CSS rules. Returned UTF-8 text omits that label while
+the original sheet retains it.
+
+Media lists use the existing bounded CSSOM projection provider. Invalid
+recovered members become `not all` in place, preserving valid sibling order and
+the original reports and origins. The generic Import and CustomMedia bridges
+use this projection; their direct authored `serialize` methods keep their
+existing rejection of recovered members. Import optional-clause interpretation
+uses the same owning protection grammar. Supports and Container use their
+lexical owners, preserving authored operator spelling, grouping, case and
+internal trivia while omitting root-edge whitespace.
+
+Keyframe `from` and `to` selectors emit `0%` and `100%`. Percentage output uses
+the existing selected numeric policy of at most six fractional decimal places.
+A tiny positive offset can emit `0%`; distinct offsets may emit the same rounded
+percentage. Every selector and block remains present and ordered, and the
+stored coefficients remain unchanged. Keyframe custom and pending declarations
+retain their complete component region, including comments and recovered
+implicit closure, and share the ordinary declaration punctuation/value provider.
+
+Traversal uses borrowed child continuations rather than recursion or eagerly
+stacking an entire sibling list. One cumulative context charges the sheet once
+and each logical rule once in both input and projection budgets. Enum carriers
+and child-rule slices add no duplicate rule cost. Provider-owned lists and
+values keep their existing costs; declaration lists charge one aggregate.
+A present page selector and each keyframe name cost one node in each budget.
+Each keyframe block, its selector-list aggregate and every selector cost one
+node; the blocks slice adds no aggregate. Percentage punctuation costs bytes
+without another numeric carrier node. Suppressed values and omitted lexical edge trivia still consume work while
+spending no final bytes. Scratch output is bounded by remaining emitted bytes;
+final UTF-8 text and inserted punctuation are charged once.
+
+Resource and value errors retain the enclosing top-level rule index and a typed
+provider source. Media causes retain their original origin and remain available
+through `std::error::Error::source`. A public failure returns no partial string
+and leaves the entire input available for retry. Evidence is in
+[`specified_rule_variant_contract.rs`](../tests/specified_rule_variant_contract.rs),
+[`specified_rule_graph_contract.rs`](../tests/specified_rule_graph_contract.rs),
+[`specified_rule_provider_closure.rs`](../tests/specified_rule_provider_closure.rs)
+and [`specified_graph_composition_edges.rs`](../tests/specified_graph_composition_edges.rs).

@@ -1373,11 +1373,14 @@ mod supports;
 pub use supports::CssSupportsConstructionError;
 mod media;
 mod named_supports_serialization;
+mod page_keyframe_serialization;
+mod query_rule_serialization;
 mod rule_construction;
 mod selector_serialization;
 mod shadow_serialization;
 #[cfg(test)]
 mod specified_provider_composition_tests;
+mod specified_rule_graph;
 mod specified_rule_serialization;
 pub use rule_construction::{CssRuleConstructionError, CssRuleConstructionErrorKind};
 mod url_serialization;

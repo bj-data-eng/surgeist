@@ -182,6 +182,51 @@ impl CssImportRule {
                 .is_some_and(|media| media.queries().iter().any(crate::media::query_is_deep));
         crate::media::with_media_stack(deep, || self.serialize_import(max_css_bytes))
     }
+    /// Generic graph projection: the enclosing graph owns the rule node.
+    /// Targets and clauses own their retained component trees; the media provider
+    /// owns its list aggregate and member graph, charged before any text scratch.
+    pub(crate) fn append_specified(
+        &self,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> Result<(), crate::query_rule_serialization::QueryRuleSerializationError> {
+        for component in [&self.syntax.prelude.target]
+            .into_iter()
+            .chain(self.syntax.prelude.layer.iter())
+            .chain(self.syntax.prelude.supports.iter())
+        {
+            crate::component_values::charge_specified_components(
+                context,
+                std::slice::from_ref(component),
+            )?;
+        }
+        if let Some(media) = self.media() {
+            media.charge_cssom(context)?;
+        }
+        if context.output_suppressed() {
+            return Ok(());
+        }
+        let deep = [&self.syntax.prelude.target]
+            .into_iter()
+            .chain(self.syntax.prelude.layer.iter())
+            .chain(self.syntax.prelude.supports.iter())
+            .any(|component| crate::media::component_depth(component) >= 64)
+            || self
+                .media()
+                .is_some_and(|media| media.queries().iter().any(crate::media::query_is_deep));
+        let value = crate::media::with_media_stack(deep, || {
+            // Interpretation probes use the same grammar and protections as the
+            // direct owner, but scratch is bounded by remaining operation bytes.
+            let protect =
+                self.import_protection(context.remaining_bytes(), crate::media::emit_query_cssom)?;
+            let mut out = CssCanonicalBuilder::new(context.remaining_bytes());
+            self.emit_import_into(&mut out, protect, crate::media::emit_query_cssom)?;
+            Ok::<_, CssImportSerializationError>(out.finish()?)
+        })?;
+        context.append(output, value.as_css())?;
+        Ok(())
+    }
+
     fn serialize_import(
         &self,
         max_css_bytes: usize,
@@ -197,7 +242,21 @@ impl CssImportRule {
             }
             .into());
         }
-        let (tail, expected) = self.import_tail(false)?;
+        // The direct byte-only contract retains its unlimited interpretation probes.
+        let protect = self.import_protection(usize::MAX, crate::media::emit_query)?;
+        let mut out = CssCanonicalBuilder::new(max_css_bytes);
+        self.emit_import_into(&mut out, protect, crate::media::emit_query)?;
+        Ok(out.finish()?)
+    }
+    fn import_protection(
+        &self,
+        max_bytes: usize,
+        emit_query: fn(
+            &mut CssCanonicalBuilder,
+            &CssMediaQuery,
+        ) -> Result<(), CssMediaSerializationError>,
+    ) -> Result<bool, CssImportSerializationError> {
+        let (tail, expected) = self.import_tail(false, max_bytes, emit_query)?;
         let origin = self.syntax.at_keyword.origin();
         let protect = if crate::parser::import_boundaries_match(&tail, expected, origin)? {
             false
@@ -210,7 +269,7 @@ impl CssImportRule {
                     origin: origin.clone(),
                 });
             }
-            let (protected, boundaries) = self.import_tail(true)?;
+            let (protected, boundaries) = self.import_tail(true, max_bytes, emit_query)?;
             if !crate::parser::import_boundaries_match(&protected, boundaries, origin)? {
                 return Err(CssImportSerializationError::InterpretationChanged {
                     origin: origin.clone(),
@@ -218,7 +277,17 @@ impl CssImportRule {
             }
             true
         };
-        let mut out = CssCanonicalBuilder::new(max_css_bytes);
+        Ok(protect)
+    }
+    fn emit_import_into(
+        &self,
+        out: &mut CssCanonicalBuilder,
+        protect: bool,
+        emit_query: fn(
+            &mut CssCanonicalBuilder,
+            &CssMediaQuery,
+        ) -> Result<(), CssMediaSerializationError>,
+    ) -> Result<(), CssImportSerializationError> {
         out.push_grammar(
             CssCanonicalToken::AtKeyword("import"),
             self.syntax.at_keyword.origin(),
@@ -228,24 +297,33 @@ impl CssImportRule {
             self.syntax.prelude.target.origin(),
         )?;
         out.push_component(&self.syntax.prelude.target)?;
-        self.emit_import_tail(&mut out, protect)?;
+        self.emit_import_tail_with(out, protect, emit_query)?;
         out.push_grammar(CssCanonicalToken::Semicolon, &self.syntax.prelude.semicolon)?;
-        Ok(out.finish()?)
+        Ok(())
     }
     fn import_tail(
         &self,
         protect: bool,
+        max_bytes: usize,
+        emit_query: fn(
+            &mut CssCanonicalBuilder,
+            &CssMediaQuery,
+        ) -> Result<(), CssMediaSerializationError>,
     ) -> Result<(CssSerializedValue, [Option<usize>; 2]), CssImportSerializationError> {
-        // Clause interpretation probes do not consume the complete-rule budget.
-        // Only final ordered emission can identify its first overflowing token.
-        let mut out = CssCanonicalBuilder::new(usize::MAX);
-        let expected = self.emit_import_tail(&mut out, protect)?;
+        // Scratch bytes are not final emission bytes. The caller selects the
+        // direct byte-only or shared bounded projection contract.
+        let mut out = CssCanonicalBuilder::new(max_bytes);
+        let expected = self.emit_import_tail_with(&mut out, protect, emit_query)?;
         Ok((out.finish()?, expected))
     }
-    fn emit_import_tail(
+    fn emit_import_tail_with(
         &self,
         out: &mut CssCanonicalBuilder,
         protect: bool,
+        emit_query: fn(
+            &mut CssCanonicalBuilder,
+            &CssMediaQuery,
+        ) -> Result<(), CssMediaSerializationError>,
     ) -> Result<[Option<usize>; 2], CssImportSerializationError> {
         let mut boundaries = [None, None];
         for (index, component) in [&self.syntax.prelude.layer, &self.syntax.prelude.supports]
@@ -275,7 +353,7 @@ impl CssImportRule {
                 if index == 0 && protect {
                     out.push_grammar(CssCanonicalToken::OpenParen, &CssValueOrigin::Programmatic)?;
                 }
-                crate::media::emit_query(out, query)?;
+                emit_query(out, query)?;
                 if index == 0 && protect {
                     out.push_grammar(CssCanonicalToken::CloseParen, &CssValueOrigin::Programmatic)?;
                 }

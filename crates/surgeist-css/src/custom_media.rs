@@ -351,11 +351,51 @@ impl CssCustomMediaRule {
         let deep = matches!(&self.data.body,CssCustomMediaBody::Media(list) if list.queries().iter().any(crate::media::query_is_deep));
         crate::media::with_media_stack(deep, || self.emit(usize::MAX))
     }
+    /// Generic graph projection leaves the logical rule charge to its caller.
+    pub(crate) fn append_specified(
+        &self,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> Result<(), crate::query_rule_serialization::QueryRuleSerializationError> {
+        crate::component_values::charge_specified_components(
+            context,
+            std::slice::from_ref(self.data.name.component()),
+        )?;
+        match &self.data.body {
+            CssCustomMediaBody::True | CssCustomMediaBody::False => {
+                context.charge_input(1)?;
+                context.charge_projection(1)?;
+            }
+            CssCustomMediaBody::Media(list) => list.charge_cssom(context)?,
+        }
+        if context.output_suppressed() {
+            return Ok(());
+        }
+        let deep = matches!(&self.data.body,CssCustomMediaBody::Media(list) if list.queries().iter().any(crate::media::query_is_deep));
+        let value = crate::media::with_media_stack(deep, || {
+            let mut out = CssCanonicalBuilder::new(context.remaining_bytes());
+            self.emit_into(&mut out, crate::media::emit_query_cssom)?;
+            Ok::<_, CssCustomMediaSerializationError>(out.finish()?)
+        })?;
+        context.append(output, value.as_css())?;
+        Ok(())
+    }
     fn emit(
         &self,
         max_bytes: usize,
     ) -> Result<CssSerializedValue, CssCustomMediaSerializationError> {
         let mut out = CssCanonicalBuilder::new(max_bytes);
+        self.emit_into(&mut out, crate::media::emit_query)?;
+        Ok(out.finish()?)
+    }
+    fn emit_into(
+        &self,
+        out: &mut CssCanonicalBuilder,
+        emit_query: fn(
+            &mut CssCanonicalBuilder,
+            &CssMediaQuery,
+        ) -> Result<(), CssMediaSerializationError>,
+    ) -> Result<(), CssCustomMediaSerializationError> {
         out.push_grammar(
             CssCanonicalToken::AtKeyword("custom-media"),
             &self.data.origin,
@@ -389,12 +429,12 @@ impl CssCustomMediaRule {
                         out.push_grammar(CssCanonicalToken::Comma, origin)?;
                     }
                     out.push_grammar(CssCanonicalToken::Whitespace, origin)?;
-                    crate::media::emit_query(&mut out, query)?;
+                    emit_query(out, query)?;
                 }
             }
         }
         out.push_grammar(CssCanonicalToken::Semicolon, &self.data.semicolon)?;
-        Ok(out.finish()?)
+        Ok(())
     }
     fn validate(
         &self,

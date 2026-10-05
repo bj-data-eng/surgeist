@@ -1,31 +1,64 @@
-//! Fail-closed canonical specified rule and stylesheet composition.
+//! Canonical specified rule and stylesheet composition.
 
 use std::fmt;
 
 use crate::{
-    CssNamespaceRule, CssRule, CssSheet, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits,
-    specified_serialization::SpecifiedSerializationContext,
+    CssMediaCssomSerializationError, CssNamespaceRule, CssRule, CssSheet,
+    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,
+    CssSpecifiedValueSerializationLimits, specified_serialization::SpecifiedSerializationContext,
 };
 
 /// Why generic rule or sheet serialization could not return complete CSS.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssSpecifiedRuleSerializationErrorKind {
-    UnsupportedRule,
-    UnsupportedEncoding,
     /// A node, byte or capacity resource was exhausted.
     Resource(CssSpecifiedValueSerializationErrorKind),
     /// A value or component boundary cannot be faithfully emitted.
     Value(CssSpecifiedValueSerializationErrorKind),
 }
 
-/// An unsupported rule is never omitted or silently serialized as raw syntax.
+/// An atomic graph serialization failure with its enclosing rule and typed cause.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssSpecifiedRuleSerializationError {
     kind: CssSpecifiedRuleSerializationErrorKind,
     rule_index: Option<usize>,
-    source: Option<CssSpecifiedValueSerializationError>,
+    source: SpecifiedRuleSerializationSource,
+}
+
+/// Closed provider provenance. The public error exposes the contained payload
+/// directly so callers can downcast it without an internal wrapper in the chain.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum SpecifiedRuleSerializationSource {
+    Value(CssSpecifiedValueSerializationError),
+    Media(Box<CssMediaCssomSerializationError>),
+}
+
+impl From<CssSpecifiedValueSerializationError> for SpecifiedRuleSerializationSource {
+    fn from(error: CssSpecifiedValueSerializationError) -> Self {
+        Self::Value(error)
+    }
+}
+
+impl From<CssMediaCssomSerializationError> for SpecifiedRuleSerializationSource {
+    fn from(error: CssMediaCssomSerializationError) -> Self {
+        Self::Media(Box::new(error))
+    }
+}
+
+impl From<crate::query_rule_serialization::QueryRuleSerializationError>
+    for SpecifiedRuleSerializationSource
+{
+    fn from(error: crate::query_rule_serialization::QueryRuleSerializationError) -> Self {
+        match error {
+            crate::query_rule_serialization::QueryRuleSerializationError::Value(error) => {
+                Self::Value(error)
+            }
+            crate::query_rule_serialization::QueryRuleSerializationError::Media(error) => {
+                Self::Media(Box::new(error))
+            }
+        }
+    }
 }
 
 impl CssSpecifiedRuleSerializationError {
@@ -40,39 +73,36 @@ impl CssSpecifiedRuleSerializationError {
         self.rule_index
     }
 
-    fn unsupported_rule(rule_index: Option<usize>) -> Self {
-        Self {
-            kind: CssSpecifiedRuleSerializationErrorKind::UnsupportedRule,
-            rule_index,
-            source: None,
-        }
-    }
-
-    fn unsupported_encoding() -> Self {
-        Self {
-            kind: CssSpecifiedRuleSerializationErrorKind::UnsupportedEncoding,
-            rule_index: None,
-            source: None,
-        }
-    }
-
     fn value_error(error: CssSpecifiedValueSerializationError, rule_index: Option<usize>) -> Self {
-        let kind = match error.kind() {
+        Self::provider_error(error.into(), rule_index)
+    }
+
+    fn provider_error(source: SpecifiedRuleSerializationSource, rule_index: Option<usize>) -> Self {
+        let value_kind = match &source {
+            SpecifiedRuleSerializationSource::Value(error) => error.kind(),
+            SpecifiedRuleSerializationSource::Media(error) => match error.as_ref() {
+                CssMediaCssomSerializationError::Resource { error, .. } => error.kind(),
+                CssMediaCssomSerializationError::Media(_) => {
+                    CssSpecifiedValueSerializationErrorKind::UnserializableBoundary
+                }
+            },
+        };
+        let kind = match value_kind {
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit
             | CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
             | CssSpecifiedValueSerializationErrorKind::ByteLimit
             | CssSpecifiedValueSerializationErrorKind::CapacityOverflow => {
-                CssSpecifiedRuleSerializationErrorKind::Resource(error.kind())
+                CssSpecifiedRuleSerializationErrorKind::Resource(value_kind)
             }
             CssSpecifiedValueSerializationErrorKind::UnserializableBoundary
             | CssSpecifiedValueSerializationErrorKind::UnrepresentableValue => {
-                CssSpecifiedRuleSerializationErrorKind::Value(error.kind())
+                CssSpecifiedRuleSerializationErrorKind::Value(value_kind)
             }
         };
         Self {
             kind,
             rule_index,
-            source: Some(error),
+            source,
         }
     }
 }
@@ -80,11 +110,6 @@ impl CssSpecifiedRuleSerializationError {
 impl fmt::Display for CssSpecifiedRuleSerializationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.kind {
-            CssSpecifiedRuleSerializationErrorKind::UnsupportedRule => {
-                formatter.write_str("canonical serialization is not available for this CSS rule")
-            }
-            CssSpecifiedRuleSerializationErrorKind::UnsupportedEncoding => formatter
-                .write_str("canonical serialization is not available for encoding metadata"),
             CssSpecifiedRuleSerializationErrorKind::Resource(_) => {
                 formatter.write_str("canonical CSS rule serialization exceeded a resource limit")
             }
@@ -97,9 +122,10 @@ impl fmt::Display for CssSpecifiedRuleSerializationError {
 
 impl std::error::Error for CssSpecifiedRuleSerializationError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        self.source
-            .as_ref()
-            .map(|error| error as &(dyn std::error::Error + 'static))
+        Some(match &self.source {
+            SpecifiedRuleSerializationSource::Value(error) => error,
+            SpecifiedRuleSerializationSource::Media(error) => error.as_ref(),
+        })
     }
 }
 
@@ -121,7 +147,7 @@ impl SpecifiedRuleWriter {
     }
 
     /// Emits a namespace declaration without resolving or normalizing its literal name.
-    fn namespace(
+    pub(crate) fn namespace(
         &mut self,
         rule: &CssNamespaceRule,
     ) -> Result<(), CssSpecifiedValueSerializationError> {
@@ -240,35 +266,40 @@ impl CssNamespaceRule {
 }
 
 impl CssRule {
-    /// Serializes only rule kinds with a complete canonical specified writer.
+    /// Serializes the authored rule graph, preserving declaration and child order.
     pub fn to_specified_css(&self) -> Result<String, CssSpecifiedRuleSerializationError> {
         self.to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
 
+    /// Shares cumulative rule, selector, declaration, provider and UTF-8 byte
+    /// budgets across all descendants. No partial string is returned on failure.
     pub fn to_specified_css_with_limits(
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String, CssSpecifiedRuleSerializationError> {
         let mut writer = SpecifiedRuleWriter::new(limits);
-        append_rule(&mut writer, self, None)?;
+        writer
+            .append_rule_graph(self)
+            .map_err(|error| CssSpecifiedRuleSerializationError::provider_error(error, None))?;
         Ok(writer.css)
     }
 }
 
 impl CssSheet {
-    /// Serializes a complete supported stylesheet atomically in source order.
-    /// Unsupported rules or legacy encoding metadata fail closed.
+    /// Serializes a complete stylesheet atomically in source order.
+    /// Leading encoding metadata is transport provenance, not a logical rule;
+    /// it remains retained in the input and is omitted from the UTF-8 string.
     pub fn to_specified_css(&self) -> Result<String, CssSpecifiedRuleSerializationError> {
         self.to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
 
+    /// Charges one sheet aggregate and every logical rule once in both work
+    /// budgets, then consumes each provider's shared costs. Enum carriers and
+    /// child slices add no node. Top-level rules are separated by one newline.
     pub fn to_specified_css_with_limits(
         &self,
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String, CssSpecifiedRuleSerializationError> {
-        if self.encoding().is_some() {
-            return Err(CssSpecifiedRuleSerializationError::unsupported_encoding());
-        }
         let mut writer = SpecifiedRuleWriter::new(limits);
         writer
             .context
@@ -284,55 +315,11 @@ impl CssSheet {
                     CssSpecifiedRuleSerializationError::value_error(error, Some(index))
                 })?;
             }
-            append_rule(&mut writer, rule, Some(index))?;
+            writer.append_rule_graph(rule).map_err(|error| {
+                CssSpecifiedRuleSerializationError::provider_error(error, Some(index))
+            })?;
         }
         Ok(writer.css)
-    }
-}
-
-fn append_rule(
-    writer: &mut SpecifiedRuleWriter,
-    rule: &CssRule,
-    index: Option<usize>,
-) -> Result<(), CssSpecifiedRuleSerializationError> {
-    match rule {
-        CssRule::CounterStyle(rule) => rule
-            .append_to_rule_writer(writer)
-            .map_err(|error| CssSpecifiedRuleSerializationError::value_error(error, index)),
-        CssRule::FontFace(rule) => writer
-            .font_face(rule)
-            .map_err(|error| CssSpecifiedRuleSerializationError::value_error(error, index)),
-        CssRule::FontFeatureValues(rule) => writer
-            .font_features(rule)
-            .map_err(|error| CssSpecifiedRuleSerializationError::value_error(error, index)),
-        CssRule::Namespace(rule) => writer
-            .namespace(rule)
-            .map_err(|error| CssSpecifiedRuleSerializationError::value_error(error, index)),
-        CssRule::ColorProfile(rule) => writer
-            .color_profile(rule)
-            .map_err(|error| CssSpecifiedRuleSerializationError::value_error(error, index)),
-        CssRule::FontPaletteValues(rule) => writer
-            .palette(rule)
-            .map_err(|error| CssSpecifiedRuleSerializationError::value_error(error, index)),
-        CssRule::SupportsCondition(rule) => writer
-            .named_supports_rule(rule)
-            .map_err(|error| CssSpecifiedRuleSerializationError::value_error(error, index)),
-        CssRule::NestedDeclarations(rule) => {
-            // The logical rule and its authored declaration list are distinct
-            // aggregates; the enum carrier does not add another rule charge.
-            writer
-                .context
-                .charge_input(1)
-                .map_err(|error| CssSpecifiedRuleSerializationError::value_error(error, index))?;
-            writer
-                .context
-                .charge_projection(1)
-                .map_err(|error| CssSpecifiedRuleSerializationError::value_error(error, index))?;
-            writer
-                .append_authored_declaration_list(rule.declarations())
-                .map_err(|error| CssSpecifiedRuleSerializationError::value_error(error, index))
-        }
-        _ => Err(CssSpecifiedRuleSerializationError::unsupported_rule(index)),
     }
 }
 
@@ -446,5 +433,41 @@ mod value_error_tests {
             "specified value cannot be represented by the selected serializer"
         );
         assert!(error.source().is_none());
+    }
+
+    #[test]
+    fn nested_recovered_media_failure_exposes_its_provider_directly() {
+        let report = crate::parse_sheet("@namespace n 'u';@scope{@media screen,???,print{}}");
+        let before = report.clone();
+        let [CssRule::Namespace(_), CssRule::Scope(scope)] = report.syntax().rules() else {
+            panic!("namespace and scope");
+        };
+        let [crate::CssScopedRule::Media(media)] = scope.rules().rules() else {
+            panic!("scoped media");
+        };
+        // Sheet 1 + namespace 3 + scope 1 + media 1 + list 1 + screen 2
+        // + Never 1 precede its two generated projection nodes.
+        let error = report
+            .syntax()
+            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
+                usize::MAX,
+                11,
+                512,
+            ))
+            .unwrap_err();
+        assert_eq!(
+            error.kind(),
+            CssSpecifiedRuleSerializationErrorKind::Resource(
+                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            ),
+        );
+        assert_eq!(error.rule_index(), Some(1));
+        let source = error
+            .source()
+            .unwrap()
+            .downcast_ref::<CssMediaCssomSerializationError>()
+            .expect("the immediate public source is the owning media provider");
+        assert_eq!(source.origin(), media.query().queries()[1].origin());
+        assert_eq!(report, before);
     }
 }

@@ -163,13 +163,13 @@ fn sheet_budget_is_monotonic_across_palette_and_definition() {
 }
 
 #[test]
-fn unsupported_rule_still_fails_closed_after_supported_definitions() {
+fn supported_definitions_compose_with_a_following_style_rule() {
     let report = parse_sheet("@supports-condition --feature {}\n.after { color: red; }");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let error = report.syntax().to_specified_css().unwrap_err();
+    let before = report.clone();
     assert_eq!(
-        error.kind(),
-        CssSpecifiedRuleSerializationErrorKind::UnsupportedRule
+        report.syntax().to_specified_css().unwrap(),
+        "@supports-condition --feature { }\n.after { color: red; }"
     );
-    assert_eq!(error.rule_index(), Some(1));
+    assert_eq!(report, before);
 }

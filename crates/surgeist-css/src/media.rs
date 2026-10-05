@@ -329,14 +329,28 @@ impl CssMediaQueryList {
         self.capture_cssom(&mut SpecifiedSerializationContext::new(limits))
     }
 
+    /// Owns the list aggregate and selected member projections without allocating text.
+    pub(crate) fn charge_cssom(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+    ) -> Result<(), CssMediaCssomSerializationError> {
+        charge_node(context, &CssValueOrigin::Programmatic)?;
+        for query in self.queries() {
+            charge_query(context, query)?;
+        }
+        Ok(())
+    }
+
     /// An enclosing writer charges captured output bytes through the same context.
     pub(crate) fn capture_cssom(
         &self,
         context: &mut SpecifiedSerializationContext,
     ) -> Result<CssSerializedValue, CssMediaCssomSerializationError> {
-        charge_node(context, &CssValueOrigin::Programmatic)?;
-        for query in self.queries() {
-            charge_query(context, query)?;
+        self.charge_cssom(context)?;
+        if context.output_suppressed() {
+            return CssCanonicalBuilder::new(0)
+                .finish()
+                .map_err(|error| bounded_error(error.into()));
         }
         with_media_stack(self.queries().iter().any(query_is_deep), || {
             let mut out = CssCanonicalBuilder::new(context.remaining_bytes());
@@ -382,6 +396,13 @@ pub(crate) fn emit_query(
     query: &CssMediaQuery,
 ) -> Result<(), CssMediaSerializationError> {
     emit_query_with_mode(out, query, MediaOutput::Authored)
+}
+
+pub(crate) fn emit_query_cssom(
+    out: &mut CssCanonicalBuilder,
+    query: &CssMediaQuery,
+) -> Result<(), CssMediaSerializationError> {
+    emit_query_with_mode(out, query, MediaOutput::Cssom)
 }
 
 fn emit_query_with_mode(
@@ -719,7 +740,7 @@ fn resource(
     }
 }
 
-fn bounded_error(error: CssMediaSerializationError) -> CssMediaCssomSerializationError {
+pub(crate) fn bounded_error(error: CssMediaSerializationError) -> CssMediaCssomSerializationError {
     if let CssMediaSerializationError::Component(component) = &error {
         let kind = match component.kind() {
             CssComponentValueErrorKind::ByteLimit => {
@@ -755,7 +776,7 @@ fn check_identifier_size(
     name: &str,
     origin: &CssValueOrigin,
 ) -> Result<(), CssMediaCssomSerializationError> {
-    if name.len() > context.remaining_bytes() {
+    if !context.output_suppressed() && name.len() > context.remaining_bytes() {
         return Err(resource(
             CssSpecifiedValueSerializationError::new(
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,

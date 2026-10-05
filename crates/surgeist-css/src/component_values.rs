@@ -19,6 +19,64 @@ use crate::source::{CssSourcePosition, CssSourceSpan};
 
 use crate::STRUCTURAL_NESTING_LIMIT as MAX_COMPONENT_DEPTH;
 
+/// Charges each retained component exactly once, including omitted root trivia.
+/// A caller owning a lexical region charges its one aggregate separately.
+pub(crate) fn charge_specified_components(
+    context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+    components: &[CssComponentValue],
+) -> Result<(), crate::CssSpecifiedValueSerializationError> {
+    let capacity_error = || {
+        crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
+        )
+    };
+    let mut pending = Vec::new();
+    pending.try_reserve(1).map_err(|_| capacity_error())?;
+    pending.push(components);
+    while let Some(items) = pending.pop() {
+        if let Some((component, rest)) = items.split_first() {
+            context.charge_input(1)?;
+            context.charge_projection(1)?;
+            pending.try_reserve(2).map_err(|_| capacity_error())?;
+            pending.push(rest);
+            if let Some(children) = component.child_values() {
+                pending.push(children.items());
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Omits only root-edge whitespace; comments and enclosed trivia remain authored.
+pub(crate) fn specified_root_components(components: &[CssComponentValue]) -> &[CssComponentValue] {
+    let whitespace = |value: &CssComponentValue| {
+        matches!(
+            value.view(),
+            CssComponentValueRef::Token(CssValueTokenRef::Whitespace(_))
+        )
+    };
+    let start = components
+        .iter()
+        .position(|value| !whitespace(value))
+        .unwrap_or(components.len());
+    let end = components
+        .iter()
+        .rposition(|value| !whitespace(value))
+        .map_or(start, |index| index + 1);
+    &components[start..end]
+}
+
+pub(crate) fn specified_component_error(
+    error: CssComponentValueError,
+) -> crate::CssSpecifiedValueSerializationError {
+    use crate::CssSpecifiedValueSerializationErrorKind as Kind;
+    crate::CssSpecifiedValueSerializationError::new(match error.kind() {
+        CssComponentValueErrorKind::ByteLimit => Kind::ByteLimit,
+        CssComponentValueErrorKind::UnserializableBoundary => Kind::UnserializableBoundary,
+        _ => Kind::CapacityOverflow,
+    })
+}
+
 /// Resource limits for one component-value construction or parse.
 ///
 /// Components include whitespace and comment nodes; opening a function or block

@@ -307,24 +307,38 @@ fn profile_palette_and_named_supports_leaf_sheet_has_explicit_canonical_output()
 }
 
 #[test]
-fn unsupported_style_and_group_emission_remains_atomic_after_profiles() {
-    for unsupported in [".after { color: red; }", "@media all {}", "@scope (.x) {}"] {
-        let report = parse_sheet(&format!("@color-profile --x {{}} {unsupported}"));
+fn profiles_compose_with_style_and_group_siblings_under_atomic_limits() {
+    for (source, suffix) in [
+        (".after { color: red; }", ".after { color: red; }"),
+        ("@media all {}", "@media all { }"),
+        ("@scope (.x) {}", "@scope (.x) { }"),
+    ] {
+        let report = parse_sheet(&format!("@color-profile --x {{}} {source}"));
         assert!(report.is_clean(), "{:?}", report.diagnostics());
-        let error = report.syntax().to_specified_css().unwrap_err();
-        assert_eq!(error.kind(), RuleError::UnsupportedRule);
+        let before = report.clone();
+        let expected = format!("@color-profile --x {{ }}\n{suffix}");
+        assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
+        let error = report
+            .syntax()
+            .to_specified_css_with_limits(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
+            .unwrap_err();
+        assert_eq!(error.kind(), RuleError::Resource(ValueError::ByteLimit));
         assert_eq!(error.rule_index(), Some(1));
+        assert_eq!(report, before);
     }
 }
 
 #[test]
-fn already_supported_leaf_prefix_still_fails_closed_at_style_and_group() {
-    for unsupported in [".after { color: red; }", "@media all {}", "@scope (.x) {}"] {
-        let report = parse_sheet(&format!("@supports-condition --f {{}} {unsupported}"));
-        assert!(report.is_clean(), "{:?}", report.diagnostics());
-        let error = report.syntax().to_specified_css().unwrap_err();
-        assert_eq!(error.kind(), RuleError::UnsupportedRule);
-        assert_eq!(error.rule_index(), Some(1));
+fn named_supports_definitions_compose_with_style_and_group_siblings() {
+    for (source, suffix) in [
+        (".after { color: red; }", ".after { color: red; }"),
+        ("@media all {}", "@media all { }"),
+        ("@scope (.x) {}", "@scope (.x) { }"),
+    ] {
+        canonical(
+            &format!("@supports-condition --f {{}} {source}"),
+            &format!("@supports-condition --f {{ }}\n{suffix}"),
+        );
     }
 }
 

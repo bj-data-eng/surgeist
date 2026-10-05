@@ -3612,7 +3612,8 @@ impl std::ops::Deref for CssKeyframeDeclarationList {
 
 /// A parser-produced declaration in the authored keyframe syntax phase.
 ///
-/// The private fields retain property/value coupling and the property-name position. Keyframe
+/// The private fields retain property/value coupling, complete value components and the
+/// property-name position. Keyframe
 /// grammar rejects declaration importance, so this type intentionally has no importance field or
 /// accessor. It does not interpolate, apply, cascade, or resolve the authored value.
 ///
@@ -3627,12 +3628,25 @@ impl std::ops::Deref for CssKeyframeDeclarationList {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssKeyframeDeclaration {
     body: CssDeclarationBody,
+    value_components: CssComponentValues,
     position: CssSourcePosition,
 }
 
 impl CssKeyframeDeclaration {
-    pub(crate) const fn new(body: CssDeclarationBody, position: CssSourcePosition) -> Self {
-        Self { body, position }
+    pub(crate) const fn new(
+        body: CssDeclarationBody,
+        value_components: CssComponentValues,
+        position: CssSourcePosition,
+    ) -> Self {
+        Self {
+            body,
+            value_components,
+            position,
+        }
+    }
+
+    pub(crate) const fn value_components(&self) -> &CssComponentValues {
+        &self.value_components
     }
 
     /// Returns the property-coupled authored body.
