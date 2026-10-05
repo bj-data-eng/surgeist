@@ -7164,6 +7164,9 @@ pub const fn surgeist_css::CssGrid::auto_flow(&self) -> core::option::Option<sur
 pub const fn surgeist_css::CssGrid::auto_tracks(&self) -> core::option::Option<&surgeist_css::CssGridTrackSizeList>
 pub const fn surgeist_css::CssGrid::explicit_tracks(&self) -> core::option::Option<&surgeist_css::CssGridTrackList>
 pub const fn surgeist_css::CssGrid::template_value(&self) -> core::option::Option<&surgeist_css::CssGridTemplate>
+impl surgeist_css::CssGrid
+pub fn surgeist_css::CssGrid::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssGrid::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssGridArea
 impl surgeist_css::CssGridArea
 pub const fn surgeist_css::CssGridArea::authored_column_end(&self) -> core::option::Option<&surgeist_css::CssGridLine>
@@ -7289,6 +7292,9 @@ impl surgeist_css::CssGridTemplate
 pub const fn surgeist_css::CssGridTemplate::columns(&self) -> core::option::Option<&surgeist_css::CssGridTrackList>
 pub const fn surgeist_css::CssGridTemplate::is_none(&self) -> bool
 pub const fn surgeist_css::CssGridTemplate::rows(&self) -> core::option::Option<&surgeist_css::CssGridTrackList>
+impl surgeist_css::CssGridTemplate
+pub fn surgeist_css::CssGridTemplate::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssGridTemplate::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssGridTemplateAreaName
 impl surgeist_css::CssGridTemplateAreaName
 pub fn surgeist_css::CssGridTemplateAreaName::as_str(&self) -> &str

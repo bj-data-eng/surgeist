@@ -622,23 +622,15 @@ pub(super) fn parse_grid_template<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssGridTemplate, ParseError<'i, Error>> {
-    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
-        return match_ignore_ascii_case! { &ident,
-            "none" => Ok(CssGridTemplate::none()),
-            _ => Err(unsupported_value(
-                input,
-                None,
-                unsupported_keyword_reason("grid-template", ident.as_ref()),
-            )),
-        };
+    if input
+        .try_parse(|input| input.expect_ident_matching("none"))
+        .is_ok()
+    {
+        return Ok(CssGridTemplate::none());
     }
-
     let rows = parse_grid_track_list_with_mode(input, numeric, true)?;
-    let columns = if input.try_parse(|input| input.expect_delim('/')).is_ok() {
-        Some(parse_grid_track_list_with_mode(input, numeric, false)?)
-    } else {
-        None
-    };
+    input.expect_delim('/').map_err(basic)?;
+    let columns = parse_grid_track_list_with_mode(input, numeric, false)?;
     Ok(CssGridTemplate::rows_columns(rows, columns))
 }
 
@@ -686,34 +678,77 @@ pub(super) fn parse_grid<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssGrid, ParseError<'i, Error>> {
-    let state = input.state();
-    let is_auto_flow = input
-        .try_parse(|input| input.expect_ident_matching("auto-flow"))
-        .is_ok();
-    input.reset(&state);
-    if is_auto_flow {
-        parse_grid_auto_flow_shorthand(input, numeric)
+    if input
+        .try_parse(|input| input.expect_ident_matching("none"))
+        .is_ok()
+    {
+        return Ok(CssGrid::template(CssGridTemplate::none()));
+    }
+    if next_is_auto_flow_prefix(input) {
+        let dense = parse_grid_auto_flow_prefix(input)?;
+        let auto_tracks = parse_optional_grid_auto_tracks(input, numeric, true)?;
+        input.expect_delim('/').map_err(basic)?;
+        let explicit_tracks = parse_grid_track_list_with_mode(input, numeric, false)?;
+        return Ok(CssGrid::from_auto_flow(
+            CssGridAutoFlowMode::new(CssGridAutoFlowAxis::Row, dense),
+            auto_tracks,
+            explicit_tracks,
+        ));
+    }
+    let rows = parse_grid_track_list_with_mode(input, numeric, true)?;
+    input.expect_delim('/').map_err(basic)?;
+    if next_is_auto_flow_prefix(input) {
+        let dense = parse_grid_auto_flow_prefix(input)?;
+        let auto_tracks = parse_optional_grid_auto_tracks(input, numeric, false)?;
+        Ok(CssGrid::from_auto_flow(
+            CssGridAutoFlowMode::new(CssGridAutoFlowAxis::Column, dense),
+            auto_tracks,
+            rows,
+        ))
     } else {
-        let template = parse_grid_template(input, numeric)?;
-        Ok(CssGrid::template(template))
+        let columns = parse_grid_track_list_with_mode(input, numeric, false)?;
+        Ok(CssGrid::template(CssGridTemplate::rows_columns(
+            rows, columns,
+        )))
     }
 }
 
-pub(super) fn parse_grid_auto_flow_shorthand<'i, 't>(
+fn next_is_auto_flow_prefix(input: &mut Parser<'_, '_>) -> bool {
+    let state = input.state();
+    let result = input
+        .try_parse(|input| input.expect_ident_cloned())
+        .is_ok_and(|ident| {
+            ident.eq_ignore_ascii_case("auto-flow") || ident.eq_ignore_ascii_case("dense")
+        });
+    input.reset(&state);
+    result
+}
+
+fn parse_grid_auto_flow_prefix<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> std::result::Result<bool, ParseError<'i, Error>> {
+    if input
+        .try_parse(|input| input.expect_ident_matching("dense"))
+        .is_ok()
+    {
+        input.expect_ident_matching("auto-flow").map_err(basic)?;
+        Ok(true)
+    } else {
+        input.expect_ident_matching("auto-flow").map_err(basic)?;
+        Ok(input
+            .try_parse(|input| input.expect_ident_matching("dense"))
+            .is_ok())
+    }
+}
+
+fn parse_optional_grid_auto_tracks<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssGrid, ParseError<'i, Error>> {
-    input.expect_ident_matching("auto-flow").map_err(basic)?;
-    let dense = input
-        .try_parse(|input| input.expect_ident_matching("dense"))
-        .is_ok();
-    let auto_tracks = if !input.is_exhausted() && !next_is_delim(input, '/') {
-        Some(parse_grid_auto_track_sizes_with_mode(input, numeric, true)?)
+    stop_at_slash: bool,
+) -> std::result::Result<Option<CssGridTrackSizeList>, ParseError<'i, Error>> {
+    if input.is_exhausted() || (stop_at_slash && next_is_delim(input, '/')) {
+        Ok(None)
     } else {
-        None
-    };
-    input.expect_delim('/').map_err(basic)?;
-    let explicit_tracks = parse_grid_track_list_with_mode(input, numeric, false)?;
-    let flow = CssGridAutoFlowMode::new(CssGridAutoFlowAxis::Row, dense);
-    Ok(CssGrid::from_auto_flow(flow, auto_tracks, explicit_tracks))
+        parse_grid_auto_track_sizes_with_mode(input, numeric, stop_at_slash).map(Some)
+    }
 }

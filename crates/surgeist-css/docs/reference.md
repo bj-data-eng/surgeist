@@ -3209,9 +3209,39 @@ scalar without floating-point narrowing.
 `serialize_specified()` on typed track sizes and lists emits bounded canonical
 CSS from retained values, whereas declaration `as_css()` preserves authored text.
 
+`CssGridTemplate` and `CssGrid` expose `serialize_specified` and
+`serialize_specified_with_limits` for represented `none`, rows/columns and
+auto-flow aggregates. The rows/columns form requires a slash and both lists,
+following [Grid 2 §7.4](https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#explicit-grid-shorthand).
+The private model enforces that requirement; the public row/column getters
+remain optional because the aggregate may be `none`. Keyword-start lists such
+as `auto / min-content` use the owning track grammar.
+
+Both [Grid 2 §7.8 auto-flow forms](https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#grid-shorthand)
+admit either order of `auto-flow` and `dense`. Canonical output uses
+`auto-flow dense`, with optional implicit sizes. Row flow places this prefix
+before the slash and explicit columns; column flow places explicit rows before
+the slash and the prefix. Omitted implicit sizes remain omitted. Track, name
+and numeric children reuse their owning specified providers and preserve
+authored operands and origins.
+
+A template aggregate costs one input and projection node plus its children.
+The `CssGrid` template carrier adds no second aggregate charge. Auto-flow costs
+one aggregate node, one `auto-flow` keyword node and one additional keyword node
+for `dense`, plus present lists and children. Absent lists add no synthetic
+nodes, and punctuation costs bytes only. Thus `none` costs one node in each
+work budget, `10px / 20px` costs five, `auto-flow / 10px` costs four and
+`auto-flow dense 20px / 10px` costs seven. All children use the same cumulative
+context, including when output is suppressed. Suppressed names spend no escape
+scratch or output bytes; NUL-bearing decoded line names fail with
+`UnrepresentableValue` before escaping because replacement would change
+identity. Public errors return no partial CSS.
+
 The Grid repetition value, the six Grid property records, and the keyframe rule
 record remain `Partial`. Subgrid name-repeat, remaining `grid`/`grid-template`
-shorthand alternatives remain unfinished.
+shorthand alternatives, including area-string and absent track-child models,
+remain unfinished. Aggregate output does not complete their metadata, reset
+contributions or shared declaration dispatch.
 `grid-auto-rows` and `grid-auto-columns` have noninherited `auto` initial
 values and expand to one intrinsic longhand contribution. CSS-wide keywords
 stay symbolic, and substituted values reenter the same repeat-free grammar

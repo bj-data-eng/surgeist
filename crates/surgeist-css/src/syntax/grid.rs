@@ -658,7 +658,7 @@ enum CssGridTemplateRepresentation {
     None,
     RowsColumns {
         rows: CssGridTrackList,
-        columns: Option<CssGridTrackList>,
+        columns: CssGridTrackList,
     },
 }
 
@@ -676,10 +676,7 @@ impl CssGridTemplate {
         }
     }
 
-    pub(crate) const fn rows_columns(
-        rows: CssGridTrackList,
-        columns: Option<CssGridTrackList>,
-    ) -> Self {
+    pub(crate) const fn rows_columns(rows: CssGridTrackList, columns: CssGridTrackList) -> Self {
         Self {
             representation: CssGridTemplateRepresentation::RowsColumns { rows, columns },
         }
@@ -701,7 +698,7 @@ impl CssGridTemplate {
     #[must_use]
     pub const fn columns(&self) -> Option<&CssGridTrackList> {
         match &self.representation {
-            CssGridTemplateRepresentation::RowsColumns { columns, .. } => columns.as_ref(),
+            CssGridTemplateRepresentation::RowsColumns { columns, .. } => Some(columns),
             CssGridTemplateRepresentation::None => None,
         }
     }
@@ -791,32 +788,32 @@ trait GridSpecified {
 }
 
 macro_rules! grid_serialization {
-    ($($name:ident),+ $(,)?) => {$ (
+    ($($name:ident),+ $(,)?) => {$(
         impl $name {
+            /// Returns canonical specified CSS for this represented Grid value.
             pub fn serialize_specified(&self) -> GridSerializationResult<String> {
-                self.serialize_specified_with_limits(crate::CssSpecifiedValueSerializationLimits::default())
+                self.serialize_specified_with_limits(
+                    crate::CssSpecifiedValueSerializationLimits::default(),
+                )
             }
 
+            /// Uses one cumulative input, projection and byte budget for all children.
+            /// Failure returns no partial CSS and leaves the authored value unchanged.
             pub fn serialize_specified_with_limits(
                 &self,
                 limits: crate::CssSpecifiedValueSerializationLimits,
             ) -> GridSerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
+                let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+                self.append_to_rule_writer(&mut writer)?;
+                Ok(writer.css)
+            }
 
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-
-                let context = &mut writer.context;
-                let output = &mut writer.css;
-                self.write_grid(context, output)?;
-                Ok(())
-
-    }
+            pub(crate) fn append_to_rule_writer(
+                &self,
+                writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+            ) -> GridSerializationResult<()> {
+                self.write_grid(&mut writer.context, &mut writer.css)
+            }
         }
     )+};
 }
@@ -826,6 +823,8 @@ grid_serialization!(
     CssGridTrackSize,
     CssGridTrackSizeList,
     CssGridTrackList,
+    CssGridTemplate,
+    CssGrid,
 );
 
 fn grid_node(
@@ -906,8 +905,15 @@ impl GridSpecified for CssGridLineNames {
                 context.append(output, " ")?;
             }
             grid_node(context)?;
-            let escaped = crate::numeric::capture_identifier(name.as_str(), context)?;
-            context.append(output, &escaped)?;
+            if name.as_str().contains('\0') {
+                return Err(crate::CssSpecifiedValueSerializationError::new(
+                    crate::CssSpecifiedValueSerializationErrorKind::UnrepresentableValue,
+                ));
+            }
+            if !context.output_suppressed() {
+                let escaped = crate::numeric::capture_identifier(name.as_str(), context)?;
+                context.append(output, &escaped)?;
+            }
         }
         context.append(output, "]")
     }
@@ -1062,6 +1068,63 @@ impl GridSpecified for CssGridTrackSizeList {
     }
 }
 
+impl GridSpecified for CssGridTemplate {
+    fn write_grid(
+        &self,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> GridSerializationResult<()> {
+        grid_node(context)?;
+        match &self.representation {
+            CssGridTemplateRepresentation::None => context.append(output, "none"),
+            CssGridTemplateRepresentation::RowsColumns { rows, columns } => {
+                rows.write_grid(context, output)?;
+                context.append(output, " / ")?;
+                columns.write_grid(context, output)
+            }
+        }
+    }
+}
+
+impl GridSpecified for CssGrid {
+    fn write_grid(
+        &self,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> GridSerializationResult<()> {
+        match &self.representation {
+            // The enum carrier is not another logical aggregate.
+            CssGridRepresentation::Template(value) => value.write_grid(context, output),
+            CssGridRepresentation::AutoFlow {
+                flow,
+                auto_tracks,
+                explicit_tracks,
+            } => {
+                grid_node(context)?;
+                if flow.axis() == CssGridAutoFlowAxis::Column {
+                    explicit_tracks.write_grid(context, output)?;
+                    context.append(output, " / ")?;
+                }
+                grid_node(context)?;
+                context.append(output, "auto-flow")?;
+                if flow.dense() {
+                    grid_node(context)?;
+                    context.append(output, " dense")?;
+                }
+                if let Some(tracks) = auto_tracks {
+                    context.append(output, " ")?;
+                    tracks.write_grid(context, output)?;
+                }
+                if flow.axis() == CssGridAutoFlowAxis::Row {
+                    context.append(output, " / ")?;
+                    explicit_tracks.write_grid(context, output)?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod line_name_composition_contract {
     use super::*;
@@ -1154,5 +1217,187 @@ mod line_name_composition_contract {
         let error = value.serialize_specified().unwrap_err();
         assert_eq!(error.kind(), ErrorKind::UnrepresentableValue);
         assert_eq!(retained_name(&value), "a\0b");
+    }
+}
+
+#[cfg(test)]
+mod aggregate_composition_contract {
+    use super::*;
+    use crate::specified_rule_serialization::SpecifiedRuleWriter;
+    use crate::{
+        CssSpecifiedValueSerializationErrorKind as Kind,
+        CssSpecifiedValueSerializationLimits as Limits,
+    };
+
+    fn template(text: &str) -> CssGridTemplate {
+        let source = format!("grid-template:{text}");
+        let report = crate::parse_style_attribute(&source);
+        assert!(report.is_clean(), "{:?}", report.diagnostics());
+        let crate::CssKnownPropertyValueRef::GridTemplate(value) = report.syntax()[0]
+            .known()
+            .unwrap()
+            .property_value()
+            .unwrap()
+        else {
+            panic!("template");
+        };
+        value.value().clone()
+    }
+
+    fn grid(text: &str) -> CssGrid {
+        let source = format!("grid:{text}");
+        let report = crate::parse_style_attribute(&source);
+        assert!(report.is_clean(), "{:?}", report.diagnostics());
+        let crate::CssKnownPropertyValueRef::Grid(value) = report.syntax()[0]
+            .known()
+            .unwrap()
+            .property_value()
+            .unwrap()
+        else {
+            panic!("grid");
+        };
+        value.value().clone()
+    }
+
+    #[test]
+    fn template_uses_partially_consumed_work_and_prefix_bytes() {
+        // One aggregate, two lists and two literal leaves: five nodes.
+        let value = template("10px / 20px");
+        let mut writer = SpecifiedRuleWriter::new(Limits::new(6, 6, 12));
+        writer.context.charge_input(1).unwrap();
+        writer.context.charge_projection(1).unwrap();
+        writer.append("x").unwrap();
+        value.append_to_rule_writer(&mut writer).unwrap();
+        assert_eq!(writer.css, "x10px / 20px");
+        assert_eq!(
+            writer.context.charge_input(1).unwrap_err().kind(),
+            Kind::InputNodeLimit
+        );
+        assert_eq!(
+            writer.context.charge_projection(1).unwrap_err().kind(),
+            Kind::ProjectionNodeLimit
+        );
+        assert_eq!(writer.append("x").unwrap_err().kind(), Kind::ByteLimit);
+    }
+
+    #[test]
+    fn siblings_share_work_and_remaining_bytes_without_reset() {
+        let value = grid("10px / 20px");
+        let mut writer = SpecifiedRuleWriter::new(Limits::new(10, 10, 23));
+        value.append_to_rule_writer(&mut writer).unwrap();
+        writer.append(";").unwrap();
+        value.append_to_rule_writer(&mut writer).unwrap();
+        assert_eq!(writer.css, "10px / 20px;10px / 20px");
+        assert_eq!(
+            writer.context.charge_input(1).unwrap_err().kind(),
+            Kind::InputNodeLimit
+        );
+        assert_eq!(
+            writer.context.charge_projection(1).unwrap_err().kind(),
+            Kind::ProjectionNodeLimit
+        );
+        let mut short = SpecifiedRuleWriter::new(Limits::new(9, 10, 23));
+        value.append_to_rule_writer(&mut short).unwrap();
+        assert_eq!(
+            value.append_to_rule_writer(&mut short).unwrap_err().kind(),
+            Kind::InputNodeLimit
+        );
+    }
+
+    #[test]
+    fn omitted_auto_sizes_have_no_synthetic_nodes_and_suppression_restores_bytes() {
+        for text in ["auto-flow / 10px", "10px / auto-flow"] {
+            let value = grid(text);
+            let mut writer = SpecifiedRuleWriter::new(Limits::new(4, 4, 1));
+            writer.append("x").unwrap();
+            writer
+                .without_output(|writer| value.append_to_rule_writer(writer))
+                .unwrap();
+            assert_eq!(writer.css, "x");
+            assert!(!writer.context.output_suppressed());
+            assert_eq!(
+                writer.context.charge_input(1).unwrap_err().kind(),
+                Kind::InputNodeLimit
+            );
+            assert_eq!(
+                writer.context.charge_projection(1).unwrap_err().kind(),
+                Kind::ProjectionNodeLimit
+            );
+        }
+    }
+
+    #[test]
+    fn suppressed_numeric_and_named_children_do_work_without_format_scratch() {
+        let value = grid("[a\\ b] calc(10px + 5%) / dense auto-flow fit-content(1e50px)");
+        let before = value.clone();
+        let mut writer = SpecifiedRuleWriter::new(Limits::new(100, 100, 0));
+        writer
+            .without_output(|writer| value.append_to_rule_writer(writer))
+            .unwrap();
+        assert!(writer.css.is_empty());
+        assert!(!writer.context.output_suppressed());
+        assert_eq!(value, before);
+        // A smaller semantic budget still fails even though all output is omitted.
+        let mut limited = SpecifiedRuleWriter::new(Limits::new(1, 100, 1));
+        assert_eq!(
+            limited
+                .without_output(|writer| value.append_to_rule_writer(writer))
+                .unwrap_err()
+                .kind(),
+            Kind::InputNodeLimit
+        );
+        assert!(!limited.context.output_suppressed());
+        limited.append("x").unwrap();
+        assert_eq!(limited.css, "x");
+    }
+
+    #[test]
+    fn dense_and_optional_sizes_are_each_counted_once_under_suppression() {
+        for text in ["auto-flow dense 20px / 10px", "10px / auto-flow dense 20px"] {
+            let value = grid(text);
+            let mut writer = SpecifiedRuleWriter::new(Limits::new(7, 7, 0));
+            writer
+                .without_output(|writer| value.append_to_rule_writer(writer))
+                .unwrap();
+            assert_eq!(
+                writer.context.charge_input(1).unwrap_err().kind(),
+                Kind::InputNodeLimit
+            );
+            assert_eq!(
+                writer.context.charge_projection(1).unwrap_err().kind(),
+                Kind::ProjectionNodeLimit
+            );
+            assert!(writer.css.is_empty());
+        }
+    }
+
+    #[test]
+    fn suppressed_invalid_identity_fails_and_restores_enclosing_output() {
+        let rows = CssGridTrackList::general(
+            CssGridGeneralTrackList::try_new(vec![
+                CssGridGeneralTrackComponent::LineNames(CssGridLineNames::new(vec![
+                    CssCustomIdent::try_new("a\0b").unwrap(),
+                ])),
+                CssGridGeneralTrackComponent::TrackSize(CssGridTrackSize::from_breadth(
+                    CssGridTrackBreadth::auto(),
+                )),
+            ])
+            .unwrap(),
+        );
+        let value =
+            CssGridTemplate::rows_columns(rows, template("auto / auto").columns().unwrap().clone());
+        let before = value.clone();
+        let mut writer = SpecifiedRuleWriter::new(Limits::new(100, 100, 1));
+        assert_eq!(
+            writer
+                .without_output(|writer| value.append_to_rule_writer(writer))
+                .unwrap_err()
+                .kind(),
+            Kind::UnrepresentableValue
+        );
+        assert!(!writer.context.output_suppressed());
+        writer.append("x").unwrap();
+        assert_eq!(writer.css, "x");
+        assert_eq!(value, before);
     }
 }
