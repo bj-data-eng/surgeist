@@ -5,6 +5,10 @@
 //! canonical-order claims (Text4 says n/a). Existing singleton costs remain 1/1;
 //! declaration/name add two, spaces and punctuation charge only UTF-8 bytes.
 
+#[path = "common/authored_property.rs"]
+mod authored_property;
+use authored_property::{ParserFront, assert_source, checked, checked_components, invalid, parsed};
+
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
@@ -37,71 +41,15 @@ const STATES: [&str; 17] = [
     "lowercase full-size-kana",
     "lowercase full-width full-size-kana",
 ];
-fn parsed(value: &str) -> CssDeclaration {
-    let css = format!("/*😀*/TEXT-TRANSFORM:{value}!important");
-    let report = parse_style_attribute(&css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    assert!(validate_style_attribute(&css).is_ok());
-    let [source] = report.syntax().as_slice() else {
-        panic!("one occurrence")
-    };
-    assert_eq!(source.known().unwrap().property(), PROPERTY);
-    assert_eq!(source.importance(), CssImportance::Important);
-    assert!(source.position().is_some());
-    assert_eq!(source.parsed_name().unwrap().source().as_str(), css);
-    source.clone()
-}
-fn checked(value: &str, grammar: bool) -> CssDeclaration {
-    let components = parse_component_values(value).unwrap();
-    let before = components.clone();
-    let source = checked_components(components.clone(), grammar).unwrap();
-    assert_eq!(components, before);
-    assert_eq!(source.value_components(), &components);
-    assert!(source.position().is_none());
-    assert!(source.parsed_name().is_none());
-    assert!(source.parsed_value().is_none());
-    assert_eq!(source.importance(), CssImportance::Important);
-    source
-}
-fn checked_components(
-    components: CssComponentValues,
-    grammar: bool,
-) -> Result<CssDeclaration, CssPropertyValueParseError> {
-    if grammar {
-        parse_property_value_for_grammar(PROPERTY.grammar(), components, CssImportance::Important)
-    } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(PROPERTY),
-            components,
-            CssImportance::Important,
-        )
-    }
-}
-fn text_front(value: &str, grammar: bool) -> CssDeclaration {
-    let report = if grammar {
-        parse_property_value_text_for_grammar(value, PROPERTY.grammar(), CssImportance::Important)
-    } else {
-        parse_property_value_text(
-            value,
-            CssPropertyNameRef::Known(PROPERTY),
-            CssImportance::Important,
-        )
-    };
-    assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
-    let source = report.syntax().as_ref().unwrap().clone();
-    assert_eq!(source.parsed_value().unwrap().source().as_str(), value);
-    assert!(source.position().is_none());
-    assert!(source.parsed_name().is_none());
-    source
-}
+const FRONTS: [ParserFront; 5] = [
+    ParserFront::StyleAttribute,
+    ParserFront::CheckedName,
+    ParserFront::CheckedGrammar,
+    ParserFront::TextName,
+    ParserFront::TextGrammar,
+];
 fn fronts(value: &str) -> [CssDeclaration; 5] {
-    [
-        parsed(value),
-        checked(value, false),
-        checked(value, true),
-        text_front(value, false),
-        text_front(value, true),
-    ]
+    FRONTS.map(|front| front.parse(PROPERTY, value))
 }
 fn primitive(source: &CssDeclaration) -> &CssTextTransform {
     let CssKnownPropertyValueRef::TextTransform(wrapper) =
@@ -110,12 +58,6 @@ fn primitive(source: &CssDeclaration) -> &CssTextTransform {
         panic!("existing typed TextTransform wrapper")
     };
     wrapper.value()
-}
-fn assert_source(item: &CssLonghandContribution, source: &CssDeclaration) {
-    assert!(item.source().same_occurrence(source));
-    assert_eq!(item.source().importance(), source.importance());
-    assert_eq!(item.source().position(), source.position());
-    assert_eq!(item.source().value_components(), source.value_components());
 }
 fn completed(source: &CssDeclaration) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
@@ -137,9 +79,10 @@ fn canonical(source: &CssDeclaration, expected: &str) {
     );
 }
 fn accepted(input: &str, expected: &str) {
-    for source in fronts(input) {
+    for front in FRONTS {
+        let source = front.valid(PROPERTY, input, expected);
         let before = source.clone();
-        canonical(&source, expected);
+        assert_eq!(primitive(&source).serialize_specified().unwrap(), expected);
         let values = completed(&source);
         let item = &values.items()[0];
         assert!(matches!(item.value(), CssContributionValueRef::Ordinary(_)));
@@ -150,52 +93,7 @@ fn accepted(input: &str, expected: &str) {
         assert!(item.replacement_components().is_none());
         assert_eq!(source, before);
     }
-    canonical(&checked(expected, true), expected);
-}
-fn invalid(value: &str) {
-    let css = format!("color:red;text-transform:{value};color:blue");
-    let report = parse_style_attribute(&css);
-    assert_eq!(report.syntax().len(), 2, "{css}");
-    assert!(
-        report
-            .syntax()
-            .iter()
-            .all(|v| v.known().unwrap().property() == P::Color)
-    );
-    let [diagnostic] = report.diagnostics() else {
-        panic!("one atomic grammar failure")
-    };
-    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("property-specific grammar diagnostic")
-    };
-    assert_eq!(detail.property(), PROPERTY);
-    assert_eq!(
-        validate_style_attribute(&css).unwrap_err().diagnostics(),
-        report.diagnostics()
-    );
-    let components = parse_component_values(value).unwrap();
-    let before = components.clone();
-    for grammar in [false, true] {
-        assert!(matches!(
-            checked_components(components.clone(), grammar)
-                .unwrap_err()
-                .kind(),
-            CssPropertyValueErrorKind::Grammar(_)
-        ));
-    }
-    for report in [
-        parse_property_value_text(
-            value,
-            CssPropertyNameRef::Known(PROPERTY),
-            CssImportance::Normal,
-        ),
-        parse_property_value_text_for_grammar(value, PROPERTY.grammar(), CssImportance::Normal),
-    ] {
-        assert!(report.syntax().is_none());
-        assert!(!report.is_clean());
-    }
-    assert_eq!(components, before);
+    canonical(&checked(PROPERTY, expected, true), expected);
 }
 
 #[test]
@@ -228,7 +126,7 @@ fn decoded_keywords_comments_and_case_preserve_authored_syntax_and_canonical_rol
         (r"\6e one", "none"),
     ] {
         accepted(input, expected);
-        let source = parsed(input);
+        let source = parsed(PROPERTY, input);
         let CssKnownPropertyValueRef::TextTransform(wrapper) =
             source.known().unwrap().property_value().unwrap()
         else {
@@ -264,11 +162,11 @@ fn duplicate_conflicting_and_exclusive_choices_reject_atomically_with_color_sibl
         "initial uppercase",
         "uppercase inherit",
     ] {
-        invalid(value);
+        invalid(PROPERTY, value);
     }
     for left in ["capitalize", "uppercase", "lowercase"] {
         for right in ["capitalize", "uppercase", "lowercase"] {
-            invalid(&format!("{left} full-width {right}"));
+            invalid(PROPERTY, &format!("{left} full-width {right}"));
         }
     }
     for exclusive in ["none", "math-auto"] {
@@ -281,15 +179,15 @@ fn duplicate_conflicting_and_exclusive_choices_reject_atomically_with_color_sibl
             "full-width",
             "full-size-kana",
         ] {
-            invalid(&format!("{exclusive} {other}"));
-            invalid(&format!("{other} {exclusive}"));
+            invalid(PROPERTY, &format!("{exclusive} {other}"));
+            invalid(PROPERTY, &format!("{other} {exclusive}"));
         }
     }
 }
 #[test]
 fn existing_singleton_primitive_provider_controls_execute_without_intrinsic_metadata() {
     for value in ["none", "capitalize", "uppercase", "lowercase"] {
-        let source = checked(value, false);
+        let source = checked(PROPERTY, value, false);
         canonical(&source, value);
         assert_primitive_limits(primitive(&source), value, 1);
     }
@@ -300,7 +198,13 @@ fn programmatic_components_have_checked_identity_importance_and_original_origins
         CssComponentValues::try_new(vec![CssComponentValue::try_ident("uppercase").unwrap()])
             .unwrap();
     for grammar in [false, true] {
-        let source = checked_components(components.clone(), grammar).unwrap();
+        let source = checked_components(
+            PROPERTY,
+            components.clone(),
+            grammar,
+            CssImportance::Important,
+        )
+        .unwrap();
         assert_eq!(source.value_components(), &components);
         assert_eq!(
             source.value_components().items()[0].origin(),
@@ -325,7 +229,7 @@ fn intrinsic_metadata_is_one_inherited_ordinary_initial_terminal() {
         panic!("ordinary none initial")
     };
     assert_eq!(value.property().known_property(), PROPERTY);
-    let none = checked("none", true);
+    let none = checked(PROPERTY, "none", true);
     canonical(&none, "none");
     let none_contribution = completed(&none);
     assert_eq!(none_contribution.items()[0].ordinary_value(), Some(value));
@@ -396,7 +300,7 @@ fn var_env_attr_reentry_preserves_original_occurrence_and_replacement_snapshot()
                     assert!(actual.source().same_snapshot(supplied.source()));
                     assert_eq!(actual.source().as_str(), text);
                 }
-                canonical(&checked(text, false), text);
+                canonical(&checked(PROPERTY, text, false), text);
             }
             for (text, keyword) in GLOBALS {
                 let replacement = parse_component_values(text).unwrap();
@@ -417,7 +321,7 @@ fn var_env_attr_reentry_preserves_original_occurrence_and_replacement_snapshot()
 }
 #[test]
 fn residual_and_invalid_replacements_fail_repeatedly_then_the_same_handle_succeeds() {
-    let source = checked("var(--transform)", true);
+    let source = checked(PROPERTY, "var(--transform)", true);
     let before = source.clone();
     let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
         panic!("pending")
@@ -534,7 +438,13 @@ fn checked_original_closure_and_strict_reentry_cover_ordinary_global_and_all_pen
         let origin = implicit_origin(&components);
         for grammar in [false, true] {
             assert_closure(
-                &checked_components(components.clone(), grammar).unwrap_err(),
+                &checked_components(
+                    PROPERTY,
+                    components.clone(),
+                    grammar,
+                    CssImportance::Important,
+                )
+                .unwrap_err(),
                 &origin,
                 text,
             );
@@ -544,7 +454,7 @@ fn checked_original_closure_and_strict_reentry_cover_ordinary_global_and_all_pen
 }
 #[test]
 fn pending_reentry_rejects_original_closures_and_complete_comment_controls_succeed() {
-    let source = checked("var(--transform)", false);
+    let source = checked(PROPERTY, "var(--transform)", false);
     let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
         panic!("pending")
     };
@@ -579,8 +489,8 @@ fn pending_reentry_rejects_original_closures_and_complete_comment_controls_succe
         "env(transform)/**/",
         "attr(data-transform *)/**/",
     ] {
-        checked(text, false);
-        checked(text, true);
+        checked(PROPERTY, text, false);
+        checked(PROPERTY, text, true);
     }
     assert!(
         handle
@@ -597,14 +507,20 @@ fn value_annotations_fail_at_original_tokens_while_authored_importance_remains_v
         .origin_at(serialized.as_css().find('!').unwrap())
         .unwrap();
     for grammar in [false, true] {
-        let error = checked_components(components.clone(), grammar).unwrap_err();
+        let error = checked_components(
+            PROPERTY,
+            components.clone(),
+            grammar,
+            CssImportance::Important,
+        )
+        .unwrap_err();
         assert!(matches!(
             error.kind(),
             CssPropertyValueErrorKind::Grammar(_)
         ));
         assert_eq!(error.origin(), origin);
     }
-    canonical(&parsed("uppercase"), "uppercase");
+    canonical(&parsed(PROPERTY, "uppercase"), "uppercase");
 }
 #[test]
 fn browser_eof_recovery_retains_diagnostics_and_normalized_original_occurrence() {
@@ -784,7 +700,7 @@ fn primitive_and_declaration_resources_charge_only_emitted_keywords_and_retry_at
     use CssSpecifiedValueSerializationErrorKind as Kind;
     use CssSpecifiedValueSerializationLimits as Limits;
     for text in STATES {
-        let source = checked(text, true);
+        let source = checked(PROPERTY, text, true);
         // This is the adopted semantic tariff: one per keyword. Counting the
         // independent literal canonical oracle never measures implementation work.
         let nodes = text.split_whitespace().count();
@@ -827,7 +743,7 @@ fn primitive_and_declaration_resources_charge_only_emitted_keywords_and_retry_at
         );
     }
     for (text, _) in GLOBALS {
-        let source = checked(text, true);
+        let source = checked(PROPERTY, text, true);
         let expected = format!("text-transform: {text} !important;");
         assert_eq!(
             source

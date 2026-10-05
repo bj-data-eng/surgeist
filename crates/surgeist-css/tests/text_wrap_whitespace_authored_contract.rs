@@ -13,6 +13,10 @@
 //! borrowed variants, primitive methods and private output-suppression checks
 //! receive functional tests with implementation; no helper is invented here.
 
+#[path = "common/authored_property.rs"]
+mod authored_property;
+use authored_property::{ParserFront, assert_source, checked, invalid, parsed};
+
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
@@ -43,106 +47,22 @@ fn property(name: &str) -> P {
     assert_eq!(P::from_name(&name.to_ascii_uppercase()), Some(property));
     property
 }
-fn parsed(property: P, value: &str) -> CssDeclaration {
-    let css = format!("/*😀*/{}:{value}!important", property.canonical_name());
-    let report = parse_style_attribute(&css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    assert!(validate_style_attribute(&css).is_ok());
-    let [source] = report.syntax().as_slice() else {
-        panic!("one retained occurrence: {css}")
-    };
-    assert_eq!(source.known().unwrap().property(), property);
-    assert_eq!(source.known().unwrap().grammar(), property.grammar());
-    assert_eq!(source.importance(), CssImportance::Important);
-    assert!(source.position().is_some());
-    source.clone()
-}
-fn checked(property: P, value: &str, grammar: bool) -> CssDeclaration {
-    let components = parse_component_values(value).unwrap();
-    let before = components.clone();
-    let source = if grammar {
-        parse_property_value_for_grammar(
-            property.grammar(),
-            components.clone(),
-            CssImportance::Important,
-        )
-    } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(property),
-            components.clone(),
-            CssImportance::Important,
-        )
-    }
-    .unwrap_or_else(|error| panic!("{}:{value}: {error:?}", property.canonical_name()));
-    assert_eq!(components, before);
-    assert_eq!(source.value_components(), &components);
-    assert!(source.position().is_none());
-    assert_eq!(source.known().unwrap().grammar(), property.grammar());
-    assert_eq!(source.importance(), CssImportance::Important);
-    source
-}
+const FRONTS: [ParserFront; 3] = [
+    ParserFront::StyleAttribute,
+    ParserFront::CheckedName,
+    ParserFront::CheckedGrammar,
+];
 fn fronts(property: P, value: &str) -> [CssDeclaration; 3] {
-    [
-        parsed(property, value),
-        checked(property, value, false),
-        checked(property, value, true),
-    ]
+    FRONTS.map(|front| front.parse(property, value))
 }
 fn accepted(property: P, value: &str, expected: &str) {
-    for source in fronts(property, value) {
-        let before = source.clone();
+    for front in FRONTS {
+        let source = front.valid(property, value, expected);
         assert!(source.known().unwrap().global().is_none());
         assert!(source.known().unwrap().substitution_dependent().is_none());
-        assert_eq!(
-            source.to_specified_css().unwrap(),
-            format!("{}: {expected} !important;", property.canonical_name())
-        );
-        assert_eq!(source, before);
     }
     checked(property, expected, false);
     checked(property, expected, true);
-}
-fn invalid(property: P, value: &str) {
-    let css = format!("color:red;{}:{value};color:blue", property.canonical_name());
-    let report = parse_style_attribute(&css);
-    assert_eq!(report.syntax().len(), 2, "{css}");
-    assert!(
-        report
-            .syntax()
-            .iter()
-            .all(|d| d.known().unwrap().property() == P::Color)
-    );
-    let [diagnostic] = report.diagnostics() else {
-        panic!("one atomic failure: {css}")
-    };
-    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("property grammar failure")
-    };
-    assert_eq!(detail.property(), property);
-    assert_eq!(
-        validate_style_attribute(&css).unwrap_err().diagnostics(),
-        report.diagnostics()
-    );
-    let components = parse_component_values(value).unwrap();
-    let before = components.clone();
-    assert!(
-        parse_property_value(
-            CssPropertyNameRef::Known(property),
-            components.clone(),
-            CssImportance::Normal
-        )
-        .is_err()
-    );
-    assert!(
-        parse_property_value_for_grammar(
-            property.grammar(),
-            components.clone(),
-            CssImportance::Normal
-        )
-        .is_err()
-    );
-    assert_eq!(components, before);
 }
 fn completed(source: &CssDeclaration) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
@@ -158,16 +78,6 @@ fn names(values: &CssLonghandContributions) -> Vec<&'static str> {
         .iter()
         .map(|item| item.property().canonical_name())
         .collect()
-}
-fn assert_source(item: &CssLonghandContribution, source: &CssDeclaration) {
-    assert!(item.source().same_occurrence(source));
-    assert_eq!(item.source().importance(), source.importance());
-    assert_eq!(
-        item.source().known().unwrap().grammar(),
-        source.known().unwrap().grammar()
-    );
-    assert_eq!(item.source().value_components(), source.value_components());
-    assert_eq!(item.source().position(), source.position());
 }
 fn assert_ordinary(values: &CssLonghandContributions, source: &CssDeclaration) {
     for item in values.items() {
