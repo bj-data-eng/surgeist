@@ -1818,7 +1818,7 @@ fn list_counter_and_content_constructors_reject_invalid_states() {
 }
 
 #[test]
-fn counter_style_name_constructor_uses_counter_style_ident_rules() {
+fn counter_style_name_constructor_uses_decoded_counter_style_ident_rules() {
     assert_eq!(
         CssCounterStyleName::try_new("chapter-style")
             .unwrap()
@@ -1833,29 +1833,37 @@ fn counter_style_name_constructor_uses_counter_style_ident_rules() {
         CssCounterStyleName::try_new("span").unwrap().as_str(),
         "span"
     );
+    assert_eq!(
+        CssCounterStyleName::try_new("UPPER-ROMAN")
+            .unwrap()
+            .as_str(),
+        "upper-roman"
+    );
 
     for name in [
+        "1chapter",
+        "-1chapter",
+        "chapter style",
+        "chapter;",
+        ".chapter",
+    ] {
+        assert_eq!(
+            CssCounterStyleName::try_new(name).unwrap().as_str(),
+            name,
+            "{name:?} retains decoded identity"
+        );
+    }
+
+    for name in [
+        "",
+        "a\0b",
+        "default",
         "none",
         "inherit",
         "initial",
         "unset",
         "revert",
         "revert-layer",
-    ] {
-        assert_eq!(
-            CssCounterStyleName::try_new(name),
-            None,
-            "{name:?} rejected"
-        );
-    }
-
-    for name in [
-        "",
-        "1chapter",
-        "-1chapter",
-        "chapter style",
-        "chapter;",
-        ".chapter",
     ] {
         assert_eq!(
             CssCounterStyleName::try_new(name),

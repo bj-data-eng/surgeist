@@ -26,10 +26,22 @@ pub(super) fn parse_counter_style_name<'i, 't>(
         unsupported_value_at(
             location,
             None,
-            "counter-style names exclude CSS-wide keywords and `none`",
+            "counter-style names exclude CSS-wide keywords, `default` and `none`",
         )
     })?;
     input.expect_exhausted().map_err(basic)?;
+    // Counter Styles 3 §3 excludes these names only from rule definitions.
+    // They remain valid references in extends, fallback and speak-as.
+    if matches!(
+        name.as_str(),
+        "decimal" | "disc" | "square" | "circle" | "disclosure-open" | "disclosure-closed"
+    ) {
+        return Err(unsupported_value_at(
+            location,
+            None,
+            "counter-style definitions cannot use protected predefined names",
+        ));
+    }
     Ok(name)
 }
 

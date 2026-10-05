@@ -810,28 +810,23 @@ pub enum CssCounterSymbol {
 /// One checked `<custom-ident>` used as an authored counter symbol.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssCounterSymbolIdent {
-    value: String,
+    value: crate::CssContentName,
 }
 
 impl CssCounterSymbolIdent {
     /// Constructs a counter symbol from one exact decoded CSS custom identifier.
+    /// CSS-wide keywords, `default`, empty values and NUL are rejected.
+    /// Other identifiers retain their decoded case and punctuation.
     #[must_use]
     pub fn try_new(value: impl Into<String>) -> Option<Self> {
-        let value = value.into();
-        if is_exact_css_identifier(&value)
-            && !is_css_wide_keyword(&value)
-            && !value.eq_ignore_ascii_case("default")
-        {
-            Some(Self { value })
-        } else {
-            None
-        }
+        let ident = CssIdent::try_new(value).ok()?;
+        crate::CssContentName::try_new(ident).map(|value| Self { value })
     }
 
     /// Returns the exact, case-sensitive decoded identifier.
     #[must_use]
     pub fn as_str(&self) -> &str {
-        &self.value
+        self.value.as_str()
     }
 }
 
@@ -4540,45 +4535,23 @@ impl CssContentString {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssCounterStyleName {
-    name: String,
+    name: crate::CssCounterStyleReference,
 }
 
 impl CssCounterStyleName {
+    /// Constructs a decoded counter-style name, including names requiring CSS escapes.
+    /// Predefined names normalize to lowercase; arbitrary custom names retain case.
+    /// CSS-wide keywords, `default`, `none`, empty values and NUL are rejected.
     #[must_use]
     pub fn try_new(name: impl Into<String>) -> Option<Self> {
-        let name = name.into();
-        if is_valid_counter_style_name(&name) {
-            Some(Self::new(name))
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn new(name: impl Into<String>) -> Self {
-        Self { name: name.into() }
+        let ident = CssIdent::try_new(name).ok()?;
+        crate::CssCounterStyleReference::try_new(ident).map(|name| Self { name })
     }
 
     #[must_use]
     pub fn as_str(&self) -> &str {
-        &self.name
+        self.name.as_str()
     }
-}
-
-fn is_valid_counter_style_name(name: &str) -> bool {
-    is_css_ident(name)
-        && !is_css_wide_keyword(name)
-        && !name.eq_ignore_ascii_case("default")
-        && !name.eq_ignore_ascii_case("none")
-}
-
-fn is_css_ident(value: &str) -> bool {
-    let mut input = cssparser::ParserInput::new(value);
-    let mut parser = cssparser::Parser::new(&mut input);
-    let Ok(parsed) = parser.expect_ident_cloned() else {
-        return false;
-    };
-    parser.expect_exhausted().is_ok() && parsed.as_ref() == value
 }
 
 pub(crate) fn is_css_wide_keyword(value: &str) -> bool {

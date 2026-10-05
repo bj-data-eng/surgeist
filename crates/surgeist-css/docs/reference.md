@@ -4244,7 +4244,7 @@ cross-crate lowering remain downstream exclusions.
 
 ## Counter Styles 3 and CSS2 page rules
 
-`CssRule::CounterStyle` retains a checked, case-sensitive
+`CssRule::CounterStyle` retains a checked
 `CssCounterStyleName`, the parser-produced rule position, and typed
 `CssCounterStyleDescriptors`. Every valid descriptor occurrence remains in
 authored order; the named `system`, `negative`, `prefix`, `suffix`, `range`,
@@ -4253,6 +4253,24 @@ the effective last valid occurrence. The model preserves symbolic
 `extends` names, infinite range bounds, nonempty symbol lists, and strictly
 descending additive weights without registering, resolving, inheriting, or
 evaluating a counter style.
+
+`CssCounterStyleName::try_new` accepts decoded identifier content through the
+shared `CssIdent` and Counter Style reference owners. Content requiring CSS
+escapes, such as a leading digit, space or punctuation, remains a valid decoded
+name; the parser still requires one actual identifier token. Custom names retain
+case. The selected Counter Styles predefined names are ASCII-lowercased in rule
+names and references through the existing shared catalog. CSS-wide keywords,
+`default`, `none`, empty strings and NUL are excluded. The six predefined names
+`decimal`, `disc`, `square`, `circle`, `disclosure-open` and `disclosure-closed`
+remain valid references but invalidate rule definitions, preserving following
+rules through ordinary recovery.
+
+`CssCounterSymbolIdent::try_new` uses the shared decoded custom-identifier owner.
+Symbol identifiers retain their case and decoded content without predefined-name
+normalization; `none`, `auto` and `span` are valid symbol identifiers. Parsed
+escape spelling, rule/descriptor positions and retained declaration component
+origins remain unchanged. Admission and recovery evidence is in
+[`counter_style_identifier_admission.rs`](../tests/counter_style_identifier_admission.rs).
 
 The optional `fixed` starting value is `Option<CssIntegerLiteral>`, preserving
 omission separately from explicit `1` and `+0001`. Finite range bounds retain
@@ -4266,8 +4284,9 @@ descending mathematical weights, rejecting equal alternate spellings without
 sorting or deduplication. These owners retain exact token components and origins.
 The selected Counter Styles standard permits supported-range clamping; this
 specified-value model preserves exact authored bounds and leaves any implementation
-range policy downstream. Counter integer fields remain literal-only; this model
-does not add a counter-rule serializer.
+range policy downstream. Counter integer fields remain literal-only.
+[Bounded rule and descriptor output](#counter-style-specified-output-and-descriptor-getters)
+reuses these retained values.
 
 An invalid or unknown counter-style descriptor is dropped individually with a
 typed `DropDescriptor` diagnostic, preserving valid neighboring descriptors.
@@ -6578,7 +6597,8 @@ and the existing detached nested-declaration rule contract.
 ## Counter-style specified output and descriptor getters
 
 `CssCounterStyleRule::to_specified_css` and `to_specified_css_with_limits` emit
-the checked case-sensitive name and present effective descriptors.
+the checked name and present effective descriptors. Custom names retain case;
+predefined names use the name owner's canonical identity.
 `name_specified_css` and its limits variant apply CSS identifier serialization.
 `descriptor_specified_css` and its limits variant take a
 `CssCounterStyleDescriptorKind` and return that field's specified value, or an
