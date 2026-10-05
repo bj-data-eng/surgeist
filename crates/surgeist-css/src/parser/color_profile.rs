@@ -200,7 +200,8 @@ pub(crate) fn construct_descriptor_value(
     components: &CssComponentValues,
     serialized: &CssSerializedValue,
 ) -> Result<CssColorProfileDescriptorData, Error> {
-    let mut parser_input = cssparser::ParserInput::new(serialized.as_css());
+    let working_source = crate::tokenization::prepare(serialized.as_css());
+    let mut parser_input = cssparser::ParserInput::new(&working_source);
     let mut input = Parser::new(&mut parser_input);
     validate_descriptor_root(&mut input, kind)
         .map_err(|error| from_parse_error(serialized.as_css(), error))?;

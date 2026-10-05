@@ -5,7 +5,7 @@
 //! independently originating replacement tokens remain available to consumers.
 
 mod parse;
-pub(crate) use parse::has_unescaped_final;
+pub(crate) use parse::{has_unescaped_final, odd_trailing_backslashes};
 mod serialize;
 pub(crate) use serialize::{CssCanonicalBuilder, CssCanonicalToken};
 
@@ -341,11 +341,12 @@ impl<'a> CssNumericTokenRef<'a> {
     }
 }
 
-/// The CSS hash-token flag, independent of its source escape spelling.
+/// The CSS hash-token flag determined by identifier lookahead on authored input.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssHashFlag {
-    /// The token's decoded name begins as a CSS identifier.
+    /// The authored name starts an identifier, including a valid leading escape.
+    /// Decoding may therefore produce a leading digit, as in `#\31`.
     Id,
     /// The token has the unrestricted hash type.
     Unrestricted,

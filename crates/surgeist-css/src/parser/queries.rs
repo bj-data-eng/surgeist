@@ -215,7 +215,8 @@ pub(super) fn parse_media_query_list_with_closures<'i, 't>(
 pub(crate) fn parse_media_query_list_for_test(
     source: &str,
 ) -> std::result::Result<CssMediaQueryList, Error> {
-    let mut input = ParserInput::new(source);
+    let working_source = crate::tokenization::prepare(source);
+    let mut input = ParserInput::new(&working_source);
     let mut parser = Parser::new(&mut input);
     let mut diagnostics = Vec::new();
     let recovery = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
@@ -1609,7 +1610,8 @@ fn construct_media(
         numeric: &numeric,
         limits,
     };
-    let mut parser_input = cssparser::ParserInput::new(source);
+    let working_source = crate::tokenization::prepare(source);
+    let mut parser_input = cssparser::ParserInput::new(&working_source);
     let mut input = Parser::new(&mut parser_input);
     let result = (|| {
         let query = if condition_only {

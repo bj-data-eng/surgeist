@@ -265,10 +265,8 @@ fn token_error<'i>(
 ) -> ParseError<'i, Error> {
     if let Some(offset) = issue_offset(numeric, origin, path, closing, root_offset) {
         let source = input_css(numeric);
-        let mut storage = cssparser::ParserInput::new(&source[offset..]);
-        let mut parser = Parser::new(&mut storage);
-        if let Ok(token) = parser.next_including_whitespace_and_comments() {
-            return location.new_custom_error(unexpected_token_at(source, offset, token));
+        if let Some((_, _, token)) = crate::tokenization::next_source_token(source, offset) {
+            return location.new_custom_error(unexpected_token_at(source, offset, &token));
         }
     }
     location.new_error(BasicParseErrorKind::EndOfInput)

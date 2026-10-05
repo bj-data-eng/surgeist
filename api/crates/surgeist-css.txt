@@ -1082,6 +1082,7 @@ impl surgeist_css::CssEmptyCells
 pub fn surgeist_css::CssEmptyCells::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssEmptyCells::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssErrorCode
+pub surgeist_css::CssErrorCode::EscapeParseError
 pub surgeist_css::CssErrorCode::InvalidAtRuleBody
 pub surgeist_css::CssErrorCode::InvalidAtRulePlacement
 pub surgeist_css::CssErrorCode::InvalidAtRulePrelude
@@ -1105,6 +1106,9 @@ pub surgeist_css::CssErrorCode::UnknownProperty
 pub surgeist_css::CssErrorCode::UnsupportedAtRule
 pub surgeist_css::CssErrorCode::UnsupportedDescriptor
 pub surgeist_css::CssErrorCode::UnsupportedProperty
+#[non_exhaustive] pub enum surgeist_css::CssEscapeError
+pub surgeist_css::CssEscapeError::EndOfInput
+pub surgeist_css::CssEscapeError::Newline
 #[non_exhaustive] pub enum surgeist_css::CssExclusionReason
 pub surgeist_css::CssExclusionReason::InformativeOnly
 pub surgeist_css::CssExclusionReason::OutsideAuthoredSyntaxBoundary
@@ -3594,6 +3598,7 @@ pub surgeist_css::CssRecoveryAction::DropQualifiedRule
 pub surgeist_css::CssRecoveryAction::DropSelectorListItem
 pub surgeist_css::CssRecoveryAction::IgnoreLegacyToken
 pub surgeist_css::CssRecoveryAction::IgnoreUnterminatedComment
+pub surgeist_css::CssRecoveryAction::RecoverEscape
 pub surgeist_css::CssRecoveryAction::RejectInput
 pub surgeist_css::CssRecoveryAction::ReplaceMediaQueryWithNever
 pub surgeist_css::CssRecoveryAction::RetainNonconformingRule
@@ -4516,6 +4521,7 @@ pub fn surgeist_css::CssWritingMode::serialize_specified_with_limits(&self, limi
 pub surgeist_css::CssZIndexValue::Auto
 pub surgeist_css::CssZIndexValue::Integer(surgeist_css::CssIntegerValue)
 #[non_exhaustive] pub enum surgeist_css::ErrorKind
+pub surgeist_css::ErrorKind::EscapeParseError(surgeist_css::CssEscapeError)
 pub surgeist_css::ErrorKind::InvalidAtRuleBody(surgeist_css::CssAtRuleSyntaxError)
 pub surgeist_css::ErrorKind::InvalidAtRulePlacement(surgeist_css::CssAtRulePlacementError)
 pub surgeist_css::ErrorKind::InvalidAtRulePrelude(surgeist_css::CssAtRuleSyntaxError)

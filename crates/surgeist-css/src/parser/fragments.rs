@@ -78,7 +78,8 @@ pub(super) fn finish_nested_component<'i>(
 pub fn parse_declaration(source: &str) -> crate::CssParseReport<Option<CssDeclaration>> {
     bounded(source, || {
         let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
-        let mut parser_input = ParserInput::new(source);
+        let working_source = crate::tokenization::prepare(source);
+        let mut parser_input = ParserInput::new(&working_source);
         let mut input = Parser::new(&mut parser_input);
         let result = (|| {
             input.skip_whitespace();
@@ -131,11 +132,11 @@ pub fn parse_declaration(source: &str) -> crate::CssParseReport<Option<CssDeclar
     })
 }
 
-fn selector_fragment<'i, T>(
-    source: &'i str,
+fn selector_fragment<T>(
+    source: &str,
     context: &CssNamespaceContext,
     single: bool,
-    parse: impl FnOnce(
+    parse: impl for<'i> FnOnce(
         &mut Parser<'i, '_>,
         &mut SelectorRecovery<'_>,
     ) -> Result<T, ParseError<'i, Error>>,
@@ -147,7 +148,8 @@ fn selector_fragment<'i, T>(
     for (prefix, name) in &context.0.named {
         state.activate_namespace(Some(prefix.clone()), name.clone());
     }
-    let mut input = ParserInput::new(source);
+    let working_source = crate::tokenization::prepare(source);
+    let mut input = ParserInput::new(&working_source);
     let mut input = Parser::new(&mut input);
     let mut diagnostics = Vec::new();
     let openings = if single {
@@ -228,7 +230,8 @@ pub fn parse_selector_list(
 pub fn parse_media_query(source: &str) -> crate::CssParseReport<CssMediaQuery> {
     bounded(source, || {
         let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
-        let mut input = ParserInput::new(source);
+        let working_source = crate::tokenization::prepare(source);
+        let mut input = ParserInput::new(&working_source);
         let mut input = Parser::new(&mut input);
         let result = queries::check_media_member_components(source, &mut input, &state).and_then(
             |openings| {
@@ -278,7 +281,8 @@ pub fn parse_media_query(source: &str) -> crate::CssParseReport<CssMediaQuery> {
 pub fn parse_media_query_list(source: &str) -> crate::CssParseReport<CssMediaQueryList> {
     bounded(source, || {
         let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
-        let mut input = ParserInput::new(source);
+        let working_source = crate::tokenization::prepare(source);
+        let mut input = ParserInput::new(&working_source);
         let mut input = Parser::new(&mut input);
         let mut diagnostics = Vec::new();
         let query = match queries::parse_media_query_list_with_closures(
@@ -353,7 +357,8 @@ pub fn parse_font_face_descriptor_value(
 ) -> crate::CssParseReport<Option<crate::CssAuthoredFontFaceDescriptorValue>> {
     bounded(source, || {
         let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
-        let mut parser_input = ParserInput::new(source);
+        let working_source = crate::tokenization::prepare(source);
+        let mut parser_input = ParserInput::new(&working_source);
         let mut input = Parser::new(&mut parser_input);
         let mut diagnostics = Vec::new();
         let result = (|| {
@@ -408,7 +413,8 @@ pub fn parse_font_palette_descriptor_value(
 ) -> crate::CssParseReport<Option<CssFontPaletteDescriptorValue>> {
     bounded(source, || {
         let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
-        let mut parser_input = ParserInput::new(source);
+        let working_source = crate::tokenization::prepare(source);
+        let mut parser_input = ParserInput::new(&working_source);
         let mut input = Parser::new(&mut parser_input);
         let result = (|| {
             let openings = state.check_component_values(source, &input, "css.descriptor")?;
@@ -437,7 +443,8 @@ pub fn parse_color_profile_descriptor_value(
 ) -> crate::CssParseReport<Option<CssColorProfileDescriptorValue>> {
     bounded(source, || {
         let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
-        let mut parser_input = ParserInput::new(source);
+        let working_source = crate::tokenization::prepare(source);
+        let mut parser_input = ParserInput::new(&working_source);
         let mut input = Parser::new(&mut parser_input);
         let result = (|| {
             let openings = state.check_component_values(source, &input, "css.descriptor")?;
@@ -500,7 +507,8 @@ fn property_value_text(
 ) -> crate::CssParseReport<Option<CssDeclaration>> {
     bounded(source, || {
         let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
-        let mut parser_input = ParserInput::new(source);
+        let working_source = crate::tokenization::prepare(source);
+        let mut parser_input = ParserInput::new(&working_source);
         let mut input = Parser::new(&mut parser_input);
         let result = (|| {
             let openings = state.check_component_values(source, &input, "css.declaration")?;
@@ -625,7 +633,8 @@ pub fn parse_rule(
         for (prefix, name) in &context.0.named {
             state.activate_namespace(Some(prefix.clone()), name.clone());
         }
-        let mut parser_input = ParserInput::new(source);
+        let working_source = crate::tokenization::prepare(source);
+        let mut parser_input = ParserInput::new(&working_source);
         let mut input = Parser::new(&mut parser_input);
         let mut parser = SingleRuleParser {
             grammar: StrictRuleParser::isolated_rule(source, state.clone()),
@@ -685,7 +694,8 @@ pub fn parse_style_block(
         for (prefix, name) in &context.0.named {
             state.activate_namespace(Some(prefix.clone()), name.clone());
         }
-        let mut parser_input = ParserInput::new(source);
+        let working_source = crate::tokenization::prepare(source);
+        let mut parser_input = ParserInput::new(&working_source);
         let mut input = Parser::new(&mut parser_input);
         let result = (|| {
             input.skip_whitespace();

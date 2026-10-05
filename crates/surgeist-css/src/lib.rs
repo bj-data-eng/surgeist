@@ -1529,6 +1529,7 @@ mod property_value;
 mod report;
 mod source;
 mod syntax;
+mod tokenization;
 pub use numeric::{
     CssAngleCalculation, CssCalculationConstantRef, CssCalculationExpressionRef,
     CssCalculationFunctionRef, CssCalculationProductFactorRef, CssCalculationProductOperator,

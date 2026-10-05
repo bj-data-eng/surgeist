@@ -594,7 +594,8 @@ pub fn parse_style_attribute(source: &str) -> crate::CssParseReport<CssDeclarati
 
 fn parse_style_attribute_inner(source: &str) -> crate::CssParseReport<CssDeclarationList> {
     let recovery = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
-    let mut input = ParserInput::new(source);
+    let working_source = crate::tokenization::prepare(source);
+    let mut input = ParserInput::new(&working_source);
     let mut parser = Parser::new(&mut input);
     let recovered = parse_style_attribute_declarations(source, &mut parser, recovery.clone());
     let syntax = recovered.syntax;
@@ -848,7 +849,8 @@ fn parse_style_context_inner(
     source: &str,
     recovery: RecoveryState,
 ) -> crate::CssParseReport<CssSheet> {
-    let mut input = ParserInput::new(source);
+    let working_source = crate::tokenization::prepare(source);
+    let mut input = ParserInput::new(&working_source);
     let mut parser = Parser::new(&mut input);
     let recovered = parse_style_contents(source, &mut parser, recovery.clone());
     match recovered {
@@ -883,7 +885,8 @@ fn parse_scoped_context_inner(
     has_style_ancestor: bool,
     body: ScopedBodyKind,
 ) -> crate::CssParseReport<CssSheet> {
-    let mut input = ParserInput::new(source);
+    let working_source = crate::tokenization::prepare(source);
+    let mut input = ParserInput::new(&working_source);
     let mut parser = Parser::new(&mut input);
     match parse_scoped_rule_list(
         source,
@@ -1509,7 +1512,8 @@ fn rule_start(rule: &CssRule) -> usize {
 }
 
 fn parse_sheet_inner(source: &str, recovery: RecoveryState) -> crate::CssParseReport<CssSheet> {
-    let mut input = ParserInput::new(source);
+    let working_source = crate::tokenization::prepare(source);
+    let mut input = ParserInput::new(&working_source);
     let mut parser = Parser::new(&mut input);
     let mut rule_parser = StrictRuleParser::top_level(source, recovery.clone());
     let mut sheet = CssSheet::new();
@@ -2815,7 +2819,8 @@ fn classify_constructed_import(
     for (prefix, name) in &context.0.named {
         recovery.activate_namespace(Some(prefix.clone()), name.clone());
     }
-    let mut buffer = ParserInput::new(source);
+    let working_source = crate::tokenization::prepare(source);
+    let mut buffer = ParserInput::new(&working_source);
     let mut input = Parser::new(&mut buffer);
     let numeric = crate::numeric::NumericInputContext::components(values, serialized);
     let result = (|| {
@@ -3145,7 +3150,8 @@ pub(crate) fn import_boundaries_match(
 ) -> Result<bool, crate::CssImportSerializationError> {
     let source = serialized.as_css();
     let recovery = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
-    let mut buffer = ParserInput::new(source);
+    let working_source = crate::tokenization::prepare(source);
+    let mut buffer = ParserInput::new(&working_source);
     let mut input = Parser::new(&mut buffer);
     let result = (|| {
         let selected = select_import_clauses(source, &mut input, &recovery)?;
@@ -4607,7 +4613,8 @@ fn parse_property_value_body_selected(
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssDeclarationBody, Error> {
     fragments::bounded_execution(source, || {
-        let mut input = ParserInput::new(source);
+        let working_source = crate::tokenization::prepare(source);
+        let mut input = ParserInput::new(&working_source);
         let mut parser = Parser::new(&mut input);
         parse_property_value_from_parser(grammar, source, &mut parser, numeric)
             .map_err(|error| from_parse_error(source, error))
@@ -4921,7 +4928,8 @@ fn finish_custom_media(
     recovery: &RecoveryState,
     diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
 ) -> crate::CssCustomMediaRule {
-    let mut token_input = ParserInput::new(source);
+    let working_source = crate::tokenization::prepare(source);
+    let mut token_input = ParserInput::new(&working_source);
     let mut parser = Parser::new(&mut token_input);
     parser.reset(start);
     let at = crate::CssComponentValue::collect_from_parser(&mut parser, recovery.source_snapshot())

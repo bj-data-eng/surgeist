@@ -116,6 +116,9 @@ pub enum CssRecoveryAction {
     /// The tokenizer ignored an authored comment terminated by EOF instead of `*/`.
     /// This recovery is independent of retention or rejection of surrounding syntax.
     IgnoreUnterminatedComment,
+    /// The tokenizer recovered an authored escape as a backslash delimiter or U+FFFD.
+    /// This lexical decision is independent of retention or rejection of surrounding syntax.
+    RecoverEscape,
     /// The diagnostic phase stopped retaining the smallest unit at the nesting limit.
     StopAtNestingLimit,
 }

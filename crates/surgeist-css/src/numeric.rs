@@ -92,11 +92,7 @@ impl<'a> NumericInputContext<'a> {
         match self {
             Self::Components(_, serialized) => serialized.value_origin_at(offset).cloned(),
             Self::Parsed(source) => {
-                let suffix = source.as_str().get(offset..)?;
-                let mut input = cssparser::ParserInput::new(suffix);
-                let mut parser = cssparser::Parser::new(&mut input);
-                let _ = parser.next_including_whitespace_and_comments();
-                let end = offset.checked_add(parser.position().byte_index())?;
+                let (_, end, _) = crate::tokenization::next_source_token(source.as_str(), offset)?;
                 crate::CssParsedOrigin::from_range(source, offset..end).map(CssValueOrigin::Parsed)
             }
         }

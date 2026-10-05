@@ -274,7 +274,8 @@ fn operand(
                 out.push_components(function.values().items())?;
                 let serialized = out.finish()?;
                 let source = serialized.as_css();
-                let mut parser_input = cssparser::ParserInput::new(source);
+                let working_source = crate::tokenization::prepare(source);
+                let mut parser_input = cssparser::ParserInput::new(&working_source);
                 let mut input = Parser::new(&mut parser_input);
                 let mut diagnostics = Vec::new();
                 let mut selector_recovery =
@@ -452,7 +453,8 @@ fn parsed_known(
     let start = first.span().start().byte_offset().value();
     let end = last.span().end().byte_offset().value();
     let source = super::isolate_source_span(&first.source().as_str()[..end], start, end);
-    let mut parser_input = cssparser::ParserInput::new(&source);
+    let working_source = crate::tokenization::prepare(&source);
+    let mut parser_input = cssparser::ParserInput::new(&working_source);
     let mut input = Parser::new(&mut parser_input);
     let numeric = crate::numeric::NumericInputContext::parsed(first.source());
     match super::parse_known_declaration_body(resolved, &mut input, &numeric) {

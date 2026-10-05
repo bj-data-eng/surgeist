@@ -162,6 +162,25 @@ all source-fragment parsers, so clean-report validation rejects unfinished
 comments. Structural EOF closures retain their separate diagnostics. Comment-like
 bytes inside strings and URL tokens are payload and do not create comment errors.
 
+Backslash-newline and identifier-like EOF escapes produce `EscapeParseError`
+diagnostics with `CssEscapeError::Newline` or `EndOfInput`, respectively, and
+`RecoverEscape`. Newline recovery leaves a backslash delimiter and preserves the
+newline; EOF escape recovery retains U+FFFD. The error position is the backslash
+for newline recovery and the EOF cursor for an EOF escape. Both recovery spans
+cover the responsible backslash byte. These tokenizer events are reported once
+per public parse even when surrounding grammar rejects the source. They do not
+spend structural depth or imply a closure; strings and URLs keep their existing
+token and closure diagnostics. Clean-report validation rejects these recovered
+inputs while ordinary parsing can retain their valid surrounding syntax.
+
+Bad unquoted URL tokens consume their remnants through the first unescaped
+closing parenthesis or EOF, following CSS Syntax 3 §4.3.6 and §4.3.14. The first
+escape after value whitespace participates in that consumption: `url(a \)still)`
+is one complete bad token, while `url(a \\)tail` ends the bad token before `tail`.
+Quote- and comment-looking remnants remain URL payload. Recovery preserves the
+original token spelling and source coordinates, and later declarations and rules
+remain eligible at the actual boundary.
+
 ## Owned component values
 
 `CssComponentValues` retains an immutable sequence of tokens, functions, blocks,
@@ -169,6 +188,14 @@ whitespace, and comments. Borrowed views expose decoded identifiers and strings,
 hash flags, and exact numeric representations without rounding them to floating
 point. Checked Rust constructors preserve the same token kinds. Property grammar
 validation and variable substitution are separate operations.
+
+Identifier-start lookahead uses authored code points after CSS preprocessing,
+including NUL replacement and valid leading escapes. Hash flags therefore
+distinguish `#1` (unrestricted) from `#\31` (ID), although both decode to `1`.
+An invalid hyphen/backslash-newline start leaves separate delimiters; after a
+number it leaves a number and delimiters rather than a dimension. Every split
+component owns its original source span and counts separately toward the
+component limit. A rejected split capture returns no partial component sequence.
 
 ```rust
 use surgeist_css::{CssComponentValue, CssComponentValues};

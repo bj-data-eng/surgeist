@@ -292,7 +292,8 @@ pub(crate) fn construct_font_face_descriptor_value(
     serialized: &crate::CssSerializedValue,
 ) -> Result<(CssAuthoredFontFaceDescriptorValue, Option<Error>), Error> {
     let source = serialized.as_css();
-    let mut parser_input = cssparser::ParserInput::new(source);
+    let working_source = crate::tokenization::prepare(source);
+    let mut parser_input = cssparser::ParserInput::new(&working_source);
     let mut input = Parser::new(&mut parser_input);
     validate_font_face_descriptor_root(&mut input, kind)
         .map_err(|error| crate::error::from_parse_error(source, error))?;

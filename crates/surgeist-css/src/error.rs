@@ -19,6 +19,8 @@ use crate::validation::{PropertyNameStatus, classify_property_name, property_for
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum CssErrorCode {
+    /// Escape processing encountered a newline or exhausted its code-point input.
+    EscapeParseError,
     /// The parser required more authored syntax but reached the end of input.
     UnexpectedEnd,
     /// The parser encountered an authored token that the active grammar did not accept.
@@ -921,6 +923,20 @@ impl CssNestingLimitError {
     }
 }
 
+/// The tokenizer's parse-error condition while processing an authored escape.
+///
+/// These are lexical facts independent of surrounding grammar retention. EOF
+/// still satisfies valid-escape lookahead in CSS Syntax 3 §4.3.8; consuming its
+/// escaped code point reports a parse error and returns U+FFFD (§4.3.7).
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CssEscapeError {
+    /// Backslash-newline is not a valid escape; recovery returns a backslash delimiter.
+    Newline,
+    /// An escape reached EOF; recovery returns the replacement character U+FFFD.
+    EndOfInput,
+}
+
 /// The structured diagnostic-phase detail for one CSS grammar or conformance violation.
 ///
 /// Every variant carries the payload required by its stable [`CssErrorCode`] and preserves authored
@@ -929,6 +945,8 @@ impl CssNestingLimitError {
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ErrorKind {
+    /// Tokenizer escape processing required lexical recovery.
+    EscapeParseError(CssEscapeError),
     /// Strict parsing reached EOF before an expected production completed.
     UnexpectedEnd(CssUnexpectedEndError),
     /// Strict parsing encountered a token rejected by the active grammar.
@@ -1011,6 +1029,7 @@ impl Error {
     /// Returns the stable machine-readable root category corresponding to [`Self::kind`].
     pub const fn code(&self) -> CssErrorCode {
         match self.kind {
+            ErrorKind::EscapeParseError(_) => CssErrorCode::EscapeParseError,
             ErrorKind::UnexpectedEnd(_) => CssErrorCode::UnexpectedEnd,
             ErrorKind::UnexpectedToken(_) => CssErrorCode::UnexpectedToken,
             ErrorKind::InvalidEncodingDeclaration(_) => CssErrorCode::InvalidEncodingDeclaration,
@@ -1122,6 +1141,17 @@ pub(crate) fn implicit_eof(source: &str) -> Error {
             expectation: EXPECT_CSS_SYNTAX,
         }),
         position: CssSourcePosition::from_byte_offset_in(source, source.len()),
+    }
+}
+
+pub(crate) fn escape_parse_error(
+    source: &str,
+    byte_offset: usize,
+    detail: CssEscapeError,
+) -> Error {
+    Error {
+        kind: ErrorKind::EscapeParseError(detail),
+        position: CssSourcePosition::from_byte_offset_in(source, byte_offset),
     }
 }
 

@@ -669,7 +669,8 @@ fn container_component_error<'i>(
 pub(crate) fn parse_container_condition_for_test(
     source: &str,
 ) -> Result<CssContainerCondition, Error> {
-    let mut input = ParserInput::new(source);
+    let working_source = crate::tokenization::prepare(source);
+    let mut input = ParserInput::new(&working_source);
     let mut parser = Parser::new(&mut input);
     let recovery = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
     let location = parser.current_source_location();

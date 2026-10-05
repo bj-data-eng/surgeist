@@ -75,25 +75,17 @@ fn next_authored_token_at(
     position: CssSourcePosition,
 ) -> Option<(usize, CssTokenSummary)> {
     let start = position.byte_offset().value();
-    let tail = source.get(start..)?;
-    if tail.is_empty() {
-        return None;
-    }
-    let mut input = ParserInput::new(tail);
-    let mut parser = Parser::new(&mut input);
+    let mut offset = start;
     loop {
-        let token_start = parser.position().byte_index();
-        let token = parser
-            .next_including_whitespace_and_comments()
-            .ok()?
-            .clone();
-        let token_end = parser.position().byte_index();
+        let (token_start, token_end, token) =
+            crate::tokenization::next_source_token(source, offset)?;
+        offset = token_end;
         if matches!(token, Token::WhiteSpace(_) | Token::Comment(_)) {
             continue;
         }
-        let authored = tail.get(token_start..token_end)?.to_owned();
+        let authored = source.get(token_start..token_end)?.to_owned();
         return Some((
-            start + token_start,
+            token_start,
             CssTokenSummary {
                 kind: token_kind(&token),
                 authored,
@@ -137,7 +129,8 @@ pub(super) fn previous_authored_token_before(
         })
         .unwrap_or(0);
     let window = source.get(window_start..end)?;
-    let mut input = ParserInput::new(window);
+    let working_source = crate::tokenization::prepare(window);
+    let mut input = ParserInput::new(&working_source);
     let mut parser = Parser::new(&mut input);
     let mut previous = None;
     while !parser.is_exhausted() {

@@ -24,17 +24,51 @@ pub(super) use crate::STRUCTURAL_NESTING_LIMIT;
 pub(super) const DIRECT_PARSE_DEPTH: u32 = 128;
 
 /// Publish tokenizer recovery once, after the public grammar entry finishes.
-/// Comments have no retained syntax token, so their EOF error is independent of
-/// whether the enclosing grammar unit survived. Internal probes and recursive
-/// parses must leave this step to the caller with the original complete source.
+/// Lexical errors are independent of whether the enclosing grammar unit survived.
+/// Internal probes and recursive parses leave this step to the caller with the
+/// original complete source.
 pub(super) fn finish_report<T>(
     source: &str,
     report: crate::CssParseReport<T>,
 ) -> crate::CssParseReport<T> {
+    let (syntax, mut diagnostics) = report.into_parts();
     let mut offset = 0;
     while let Some((token_start, token_end, token)) = next_source_token(source, offset) {
         offset = token_end;
+        if matches!(token, Token::Delim('\\'))
+            && matches!(
+                source.as_bytes().get(token_end),
+                Some(b'\n' | b'\r' | b'\x0c')
+            )
+        {
+            diagnostics.push(escape_diagnostic(
+                source,
+                token_start..token_end,
+                crate::CssEscapeError::Newline,
+            ));
+            continue;
+        }
+        if token_end == source.len()
+            && matches!(
+                token,
+                Token::Ident(_)
+                    | Token::AtKeyword(_)
+                    | Token::Hash(_)
+                    | Token::IDHash(_)
+                    | Token::Dimension { .. }
+            )
+            && crate::component_values::odd_trailing_backslashes(&source[token_start..token_end])
+        {
+            diagnostics.push(escape_diagnostic(
+                source,
+                token_end - 1..token_end,
+                crate::CssEscapeError::EndOfInput,
+            ));
+            continue;
+        }
         if !matches!(token, Token::Comment(_)) {
+            // Strings, URLs and bad tokens consume their own payload. Their
+            // existing grammar/EOF diagnostics already describe that recovery.
             continue;
         }
         // Only comment tokens participate: strings and URL tokens (including
@@ -54,11 +88,31 @@ pub(super) fn finish_report<T>(
             crate::CssRecoveryAction::IgnoreUnterminatedComment,
         )
         .expect("comment EOF belongs to its consumed source span");
-        let (syntax, mut diagnostics) = report.into_parts();
         diagnostics.push(diagnostic);
-        return crate::CssParseReport::new(syntax, diagnostics);
     }
-    report
+    crate::CssParseReport::new(syntax, diagnostics)
+}
+
+fn escape_diagnostic(
+    source: &str,
+    range: std::ops::Range<usize>,
+    detail: crate::CssEscapeError,
+) -> crate::CssRecoveryDiagnostic {
+    let responsible = match detail {
+        crate::CssEscapeError::Newline => range.start,
+        crate::CssEscapeError::EndOfInput => range.end,
+    };
+    let span = crate::CssSourceSpan::new(
+        CssSourcePosition::from_byte_offset_in(source, range.start),
+        CssSourcePosition::from_byte_offset_in(source, range.end),
+    )
+    .expect("consumed escape ranges are ordered UTF-8 boundaries");
+    crate::CssRecoveryDiagnostic::new(
+        crate::error::escape_parse_error(source, responsible, detail),
+        span,
+        crate::CssRecoveryAction::RecoverEscape,
+    )
+    .expect("escape error is anchored within its consumed backslash range")
 }
 
 pub(super) fn maximum_nested_depth(source: &str) -> u32 {
@@ -925,18 +979,7 @@ fn unclosed_openings(source: &str) -> Vec<usize> {
 }
 
 fn next_source_token<'i>(source: &'i str, offset: usize) -> Option<(usize, usize, Token<'i>)> {
-    let remaining = source.get(offset..)?;
-    if remaining.is_empty() {
-        return None;
-    }
-    let mut input = ParserInput::new(remaining);
-    let mut parser = Parser::new(&mut input);
-    let token = parser
-        .next_including_whitespace_and_comments()
-        .ok()?
-        .clone();
-    let token_end = offset.saturating_add(parser.position().byte_index());
-    (token_end > offset).then_some((offset, token_end, token))
+    crate::tokenization::next_source_token(source, offset)
 }
 
 fn opening_block(token: &Token<'_>) -> Option<BlockKind> {
