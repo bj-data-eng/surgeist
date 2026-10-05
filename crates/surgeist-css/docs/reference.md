@@ -907,6 +907,74 @@ source records and captured test inputs retain their original identities.
 Contextual thresholds, percentage bases and execution belong downstream;
 other Grid3 families retain their separate authored contracts.
 
+## Authored item flow
+
+Surgeist selects the flow-oriented names `item-direction`, `item-wrap`,
+`item-pack` and `item-flow` from [Grid3 Appendix A (2026-01-21)](https://www.w3.org/TR/2026/WD-css-grid-3-20260121/#flow-control).
+That appendix presents provisional alternatives. Its track-oriented
+`item-track` and `item-cross` proposals have different axis interpretations;
+the selected property registry contains only the flow-oriented names.
+Contextual `auto`, physical axes, used wrapping and packing, and tolerance
+execution belong to style and layout.
+
+`CssItemDirection` retains `auto`, `row`, `column`, `row-reverse` or
+`column-reverse`. `CssItemWrap` retains a mode (`auto`, `nowrap` or `wrap`),
+an order (`normal` or `reverse`), both facets, or the separate `wrap-reverse`
+spelling. A missing internal wrap facet remains absent. The equivalence of
+`wrap-reverse` and `wrap reverse` applies at computed-value time.
+`CssItemPack` retains `normal`, `dense`, `balance` or `dense balance`;
+`normal` cannot combine with another packing keyword. Each longhand is
+noninherited, initially `auto`, `auto` and `normal`, respectively.
+
+`CssItemFlow` composes direction, wrap, pack and the existing
+[`CssFlowTolerance`](#authored-flow-tolerance). Its four private fields hold
+already-valid authored values and support total construction. The shorthand
+has four settable members in that order and no reset-only members. An omitted
+whole constituent receives its intrinsic initial; omission inside a supplied
+wrap value remains distinct. CSS-wide keywords expand symbolically to four
+terminals. A whole pending value stays one handle until strict substitution
+reentry; normalization retains occurrence order, importance and source origins.
+
+The [quoted-property grouping rule in Values 4](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#component-combinators)
+requires each wrap or pack group to remain contiguous. `reverse wrap row` and
+`balance dense row` are valid, while `wrap row reverse`, `reverse row wrap`
+and `dense row balance` are invalid. Because the published grammar overlaps
+on `auto` and `normal`, Surgeist selects among complete assignments by most
+explicitly occupied constituents, then occupied direction/wrap/pack/tolerance
+slots in that order, then earlier source spans for earlier slots. Partial
+assignments never admit leftover components.
+
+Canonical specified output always emits all four constituents in grammar order,
+with wrap mode before order and packing `dense` before `balance`. This retains
+all authored wrap states when defaults would otherwise erase a distinction.
+
+| Authored shorthand | Canonical specified value |
+| --- | --- |
+| `row` | `row auto normal normal` |
+| `normal` | `auto normal normal normal` |
+| `reverse auto` | `auto reverse normal normal` |
+| `wrap normal` | `auto wrap normal normal` |
+| `row wrap normal normal normal` | `row wrap normal normal normal` |
+| `balance dense reverse -2px row` | `row reverse dense balance -2px` |
+| `calc(-2px - 3%)` | `auto auto normal calc(-3% - 2px)` |
+
+Each complete domain value exposes `serialize_specified()` and
+`serialize_specified_with_limits()`. Their writers share one cumulative context:
+a direction, single wrap facet, `wrap-reverse` or single packing keyword costs
+one input and one projection node; a two-facet wrap or `dense balance` costs two.
+The shorthand directly composes its children, so its initial tuple costs four
+input and four projection nodes. Flow tolerance retains its scalar costs;
+`row auto normal calc(2em + 1px)` costs seven input and eight projection nodes,
+or nine and ten through a declaration including its name. Separators cost bytes.
+Limits remain cumulative when output is suppressed, and failure exposes no
+partial string or mutation.
+
+The four `ext.property.item-*` features report complete authored support against
+the dated Grid3 source. Checked declaration admission and substitution reentry
+reject implicit original component closures; browser parsing retains recoverable
+values with diagnostics. Existing Grid, grid-template and flex-flow membership
+remains independently defined by their own grammars.
+
 ## Intrinsic declaration expansion
 
 `expand_declaration` currently covers custom declarations, physical and logical
@@ -914,7 +982,8 @@ margin/padding longhands, their logical axis pairs, border width, style and colo
 the four side-border shorthands, `border`,
 the `background` shorthand and its eight longhands,
 the `border-image` shorthand and its five longhands, `border-collapse`, `border-spacing`, `caption-side`, `clip`, `empty-cells`,
-`table-layout`, `flow-tolerance`, `color`, `font-family`,
+`table-layout`, `flow-tolerance`, the three item-flow longhands and `item-flow`,
+`color`, `font-family`,
 `text-orientation`, its legacy `glyph-orientation-vertical` grammar, `opacity`, `display`, `box-sizing`,
 `order`, `aspect-ratio`, `visibility`, `direction`, `unicode-bidi`, `writing-mode`, `text-combine-upright`,
 the `container` shorthand and its two longhands, the `transition` shorthand

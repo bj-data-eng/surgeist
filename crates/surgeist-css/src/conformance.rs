@@ -2558,7 +2558,11 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::ListStyleImage
         | CssKnownProperty::ListStyle
         | CssKnownProperty::MarkerSide => I_LISTS3,
-        CssKnownProperty::FlowTolerance => X_GRID3_20260121,
+        CssKnownProperty::FlowTolerance
+        | CssKnownProperty::ItemDirection
+        | CssKnownProperty::ItemWrap
+        | CssKnownProperty::ItemPack
+        | CssKnownProperty::ItemFlow => X_GRID3_20260121,
         CssKnownProperty::GridTemplateRows
         | CssKnownProperty::GridTemplateColumns
         | CssKnownProperty::GridTemplateAreas
@@ -2790,7 +2794,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 670] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 674] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -4866,6 +4870,26 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 670] = [
         CssKnownProperty::Columns,
         "columns",
         "official.property.columns"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ItemDirection,
+        "item-direction",
+        "ext.property.item-direction"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ItemWrap,
+        "item-wrap",
+        "ext.property.item-wrap"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ItemPack,
+        "item-pack",
+        "ext.property.item-pack"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ItemFlow,
+        "item-flow",
+        "ext.property.item-flow"
     ),
     complete_property_feature!(
         CssKnownProperty::FlowTolerance,

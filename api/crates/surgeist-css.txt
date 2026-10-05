@@ -1960,6 +1960,40 @@ pub surgeist_css::CssIsolation::Isolate
 impl surgeist_css::CssIsolation
 pub fn surgeist_css::CssIsolation::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssIsolation::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssItemDirection
+pub surgeist_css::CssItemDirection::Auto
+pub surgeist_css::CssItemDirection::Column
+pub surgeist_css::CssItemDirection::ColumnReverse
+pub surgeist_css::CssItemDirection::Row
+pub surgeist_css::CssItemDirection::RowReverse
+impl surgeist_css::CssItemDirection
+pub fn surgeist_css::CssItemDirection::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssItemDirection::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssItemPack
+pub surgeist_css::CssItemPack::Balance
+pub surgeist_css::CssItemPack::Dense
+pub surgeist_css::CssItemPack::DenseBalance
+pub surgeist_css::CssItemPack::Normal
+impl surgeist_css::CssItemPack
+pub fn surgeist_css::CssItemPack::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssItemPack::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssItemWrap
+pub surgeist_css::CssItemWrap::Both(surgeist_css::CssItemWrapMode, surgeist_css::CssItemWrapOrder)
+pub surgeist_css::CssItemWrap::Mode(surgeist_css::CssItemWrapMode)
+pub surgeist_css::CssItemWrap::Order(surgeist_css::CssItemWrapOrder)
+pub surgeist_css::CssItemWrap::WrapReverse
+impl surgeist_css::CssItemWrap
+pub fn surgeist_css::CssItemWrap::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssItemWrap::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl core::default::Default for surgeist_css::CssItemWrap
+pub fn surgeist_css::CssItemWrap::default() -> Self
+#[non_exhaustive] pub enum surgeist_css::CssItemWrapMode
+pub surgeist_css::CssItemWrapMode::Auto
+pub surgeist_css::CssItemWrapMode::NoWrap
+pub surgeist_css::CssItemWrapMode::Wrap
+#[non_exhaustive] pub enum surgeist_css::CssItemWrapOrder
+pub surgeist_css::CssItemWrapOrder::Normal
+pub surgeist_css::CssItemWrapOrder::Reverse
 #[non_exhaustive] pub enum surgeist_css::CssKeyframeSelector
 pub surgeist_css::CssKeyframeSelector::From
 pub surgeist_css::CssKeyframeSelector::Percent(surgeist_css::CssKeyframePercent)
@@ -2173,6 +2207,10 @@ pub surgeist_css::CssKnownProperty::InsetInline
 pub surgeist_css::CssKnownProperty::InsetInlineEnd
 pub surgeist_css::CssKnownProperty::InsetInlineStart
 pub surgeist_css::CssKnownProperty::Isolation
+pub surgeist_css::CssKnownProperty::ItemDirection
+pub surgeist_css::CssKnownProperty::ItemFlow
+pub surgeist_css::CssKnownProperty::ItemPack
+pub surgeist_css::CssKnownProperty::ItemWrap
 pub surgeist_css::CssKnownProperty::JustifyContent
 pub surgeist_css::CssKnownProperty::JustifyItems
 pub surgeist_css::CssKnownProperty::JustifySelf
@@ -2545,6 +2583,10 @@ pub surgeist_css::CssKnownPropertyValueRef::InsetInline(&'a surgeist_css::CssIns
 pub surgeist_css::CssKnownPropertyValueRef::InsetInlineEnd(&'a surgeist_css::CssInsetInlineEndPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::InsetInlineStart(&'a surgeist_css::CssInsetInlineStartPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Isolation(&'a surgeist_css::CssIsolationPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ItemDirection(&'a surgeist_css::CssItemDirectionPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ItemFlow(&'a surgeist_css::CssItemFlowPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ItemPack(&'a surgeist_css::CssItemPackPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ItemWrap(&'a surgeist_css::CssItemWrapPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::JustifyContent(&'a surgeist_css::CssJustifyContentPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::JustifyItems(&'a surgeist_css::CssJustifyItemsPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::JustifySelf(&'a surgeist_css::CssJustifySelfPropertyValue)
@@ -2962,6 +3004,9 @@ pub surgeist_css::CssLonghandValueRef::InsetBlockStart(&'a surgeist_css::CssInse
 pub surgeist_css::CssLonghandValueRef::InsetInlineEnd(&'a surgeist_css::CssInsetValue)
 pub surgeist_css::CssLonghandValueRef::InsetInlineStart(&'a surgeist_css::CssInsetValue)
 pub surgeist_css::CssLonghandValueRef::Isolation(&'a surgeist_css::CssIsolation)
+pub surgeist_css::CssLonghandValueRef::ItemDirection(&'a surgeist_css::CssItemDirection)
+pub surgeist_css::CssLonghandValueRef::ItemPack(&'a surgeist_css::CssItemPack)
+pub surgeist_css::CssLonghandValueRef::ItemWrap(&'a surgeist_css::CssItemWrap)
 pub surgeist_css::CssLonghandValueRef::JustifyContent(&'a surgeist_css::CssJustifyContentValue)
 pub surgeist_css::CssLonghandValueRef::JustifyItems(&'a surgeist_css::CssJustifyItemsValue)
 pub surgeist_css::CssLonghandValueRef::JustifySelf(&'a surgeist_css::CssJustifySelfValue)
@@ -7700,6 +7745,33 @@ pub struct surgeist_css::CssIsolationPropertyValue
 impl surgeist_css::CssIsolationPropertyValue
 pub fn surgeist_css::CssIsolationPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssIsolationPropertyValue::isolation(&self) -> &surgeist_css::CssIsolation
+pub struct surgeist_css::CssItemDirectionPropertyValue
+impl surgeist_css::CssItemDirectionPropertyValue
+pub fn surgeist_css::CssItemDirectionPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssItemDirectionPropertyValue::value(&self) -> &surgeist_css::CssItemDirection
+pub struct surgeist_css::CssItemFlow
+impl surgeist_css::CssItemFlow
+pub const fn surgeist_css::CssItemFlow::direction(&self) -> surgeist_css::CssItemDirection
+pub const fn surgeist_css::CssItemFlow::new(direction: surgeist_css::CssItemDirection, wrap: surgeist_css::CssItemWrap, pack: surgeist_css::CssItemPack, tolerance: surgeist_css::CssFlowTolerance) -> Self
+pub const fn surgeist_css::CssItemFlow::pack(&self) -> surgeist_css::CssItemPack
+pub fn surgeist_css::CssItemFlow::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssItemFlow::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub const fn surgeist_css::CssItemFlow::tolerance(&self) -> &surgeist_css::CssFlowTolerance
+pub const fn surgeist_css::CssItemFlow::wrap(&self) -> surgeist_css::CssItemWrap
+impl core::default::Default for surgeist_css::CssItemFlow
+pub fn surgeist_css::CssItemFlow::default() -> Self
+pub struct surgeist_css::CssItemFlowPropertyValue
+impl surgeist_css::CssItemFlowPropertyValue
+pub fn surgeist_css::CssItemFlowPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssItemFlowPropertyValue::value(&self) -> &surgeist_css::CssItemFlow
+pub struct surgeist_css::CssItemPackPropertyValue
+impl surgeist_css::CssItemPackPropertyValue
+pub fn surgeist_css::CssItemPackPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssItemPackPropertyValue::value(&self) -> &surgeist_css::CssItemPack
+pub struct surgeist_css::CssItemWrapPropertyValue
+impl surgeist_css::CssItemWrapPropertyValue
+pub fn surgeist_css::CssItemWrapPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssItemWrapPropertyValue::value(&self) -> &surgeist_css::CssItemWrap
 pub struct surgeist_css::CssJustifyContentPropertyValue
 impl surgeist_css::CssJustifyContentPropertyValue
 pub fn surgeist_css::CssJustifyContentPropertyValue::as_css(&self) -> &str

@@ -164,6 +164,9 @@ const LONGHANDS: &[P] = &[
     P::ListStylePosition,
     P::ListStyleImage,
     P::MarkerSide,
+    P::ItemDirection,
+    P::ItemWrap,
+    P::ItemPack,
     P::FlowTolerance,
     P::GridAutoRows,
     P::GridAutoColumns,
@@ -281,6 +284,11 @@ const LONGHANDS: &[P] = &[
     P::TextCombineUpright,
 ];
 const SHORTHANDS: &[(P, &[P], &[P])] = &[
+    (
+        P::ItemFlow,
+        &[P::ItemDirection, P::ItemWrap, P::ItemPack, P::FlowTolerance],
+        &[],
+    ),
     (
         P::GridTemplate,
         &[
@@ -889,6 +897,11 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
             assert_eq!(v.system(), Some(CssSystemColor::CanvasText))
         }
         CssLonghandValueRef::TextOrientation(v) => assert_eq!(*v, CssTextOrientation::Mixed),
+        CssLonghandValueRef::ItemDirection(v) => assert_eq!(*v, CssItemDirection::Auto),
+        CssLonghandValueRef::ItemWrap(v) => {
+            assert_eq!(*v, CssItemWrap::Mode(CssItemWrapMode::Auto))
+        }
+        CssLonghandValueRef::ItemPack(v) => assert_eq!(*v, CssItemPack::Normal),
         CssLonghandValueRef::FlowTolerance(v) => assert_eq!(v, &CssFlowTolerance::normal()),
         CssLonghandValueRef::Direction(v) => assert_eq!(v, &CssDirection::Ltr),
         CssLonghandValueRef::UnicodeBidi(v) => assert_eq!(v, &CssUnicodeBidi::Normal),
@@ -1190,7 +1203,7 @@ fn metadata_and_initials() {
             P::All,
         ])
         .collect();
-    assert_eq!(expected.len(), 326);
+    assert_eq!(expected.len(), 330);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {

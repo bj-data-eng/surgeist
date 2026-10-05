@@ -189,6 +189,18 @@ pub const PROPERTY_POSITIVE_VECTORS: &[PropertyVector] = &[
     vector!("baseline.property.gap", "gap", "12px"),
     vector!("baseline.property.row-gap", "row-gap", "normal"),
     vector!("baseline.property.column-gap", "column-gap", "5%"),
+    vector!(
+        "ext.property.item-direction",
+        "item-direction",
+        "column-reverse"
+    ),
+    vector!("ext.property.item-wrap", "item-wrap", "reverse wrap"),
+    vector!("ext.property.item-pack", "item-pack", "balance dense"),
+    vector!(
+        "ext.property.item-flow",
+        "item-flow",
+        "balance dense reverse -2px row"
+    ),
     vector!("ext.property.flow-tolerance", "flow-tolerance", "infinite"),
     vector!(
         "baseline.property.grid-template-rows",
@@ -859,6 +871,10 @@ pub const PROPERTY_NEGATIVE_VECTORS: &[PropertyVector] = &[
     vector!("baseline.property.gap", "gap", "auto"),
     vector!("baseline.property.row-gap", "row-gap", "auto"),
     vector!("baseline.property.column-gap", "column-gap", "auto"),
+    vector!("ext.property.item-direction", "item-direction", "reverse"),
+    vector!("ext.property.item-wrap", "item-wrap", "normal reverse"),
+    vector!("ext.property.item-pack", "item-pack", "normal dense"),
+    vector!("ext.property.item-flow", "item-flow", "wrap row reverse"),
     vector!("ext.property.flow-tolerance", "flow-tolerance", "solid"),
     vector!(
         "baseline.property.grid-template-rows",

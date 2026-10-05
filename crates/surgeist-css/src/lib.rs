@@ -574,6 +574,33 @@
 //! layout, cascade declarations, evaluate or interpolate keyframes, run
 //! timelines, or lower either syntax family into sibling Surgeist crates.
 //!
+//! # Authored item flow
+//!
+//! Grid3's provisional Appendix A supplies the selected flow-oriented
+//! `item-direction`, `item-wrap`, `item-pack` and `item-flow` grammars.
+//! Direction, wrap, packing and signed flow tolerance remain authored values;
+//! physical axes and used placement require downstream context. A shorthand
+//! preserves complete wrap/pack groups and emits all four constituents.
+//!
+//! ```rust
+//! use surgeist_css::{
+//!     CssKnownPropertyValueRef, CssItemWrap, CssItemWrapOrder,
+//!     parse_style_attribute,
+//! };
+//!
+//! let report = parse_style_attribute("item-flow: balance dense reverse -2px row");
+//! assert!(report.is_clean());
+//! let CssKnownPropertyValueRef::ItemFlow(flow) = report.syntax()[0]
+//!     .known().unwrap().property_value().unwrap()
+//! else { panic!("item-flow value") };
+//! assert_eq!(
+//!     flow.value().serialize_specified().unwrap(),
+//!     "row reverse dense balance -2px",
+//! );
+//! let order_only = CssItemWrap::Order(CssItemWrapOrder::Reverse);
+//! assert_eq!(order_only.serialize_specified().unwrap(), "reverse");
+//! ```
+//!
 //! # Typography, font families, and font-face
 //!
 //! Family lists, the `@font-face` family descriptor, and `local()` names follow
@@ -1458,6 +1485,7 @@ mod grid_template_areas;
 mod hsl_color_conversion;
 mod inset;
 mod integer_value;
+mod item_flow;
 mod lab_color_conversion;
 mod naive_color_conversion;
 mod numeric;
@@ -1554,6 +1582,9 @@ pub use font_weight::{
 };
 pub use inset::{CssInsetPair, CssInsetShorthand, CssInsetValue};
 pub use integer_value::CssIntegerLiteral;
+pub use item_flow::{
+    CssItemDirection, CssItemFlow, CssItemPack, CssItemWrap, CssItemWrapMode, CssItemWrapOrder,
+};
 pub use overflow::CssOverflowValue;
 pub use overflow_controls::{
     CssOverflowAnchor, CssOverflowClipMargin, CssScrollBehavior, CssScrollbarGutter,
