@@ -194,9 +194,18 @@ fn conditional_and_scoped_incomplete_rules_keep_original_payloads() {
 }
 
 #[test]
-fn eof_closed_empty_rule_is_retained_without_recovery_diagnostics() {
+fn eof_closed_empty_rule_is_retained_with_its_implicit_closure_diagnostic() {
     let report = parse_sheet("@counter-style Incomplete {");
-    assert!(report.is_clean(), "{:?}", report.diagnostics());
+    let [diagnostic] = report.diagnostics() else {
+        panic!("one implicit rule closure: {:?}", report.diagnostics());
+    };
+    assert_eq!(diagnostic.error().code(), CssErrorCode::UnexpectedEnd);
+    assert_eq!(
+        diagnostic.action(),
+        CssRecoveryAction::RetainWithImplicitClosure
+    );
+    assert_eq!(diagnostic.span().start().byte_offset().value(), 27);
+    assert_eq!(diagnostic.span().end().byte_offset().value(), 27);
     let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
         panic!("implicit EOF closure");
     };
