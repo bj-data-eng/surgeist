@@ -863,6 +863,17 @@ pub surgeist_css::CssContributions::UniversalReset(surgeist_css::CssUniversalRes
 pub surgeist_css::CssCounterProperty::Increment
 pub surgeist_css::CssCounterProperty::Reset
 pub surgeist_css::CssCounterProperty::Set
+#[non_exhaustive] pub enum surgeist_css::CssCounterStyleDescriptorKind
+pub surgeist_css::CssCounterStyleDescriptorKind::AdditiveSymbols
+pub surgeist_css::CssCounterStyleDescriptorKind::Fallback
+pub surgeist_css::CssCounterStyleDescriptorKind::Negative
+pub surgeist_css::CssCounterStyleDescriptorKind::Pad
+pub surgeist_css::CssCounterStyleDescriptorKind::Prefix
+pub surgeist_css::CssCounterStyleDescriptorKind::Range
+pub surgeist_css::CssCounterStyleDescriptorKind::SpeakAs
+pub surgeist_css::CssCounterStyleDescriptorKind::Suffix
+pub surgeist_css::CssCounterStyleDescriptorKind::Symbols
+pub surgeist_css::CssCounterStyleDescriptorKind::System
 #[non_exhaustive] pub enum surgeist_css::CssCounterStyleDescriptorRef<'a>
 pub surgeist_css::CssCounterStyleDescriptorRef::AdditiveSymbols(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterAdditiveSymbols>)
 pub surgeist_css::CssCounterStyleDescriptorRef::Fallback(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleName>)
@@ -6272,6 +6283,13 @@ pub fn surgeist_css::CssCounterStyleReference::as_str(&self) -> &str
 pub fn surgeist_css::CssCounterStyleReference::try_new(name: surgeist_css::CssIdent) -> core::option::Option<Self>
 pub struct surgeist_css::CssCounterStyleRule
 impl surgeist_css::CssCounterStyleRule
+pub fn surgeist_css::CssCounterStyleRule::descriptor_specified_css(&self, kind: surgeist_css::CssCounterStyleDescriptorKind) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssCounterStyleRule::descriptor_specified_css_with_limits(&self, kind: surgeist_css::CssCounterStyleDescriptorKind, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssCounterStyleRule::name_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssCounterStyleRule::name_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssCounterStyleRule::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssCounterStyleRule::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssCounterStyleRule
 pub const fn surgeist_css::CssCounterStyleRule::descriptors(&self) -> &surgeist_css::CssCounterStyleDescriptors
 pub const fn surgeist_css::CssCounterStyleRule::name(&self) -> &surgeist_css::CssCounterStyleName
 pub const fn surgeist_css::CssCounterStyleRule::position(&self) -> surgeist_css::CssSourcePosition
@@ -6417,6 +6435,9 @@ pub fn surgeist_css::CssDeclaration::position(&self) -> core::option::Option<sur
 pub fn surgeist_css::CssDeclaration::property_name(&self) -> surgeist_css::CssPropertyNameRef<'_>
 pub fn surgeist_css::CssDeclaration::same_occurrence(&self, other: &Self) -> bool
 pub fn surgeist_css::CssDeclaration::value_components(&self) -> &surgeist_css::CssComponentValues
+impl surgeist_css::CssDeclaration
+pub fn surgeist_css::CssDeclaration::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssDeclaration::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl core::cmp::PartialEq for surgeist_css::CssDeclaration
 pub fn surgeist_css::CssDeclaration::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssDeclarationAnnotationError

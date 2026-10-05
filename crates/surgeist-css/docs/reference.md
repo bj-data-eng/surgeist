@@ -6357,14 +6357,14 @@ local value start when inserting separators, so an enclosing prefix cannot add
 spurious value whitespace. Counter changes continue to receive their property
 identity because omitted integers differ between increment and reset/set.
 
-This checkpoint supplies reusable providers for the shared rule writer tracked
-in [#505](https://github.com/bj-data-eng/surgeist/issues/505), selector authored
-subsets in [#834](https://github.com/bj-data-eng/surgeist/issues/834), and later
-schema-coupled declaration composition in
-[#831](https://github.com/bj-data-eng/surgeist/issues/831). Complete ordinary
-property dispatch, missing semantic value families, all-rule traversal and
-stylesheet encoding policy remain pending. Existing generic rule/sheet
-front-door support is unchanged at this checkpoint.
+These providers supply the shared rule writer tracked in
+[#505](https://github.com/bj-data-eng/surgeist/issues/505), selector authored
+subsets in [#834](https://github.com/bj-data-eng/surgeist/issues/834), and
+[schema-coupled declaration composition](#authored-declaration-specified-output)
+in [#831](https://github.com/bj-data-eng/surgeist/issues/831). Ordinary dispatch
+now covers the represented property schema. Complete CSSOM declaration-block
+selection, normalization, shorthand coalescing, all-rule traversal and stylesheet
+encoding policy retain their respective owners and remaining acceptance work.
 
 Behavioral evidence is in
 [`selector_specified_serialization.rs`](../tests/selector_specified_serialization.rs)
@@ -6541,3 +6541,65 @@ All these public providers return either complete CSS or a typed error, preserve
 the original value and origins, and share child input, projection and final
 UTF-8 byte limits. Suppressed output still visits retained children under the
 work limits without spending output bytes. Punctuation costs bytes only.
+
+## Authored declaration specified output
+
+`CssDeclaration::to_specified_css` and `to_specified_css_with_limits` serialize
+one retained occurrence as `name: value[ !important];`. Ordinary values dispatch
+directly from the property schema into their owning semantic providers, under
+one cumulative writer. Known names and global keywords are canonicalized;
+custom names retain case and use CSS identifier escaping. Standard legacy
+property grammars retain their own identity: a Page break serializes as `always`
+under `page-break-before` or `page-break-after`, and
+`glyph-orientation-vertical` uses `auto`, `0deg` or `90deg` for its corresponding
+Text Orientation value.
+
+Custom and substitution-dependent values use the retained component serializer.
+Only top-level edge whitespace is omitted, matching CSS declaration consumption;
+comments, internal whitespace, token spelling, implicit closure and symbolic
+functions retain their owning component behavior. In particular, the
+[Variables 1 specified-value policy](https://www.w3.org/TR/2022/CR-css-variables-1-20220616/#serializing-custom-props)
+preserves authored custom global keyword spelling. No substitution or cascade
+occurs. The declaration and its name each charge one input and projection node;
+children keep their provider costs, including retained boundary trivia omitted
+from output. Legacy glyph numeric output adds one projection node. Importance
+and punctuation cost bytes only.
+
+The private declaration-list bridge preserves every occurrence, duplicate and
+importance flag in source order, with one additional list node in each work
+budget. Detached `CssRule::NestedDeclarations` uses this bridge and adds one
+logical rule node. This is authored occurrence output; CSSOM block selection and
+shorthand coalescing remain separate work. The public declaration and rule
+methods return no partial text on error and leave source values and origins
+unchanged. Evidence is in
+[`declaration_value_serialization.rs`](../tests/declaration_value_serialization.rs)
+and the existing detached nested-declaration rule contract.
+
+## Counter-style specified output and descriptor getters
+
+`CssCounterStyleRule::to_specified_css` and `to_specified_css_with_limits` emit
+the checked case-sensitive name and present effective descriptors.
+`name_specified_css` and its limits variant apply CSS identifier serialization.
+`descriptor_specified_css` and its limits variant take a
+`CssCounterStyleDescriptorKind` and return that field's specified value, or an
+empty string when it is omitted. They never materialize implicit initial values.
+
+The pinned [Counter Styles 3 rule](https://www.w3.org/TR/2021/CR-css-counter-styles-3-20210727/#the-counter-style-rule)
+chooses the last valid occurrence of each descriptor. Its CSSOM interface and
+the selected CSSOM snapshot do not specify complete counter-style `cssText`
+ordering. Surgeist selects the descriptor section order: system, negative,
+prefix, suffix, range, pad, fallback, symbols, additive-symbols, speak-as.
+Children reuse CSS identifier, string, URL and exact integer providers. Optional
+`fixed` starting value 1 and an empty negative suffix can be omitted without
+changing meaning; the retained values remain unchanged and charged.
+
+The complete rule charges one node in each work budget for the rule, name,
+descriptor occurrences, and their typed aggregates and leaves. Ineffective
+duplicates and omitted optional children remain visited under cumulative limits
+while consuming no output bytes. A descriptor getter visits only occurrences
+of the requested field; a missing field costs no nodes or bytes. A name getter
+costs one identifier node. `CssRule::CounterStyle` reuses the same complete-rule
+provider. Serialization neither executes counters nor generates markers.
+Evidence is in
+[`counter_style_rule_serialization.rs`](../tests/counter_style_rule_serialization.rs)
+and its private shared-writer checks.

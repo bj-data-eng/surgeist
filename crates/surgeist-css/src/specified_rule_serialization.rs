@@ -296,6 +296,9 @@ fn append_rule(
     index: Option<usize>,
 ) -> Result<(), CssSpecifiedRuleSerializationError> {
     match rule {
+        CssRule::CounterStyle(rule) => rule
+            .append_to_rule_writer(writer)
+            .map_err(|error| CssSpecifiedRuleSerializationError::value_error(error, index)),
         CssRule::FontFace(rule) => writer
             .font_face(rule)
             .map_err(|error| CssSpecifiedRuleSerializationError::value_error(error, index)),
@@ -314,6 +317,21 @@ fn append_rule(
         CssRule::SupportsCondition(rule) => writer
             .named_supports_rule(rule)
             .map_err(|error| CssSpecifiedRuleSerializationError::value_error(error, index)),
+        CssRule::NestedDeclarations(rule) => {
+            // The logical rule and its authored declaration list are distinct
+            // aggregates; the enum carrier does not add another rule charge.
+            writer
+                .context
+                .charge_input(1)
+                .map_err(|error| CssSpecifiedRuleSerializationError::value_error(error, index))?;
+            writer
+                .context
+                .charge_projection(1)
+                .map_err(|error| CssSpecifiedRuleSerializationError::value_error(error, index))?;
+            writer
+                .append_authored_declaration_list(rule.declarations())
+                .map_err(|error| CssSpecifiedRuleSerializationError::value_error(error, index))
+        }
         _ => Err(CssSpecifiedRuleSerializationError::unsupported_rule(index)),
     }
 }
