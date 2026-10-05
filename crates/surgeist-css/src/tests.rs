@@ -8502,7 +8502,7 @@ fn parses_typography_and_text_length_families() {
             ".panel { text-decoration-thickness: 2px; }",
             TextDecorationThickness
         ),
-        CssTextDecorationThickness::Length(nonnegative_length_percentage("2px"))
+        CssTextDecorationThickness::Length(signed_length_percentage("2px"))
     );
 }
 
@@ -8688,7 +8688,7 @@ fn parses_text_decoration_family() {
             )),
             Some(CssTextDecorationStyle::Dotted),
             Some(CssTextDecorationThickness::Length(
-                nonnegative_length_percentage("3px")
+                signed_length_percentage("3px")
             )),
         )
     );

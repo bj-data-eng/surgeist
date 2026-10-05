@@ -4235,7 +4235,10 @@ pub fn surgeist_css::CssTextDecorationStyle::serialize_specified_with_limits(&se
 #[non_exhaustive] pub enum surgeist_css::CssTextDecorationThickness
 pub surgeist_css::CssTextDecorationThickness::Auto
 pub surgeist_css::CssTextDecorationThickness::FromFont
-pub surgeist_css::CssTextDecorationThickness::Length(surgeist_css::CssSpecifiedNonNegativeLengthPercentage)
+pub surgeist_css::CssTextDecorationThickness::Length(surgeist_css::CssSpecifiedLengthPercentage)
+impl surgeist_css::CssTextDecorationThickness
+pub fn surgeist_css::CssTextDecorationThickness::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextDecorationThickness::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl core::cmp::PartialEq for surgeist_css::CssTextDecorationThickness
 pub fn surgeist_css::CssTextDecorationThickness::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssTextOrientation
@@ -4466,6 +4469,9 @@ pub surgeist_css::CssVerticalAlign::Super
 pub surgeist_css::CssVerticalAlign::TextBottom
 pub surgeist_css::CssVerticalAlign::TextTop
 pub surgeist_css::CssVerticalAlign::Top
+impl surgeist_css::CssVerticalAlign
+pub fn surgeist_css::CssVerticalAlign::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssVerticalAlign::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl core::cmp::PartialEq for surgeist_css::CssVerticalAlign
 pub fn surgeist_css::CssVerticalAlign::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssVerticalGradientSide
@@ -9558,6 +9564,9 @@ pub const fn surgeist_css::CssTextDecoration::line(&self) -> core::option::Optio
 pub const fn surgeist_css::CssTextDecoration::style(&self) -> core::option::Option<surgeist_css::CssTextDecorationStyle>
 pub const fn surgeist_css::CssTextDecoration::thickness(&self) -> core::option::Option<&surgeist_css::CssTextDecorationThickness>
 pub fn surgeist_css::CssTextDecoration::try_new(line: core::option::Option<surgeist_css::CssTextDecorationLine>, color: core::option::Option<surgeist_css::CssColor>, style: core::option::Option<surgeist_css::CssTextDecorationStyle>, thickness: core::option::Option<surgeist_css::CssTextDecorationThickness>) -> core::option::Option<Self>
+impl surgeist_css::CssTextDecoration
+pub fn surgeist_css::CssTextDecoration::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextDecoration::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssTextDecorationColorPropertyValue
 impl surgeist_css::CssTextDecorationColorPropertyValue
 pub fn surgeist_css::CssTextDecorationColorPropertyValue::as_css(&self) -> &str
@@ -9567,6 +9576,9 @@ impl surgeist_css::CssTextDecorationLine
 pub fn surgeist_css::CssTextDecorationLine::components(&self) -> &[surgeist_css::CssTextDecorationLineComponent]
 pub const fn surgeist_css::CssTextDecorationLine::is_none(&self) -> bool
 pub fn surgeist_css::CssTextDecorationLine::try_new(components: alloc::vec::Vec<surgeist_css::CssTextDecorationLineComponent>) -> core::option::Option<Self>
+impl surgeist_css::CssTextDecorationLine
+pub fn surgeist_css::CssTextDecorationLine::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextDecorationLine::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssTextDecorationLinePropertyValue
 impl surgeist_css::CssTextDecorationLinePropertyValue
 pub fn surgeist_css::CssTextDecorationLinePropertyValue::as_css(&self) -> &str
@@ -9589,6 +9601,9 @@ pub const fn surgeist_css::CssTextIndent::each_line(&self) -> bool
 pub const fn surgeist_css::CssTextIndent::hanging(&self) -> bool
 pub const fn surgeist_css::CssTextIndent::length(&self) -> &surgeist_css::CssSpecifiedLengthPercentage
 pub const fn surgeist_css::CssTextIndent::new(length: surgeist_css::CssSpecifiedLengthPercentage, hanging: bool, each_line: bool) -> Self
+impl surgeist_css::CssTextIndent
+pub fn surgeist_css::CssTextIndent::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextIndent::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl core::cmp::PartialEq for surgeist_css::CssTextIndent
 pub fn surgeist_css::CssTextIndent::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssTextIndentPropertyValue

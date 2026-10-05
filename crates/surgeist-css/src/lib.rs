@@ -1344,6 +1344,7 @@ mod list_style_serialization;
 mod list_styles;
 mod quotes;
 mod shape_serialization;
+mod text_value_serialization;
 mod timed_property_serialization;
 pub use imports::*;
 mod custom_media;

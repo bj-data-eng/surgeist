@@ -340,7 +340,7 @@ pub const PROPERTY_POSITIVE_VECTORS: &[PropertyVector] = &[
     vector!(
         "baseline.property.text-decoration-thickness",
         "text-decoration-thickness",
-        "2px"
+        "-1px"
     ),
     vector!(
         "baseline.property.text-transform",
@@ -958,7 +958,7 @@ pub const PROPERTY_NEGATIVE_VECTORS: &[PropertyVector] = &[
     vector!(
         "baseline.property.text-decoration-thickness",
         "text-decoration-thickness",
-        "-1px"
+        "1"
     ),
     vector!("baseline.property.text-transform", "text-transform", "wrap"),
     vector!("baseline.property.inset", "inset", "solid"),

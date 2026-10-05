@@ -6395,3 +6395,55 @@ Shared `UnrepresentableValue` errors describe a value outside the owning
 serializer's capability, including invalid retained identity or a precision
 limit. Their message does not attribute every failure to numeric precision.
 Resource exhaustion keeps its distinct error kind and message.
+
+
+## Signed text values and represented aggregate output
+
+`CssTextIndent`, `CssVerticalAlign`, `CssTextDecorationLine`,
+`CssTextDecorationThickness` and `CssTextDecoration` expose `serialize_specified`
+and `serialize_specified_with_limits`. They emit retained authored values before
+indentation geometry, line alignment or decoration painting. Numeric and color
+children use their owning providers under one cumulative writer; serialization
+does not change exact coefficients, units, source origins or authored fields.
+
+`CssTextDecorationThickness::Length` holds the signed
+`CssSpecifiedLengthPercentage` owner. Negative lengths and percentages are valid
+authored thicknesses. Selected [Decoration 4 §2.4](https://www.w3.org/TR/2022/WD-css-text-decor-4-20220504/#text-decoration-thickness-property)
+floors the actual value at one device pixel downstream; the authored parser and
+serializer perform no such flooring. Percentages refer to `1em`, and mixed
+length/percentage calculations stay symbolic under the existing numeric hint
+policy. The [frozen WebKit valid-value cases](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/LayoutTests/imported/w3c/web-platform-tests/css/css-text-decor/text-decoration-thickness-valid.html)
+also admit negative values. The former nonnegative payload is replaced directly.
+
+The [Text 4 indent grammar](https://www.w3.org/TR/2026/WD-css-text-4-20260814/#text-indent-property)
+admits exactly one signed length-percentage and distinct optional `hanging` and
+`each-line` flags in any order. Canonical output places the numeric member first,
+then `hanging`, then `each-line`. Duplicate flags, a missing numeric member and
+multiple numeric members reject the entire declaration while preserving valid
+siblings. Vertical alignment emits its represented CSS2 keyword or signed numeric
+child without calculating the contextual line-height percentage basis.
+
+Decoration line output uses `underline overline line-through blink` grammar
+order while preserving the original component order in the value. `none` remains
+an explicit alternative. The [Decoration 4 shorthand grammar](https://www.w3.org/TR/2022/WD-css-text-decor-4-20220504/#text-decoration-property)
+orders present fields as line, thickness, style and color. Optional fields remain
+omitted; explicit initial keywords remain explicit. Thus an authored
+`currentcolor wavy -1px overline underline` emits
+`underline overline -1px wavy currentcolor`.
+
+Indent and decoration aggregates cost one input and projection node plus their
+present children. Each indent flag costs one additional node in each budget. A
+decoration-line aggregate costs one plus each keyword, including `none`. Vertical
+alignment and thickness keywords cost one; their numeric variants delegate
+without a carrier charge. Numeric and color children retain their own costs, and
+punctuation costs bytes only. For example, `-1px hanging each-line` costs four
+nodes in each budget, `none` as a decoration line costs two, and
+`underline overline -1px wavy currentcolor` costs seven. Suppressed output still
+visits children under the same work limits without spending output bytes. Every
+public failure returns no partial CSS and leaves the input available for retry.
+
+The existing numeric specified precision policy still applies: a tiny exact
+`-1e-999%` can emit `0%` while the retained coefficient and origin remain intact.
+These providers do not complete decoration-line `spelling-error`/`grammar-error`,
+property metadata, shorthand resets, normalization or generic declaration
+dispatch. Full owning text lifecycle acceptance remains separate.

@@ -406,7 +406,6 @@ fn nonnegative_consumers_reject_tiny_negative_literals_and_pure_context_percenta
         "filter:blur(-1e-999px)",
         "box-shadow:1px 2px -1e-999px",
         "filter:drop-shadow(1px 2px -1e-999px)",
-        "text-decoration-thickness:-1e-999%",
         "clip-path:circle(-1e-999%)",
         "clip-path:inset(0 round -1e-999px)",
         "background-image:radial-gradient(circle 25%, red, blue)",

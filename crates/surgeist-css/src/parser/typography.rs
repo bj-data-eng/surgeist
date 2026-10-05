@@ -1,7 +1,5 @@
 use super::color::parse_color;
-use super::values::{
-    parse_hinted_number_calculation, parse_length_percentage, parse_nonnegative_length_percentage,
-};
+use super::values::{parse_hinted_number_calculation, parse_length_percentage};
 use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
 use super::values::{CalculationRoot, next_is_comma, parse_numeric_function};
@@ -335,23 +333,36 @@ pub(super) fn parse_text_indent<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssTextIndent, ParseError<'i, Error>> {
-    let length = parse_length_percentage(input, numeric, "text-indent")?;
+    let mut length = None;
     let mut hanging = false;
     let mut each_line = false;
 
     while !input.is_exhausted() {
-        let ident = input.expect_ident_cloned().map_err(basic)?;
-        match_ignore_ascii_case! { &ident,
-            "hanging" if !hanging => hanging = true,
-            "each-line" if !each_line => each_line = true,
-            _ => return Err(unsupported_value(
+        if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
+            match_ignore_ascii_case! { &ident,
+                "hanging" if !hanging => hanging = true,
+                "each-line" if !each_line => each_line = true,
+                _ => return Err(unsupported_value(
+                    input,
+                    None,
+                    unsupported_keyword_reason("text-indent", ident.as_ref()),
+                )),
+            }
+            continue;
+        }
+        if length.is_some() {
+            return Err(unsupported_value(
                 input,
                 None,
-                unsupported_keyword_reason("text-indent", ident.as_ref()),
-            )),
+                "text-indent has more than one length-percentage",
+            ));
         }
+        length = Some(parse_length_percentage(input, numeric, "text-indent")?);
     }
 
+    let length = length.ok_or_else(|| {
+        unsupported_value(input, None, "text-indent requires one length-percentage")
+    })?;
     Ok(CssTextIndent::new(length, hanging, each_line))
 }
 
@@ -1194,7 +1205,7 @@ pub(super) fn parse_text_decoration_thickness<'i, 't>(
         };
     }
 
-    parse_nonnegative_length_percentage(input, numeric, "text-decoration-thickness")
+    parse_length_percentage(input, numeric, "text-decoration-thickness")
         .map(CssTextDecorationThickness::Length)
 }
 

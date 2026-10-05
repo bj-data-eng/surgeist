@@ -5873,7 +5873,8 @@ pub enum CssTextDecorationStyle {
 pub enum CssTextDecorationThickness {
     Auto,
     FromFont,
-    Length(CssSpecifiedNonNegativeLengthPercentage),
+    /// A signed authored thickness, before the actual value's device-pixel floor.
+    Length(CssSpecifiedLengthPercentage),
 }
 
 impl PartialEq for CssTextDecorationThickness {
