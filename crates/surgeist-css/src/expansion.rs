@@ -424,7 +424,7 @@ macro_rules! define_expansion_schema {
 
 crate::properties::property_schema!(define_expansion_schema, expansion_input, numeric_input);
 
-pub(crate) fn initial_transition_time() -> crate::CssTimeValue {
+pub(crate) fn initial_zero_time() -> crate::CssTimeValue {
     crate::CssTimeValue::from_literal(
         crate::CssTimeLiteral::try_new("0", CssTimeUnit::Seconds).expect("ordinary zero seconds"),
     )
@@ -433,29 +433,30 @@ pub(crate) fn initial_transition_time() -> crate::CssTimeValue {
 // Each authored item contributes one entry to each list, with a scalar schema
 // initial for each omitted slot. Parser-admitted time children may retain implicit
 // closure; projecting them must clone their graph rather than recheck construction.
-macro_rules! transition_list_projection {
-    ($function:ident, $property:ident, $list:ty, $items:ident, $project:expr, $construct:expr) => {
-        pub(crate) fn $function(transitions: &CssTransitionList) -> Option<$list> {
+macro_rules! timing_list_projection {
+    ($function:ident, $source:ty, $property:ident, $list:ty, $items:ident, $project:expr, $construct:expr) => {
+        pub(crate) fn $function(authored: &$source) -> Option<$list> {
             let initial = Longhand::$property.initial_value();
             let InitialValue::Value(initial) = initial.value else {
-                unreachable!("transition list has an ordinary schema initial")
+                unreachable!("timing list has an ordinary schema initial")
             };
             let OwnedLonghandValue::$property(initial) = *initial.value else {
                 unreachable!("schema initial belongs to its longhand")
             };
             let initial = &initial.$items()[0];
-            let values = transitions
+            let values = authored
                 .values()
                 .iter()
-                .map(|transition| ($project)(transition).unwrap_or_else(|| initial.clone()))
+                .map(|item| ($project)(item).unwrap_or_else(|| initial.to_owned()))
                 .collect();
             Some(($construct)(values))
         }
     };
 }
 
-transition_list_projection!(
+timing_list_projection!(
     transition_properties,
+    CssTransitionList,
     TransitionProperty,
     CssTransitionPropertyList,
     properties,
@@ -463,29 +464,106 @@ transition_list_projection!(
     |values| CssTransitionPropertyList::try_new(values)
         .expect("admitted transitions are nonempty and none is singleton")
 );
-transition_list_projection!(
+timing_list_projection!(
     transition_durations,
+    CssTransitionList,
     TransitionDuration,
     CssDurationList,
     values,
     |transition: &CssTransition| transition.duration().cloned(),
     CssDurationList::from_parser
 );
-transition_list_projection!(
+timing_list_projection!(
     transition_timing_functions,
+    CssTransitionList,
     TransitionTimingFunction,
     CssEasingList,
     values,
     |transition: &CssTransition| transition.timing_function().cloned(),
     |values| CssEasingList::try_new(values).expect("admitted transitions are nonempty")
 );
-transition_list_projection!(
+timing_list_projection!(
     transition_delays,
+    CssTransitionList,
     TransitionDelay,
     CssDelayList,
     values,
     |transition: &CssTransition| transition.delay().cloned(),
     CssDelayList::from_parser
+);
+
+timing_list_projection!(
+    animation_durations,
+    CssAnimationList,
+    AnimationDuration,
+    CssDurationList,
+    values,
+    |animation: &CssAnimation| animation.duration().cloned(),
+    CssDurationList::from_parser
+);
+timing_list_projection!(
+    animation_timing_functions,
+    CssAnimationList,
+    AnimationTimingFunction,
+    CssEasingList,
+    values,
+    |animation: &CssAnimation| animation.timing_function().cloned(),
+    |values| CssEasingList::try_new(values).expect("admitted animations are nonempty")
+);
+timing_list_projection!(
+    animation_delays,
+    CssAnimationList,
+    AnimationDelay,
+    CssDelayList,
+    values,
+    |animation: &CssAnimation| animation.delay().cloned(),
+    CssDelayList::from_parser
+);
+timing_list_projection!(
+    animation_iteration_counts,
+    CssAnimationList,
+    AnimationIterationCount,
+    CssAnimationIterationCountList,
+    values,
+    |animation: &CssAnimation| animation.iteration_count().cloned(),
+    |values| CssAnimationIterationCountList::try_new(values)
+        .expect("admitted animations are nonempty")
+);
+timing_list_projection!(
+    animation_directions,
+    CssAnimationList,
+    AnimationDirection,
+    CssAnimationDirectionList,
+    directions,
+    |animation: &CssAnimation| animation.direction(),
+    |values| CssAnimationDirectionList::try_new(values).expect("admitted animations are nonempty")
+);
+timing_list_projection!(
+    animation_fill_modes,
+    CssAnimationList,
+    AnimationFillMode,
+    CssAnimationFillModeList,
+    modes,
+    |animation: &CssAnimation| animation.fill_mode(),
+    |values| CssAnimationFillModeList::try_new(values).expect("admitted animations are nonempty")
+);
+timing_list_projection!(
+    animation_play_states,
+    CssAnimationList,
+    AnimationPlayState,
+    CssAnimationPlayStateList,
+    states,
+    |animation: &CssAnimation| animation.play_state(),
+    |values| CssAnimationPlayStateList::try_new(values).expect("admitted animations are nonempty")
+);
+timing_list_projection!(
+    animation_names,
+    CssAnimationList,
+    AnimationName,
+    CssAnimationNameList,
+    names,
+    |animation: &CssAnimation| animation.name().cloned(),
+    |values| CssAnimationNameList::try_new(values).expect("admitted animations are nonempty")
 );
 
 // Sparse authored layers need one scalar default per slot, not a whole-list fallback.

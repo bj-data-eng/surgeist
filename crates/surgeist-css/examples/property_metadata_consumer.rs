@@ -14,10 +14,20 @@
 //! define auto/slice initials; only scrollbar-color inherits among these controls.
 //! Transitions 1 WD 2026-01-08 §§2.1–2.5 defines four noninherited one-entry
 //! initials and the selected shorthand's four settable members without extra resets.
+//! Animations 1 WD 2023-03-02 §§3.2–3.10 defines eight noninherited
+//! one-entry initials and eight shorthand members without extra resets.
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
 const LONGHANDS: &[P] = &[
+    P::AnimationDuration,
+    P::AnimationTimingFunction,
+    P::AnimationDelay,
+    P::AnimationIterationCount,
+    P::AnimationDirection,
+    P::AnimationFillMode,
+    P::AnimationPlayState,
+    P::AnimationName,
     P::TransitionProperty,
     P::TransitionDuration,
     P::TransitionTimingFunction,
@@ -264,6 +274,20 @@ const LONGHANDS: &[P] = &[
     P::TextCombineUpright,
 ];
 const SHORTHANDS: &[(P, &[P], &[P])] = &[
+    (
+        P::Animation,
+        &[
+            P::AnimationDuration,
+            P::AnimationTimingFunction,
+            P::AnimationDelay,
+            P::AnimationIterationCount,
+            P::AnimationDirection,
+            P::AnimationFillMode,
+            P::AnimationPlayState,
+            P::AnimationName,
+        ],
+        &[],
+    ),
     (
         P::Transition,
         &[
@@ -1074,21 +1098,39 @@ fn assert_ordinary_initial(property: P, initial: &CssLonghandInitialValue) {
         CssLonghandValueRef::TransitionProperty(v) => {
             assert_eq!(v.properties(), &[CssTransitionProperty::All])
         }
-        CssLonghandValueRef::TransitionDuration(v) => {
+        CssLonghandValueRef::TransitionDuration(v) | CssLonghandValueRef::AnimationDuration(v) => {
             assert_eq!(v.values().len(), 1);
             let literal = v.values()[0].time().literal().unwrap();
             assert_eq!(literal.numeric().representation(), "0");
             assert_eq!(literal.unit(), CssTimeUnit::Seconds);
         }
-        CssLonghandValueRef::TransitionDelay(v) => {
+        CssLonghandValueRef::TransitionDelay(v) | CssLonghandValueRef::AnimationDelay(v) => {
             assert_eq!(v.values().len(), 1);
             let literal = v.values()[0].literal().unwrap();
             assert_eq!(literal.numeric().representation(), "0");
             assert_eq!(literal.unit(), CssTimeUnit::Seconds);
         }
-        CssLonghandValueRef::TransitionTimingFunction(v) => {
+        CssLonghandValueRef::TransitionTimingFunction(v)
+        | CssLonghandValueRef::AnimationTimingFunction(v) => {
             assert_eq!(v.values(), &[CssEasing::Keyword(CssEasingKeyword::Ease)])
         }
+        CssLonghandValueRef::AnimationIterationCount(v) => {
+            let [CssAnimationIterationCount::Number(value)] = v.values() else {
+                panic!("one ordinary initial count")
+            };
+            assert_eq!(value.serialize_specified().unwrap(), "1");
+            assert_eq!(value.origin(), &CssValueOrigin::Programmatic);
+        }
+        CssLonghandValueRef::AnimationDirection(v) => {
+            assert_eq!(v.directions(), &[CssAnimationDirection::Normal])
+        }
+        CssLonghandValueRef::AnimationFillMode(v) => {
+            assert_eq!(v.modes(), &[CssAnimationFillMode::None])
+        }
+        CssLonghandValueRef::AnimationPlayState(v) => {
+            assert_eq!(v.states(), &[CssAnimationPlayState::Running])
+        }
+        CssLonghandValueRef::AnimationName(v) => assert_eq!(v.names(), &[CssAnimationName::None]),
         other => panic!("unexpected ordinary initial: {other:?}"),
     }
 }
@@ -1109,7 +1151,7 @@ fn metadata_and_initials() {
             P::All,
         ])
         .collect();
-    assert_eq!(expected.len(), 310);
+    assert_eq!(expected.len(), 319);
     let mut observed = Vec::new();
     let mut unexpected = Vec::new();
     for &property in P::all() {

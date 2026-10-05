@@ -909,7 +909,7 @@ the `border-image` shorthand and its five longhands, `border-collapse`, `border-
 `text-orientation`, its legacy `glyph-orientation-vertical` grammar, `opacity`, `display`, `box-sizing`,
 `order`, `aspect-ratio`, `visibility`, `direction`, `unicode-bidi`, `writing-mode`, `text-combine-upright`,
 the `container` shorthand and its two longhands, the `transition` shorthand
-and its four longhands, and `all`.
+and its four longhands, the `animation` shorthand and its eight longhands, and `all`.
 The shared property schema owns their
 member lists, initial values and reset-only components. Other known properties
 return typed unsupported errors preserving their identity. The stylesheet
@@ -1659,7 +1659,58 @@ interface, rather than additional fields on `CssPropertyMetadata`. This crate
 retains authored units and symbolic calculations. Property/shorthand matching,
 last matching item selection, timing list repetition, combined duration, negative
 delay offsets, computed conversion and transition execution belong downstream.
-Animation metadata and expansion retain their separate unfinished boundary.
+`animation` expands to eight ordered terminal contributions: duration,
+timing-function, delay, iteration-count, direction, fill-mode, play-state and name.
+This is Surgeist's intrinsic projection order, following its specified shorthand
+output. The selected Animations 1 grammar defines the eight members and their
+defaults. Every authored item contributes one entry to each list; an omitted
+field uses one scalar from its schema initial. The original shorthand retains
+its omissions, and the selected Level 1 shorthand has no additional reset-only
+members.
+
+| Terminal | Intrinsic initial | Inherited |
+| --- | --- | --- |
+| `animation-duration` | `0s` | No |
+| `animation-timing-function` | `ease` | No |
+| `animation-delay` | `0s` | No |
+| `animation-iteration-count` | `1` | No |
+| `animation-direction` | `normal` | No |
+| `animation-fill-mode` | `none` | No |
+| `animation-play-state` | `running` | No |
+| `animation-name` | `none` | No |
+
+For example, `animation: fade 1s, slide paused` projects `1s, 0s`, `ease, ease`,
+`0s, 0s`, `1, 1`, `normal, normal`, `none, none`, `running, paused` and
+`fade, slide` in that order. The eight `CssLonghandValueRef` Animation variants
+borrow the existing typed list owners. Explicit children retain their authored
+components and origins; synthesized defaults have programmatic origins. Expansion
+also retains parser-produced recovered time children. Their repaired specified
+output cannot establish clean original whole-property input.
+
+Checked construction and pending reentry reject original implicit comment,
+string and function closures through both property and grammar fronts, retaining
+the original zero-width EOF origin. Browser recovery remains observable.
+CSS-wide shorthand values produce eight global contributions; pending whole
+values retry the original property grammar while contributions preserve the
+original declaration occurrence and importance. Failed grammar or resource
+reentry leaves the pending handle reusable. Normalization counts eight terminal
+contributions regardless of list length and preserves report diagnostics;
+specified output separately shares cumulative list and child budgets. See the
+[expansion contract](../tests/animation_expansion_contract.rs),
+[closure contract](../tests/animation_component_closure_contract.rs),
+[typed lifecycle tests](../tests/animation_expansion_lifecycle.rs) and
+[support catalog contract](../tests/animation_support_catalog_contract.rs).
+
+All nine selected Animations 1 property productions have complete authored support.
+They apply to all elements, are noninherited and are not animatable. Computed-form
+clauses describe the downstream interface: authored names retain identifier,
+string or `none` form; duration and delay retain their time lists; other lists
+retain their authored count, direction, fill, play and easing values. The name
+list controls used repetition of other lists without changing computed lists.
+Keyframe lookup, contextual time conversion, list matching and repetition,
+direction, fill behavior, pausing, timeline sampling, interpolation and events
+belong to downstream animation execution. Intrinsic expansion performs none of
+those operations.
 
 ### Exact frequency and ordinary resolution
 
@@ -2099,8 +2150,9 @@ A keyword, including a step alias's canonical replacement, charges one of each.
 Numeric children retain their shared owner's visits and projection work; bytes
 are the actual canonical output. Errors return no partial string and leave
 authored components, origins, omissions, and position identities unchanged.
-Timing evaluation and generic Transition/Animation property expansion remain
-separate capabilities.
+Timing evaluation belongs downstream. Transition and Animation intrinsic
+property expansion use the shared schema and declaration engine described in
+[exact timing domains](#numeric-values-exact-timing-domains-and-symbolic-calculations).
 
 Filter amounts use `CssFilterAmount::Default`, `Number` or `Percentage`.
 The scalar branches hold `CssSpecifiedNonNegativeNumber` and
@@ -2524,8 +2576,9 @@ importance, order, source occurrence and replacement provenance.
 These are authored syntax values. This crate does not multiply transform
 matrices, interpolate or evaluate easing, render shadows or filters, resolve
 URLs, compute shape geometry, perform layout or painting, or lower values into
-sibling crates. The selected Transitions 1 authored property family is Complete;
-`animation` retains its separate Partial catalog boundary.
+sibling crates. The selected Transitions 1 and Animations 1 authored property
+families have Complete support metadata; their downstream execution remains
+separate.
 
 ## Authored colors
 

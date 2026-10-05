@@ -133,9 +133,6 @@ const SUPPORTS_SELECTOR_SUBSET: &str = "selector() accepts complete Selectors 3 
 const SUPPORTS_SELECTOR_REMAINDER: &str = "The || combinator, unselected Selectors 4 pseudo-classes and pseudo-elements, and syntax outside those atomic extension rows remain outside the typed subset; balanced content is preserved as general-enclosed authored syntax.";
 const QUERY_REMAINDER: &str =
     "Other valid forms of the cited query production are outside the I01 subset.";
-const TIMING_SUBSET: &str = "The I01 shorthand components plus C03 duration, signed delay, iteration, and typed calculation syntax and C05 easing functions are supported.";
-const TIMING_REMAINDER: &str =
-    "Other valid forms of the cited shorthand production remain unsupported.";
 const COLOR5_RELATIVE_SUBSET: &str = "Relative rgb()/rgba(), hsl()/hsla(), hwb(), lab(), lch(), oklab(), oklch(), predefined and custom-profile color(), and alpha() preserve authored channels and symbolic calculations.";
 const COLOR5_RELATIVE_REMAINDER: &str = "Unselected CSS Color 5 source-color functions remain unsupported; profile binding and color evaluation belong to downstream resolution.";
 const COLOR5_MIX_SUBSET: &str = "Authored color-mix() supports an optional interpolation method, ordered nonempty color lists, literal or calculated percentage weights before or after colors, and predefined, polar or symbolic custom spaces.";
@@ -3138,15 +3135,15 @@ fn transition_metadata_matches_the_selected_complete_shorthand_grammar() {
 }
 
 #[test]
-fn animation_metadata_matches_c03_shorthand_behavior_and_c05_remainder() {
+fn animation_metadata_matches_the_selected_complete_shorthand_grammar() {
     assert_c03_timing_metadata(
         "baseline.property.animation",
         "animation: fade calc(1s + 250ms) linear calc((1 + 2) * 3) -200ms both running",
         "I-ANIMATIONS1",
         "#propdef-animation",
-        CssSupportStatus::Partial,
-        Some(TIMING_SUBSET),
-        Some(TIMING_REMAINDER),
+        CssSupportStatus::Complete,
+        None,
+        None,
     );
 }
 

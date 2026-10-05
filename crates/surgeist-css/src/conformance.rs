@@ -2301,9 +2301,6 @@ const QUERY_REMAINDER: &str =
 const PROPERTY_SUBSET: &str = "The property-specific parser behavior at 4b288d6:src/parser/mod.rs, plus whole-value CSS-wide keywords and syntactically admissible substitution-dependent authored values, is supported.";
 const PROPERTY_REMAINDER: &str =
     "Other valid forms of the cited property production are outside the I01 subset.";
-const TIMING_SUBSET: &str = "The I01 shorthand components plus C03 duration, signed delay, iteration, and typed calculation syntax and C05 easing functions are supported.";
-const TIMING_REMAINDER: &str =
-    "Other valid forms of the cited shorthand production remain unsupported.";
 const COLOR5_RELATIVE_SUBSET: &str = "Relative rgb()/rgba(), hsl()/hsla(), hwb(), lab(), lch(), oklab(), oklch(), predefined and custom-profile color(), and alpha() preserve authored channels and symbolic calculations.";
 const COLOR5_RELATIVE_REMAINDER: &str = "Unselected CSS Color 5 source-color functions remain unsupported; profile binding and color evaluation belong to downstream resolution.";
 const COLOR5_MIX_SUBSET: &str = "Authored color-mix() supports an optional interpolation method, ordered nonempty color lists, literal or calculated percentage weights before or after colors, and predefined, polar or symbolic custom spaces.";
@@ -6035,10 +6032,12 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 670] = [
         "#propdef-transition",
         &[],
     ),
-    property_feature!(
+    CssFeatureMetadata::complete_property(
+        "baseline.property.animation-name",
         CssKnownProperty::AnimationName,
         "animation-name",
-        "baseline.property.animation-name"
+        "#propdef-animation-name",
+        &[],
     ),
     CssFeatureMetadata::complete_property(
         "baseline.property.animation-duration",
@@ -6068,29 +6067,33 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 670] = [
         "#propdef-animation-iteration-count",
         &[],
     ),
-    property_feature!(
+    CssFeatureMetadata::complete_property(
+        "baseline.property.animation-direction",
         CssKnownProperty::AnimationDirection,
         "animation-direction",
-        "baseline.property.animation-direction"
+        "#propdef-animation-direction",
+        &[],
     ),
-    property_feature!(
+    CssFeatureMetadata::complete_property(
+        "baseline.property.animation-fill-mode",
         CssKnownProperty::AnimationFillMode,
         "animation-fill-mode",
-        "baseline.property.animation-fill-mode"
+        "#propdef-animation-fill-mode",
+        &[],
     ),
-    property_feature!(
+    CssFeatureMetadata::complete_property(
+        "baseline.property.animation-play-state",
         CssKnownProperty::AnimationPlayState,
         "animation-play-state",
-        "baseline.property.animation-play-state"
+        "#propdef-animation-play-state",
+        &[],
     ),
-    CssFeatureMetadata::partial_property_with_boundary(
+    CssFeatureMetadata::complete_property(
         "baseline.property.animation",
         CssKnownProperty::Animation,
         "animation",
         "#propdef-animation",
         &[],
-        TIMING_SUBSET,
-        TIMING_REMAINDER,
     ),
     CssFeatureMetadata::complete_property(
         "official.property.border-collapse",

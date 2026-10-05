@@ -444,9 +444,15 @@
 //! transition property family has intrinsic metadata and four ordered shorthand
 //! contributions, preserving one list entry per authored item. [`CssLonghandValueRef`]
 //! exposes property, duration, timing-function and delay lists, including explicit
-//! child origins and programmatic omission defaults. Animation retains its separate
-//! Partial metadata boundary; support for a typed function does not promote an
-//! unselected production.
+//! child origins and programmatic omission defaults. The selected Animation family
+//! likewise has intrinsic metadata and eight ordered contributions: duration,
+//! timing-function, delay, iteration-count, direction, fill-mode, play-state and
+//! name. Its borrowed variants retain the existing typed lists and one entry per
+//! authored item, using schema initials for omissions. Both selected authored
+//! families have Complete support metadata; contextual execution belongs downstream.
+//! Checked whole-property construction and pending reentry reject original implicit
+//! closures, while reused parser-produced typed children retain recovery origins.
+//! Support for a typed function does not promote an unselected production.
 //!
 //! [`CssCustomIdent`] owns decoded custom-identifier admission. Timing names refine
 //! that checked value through [`CssKeyframesIdent`] (shared by keyframe definitions

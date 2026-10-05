@@ -103,6 +103,11 @@ fn requires_closed_components(property: crate::CssKnownProperty) -> bool {
             | crate::CssKnownProperty::TransitionProperty
             | crate::CssKnownProperty::TransitionTimingFunction
             | crate::CssKnownProperty::AnimationTimingFunction
+            | crate::CssKnownProperty::AnimationName
+            | crate::CssKnownProperty::AnimationIterationCount
+            | crate::CssKnownProperty::AnimationDirection
+            | crate::CssKnownProperty::AnimationFillMode
+            | crate::CssKnownProperty::AnimationPlayState
             | crate::CssKnownProperty::TransitionDuration
             | crate::CssKnownProperty::TransitionDelay
             | crate::CssKnownProperty::AnimationDuration

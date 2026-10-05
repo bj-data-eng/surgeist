@@ -517,7 +517,7 @@ fn list_order_and_shorthand_omissions_survive_canonical_output() {
 }
 
 #[test]
-fn transition_easing_expands_while_animation_remains_unsupported() {
+fn both_timing_families_expand_their_typed_easing_lists() {
     let report =
         parse_style_attribute("transition-timing-function:steps(2,end);animation:fade 1s ease");
     assert!(report.is_clean());
@@ -538,8 +538,22 @@ fn transition_easing_expands_while_animation_remains_unsupported() {
         easing.values()[0].serialize_specified().unwrap(),
         "steps(2)"
     );
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
+        expand_declaration(&report.syntax()[1]).unwrap()
+    else {
+        panic!("ordinary animation")
+    };
+    assert_eq!(values.items().len(), 8);
+    let item = &values.items()[1];
+    assert_eq!(item.property(), CssKnownProperty::AnimationTimingFunction);
+    let CssContributionValueRef::Ordinary(CssLonghandValueRef::AnimationTimingFunction(easing)) =
+        item.value()
+    else {
+        panic!("typed animation easing")
+    };
     assert_eq!(
-        expand_declaration(&report.syntax()[1]).unwrap_err().kind(),
-        &CssExpansionErrorKind::UnsupportedProperty(CssKnownProperty::Animation)
+        easing.values(),
+        &[CssEasing::Keyword(CssEasingKeyword::Ease)]
     );
+    assert!(item.source().same_occurrence(&report.syntax()[1]));
 }
