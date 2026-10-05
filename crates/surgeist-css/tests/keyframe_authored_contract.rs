@@ -271,7 +271,7 @@ fn assert_forbidden_keyframe_property(
     );
     assert!(validate_sheet(&source).is_err());
     let before = report.clone();
-    let expected = "@keyframes k { 0% { color: red; --phase: A/**/B; opacity: 0.5; animation-timing-function: linear; color: blue; } 100% { opacity: 1; } } .after { color: red; }";
+    let expected = "@keyframes k { 0% { color: red; --phase: A/**/B; opacity: 0.5; animation-timing-function: linear; color: blue; } 100% { opacity: 1; } }\n.after { color: red; }";
     assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
     assert_eq!(report, before);
     assert!(validate_sheet(expected).is_ok());
@@ -553,7 +553,7 @@ fn assert_out_of_range_selector_is_dropped(selector: &str) {
         start + selector.len() + "{opacity:0}".len()
     );
     assert!(validate_sheet(&source).is_err());
-    let expected = "@keyframes k { 25% { opacity: 1; } } .after { color: red; }";
+    let expected = "@keyframes k { 25% { opacity: 1; } }\n.after { color: red; }";
     assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
     assert_eq!(
         validate_sheet(expected)
