@@ -243,7 +243,6 @@ fn specialized_boundary_nonrepresentable_eof_cases_do_not_gain_component_closure
         "{color:red",
         ".x{color:",
         ".x{color",
-        ".x{content:\"unterminated",
         ".x{background-image:url(bad url",
         "@font-face{font-family:Demo",
         "@keyframes fade{",
@@ -264,6 +263,25 @@ fn specialized_boundary_nonrepresentable_eof_cases_do_not_gain_component_closure
             report.diagnostics()
         );
     }
+}
+
+#[test]
+fn eof_string_keeps_its_content_and_reports_string_and_rule_closures() {
+    // Syntax 3 §4.3.5 returns the accumulated string token at EOF, rather
+    // than a bad-string token. Both that string and its enclosing rule close.
+    let source = ".x{content:\"unterminated";
+    let report = parse_sheet(source);
+    let [CssRule::Style(rule)] = report.syntax().rules() else {
+        panic!("a string reaching EOF remains representable authored content");
+    };
+    let [declaration] = rule.declarations().as_slice() else {
+        panic!("one retained content declaration");
+    };
+    assert_eq!(
+        declaration.to_specified_css().unwrap(),
+        "content: \"unterminated\";"
+    );
+    assert_implicit_closures(source, 2);
 }
 
 #[test]
