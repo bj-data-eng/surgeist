@@ -427,7 +427,12 @@ fn parse_selector_after_first_compound<'i, 't>(
                 )?);
             }
             Ok(Token::Delim('|'))
-                if !had_whitespace || input.try_parse(|input| input.expect_delim('|')).is_ok() =>
+                if !had_whitespace || {
+                    let next = input.state();
+                    let is_column = input.try_parse(|input| input.expect_delim('|')).is_ok();
+                    input.reset(&next);
+                    is_column
+                } =>
             {
                 return Err(invalid_selector(
                     input,

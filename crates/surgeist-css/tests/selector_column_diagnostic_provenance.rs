@@ -44,7 +44,8 @@ fn rejected_column(source: &str) {
     assert_eq!(encountered.authored(), "|");
     // Preserve the established nested recovery unit as well as its coordinates.
     assert_position(diagnostic.span().start(), source, source.find('&').unwrap());
-    assert_position(diagnostic.span().end(), source, source.len());
+    let inner_rule_end = source.rfind("} }").unwrap() + 1;
+    assert_position(diagnostic.span().end(), source, inner_rule_end);
 }
 
 #[test]
