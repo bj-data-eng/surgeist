@@ -98,18 +98,45 @@ must remain discoverable in the owning issue or tracked source, not solely in a
 disposable draft. Do not create a separate plan/status lifecycle.
 
 Keep owned drafts, captured output, and API inputs in ignored `tmp/`, using a
-topic subdirectory when needed. Honor a tool's required temporary location
-without making a second copy. Stream routine successful output. Keep logs,
-reports, or exact inputs only while a concrete consumer needs them; retain an
-uncertain write's input until its outcome is reconciled. Preserve required
-standards provenance and raw data that belongs in a source fixture, not command
-transcripts. Remove only owned consumed files; never sweep shared files by age,
-prefix, or extension, or purge history as incidental cleanup.
+topic or issue subdirectory for related work. Separate current authoring inputs
+from historical review evidence, reference captures, and build output. Honor a
+tool's required temporary location without making a second copy. Stream routine
+successful output. Retain logs, reports, and exact inputs only while a concrete
+consumer needs them; retain an uncertain write's input until its outcome is
+reconciled. Preserve required standards provenance and raw source-fixture data.
+
+Prefer the existing reusable Cargo target when the verification context permits.
+Use a separate target for a concrete isolation or tool requirement, and identify
+the retained cache in the current handoff. Build output is reconstructible cache,
+not review evidence. With cleanup authority, remove obsolete owned targets after
+their verification or packaging consumers finish. A target outside a worktree
+survives archiving that worktree; account for it explicitly. Preserve useful
+shared caches and respect active process ownership.
+
+After publication or a settled operation, retire consumed owned scratch inputs,
+duplicate source copies, and intermediate captures within cleanup authority.
+Before relying on Git recovery, establish the source commit/blob and account for
+local differences. A historical preservation hash records a checkpoint; it does
+not make every guarded file a permanent retention requirement. Keep final scoped
+review evidence needed for later composition, unresolved findings, and unfinished
+drafts. Do not rewrite a historical verdict to describe current state.
+
+When reorganizing retained evidence, preserve immutable bytes and verify moved or
+losslessly compressed content. Update active links and consumers; record a small
+old-to-new path mapping when historical records must retain their original paths.
+Do not introduce a second progress registry or routine per-file manifests merely
+to organize storage. Shared monitoring, reporting, configuration, and reference
+material may have other consumers. Remove only owned consumed files; never sweep
+shared files by age, prefix, or extension, or purge history as incidental cleanup.
 
 ## Pause And Resume
 
 On pause, stop or account for owned workers/processes through PISCT process
-handling. Leave enough current information to continue: the relevant issue,
+handling. Keep one current handoff at a stable entry point. Replace superseded
+checkpoint wording rather than appending a running transcript. Move a completed
+work narrative into clearly historical material only while a concrete consumer
+still needs it; otherwise retire it within cleanup authority. Leave enough
+current information to continue: the relevant issue,
 blocker or next action, outstanding checks, consequential decisions, and active
 ownership or needed working material. Preserve unfinished edits and inputs;
 administration does not authorize stashing, discarding, or resuming code.
