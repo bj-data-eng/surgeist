@@ -1107,6 +1107,7 @@ impl CssPendingSubstitution {
                 .expect("pending known declaration")
                 .grammar(),
             &replacement,
+            self.source.parser_context(),
         )
         .map_err(|error| {
             CssExpansionError::new(CssExpansionErrorKind::InvalidReplacement(error))

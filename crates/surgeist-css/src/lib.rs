@@ -1830,8 +1830,12 @@ pub use specified_serialization::{
     CssSpecifiedValueSerializationLimits,
 };
 mod parser;
+mod parser_context;
 mod properties;
 mod property_value;
+pub use parser_context::{
+    CssParserContext, CssParserMode, parse_css_supports_condition, parse_css_supports_declaration,
+};
 mod report;
 mod source;
 mod syntax;

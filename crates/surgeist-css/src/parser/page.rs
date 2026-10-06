@@ -210,6 +210,7 @@ impl<'i> DeclarationParser<'i> for PageBodyParser<'i> {
             input,
             declaration_start,
             self.recovery.source_snapshot(),
+            self.recovery.parser_context(),
         )?;
         if !is_css2_page_margin_value(&parsed) {
             return Err(with_property_context(

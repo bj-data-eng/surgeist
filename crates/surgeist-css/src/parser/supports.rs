@@ -70,6 +70,7 @@ pub(super) fn parse_supports_condition<'i, 't>(
 pub(super) fn parse_supports_declaration<'i, 't>(
     input: &mut Parser<'i, 't>,
     source: &CssSourceSnapshot,
+    parser_context: crate::CssParserContext,
 ) -> Result<CssSupportsDeclaration, ParseError<'i, Error>> {
     let start = input.current_source_location();
     let values = CssComponentValues::collect_from_parser(input, source)
@@ -78,6 +79,7 @@ pub(super) fn parse_supports_declaration<'i, 't>(
         SupportsLexical::root(values),
         true,
         CssComponentValueLimits::default(),
+        parser_context,
     )
     .map_err(|e| parser_error(e, start))
 }
@@ -118,8 +120,23 @@ pub(crate) fn construct_supports_condition(
     namespaces: &CssNamespaceContext,
     limits: CssComponentValueLimits,
 ) -> Result<CssSupportsCondition, CssSupportsConstructionError> {
+    construct_supports_condition_with_context(
+        values,
+        namespaces,
+        limits,
+        crate::CssParserContext::default(),
+    )
+}
+
+pub(crate) fn construct_supports_condition_with_context(
+    values: CssComponentValues,
+    namespaces: &CssNamespaceContext,
+    limits: CssComponentValueLimits,
+    parser_context: crate::CssParserContext,
+) -> Result<CssSupportsCondition, CssSupportsConstructionError> {
     validate(&values, limits)?;
-    let recovery = RecoveryState::at_depth("", 0, StyleContextCaptures::default());
+    let recovery = RecoveryState::at_depth("", 0, StyleContextCaptures::default())
+        .with_parser_context(parser_context);
     if let Some(name) = &namespaces.0.default {
         recovery.activate_namespace(None, name.clone());
     }
@@ -135,7 +152,12 @@ pub(crate) fn construct_supports_declaration(
     limits: CssComponentValueLimits,
 ) -> Result<CssSupportsDeclaration, CssSupportsConstructionError> {
     validate(&values, limits)?;
-    let value = declaration(SupportsLexical::root(values), false, limits)?;
+    let value = declaration(
+        SupportsLexical::root(values),
+        false,
+        limits,
+        crate::CssParserContext::default(),
+    )?;
     value.serialize_with_limit(limits.max_css_bytes())?;
     Ok(value)
 }
@@ -257,9 +279,12 @@ fn operand(
                 && let Ok(name) = CssSupportsConditionName::try_from_component((*component).clone())
             {
                 CssSupportsConditionKind::Named(name)
-            } else if let Some(declaration) =
-                grammar(declaration(children.clone(), authored, limits))?
-            {
+            } else if let Some(declaration) = grammar(declaration(
+                children.clone(),
+                authored,
+                limits,
+                recovery.parser_context(),
+            ))? {
                 CssSupportsConditionKind::Declaration(Box::new(declaration))
             } else if let Some(group) = grammar(condition(children, recovery, authored, limits))? {
                 group.into_kind()
@@ -327,6 +352,7 @@ fn declaration(
     lexical: SupportsLexical,
     authored: bool,
     limits: CssComponentValueLimits,
+    parser_context: crate::CssParserContext,
 ) -> Result<CssSupportsDeclaration, CssSupportsConstructionError> {
     let invalid = || CssSupportsConstructionError::InvalidDeclarationGrammar {
         origin: lexical.first_origin().clone(),
@@ -371,11 +397,11 @@ fn declaration(
         }
     }
     let known = if authored {
-        parsed_known(name, &items[colon + 1..value_end])?
+        parsed_known(name, &items[colon + 1..value_end], parser_context)?
     } else if let Some(grammar) = CssPropertyGrammar::from_name(name) {
         let values =
             CssComponentValues::try_new_with_limits(items[colon + 1..value_end].to_vec(), limits)?;
-        match crate::property_value::checked_grammar_value_body(grammar, &values) {
+        match crate::property_value::checked_grammar_value_body(grammar, &values, parser_context) {
             Ok(CssDeclarationBody::Known(known)) => Some(known),
             Err(error) => {
                 let component_kind = match error.kind() {
@@ -439,6 +465,7 @@ fn declaration(
 fn parsed_known(
     name: &str,
     values: &[CssComponentValue],
+    parser_context: crate::CssParserContext,
 ) -> Result<Option<CssKnownDeclaration>, CssSupportsConstructionError> {
     let Some(resolved) = crate::properties::resolve_property_name(name) else {
         return Ok(None);
@@ -457,7 +484,7 @@ fn parsed_known(
     let mut parser_input = cssparser::ParserInput::new(&working_source);
     let mut input = Parser::new(&mut parser_input);
     let numeric = crate::numeric::NumericInputContext::parsed(first.source());
-    match super::parse_known_declaration_body(resolved, &mut input, &numeric) {
+    match super::parse_known_declaration_body(resolved, &mut input, &numeric, parser_context) {
         Ok(CssDeclarationBody::Known(known)) if input.is_exhausted() => Ok(Some(known)),
         Err(error) if terminal_error(&error) => {
             if let cssparser::ParseErrorKind::Custom(error) = error.kind

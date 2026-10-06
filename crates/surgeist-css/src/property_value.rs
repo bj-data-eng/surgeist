@@ -121,16 +121,37 @@ pub fn parse_property_value(
     value: CssComponentValues,
     importance: CssImportance,
 ) -> Result<CssDeclaration, CssPropertyValueParseError> {
-    let body = checked_property_value_body(property, &value)?;
-    Ok(CssDeclaration::new_constructed(body, importance, value))
+    parse_property_value_with_context(
+        property,
+        value,
+        importance,
+        crate::CssParserContext::default(),
+    )
+}
+
+pub(crate) fn parse_property_value_with_context(
+    property: CssPropertyNameRef<'_>,
+    value: CssComponentValues,
+    importance: CssImportance,
+    parser_context: crate::CssParserContext,
+) -> Result<CssDeclaration, CssPropertyValueParseError> {
+    let body = checked_property_value_body(property, &value, parser_context)?;
+    Ok(CssDeclaration::new_constructed(
+        parser_context,
+        body,
+        importance,
+        value,
+    ))
 }
 
 // Declaration construction and strict expansion reentry share both the checked
 // grammar and its original-component error mapping. Reentry retains the original
 // occurrence and therefore must not manufacture a replacement declaration.
+
 pub(crate) fn checked_property_value_body(
     property: CssPropertyNameRef<'_>,
     value: &CssComponentValues,
+    parser_context: crate::CssParserContext,
 ) -> Result<crate::CssDeclarationBody, CssPropertyValueParseError> {
     if let CssPropertyNameRef::Known(known) = property
         && is_time_property(known)
@@ -151,6 +172,7 @@ pub(crate) fn checked_property_value_body(
         property,
         serialized.as_css(),
         &crate::numeric::NumericInputContext::components(value, &serialized),
+        parser_context,
     )
     .map_err(|error| CssPropertyValueParseError::from_grammar(error, &serialized))
 }
@@ -165,12 +187,33 @@ pub fn parse_property_value_for_grammar(
     value: CssComponentValues,
     importance: CssImportance,
 ) -> Result<CssDeclaration, CssPropertyValueParseError> {
-    let body = checked_grammar_value_body(grammar, &value)?;
-    Ok(CssDeclaration::new_constructed(body, importance, value))
+    parse_property_value_for_grammar_with_context(
+        grammar,
+        value,
+        importance,
+        crate::CssParserContext::default(),
+    )
 }
+
+pub(crate) fn parse_property_value_for_grammar_with_context(
+    grammar: crate::CssPropertyGrammar,
+    value: CssComponentValues,
+    importance: CssImportance,
+    parser_context: crate::CssParserContext,
+) -> Result<CssDeclaration, CssPropertyValueParseError> {
+    let body = checked_grammar_value_body(grammar, &value, parser_context)?;
+    Ok(CssDeclaration::new_constructed(
+        parser_context,
+        body,
+        importance,
+        value,
+    ))
+}
+
 pub(crate) fn checked_grammar_value_body(
     grammar: crate::CssPropertyGrammar,
     value: &CssComponentValues,
+    parser_context: crate::CssParserContext,
 ) -> Result<crate::CssDeclarationBody, CssPropertyValueParseError> {
     if is_time_property(grammar.target_property())
         && let Some(error) = recovered_component_error(value)
@@ -189,6 +232,7 @@ pub(crate) fn checked_grammar_value_body(
         grammar,
         serialized.as_css(),
         &crate::numeric::NumericInputContext::components(value, &serialized),
+        parser_context,
     )
     .map_err(|error| CssPropertyValueParseError::from_grammar(error, &serialized))
 }

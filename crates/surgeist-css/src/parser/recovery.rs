@@ -272,6 +272,7 @@ fn scan_delimiters(source: &str, base_depth: u32) -> DelimiterScan {
 /// same counter without changing the limit or its boundary meaning.
 #[derive(Clone)]
 pub(crate) struct RecoveryState {
+    parser_context: crate::CssParserContext,
     depth: Rc<Cell<u32>>,
     source_snapshot: crate::CssSourceSnapshot,
     style_context_captures: StyleContextCaptures,
@@ -303,6 +304,7 @@ impl RecoveryState {
     ) -> Self {
         let namespace_bindings = Rc::clone(&style_context_captures.namespace_bindings);
         Self {
+            parser_context: crate::CssParserContext::default(),
             depth: Rc::new(Cell::new(depth)),
             source_snapshot,
             style_context_captures,
@@ -313,8 +315,18 @@ impl RecoveryState {
         }
     }
 
+    pub(super) fn with_parser_context(mut self, context: crate::CssParserContext) -> Self {
+        self.parser_context = context;
+        self
+    }
+
+    pub(super) const fn parser_context(&self) -> crate::CssParserContext {
+        self.parser_context
+    }
+
     pub(super) fn detached_probe(&self) -> Self {
         Self {
+            parser_context: self.parser_context,
             depth: Rc::new(Cell::new(self.depth.get())),
             source_snapshot: self.source_snapshot.clone(),
             style_context_captures: self.style_context_captures.clone(),

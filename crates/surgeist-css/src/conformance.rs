@@ -736,7 +736,7 @@ const O_COLOR4: CssSpecificationSource = dated_source!(
     "CSS Color",
     "4",
     CssSpecificationTier::Snapshot2026Official,
-    "https://www.w3.org/TR/2026/CRD-css-color-4-20260326/"
+    "https://www.w3.org/TR/2026/CRD-css-color-4-20260908/"
 );
 const O_BACKGROUNDS3: CssSpecificationSource = dated_source!(
     "O-BACKGROUNDS3",
@@ -1745,12 +1745,6 @@ static CONFORMANCE_EXCLUSIONS: &[CssExclusionMetadata] = &[
         "Color 5 references",
         CssExclusionReason::SupersededWithoutCurrentProduction,
         ["I-COLOR5"]
-    ),
-    exclusion!(
-        "excluded.O-COLOR4.quirky-color",
-        O_COLOR4,
-        "#quirky-color",
-        CssExclusionReason::OutsideAuthoredSyntaxBoundary
     ),
     exclusion!(
         "excluded.O-COLOR4.processing",
@@ -2925,7 +2919,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 761] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 762] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -3335,6 +3329,13 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 761] = [
         "<color>",
         O_COLOR4,
         "#color-type",
+    ),
+    CssFeatureMetadata::complete(
+        "official.value.quirky-color",
+        CssFeatureKind::Value,
+        "<quirky-color> in explicit document contexts",
+        O_COLOR4,
+        "#quirky-color",
     ),
     CssFeatureMetadata::complete(
         "official.value.alpha",

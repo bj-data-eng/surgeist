@@ -38,6 +38,11 @@ pub use fragments::{
     parse_media_query_list, parse_property_value_text, parse_property_value_text_for_grammar,
     parse_rule, parse_selector, parse_selector_list, parse_style_block,
 };
+pub(crate) use fragments::{
+    parse_declaration_with_context, parse_property_value_text_for_grammar_with_context,
+    parse_property_value_text_with_context, parse_rule_with_context,
+    parse_style_block_with_context,
+};
 mod color;
 mod color_adjustment;
 mod container_properties;
@@ -61,6 +66,7 @@ mod page;
 mod position;
 mod queries;
 mod query_components;
+mod quirky_color;
 mod shape_outside;
 use motion::*;
 mod shapes;
@@ -68,7 +74,10 @@ use shape_outside::parse_shape_outside;
 mod will_change;
 // Shared checked media construction uses the same private admission engine.
 pub(crate) use queries::{construct_media_condition, construct_media_query};
-pub(crate) use supports::{construct_supports_condition, construct_supports_declaration};
+pub(crate) use supports::{
+    construct_supports_condition, construct_supports_condition_with_context,
+    construct_supports_declaration,
+};
 mod recovery;
 mod scroll_snap;
 mod scrollbar;
@@ -250,6 +259,11 @@ static IMPLEMENTED_CONTAINER_EXTENSIONS: &[CssFeatureId] =
     &[CssFeatureId::new("baseline.rule.container")];
 
 static ATOMIC_IMPLEMENTATION_INVENTORIES: &[CssAtomicImplementationInventory] = &[
+    CssAtomicImplementationInventory {
+        module: "crate::parser::quirky_color",
+        kind: CssAtomicImplementationKind::SharedValue,
+        stable_ids: quirky_color::IMPLEMENTED_SHARED_VALUES,
+    },
     CssAtomicImplementationInventory {
         module: "crate::parser",
         kind: CssAtomicImplementationKind::Rule,
@@ -525,6 +539,13 @@ fn parse_all_property<'i, 't>(
 /// ));
 /// ```
 pub fn parse_sheet(source: &str) -> crate::CssParseReport<CssSheet> {
+    parse_sheet_with_context(source, crate::CssParserContext::default())
+}
+
+pub(crate) fn parse_sheet_with_context(
+    source: &str,
+    parser_context: crate::CssParserContext,
+) -> crate::CssParseReport<CssSheet> {
     let source_snapshot = CssSourceSnapshot::new(source);
     if recovery::maximum_nested_depth(source) > recovery::DIRECT_PARSE_DEPTH {
         // The public limit is intentionally higher than the platform's small
@@ -541,6 +562,7 @@ pub fn parse_sheet(source: &str) -> crate::CssParseReport<CssSheet> {
                         0,
                         BoundedParseContext::Sheet,
                         StyleContextCaptures::default(),
+                        parser_context,
                     )
                 });
             match parser {
@@ -554,6 +576,7 @@ pub fn parse_sheet(source: &str) -> crate::CssParseReport<CssSheet> {
                     0,
                     BoundedParseContext::Sheet,
                     StyleContextCaptures::default(),
+                    parser_context,
                 ),
             }
         });
@@ -565,6 +588,7 @@ pub fn parse_sheet(source: &str) -> crate::CssParseReport<CssSheet> {
         0,
         BoundedParseContext::Sheet,
         StyleContextCaptures::default(),
+        parser_context,
     );
     recovery::finish_report(source, report)
 }
@@ -593,27 +617,40 @@ pub fn parse_sheet(source: &str) -> crate::CssParseReport<CssSheet> {
 /// ```
 #[must_use]
 pub fn parse_style_attribute(source: &str) -> crate::CssParseReport<CssDeclarationList> {
+    parse_style_attribute_with_context(source, crate::CssParserContext::default())
+}
+
+pub(crate) fn parse_style_attribute_with_context(
+    source: &str,
+    parser_context: crate::CssParserContext,
+) -> crate::CssParseReport<CssDeclarationList> {
     if recovery::maximum_nested_depth(source) > recovery::DIRECT_PARSE_DEPTH {
         let report = std::thread::scope(|scope| {
             let parser = std::thread::Builder::new()
                 .name("surgeist-css-bounded-style-attribute-parser".to_owned())
                 .stack_size(16 * 1024 * 1024)
-                .spawn_scoped(scope, || parse_style_attribute_inner(source));
+                .spawn_scoped(scope, || {
+                    parse_style_attribute_inner(source, parser_context)
+                });
             match parser {
                 Ok(parser) => match parser.join() {
                     Ok(report) => report,
                     Err(panic) => std::panic::resume_unwind(panic),
                 },
-                Err(_) => parse_style_attribute_inner(source),
+                Err(_) => parse_style_attribute_inner(source, parser_context),
             }
         });
         return recovery::finish_report(source, report);
     }
-    recovery::finish_report(source, parse_style_attribute_inner(source))
+    recovery::finish_report(source, parse_style_attribute_inner(source, parser_context))
 }
 
-fn parse_style_attribute_inner(source: &str) -> crate::CssParseReport<CssDeclarationList> {
-    let recovery = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
+fn parse_style_attribute_inner(
+    source: &str,
+    parser_context: crate::CssParserContext,
+) -> crate::CssParseReport<CssDeclarationList> {
+    let recovery = RecoveryState::at_depth(source, 0, StyleContextCaptures::default())
+        .with_parser_context(parser_context);
     let working_source = crate::tokenization::prepare(source);
     let mut input = ParserInput::new(&working_source);
     let mut parser = Parser::new(&mut input);
@@ -662,6 +699,7 @@ fn parse_sheet_bounded(
     base_depth: u32,
     context: BoundedParseContext,
     style_context_captures: StyleContextCaptures,
+    parser_context: crate::CssParserContext,
 ) -> crate::CssParseReport<CssSheet> {
     let report = parse_sheet_bounded_with_captures(
         source,
@@ -669,6 +707,7 @@ fn parse_sheet_bounded(
         base_depth,
         context,
         style_context_captures,
+        parser_context,
     );
     let (sheet, mut diagnostics) = report.into_parts();
     let eof_limit = diagnostics.iter().any(|diagnostic| {
@@ -689,6 +728,7 @@ fn parse_sheet_bounded_with_captures(
     base_depth: u32,
     context: BoundedParseContext,
     style_context_captures: StyleContextCaptures,
+    parser_context: crate::CssParserContext,
 ) -> crate::CssParseReport<CssSheet> {
     if let Some(limit) = preflight_specialized_eof_limit(source, base_depth) {
         let masked = mask_source_span(source, limit.unit_start, source.len());
@@ -698,6 +738,7 @@ fn parse_sheet_bounded_with_captures(
             base_depth,
             context,
             style_context_captures,
+            parser_context,
         );
         let (sheet, mut diagnostics) = outer.into_parts();
         diagnostics.retain(|diagnostic| {
@@ -735,7 +776,8 @@ fn parse_sheet_bounded_with_captures(
             base_depth,
             style_context_captures,
             source_snapshot.clone(),
-        );
+        )
+        .with_parser_context(parser_context);
         return match context {
             BoundedParseContext::Sheet => parse_sheet_inner(source, recovery),
             BoundedParseContext::Style => parse_style_context_inner(source, recovery),
@@ -769,6 +811,7 @@ fn parse_sheet_bounded_with_captures(
         base_depth,
         context,
         style_context_captures.clone(),
+        parser_context,
     );
     let (outer_sheet, mut diagnostics) = outer.into_parts();
 
@@ -817,6 +860,7 @@ fn parse_sheet_bounded_with_captures(
                 preflight.parent_depth,
                 child_context,
                 style_context_captures,
+                parser_context,
             );
             let (child_sheet, mut child_diagnostics) = child.into_parts();
             diagnostics.append(&mut child_diagnostics);
@@ -3232,7 +3276,11 @@ fn parse_import_supports<'i, 't>(
 
     let condition = input.parse_nested_block(|nested| {
         if let Some(declaration) = supports::grammar_probe(nested.try_parse(|nested| {
-            let declaration = parse_supports_declaration(nested, recovery.source_snapshot())?;
+            let declaration = parse_supports_declaration(
+                nested,
+                recovery.source_snapshot(),
+                recovery.parser_context(),
+            )?;
             nested.expect_exhausted().map_err(basic)?;
             Ok::<_, ParseError<'i, Error>>(declaration)
         }))? {
@@ -4461,6 +4509,7 @@ impl<'i> DeclarationParser<'i> for StrictDeclarationParser<'i> {
             input,
             declaration_start,
             self.recovery.source_snapshot(),
+            self.recovery.parser_context(),
         )?;
         self.recovery.retain_component_closures(implicit_closures);
         self.recovery.retain_navigation_diagnostic(&parsed.body);
@@ -4481,11 +4530,13 @@ pub(super) struct ParsedDeclaration {
     components: CssComponentValues,
     name: CssParsedOrigin,
     value_origin: CssParsedOrigin,
+    parser_context: crate::CssParserContext,
 }
 
 impl ParsedDeclaration {
     fn into_declaration(self) -> CssDeclaration {
         CssDeclaration::new_parsed(
+            self.parser_context,
             self.body,
             self.importance,
             self.components,
@@ -4516,6 +4567,7 @@ pub(super) fn parse_declaration_core<'i, 't>(
     input: &mut Parser<'i, 't>,
     declaration_start: &ParserState,
     source_snapshot: &CssSourceSnapshot,
+    parser_context: crate::CssParserContext,
 ) -> std::result::Result<ParsedDeclaration, ParseError<'i, Error>> {
     // Revisit only the name token. The original snapshot is shared even when
     // this parser reads a same-length masked structural chunk.
@@ -4599,6 +4651,7 @@ pub(super) fn parse_declaration_core<'i, 't>(
                         resolved_property,
                         input,
                         &crate::numeric::NumericInputContext::parsed(source_snapshot),
+                        parser_context,
                     )
                 })
             })?;
@@ -4611,6 +4664,7 @@ pub(super) fn parse_declaration_core<'i, 't>(
         components,
         name: name_origin,
         value_origin,
+        parser_context,
     })
 }
 
@@ -4638,20 +4692,27 @@ pub(crate) fn parse_property_value_body(
     property: CssPropertyNameRef<'_>,
     source: &str,
     numeric: &crate::numeric::NumericInputContext<'_>,
+    parser_context: crate::CssParserContext,
 ) -> std::result::Result<CssDeclarationBody, Error> {
     let grammar = match property {
         CssPropertyNameRef::Known(property) => PropertyValueGrammar::Known(property.grammar()),
         CssPropertyNameRef::Custom(name) => PropertyValueGrammar::Custom(name),
     };
-    parse_property_value_body_selected(grammar, source, numeric)
+    parse_property_value_body_selected(grammar, source, numeric, parser_context)
 }
 
 pub(crate) fn parse_property_value_body_for_grammar(
     grammar: CssPropertyGrammar,
     source: &str,
     numeric: &crate::numeric::NumericInputContext<'_>,
+    parser_context: crate::CssParserContext,
 ) -> std::result::Result<CssDeclarationBody, Error> {
-    parse_property_value_body_selected(PropertyValueGrammar::Known(grammar), source, numeric)
+    parse_property_value_body_selected(
+        PropertyValueGrammar::Known(grammar),
+        source,
+        numeric,
+        parser_context,
+    )
 }
 
 enum PropertyValueGrammar<'a> {
@@ -4663,12 +4724,13 @@ fn parse_property_value_body_selected(
     grammar: PropertyValueGrammar<'_>,
     source: &str,
     numeric: &crate::numeric::NumericInputContext<'_>,
+    parser_context: crate::CssParserContext,
 ) -> std::result::Result<CssDeclarationBody, Error> {
     fragments::bounded_execution(source, || {
         let working_source = crate::tokenization::prepare(source);
         let mut input = ParserInput::new(&working_source);
         let mut parser = Parser::new(&mut input);
-        parse_property_value_from_parser(grammar, source, &mut parser, numeric)
+        parse_property_value_from_parser(grammar, source, &mut parser, numeric, parser_context)
             .map_err(|error| from_parse_error(source, error))
     })
 }
@@ -4678,6 +4740,7 @@ fn parse_property_value_from_parser<'i>(
     source: &'i str,
     parser: &mut Parser<'i, '_>,
     numeric: &crate::numeric::NumericInputContext<'_>,
+    parser_context: crate::CssParserContext,
 ) -> Result<CssDeclarationBody, ParseError<'i, Error>> {
     // Reject root boundaries before the symbolic-substitution shortcut. Nested
     // punctuation remains data, including custom-property curly blocks.
@@ -4704,7 +4767,7 @@ fn parse_property_value_from_parser<'i>(
     parser.reset(&start);
     let body = match grammar {
         PropertyValueGrammar::Known(grammar) => {
-            parse_known_declaration_body(grammar.resolved(), parser, numeric)
+            parse_known_declaration_body(grammar.resolved(), parser, numeric, parser_context)
         }
         PropertyValueGrammar::Custom(name) => {
             parse_custom_property_value(parser, numeric).map(|value| {
@@ -4720,6 +4783,7 @@ fn parse_known_declaration_body<'i, 't>(
     resolved_property: CssResolvedPropertyName,
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
+    parser_context: crate::CssParserContext,
 ) -> std::result::Result<CssDeclarationBody, ParseError<'i, Error>> {
     let known_property = resolved_property.property();
     let context_name = known_property.canonical_name();
@@ -4764,9 +4828,13 @@ fn parse_known_declaration_body<'i, 't>(
     }
 
     let declaration = match resolved_property {
-        CssResolvedPropertyName::Canonical(_) => {
-            parse_known_property_value(known_property, authored, input, numeric)
-        }
+        CssResolvedPropertyName::Canonical(_) => quirky_color::parse_property_value(
+            known_property,
+            authored,
+            input,
+            numeric,
+            parser_context,
+        ),
         CssResolvedPropertyName::LegacyShorthand(alias) => {
             parse_legacy_property_alias_value(alias, authored, input, numeric)
         }

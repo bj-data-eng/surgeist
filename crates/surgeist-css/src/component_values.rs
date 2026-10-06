@@ -675,6 +675,14 @@ pub enum CssComponentValueRef<'a> {
 }
 
 impl CssComponentValue {
+    // Raw supplied or generated lexeme; decoded token identity is distinct.
+    pub(crate) fn token_representation(&self) -> Option<&str> {
+        match &self.data {
+            ComponentData::Token(token) => Some(&token.spelling.text),
+            _ => None,
+        }
+    }
+
     /// Compares retained component structure and exact token spelling without
     /// comparing where either component was obtained. Raw `PartialEq` retains
     /// its provenance-sensitive contract.

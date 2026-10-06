@@ -3812,6 +3812,7 @@ pub struct CssDeclaration {
 
 #[derive(Debug)]
 struct DeclarationOccurrence {
+    parser_context: crate::CssParserContext,
     body: CssDeclarationBody,
     importance: CssImportance,
     components: CssComponentValues,
@@ -3832,7 +3833,8 @@ enum DeclarationProvenance {
 
 impl PartialEq for CssDeclaration {
     fn eq(&self, other: &Self) -> bool {
-        self.body() == other.body()
+        self.parser_context() == other.parser_context()
+            && self.body() == other.body()
             && self.importance() == other.importance()
             && self.position() == other.position()
     }
@@ -3841,6 +3843,7 @@ impl PartialEq for CssDeclaration {
 impl CssDeclaration {
     #[must_use]
     pub(crate) fn new_parsed(
+        parser_context: crate::CssParserContext,
         body: CssDeclarationBody,
         importance: CssImportance,
         components: CssComponentValues,
@@ -3849,6 +3852,7 @@ impl CssDeclaration {
     ) -> Self {
         Self {
             occurrence: Arc::new(DeclarationOccurrence {
+                parser_context,
                 body,
                 importance,
                 components,
@@ -3858,6 +3862,7 @@ impl CssDeclaration {
     }
 
     pub(crate) fn new_parsed_value(
+        parser_context: crate::CssParserContext,
         body: CssDeclarationBody,
         importance: CssImportance,
         components: CssComponentValues,
@@ -3865,6 +3870,7 @@ impl CssDeclaration {
     ) -> Self {
         Self {
             occurrence: Arc::new(DeclarationOccurrence {
+                parser_context,
                 body,
                 importance,
                 components,
@@ -3874,18 +3880,26 @@ impl CssDeclaration {
     }
 
     pub(crate) fn new_constructed(
+        parser_context: crate::CssParserContext,
         body: CssDeclarationBody,
         importance: CssImportance,
         components: CssComponentValues,
     ) -> Self {
         Self {
             occurrence: Arc::new(DeclarationOccurrence {
+                parser_context,
                 body,
                 importance,
                 components,
                 provenance: DeclarationProvenance::Constructed,
             }),
         }
+    }
+
+    /// Returns the authored parsing context retained for strict substitution reentry.
+    #[must_use]
+    pub fn parser_context(&self) -> crate::CssParserContext {
+        self.occurrence.parser_context
     }
 
     /// Returns the property-coupled authored body.

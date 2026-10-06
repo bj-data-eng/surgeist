@@ -900,7 +900,7 @@ fn public_surface_exposes_dated_sources_and_exclusion_metadata() {
     assert_eq!(specification_tier_kind(color.tier()), "official");
     assert_eq!(
         color.url(),
-        Some("https://www.w3.org/TR/2026/CRD-css-color-4-20260326/")
+        Some("https://www.w3.org/TR/2026/CRD-css-color-4-20260908/")
     );
     assert_eq!(color.repository_provenance(), None);
 

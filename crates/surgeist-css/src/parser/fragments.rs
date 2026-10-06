@@ -76,8 +76,16 @@ pub(super) fn finish_nested_component<'i>(
 /// declaration survives. This validates property grammar beyond CSS Syntax's
 /// generic consume-declaration algorithm and performs no contextual resolution.
 pub fn parse_declaration(source: &str) -> crate::CssParseReport<Option<CssDeclaration>> {
+    parse_declaration_with_context(source, crate::CssParserContext::default())
+}
+
+pub(crate) fn parse_declaration_with_context(
+    source: &str,
+    parser_context: crate::CssParserContext,
+) -> crate::CssParseReport<Option<CssDeclaration>> {
     bounded(source, || {
-        let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
+        let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default())
+            .with_parser_context(parser_context);
         let working_source = crate::tokenization::prepare(source);
         let mut parser_input = ParserInput::new(&working_source);
         let mut input = Parser::new(&mut parser_input);
@@ -114,6 +122,7 @@ pub fn parse_declaration(source: &str) -> crate::CssParseReport<Option<CssDeclar
                 &mut input,
                 &declaration_start,
                 state.source_snapshot(),
+                parser_context,
             )?;
             input.expect_exhausted()?;
             state.retain_component_closures(openings);
@@ -481,11 +490,25 @@ pub fn parse_property_value_text(
     property: CssPropertyNameRef<'_>,
     importance: CssImportance,
 ) -> crate::CssParseReport<Option<CssDeclaration>> {
+    parse_property_value_text_with_context(
+        source,
+        property,
+        importance,
+        crate::CssParserContext::default(),
+    )
+}
+
+pub(crate) fn parse_property_value_text_with_context(
+    source: &str,
+    property: CssPropertyNameRef<'_>,
+    importance: CssImportance,
+    parser_context: crate::CssParserContext,
+) -> crate::CssParseReport<Option<CssDeclaration>> {
     let grammar = match property {
         CssPropertyNameRef::Known(property) => PropertyValueGrammar::Known(property.grammar()),
         CssPropertyNameRef::Custom(name) => PropertyValueGrammar::Custom(name),
     };
-    property_value_text(source, grammar, importance)
+    property_value_text(source, grammar, importance, parser_context)
 }
 
 /// Parses a complete raw value with an explicit canonical or legacy grammar.
@@ -498,16 +521,37 @@ pub fn parse_property_value_text_for_grammar(
     grammar: CssPropertyGrammar,
     importance: CssImportance,
 ) -> crate::CssParseReport<Option<CssDeclaration>> {
-    property_value_text(source, PropertyValueGrammar::Known(grammar), importance)
+    parse_property_value_text_for_grammar_with_context(
+        source,
+        grammar,
+        importance,
+        crate::CssParserContext::default(),
+    )
+}
+
+pub(crate) fn parse_property_value_text_for_grammar_with_context(
+    source: &str,
+    grammar: CssPropertyGrammar,
+    importance: CssImportance,
+    parser_context: crate::CssParserContext,
+) -> crate::CssParseReport<Option<CssDeclaration>> {
+    property_value_text(
+        source,
+        PropertyValueGrammar::Known(grammar),
+        importance,
+        parser_context,
+    )
 }
 
 fn property_value_text(
     source: &str,
     grammar: PropertyValueGrammar<'_>,
     importance: CssImportance,
+    parser_context: crate::CssParserContext,
 ) -> crate::CssParseReport<Option<CssDeclaration>> {
     bounded(source, || {
-        let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
+        let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default())
+            .with_parser_context(parser_context);
         let working_source = crate::tokenization::prepare(source);
         let mut parser_input = ParserInput::new(&working_source);
         let mut input = Parser::new(&mut parser_input);
@@ -520,13 +564,18 @@ fn property_value_text(
                         source,
                         input,
                         &crate::numeric::NumericInputContext::parsed(state.source_snapshot()),
+                        parser_context,
                     )
                 })?;
             input.expect_exhausted()?;
             state.retain_component_closures(openings);
             state.retain_navigation_diagnostic(&body);
             Ok(CssDeclaration::new_parsed_value(
-                body, importance, components, origin,
+                parser_context,
+                body,
+                importance,
+                components,
+                origin,
             ))
         })();
         match result {
@@ -627,8 +676,17 @@ pub fn parse_rule(
     source: &str,
     context: &CssNamespaceContext,
 ) -> crate::CssParseReport<Option<CssRule>> {
+    parse_rule_with_context(source, context, crate::CssParserContext::default())
+}
+
+pub(crate) fn parse_rule_with_context(
+    source: &str,
+    context: &CssNamespaceContext,
+    parser_context: crate::CssParserContext,
+) -> crate::CssParseReport<Option<CssRule>> {
     bounded(source, || {
-        let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
+        let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default())
+            .with_parser_context(parser_context);
         if let Some(name) = &context.0.default {
             state.activate_namespace(None, name.clone());
         }
@@ -688,8 +746,17 @@ pub fn parse_style_block(
     source: &str,
     context: &CssNamespaceContext,
 ) -> crate::CssParseReport<Option<CssStyleBlock>> {
+    parse_style_block_with_context(source, context, crate::CssParserContext::default())
+}
+
+pub(crate) fn parse_style_block_with_context(
+    source: &str,
+    context: &CssNamespaceContext,
+    parser_context: crate::CssParserContext,
+) -> crate::CssParseReport<Option<CssStyleBlock>> {
     bounded(source, || {
-        let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
+        let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default())
+            .with_parser_context(parser_context);
         if let Some(name) = &context.0.default {
             state.activate_namespace(None, name.clone());
         }

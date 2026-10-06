@@ -158,6 +158,22 @@ fn construct<T: Send>(
     })
 }
 impl CssSupportsCondition {
+    pub(crate) fn try_from_components_in_context(
+        values: CssComponentValues,
+        namespaces: &CssNamespaceContext,
+        limits: CssComponentValueLimits,
+        parser_context: CssParserContext,
+    ) -> Result<Self, CssSupportsConstructionError> {
+        construct(values, |values| {
+            crate::parser::construct_supports_condition_with_context(
+                values,
+                namespaces,
+                limits,
+                parser_context,
+            )
+        })
+    }
+
     pub fn try_from_components(
         values: CssComponentValues,
         context: &CssNamespaceContext,

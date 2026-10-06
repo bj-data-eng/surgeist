@@ -2464,10 +2464,10 @@ contributes one property-coupled terminal through the shared expansion owner.
 The color declarations import the complete existing `CssColor` graph and its
 bounded specified provider, including the separately selected Color5, custom
 profile and device-color lanes. Color4 alone is not the source of those imports.
-The milestone catalog selects [Color4 CRD 2026-09-08](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/);
-the shared runtime source still identifies [CRD 2026-03-26](https://www.w3.org/TR/2026/CRD-css-color-4-20260326/).
-The relevant alpha grammar and opacity retention clauses agree; this authored
-property addition preserves the existing runtime provenance.
+The milestone catalog and shared runtime source select
+[Color4 CRD 2026-09-08](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/).
+The relevant alpha grammar and opacity retention clauses agree with the earlier
+March 26 publication. Color5 and other imported producers retain their own sources.
 
 Flood opacity uses the exact Number/Percentage/matching-calculation owner.
 It retains original scalar spelling, token kind, origins, checked AST and
@@ -8002,3 +8002,55 @@ return no partial CSS and leave retained operands/origins reusable. Specified
 math retains Values 4 wrappers and sorted symbolic units. Reference-box bases,
 matrix execution, computed/resolved values, perspective floors, used-value
 flattening and rendering/backface decisions belong to downstream owners.
+
+## Explicit document parser context
+
+`CssParserContext::new(CssParserMode::Quirks)` selects the authored document
+grammar. The default and existing free parsing functions use Standards. Context
+methods cover sheets, style attributes, single declarations, rules, style blocks,
+checked property-name/grammar components and their raw-text fronts. Namespace
+bindings remain a separate argument where selector grammar needs them. Reports
+retain normal browser recovery; `into_validation_result()` accepts only clean reports.
+
+Selected Color4 Appendix B permits quirky hexadecimal fallback only in color,
+background-color, border-color and the four physical border-color longhands.
+Ordinary Color grammar wins first. Direct physical border-color accepts one
+through four colors; ordinary logical-prefixed border-color remains supported,
+but that extension and separately named logical owners do not acquire quirky
+fallback. Referencing shorthands and every Color-function descendant use ordinary
+Color grammar. Converted values use the existing Hex Color and specified writer
+owners while declarations preserve original components, origins and importance.
+
+Integer number/dimension tokens keep their lexical Integer flag, serialize their
+exact integer value, append the raw unit spelling for dimensions and pad to six
+characters. Raw ident spelling must have three or six hexadecimal characters.
+For Rust-authored tokens, representation is the actual validated supplied or
+generated lexeme, without invented parsed spans. Selected raw spelling therefore
+rejects quirky-only escaped forms such as `\61 bc` and `12\61 bc`; frozen
+WebKit 73aa6c89 instead examines decoded ident/unit strings. Ordinary escaped
+named colors continue to use ordinary admission. This documented difference
+follows the selected source disposition rather than a decoded browser shortcut.
+
+Declaration occurrences retain their immutable parser context. Equality includes
+that context because pending reentry can observe its grammar; cloning retains
+occurrence identity and provenance. Pending handles reuse the original mode for
+replacement checks, including immutable failed/successful retry. Canonical
+converted output is ordinary Color syntax and can be parsed in Standards.
+
+Authored @supports rule conditions and children use document mode, including
+conditions parsed with `CssParserContext::parse_supports_condition`. The free
+`parse_css_supports_condition` and `parse_css_supports_declaration` functions
+model CSS.supports method syntax in mandatory Standards mode and accept no parser
+context. The condition overload first checks a complete condition, then checks
+implicit parentheses only after a grammar mismatch. Added punctuation has
+programmatic origin; its children retain their original argument source and
+positions. Recovered-input and component/resource errors are never retried as
+ordinary grammar mismatches.
+
+The property/value overload takes a literal property identifier without CSS
+whitespace, comment removal or escape processing. Root importance annotations
+are invalid method value syntax, even though the rule form permits them. These
+method syntax failures return `CssSupportsConstructionError` with the responsible
+original argument origin. Ordinary unsupported declarations still retain an
+authored test without a known typed view. Both arguments keep separate source
+snapshots. These APIs do not evaluate support or execute DOM operations.
