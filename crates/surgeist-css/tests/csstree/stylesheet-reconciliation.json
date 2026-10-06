@@ -2906,7 +2906,7 @@
           "code": "invalid_selector",
           "action": "drop_qualified_rule",
           "payload_relation": "intersects",
-          "byte_offset": 2,
+          "byte_offset": 1,
           "span_start": 0,
           "span_end": 4,
           "multiplicity": 1
@@ -2916,7 +2916,7 @@
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
         "Complete top-level curly block exists; selector grammar rejects malformed selector (or undeclared namespace). Consumed curly block is discarded. Interior responsible byte guarantees intersects regardless of precise selector error cursor.",
-        "Missing selector name error at bounded prelude end resolves through next_authored_token_at to opening curly in original source. is_bounded_end_token excludes opening curly, so responsible offset is authored opening curly, not whole-source EOF."
+        "The class dot requires an adjacent identifier. Its following authored whitespace token begins at byte 1; the class owner resets to that token's start and preserves its explicit Whitespace summary, preventing bounded-EOF token inference. The complete qualified rule is discarded with span 0..4."
       ],
       "uncertainties": []
     },

@@ -1,22 +1,33 @@
 //! Authored selector emission. Symbolic nesting and scope anchors stay symbolic.
 //! This provider owns selector grammar; enclosing rule formatting has a separate owner.
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
+use crate::syntax::CssSelectorGrammarContext;
 use crate::*;
 type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
 enum Event<'a> {
-    Selector(&'a CssSelector),
-    Compound(&'a CssCompoundSelector),
-    CompoundTail(&'a CssCompoundSelector, u8, usize),
-    ComplexParts(&'a [CssComplexSelectorPart], usize),
-    Pseudo(&'a CssPseudoClass),
-    Element(&'a CssPseudoElement),
+    Selector(&'a CssSelector, CssSelectorGrammarContext),
+    Compound(&'a CssCompoundSelector, CssSelectorGrammarContext),
+    CompoundTail(
+        &'a CssCompoundSelector,
+        u8,
+        usize,
+        CssSelectorGrammarContext,
+        bool,
+    ),
+    ComplexParts(
+        &'a [CssComplexSelectorPart],
+        usize,
+        CssSelectorGrammarContext,
+    ),
+    Pseudo(&'a CssPseudoClass, CssSelectorGrammarContext),
+    Element(&'a CssPseudoElement, CssSelectorGrammarContext),
     Attribute(&'a CssAttributeSelector),
-    List(&'a [CssSelector], usize),
-    RelativeList(&'a [CssRelativeSelector], usize),
+    List(&'a [CssSelector], usize, CssSelectorGrammarContext),
+    RelativeList(&'a [CssRelativeSelector], usize, CssSelectorGrammarContext),
     StyleList(&'a [CssStyleSelector], usize),
     ScopedStyleList(&'a [CssScopedStyleSelector], usize),
     ScopeList(&'a [CssScopeSelector], usize),
-    Relative(&'a CssRelativeSelector),
+    Relative(&'a CssRelativeSelector, CssSelectorGrammarContext),
     Text(&'a str),
     Nth(CssNthPattern),
 }
@@ -63,6 +74,8 @@ impl SpecifiedRuleWriter {
             (CssSelectorCombinator::NextSibling, false) => " + ",
             (CssSelectorCombinator::SubsequentSibling, true) => "~ ",
             (CssSelectorCombinator::SubsequentSibling, false) => " ~ ",
+            (CssSelectorCombinator::Column, true) => "|| ",
+            (CssSelectorCombinator::Column, false) => " || ",
         })
     }
 
@@ -87,7 +100,10 @@ impl SpecifiedRuleWriter {
         }
     }
     pub(crate) fn selector(&mut self, selector: &CssSelector) -> Result<()> {
-        self.selector_events(Event::Selector(selector))
+        self.selector_events(Event::Selector(
+            selector,
+            CssSelectorGrammarContext::ORDINARY,
+        ))
     }
 
     /// Each authored list charges one aggregate. Enum member carriers are
@@ -117,30 +133,46 @@ impl SpecifiedRuleWriter {
         while let Some(event) = work.pop() {
             match event {
                 Event::Text(value) => self.append(value)?,
-                Event::Selector(value) => match value {
-                    CssSelector::Tag(value) => {
-                        self.node()?;
-                        self.selector_identifier(value)?;
+                Event::Selector(value, grammar) => {
+                    if !grammar.admits_selector(value) {
+                        return Err(CssSpecifiedValueSerializationError::new(
+                            CssSpecifiedValueSerializationErrorKind::UnrepresentableValue,
+                        ));
                     }
-                    CssSelector::Key(value) => {
-                        self.node()?;
-                        self.append("#")?;
-                        self.selector_identifier(value)?;
+                    match value {
+                        CssSelector::Tag(value) => {
+                            self.node()?;
+                            self.selector_identifier(value)?;
+                        }
+                        CssSelector::Key(value) => {
+                            self.node()?;
+                            self.append("#")?;
+                            self.selector_identifier(value)?;
+                        }
+                        CssSelector::Class(value) => {
+                            self.node()?;
+                            self.append(".")?;
+                            self.selector_identifier(value)?;
+                        }
+                        CssSelector::PseudoClass(value) => {
+                            push(&mut work, Event::Pseudo(value, grammar))?
+                        }
+                        CssSelector::Compound(value) => {
+                            push(&mut work, Event::Compound(value, grammar))?
+                        }
+                        CssSelector::Complex(value) => {
+                            self.node()?;
+                            push(&mut work, Event::ComplexParts(value.rest(), 0, grammar))?;
+                            push(&mut work, Event::Compound(value.first(), grammar))?;
+                        }
                     }
-                    CssSelector::Class(value) => {
-                        self.node()?;
-                        self.append(".")?;
-                        self.selector_identifier(value)?;
+                }
+                Event::Compound(value, grammar) => {
+                    if !grammar.admits_compound(value) {
+                        return Err(CssSpecifiedValueSerializationError::new(
+                            CssSpecifiedValueSerializationErrorKind::UnrepresentableValue,
+                        ));
                     }
-                    CssSelector::PseudoClass(value) => push(&mut work, Event::Pseudo(value))?,
-                    CssSelector::Compound(value) => push(&mut work, Event::Compound(value))?,
-                    CssSelector::Complex(value) => {
-                        self.node()?;
-                        push(&mut work, Event::ComplexParts(value.rest(), 0))?;
-                        push(&mut work, Event::Compound(value.first()))?;
-                    }
-                },
-                Event::Compound(value) => {
                     self.node()?;
                     if let Some(name) = value.type_selector() {
                         self.node()?;
@@ -167,52 +199,66 @@ impl SpecifiedRuleWriter {
                         self.append(".")?;
                         self.selector_identifier(class)?;
                     }
-                    push(&mut work, Event::CompoundTail(value, 0, 0))?;
+                    push(&mut work, Event::CompoundTail(value, 0, 0, grammar, false))?;
                 }
-                Event::ComplexParts(parts, index) => {
+                Event::ComplexParts(parts, index, grammar) => {
                     if let Some(part) = parts.get(index) {
                         self.combinator(part.combinator(), false)?;
-                        push(&mut work, Event::ComplexParts(parts, index + 1))?;
-                        push(&mut work, Event::Compound(part.selector()))?;
+                        push(&mut work, Event::ComplexParts(parts, index + 1, grammar))?;
+                        push(&mut work, Event::Compound(part.selector(), grammar))?;
                     }
                 }
-                Event::CompoundTail(value, phase, index) => {
+                Event::CompoundTail(value, phase, index, grammar, mut element_backed) => {
                     let event = match phase {
                         0 => value.attributes().get(index).map(Event::Attribute),
-                        1 => value.pseudo_classes().get(index).map(Event::Pseudo),
+                        1 => value
+                            .pseudo_classes()
+                            .get(index)
+                            .map(|p| Event::Pseudo(p, grammar)),
                         2 => value
                             .pseudo_elements()
                             .and_then(|s| s.segments().get(index))
                             .map(|s| match s {
-                                CssPseudoElementSegment::PseudoElement(e) => Event::Element(e),
-                                CssPseudoElementSegment::PseudoClass(p) => Event::Pseudo(p),
+                                CssPseudoElementSegment::PseudoElement(e) => {
+                                    element_backed = e.is_element_backed();
+                                    Event::Element(e, grammar)
+                                }
+                                CssPseudoElementSegment::PseudoClass(p) => {
+                                    Event::Pseudo(p, grammar.suffix(element_backed))
+                                }
                             }),
                         _ => None,
                     };
                     if let Some(event) = event {
-                        push(&mut work, Event::CompoundTail(value, phase, index + 1))?;
+                        push(
+                            &mut work,
+                            Event::CompoundTail(value, phase, index + 1, grammar, element_backed),
+                        )?;
                         push(&mut work, event)?;
                     } else if phase < 2 {
-                        push(&mut work, Event::CompoundTail(value, phase + 1, 0))?;
+                        push(
+                            &mut work,
+                            Event::CompoundTail(value, phase + 1, 0, grammar, element_backed),
+                        )?;
                     }
                 }
 
-                Event::List(values, index) => {
+                Event::List(values, index, grammar) => {
                     if let Some(value) = values.get(index) {
                         if index != 0 {
                             self.append(", ")?;
                         }
-                        push(&mut work, Event::List(values, index + 1))?;
-                        push(&mut work, Event::Selector(value))?;
+                        push(&mut work, Event::List(values, index + 1, grammar))?;
+                        push(&mut work, Event::Selector(value, grammar))?;
                     }
                 }
-                Event::RelativeList(values, index) => {
+                Event::RelativeList(values, index, grammar) => {
                     if let Some(value) = values.get(index) {
                         if index != 0 {
                             self.append(", ")?;
                         }
-                        push(&mut work, Event::RelativeList(values, index + 1))?;
-                        push(&mut work, Event::Relative(value))?;
+                        push(&mut work, Event::RelativeList(values, index + 1, grammar))?;
+                        push(&mut work, Event::Relative(value, grammar))?;
                     }
                 }
                 Event::StyleList(values, index) => {
@@ -224,8 +270,12 @@ impl SpecifiedRuleWriter {
                         push(
                             &mut work,
                             match value {
-                                CssStyleSelector::Selector(value) => Event::Selector(value),
-                                CssStyleSelector::Relative(value) => Event::Relative(value),
+                                CssStyleSelector::Selector(value) => {
+                                    Event::Selector(value, CssSelectorGrammarContext::ORDINARY)
+                                }
+                                CssStyleSelector::Relative(value) => {
+                                    Event::Relative(value, CssSelectorGrammarContext::ORDINARY)
+                                }
                             },
                         )?;
                     }
@@ -239,8 +289,12 @@ impl SpecifiedRuleWriter {
                         push(
                             &mut work,
                             match value {
-                                CssScopedStyleSelector::Selector(value) => Event::Selector(value),
-                                CssScopedStyleSelector::Relative(value) => Event::Relative(value),
+                                CssScopedStyleSelector::Selector(value) => {
+                                    Event::Selector(value, CssSelectorGrammarContext::ORDINARY)
+                                }
+                                CssScopedStyleSelector::Relative(value) => {
+                                    Event::Relative(value, CssSelectorGrammarContext::ORDINARY)
+                                }
                             },
                         )?;
                     }
@@ -254,16 +308,20 @@ impl SpecifiedRuleWriter {
                         push(
                             &mut work,
                             match value {
-                                CssScopeSelector::Selector(value) => Event::Selector(value),
-                                CssScopeSelector::Relative(value) => Event::Relative(value),
+                                CssScopeSelector::Selector(value) => {
+                                    Event::Selector(value, CssSelectorGrammarContext::ORDINARY)
+                                }
+                                CssScopeSelector::Relative(value) => {
+                                    Event::Relative(value, CssSelectorGrammarContext::ORDINARY)
+                                }
                             },
                         )?;
                     }
                 }
-                Event::Relative(value) => {
+                Event::Relative(value, grammar) => {
                     self.node()?;
                     self.combinator(value.combinator(), true)?;
-                    push(&mut work, Event::Selector(value.selector()))?;
+                    push(&mut work, Event::Selector(value.selector(), grammar))?;
                 }
                 Event::Attribute(value) => {
                     self.node()?;
@@ -315,7 +373,12 @@ impl SpecifiedRuleWriter {
                         }
                     }
                 }
-                Event::Pseudo(value) => {
+                Event::Pseudo(value, grammar) => {
+                    if !grammar.admits_pseudo(value) {
+                        return Err(CssSpecifiedValueSerializationError::new(
+                            CssSpecifiedValueSerializationErrorKind::UnrepresentableValue,
+                        ));
+                    }
                     self.node()?;
                     match value {
                         CssPseudoClass::HostFunction(arg) | CssPseudoClass::HostContext(arg) => {
@@ -325,7 +388,10 @@ impl SpecifiedRuleWriter {
                                 ":host-context("
                             })?;
                             push(&mut work, Event::Text(")"))?;
-                            push(&mut work, Event::Compound(arg.compound()))?;
+                            push(
+                                &mut work,
+                                Event::Compound(arg.compound(), grammar.compound_arguments()),
+                            )?;
                         }
                         CssPseudoClass::Not(list)
                         | CssPseudoClass::Is(list)
@@ -336,12 +402,22 @@ impl SpecifiedRuleWriter {
                                 _ => ":where(",
                             })?;
                             push(&mut work, Event::Text(")"))?;
-                            push(&mut work, Event::List(list.selectors(), 0))?;
+                            push(
+                                &mut work,
+                                Event::List(list.selectors(), 0, grammar.logical_arguments()),
+                            )?;
                         }
                         CssPseudoClass::Has(list) => {
                             self.append(":has(")?;
                             push(&mut work, Event::Text(")"))?;
-                            push(&mut work, Event::RelativeList(list.selectors(), 0))?;
+                            push(
+                                &mut work,
+                                Event::RelativeList(
+                                    list.selectors(),
+                                    0,
+                                    grammar.relative_arguments(),
+                                ),
+                            )?;
                         }
                         CssPseudoClass::NthChild(pattern)
                         | CssPseudoClass::NthLastChild(pattern) => {
@@ -352,7 +428,14 @@ impl SpecifiedRuleWriter {
                             })?;
                             push(&mut work, Event::Text(")"))?;
                             if let Some(list) = pattern.selector_list() {
-                                push(&mut work, Event::List(list.selectors(), 0))?;
+                                push(
+                                    &mut work,
+                                    Event::List(
+                                        list.selectors(),
+                                        0,
+                                        grammar.independent_arguments(),
+                                    ),
+                                )?;
                                 push(&mut work, Event::Text(" of "))?;
                             }
                             push(&mut work, Event::Nth(pattern.pattern()))?;
@@ -420,13 +503,16 @@ impl SpecifiedRuleWriter {
                         CssPseudoClass::OutOfRange => self.append(":out-of-range")?,
                     }
                 }
-                Event::Element(value) => {
+                Event::Element(value, grammar) => {
                     self.node()?;
                     match value {
                         CssPseudoElement::Slotted(arg) => {
                             self.append("::slotted(")?;
                             push(&mut work, Event::Text(")"))?;
-                            push(&mut work, Event::Compound(arg.compound()))?;
+                            push(
+                                &mut work,
+                                Event::Compound(arg.compound(), grammar.compound_arguments()),
+                            )?;
                         }
                         CssPseudoElement::Part(list) => {
                             self.append("::part(")?;

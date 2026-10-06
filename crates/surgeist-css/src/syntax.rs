@@ -9521,8 +9521,8 @@ pub(crate) mod color;
 pub use color::*;
 
 mod selector;
-pub(crate) use selector::selector_is_valid_pseudo_suffix;
 pub use selector::*;
+pub(crate) use selector::{CssSelectorGrammarContext, selector_is_valid_pseudo_suffix};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]

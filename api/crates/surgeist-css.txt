@@ -4670,6 +4670,7 @@ pub surgeist_css::CssSelectorBinding::LeadingCombinator(surgeist_css::CssSelecto
 pub surgeist_css::CssSelectorBinding::ScopeAnchors
 #[non_exhaustive] pub enum surgeist_css::CssSelectorCombinator
 pub surgeist_css::CssSelectorCombinator::Child
+pub surgeist_css::CssSelectorCombinator::Column
 pub surgeist_css::CssSelectorCombinator::Descendant
 pub surgeist_css::CssSelectorCombinator::NextSibling
 pub surgeist_css::CssSelectorCombinator::SubsequentSibling

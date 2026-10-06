@@ -2046,7 +2046,7 @@
       "diagnostics": [
         {
           "error_code": "InvalidAtRulePrelude",
-          "error_byte_offset": 11,
+          "error_byte_offset": 12,
           "recovery_byte_span": [
             0,
             28

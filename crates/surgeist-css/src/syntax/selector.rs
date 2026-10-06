@@ -136,6 +136,8 @@ pub enum CssSelectorCombinator {
     Child,
     NextSibling,
     SubsequentSibling,
+    /// The authored `||` relationship between a column and its cells.
+    Column,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -750,53 +752,136 @@ impl CssPseudoElementSequence {
     }
 }
 
+/// Intrinsic authored grammar inherited by selector-function arguments. Matching
+/// and namespace resolution are separate from these structural restrictions.
+#[derive(Clone, Copy)]
+pub(crate) struct CssSelectorGrammarContext {
+    allow_pseudo_elements: bool,
+    allow_has: bool,
+    compound_only: bool,
+    pseudo_suffix: Option<bool>,
+}
+
+impl CssSelectorGrammarContext {
+    pub(crate) const ORDINARY: Self = Self {
+        allow_pseudo_elements: true,
+        allow_has: true,
+        compound_only: false,
+        pseudo_suffix: None,
+    };
+
+    pub(crate) fn logical_arguments(self) -> Self {
+        Self {
+            allow_pseudo_elements: false,
+            ..self
+        }
+    }
+
+    pub(crate) fn independent_arguments(self) -> Self {
+        Self {
+            allow_pseudo_elements: false,
+            compound_only: false,
+            pseudo_suffix: None,
+            ..self
+        }
+    }
+
+    pub(crate) fn compound_arguments(self) -> Self {
+        Self {
+            compound_only: true,
+            ..self.independent_arguments()
+        }
+    }
+
+    pub(crate) fn relative_arguments(self) -> Self {
+        Self {
+            allow_has: false,
+            ..self.independent_arguments()
+        }
+    }
+
+    pub(crate) fn suffix(self, element_backed: bool) -> Self {
+        Self {
+            pseudo_suffix: Some(element_backed),
+            ..self.compound_arguments()
+        }
+    }
+
+    pub(crate) fn admits_selector(self, selector: &CssSelector) -> bool {
+        match selector {
+            CssSelector::Tag(value) | CssSelector::Key(value) | CssSelector::Class(value) => {
+                self.pseudo_suffix.is_none() && !value.is_empty() && !value.contains('\0')
+            }
+            CssSelector::PseudoClass(_) => true,
+            CssSelector::Compound(compound) => self.admits_compound(compound),
+            CssSelector::Complex(_) => !self.compound_only && self.pseudo_suffix.is_none(),
+        }
+    }
+
+    pub(crate) fn admits_compound(self, compound: &CssCompoundSelector) -> bool {
+        (self.allow_pseudo_elements || !compound.has_pseudo_elements())
+            && (self.pseudo_suffix.is_none()
+                || (compound.type_selector().is_none()
+                    && compound.ids().is_empty()
+                    && compound.classes().is_empty()
+                    && compound.attributes().is_empty()
+                    && !compound.has_scope_anchor()
+                    && compound.nesting_selectors() == 0
+                    && !compound.has_pseudo_elements()
+                    && !compound.pseudo_classes().is_empty()))
+    }
+
+    pub(crate) fn admits_pseudo(self, pseudo: &CssPseudoClass) -> bool {
+        let logical = matches!(
+            pseudo,
+            CssPseudoClass::Not(_) | CssPseudoClass::Is(_) | CssPseudoClass::Where(_)
+        );
+        let suffix = self.pseudo_suffix != Some(false)
+            || logical
+            || matches!(
+                pseudo,
+                CssPseudoClass::Hover
+                    | CssPseudoClass::Active
+                    | CssPseudoClass::Focus
+                    | CssPseudoClass::FocusVisible
+                    | CssPseudoClass::FocusWithin
+            );
+        suffix
+            && match pseudo {
+                CssPseudoClass::Not(list) => !list.selectors().is_empty(),
+                CssPseudoClass::Has(_) => self.allow_has,
+                CssPseudoClass::NthChild(pattern) | CssPseudoClass::NthLastChild(pattern) => {
+                    pattern
+                        .selector_list()
+                        .is_none_or(|list| !list.selectors().is_empty())
+                }
+                _ => true,
+            }
+    }
+}
+
 pub(crate) fn selector_is_valid_pseudo_suffix(
     selector: &CssSelector,
     element_backed: bool,
     allow_has: bool,
 ) -> bool {
-    match selector {
-        CssSelector::PseudoClass(pseudo) => {
-            pseudo_is_valid_suffix(pseudo, element_backed, allow_has)
-        }
-        CssSelector::Compound(compound) => {
-            compound.type_selector().is_none()
-                && compound.ids().is_empty()
-                && compound.classes().is_empty()
-                && compound.attributes().is_empty()
-                && !compound.has_scope_anchor()
-                && compound.nesting_selectors() == 0
-                && !compound.has_pseudo_elements()
-                && !compound.pseudo_classes().is_empty()
-                && compound
-                    .pseudo_classes()
-                    .iter()
-                    .all(|pseudo| pseudo_is_valid_suffix(pseudo, element_backed, allow_has))
-        }
-        _ => false,
-    }
+    selector_is_valid_in_context(
+        selector,
+        CssSelectorGrammarContext {
+            allow_has,
+            ..CssSelectorGrammarContext::ORDINARY.suffix(element_backed)
+        },
+    )
 }
 
 fn pseudo_is_valid_suffix(pseudo: &CssPseudoClass, element_backed: bool, allow_has: bool) -> bool {
-    match pseudo {
-        CssPseudoClass::Not(list) | CssPseudoClass::Is(list) | CssPseudoClass::Where(list) => {
-            list.selectors().iter().all(|selector| {
-                selector_is_valid_pseudo_suffix(selector, element_backed, allow_has)
-            }) && (!matches!(pseudo, CssPseudoClass::Not(_)) || !list.selectors().is_empty())
-        }
-        _ => {
-            (element_backed
-                || matches!(
-                    pseudo,
-                    CssPseudoClass::Hover
-                        | CssPseudoClass::Active
-                        | CssPseudoClass::Focus
-                        | CssPseudoClass::FocusVisible
-                        | CssPseudoClass::FocusWithin
-                ))
-                && pseudo_is_valid_argument(pseudo, allow_has, false)
-        }
-    }
+    pseudo_is_valid_in_context(
+        pseudo,
+        CssSelectorGrammarContext {
+            allow_has,
+            ..CssSelectorGrammarContext::ORDINARY.suffix(element_backed)
+        },
+    )
 }
 
 fn selector_is_valid_argument(
@@ -804,68 +889,69 @@ fn selector_is_valid_argument(
     allow_has: bool,
     compound_only: bool,
 ) -> bool {
-    match selector {
-        CssSelector::Tag(value) | CssSelector::Key(value) | CssSelector::Class(value) => {
-            !value.is_empty() && !value.contains('\0')
-        }
-        CssSelector::PseudoClass(pseudo) => {
-            pseudo_is_valid_argument(pseudo, allow_has, compound_only)
-        }
-        CssSelector::Compound(compound) => {
-            compound_is_valid_argument(compound, allow_has, compound_only)
-        }
-        CssSelector::Complex(complex) => {
-            !compound_only
-                && compound_is_valid_argument(complex.first(), allow_has, false)
-                && complex
-                    .rest()
-                    .iter()
-                    .all(|part| compound_is_valid_argument(part.selector(), allow_has, false))
-        }
-    }
+    selector_is_valid_in_context(
+        selector,
+        CssSelectorGrammarContext {
+            allow_has,
+            compound_only,
+            ..CssSelectorGrammarContext::ORDINARY.logical_arguments()
+        },
+    )
 }
 
-fn compound_is_valid_argument(
-    compound: &CssCompoundSelector,
-    allow_has: bool,
-    compound_only: bool,
+fn selector_is_valid_in_context(
+    selector: &CssSelector,
+    context: CssSelectorGrammarContext,
 ) -> bool {
-    !compound.has_pseudo_elements()
+    context.admits_selector(selector)
+        && match selector {
+            CssSelector::Tag(_) | CssSelector::Key(_) | CssSelector::Class(_) => true,
+            CssSelector::PseudoClass(pseudo) => pseudo_is_valid_in_context(pseudo, context),
+            CssSelector::Compound(compound) => compound_is_valid_in_context(compound, context),
+            CssSelector::Complex(complex) => {
+                compound_is_valid_in_context(complex.first(), context)
+                    && complex
+                        .rest()
+                        .iter()
+                        .all(|part| compound_is_valid_in_context(part.selector(), context))
+            }
+        }
+}
+
+fn compound_is_valid_in_context(
+    compound: &CssCompoundSelector,
+    context: CssSelectorGrammarContext,
+) -> bool {
+    context.admits_compound(compound)
         && compound
             .pseudo_classes()
             .iter()
-            .all(|pseudo| pseudo_is_valid_argument(pseudo, allow_has, compound_only))
+            .all(|pseudo| pseudo_is_valid_in_context(pseudo, context))
 }
 
-fn pseudo_is_valid_argument(pseudo: &CssPseudoClass, allow_has: bool, compound_only: bool) -> bool {
-    match pseudo {
-        CssPseudoClass::HostFunction(argument) | CssPseudoClass::HostContext(argument) => {
-            compound_is_valid_argument(argument.compound(), allow_has, true)
+fn pseudo_is_valid_in_context(pseudo: &CssPseudoClass, context: CssSelectorGrammarContext) -> bool {
+    context.admits_pseudo(pseudo)
+        && match pseudo {
+            CssPseudoClass::HostFunction(argument) | CssPseudoClass::HostContext(argument) => {
+                compound_is_valid_in_context(argument.compound(), context.compound_arguments())
+            }
+            CssPseudoClass::Not(list) | CssPseudoClass::Is(list) | CssPseudoClass::Where(list) => {
+                list.selectors().iter().all(|selector| {
+                    selector_is_valid_in_context(selector, context.logical_arguments())
+                })
+            }
+            CssPseudoClass::Has(list) => list.selectors().iter().all(|relative| {
+                selector_is_valid_in_context(relative.selector(), context.relative_arguments())
+            }),
+            CssPseudoClass::NthChild(pattern) | CssPseudoClass::NthLastChild(pattern) => {
+                pattern.selector_list().is_none_or(|list| {
+                    list.selectors().iter().all(|selector| {
+                        selector_is_valid_in_context(selector, context.independent_arguments())
+                    })
+                })
+            }
+            _ => true,
         }
-        CssPseudoClass::Not(list) | CssPseudoClass::Is(list) | CssPseudoClass::Where(list) => {
-            list.selectors()
-                .iter()
-                .all(|selector| selector_is_valid_argument(selector, allow_has, compound_only))
-                && (!matches!(pseudo, CssPseudoClass::Not(_)) || !list.selectors().is_empty())
-        }
-        CssPseudoClass::Has(list) => {
-            allow_has
-                && list
-                    .selectors()
-                    .iter()
-                    .all(|relative| selector_is_valid_argument(relative.selector(), false, false))
-        }
-        CssPseudoClass::NthChild(pattern) | CssPseudoClass::NthLastChild(pattern) => {
-            pattern.selector_list().is_none_or(|list| {
-                !list.selectors().is_empty()
-                    && list
-                        .selectors()
-                        .iter()
-                        .all(|selector| selector_is_valid_argument(selector, allow_has, false))
-            })
-        }
-        _ => true,
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

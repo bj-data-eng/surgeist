@@ -252,10 +252,13 @@ fn parse_style_selector_with_options<'i, 't>(
         .map(CssStyleSelector::Relative),
         Ok(Token::Delim('|')) => {
             if matches!(input.next_including_whitespace(), Ok(Token::Delim('|'))) {
-                return Err(invalid_selector(
+                return parse_selector_after_leading_combinator_with_options(
                     input,
-                    "unsupported selector combinator `||`",
-                ));
+                    CssSelectorCombinator::Column,
+                    options,
+                    recovery,
+                )
+                .map(CssStyleSelector::Relative);
             }
             input.reset(&state);
             parse_rule_selector_with_options(input, options, recovery)
@@ -423,18 +426,13 @@ fn parse_selector_after_first_compound<'i, 't>(
                     recovery,
                 )?);
             }
-            Ok(Token::Delim('|'))
-                if !had_whitespace || {
-                    let next = input.state();
-                    let is_column = input.try_parse(|input| input.expect_delim('|')).is_ok();
-                    input.reset(&next);
-                    is_column
-                } =>
-            {
-                return Err(invalid_selector(
+            Ok(Token::Delim('|')) if input.try_parse(expect_adjacent_bar).is_ok() => {
+                rest.push(parse_complex_selector_part_with_options(
                     input,
-                    "unsupported selector combinator `||`",
-                ));
+                    CssSelectorCombinator::Column,
+                    options,
+                    recovery,
+                )?);
             }
             Ok(_) if had_whitespace => {
                 input.reset(&state);
@@ -510,14 +508,7 @@ fn parse_type_selector<'i, 't>(
     let (namespace, prefix, local_name) = match first {
         Token::Ident(prefix_or_name) => {
             let prefix_or_name = prefix_or_name.to_string();
-            let after_ident = input.state();
-            let separated = match input.next_including_whitespace() {
-                Ok(Token::Delim('|')) => true,
-                Ok(_) => false,
-                Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => false,
-                Err(error) => return Err(selector_basic(error)),
-            };
-            if separated {
+            if consume_namespace_separator(input)? {
                 let local_start = input.state();
                 let local_name = parse_qualified_local_name(input)?;
                 let Some(prefix) = recovery.named_namespace(&prefix_or_name) else {
@@ -533,7 +524,6 @@ fn parse_type_selector<'i, 't>(
                     local_name,
                 )
             } else {
-                input.reset(&after_ident);
                 (
                     recovery.unqualified_type_namespace(),
                     CssQualifiedNamePrefix::Unqualified,
@@ -542,15 +532,13 @@ fn parse_type_selector<'i, 't>(
             }
         }
         Token::Delim('*') => {
-            let after_star = input.state();
-            if matches!(input.next_including_whitespace(), Ok(Token::Delim('|'))) {
+            if consume_namespace_separator(input)? {
                 (
                     CssNamespaceConstraint::Any,
                     CssQualifiedNamePrefix::Any,
                     parse_qualified_local_name(input)?,
                 )
             } else {
-                input.reset(&after_star);
                 (
                     recovery.unqualified_type_namespace(),
                     CssQualifiedNamePrefix::Unqualified,
@@ -656,9 +644,7 @@ fn parse_compound_selector_model_with_options<'i, 't>(
         }
 
         if input.try_parse(|input| input.expect_delim('.')).is_ok() {
-            let class = input.expect_ident_cloned().map_err(selector_basic)?;
-            let class = class.to_string();
-            class_names.push(class);
+            class_names.push(parse_adjacent_class_name(input)?);
             continue;
         }
 
@@ -703,6 +689,10 @@ fn parse_compound_selector_model_with_options<'i, 't>(
                 id_names.push(key);
             }
             Ok(Token::Delim('|')) => {
+                if input.try_parse(expect_adjacent_bar).is_ok() {
+                    input.reset(&state);
+                    break;
+                }
                 return Err(invalid_selector(input, "unsupported selector namespace"));
             }
             Ok(token) => {
@@ -811,6 +801,59 @@ fn expect_adjacent_colon<'i>(
     match input.next_including_whitespace()?.clone() {
         Token::Colon => Ok(()),
         token => Err(input.new_basic_unexpected_token_error(token)),
+    }
+}
+
+fn expect_adjacent_bar<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<(), cssparser::BasicParseError<'i>> {
+    match input.next_including_whitespace()?.clone() {
+        Token::Delim('|') => Ok(()),
+        token => Err(input.new_basic_unexpected_token_error(token)),
+    }
+}
+
+/// A namespace separator is one adjacent bar, rather than the two-token column
+/// combinator. Leave both column tokens for the complex-selector provider.
+fn consume_namespace_separator<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<bool, ParseError<'i, Error>> {
+    let start = input.state();
+    match input.next_including_whitespace() {
+        Ok(Token::Delim('|')) => {
+            let after_bar = input.state();
+            let column = input.try_parse(expect_adjacent_bar).is_ok();
+            input.reset(if column { &start } else { &after_bar });
+            Ok(!column)
+        }
+        Ok(_) => {
+            input.reset(&start);
+            Ok(false)
+        }
+        Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
+            input.reset(&start);
+            Ok(false)
+        }
+        Err(error) => Err(selector_basic(error)),
+    }
+}
+
+fn parse_adjacent_class_name<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<String, ParseError<'i, Error>> {
+    loop {
+        let start = input.state();
+        match input.next_including_whitespace_and_comments().cloned() {
+            Ok(Token::Comment(_)) => continue,
+            Ok(Token::Ident(value)) => return Ok(value.to_string()),
+            Ok(token) => {
+                input.reset(&start);
+                return Err(selector_basic(
+                    input.new_basic_unexpected_token_error(token),
+                ));
+            }
+            Err(error) => return Err(selector_basic(error)),
+        }
     }
 }
 

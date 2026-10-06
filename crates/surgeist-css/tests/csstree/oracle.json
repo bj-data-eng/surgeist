@@ -2389,7 +2389,7 @@
           {
             "code": "invalid_at_rule_prelude",
             "action": "reject_input",
-            "byte_offset": 11,
+            "byte_offset": 12,
             "span_start": 0,
             "span_end": 28,
             "multiplicity": 1,
@@ -28858,7 +28858,7 @@
           {
             "code": "invalid_selector",
             "action": "drop_qualified_rule",
-            "byte_offset": 2,
+            "byte_offset": 1,
             "span_start": 0,
             "span_end": 4,
             "multiplicity": 1,

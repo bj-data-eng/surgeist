@@ -3151,7 +3151,7 @@ fn functional_selector_lists_accept_supported_complex_selectors() {
 #[test]
 fn functional_selector_lists_reject_invalid_entries_strictly() {
     assert!(parse_sheet(":is(.valid, .bad..selector) { color: black; }").is_err());
-    assert!(parse_sheet(":where(.valid, .col || .cell) { color: black; }").is_err());
+    assert!(parse_sheet(":where(.valid, .col ||) { color: black; }").is_err());
     assert!(parse_sheet(":not(.valid, ::before) { color: black; }").is_err());
     assert!(parse_sheet(":is(.valid,) { color: black; }").is_err());
 }
@@ -3187,7 +3187,7 @@ fn selector_argument_surface_accepts_full_supported_strict_forms() {
 fn selector_argument_surface_rejects_invalid_entries_without_recovery() {
     for css in [
         ":is(.valid, .bad..selector) { color: black; }",
-        ":where(.valid, .col || .cell) { color: black; }",
+        ":where(.valid, .col ||) { color: black; }",
         ":not(.valid, ::before) { color: black; }",
         ".card:has() { color: black; }",
         ".card:has(:has(.nested)) { color: black; }",
@@ -3340,9 +3340,9 @@ fn rejects_function_syntax_for_runtime_state_pseudo_classes() {
 }
 
 #[test]
-fn rejects_unsupported_relative_or_combinator_selector_forms() {
-    assert!(parse_sheet(".field:has(.col || .cell) { color: black; }").is_err());
-    assert!(parse_sheet(".field:has(|| .icon) { color: black; }").is_err());
+fn rejects_invalid_relative_or_combinator_selector_forms() {
+    assert!(parse_sheet(".field:has(.col ||) { color: black; }").is_err());
+    assert!(parse_sheet(".field:has(||) { color: black; }").is_err());
     assert!(parse_sheet(".field:has(::before) { color: black; }").is_err());
     assert!(parse_sheet(".field:has(| .icon) { color: black; }").is_err());
 }
@@ -3658,7 +3658,7 @@ fn nesting_rejects_unsupported_nested_selector_forms() {
     for (css, expects_selector_error) in [
         (".card { svg|a { color: black; } }", false),
         (".card { [svg|href] { color: black; } }", true),
-        (".card { .col || .cell { color: black; } }", true),
+        (".card { .col || { color: black; } }", true),
     ] {
         let error = parse_sheet(css).expect_err(css);
         if expects_selector_error {
@@ -3678,7 +3678,7 @@ fn keyframes_and_nesting_reject_browser_recovery_forms() {
         "@keyframes fade { from { @media screen { opacity: 0; } } }",
         "@keyframes fade { from { .nested { opacity: 0; } } }",
         ".card { svg|a { color: black; } }",
-        ".card { .col || .cell { color: black; } }",
+        ".card { .col || { color: black; } }",
         r#".card { @import url("theme.css"); }"#,
         r#".card { @font-face { font-family: Inter; src: url("inter.woff2"); } }"#,
         ".card { @keyframes fade { from { opacity: 0; } } }",
@@ -3718,7 +3718,7 @@ fn rejects_invalid_combinator_selectors() {
     assert!(parse_sheet("> .item { color: black; }").is_err());
     assert!(parse_sheet(".a > > .b { color: black; }").is_err());
     assert!(parse_sheet(".a > { color: black; }").is_err());
-    assert!(parse_sheet(".col || .cell { color: black; }").is_err());
+    assert!(parse_sheet(".col || { color: black; }").is_err());
     assert!(parse_sheet(".field:has(> > .icon) { color: black; }").is_err());
     assert!(parse_sheet(".field:has(.field > > .icon) { color: black; }").is_err());
 }
@@ -3929,7 +3929,7 @@ fn practical_pseudo_class_matrix_accepts_supported_and_rejects_unsupported_forms
         ":hover() { color: black; }",
         ":not() { color: black; }",
         ":nth-of-type(2n of .item) { color: black; }",
-        ".field:has(.col || .cell) { color: black; }",
+        ".field:has(.col ||) { color: black; }",
         ".field:has(:has(.nested)) { color: black; }",
         ".field:has(.valid, .bad..selector) { color: black; }",
         ".field:not(::before) { color: black; }",
@@ -6161,7 +6161,7 @@ fn advanced_css_surface_matrix_rejects_unsupported_forms() {
         r#"@import url("late.css"); .panel { color: black; } @import url("later.css");"#,
         ".field:has(::before) { color: black; }",
         "[svg|href] { color: black; }",
-        ".col || .cell { color: black; }",
+        ".col || { color: black; }",
         "@container scroll-state(stuck: top) trailing { .panel { color: black; } }",
     ];
 

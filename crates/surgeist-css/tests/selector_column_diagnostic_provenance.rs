@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
-//! Preserve the confirming second `|` diagnostic while disambiguating `||`
+//! Preserve the invalid right-hand token's diagnostic while disambiguating `||`
 //! from a descendant whose type selector has an explicit empty namespace.
-//! The established observable fixture supplies the second-delimiter origin;
+//! Column is admitted, but its required right compound cannot begin with `!`;
 //! Nesting 1 §3.1 requires ignoring the invalid child without losing its parent.
 
 use surgeist_css::{
@@ -32,16 +32,16 @@ fn rejected_column(source: &str) {
     };
     assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidSelector);
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropQualifiedRule);
-    // The second delimiter confirms `||`; the following class is valid syntax
-    // and must not become the reported token because lookahead consumed `|`.
-    let confirming_delimiter = source.find("||").unwrap() + 1;
-    assert_position(diagnostic.error().position(), source, confirming_delimiter);
+    // The pair is a valid Column relation. The actual `!` token cannot supply
+    // its required right compound; lookahead must preserve that token's origin.
+    let invalid_rhs = source.find('!').unwrap();
+    assert_position(diagnostic.error().position(), source, invalid_rhs);
     let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
         panic!("structured selector error");
     };
-    let encountered = detail.encountered().expect("confirming delimiter");
+    let encountered = detail.encountered().expect("invalid right-hand delimiter");
     assert_eq!(encountered.kind(), CssTokenKind::Delim);
-    assert_eq!(encountered.authored(), "|");
+    assert_eq!(encountered.authored(), "!");
     // Preserve the established nested recovery unit as well as its coordinates.
     assert_position(diagnostic.span().start(), source, source.find('&').unwrap());
     let inner_rule_end = source.rfind("} }").unwrap() + 1;
@@ -49,13 +49,13 @@ fn rejected_column(source: &str) {
 }
 
 #[test]
-fn unsupported_nested_column_reports_second_delimiter_and_retains_parent() {
-    rejected_column(".card { & || .title { color: red; } }");
+fn invalid_column_rhs_reports_responsible_delimiter_and_retains_parent() {
+    rejected_column(".card { & || ! { color: red; } }");
 }
 
 #[test]
-fn unsupported_nested_column_preserves_utf8_and_utf16_delimiter_coordinates() {
-    rejected_column("/*😀*/ .card { & || .title { color: red; } }");
+fn invalid_column_rhs_preserves_utf8_and_utf16_delimiter_coordinates() {
+    rejected_column("/*😀*/ .card { & || ! { color: red; } }");
 }
 
 #[test]

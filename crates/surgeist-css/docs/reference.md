@@ -4819,8 +4819,8 @@ and type selectors, all attribute matchers, repeated IDs and classes in order,
 the structural/UI/dynamic pseudo-class families, `:lang()`, all four
 combinators, and `::first-line`/`::first-letter`. The legacy single-colon
 spellings for `before`, `after`, `first-line`, and `first-letter` map to the same
-typed pseudo-elements. Selected extensions remain separately owned: attribute
-`i`/`s`, the existing extension-state and functional pseudo-classes, nesting and
+typed pseudo-elements. Selected extensions remain separately owned: the `||`
+column combinator, attribute `i`/`s`, the existing extension-state and functional pseudo-classes, nesting and
 scope, and the marker/selection/backdrop pseudo-element rows. Matching,
 specificity, cascade, namespace URI resolution, CSSOM serialization, and
 cross-crate lowering remain downstream exclusions.
@@ -5909,9 +5909,10 @@ programmatic structure does not invent source coordinates. Retained malformed
 media members cause an atomic serialization error.
 
 `@supports` conditions expose declaration tests, `not`/`and`/`or` grouping,
-complete Selectors 3 plus the selected existing selector extensions as the typed
+complete Selectors 3 plus the selected existing selector extensions, including
+the `||` column combinator, as the typed
 `selector()` subset, and exact balanced general-enclosed fallback syntax. The
-typed subset does not include `||`, unselected Selectors 4 pseudo-classes or
+typed subset does not include unselected Selectors 4 pseudo-classes or
 pseudo-elements, or syntax outside the named extension rows. Declaration tests
 preserve authored property/value text and importance;
 their optional known-declaration view is inspection data, not a declaration
@@ -6646,7 +6647,10 @@ rewritten by canonical output.
 Selector-qualified names permit comments but forbid whitespace within each name.
 Whitespace can separate complete compounds: `svg |leaf` contains an unqualified
 `svg` type followed by a descendant whose type has an explicit empty prefix.
-The unsupported column combinator `||` remains rejected. Strict hosts reject
+The selected `||` column combinator separates complete compounds, with adjacent
+bar tokens and optional surrounding CSS whitespace. Comments between the tokens
+do not introduce whitespace. `svg|col||svg|cell` retains two qualified names and
+one column relationship; `svg |leaf` remains a descendant relationship. Strict hosts reject
 undeclared prefixes; forgiving selector hosts can discard the invalid member.
 Ignored namespace declarations do not establish bindings.
 
@@ -8093,6 +8097,22 @@ and leaves the entire input available for retry. Evidence is in
 [`specified_rule_graph_contract.rs`](../tests/specified_rule_graph_contract.rs),
 [`specified_rule_provider_closure.rs`](../tests/specified_rule_provider_closure.rs)
 and [`specified_graph_composition_edges.rs`](../tests/specified_graph_composition_edges.rs).
+
+Selector output applies intrinsic grammar restrictions as part of its iterative
+traversal. Public logical lists cannot emit pseudo-element members; `:not()` and
+an nth `of` list must be nonempty, and a `:has()` argument cannot contain another
+`:has()` through logical, nth or shadow arguments. Invalid constructed graphs
+return `CssSpecifiedValueSerializationErrorKind::UnrepresentableValue` atomically.
+Logical arguments inherit compound and pseudo-element suffix restrictions.
+Selected shadow functions keep compound outer arguments and independent relative
+`:has()` arguments. Grammar checks share the syntax owner used by checked
+compound and suffix construction and add no extra semantic-node charge.
+Class syntax requires an adjacent identifier token after `.`, allowing comments
+but excluding the five CSS whitespace characters. The `Column` combinator emits
+` || ` between compounds and `|| ` at an admitted relative boundary, retaining
+symbolic parent and scope bindings. Focused evidence is in
+[`selector_structural_logical_contract.rs`](../tests/selector_structural_logical_contract.rs)
+and [`selector_column_lifecycle.rs`](../tests/selector_column_lifecycle.rs).
 
 
 ## Complete authored Transforms contribution

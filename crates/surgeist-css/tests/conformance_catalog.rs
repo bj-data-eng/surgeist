@@ -129,8 +129,8 @@ const BASELINE_RULE_REMAINDER: &str =
     "Other valid forms of the cited rule production are outside the I01 subset.";
 const SELECTOR_REMAINDER: &str =
     "Other valid forms of the cited Selectors production are outside the I01 subset.";
-const SUPPORTS_SELECTOR_SUBSET: &str = "selector() accepts complete Selectors 3 plus the selected I01 extensions: i and s attribute modifiers; :scope, :focus-visible, :focus-within, :required, :optional, :valid, :invalid, :placeholder-shown, :modal, :fullscreen, :popover-open, :default, :indeterminate, :read-only, :read-write, :in-range, and :out-of-range; :is(), :where(), :has(), selector-list :not(), and nth-child of lists; and ::marker, ::selection, ::backdrop, and generated-marker sequences. Directionality accepts one identifier and language accepts nonempty comma-separated identifier or string ranges. Required shadow definitions add :host, compound-argument :host() and :host-context(), ::slotted(), and identifier-list ::part(). Ordered pseudo-element suffixes retain contextual pseudo-classes and applicable tree-abiding transitions.";
-const SUPPORTS_SELECTOR_REMAINDER: &str = "The || combinator, unselected Selectors 4 pseudo-classes and pseudo-elements, and syntax outside those atomic extension rows remain outside the typed subset; balanced content is preserved as general-enclosed authored syntax.";
+const SUPPORTS_SELECTOR_SUBSET: &str = "selector() accepts complete Selectors 3 plus the selected I01 extensions: the || column combinator; i and s attribute modifiers; :scope, :focus-visible, :focus-within, :required, :optional, :valid, :invalid, :placeholder-shown, :modal, :fullscreen, :popover-open, :default, :indeterminate, :read-only, :read-write, :in-range, and :out-of-range; :is(), :where(), :has(), selector-list :not(), and nth-child of lists; and ::marker, ::selection, ::backdrop, and generated-marker sequences. Directionality accepts one identifier and language accepts nonempty comma-separated identifier or string ranges. Required shadow definitions add :host, compound-argument :host() and :host-context(), ::slotted(), and identifier-list ::part(). Ordered pseudo-element suffixes retain contextual pseudo-classes and applicable tree-abiding transitions.";
+const SUPPORTS_SELECTOR_REMAINDER: &str = "Unselected Selectors 4 pseudo-classes and pseudo-elements, and syntax outside those atomic extension rows remain outside the typed subset; balanced content is preserved as general-enclosed authored syntax.";
 const QUERY_REMAINDER: &str =
     "Other valid forms of the cited query production are outside the I01 subset.";
 const COLOR5_RELATIVE_SUBSET: &str = "Relative rgb()/rgba(), hsl()/hsla(), hwb(), lab(), lch(), oklab(), oklch(), predefined and custom-profile color(), and alpha() preserve authored channels and symbolic calculations.";
@@ -1839,7 +1839,7 @@ const EXPECTED: &[ExpectedFeature] = &[
         recognized_code: None,
         positive: Some(Input::Sheet(".card { & > .title { color: red; } }")),
         negative: Some((
-            Input::Sheet(".card { & || .title { color: red; } }"),
+            Input::Sheet(".card { & || ! { color: red; } }"),
             CssErrorCode::InvalidSelector,
         )),
     },
@@ -3354,7 +3354,7 @@ fn selectors3_and_namespace_metadata_are_truthful() {
         CssSupportsConditionKind::Selector(_)
     ));
 
-    let general_enclosed = parse_sheet("@supports selector(.x || .y) {}");
+    let general_enclosed = parse_sheet("@supports selector(.x ||) {}");
     assert!(
         general_enclosed.is_clean(),
         "balanced selector remainder: {:?}",
@@ -3366,7 +3366,7 @@ fn selectors3_and_namespace_metadata_are_truthful() {
     assert!(matches!(
         general_enclosed.condition().kind(),
         CssSupportsConditionKind::GeneralEnclosed(value)
-            if value.authored() == Some("selector(.x || .y)")
+            if value.authored() == Some("selector(.x ||)")
     ));
 
     let assert_complete = |id: &str, kind: CssFeatureKind, source: &str, production: &str| {
