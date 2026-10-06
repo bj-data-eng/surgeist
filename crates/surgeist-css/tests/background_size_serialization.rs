@@ -1,8 +1,15 @@
 #![forbid(unsafe_code)]
-//! Property-specific canonical size text follows CSSWG resolution 7802 (2025-04-01):
+//! Selected size-test policy: non-auto width retains effective auto height;
+//! auto/auto collapses to auto. Literal CSSWG resolution 7802 says two axes,
+//! so its auto/auto wording conflict remains explicit in Surgeist issue #895:
+//! https://github.com/bj-data-eng/surgeist/issues/895
 //! https://github.com/w3c/csswg-drafts/issues/7802#issuecomment-2770612154
-//! Independent examples: WebKit 73aa6c89e2cb77c46184a81aec944e4ab99d114d,
-//! LayoutTests/imported/w3c/web-platform-tests/css/css-backgrounds/parsing/background-size-valid.html.
+//! Independent expectations are both imported size tests at WebKit
+//! 73aa6c89e2cb77c46184a81aec944e4ab99d114d:
+//! LayoutTests/imported/w3c/web-platform-tests/css/css-backgrounds/parsing/background-size-valid.html
+//! LayoutTests/imported/w3c/web-platform-tests/css/css-masking/parsing/mask-size-valid.html
+//! That revision's authored mask omission parser conflicts with its size test;
+//! these expectations select the test policy, not unanimous engine behavior.
 
 use surgeist_css::{
     CssSpecifiedValueSerializationErrorKind as E, CssSpecifiedValueSerializationLimits as L, *,
@@ -206,12 +213,15 @@ fn auto_width_and_other_size_forms_keep_their_canonical_controls() {
         ("auto auto", "auto"),
         ("auto 4%", "auto 4%"),
         ("2% 3%", "2% 3%"),
+        ("1px 1px", "1px 1px"),
         ("cover", "cover"),
         ("contain", "contain"),
     ] {
-        let value = parsed("background-size", authored);
-        assert_eq!(value.serialize_specified().unwrap(), expected);
-        assert_eq!(value.sizes()[0].serialize_specified().unwrap(), expected);
+        for property in ["background-size", "mask-size"] {
+            let value = parsed(property, authored);
+            assert_eq!(value.serialize_specified().unwrap(), expected);
+            assert_eq!(value.sizes()[0].serialize_specified().unwrap(), expected);
+        }
     }
     let explicit_auto = CssBackgroundSize::Explicit {
         width: CssBackgroundSizeComponent::Auto,
