@@ -756,6 +756,13 @@ property_records! {
         dispatch: "black",
         wrapper: yes,
     }
+    ColorInterpolationFilters, "color-interpolation-filters" {
+        metadata: longhand(true, |v| assert_eq!(*v, CssColorInterpolationFilters::LinearRgb)),
+        catalog: grammar_catalog!("official.property.color-interpolation-filters", "sRGB", rejected("rgb"), "#ColorInterpolationFiltersProperty"),
+        source: "I-FILTER1",
+        dispatch: "sRGB",
+        wrapper: yes,
+    }
     ColorAdjust, "color-adjust" {
         metadata: shorthand([PrintColorAdjust], []),
         source: "R-COLORADJUST1",
@@ -979,6 +986,25 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.filter", "blur(4px) opacity(50%)", rejected("opacity(red)")),
         source: "I-FILTER1",
         dispatch: "blur(4px) opacity(50%)",
+        wrapper: yes,
+    }
+    FloodColor, "flood-color" {
+        metadata: longhand(false, |v| assert_eq!(v.named().unwrap().name(), "black")),
+        catalog: grammar_catalog!("official.property.flood-color", "color(display-p3 1 0 0)", rejected("black white"), "#FloodColorProperty"),
+        source: "I-FILTER1",
+        dispatch: "currentColor",
+        wrapper: yes,
+    }
+    FloodOpacity, "flood-opacity" {
+        metadata: longhand(false, |v| {
+            let CssOpacityValue::Scalar(value) = v else { panic!("initial alpha is a number") };
+            assert_eq!(value.kind(), CssOpacityScalarKind::Number);
+            assert_eq!(value.numeric().representation(), "1");
+            assert_eq!(value.origin(), &CssValueOrigin::Programmatic);
+        }),
+        catalog: grammar_catalog!("official.property.flood-opacity", "150%", rejected("none"), "#FloodOpacityProperty"),
+        source: "I-FILTER1",
+        dispatch: "-25%",
         wrapper: yes,
     }
     Flex, "flex" {
@@ -1546,6 +1572,13 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.letter-spacing", "0.1em", rejected("auto")),
         source: "X-TEXT4",
         dispatch: "0.1em",
+        wrapper: yes,
+    }
+    LightingColor, "lighting-color" {
+        metadata: longhand(false, |v| assert_eq!(v.named().unwrap().name(), "white")),
+        catalog: grammar_catalog!("official.property.lighting-color", "rgb(from red r g b)", rejected("white black"), "#LightingColorProperty"),
+        source: "I-FILTER1",
+        dispatch: "light-dark(red, blue)",
         wrapper: yes,
     }
     LineBreak, "line-break" {

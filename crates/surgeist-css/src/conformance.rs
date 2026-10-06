@@ -2743,7 +2743,11 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::PerspectiveOrigin
         | CssKnownProperty::TransformStyle
         | CssKnownProperty::BackfaceVisibility => I_TRANSFORMS2,
-        CssKnownProperty::Filter => I_FILTER1,
+        CssKnownProperty::Filter
+        | CssKnownProperty::FloodColor
+        | CssKnownProperty::FloodOpacity
+        | CssKnownProperty::LightingColor
+        | CssKnownProperty::ColorInterpolationFilters => I_FILTER1,
         CssKnownProperty::BackdropFilter => X_BACKDROP_FILTER,
         CssKnownProperty::Clip
         | CssKnownProperty::ClipPath
@@ -2894,7 +2898,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 743] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 747] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -6261,6 +6265,34 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 743] = [
         CssKnownProperty::Filter,
         "filter",
         "#propdef-filter",
+        &[],
+    ),
+    CssFeatureMetadata::complete_property(
+        "official.property.flood-color",
+        CssKnownProperty::FloodColor,
+        "flood-color",
+        "#FloodColorProperty",
+        &[],
+    ),
+    CssFeatureMetadata::complete_property(
+        "official.property.flood-opacity",
+        CssKnownProperty::FloodOpacity,
+        "flood-opacity",
+        "#FloodOpacityProperty",
+        &[],
+    ),
+    CssFeatureMetadata::complete_property(
+        "official.property.lighting-color",
+        CssKnownProperty::LightingColor,
+        "lighting-color",
+        "#LightingColorProperty",
+        &[],
+    ),
+    CssFeatureMetadata::complete_property(
+        "official.property.color-interpolation-filters",
+        CssKnownProperty::ColorInterpolationFilters,
+        "color-interpolation-filters",
+        "#ColorInterpolationFiltersProperty",
         &[],
     ),
     CssFeatureMetadata::complete_property(

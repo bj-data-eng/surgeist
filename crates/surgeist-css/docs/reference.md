@@ -2429,6 +2429,71 @@ let functions = CssFilterFunctionList::try_new(vec![CssFilterFunction::HueRotate
 assert_eq!(CssFilter::Functions(functions).serialize_specified().unwrap(), "hue-rotate()");
 ```
 
+### Authored SVG filter color properties
+
+The selected [Filter Effects 1 WD 2018-12-18](https://www.w3.org/TR/2018/WD-filter-effects-1-20181218/)
+defines these four authored CSS longhands. Their support records use `I-FILTER1`
+and the exact property fragments; Complete refers to the authored CSS grammar
+and intrinsic lifecycle.
+
+| Property | Ordinary value | Intrinsic initial | Inherits | Selected downstream contract |
+| --- | --- | --- | --- | --- |
+| [flood-color](https://www.w3.org/TR/2018/WD-filter-effects-1-20181218/#FloodColorProperty) | `CssColor` | black | no | computed as specified; by computed value animation; feFlood/feDropShadow |
+| [flood-opacity](https://www.w3.org/TR/2018/WD-filter-effects-1-20181218/#FloodOpacityProperty) | `CssOpacityValue` | 1 | no | computed number clamped to [0,1]; by computed value animation; feFlood/feDropShadow |
+| [lighting-color](https://www.w3.org/TR/2018/WD-filter-effects-1-20181218/#LightingColorProperty) | `CssColor` | white | no | computed as specified; by computed value animation; feDiffuseLighting/feSpecularLighting |
+| [color-interpolation-filters](https://www.w3.org/TR/2018/WD-filter-effects-1-20181218/#ColorInterpolationFiltersProperty) | `CssColorInterpolationFilters` | linearRGB | yes | computed as specified; nonanimatable; all SVG filter primitives |
+
+All four are visual properties and SVG presentation attributes. Their CSS-owned
+models do not adapt SVG attributes, select applicable elements, compute values,
+animate or execute filters/lighting. Filter1 §2 requires SVG implementation for
+user agents implementing these properties; authored grammar support does not
+establish that complete user-agent contract. Section 3 expressly admits inherit;
+the separately selected CSS foundations own the other CSS-wide keywords,
+symbolic `all`, pending substitution, strict original-component closure,
+grammar reentry, provenance and ordered normalization. Each declaration
+contributes one property-coupled terminal through the shared expansion owner.
+
+The color declarations import the complete existing `CssColor` graph and its
+bounded specified provider, including the separately selected Color5, custom
+profile and device-color lanes. Color4 alone is not the source of those imports.
+The milestone catalog selects [Color4 CRD 2026-09-08](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/);
+the shared runtime source still identifies [CRD 2026-03-26](https://www.w3.org/TR/2026/CRD-css-color-4-20260326/).
+The relevant alpha grammar and opacity retention clauses agree; this authored
+property addition preserves the existing runtime provenance.
+
+Flood opacity uses the exact Number/Percentage/matching-calculation owner.
+It retains original scalar spelling, token kind, origins, checked AST and
+unresolved percentage hints. Ordinary negative and above-one values remain
+valid authored values: Filter1 assigns its clamp to computed value processing.
+Color4's parsed alpha-component clamp belongs to an alpha component of a color,
+and does not clamp this standalone property. Modern-color `none` is not an
+alternative here. Direct incompatible Number-plus-Percentage sums reject;
+dimensionally matching calculations retain the shared numeric typing policy.
+
+The composed specified provider deliberately reuses ordinary opacity emission:
+`150%` emits `1.5`, `-25%` emits `-0.25`, while percentage calculations keep their
+calculation grammar (`calc(25% + 25%)` emits `calc(50%)`). This composition is
+corroborated by the [frozen WebKit property grammar](https://raw.githubusercontent.com/WebKit/WebKit/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/CSSProperties.json),
+which imports `<opacity-value>` for flood-opacity. Color4's opacity-specific
+serialization clause alone is not asserted to govern every alpha property.
+The shared numeric precision, exact retention, projection and cumulative tariffs
+remain unchanged. No authored clamp or contextual percentage basis is introduced.
+
+`CssColorInterpolationFilters` is a closed authored choice with `Auto`, `Srgb`
+and `LinearRgb`; its default is the property initial `LinearRgb`. Auto permits
+either space and remains distinct from the explicit choices. Keywords parse
+ASCII-case-insensitively under Values4 and emit `auto`, `srgb`, `linearrgb` under
+[CSSOM WD 2021-08-26 §6.7.2](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serializing-css-values).
+The selected property does not affect CSS filter functions or feOffset, feImage,
+feTile or feFlood operations. Filter1's nonanimation contract remains selected
+despite the frozen WebKit source's later discrete animation metadata.
+
+All three providers compose under the declaration/sheet writer's single atomic
+input, projection and UTF-8 byte budget. An interpolation keyword costs one
+input and projection node; property/name carriers add their existing two nodes.
+The Color and numeric children keep their existing tariffs without a new wrapper
+charge. Failure exposes no partial CSS or mutation and permits a fresh retry.
+
 ### Authored clipping shapes
 
 The authored `clip-path` grammar follows

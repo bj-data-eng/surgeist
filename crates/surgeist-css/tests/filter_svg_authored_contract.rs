@@ -374,12 +374,17 @@ fn large_and_tiny_flood_scalars_retain_original_tokens_and_parsed_origins() {
                 _ => panic!("numeric kind preserved"),
             };
             assert_eq!(number.representation(), text.trim_end_matches('%'));
-            if let CssValueOrigin::Parsed(origin) = component.origin() {
-                assert!(
-                    origin
-                        .source()
-                        .same_snapshot(source.parsed_value().unwrap().source())
-                );
+            let CssValueOrigin::Parsed(origin) = component.origin() else {
+                panic!("the original numeric token retains parsed provenance")
+            };
+            if let Some(value_origin) = source.parsed_value() {
+                assert!(origin.source().same_snapshot(value_origin.source()));
+            } else {
+                // Checked declarations retain parsed child tokens but have no
+                // parsed declaration occurrence of their own.
+                assert_eq!(origin.source().as_str(), text);
+                assert!(source.position().is_none());
+                assert!(source.parsed_name().is_none());
             }
             let values = completed(&source);
             assert!(matches!(

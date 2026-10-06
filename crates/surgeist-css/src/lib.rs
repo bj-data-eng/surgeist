@@ -474,6 +474,15 @@
 //! normalization or clamping. The backdrop source selects only the named property
 //! in an immutable exploring draft, with its Level 1 dependency pinned to the
 //! selected 2018 publication. It does not select the complete Level 2 module.
+//! The four authored SVG filter declarations are also complete CSS grammars:
+//! `flood-color` and `lighting-color` reuse [`CssColor`], while `flood-opacity`
+//! reuses the exact [`CssOpacityValue`] without authored range clamping.
+//! [`CssColorInterpolationFilters`] distinguishes `Auto`, `Srgb` and `LinearRgb`
+//! and emits lowercase specified keywords. Their intrinsic initials are black,
+//! 1, white and linearRGB respectively; only color-interpolation-filters inherits.
+//! SVG presentation attributes, applicability, computed opacity clamping and
+//! filter/lighting execution remain downstream. The selected Filter1 property
+//! is nonanimatable; this enum does not select a CSS filter-function color policy.
 //!
 //! ```
 //! use surgeist_css::{CssFilter, CssFilterFunction, CssFilterFunctionList, CssFilterHueRotate};

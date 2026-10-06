@@ -2,12 +2,13 @@
 //! This adds no grammar alternatives or computed-value behavior.
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::{
-    CssBackfaceVisibility, CssBlendMode, CssImageRendering, CssIsolation, CssLineBreak,
-    CssObjectFit, CssPointerEvents, CssResize, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits, CssTextDecorationStyle, CssTextTransform,
-    CssTextTransformCase, CssTextWrap, CssTextWrapMode, CssTextWrapStyle, CssTransformBox,
-    CssTransformStyle, CssUserSelect, CssWhiteSpace, CssWhiteSpaceCollapse, CssWhiteSpaceKeyword,
-    CssWhiteSpaceTrim, CssWordBreak, CssWordSpaceTransform, CssWrapBoundary, CssWrapInside,
+    CssBackfaceVisibility, CssBlendMode, CssColorInterpolationFilters, CssImageRendering,
+    CssIsolation, CssLineBreak, CssObjectFit, CssPointerEvents, CssResize,
+    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
+    CssTextDecorationStyle, CssTextTransform, CssTextTransformCase, CssTextWrap, CssTextWrapMode,
+    CssTextWrapStyle, CssTransformBox, CssTransformStyle, CssUserSelect, CssWhiteSpace,
+    CssWhiteSpaceCollapse, CssWhiteSpaceKeyword, CssWhiteSpaceTrim, CssWordBreak,
+    CssWordSpaceTransform, CssWrapBoundary, CssWrapInside,
 };
 
 type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
@@ -51,6 +52,7 @@ macro_rules! enum_keywords {
 }
 
 enum_keywords!(CssTextWrapMode, Wrap => "wrap", NoWrap => "nowrap");
+enum_keywords!(CssColorInterpolationFilters, Auto => "auto", Srgb => "srgb", LinearRgb => "linearrgb");
 enum_keywords!(CssTextWrapStyle,
     Auto => "auto", Balance => "balance", Stable => "stable", Pretty => "pretty",
     AvoidShortLastLine => "avoid-short-last-line",

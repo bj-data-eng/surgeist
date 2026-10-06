@@ -8417,6 +8417,20 @@ pub enum CssBackfaceVisibility {
     Hidden,
 }
 
+/// Authored color-space selection for SVG filter primitives.
+///
+/// `Auto` remains distinct from either explicit color space. Contextual selection,
+/// filter execution and animation belong downstream; this property does not
+/// change the color space of CSS filter functions.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssColorInterpolationFilters {
+    Auto,
+    Srgb,
+    #[default]
+    LinearRgb,
+}
+
 /// The optional authored amount accepted by a filter amount function.
 #[derive(Clone, Debug)]
 #[non_exhaustive]

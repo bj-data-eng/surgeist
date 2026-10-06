@@ -553,6 +553,13 @@ pub surgeist_css::CssColorHue::AngleCalculation(surgeist_css::CssAngleCalculatio
 pub surgeist_css::CssColorHue::None
 pub surgeist_css::CssColorHue::Number(surgeist_css::CssColorNumberLiteral)
 pub surgeist_css::CssColorHue::NumberCalculation(surgeist_css::CssNumberCalculation)
+#[non_exhaustive] pub enum surgeist_css::CssColorInterpolationFilters
+pub surgeist_css::CssColorInterpolationFilters::Auto
+pub surgeist_css::CssColorInterpolationFilters::LinearRgb
+pub surgeist_css::CssColorInterpolationFilters::Srgb
+impl surgeist_css::CssColorInterpolationFilters
+pub fn surgeist_css::CssColorInterpolationFilters::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssColorInterpolationFilters::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssColorInterpolationMethodConstructionError
 pub surgeist_css::CssColorInterpolationMethodConstructionError::HueRequiresPolarSpace
 impl core::error::Error for surgeist_css::CssColorInterpolationMethodConstructionError
@@ -2268,6 +2275,7 @@ pub surgeist_css::CssKnownProperty::ClipPath
 pub surgeist_css::CssKnownProperty::ClipRule
 pub surgeist_css::CssKnownProperty::Color
 pub surgeist_css::CssKnownProperty::ColorAdjust
+pub surgeist_css::CssKnownProperty::ColorInterpolationFilters
 pub surgeist_css::CssKnownProperty::ColorScheme
 pub surgeist_css::CssKnownProperty::ColumnCount
 pub surgeist_css::CssKnownProperty::ColumnFill
@@ -2309,6 +2317,8 @@ pub surgeist_css::CssKnownProperty::FlexGrow
 pub surgeist_css::CssKnownProperty::FlexShrink
 pub surgeist_css::CssKnownProperty::FlexWrap
 pub surgeist_css::CssKnownProperty::Float
+pub surgeist_css::CssKnownProperty::FloodColor
+pub surgeist_css::CssKnownProperty::FloodOpacity
 pub surgeist_css::CssKnownProperty::FlowTolerance
 pub surgeist_css::CssKnownProperty::Font
 pub surgeist_css::CssKnownProperty::FontFamily
@@ -2386,6 +2396,7 @@ pub surgeist_css::CssKnownProperty::JustifyItems
 pub surgeist_css::CssKnownProperty::JustifySelf
 pub surgeist_css::CssKnownProperty::Left
 pub surgeist_css::CssKnownProperty::LetterSpacing
+pub surgeist_css::CssKnownProperty::LightingColor
 pub surgeist_css::CssKnownProperty::LineBreak
 pub surgeist_css::CssKnownProperty::LineHeight
 pub surgeist_css::CssKnownProperty::LinePadding
@@ -2711,6 +2722,7 @@ pub surgeist_css::CssKnownPropertyValueRef::ClipPath(&'a surgeist_css::CssClipPa
 pub surgeist_css::CssKnownPropertyValueRef::ClipRule(&'a surgeist_css::CssClipRulePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Color(&'a surgeist_css::CssColorPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ColorAdjust(&'a surgeist_css::CssColorAdjustPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ColorInterpolationFilters(&'a surgeist_css::CssColorInterpolationFiltersPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ColorScheme(&'a surgeist_css::CssColorSchemePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ColumnCount(&'a surgeist_css::CssColumnCountPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ColumnFill(&'a surgeist_css::CssColumnFillPropertyValue)
@@ -2752,6 +2764,8 @@ pub surgeist_css::CssKnownPropertyValueRef::FlexGrow(&'a surgeist_css::CssFlexGr
 pub surgeist_css::CssKnownPropertyValueRef::FlexShrink(&'a surgeist_css::CssFlexShrinkPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::FlexWrap(&'a surgeist_css::CssFlexWrapPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Float(&'a surgeist_css::CssFloatPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::FloodColor(&'a surgeist_css::CssFloodColorPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::FloodOpacity(&'a surgeist_css::CssFloodOpacityPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::FlowTolerance(&'a surgeist_css::CssFlowTolerancePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Font(&'a surgeist_css::CssFontPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::FontFamily(&'a surgeist_css::CssFontFamilyPropertyValue)
@@ -2829,6 +2843,7 @@ pub surgeist_css::CssKnownPropertyValueRef::JustifyItems(&'a surgeist_css::CssJu
 pub surgeist_css::CssKnownPropertyValueRef::JustifySelf(&'a surgeist_css::CssJustifySelfPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Left(&'a surgeist_css::CssLeftPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::LetterSpacing(&'a surgeist_css::CssLetterSpacingPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::LightingColor(&'a surgeist_css::CssLightingColorPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::LineBreak(&'a surgeist_css::CssLineBreakPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::LineHeight(&'a surgeist_css::CssLineHeightPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::LinePadding(&'a surgeist_css::CssLinePaddingPropertyValue)
@@ -3231,6 +3246,7 @@ pub surgeist_css::CssLonghandValueRef::Clip(&'a surgeist_css::CssClip)
 pub surgeist_css::CssLonghandValueRef::ClipPath(&'a surgeist_css::CssClipPath)
 pub surgeist_css::CssLonghandValueRef::ClipRule(&'a surgeist_css::CssClipRule)
 pub surgeist_css::CssLonghandValueRef::Color(&'a surgeist_css::CssColor)
+pub surgeist_css::CssLonghandValueRef::ColorInterpolationFilters(&'a surgeist_css::CssColorInterpolationFilters)
 pub surgeist_css::CssLonghandValueRef::ColorScheme(&'a surgeist_css::CssColorScheme)
 pub surgeist_css::CssLonghandValueRef::ColumnCount(&'a surgeist_css::CssColumnCount)
 pub surgeist_css::CssLonghandValueRef::ColumnFill(&'a surgeist_css::CssColumnFill)
@@ -3265,6 +3281,8 @@ pub surgeist_css::CssLonghandValueRef::FlexGrow(&'a surgeist_css::CssSpecifiedNo
 pub surgeist_css::CssLonghandValueRef::FlexShrink(&'a surgeist_css::CssSpecifiedNonNegativeNumber)
 pub surgeist_css::CssLonghandValueRef::FlexWrap(&'a surgeist_css::CssFlexWrap)
 pub surgeist_css::CssLonghandValueRef::Float(&'a surgeist_css::CssFloat)
+pub surgeist_css::CssLonghandValueRef::FloodColor(&'a surgeist_css::CssColor)
+pub surgeist_css::CssLonghandValueRef::FloodOpacity(&'a surgeist_css::CssOpacityValue)
 pub surgeist_css::CssLonghandValueRef::FlowTolerance(&'a surgeist_css::CssFlowTolerance)
 pub surgeist_css::CssLonghandValueRef::FontFamily(&'a surgeist_css::CssFontFamilyList)
 pub surgeist_css::CssLonghandValueRef::FontFeatureSettings(&'a surgeist_css::CssAuthoredFontFeatureSettings)
@@ -3328,6 +3346,7 @@ pub surgeist_css::CssLonghandValueRef::JustifyItems(&'a surgeist_css::CssJustify
 pub surgeist_css::CssLonghandValueRef::JustifySelf(&'a surgeist_css::CssJustifySelfValue)
 pub surgeist_css::CssLonghandValueRef::Left(&'a surgeist_css::CssInsetValue)
 pub surgeist_css::CssLonghandValueRef::LetterSpacing(&'a surgeist_css::CssTextSpacingAdjustment)
+pub surgeist_css::CssLonghandValueRef::LightingColor(&'a surgeist_css::CssColor)
 pub surgeist_css::CssLonghandValueRef::LineBreak(&'a surgeist_css::CssLineBreak)
 pub surgeist_css::CssLonghandValueRef::LineHeight(&'a surgeist_css::CssLineHeight)
 pub surgeist_css::CssLonghandValueRef::LinePadding(&'a surgeist_css::CssSpecifiedLength)
@@ -6484,6 +6503,10 @@ pub fn surgeist_css::CssColorInterpolation::custom(name: surgeist_css::CssColorP
 pub fn surgeist_css::CssColorInterpolation::custom_profile(&self) -> core::option::Option<&surgeist_css::CssColorProfileName>
 pub const fn surgeist_css::CssColorInterpolation::from_predefined(method: surgeist_css::CssColorInterpolationMethod) -> Self
 pub fn surgeist_css::CssColorInterpolation::predefined(&self) -> core::option::Option<surgeist_css::CssColorInterpolationMethod>
+pub struct surgeist_css::CssColorInterpolationFiltersPropertyValue
+impl surgeist_css::CssColorInterpolationFiltersPropertyValue
+pub fn surgeist_css::CssColorInterpolationFiltersPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssColorInterpolationFiltersPropertyValue::value(&self) -> &surgeist_css::CssColorInterpolationFilters
 pub struct surgeist_css::CssColorInterpolationMethod
 impl surgeist_css::CssColorInterpolationMethod
 pub const fn surgeist_css::CssColorInterpolationMethod::effective_hue(&self) -> core::option::Option<surgeist_css::CssHueInterpolationMethod>
@@ -7521,6 +7544,14 @@ pub struct surgeist_css::CssFloatPropertyValue
 impl surgeist_css::CssFloatPropertyValue
 pub fn surgeist_css::CssFloatPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssFloatPropertyValue::value(&self) -> &surgeist_css::CssFloat
+pub struct surgeist_css::CssFloodColorPropertyValue
+impl surgeist_css::CssFloodColorPropertyValue
+pub fn surgeist_css::CssFloodColorPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssFloodColorPropertyValue::value(&self) -> &surgeist_css::CssColor
+pub struct surgeist_css::CssFloodOpacityPropertyValue
+impl surgeist_css::CssFloodOpacityPropertyValue
+pub fn surgeist_css::CssFloodOpacityPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssFloodOpacityPropertyValue::value(&self) -> &surgeist_css::CssOpacityValue
 pub struct surgeist_css::CssFlowTolerance
 impl surgeist_css::CssFlowTolerance
 pub const fn surgeist_css::CssFlowTolerance::as_ref(&self) -> surgeist_css::CssFlowToleranceRef<'_>
@@ -8793,6 +8824,10 @@ impl surgeist_css::CssLightDarkImage
 pub const fn surgeist_css::CssLightDarkImage::dark(&self) -> &surgeist_css::CssImageValue
 pub const fn surgeist_css::CssLightDarkImage::light(&self) -> &surgeist_css::CssImageValue
 pub fn surgeist_css::CssLightDarkImage::try_new(light: surgeist_css::CssImageValue, dark: surgeist_css::CssImageValue) -> core::result::Result<Self, surgeist_css::CssImageConstructionError>
+pub struct surgeist_css::CssLightingColorPropertyValue
+impl surgeist_css::CssLightingColorPropertyValue
+pub fn surgeist_css::CssLightingColorPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssLightingColorPropertyValue::value(&self) -> &surgeist_css::CssColor
 pub struct surgeist_css::CssLineBreakPropertyValue
 impl surgeist_css::CssLineBreakPropertyValue
 pub fn surgeist_css::CssLineBreakPropertyValue::as_css(&self) -> &str

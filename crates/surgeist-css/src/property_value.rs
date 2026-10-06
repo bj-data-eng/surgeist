@@ -96,7 +96,11 @@ fn is_time_property(property: crate::CssKnownProperty) -> bool {
 fn requires_closed_components(property: crate::CssKnownProperty) -> bool {
     matches!(
         property,
-        crate::CssKnownProperty::Transform
+        crate::CssKnownProperty::FloodColor
+            | crate::CssKnownProperty::FloodOpacity
+            | crate::CssKnownProperty::LightingColor
+            | crate::CssKnownProperty::ColorInterpolationFilters
+            | crate::CssKnownProperty::Transform
             | crate::CssKnownProperty::TransformBox
             | crate::CssKnownProperty::TransformOrigin
             | crate::CssKnownProperty::Translate

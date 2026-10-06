@@ -110,6 +110,15 @@ providers under one cumulative budget without clamping amounts or resolving
 symbolic values. The backdrop source selects only the named authored property,
 not the complete Filter Effects 2 module or its execution behavior.
 
+The four authored SVG filter declarations have complete CSS grammar support.
+`flood-color` and `lighting-color` reuse the complete symbolic `CssColor` owner;
+`flood-opacity` reuses exact `CssOpacityValue`, retaining negative and above-one
+authored values. `CssColorInterpolationFilters` keeps auto, sRGB and linearRGB
+distinct and emits lowercase specified keywords. Their intrinsic initials are
+black, 1, white and linearRGB; only color-interpolation-filters inherits.
+SVG attributes, computed clamping, applicability and filter execution remain
+downstream. See the [property reference](docs/reference.md#authored-svg-filter-color-properties).
+
 The authored `font-synthesis` shorthand accepts nonrepeated `weight`, `style`,
 `small-caps`, and `position` capabilities in any order, or `none`. It contributes
 four inherited longhands, each initially `auto`; selected capabilities become

@@ -20,6 +20,19 @@ use crate::error::{CssFeatureId, Error, basic, unsupported_value, unsupported_va
 use crate::syntax::*;
 use crate::validation::unsupported_keyword_reason;
 
+pub(super) fn parse_color_interpolation_filters<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> Result<CssColorInterpolationFilters, ParseError<'i, Error>> {
+    let location = input.current_source_location();
+    let ident = input.expect_ident_cloned().map_err(basic)?;
+    match_ignore_ascii_case! { &ident,
+        "auto" => Ok(CssColorInterpolationFilters::Auto),
+        "srgb" => Ok(CssColorInterpolationFilters::Srgb),
+        "linearrgb" => Ok(CssColorInterpolationFilters::LinearRgb),
+        _ => Err(unsupported_value_at(location, None, unsupported_keyword_reason("color-interpolation-filters", ident.as_ref()))),
+    }
+}
+
 pub(super) fn parse_clip<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
