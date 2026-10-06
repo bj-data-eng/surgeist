@@ -1914,7 +1914,11 @@ pub fn surgeist_css::CssImageOrientation::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssImageRendering
 pub surgeist_css::CssImageRendering::Auto
 pub surgeist_css::CssImageRendering::CrispEdges
+pub surgeist_css::CssImageRendering::HighQuality
+pub surgeist_css::CssImageRendering::OptimizeQuality
+pub surgeist_css::CssImageRendering::OptimizeSpeed
 pub surgeist_css::CssImageRendering::Pixelated
+pub surgeist_css::CssImageRendering::Smooth
 impl surgeist_css::CssImageRendering
 pub fn surgeist_css::CssImageRendering::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssImageRendering::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
@@ -3122,6 +3126,8 @@ pub surgeist_css::CssLonghandValueRef::HyphenateLimitLast(&'a surgeist_css::CssH
 pub surgeist_css::CssLonghandValueRef::HyphenateLimitLines(&'a surgeist_css::CssHyphenateLimitLines)
 pub surgeist_css::CssLonghandValueRef::HyphenateLimitZone(&'a surgeist_css::CssSpecifiedLengthPercentage)
 pub surgeist_css::CssLonghandValueRef::Hyphens(&'a surgeist_css::CssHyphens)
+pub surgeist_css::CssLonghandValueRef::ImageOrientation(&'a surgeist_css::CssImageOrientation)
+pub surgeist_css::CssLonghandValueRef::ImageRendering(&'a surgeist_css::CssImageRendering)
 pub surgeist_css::CssLonghandValueRef::InlineSize(&'a surgeist_css::CssSizeValue)
 pub surgeist_css::CssLonghandValueRef::InsetBlockEnd(&'a surgeist_css::CssInsetValue)
 pub surgeist_css::CssLonghandValueRef::InsetBlockStart(&'a surgeist_css::CssInsetValue)
@@ -3162,6 +3168,8 @@ pub surgeist_css::CssLonghandValueRef::MinInlineSize(&'a surgeist_css::CssSizeVa
 pub surgeist_css::CssLonghandValueRef::MinIntrinsicSizing(&'a surgeist_css::CssMinIntrinsicSizing)
 pub surgeist_css::CssLonghandValueRef::MinWidth(&'a surgeist_css::CssSizeValue)
 pub surgeist_css::CssLonghandValueRef::MixBlendMode(&'a surgeist_css::CssBlendMode)
+pub surgeist_css::CssLonghandValueRef::ObjectFit(&'a surgeist_css::CssObjectFit)
+pub surgeist_css::CssLonghandValueRef::ObjectPosition(&'a surgeist_css::CssPhysicalPosition)
 pub surgeist_css::CssLonghandValueRef::Opacity(&'a surgeist_css::CssOpacityValue)
 pub surgeist_css::CssLonghandValueRef::Order(&'a surgeist_css::CssIntegerValue)
 pub surgeist_css::CssLonghandValueRef::Orphans(&'a surgeist_css::CssPageLineMinimum)

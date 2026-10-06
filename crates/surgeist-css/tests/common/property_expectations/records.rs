@@ -1334,12 +1334,18 @@ property_records! {
         wrapper: yes,
     }
     ImageOrientation, "image-orientation" {
-        metadata: unavailable(),
-        catalog: grammar_catalog!("official.property.image-orientation", "90deg flip", rejected("flip 90deg flip")),
+        metadata: longhand(true, |v| assert_eq!(*v, CssImageOrientation::FromImage)),
+        catalog: grammar_catalog!("official.property.image-orientation", "90deg flip", rejected("flip 90deg flip"), "#propdef-image-orientation"),
+        source: "O-IMAGES3",
+        dispatch: "flip 30deg",
+        wrapper: yes,
     }
     ImageRendering, "image-rendering" {
-        metadata: unavailable(),
-        catalog: grammar_catalog!("official.property.image-rendering", "crisp-edges", rejected("smooth")),
+        metadata: longhand(true, |v| assert_eq!(*v, CssImageRendering::Auto)),
+        catalog: grammar_catalog!("official.property.image-rendering", "high-quality", rejected("smooth high-quality"), "#propdef-image-rendering"),
+        source: "O-IMAGES3",
+        dispatch: "smooth",
+        wrapper: yes,
     }
     InlineSize, "inline-size" {
         metadata: longhand(false, |v| assert_eq!(*v, CssSizeValue::Auto)),
@@ -1648,11 +1654,24 @@ property_records! {
         catalog: grammar_catalog!("official.property.mix-blend-mode", "soft-light", rejected("multiply, screen")),
     }
     ObjectFit, "object-fit" {
-        metadata: unavailable(),
-        catalog: grammar_catalog!("official.property.object-fit", "scale-down", rejected("cover contain")),
+        metadata: longhand(false, |v| assert_eq!(*v, CssObjectFit::Fill)),
+        catalog: grammar_catalog!("official.property.object-fit", "scale-down", rejected("cover contain"), "#propdef-object-fit"),
+        source: "O-IMAGES3",
+        dispatch: "scale-down",
+        wrapper: yes,
     }
     ObjectPosition, "object-position" {
-        metadata: unavailable(),
+        metadata: longhand(false, |v| {
+            let (CssHorizontalPosition::Offset(x), CssVerticalPosition::Offset(y)) = (v.horizontal(), v.vertical()) else {
+                panic!("object-position initial has two free percentage offsets");
+            };
+            for offset in [x, y] {
+                assert!(exact_literal(offset.literal_component(), "50%"));
+                assert_eq!(offset.origin(), &CssValueOrigin::Programmatic);
+            }
+        }),
+        catalog: grammar_catalog!("official.property.object-position", "bottom 2px right 5%", rejected("left 1px top"), "#propdef-object-position"),
+        source: "O-IMAGES3",
         dispatch: "right 5% bottom 2px",
         wrapper: yes,
     }

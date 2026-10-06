@@ -148,6 +148,10 @@ fn requires_closed_components(property: crate::CssKnownProperty) -> bool {
             | crate::CssKnownProperty::GridTemplateColumns
             | crate::CssKnownProperty::GridTemplate
             | crate::CssKnownProperty::Grid
+            | crate::CssKnownProperty::ObjectPosition
+            | crate::CssKnownProperty::ImageOrientation
+            | crate::CssKnownProperty::ImageRendering
+            | crate::CssKnownProperty::ObjectFit
             | crate::CssKnownProperty::BackgroundBlendMode
             | crate::CssKnownProperty::Isolation
             | crate::CssKnownProperty::MixBlendMode

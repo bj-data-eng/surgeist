@@ -157,7 +157,9 @@ enum_keywords!(CssTextDecorationStyle,
     Solid => "solid", Double => "double", Dotted => "dotted", Dashed => "dashed", Wavy => "wavy",
 );
 enum_keywords!(CssImageRendering,
-    Auto => "auto", CrispEdges => "crisp-edges", Pixelated => "pixelated",
+    Auto => "auto", Smooth => "smooth", HighQuality => "high-quality",
+    CrispEdges => "crisp-edges", Pixelated => "pixelated",
+    OptimizeSpeed => "optimizespeed", OptimizeQuality => "optimizequality",
 );
 enum_keywords!(CssObjectFit,
     Fill => "fill", Contain => "contain", Cover => "cover", None => "none", ScaleDown => "scale-down",

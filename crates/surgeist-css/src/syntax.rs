@@ -7064,8 +7064,16 @@ impl PartialEq for CssImageOrientation {
 #[non_exhaustive]
 pub enum CssImageRendering {
     Auto,
+    Smooth,
+    HighQuality,
     CrispEdges,
     Pixelated,
+    /// Deprecated CSS-standard syntax accepted by user agents; authors must not use it.
+    /// Its authored identity stays distinct from the downstream crisp-edges behavior.
+    OptimizeSpeed,
+    /// Deprecated CSS-standard syntax accepted by user agents; authors must not use it.
+    /// Its authored identity stays distinct from the downstream smooth behavior.
+    OptimizeQuality,
 }
 
 /// The authored Images 3 `object-fit` keyword.

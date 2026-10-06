@@ -675,8 +675,12 @@ pub(super) fn parse_image_rendering<'i, 't>(
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssImageRendering::Auto),
+        "smooth" => Ok(CssImageRendering::Smooth),
+        "high-quality" => Ok(CssImageRendering::HighQuality),
         "crisp-edges" => Ok(CssImageRendering::CrispEdges),
         "pixelated" => Ok(CssImageRendering::Pixelated),
+        "optimizespeed" => Ok(CssImageRendering::OptimizeSpeed),
+        "optimizequality" => Ok(CssImageRendering::OptimizeQuality),
         _ => Err(unsupported_value(
             input,
             None,

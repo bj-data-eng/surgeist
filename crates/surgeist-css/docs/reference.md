@@ -7161,7 +7161,7 @@ declaration dispatch. Indent and vertical-align have the complete intrinsic
 longhand lifecycle described above; decoration's remaining work does not limit
 their metadata, expansion or normalization.
 
-## Image orientation and represented caret, containment and blend output
+## Authored image properties and represented caret, containment and blend output
 
 `CssImageOrientation` retains `from-image`, explicit `none`, an authored angle,
 or `flip` with an optional angle. The selected
@@ -7174,19 +7174,57 @@ computed quarter-turn rounding. Each explicit keyword costs one input and
 projection node; angles retain their shared numeric owner's costs, without an
 additional enum-carrier charge. Separators cost final UTF-8 bytes only.
 
+The selected [Images 3 publication](https://www.w3.org/TR/2023/CRD-css-images-3-20231218/)
+owns four independent longhands with complete intrinsic authored lifecycles:
+
+| Property | Ordinary authored values | Intrinsic initial | Inherited |
+| --- | --- | --- | --- |
+| `object-position` | physical `<position>` | `50% 50%` | no |
+| `image-orientation` | `from-image`, `none`, angle, flip, angle plus flip | `from-image` | yes |
+| `image-rendering` | `auto`, `smooth`, `high-quality`, `pixelated`, `crisp-edges`, `optimizespeed`, `optimizequality` | `auto` | yes |
+| `object-fit` | `fill`, `contain`, `cover`, `none`, `scale-down` | `fill` | no |
+
+`object-position` imports the physical one/two/four-component
+[Values 3 position grammar](https://www.w3.org/TR/2024/CRD-css-values-3-20240322/#position).
+The Backgrounds-specific three-component form and logical position families
+are excluded. Both initial axes are programmatic percentage offsets, preserving
+the specified initial independently of contextual coordinate resolution.
+Orientation angles use the shared authored angle model and retain their units;
+computed rounding and application remain downstream.
+
+`CssImageRendering` preserves seven distinct authored variants. Images 3 §5.2
+requires user agents to accept the deprecated standard `optimizeSpeed` and
+`optimizeQuality` spellings; authors must not use them. Parsing is ASCII case
+insensitive and specified output uses `optimizespeed` and `optimizequality`.
+Their defined crisp-edges and smooth behavior belongs to image processing;
+authored parsing does not collapse these values into other variants.
+Rendering and fit keywords cost one input and projection node each.
+
+Each property exposes longhand metadata and its typed intrinsic initial through
+`CssLonghandValueRef`. Ordinary expansion contributes one exact typed value;
+CSS-wide values contribute symbolic keywords. Whole `var()`, `env()` and `attr()`
+values remain pending. Strict reentry rejects residual substitutions before
+checking grammar and preserves original occurrence, importance and replacement
+origins. Checked construction rejects original implicit comment/function closure
+with a typed original-source EOF error even if component serialization could
+repair it. Browser parsing retains recovered occurrences and diagnostics;
+normalization preserves both without making the report clean or evaluating
+substitution, inheritance or cascade. Specified output shares cumulative input,
+projection and UTF-8 byte limits across child providers and enclosing graphs;
+failure returns no partial output and leaves authored values and origins intact.
+
 `CssCaretColor`, `CssContain` and `CssBlendModeList` also expose
 `serialize_specified` and `serialize_specified_with_limits`. Caret output emits
 `auto` or delegates to Color without resolving its rendering context or adding a
-carrier node. Represented containment emits `none`, `strict`, `content`, or the
-stored component subset in `size layout paint` grammar order, leaving the stored
+carrier node. Authored containment emits `none`, `strict`, `content`, or the
+stored component subset in `size layout style paint` grammar order, leaving the stored
 order unchanged. Keywords cost one node in each work budget; a containment list
 costs one aggregate plus each keyword. Blend output retains comma-list order and
 duplicates, costing one aggregate plus each primitive mode. All use one cumulative
 writer and return no partial public output on failure.
 
-Broader containment alternatives, image-rendering alternatives and the remaining
-containment property lifecycle retain their existing owners. The complete authored Compositing
-lifecycle is described above.
+The complete authored Containment 2 and Compositing lifecycles are described
+above; contextual containment and image processing remain downstream.
 
 ## Authored UI interaction values
 
