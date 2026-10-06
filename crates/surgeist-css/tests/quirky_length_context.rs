@@ -208,7 +208,7 @@ fn listed_number_tokens_are_lengths_only_in_document_quirks_mode() {
             );
             assert_eq!(value.value_components().serialize().unwrap().as_css(), text);
             let emitted = value.to_specified_css().unwrap();
-            assert!(parse_declaration(&emitted).is_clean());
+            assert!(parse_style_attribute(&emitted).is_clean());
         }
         assert_eq!(raw, raw_before);
     }
