@@ -369,6 +369,14 @@ assert_eq!(declaration.position(), None);
 assert!(declaration.same_occurrence(&declaration.clone()));
 ```
 
+Every known property grammar, including standard legacy grammars, rejects
+implicit closures in the original supplied components at both checked declaration
+front doors. This applies to ordinary values, CSS-wide keywords and pending
+substitutions. Strict replacement reentry uses the same check after its residual
+substitution gate, preserving the original EOF error and source snapshot. Browser
+parsing retains recovered values with diagnostics; custom names keep their separate
+arbitrary-token contract.
+
 Factory-created declarations have no parsed property-name position. Their
 `value_components()` preserve the supplied token origins, including components
 combined from separate parsed inputs. `CssPropertyValueParseError` carries a typed

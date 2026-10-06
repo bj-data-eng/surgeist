@@ -93,179 +93,7 @@ fn is_time_property(property: crate::CssKnownProperty) -> bool {
     )
 }
 
-fn requires_closed_components(property: crate::CssKnownProperty) -> bool {
-    matches!(
-        property,
-        crate::CssKnownProperty::FloodColor
-            | crate::CssKnownProperty::FloodOpacity
-            | crate::CssKnownProperty::LightingColor
-            | crate::CssKnownProperty::ColorInterpolationFilters
-            | crate::CssKnownProperty::Transform
-            | crate::CssKnownProperty::TransformBox
-            | crate::CssKnownProperty::TransformOrigin
-            | crate::CssKnownProperty::Translate
-            | crate::CssKnownProperty::Rotate
-            | crate::CssKnownProperty::Scale
-            | crate::CssKnownProperty::Perspective
-            | crate::CssKnownProperty::PerspectiveOrigin
-            | crate::CssKnownProperty::TransformStyle
-            | crate::CssKnownProperty::BackfaceVisibility
-            | crate::CssKnownProperty::CaretColor
-            | crate::CssKnownProperty::Outline
-            | crate::CssKnownProperty::OutlineColor
-            | crate::CssKnownProperty::OutlineStyle
-            | crate::CssKnownProperty::OutlineWidth
-            | crate::CssKnownProperty::OutlineOffset
-            | crate::CssKnownProperty::NavUp
-            | crate::CssKnownProperty::NavRight
-            | crate::CssKnownProperty::NavDown
-            | crate::CssKnownProperty::NavLeft
-            | crate::CssKnownProperty::CaretAnimation
-            | crate::CssKnownProperty::CaretShape
-            | crate::CssKnownProperty::Caret
-            | crate::CssKnownProperty::Interactivity
-            | crate::CssKnownProperty::InterestDelayStart
-            | crate::CssKnownProperty::InterestDelayEnd
-            | crate::CssKnownProperty::InterestDelay
-            | crate::CssKnownProperty::AccentColor
-            | crate::CssKnownProperty::Appearance
-            | crate::CssKnownProperty::TextDecoration
-            | crate::CssKnownProperty::TextDecorationLine
-            | crate::CssKnownProperty::TextDecorationColor
-            | crate::CssKnownProperty::TextDecorationStyle
-            | crate::CssKnownProperty::TextDecorationThickness
-            | crate::CssKnownProperty::TextUnderlinePosition
-            | crate::CssKnownProperty::TextUnderlineOffset
-            | crate::CssKnownProperty::TextDecorationSkip
-            | crate::CssKnownProperty::TextDecorationSkipSelf
-            | crate::CssKnownProperty::TextDecorationSkipBox
-            | crate::CssKnownProperty::TextDecorationSkipInset
-            | crate::CssKnownProperty::TextDecorationSkipSpaces
-            | crate::CssKnownProperty::TextDecorationSkipInk
-            | crate::CssKnownProperty::TextEmphasis
-            | crate::CssKnownProperty::TextEmphasisStyle
-            | crate::CssKnownProperty::TextEmphasisColor
-            | crate::CssKnownProperty::TextEmphasisPosition
-            | crate::CssKnownProperty::TextEmphasisSkip
-            | crate::CssKnownProperty::TextShadow
-            | crate::CssKnownProperty::Mask
-            | crate::CssKnownProperty::MaskImage
-            | crate::CssKnownProperty::MaskSize
-            | crate::CssKnownProperty::MaskPosition
-            | crate::CssKnownProperty::MaskRepeat
-            | crate::CssKnownProperty::MaskMode
-            | crate::CssKnownProperty::MaskOrigin
-            | crate::CssKnownProperty::MaskClip
-            | crate::CssKnownProperty::MaskComposite
-            | crate::CssKnownProperty::MaskBorder
-            | crate::CssKnownProperty::MaskBorderSource
-            | crate::CssKnownProperty::MaskBorderSlice
-            | crate::CssKnownProperty::MaskBorderWidth
-            | crate::CssKnownProperty::MaskBorderOutset
-            | crate::CssKnownProperty::MaskBorderRepeat
-            | crate::CssKnownProperty::MaskBorderMode
-            | crate::CssKnownProperty::ClipRule
-            | crate::CssKnownProperty::MaskType
-            | crate::CssKnownProperty::Contain
-            | crate::CssKnownProperty::ContentVisibility
-            | crate::CssKnownProperty::Cursor
-            | crate::CssKnownProperty::PointerEvents
-            | crate::CssKnownProperty::UserSelect
-            | crate::CssKnownProperty::Resize
-            | crate::CssKnownProperty::Hyphens
-            | crate::CssKnownProperty::HyphenateCharacter
-            | crate::CssKnownProperty::HyphenateLimitZone
-            | crate::CssKnownProperty::HyphenateLimitChars
-            | crate::CssKnownProperty::HyphenateLimitLines
-            | crate::CssKnownProperty::HyphenateLimitLast
-            | crate::CssKnownProperty::TextJustify
-            | crate::CssKnownProperty::TextGroupAlign
-            | crate::CssKnownProperty::LinePadding
-            | crate::CssKnownProperty::TextAutospace
-            | crate::CssKnownProperty::TextSpacingTrim
-            | crate::CssKnownProperty::TextSpacing
-            | crate::CssKnownProperty::HangingPunctuation
-            | crate::CssKnownProperty::TextAlign
-            | crate::CssKnownProperty::TextAlignAll
-            | crate::CssKnownProperty::TextAlignLast
-            | crate::CssKnownProperty::OverflowWrap
-            | crate::CssKnownProperty::WordSpacing
-            | crate::CssKnownProperty::LetterSpacing
-            | crate::CssKnownProperty::TextTransform
-            | crate::CssKnownProperty::WrapInside
-            | crate::CssKnownProperty::WrapBefore
-            | crate::CssKnownProperty::WrapAfter
-            | crate::CssKnownProperty::LineBreak
-            | crate::CssKnownProperty::WordSpaceTransform
-            | crate::CssKnownProperty::TabSize
-            | crate::CssKnownProperty::TextIndent
-            | crate::CssKnownProperty::VerticalAlign
-            | crate::CssKnownProperty::ClipPath
-            | crate::CssKnownProperty::ShapeOutside
-            | crate::CssKnownProperty::ShapeImageThreshold
-            | crate::CssKnownProperty::ShapeMargin
-            | crate::CssKnownProperty::TextWrap
-            | crate::CssKnownProperty::TextWrapMode
-            | crate::CssKnownProperty::TextWrapStyle
-            | crate::CssKnownProperty::WhiteSpace
-            | crate::CssKnownProperty::WhiteSpaceCollapse
-            | crate::CssKnownProperty::WhiteSpaceTrim
-            | crate::CssKnownProperty::WordBreak
-            | crate::CssKnownProperty::ItemDirection
-            | crate::CssKnownProperty::ItemWrap
-            | crate::CssKnownProperty::ItemPack
-            | crate::CssKnownProperty::ItemFlow
-            | crate::CssKnownProperty::FlowTolerance
-            | crate::CssKnownProperty::GridTemplateRows
-            | crate::CssKnownProperty::GridTemplateColumns
-            | crate::CssKnownProperty::GridTemplate
-            | crate::CssKnownProperty::Grid
-            | crate::CssKnownProperty::ObjectPosition
-            | crate::CssKnownProperty::ImageOrientation
-            | crate::CssKnownProperty::ImageRendering
-            | crate::CssKnownProperty::ObjectFit
-            | crate::CssKnownProperty::BackgroundBlendMode
-            | crate::CssKnownProperty::Isolation
-            | crate::CssKnownProperty::MixBlendMode
-            | crate::CssKnownProperty::CueBefore
-            | crate::CssKnownProperty::CueAfter
-            | crate::CssKnownProperty::Cue
-            | crate::CssKnownProperty::TransitionProperty
-            | crate::CssKnownProperty::TransitionTimingFunction
-            | crate::CssKnownProperty::AnimationTimingFunction
-            | crate::CssKnownProperty::AnimationName
-            | crate::CssKnownProperty::AnimationIterationCount
-            | crate::CssKnownProperty::AnimationDirection
-            | crate::CssKnownProperty::AnimationFillMode
-            | crate::CssKnownProperty::AnimationPlayState
-            | crate::CssKnownProperty::TransitionDuration
-            | crate::CssKnownProperty::TransitionDelay
-            | crate::CssKnownProperty::AnimationDuration
-            | crate::CssKnownProperty::AnimationDelay
-            | crate::CssKnownProperty::Transition
-            | crate::CssKnownProperty::Animation
-            | crate::CssKnownProperty::FontVariant
-            | crate::CssKnownProperty::FontVariantLigatures
-            | crate::CssKnownProperty::FontVariantCaps
-            | crate::CssKnownProperty::FontVariantAlternates
-            | crate::CssKnownProperty::FontVariantNumeric
-            | crate::CssKnownProperty::FontVariantEastAsian
-            | crate::CssKnownProperty::FontVariantPosition
-            | crate::CssKnownProperty::FontVariantEmoji
-            | crate::CssKnownProperty::FontFeatureSettings
-            | crate::CssKnownProperty::FontSizeAdjust
-            | crate::CssKnownProperty::FontVariationSettings
-            | crate::CssKnownProperty::FontPalette
-    )
-}
-
-fn recovered_component_error(
-    property: crate::CssKnownProperty,
-    value: &CssComponentValues,
-) -> Option<CssPropertyValueParseError> {
-    if !requires_closed_components(property) {
-        return None;
-    }
+fn recovered_component_error(value: &CssComponentValues) -> Option<CssPropertyValueParseError> {
     let origin = value.first_implicit_origin()?;
     Some(CssPropertyValueParseError {
         detail: Box::new(PropertyValueParseErrorDetail {
@@ -279,8 +107,9 @@ fn recovered_component_error(
 ///
 /// The property identity selects the same grammar as stylesheet declarations. Whole-value
 /// CSS-wide keywords and valid substitution-dependent values remain symbolic. Custom names
-/// preserve case and allow empty values. Top-level annotations and declaration delimiters are
-/// rejected: importance comes only from the separate argument.
+/// preserve case and allow empty values. Known grammars reject implicit closures in the original
+/// components, including CSS-wide and substitution-dependent values. Top-level annotations
+/// and declaration delimiters are rejected: importance comes only from the separate argument.
 ///
 /// Supplied token origins remain intact. The returned declaration has no parsed property-name
 /// position or single parsed declaration-value span; inspect its components for their origins.
@@ -305,7 +134,7 @@ pub(crate) fn checked_property_value_body(
 ) -> Result<crate::CssDeclarationBody, CssPropertyValueParseError> {
     if let CssPropertyNameRef::Known(known) = property
         && is_time_property(known)
-        && let Some(error) = recovered_component_error(known, value)
+        && let Some(error) = recovered_component_error(value)
     {
         return Err(error);
     }
@@ -314,7 +143,7 @@ pub(crate) fn checked_property_value_body(
         .map_err(CssPropertyValueParseError::from_component)?;
     if let CssPropertyNameRef::Known(known) = property
         && !is_time_property(known)
-        && let Some(error) = recovered_component_error(known, value)
+        && let Some(error) = recovered_component_error(value)
     {
         return Err(error);
     }
@@ -344,7 +173,7 @@ pub(crate) fn checked_grammar_value_body(
     value: &CssComponentValues,
 ) -> Result<crate::CssDeclarationBody, CssPropertyValueParseError> {
     if is_time_property(grammar.target_property())
-        && let Some(error) = recovered_component_error(grammar.target_property(), value)
+        && let Some(error) = recovered_component_error(value)
     {
         return Err(error);
     }
@@ -352,7 +181,7 @@ pub(crate) fn checked_grammar_value_body(
         .serialize()
         .map_err(CssPropertyValueParseError::from_component)?;
     if !is_time_property(grammar.target_property())
-        && let Some(error) = recovered_component_error(grammar.target_property(), value)
+        && let Some(error) = recovered_component_error(value)
     {
         return Err(error);
     }
