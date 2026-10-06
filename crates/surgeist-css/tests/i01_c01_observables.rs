@@ -7,7 +7,13 @@ use surgeist_css::{
 };
 
 const FIXTURE: &str = include_str!("fixtures/i01-c01-observables.tsv");
-// Case inputs and feature labels retain their capture provenance. Selected
+// Case inputs and feature labels retain their capture provenance.
+// Selectors 4 (2026-01-22) §16 and Nesting 1 (2026-01-22) §§3.1, 4
+// supersede one archived nested Column rejection. Its closed current-source
+// witness preserves all nine historical fields and inspects retained origins.
+// https://www.w3.org/TR/2026/WD-selectors-4-20260122/#grammar
+// https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nesting
+// Selected
 // value expectations follow CSS Variables 1 §2.1 (2022-06-16): a CSS-wide
 // keyword followed by ordinary custom-property tokens is declaration-value,
 // not a global value.
@@ -785,9 +791,15 @@ fn authored_css_cases_match_selected_public_report_observables() {
     let mut migrated_thickness_cases = 0;
     let mut migrated_timing_name_cases = 0;
     let mut migrated_text_wrap_cases = 0;
+    let mut selected_column_source_cases = 0;
     for row in rows {
         // Fixture feature labels record the original capture profile. Validation is
         // now unconditional, so every historical profile runs through the same API.
+        if assert_archived_column_selector_contract(&row) {
+            selected_column_source_cases += 1;
+            assert_strict_parity(&row);
+            continue;
+        }
         if assert_archived_timing_auto_name_rejection(&row) {
             migrated_timing_name_cases += 1;
             assert_strict_parity(&row);
@@ -887,6 +899,7 @@ fn authored_css_cases_match_selected_public_report_observables() {
         "all three archived intrinsic auto-repeat cases require current acceptance witnesses"
     );
     assert_eq!(migrated_unicode_cases, 1);
+    assert_eq!(selected_column_source_cases, 1);
     assert_eq!(migrated_display_cases, 1);
     assert_eq!(migrated_overflow_auto_cases, 3);
     assert_eq!(migrated_alignment_cases, 1);
@@ -895,6 +908,158 @@ fn authored_css_cases_match_selected_public_report_observables() {
         removed_track_cases, 8,
         "all eight obsolete track-property captures have current rejection witnesses"
     );
+}
+
+// Only this archived input changes under the published Column/class-adjacency/
+// logical-context correction. Its explicit nesting anchor makes the child an
+// ordinary complex selector, not a leading relative selector. The source-owned
+// compound model preserves that anchor independently of the Column relation.
+fn assert_archived_column_selector_contract(row: &Row) -> bool {
+    if row.case_id != "catalog.non-property.baseline.selector.nesting.boundary" {
+        return false;
+    }
+    assert_eq!(
+        row.fields(),
+        [
+            "catalog.non-property.baseline.selector.nesting.boundary",
+            "sheet",
+            "both",
+            ".card { & || .title { color: red; } }",
+            "false",
+            "rule:baseline.rule.style",
+            "-",
+            "-",
+            "InvalidSelector/InvalidSelector:baseline.selector.complex:a supported selector:Delim:|/DropQualifiedRule@11:0:11>8:0:8-35:0:35:35",
+        ]
+    );
+    let report = parse_sheet(&row.input);
+    assert!(report.is_clean(), "{:?}", report.diagnostics());
+    assert!(report.diagnostics().is_empty());
+    let [CssRule::Style(parent)] = report.syntax().rules() else {
+        panic!("one retained outer style rule")
+    };
+    assert_column_position(parent.position(), 0);
+    assert!(parent.declarations().is_empty());
+    let [surgeist_css::CssStyleSelector::Selector(parent_selector)] =
+        parent.selectors().selectors()
+    else {
+        panic!("one ordinary parent selector")
+    };
+    assert_eq!(
+        parent_selector,
+        &surgeist_css::CssSelector::Class("card".into())
+    );
+    let [CssRule::Style(child)] = parent.rules() else {
+        panic!("one retained nested style rule")
+    };
+    assert_column_position(child.position(), 8);
+    assert!(child.rules().is_empty());
+    let [surgeist_css::CssStyleSelector::Selector(surgeist_css::CssSelector::Complex(selector))] =
+        child.selectors().selectors()
+    else {
+        panic!("explicit nesting anchor and Column form one ordinary complex selector")
+    };
+    assert_column_compound(selector.first(), 1, &[]);
+    let [part] = selector.rest() else {
+        panic!("one authored relation")
+    };
+    assert_eq!(
+        part.combinator(),
+        surgeist_css::CssSelectorCombinator::Column
+    );
+    assert_column_compound(part.selector(), 0, &["title"]);
+    assert_eq!(
+        child.selectors().selectors()[0]
+            .selector()
+            .to_specified_css()
+            .unwrap(),
+        "& || .title"
+    );
+
+    // Current retention is exactly outer style, nested style, normal color.
+    // The old `values`/`authored_declarations` fields are both absent; directly
+    // inspect this independently expected occurrence instead of fabricating a
+    // historical cursor item to accommodate the current parser's output.
+    let [declaration] = child.declarations().as_slice() else {
+        panic!("one newly retained declaration")
+    };
+    assert_eq!(declaration.importance(), CssImportance::Normal);
+    assert!(declaration.custom().is_none());
+    let known = declaration.known().expect("known color declaration");
+    assert_eq!(known.property(), surgeist_css::CssKnownProperty::Color);
+    let Some(surgeist_css::CssKnownPropertyValueRef::Color(value)) = known.property_value() else {
+        panic!("typed color value")
+    };
+    assert_eq!(value.as_css(), "red");
+    assert_eq!(value.value().named().expect("named color").name(), "red");
+    assert_eq!(declaration.to_specified_css().unwrap(), "color: red;");
+
+    let name = declaration.parsed_name().expect("original name token");
+    let value = declaration.parsed_value().expect("original value region");
+    assert_column_origin(name, &row.input, 22, 27);
+    assert_column_origin(value, &row.input, 28, 32);
+    assert_eq!(declaration.position(), Some(name.span().start()));
+    assert!(name.source().same_snapshot(value.source()));
+    let [space, red] = declaration.value_components().items() else {
+        panic!("original whitespace and identifier tokens")
+    };
+    assert!(matches!(
+        space.view(),
+        surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Whitespace(" "))
+    ));
+    assert!(matches!(
+        red.view(),
+        surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Ident("red"))
+    ));
+    for (component, start, end) in [(space, 28, 29), (red, 29, 32)] {
+        let surgeist_css::CssValueOrigin::Parsed(origin) = component.origin() else {
+            panic!("parsed token origin")
+        };
+        assert_column_origin(origin, &row.input, start, end);
+        assert!(name.source().same_snapshot(origin.source()));
+    }
+    let cloned = report.syntax().clone();
+    let [CssRule::Style(cloned_parent)] = cloned.rules() else {
+        panic!("cloned parent")
+    };
+    let [CssRule::Style(cloned_child)] = cloned_parent.rules() else {
+        panic!("cloned child")
+    };
+    assert!(declaration.same_occurrence(&cloned_child.declarations()[0]));
+    assert_eq!(report.clone().into_validation_result(), Ok(cloned));
+    true
+}
+
+fn assert_column_compound(
+    compound: &surgeist_css::CssCompoundSelector,
+    nesting_selectors: usize,
+    classes: &[&str],
+) {
+    assert_eq!(compound.nesting_selectors(), nesting_selectors);
+    assert_eq!(compound.scope_anchors(), 0);
+    assert!(compound.type_selector().is_none());
+    assert!(compound.ids().is_empty());
+    assert_eq!(compound.classes(), classes);
+    assert!(compound.attributes().is_empty());
+    assert!(compound.pseudo_classes().is_empty());
+    assert!(compound.pseudo_elements().is_none());
+}
+
+fn assert_column_origin(
+    origin: &surgeist_css::CssParsedOrigin,
+    source: &str,
+    start: usize,
+    end: usize,
+) {
+    assert_eq!(origin.source().as_str(), source);
+    assert_column_position(origin.span().start(), start);
+    assert_column_position(origin.span().end(), end);
+}
+
+fn assert_column_position(position: surgeist_css::CssSourcePosition, byte: usize) {
+    assert_eq!(position.byte_offset().value(), byte);
+    assert_eq!(position.line().value(), 0);
+    assert_eq!(position.column().value() as usize, byte);
 }
 
 // Text 4 §5.5 admits the style-only shorthand `auto`. Preserve the archived
