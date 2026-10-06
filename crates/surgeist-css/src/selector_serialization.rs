@@ -6,6 +6,7 @@ use crate::*;
 type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
 enum Event<'a> {
     Selector(&'a CssSelector, CssSelectorGrammarContext),
+    Complex(&'a CssComplexSelector, CssSelectorGrammarContext),
     Compound(&'a CssCompoundSelector, CssSelectorGrammarContext),
     CompoundTail(
         &'a CssCompoundSelector,
@@ -140,6 +141,29 @@ impl SpecifiedRuleWriter {
         ))
     }
 
+    pub(crate) fn complex_selector(&mut self, selector: &CssComplexSelector) -> Result<()> {
+        self.selector_events(Event::Complex(
+            selector,
+            CssSelectorGrammarContext::ORDINARY,
+        ))
+    }
+
+    pub(crate) fn compound_selector(&mut self, selector: &CssCompoundSelector) -> Result<()> {
+        self.selector_events(Event::Compound(
+            selector,
+            CssSelectorGrammarContext::ORDINARY,
+        ))
+    }
+
+    pub(crate) fn complex_selector_part(&mut self, part: &CssComplexSelectorPart) -> Result<()> {
+        self.combinator(part.combinator(), false)?;
+        self.compound_selector(part.selector())
+    }
+
+    pub(crate) fn attribute_selector(&mut self, selector: &CssAttributeSelector) -> Result<()> {
+        self.selector_events(Event::Attribute(selector))
+    }
+
     pub(crate) fn ordinary_selectors(&mut self, list: &CssSelectorList) -> Result<()> {
         self.node()?;
         self.selector_events(Event::List(
@@ -222,11 +246,14 @@ impl SpecifiedRuleWriter {
                             push(&mut work, Event::Compound(value, grammar))?
                         }
                         CssSelector::Complex(value) => {
-                            self.node()?;
-                            push(&mut work, Event::ComplexParts(value.rest(), 0, grammar))?;
-                            push(&mut work, Event::Compound(value.first(), grammar))?;
+                            push(&mut work, Event::Complex(value, grammar))?;
                         }
                     }
+                }
+                Event::Complex(value, grammar) => {
+                    self.node()?;
+                    push(&mut work, Event::ComplexParts(value.rest(), 0, grammar))?;
+                    push(&mut work, Event::Compound(value.first(), grammar))?;
                 }
                 Event::Compound(value, grammar) => {
                     if !grammar.admits_compound(value) {

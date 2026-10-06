@@ -453,10 +453,16 @@ fn parse_selector_after_first_compound<'i, 't>(
 
     if rest.is_empty() {
         Ok(compound_selector_to_selector(first))
+    } else if crate::syntax::complex_selector_has_non_terminal_pseudo_elements(&first, &rest) {
+        Err(invalid_selector(
+            input,
+            "pseudo-element selector must be terminal",
+        ))
     } else {
-        CssComplexSelector::try_new(first, rest)
-            .map(CssSelector::Complex)
-            .ok_or_else(|| invalid_selector(input, "pseudo-element selector must be terminal"))
+        // The parser has proved each compound under its own grammar/recovery
+        // budget. Public construction's separate specified-output limit is not
+        // a parser admission limit or a pseudo-element diagnostic.
+        Ok(CssSelector::Complex(CssComplexSelector::new(first, rest)))
     }
 }
 

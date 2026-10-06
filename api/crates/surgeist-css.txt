@@ -4692,7 +4692,15 @@ pub surgeist_css::CssSelectorCombinator::Descendant
 pub surgeist_css::CssSelectorCombinator::NextSibling
 pub surgeist_css::CssSelectorCombinator::SubsequentSibling
 #[non_exhaustive] pub enum surgeist_css::CssSelectorConstructionErrorKind
+pub surgeist_css::CssSelectorConstructionErrorKind::EmptyComplexRest
+pub surgeist_css::CssSelectorConstructionErrorKind::EmptyCompound
 pub surgeist_css::CssSelectorConstructionErrorKind::EmptyList
+pub surgeist_css::CssSelectorConstructionErrorKind::InvalidAttributeValue(surgeist_css::CssComponentValueError)
+pub surgeist_css::CssSelectorConstructionErrorKind::InvalidTypePosition
+pub surgeist_css::CssSelectorConstructionErrorKind::InvalidTypePosition::member_index: usize
+pub surgeist_css::CssSelectorConstructionErrorKind::ModifierWithoutValue
+pub surgeist_css::CssSelectorConstructionErrorKind::NonTerminalPseudoElement
+pub surgeist_css::CssSelectorConstructionErrorKind::NonTerminalPseudoElement::compound_index: usize
 pub surgeist_css::CssSelectorConstructionErrorKind::Specified(surgeist_css::CssSpecifiedValueSerializationError)
 #[non_exhaustive] pub enum surgeist_css::CssSerializedOrigin
 pub surgeist_css::CssSerializedOrigin::End(core::option::Option<surgeist_css::CssValueOrigin>)
@@ -4786,6 +4794,12 @@ pub surgeist_css::CssShapeVerticalLine::ToKeyword(surgeist_css::CssVerticalPosit
 pub surgeist_css::CssShapeVerticalLine::ToOffset(surgeist_css::CssSpecifiedLengthPercentage)
 impl core::cmp::PartialEq for surgeist_css::CssShapeVerticalLine
 pub fn surgeist_css::CssShapeVerticalLine::eq(&self, other: &Self) -> bool
+#[non_exhaustive] pub enum surgeist_css::CssSimpleSelector
+pub surgeist_css::CssSimpleSelector::Attribute(surgeist_css::CssAttributeSelector)
+pub surgeist_css::CssSimpleSelector::Class(surgeist_css::CssIdent)
+pub surgeist_css::CssSimpleSelector::Id(surgeist_css::CssIdent)
+pub surgeist_css::CssSimpleSelector::PseudoClass(surgeist_css::CssPseudoClass)
+pub surgeist_css::CssSimpleSelector::Type(surgeist_css::CssQualifiedSelectorName)
 #[non_exhaustive] pub enum surgeist_css::CssSizeValue
 pub surgeist_css::CssSizeValue::Auto
 pub surgeist_css::CssSizeValue::BoxSize(surgeist_css::CssBoxSize)
@@ -5854,6 +5868,8 @@ pub const fn surgeist_css::CssAttributeSelector::matcher(&self) -> &surgeist_css
 pub const fn surgeist_css::CssAttributeSelector::name(&self) -> &surgeist_css::CssAttributeName
 pub const fn surgeist_css::CssAttributeSelector::namespace(&self) -> &surgeist_css::CssNamespaceConstraint
 pub const fn surgeist_css::CssAttributeSelector::qualified_name(&self) -> &surgeist_css::CssQualifiedAttributeName
+pub fn surgeist_css::CssAttributeSelector::try_new(name: surgeist_css::CssQualifiedAttributeName, matcher: surgeist_css::CssAttributeMatcher, case_sensitivity: surgeist_css::CssAttributeCaseSensitivity) -> core::result::Result<Self, surgeist_css::CssSelectorConstructionError>
+pub fn surgeist_css::CssAttributeSelector::try_new_with_limits(name: surgeist_css::CssQualifiedAttributeName, matcher: surgeist_css::CssAttributeMatcher, case_sensitivity: surgeist_css::CssAttributeCaseSensitivity, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssSelectorConstructionError>
 pub struct surgeist_css::CssAudioCue
 impl surgeist_css::CssAudioCue
 pub const fn surgeist_css::CssAudioCue::decibel(&self) -> core::option::Option<&surgeist_css::CssDecibelLiteral>
@@ -6880,11 +6896,14 @@ impl surgeist_css::CssComplexSelector
 pub const fn surgeist_css::CssComplexSelector::first(&self) -> &surgeist_css::CssCompoundSelector
 pub fn surgeist_css::CssComplexSelector::has_pseudo_elements(&self) -> bool
 pub fn surgeist_css::CssComplexSelector::rest(&self) -> &[surgeist_css::CssComplexSelectorPart]
-pub fn surgeist_css::CssComplexSelector::try_new(first: surgeist_css::CssCompoundSelector, rest: alloc::vec::Vec<surgeist_css::CssComplexSelectorPart>) -> core::option::Option<Self>
+pub fn surgeist_css::CssComplexSelector::try_new(first: surgeist_css::CssCompoundSelector, rest: alloc::vec::Vec<surgeist_css::CssComplexSelectorPart>) -> core::result::Result<Self, surgeist_css::CssSelectorConstructionError>
+pub fn surgeist_css::CssComplexSelector::try_new_with_limits(first: surgeist_css::CssCompoundSelector, rest: alloc::vec::Vec<surgeist_css::CssComplexSelectorPart>, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssSelectorConstructionError>
 pub struct surgeist_css::CssComplexSelectorPart
 impl surgeist_css::CssComplexSelectorPart
 pub const fn surgeist_css::CssComplexSelectorPart::combinator(&self) -> surgeist_css::CssSelectorCombinator
 pub const fn surgeist_css::CssComplexSelectorPart::selector(&self) -> &surgeist_css::CssCompoundSelector
+pub fn surgeist_css::CssComplexSelectorPart::try_new(combinator: surgeist_css::CssSelectorCombinator, selector: surgeist_css::CssCompoundSelector) -> core::result::Result<Self, surgeist_css::CssSelectorConstructionError>
+pub fn surgeist_css::CssComplexSelectorPart::try_new_with_limits(combinator: surgeist_css::CssSelectorCombinator, selector: surgeist_css::CssCompoundSelector, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssSelectorConstructionError>
 pub struct surgeist_css::CssComponentValue
 impl surgeist_css::CssComponentValue
 pub const fn surgeist_css::CssComponentValue::origin(&self) -> &surgeist_css::CssValueOrigin
@@ -6952,6 +6971,8 @@ pub const fn surgeist_css::CssCompoundSelector::nesting_selectors(&self) -> usiz
 pub fn surgeist_css::CssCompoundSelector::pseudo_classes(&self) -> &[surgeist_css::CssPseudoClass]
 pub const fn surgeist_css::CssCompoundSelector::pseudo_elements(&self) -> core::option::Option<&surgeist_css::CssPseudoElementSequence>
 pub const fn surgeist_css::CssCompoundSelector::scope_anchors(&self) -> usize
+pub fn surgeist_css::CssCompoundSelector::try_new(members: alloc::vec::Vec<surgeist_css::CssSimpleSelector>) -> core::result::Result<Self, surgeist_css::CssSelectorConstructionError>
+pub fn surgeist_css::CssCompoundSelector::try_new_with_limits(members: alloc::vec::Vec<surgeist_css::CssSimpleSelector>, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssSelectorConstructionError>
 pub fn surgeist_css::CssCompoundSelector::type_selector(&self) -> core::option::Option<&surgeist_css::CssQualifiedSelectorName>
 pub struct surgeist_css::CssCompoundSelectorArgument
 impl surgeist_css::CssCompoundSelectorArgument

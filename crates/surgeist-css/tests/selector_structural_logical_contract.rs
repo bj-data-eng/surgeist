@@ -648,11 +648,9 @@ fn checked_complex_and_list_construction_preserve_nonempty_order() {
         CssSelector::Complex(checked).to_specified_css().unwrap(),
         "A > B"
     );
-    assert!(CssComplexSelector::try_new(value.first().clone(), Vec::new()).is_none());
+    assert!(CssComplexSelector::try_new(value.first().clone(), Vec::new()).is_err());
     let pseudo = parsed("A::before");
-    assert!(
-        CssComplexSelector::try_new(compound(&pseudo).clone(), value.rest().to_vec()).is_none()
-    );
+    assert!(CssComplexSelector::try_new(compound(&pseudo).clone(), value.rest().to_vec()).is_err());
     let checked = CssSelectorList::try_new(vec![
         CssSelector::Class("One".into()),
         CssSelector::Key("Two".into()),

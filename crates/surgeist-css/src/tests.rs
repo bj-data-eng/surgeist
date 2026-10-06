@@ -2815,7 +2815,63 @@ fn complex_selector_constructor_rejects_parts_after_pseudo_elements() {
         CssCompoundSelector::new(None, None, vec!["icon".to_owned()], Vec::new(), Vec::new()),
     );
 
-    assert_eq!(CssComplexSelector::try_new(first, vec![part]), None);
+    assert!(CssComplexSelector::try_new(first, vec![part]).is_err());
+}
+
+#[test]
+fn checked_part_and_complex_reject_invalid_private_compound_graphs() {
+    // The owning private harness can express corrupt provider internals that
+    // public checked compound construction correctly prevents from escaping.
+    let empty = CssPseudoSelectorList::try_new_forgiving(Vec::new()).unwrap();
+    let invalids = [
+        CssCompoundSelector::new(None, None, vec![String::new()], Vec::new(), Vec::new()),
+        CssCompoundSelector::new(None, None, vec!["a\0b".into()], Vec::new(), Vec::new()),
+        CssCompoundSelector::new(
+            None,
+            None,
+            Vec::new(),
+            Vec::new(),
+            vec![CssPseudoClass::Not(empty)],
+        ),
+    ];
+    let valid = CssCompoundSelector::new(None, None, vec!["One".into()], Vec::new(), Vec::new());
+    for invalid in invalids {
+        let part_error =
+            CssComplexSelectorPart::try_new(CssSelectorCombinator::Child, invalid.clone())
+                .unwrap_err();
+        let first_error = CssComplexSelector::try_new(
+            invalid.clone(),
+            vec![CssComplexSelectorPart::new(
+                CssSelectorCombinator::Child,
+                valid.clone(),
+            )],
+        )
+        .unwrap_err();
+        let rest_error = CssComplexSelector::try_new(
+            valid.clone(),
+            vec![CssComplexSelectorPart::new(
+                CssSelectorCombinator::Child,
+                invalid,
+            )],
+        )
+        .unwrap_err();
+        for error in [part_error, first_error, rest_error] {
+            let CssSelectorConstructionErrorKind::Specified(cause) = error.kind() else {
+                panic!("complete graph admission error: {error:?}");
+            };
+            assert_eq!(
+                cause.kind(),
+                CssSpecifiedValueSerializationErrorKind::UnrepresentableValue
+            );
+        }
+    }
+    let part =
+        CssComplexSelectorPart::try_new(CssSelectorCombinator::Child, valid.clone()).unwrap();
+    let value = CssComplexSelector::try_new(valid, vec![part]).unwrap();
+    assert_eq!(
+        CssSelector::Complex(value).to_specified_css().unwrap(),
+        ".One > .One"
+    );
 }
 
 #[test]

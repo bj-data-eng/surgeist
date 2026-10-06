@@ -51,17 +51,44 @@ pub struct CssComplexSelector {
 }
 
 impl CssComplexSelector {
-    #[must_use]
-    pub fn try_new(first: CssCompoundSelector, rest: Vec<CssComplexSelectorPart>) -> Option<Self> {
-        if rest.is_empty() || complex_selector_has_non_terminal_pseudo_elements(&first, &rest) {
-            None
-        } else {
-            Some(Self::new(first, rest))
+    /// Checks complete ordinary assembly with the default cumulative output limits.
+    pub fn try_new(
+        first: CssCompoundSelector,
+        rest: Vec<CssComplexSelectorPart>,
+    ) -> Result<Self, CssSelectorConstructionError> {
+        Self::try_new_with_limits(
+            first,
+            rest,
+            crate::CssSpecifiedValueSerializationLimits::default(),
+        )
+    }
+
+    /// Checks placement and the complete graph within one shared budget.
+    pub fn try_new_with_limits(
+        first: CssCompoundSelector,
+        rest: Vec<CssComplexSelectorPart>,
+        limits: crate::CssSpecifiedValueSerializationLimits,
+    ) -> Result<Self, CssSelectorConstructionError> {
+        if rest.is_empty() {
+            return Err(CssSelectorConstructionError::new(
+                CssSelectorConstructionErrorKind::EmptyComplexRest,
+            ));
         }
+        if let Some(compound_index) = non_terminal_pseudo_element_index(&first, &rest) {
+            return Err(CssSelectorConstructionError::new(
+                CssSelectorConstructionErrorKind::NonTerminalPseudoElement { compound_index },
+            ));
+        }
+        let value = Self::new(first, rest);
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        writer
+            .complex_selector(&value)
+            .map_err(CssSelectorConstructionError::specified)?;
+        Ok(value)
     }
 
     #[must_use]
-    fn new(first: CssCompoundSelector, rest: Vec<CssComplexSelectorPart>) -> Self {
+    pub(crate) fn new(first: CssCompoundSelector, rest: Vec<CssComplexSelectorPart>) -> Self {
         debug_assert!(!rest.is_empty());
         debug_assert!(!complex_selector_has_non_terminal_pseudo_elements(
             &first, &rest
@@ -89,15 +116,24 @@ impl CssComplexSelector {
     }
 }
 
-fn complex_selector_has_non_terminal_pseudo_elements(
+pub(crate) fn complex_selector_has_non_terminal_pseudo_elements(
     first: &CssCompoundSelector,
     rest: &[CssComplexSelectorPart],
 ) -> bool {
-    first.has_pseudo_elements()
-        || rest
-            .iter()
-            .take(rest.len().saturating_sub(1))
-            .any(|part| part.selector().has_pseudo_elements())
+    non_terminal_pseudo_element_index(first, rest).is_some()
+}
+
+fn non_terminal_pseudo_element_index(
+    first: &CssCompoundSelector,
+    rest: &[CssComplexSelectorPart],
+) -> Option<usize> {
+    if first.has_pseudo_elements() {
+        return Some(0);
+    }
+    rest.iter()
+        .take(rest.len().saturating_sub(1))
+        .position(|part| part.selector().has_pseudo_elements())
+        .map(|index| index + 1)
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -107,6 +143,33 @@ pub struct CssComplexSelectorPart {
 }
 
 impl CssComplexSelectorPart {
+    /// Checks an ordinary compound and its relationship with default output limits.
+    /// Admission here does not prove that a pseudo-element is terminal in a complex.
+    pub fn try_new(
+        combinator: CssSelectorCombinator,
+        selector: CssCompoundSelector,
+    ) -> Result<Self, CssSelectorConstructionError> {
+        Self::try_new_with_limits(
+            combinator,
+            selector,
+            crate::CssSpecifiedValueSerializationLimits::default(),
+        )
+    }
+
+    /// Charges the compound and canonical relationship bytes cumulatively.
+    pub fn try_new_with_limits(
+        combinator: CssSelectorCombinator,
+        selector: CssCompoundSelector,
+        limits: crate::CssSpecifiedValueSerializationLimits,
+    ) -> Result<Self, CssSelectorConstructionError> {
+        let value = Self::new(combinator, selector);
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        writer
+            .complex_selector_part(&value)
+            .map_err(CssSelectorConstructionError::specified)?;
+        Ok(value)
+    }
+
     #[must_use]
     pub(crate) const fn new(
         combinator: CssSelectorCombinator,
@@ -144,8 +207,20 @@ pub enum CssSelectorCombinator {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssSelectorConstructionErrorKind {
+    /// A compound must contain at least one simple member.
+    EmptyCompound,
     /// A strict selector list must contain at least one member.
     EmptyList,
+    /// A complex must contain at least one relationship and following compound.
+    EmptyComplexRest,
+    /// A pseudo-element-bearing compound precedes the final compound.
+    NonTerminalPseudoElement { compound_index: usize },
+    /// A type or universal selector is duplicated or follows another member.
+    InvalidTypePosition { member_index: usize },
+    /// An attribute modifier was supplied without an attribute value.
+    ModifierWithoutValue,
+    /// A decoded attribute operand cannot preserve its string identity.
+    InvalidAttributeValue(crate::CssComponentValueError),
     /// Intrinsic grammar or cumulative specified-output admission failed.
     Specified(crate::CssSpecifiedValueSerializationError),
 }
@@ -157,6 +232,9 @@ pub struct CssSelectorConstructionError {
 }
 
 impl CssSelectorConstructionError {
+    const fn new(kind: CssSelectorConstructionErrorKind) -> Self {
+        Self { kind }
+    }
     const fn empty_list() -> Self {
         Self {
             kind: CssSelectorConstructionErrorKind::EmptyList,
@@ -179,10 +257,32 @@ impl CssSelectorConstructionError {
 impl std::fmt::Display for CssSelectorConstructionError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.kind {
+            CssSelectorConstructionErrorKind::EmptyCompound => {
+                formatter.write_str("a compound selector must contain at least one member")
+            }
             CssSelectorConstructionErrorKind::EmptyList => {
                 formatter.write_str("a selector list must contain at least one member")
             }
             CssSelectorConstructionErrorKind::Specified(error) => {
+                std::fmt::Display::fmt(error, formatter)
+            }
+            CssSelectorConstructionErrorKind::EmptyComplexRest => {
+                formatter.write_str("a complex selector must contain a following compound")
+            }
+            CssSelectorConstructionErrorKind::NonTerminalPseudoElement { compound_index } => {
+                write!(
+                    formatter,
+                    "pseudo-element compound at index {compound_index} must be terminal"
+                )
+            }
+            CssSelectorConstructionErrorKind::InvalidTypePosition { member_index } => write!(
+                formatter,
+                "type or universal selector at member index {member_index} must be unique and first"
+            ),
+            CssSelectorConstructionErrorKind::ModifierWithoutValue => {
+                formatter.write_str("an attribute modifier requires a value")
+            }
+            CssSelectorConstructionErrorKind::InvalidAttributeValue(error) => {
                 std::fmt::Display::fmt(error, formatter)
             }
         }
@@ -192,7 +292,13 @@ impl std::fmt::Display for CssSelectorConstructionError {
 impl std::error::Error for CssSelectorConstructionError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match &self.kind {
-            CssSelectorConstructionErrorKind::EmptyList => None,
+            CssSelectorConstructionErrorKind::EmptyCompound
+            | CssSelectorConstructionErrorKind::EmptyList
+            | CssSelectorConstructionErrorKind::EmptyComplexRest
+            | CssSelectorConstructionErrorKind::NonTerminalPseudoElement { .. }
+            | CssSelectorConstructionErrorKind::InvalidTypePosition { .. }
+            | CssSelectorConstructionErrorKind::ModifierWithoutValue => None,
+            CssSelectorConstructionErrorKind::InvalidAttributeValue(error) => Some(error),
             CssSelectorConstructionErrorKind::Specified(error) => Some(error),
         }
     }
@@ -1419,6 +1525,19 @@ impl CssNthAnPlusB {
     }
 }
 
+/// One authored simple member, before checked compound assembly.
+/// Type includes the existing qualified universal-selector identity. Pseudo-elements
+/// and relative or complex selectors belong to separate construction boundaries.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub enum CssSimpleSelector {
+    Type(CssQualifiedSelectorName),
+    Id(super::CssIdent),
+    Class(super::CssIdent),
+    Attribute(CssAttributeSelector),
+    PseudoClass(CssPseudoClass),
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssCompoundSelector {
     scope_anchors: usize,
@@ -1432,6 +1551,77 @@ pub struct CssCompoundSelector {
 }
 
 impl CssCompoundSelector {
+    /// Assembles nonempty simple members, admitting a unique type/universal first.
+    /// Repeated IDs and classes remain ordered within their canonical groups.
+    ///
+    /// ```
+    /// use surgeist_css::{CssComplexSelector, CssComplexSelectorPart, CssCompoundSelector,
+    ///     CssIdent, CssSelector, CssSelectorCombinator, CssSimpleSelector};
+    /// let first = CssCompoundSelector::try_new(vec![
+    ///     CssSimpleSelector::Class(CssIdent::try_new("Parent").unwrap()),
+    /// ]).unwrap();
+    /// let child = CssCompoundSelector::try_new(vec![
+    ///     CssSimpleSelector::Class(CssIdent::try_new("Child").unwrap()),
+    /// ]).unwrap();
+    /// let part = CssComplexSelectorPart::try_new(CssSelectorCombinator::Child, child).unwrap();
+    /// let selector = CssSelector::Complex(CssComplexSelector::try_new(first, vec![part]).unwrap());
+    /// assert_eq!(selector.to_specified_css().unwrap(), ".Parent > .Child");
+    /// ```
+    pub fn try_new(members: Vec<CssSimpleSelector>) -> Result<Self, CssSelectorConstructionError> {
+        Self::try_new_with_limits(
+            members,
+            crate::CssSpecifiedValueSerializationLimits::default(),
+        )
+    }
+
+    /// Checks member order, then admits the complete ordinary graph and output
+    /// with one cumulative budget. No partially assembled compound escapes.
+    pub fn try_new_with_limits(
+        members: Vec<CssSimpleSelector>,
+        limits: crate::CssSpecifiedValueSerializationLimits,
+    ) -> Result<Self, CssSelectorConstructionError> {
+        if members.is_empty() {
+            return Err(CssSelectorConstructionError::new(
+                CssSelectorConstructionErrorKind::EmptyCompound,
+            ));
+        }
+        let mut type_selector = None;
+        let mut ids = Vec::new();
+        let mut classes = Vec::new();
+        let mut attributes = Vec::new();
+        let mut pseudo_classes = Vec::new();
+        for (member_index, member) in members.into_iter().enumerate() {
+            match member {
+                CssSimpleSelector::Type(name) => {
+                    if member_index != 0 {
+                        return Err(CssSelectorConstructionError::new(
+                            CssSelectorConstructionErrorKind::InvalidTypePosition { member_index },
+                        ));
+                    }
+                    type_selector = Some(name);
+                }
+                CssSimpleSelector::Id(value) => ids.push(value.as_str().to_owned()),
+                CssSimpleSelector::Class(value) => classes.push(value.as_str().to_owned()),
+                CssSimpleSelector::Attribute(value) => attributes.push(value),
+                CssSimpleSelector::PseudoClass(value) => pseudo_classes.push(value),
+            }
+        }
+        let value = Self::new_with_qualified_type_and_pseudo_elements(
+            0,
+            type_selector,
+            ids,
+            classes,
+            attributes,
+            pseudo_classes,
+            None,
+        );
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        writer
+            .compound_selector(&value)
+            .map_err(CssSelectorConstructionError::specified)?;
+        Ok(value)
+    }
+
     #[must_use]
     pub(crate) fn new(
         tag: Option<String>,
@@ -1601,6 +1791,60 @@ pub struct CssAttributeSelector {
 }
 
 impl CssAttributeSelector {
+    /// Checks the coupled qualified name, decoded operand and optional modifier.
+    /// Empty or whitespace-containing values retain their syntax identity; matching
+    /// behavior belongs to consumers. Exists admits only DocumentDefault.
+    pub fn try_new(
+        name: CssQualifiedAttributeName,
+        matcher: CssAttributeMatcher,
+        case_sensitivity: CssAttributeCaseSensitivity,
+    ) -> Result<Self, CssSelectorConstructionError> {
+        Self::try_new_with_limits(
+            name,
+            matcher,
+            case_sensitivity,
+            crate::CssSpecifiedValueSerializationLimits::default(),
+        )
+    }
+
+    /// Checks intrinsic operand identity and charges canonical attribute output
+    /// within the supplied semantic-node and UTF-8 byte limits.
+    pub fn try_new_with_limits(
+        name: CssQualifiedAttributeName,
+        matcher: CssAttributeMatcher,
+        case_sensitivity: CssAttributeCaseSensitivity,
+        limits: crate::CssSpecifiedValueSerializationLimits,
+    ) -> Result<Self, CssSelectorConstructionError> {
+        match &matcher {
+            CssAttributeMatcher::Exists
+                if case_sensitivity != CssAttributeCaseSensitivity::DocumentDefault =>
+            {
+                return Err(CssSelectorConstructionError::new(
+                    CssSelectorConstructionErrorKind::ModifierWithoutValue,
+                ));
+            }
+            CssAttributeMatcher::Exists => {}
+            CssAttributeMatcher::Equals(value)
+            | CssAttributeMatcher::Includes(value)
+            | CssAttributeMatcher::DashMatch(value)
+            | CssAttributeMatcher::Prefix(value)
+            | CssAttributeMatcher::Suffix(value)
+            | CssAttributeMatcher::Substring(value) => {
+                crate::CssComponentValue::try_string(value.clone()).map_err(|error| {
+                    CssSelectorConstructionError::new(
+                        CssSelectorConstructionErrorKind::InvalidAttributeValue(error),
+                    )
+                })?;
+            }
+        }
+        let value = Self::new_qualified(name, matcher, case_sensitivity);
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        writer
+            .attribute_selector(&value)
+            .map_err(CssSelectorConstructionError::specified)?;
+        Ok(value)
+    }
+
     #[must_use]
     pub(crate) const fn new_qualified(
         name: CssQualifiedAttributeName,

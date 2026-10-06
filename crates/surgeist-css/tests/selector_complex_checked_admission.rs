@@ -51,15 +51,15 @@ fn complex_assembly_preserves_order_and_legal_terminal_pseudo_element() {
 #[test]
 fn complex_assembly_rejects_empty_rest_and_nonterminal_pseudo_element() {
     let ordinary = complex(".One > .Two");
-    assert!(CssComplexSelector::try_new(ordinary.first().clone(), Vec::new()).is_none());
+    assert!(CssComplexSelector::try_new(ordinary.first().clone(), Vec::new()).is_err());
 
     let terminal = complex(".One > .Two::before");
     let first = terminal.rest()[0].selector().clone();
-    assert!(CssComplexSelector::try_new(first, ordinary.rest().to_vec()).is_none());
+    assert!(CssComplexSelector::try_new(first, ordinary.rest().to_vec()).is_err());
 
     let mut rest = terminal.rest().to_vec();
     rest.extend_from_slice(ordinary.rest());
-    assert!(CssComplexSelector::try_new(ordinary.first().clone(), rest).is_none());
+    assert!(CssComplexSelector::try_new(ordinary.first().clone(), rest).is_err());
 }
 
 #[test]
@@ -120,7 +120,7 @@ fn complex_assembly_rejects_one_node_above_default_cumulative_budget() {
         ".Two"
     );
     let actual = CssComplexSelector::try_new(value.first().clone(), vec![part; 32_766]);
-    if let Some(value) = &actual {
+    if let Ok(value) = &actual {
         assert_eq!(
             CssSelector::Complex(value.clone())
                 .to_specified_css()
@@ -130,7 +130,7 @@ fn complex_assembly_rejects_one_node_above_default_cumulative_budget() {
         );
     }
     assert!(
-        actual.is_none(),
+        actual.is_err(),
         "complex assembly admitted 65,537 cumulative input nodes"
     );
 }
@@ -172,7 +172,7 @@ fn complex_assembly_rejects_utf8_bytes_above_default_cumulative_budget() {
     let literal = format!(".{name} > .Two");
     assert_eq!(literal.len(), 1_048_577);
     let actual = CssComplexSelector::try_new(first, vec![child_part()]);
-    if let Some(value) = &actual {
+    if let Ok(value) = &actual {
         assert_eq!(
             CssSelector::Complex(value.clone())
                 .to_specified_css()
@@ -182,7 +182,7 @@ fn complex_assembly_rejects_utf8_bytes_above_default_cumulative_budget() {
         );
     }
     assert!(
-        actual.is_none(),
+        actual.is_err(),
         "complex assembly admitted 1,048,577 cumulative UTF-8 bytes"
     );
 }
