@@ -7212,14 +7212,38 @@ explicit programmatic origin, and no partial output is returned. The crate-owned
 capture boundary accepts the same cumulative context used by enclosing rule
 writers; final emitted bytes are charged once by that writer.
 
-The [pinned CSSOM1 media clauses](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#media-queries)
-define orientation and scan value spellings. Its other media-feature table cells
-contain explicit ellipses. Selected Media Queries 5 and value-owner clauses
-govern those features; this surface does not invent an ellipsis-cell format or
-certify uncovered feature serialization. Numeric/value phase limitations remain
-with their existing owners. Focused public evidence is in
+The [pinned CSSOM1 feature table](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serializing-media-feature-values)
+defines orientation and scan value spellings and leaves eleven cells as explicit
+ellipses: width, height, device-width, device-height, aspect-ratio,
+device-aspect-ratio, color, color-index, monochrome, resolution and grid.
+The selected [Media Queries 5 definitions](https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/)
+establish their value domains without supplying all missing byte formats.
+
+For those cells, this authored projection retains admitted numeric token
+spellings, units and math components as an explicit project policy. It preserves
+signed quantities, range direction and inclusivity, including negative values
+and empty intervals whose truth belongs to evaluation. Thus `+001.5PX`, `-0`,
+`96dpi` and `calc(1dppx + 96dpi)` retain their lexical forms. Serialization does
+not substitute computed scalar formatting, convert units or evaluate math.
+Byte comparison consequently distinguishes `(resolution: 96dpi)` from
+`(resolution: 1dppx)`.
+
+[Values4's ratio rule](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#ratios)
+requires both components, with an omitted denominator defaulting to 1. The
+provider emits `2 / 1` for authored `2` and preserves a zero denominator such as
+`1.5 / 0`. Retained operand spellings and spaces around the slash are project
+formatting policy; the both-components requirement is source-defined. Explicit
+operands retain their parsed origins, while a synthesized denominator has a
+programmatic origin.
+
+The upstream ellipses remain genuine source limits. This policy covers the
+represented authored features; it does not claim a missing normative algorithm
+or a custom format for every unknown or vendor feature. Numeric/value phase
+limitations remain with their existing owners. Focused public evidence is in
 [`cssom_media_queries_lifecycle.rs`](../tests/cssom_media_queries_lifecycle.rs)
-and [`cssom_media_projection_contract.rs`](../tests/cssom_media_projection_contract.rs).
+and [`cssom_media_projection_contract.rs`](../tests/cssom_media_projection_contract.rs),
+with direct feature-policy coverage in
+[`cssom_media_feature_values.rs`](../tests/cssom_media_feature_values.rs).
 
 
 ## Checked Fonts rule composition
