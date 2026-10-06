@@ -89,6 +89,33 @@ components and preserves the offending token's coordinates; nested forgiving
 lists cannot hide an invalid outer envelope. These front doors reuse the implemented selector grammar; their
 availability does not establish complete Selectors 4 coverage.
 
+Programmatic selector lists use checked `try_new` constructors returning
+`Result<_, CssSelectorConstructionError>`. `CssSelectorList` admits ordinary
+members, `CssPseudoSelectorList` admits complex-real arguments without
+pseudo-elements, and `CssRelativeSelectorList` admits general relatives. General
+relative admission permits a legal terminal pseudo-element or a valid Has child;
+attaching the list to `CssPseudoClass::Has` still checks its narrower argument
+context. Every supplied member is checked, preserving order and duplicates.
+Invalid typed members are rejected atomically rather than silently filtered.
+
+The three `try_new_with_limits` methods use the existing
+`CssSpecifiedValueSerializationLimits` cumulatively over a list aggregate and all
+members. A relative additionally charges its leading carrier. Construction runs
+the same iterative, context-aware specified writer, discards its bounded output,
+and returns the unchanged value. The typed error distinguishes `EmptyList` from
+`Specified`, which preserves the original grammar/resource error and exposes it
+through `Error::source()`. `CssSelectorList` and `CssRelativeSelectorList` expose
+`to_specified_css` and `to_specified_css_with_limits`; later output is an independent
+atomic operation with its own cumulative budget. Parser assembly keeps its actual
+grammar checks, recovery/provenance and parse limits separately.
+
+`CssPseudoSelectorList::try_new_forgiving` and
+`try_new_forgiving_with_limits` admit an empty vector for Is/Where, while still
+rejecting invalid supplied members. An empty value costs one aggregate node and
+zero argument bytes. Not and nth-of attachment require nonempty arguments and
+reject that same empty container. This checked typed operation does not perform
+parsed member forgiveness or erase recovery diagnostics.
+
 Linguistic selectors preserve authored argument tokens. `CssPseudoClass::Dir`
 contains `CssDirectionality`; its checked `try_new` accepts a decoded identifier,
 including unknown direction names. `CssPseudoClass::Lang` now contains a nonempty

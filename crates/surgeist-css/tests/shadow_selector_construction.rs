@@ -68,14 +68,12 @@ fn compound_construction_preserves_primitive_and_namespace_arguments() {
 
 #[test]
 fn checked_arguments_reject_logical_complex_selectors_and_pseudo_elements() {
+    // PE-bearing Where/nth argument containers are now rejected at admission;
+    // their exact compound-argument defenses remain in owning private tests.
+    assert!(CssPseudoSelectorList::try_new(vec![selector("::before")]).is_err());
     for invalid in [
         CssPseudoClass::Not(CssPseudoSelectorList::try_new(vec![selector(".a > .b")]).unwrap()),
         CssPseudoClass::Is(CssPseudoSelectorList::try_new(vec![selector(".a > .b")]).unwrap()),
-        CssPseudoClass::Where(CssPseudoSelectorList::try_new(vec![selector("::before")]).unwrap()),
-        CssPseudoClass::NthChild(CssNthChildPattern::new(
-            CssNthPattern::Odd,
-            Some(CssPseudoSelectorList::try_new(vec![selector("::before")]).unwrap()),
-        )),
     ] {
         assert!(CssCompoundSelectorArgument::try_new(CssSelector::PseudoClass(invalid)).is_none());
     }
@@ -269,17 +267,16 @@ fn checked_logical_suffix_arguments_inherit_position_and_remain_pseudo_only() {
         ])
         .is_none()
     );
-    for invalid in [
-        selector(".class"),
-        selector(":hover > :focus"),
-        selector("::before"),
-    ] {
+    for invalid in [selector(".class"), selector(":hover > :focus")] {
         let logical = CssPseudoClass::Is(CssPseudoSelectorList::try_new(vec![invalid]).unwrap());
         assert!(
             CssPseudoElementSequence::try_from_segments(vec![E(part(&["label"])), P(logical)])
                 .is_none()
         );
     }
+    // The Is(PE) suffix defense is private now; this external front rejects the
+    // original pseudo-element member before suffix attachment is possible.
+    assert!(CssPseudoSelectorList::try_new(vec![selector("::before")]).is_err());
     let host = CssPseudoClass::HostFunction(argument(".inside"));
     assert!(
         CssPseudoElementSequence::try_from_segments(vec![

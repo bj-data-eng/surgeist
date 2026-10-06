@@ -140,19 +140,93 @@ pub enum CssSelectorCombinator {
     Column,
 }
 
+/// Why checked authored selector construction could not return a complete value.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssSelectorConstructionErrorKind {
+    /// A strict selector list must contain at least one member.
+    EmptyList,
+    /// Intrinsic grammar or cumulative specified-output admission failed.
+    Specified(crate::CssSpecifiedValueSerializationError),
+}
+
+/// Atomic construction failure, with no invented parsed-source coordinates.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssSelectorConstructionError {
+    kind: CssSelectorConstructionErrorKind,
+}
+
+impl CssSelectorConstructionError {
+    const fn empty_list() -> Self {
+        Self {
+            kind: CssSelectorConstructionErrorKind::EmptyList,
+        }
+    }
+
+    fn specified(error: crate::CssSpecifiedValueSerializationError) -> Self {
+        Self {
+            kind: CssSelectorConstructionErrorKind::Specified(error),
+        }
+    }
+
+    /// Returns the complete typed construction cause.
+    #[must_use]
+    pub const fn kind(&self) -> &CssSelectorConstructionErrorKind {
+        &self.kind
+    }
+}
+
+impl std::fmt::Display for CssSelectorConstructionError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.kind {
+            CssSelectorConstructionErrorKind::EmptyList => {
+                formatter.write_str("a selector list must contain at least one member")
+            }
+            CssSelectorConstructionErrorKind::Specified(error) => {
+                std::fmt::Display::fmt(error, formatter)
+            }
+        }
+    }
+}
+
+impl std::error::Error for CssSelectorConstructionError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match &self.kind {
+            CssSelectorConstructionErrorKind::EmptyList => None,
+            CssSelectorConstructionErrorKind::Specified(error) => Some(error),
+        }
+    }
+}
+
+/// A nonempty ordered list admitted under ordinary authored selector grammar.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssSelectorList {
     selectors: Vec<CssSelector>,
 }
 
 impl CssSelectorList {
-    #[must_use]
-    pub fn try_new(selectors: Vec<CssSelector>) -> Option<Self> {
+    /// Checks every ordinary member with the default cumulative output limits.
+    pub fn try_new(selectors: Vec<CssSelector>) -> Result<Self, CssSelectorConstructionError> {
+        Self::try_new_with_limits(
+            selectors,
+            crate::CssSpecifiedValueSerializationLimits::default(),
+        )
+    }
+
+    /// Checks the complete graph and canonical output within one shared budget.
+    /// No invalid member is dropped and no partially admitted list escapes.
+    pub fn try_new_with_limits(
+        selectors: Vec<CssSelector>,
+        limits: crate::CssSpecifiedValueSerializationLimits,
+    ) -> Result<Self, CssSelectorConstructionError> {
         if selectors.is_empty() {
-            None
-        } else {
-            Some(Self::new(selectors))
+            return Err(CssSelectorConstructionError::empty_list());
         }
+        let value = Self::new(selectors);
+        value
+            .to_specified_css_with_limits(limits)
+            .map_err(CssSelectorConstructionError::specified)?;
+        Ok(value)
     }
 
     #[must_use]
@@ -167,19 +241,56 @@ impl CssSelectorList {
     }
 }
 
+/// Complex-real selector arguments. Parsed and checked forgiving construction
+/// can retain zero members; strict construction still requires a nonempty list.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssPseudoSelectorList {
     selectors: Vec<CssSelector>,
 }
 
 impl CssPseudoSelectorList {
-    #[must_use]
-    pub fn try_new(selectors: Vec<CssSelector>) -> Option<Self> {
+    /// Checks a nonempty complex-real list with the default cumulative limits.
+    pub fn try_new(selectors: Vec<CssSelector>) -> Result<Self, CssSelectorConstructionError> {
+        Self::try_new_with_limits(
+            selectors,
+            crate::CssSpecifiedValueSerializationLimits::default(),
+        )
+    }
+
+    /// Rejects an empty list or any invalid supplied member without filtering.
+    pub fn try_new_with_limits(
+        selectors: Vec<CssSelector>,
+        limits: crate::CssSpecifiedValueSerializationLimits,
+    ) -> Result<Self, CssSelectorConstructionError> {
         if selectors.is_empty() {
-            None
-        } else {
-            Some(Self::new(selectors))
+            return Err(CssSelectorConstructionError::empty_list());
         }
+        Self::try_new_forgiving_with_limits(selectors, limits)
+    }
+
+    /// Admits empty complex-real arguments for Is/Where. Invalid typed members
+    /// fail construction; parsed member forgiveness is a separate operation.
+    pub fn try_new_forgiving(
+        selectors: Vec<CssSelector>,
+    ) -> Result<Self, CssSelectorConstructionError> {
+        Self::try_new_forgiving_with_limits(
+            selectors,
+            crate::CssSpecifiedValueSerializationLimits::default(),
+        )
+    }
+
+    /// Checks every supplied member with one aggregate and cumulative budget,
+    /// including the aggregate node of a valid empty forgiving list.
+    pub fn try_new_forgiving_with_limits(
+        selectors: Vec<CssSelector>,
+        limits: crate::CssSpecifiedValueSerializationLimits,
+    ) -> Result<Self, CssSelectorConstructionError> {
+        let value = Self::new_forgiving(selectors);
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        writer
+            .pseudo_selectors(&value)
+            .map_err(CssSelectorConstructionError::specified)?;
+        Ok(value)
     }
 
     #[must_use]
@@ -230,19 +341,39 @@ impl CssRelativeSelector {
     }
 }
 
+/// A nonempty general relative list. Has attachment applies its additional
+/// no-pseudo-element and no-nested-Has restrictions at the consuming boundary.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssRelativeSelectorList {
     selectors: Vec<CssRelativeSelector>,
 }
 
 impl CssRelativeSelectorList {
-    #[must_use]
-    pub fn try_new(selectors: Vec<CssRelativeSelector>) -> Option<Self> {
+    /// Checks every general relative member with default cumulative limits.
+    pub fn try_new(
+        selectors: Vec<CssRelativeSelector>,
+    ) -> Result<Self, CssSelectorConstructionError> {
+        Self::try_new_with_limits(
+            selectors,
+            crate::CssSpecifiedValueSerializationLimits::default(),
+        )
+    }
+
+    /// Checks all leading carriers and their complete ordinary child graphs.
+    /// A valid terminal pseudo-element or Has child is admitted here; attaching
+    /// this list as Has arguments independently enforces the narrower context.
+    pub fn try_new_with_limits(
+        selectors: Vec<CssRelativeSelector>,
+        limits: crate::CssSpecifiedValueSerializationLimits,
+    ) -> Result<Self, CssSelectorConstructionError> {
         if selectors.is_empty() {
-            None
-        } else {
-            Some(Self::new(selectors))
+            return Err(CssSelectorConstructionError::empty_list());
         }
+        let value = Self::new(selectors);
+        value
+            .to_specified_css_with_limits(limits)
+            .map_err(CssSelectorConstructionError::specified)?;
+        Ok(value)
     }
 
     #[must_use]

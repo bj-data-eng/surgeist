@@ -55,6 +55,40 @@ impl CssSelector {
         Ok(writer.css)
     }
 }
+impl CssSelectorList {
+    /// Emits the complete ordinary list without resolving symbolic ancestry.
+    pub fn to_specified_css(&self) -> Result<String> {
+        self.to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Emits atomically with one cumulative aggregate/member/UTF-8 budget.
+    pub fn to_specified_css_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String> {
+        let mut writer = SpecifiedRuleWriter::new(limits);
+        writer.ordinary_selectors(self)?;
+        Ok(writer.css)
+    }
+}
+
+impl CssRelativeSelectorList {
+    /// Emits general relatives with their explicit or implicit leading relation.
+    pub fn to_specified_css(&self) -> Result<String> {
+        self.to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Emits atomically, including every relative carrier in one shared budget.
+    pub fn to_specified_css_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String> {
+        let mut writer = SpecifiedRuleWriter::new(limits);
+        writer.relative_selectors(self)?;
+        Ok(writer.css)
+    }
+}
+
 impl SpecifiedRuleWriter {
     pub(crate) fn node(&mut self) -> Result<()> {
         self.context.charge_input(1)?;
@@ -102,6 +136,33 @@ impl SpecifiedRuleWriter {
     pub(crate) fn selector(&mut self, selector: &CssSelector) -> Result<()> {
         self.selector_events(Event::Selector(
             selector,
+            CssSelectorGrammarContext::ORDINARY,
+        ))
+    }
+
+    pub(crate) fn ordinary_selectors(&mut self, list: &CssSelectorList) -> Result<()> {
+        self.node()?;
+        self.selector_events(Event::List(
+            list.selectors(),
+            0,
+            CssSelectorGrammarContext::ORDINARY,
+        ))
+    }
+
+    pub(crate) fn pseudo_selectors(&mut self, list: &CssPseudoSelectorList) -> Result<()> {
+        self.node()?;
+        self.selector_events(Event::List(
+            list.selectors(),
+            0,
+            CssSelectorGrammarContext::ORDINARY.logical_arguments(),
+        ))
+    }
+
+    pub(crate) fn relative_selectors(&mut self, list: &CssRelativeSelectorList) -> Result<()> {
+        self.node()?;
+        self.selector_events(Event::RelativeList(
+            list.selectors(),
+            0,
             CssSelectorGrammarContext::ORDINARY,
         ))
     }

@@ -267,19 +267,12 @@ fn checked_boundary_lists_reject_empty_and_recursive_pseudo_elements() {
     let [CssStyleSelector::Selector(selector)] = style.selectors().selectors() else {
         panic!("selector")
     };
-    for selector in [
-        selector.clone(),
-        CssSelector::PseudoClass(CssPseudoClass::Is(
-            CssPseudoSelectorList::try_new(vec![selector.clone()]).unwrap(),
-        )),
-        CssSelector::PseudoClass(CssPseudoClass::Not(
-            CssPseudoSelectorList::try_new(vec![selector.clone()]).unwrap(),
-        )),
-    ] {
-        assert!(
-            CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(selector)]).is_none()
-        );
-    }
+    // The recursive Is/Not(PE) boundary defenses remain in owning private tests;
+    // these graphs cannot be admitted through the corrected public list front.
+    assert!(CssPseudoSelectorList::try_new(vec![selector.clone()]).is_err());
+    assert!(
+        CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(selector.clone())]).is_none()
+    );
     assert!(
         CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(CssSelector::PseudoClass(
             CssPseudoClass::Scope

@@ -285,13 +285,13 @@ fn namespace_constraints_check_declared_prefix_and_default_structure_without_uri
 }
 #[test]
 fn scope_raw_identifiers_and_functional_arguments_are_intrinsically_checked() {
+    // The old Is(NUL class) scope-rule defense is retained privately. Checked
+    // public list construction now rejects that exact raw member first.
+    assert!(CssPseudoSelectorList::try_new(vec![CssSelector::Class("\0".into())]).is_err());
     for selector in [
         CssSelector::Tag(String::new()),
         CssSelector::Key("\0".into()),
         CssSelector::Class(String::new()),
-        CssSelector::PseudoClass(CssPseudoClass::Is(
-            CssPseudoSelectorList::try_new(vec![CssSelector::Class("\0".into())]).unwrap(),
-        )),
     ] {
         let root =
             CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(selector)]).unwrap();

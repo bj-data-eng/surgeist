@@ -4679,6 +4679,9 @@ pub surgeist_css::CssSelectorCombinator::Column
 pub surgeist_css::CssSelectorCombinator::Descendant
 pub surgeist_css::CssSelectorCombinator::NextSibling
 pub surgeist_css::CssSelectorCombinator::SubsequentSibling
+#[non_exhaustive] pub enum surgeist_css::CssSelectorConstructionErrorKind
+pub surgeist_css::CssSelectorConstructionErrorKind::EmptyList
+pub surgeist_css::CssSelectorConstructionErrorKind::Specified(surgeist_css::CssSpecifiedValueSerializationError)
 #[non_exhaustive] pub enum surgeist_css::CssSerializedOrigin
 pub surgeist_css::CssSerializedOrigin::End(core::option::Option<surgeist_css::CssValueOrigin>)
 pub surgeist_css::CssSerializedOrigin::Separator
@@ -10157,7 +10160,10 @@ pub struct surgeist_css::CssPseudoSelectorList
 impl surgeist_css::CssPseudoSelectorList
 pub fn surgeist_css::CssPseudoSelectorList::has_pseudo_elements(&self) -> bool
 pub fn surgeist_css::CssPseudoSelectorList::selectors(&self) -> &[surgeist_css::CssSelector]
-pub fn surgeist_css::CssPseudoSelectorList::try_new(selectors: alloc::vec::Vec<surgeist_css::CssSelector>) -> core::option::Option<Self>
+pub fn surgeist_css::CssPseudoSelectorList::try_new(selectors: alloc::vec::Vec<surgeist_css::CssSelector>) -> core::result::Result<Self, surgeist_css::CssSelectorConstructionError>
+pub fn surgeist_css::CssPseudoSelectorList::try_new_forgiving(selectors: alloc::vec::Vec<surgeist_css::CssSelector>) -> core::result::Result<Self, surgeist_css::CssSelectorConstructionError>
+pub fn surgeist_css::CssPseudoSelectorList::try_new_forgiving_with_limits(selectors: alloc::vec::Vec<surgeist_css::CssSelector>, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssSelectorConstructionError>
+pub fn surgeist_css::CssPseudoSelectorList::try_new_with_limits(selectors: alloc::vec::Vec<surgeist_css::CssSelector>, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssSelectorConstructionError>
 pub struct surgeist_css::CssQualifiedAttributeName
 impl surgeist_css::CssQualifiedAttributeName
 pub const fn surgeist_css::CssQualifiedAttributeName::local_name(&self) -> &surgeist_css::CssAttributeName
@@ -10312,7 +10318,11 @@ pub struct surgeist_css::CssRelativeSelectorList
 impl surgeist_css::CssRelativeSelectorList
 pub fn surgeist_css::CssRelativeSelectorList::has_pseudo_elements(&self) -> bool
 pub fn surgeist_css::CssRelativeSelectorList::selectors(&self) -> &[surgeist_css::CssRelativeSelector]
-pub fn surgeist_css::CssRelativeSelectorList::try_new(selectors: alloc::vec::Vec<surgeist_css::CssRelativeSelector>) -> core::option::Option<Self>
+pub fn surgeist_css::CssRelativeSelectorList::try_new(selectors: alloc::vec::Vec<surgeist_css::CssRelativeSelector>) -> core::result::Result<Self, surgeist_css::CssSelectorConstructionError>
+pub fn surgeist_css::CssRelativeSelectorList::try_new_with_limits(selectors: alloc::vec::Vec<surgeist_css::CssRelativeSelector>, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssSelectorConstructionError>
+impl surgeist_css::CssRelativeSelectorList
+pub fn surgeist_css::CssRelativeSelectorList::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssRelativeSelectorList::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssResizePropertyValue
 impl surgeist_css::CssResizePropertyValue
 pub fn surgeist_css::CssResizePropertyValue::as_css(&self) -> &str
@@ -10632,6 +10642,13 @@ pub struct surgeist_css::CssScrollbarWidthPropertyValue
 impl surgeist_css::CssScrollbarWidthPropertyValue
 pub fn surgeist_css::CssScrollbarWidthPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssScrollbarWidthPropertyValue::value(&self) -> &surgeist_css::CssScrollbarWidth
+pub struct surgeist_css::CssSelectorConstructionError
+impl surgeist_css::CssSelectorConstructionError
+pub const fn surgeist_css::CssSelectorConstructionError::kind(&self) -> &surgeist_css::CssSelectorConstructionErrorKind
+impl core::error::Error for surgeist_css::CssSelectorConstructionError
+pub fn surgeist_css::CssSelectorConstructionError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_css::CssSelectorConstructionError
+pub fn surgeist_css::CssSelectorConstructionError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css::CssSelectorContext
 impl surgeist_css::CssSelectorContext
 pub fn surgeist_css::CssSelectorContext::parent(&self) -> core::option::Option<&Self>
@@ -10646,7 +10663,11 @@ pub const fn surgeist_css::CssSelectorError::production(&self) -> core::option::
 pub struct surgeist_css::CssSelectorList
 impl surgeist_css::CssSelectorList
 pub fn surgeist_css::CssSelectorList::selectors(&self) -> &[surgeist_css::CssSelector]
-pub fn surgeist_css::CssSelectorList::try_new(selectors: alloc::vec::Vec<surgeist_css::CssSelector>) -> core::option::Option<Self>
+pub fn surgeist_css::CssSelectorList::try_new(selectors: alloc::vec::Vec<surgeist_css::CssSelector>) -> core::result::Result<Self, surgeist_css::CssSelectorConstructionError>
+pub fn surgeist_css::CssSelectorList::try_new_with_limits(selectors: alloc::vec::Vec<surgeist_css::CssSelector>, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssSelectorConstructionError>
+impl surgeist_css::CssSelectorList
+pub fn surgeist_css::CssSelectorList::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssSelectorList::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssSemitoneLiteral
 impl surgeist_css::CssSemitoneLiteral
 pub const fn surgeist_css::CssSemitoneLiteral::component(&self) -> &surgeist_css::CssComponentValue

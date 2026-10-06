@@ -1403,8 +1403,9 @@ fn parse_pseudo_selector_list_with_options<'i, 't>(
     recovery: &mut SelectorRecovery<'_>,
 ) -> std::result::Result<CssPseudoSelectorList, ParseError<'i, Error>> {
     let selectors = parse_pseudo_selector_list_items_with_options(input, options, recovery)?;
-    CssPseudoSelectorList::try_new(selectors)
-        .ok_or_else(|| invalid_selector(input, "pseudo-class selector list must not be empty"))
+    // This parser has proved each member in its actual containing context and
+    // charged the shared parse budget. Programmatic output limits are separate.
+    Ok(CssPseudoSelectorList::new(selectors))
 }
 
 fn parse_pseudo_selector_list_items_with_options<'i, 't>(
@@ -1478,8 +1479,9 @@ fn parse_has_relative_selector_list<'i, 't>(
         }
     }
     input.expect_exhausted().map_err(selector_basic)?;
-    CssRelativeSelectorList::try_new(selectors)
-        .ok_or_else(|| invalid_selector(input, "relative selector list must not be empty"))
+    // Has grammar and its parse budget are already checked above; avoid applying
+    // an unrelated default specified-output budget or losing parse provenance.
+    Ok(CssRelativeSelectorList::new(selectors))
 }
 
 fn parse_has_relative_selector<'i, 't>(

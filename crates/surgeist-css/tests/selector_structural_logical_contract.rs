@@ -665,9 +665,9 @@ fn checked_complex_and_list_construction_preserve_nonempty_order() {
             CssSelector::Key("Two".into())
         ]
     );
-    assert!(CssSelectorList::try_new(Vec::new()).is_none());
-    assert!(CssPseudoSelectorList::try_new(Vec::new()).is_none());
-    assert!(CssRelativeSelectorList::try_new(Vec::new()).is_none());
+    assert!(CssSelectorList::try_new(Vec::new()).is_err());
+    assert!(CssPseudoSelectorList::try_new(Vec::new()).is_err());
+    assert!(CssRelativeSelectorList::try_new(Vec::new()).is_err());
 }
 
 #[test]
@@ -1158,44 +1158,44 @@ fn shadow_compound_arguments_admit_has_with_independent_relative_arguments() {
 #[test]
 fn public_not_graph_cannot_emit_a_pseudo_element_member() {
     exact(":not(.One)", ":not(.One)");
-    invalid_graph(CssSelector::PseudoClass(CssPseudoClass::Not(pseudo_list(
-        parsed("::before"),
-    ))));
+    // Checked admission now prevents this graph. The exact later writer
+    // defense is retained in the owning private selector-list tests.
+    assert_rejects_pseudo_element_list();
 }
 
 #[test]
 fn public_is_graph_cannot_emit_a_pseudo_element_member() {
     exact(":is(.One)", ":is(.One)");
-    invalid_graph(CssSelector::PseudoClass(CssPseudoClass::Is(pseudo_list(
-        parsed("::before"),
-    ))));
+    assert_rejects_pseudo_element_list();
 }
 
 #[test]
 fn public_where_graph_cannot_emit_a_pseudo_element_member() {
     exact(":where(.One)", ":where(.One)");
-    invalid_graph(CssSelector::PseudoClass(CssPseudoClass::Where(
-        pseudo_list(parsed("::before")),
-    )));
+    assert_rejects_pseudo_element_list();
 }
 
 #[test]
 fn public_nth_child_graph_cannot_emit_a_pseudo_element_of_member() {
     exact(":nth-child(2n+1 of .One)", ":nth-child(2n+1 of .One)");
-    invalid_graph(CssSelector::PseudoClass(CssPseudoClass::NthChild(
-        CssNthChildPattern::new(CssNthPattern::Odd, Some(pseudo_list(parsed("::before")))),
-    )));
+    assert_rejects_pseudo_element_list();
 }
 
 #[test]
 fn public_nth_last_child_graph_cannot_emit_a_pseudo_element_of_member() {
     exact(":nth-last-child(2 of .One)", ":nth-last-child(2 of .One)");
-    invalid_graph(CssSelector::PseudoClass(CssPseudoClass::NthLastChild(
-        CssNthChildPattern::new(
-            CssNthPattern::Integer(2),
-            Some(pseudo_list(parsed("::before"))),
-        ),
-    )));
+    assert_rejects_pseudo_element_list();
+}
+
+fn assert_rejects_pseudo_element_list() {
+    let error = CssPseudoSelectorList::try_new(vec![parsed("::before")]).unwrap_err();
+    let CssSelectorConstructionErrorKind::Specified(cause) = error.kind() else {
+        panic!("intrinsic pseudo-list cause: {error:?}")
+    };
+    assert_eq!(
+        cause.kind(),
+        CssSpecifiedValueSerializationErrorKind::UnrepresentableValue
+    );
 }
 
 #[test]

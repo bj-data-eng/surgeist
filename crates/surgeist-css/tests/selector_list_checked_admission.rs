@@ -117,9 +117,9 @@ fn assert_unrepresentable(selector: &CssSelector) {
 
 #[test]
 fn strict_nonempty_factories_reject_empty_vectors() {
-    assert!(CssSelectorList::try_new(Vec::new()).is_none());
-    assert!(CssPseudoSelectorList::try_new(Vec::new()).is_none());
-    assert!(CssRelativeSelectorList::try_new(Vec::new()).is_none());
+    assert!(CssSelectorList::try_new(Vec::new()).is_err());
+    assert!(CssPseudoSelectorList::try_new(Vec::new()).is_err());
+    assert!(CssRelativeSelectorList::try_new(Vec::new()).is_err());
 }
 
 #[test]
@@ -265,170 +265,166 @@ fn ordinary_parser_rejects_relative_syntax_while_relative_factory_keeps_carrier(
 
 #[test]
 fn ordinary_factory_rejects_empty_class_member_atomically() {
-    assert!(CssSelectorList::try_new(vec![class()]).is_some());
+    assert!(CssSelectorList::try_new(vec![class()]).is_ok());
     let actual =
         CssSelectorList::try_new(vec![class(), CssSelector::Class(String::new()), class()]);
-    assert!(actual.is_none(), "empty class admitted: {actual:?}");
+    assert!(actual.is_err(), "empty class admitted: {actual:?}");
 }
 
 #[test]
 fn pseudo_factory_rejects_empty_class_member_atomically() {
-    assert!(CssPseudoSelectorList::try_new(vec![class()]).is_some());
+    assert!(CssPseudoSelectorList::try_new(vec![class()]).is_ok());
     let actual =
         CssPseudoSelectorList::try_new(vec![class(), CssSelector::Class(String::new()), class()]);
-    assert!(actual.is_none(), "empty class admitted: {actual:?}");
+    assert!(actual.is_err(), "empty class admitted: {actual:?}");
 }
 
 #[test]
 fn relative_factory_rejects_empty_class_member_atomically() {
-    assert!(CssRelativeSelectorList::try_new(vec![relative(class())]).is_some());
+    assert!(CssRelativeSelectorList::try_new(vec![relative(class())]).is_ok());
     let actual = CssRelativeSelectorList::try_new(vec![
         relative(class()),
         relative(CssSelector::Class(String::new())),
         relative(class()),
     ]);
-    assert!(
-        actual.is_none(),
-        "empty relative class admitted: {actual:?}"
-    );
+    assert!(actual.is_err(), "empty relative class admitted: {actual:?}");
 }
 
 #[test]
 fn ordinary_factory_rejects_nul_identifier_member() {
-    assert!(CssSelectorList::try_new(vec![class()]).is_some());
+    assert!(CssSelectorList::try_new(vec![class()]).is_ok());
     let invalid = CssSelector::Key("bad\0name".into());
     assert_unrepresentable(&invalid);
     let actual = CssSelectorList::try_new(vec![invalid]);
-    assert!(actual.is_none(), "NUL identifier admitted: {actual:?}");
+    assert!(actual.is_err(), "NUL identifier admitted: {actual:?}");
 }
 
 #[test]
 fn pseudo_factory_rejects_nul_identifier_member() {
-    assert!(CssPseudoSelectorList::try_new(vec![class()]).is_some());
+    assert!(CssPseudoSelectorList::try_new(vec![class()]).is_ok());
     let invalid = CssSelector::Class("bad\0name".into());
     assert_unrepresentable(&invalid);
     let actual = CssPseudoSelectorList::try_new(vec![invalid]);
-    assert!(actual.is_none(), "NUL identifier admitted: {actual:?}");
+    assert!(actual.is_err(), "NUL identifier admitted: {actual:?}");
 }
 
 #[test]
 fn relative_factory_rejects_nul_identifier_member() {
-    assert!(CssRelativeSelectorList::try_new(vec![relative(class())]).is_some());
+    assert!(CssRelativeSelectorList::try_new(vec![relative(class())]).is_ok());
     let invalid = CssSelector::Tag("bad\0name".into());
     assert_unrepresentable(&invalid);
     let actual = CssRelativeSelectorList::try_new(vec![relative(invalid)]);
     assert!(
-        actual.is_none(),
+        actual.is_err(),
         "relative NUL identifier admitted: {actual:?}"
     );
 }
 
 #[test]
 fn ordinary_factory_rejects_empty_strict_not_graph() {
-    assert!(CssSelectorList::try_new(vec![parsed(":not(.One)")]).is_some());
+    assert!(CssSelectorList::try_new(vec![parsed(":not(.One)")]).is_ok());
     let invalid = empty_not();
     assert_unrepresentable(&invalid);
     let actual = CssSelectorList::try_new(vec![invalid]);
-    assert!(actual.is_none(), "empty strict Not admitted: {actual:?}");
+    assert!(actual.is_err(), "empty strict Not admitted: {actual:?}");
 }
 
 #[test]
 fn pseudo_factory_rejects_empty_strict_not_graph() {
-    assert!(CssPseudoSelectorList::try_new(vec![parsed(":not(.One)")]).is_some());
+    assert!(CssPseudoSelectorList::try_new(vec![parsed(":not(.One)")]).is_ok());
     let invalid = empty_not();
     assert_unrepresentable(&invalid);
     let actual = CssPseudoSelectorList::try_new(vec![invalid]);
-    assert!(actual.is_none(), "empty strict Not admitted: {actual:?}");
+    assert!(actual.is_err(), "empty strict Not admitted: {actual:?}");
 }
 
 #[test]
 fn relative_factory_rejects_empty_strict_not_graph() {
-    assert!(CssRelativeSelectorList::try_new(vec![relative(parsed(":not(.One)"))]).is_some());
+    assert!(CssRelativeSelectorList::try_new(vec![relative(parsed(":not(.One)"))]).is_ok());
     let invalid = empty_not();
     assert_unrepresentable(&invalid);
     let actual = CssRelativeSelectorList::try_new(vec![relative(invalid)]);
     assert!(
-        actual.is_none(),
+        actual.is_err(),
         "relative empty strict Not admitted: {actual:?}"
     );
 }
 
 #[test]
 fn ordinary_factory_rejects_empty_nth_of_graph() {
-    assert!(CssSelectorList::try_new(vec![parsed(":nth-child(odd of .One)")]).is_some());
+    assert!(CssSelectorList::try_new(vec![parsed(":nth-child(odd of .One)")]).is_ok());
     let invalid = empty_nth_of();
     assert_unrepresentable(&invalid);
     let actual = CssSelectorList::try_new(vec![invalid]);
-    assert!(actual.is_none(), "empty nth of admitted: {actual:?}");
+    assert!(actual.is_err(), "empty nth of admitted: {actual:?}");
 }
 
 #[test]
 fn pseudo_factory_rejects_empty_nth_of_graph() {
-    assert!(CssPseudoSelectorList::try_new(vec![parsed(":nth-child(odd of .One)")]).is_some());
+    assert!(CssPseudoSelectorList::try_new(vec![parsed(":nth-child(odd of .One)")]).is_ok());
     let invalid = empty_nth_of();
     assert_unrepresentable(&invalid);
     let actual = CssPseudoSelectorList::try_new(vec![invalid]);
-    assert!(actual.is_none(), "empty nth of admitted: {actual:?}");
+    assert!(actual.is_err(), "empty nth of admitted: {actual:?}");
 }
 
 #[test]
 fn relative_factory_rejects_empty_nth_of_graph() {
     assert!(
-        CssRelativeSelectorList::try_new(vec![relative(parsed(":nth-child(odd of .One)"))])
-            .is_some()
+        CssRelativeSelectorList::try_new(vec![relative(parsed(":nth-child(odd of .One)"))]).is_ok()
     );
     let invalid = empty_nth_of();
     assert_unrepresentable(&invalid);
     let actual = CssRelativeSelectorList::try_new(vec![relative(invalid)]);
     assert!(
-        actual.is_none(),
+        actual.is_err(),
         "relative empty nth of admitted: {actual:?}"
     );
 }
 
 #[test]
 fn ordinary_factory_rejects_has_nested_through_logical_graph() {
-    assert!(CssSelectorList::try_new(vec![has(class())]).is_some());
+    assert!(CssSelectorList::try_new(vec![has(class())]).is_ok());
     let invalid = nested_has_through_is();
     assert_unrepresentable(&invalid);
     let actual = CssSelectorList::try_new(vec![invalid]);
-    assert!(actual.is_none(), "nested Has admitted: {actual:?}");
+    assert!(actual.is_err(), "nested Has admitted: {actual:?}");
 }
 
 #[test]
 fn pseudo_factory_rejects_has_nested_through_logical_graph() {
-    assert!(CssPseudoSelectorList::try_new(vec![has(class())]).is_some());
+    assert!(CssPseudoSelectorList::try_new(vec![has(class())]).is_ok());
     let invalid = nested_has_through_is();
     assert_unrepresentable(&invalid);
     let actual = CssPseudoSelectorList::try_new(vec![invalid]);
-    assert!(actual.is_none(), "nested Has admitted: {actual:?}");
+    assert!(actual.is_err(), "nested Has admitted: {actual:?}");
 }
 
 #[test]
 fn relative_factory_rejects_has_nested_through_logical_graph() {
-    assert!(CssRelativeSelectorList::try_new(vec![relative(has(class()))]).is_some());
+    assert!(CssRelativeSelectorList::try_new(vec![relative(has(class()))]).is_ok());
     let invalid = nested_has_through_is();
     assert_unrepresentable(&invalid);
     let actual = CssRelativeSelectorList::try_new(vec![relative(invalid)]);
-    assert!(actual.is_none(), "relative nested Has admitted: {actual:?}");
+    assert!(actual.is_err(), "relative nested Has admitted: {actual:?}");
 }
 
 #[test]
 fn pseudo_factory_rejects_terminal_pseudo_element_member_atomically() {
-    assert!(CssPseudoSelectorList::try_new(vec![class()]).is_some());
+    assert!(CssPseudoSelectorList::try_new(vec![class()]).is_ok());
     let actual = CssPseudoSelectorList::try_new(vec![class(), parsed(".Cell::before"), class()]);
     assert!(
-        actual.is_none(),
+        actual.is_err(),
         "pseudo-element member admitted: {actual:?}"
     );
 }
 
 #[test]
 fn pseudo_factory_rejects_terminal_pseudo_element_in_complex_member() {
-    assert!(CssPseudoSelectorList::try_new(vec![parsed(".Parent > .Cell")]).is_some());
+    assert!(CssPseudoSelectorList::try_new(vec![parsed(".Parent > .Cell")]).is_ok());
     let actual = CssPseudoSelectorList::try_new(vec![parsed(".Parent > .Cell::before")]);
     assert!(
-        actual.is_none(),
+        actual.is_err(),
         "complex pseudo-element member admitted: {actual:?}"
     );
 }

@@ -2751,14 +2751,14 @@ fn part_and_user_action_pseudo_element_suffixes_are_retained() {
 
 #[test]
 fn selector_list_constructor_rejects_empty_lists() {
-    assert_eq!(CssSelectorList::try_new(Vec::new()), None);
+    assert!(CssSelectorList::try_new(Vec::new()).is_err());
     let list = CssSelectorList::try_new(vec![CssSelector::Class("button".to_owned())]).unwrap();
     assert_eq!(list.selectors(), &[CssSelector::Class("button".to_owned())]);
 }
 
 #[test]
 fn pseudo_selector_list_constructor_accepts_complex_selectors() {
-    assert_eq!(CssPseudoSelectorList::try_new(Vec::new()), None);
+    assert!(CssPseudoSelectorList::try_new(Vec::new()).is_err());
 
     let first =
         CssCompoundSelector::new(None, None, vec!["field".to_owned()], Vec::new(), Vec::new());
@@ -2820,7 +2820,7 @@ fn complex_selector_constructor_rejects_parts_after_pseudo_elements() {
 
 #[test]
 fn relative_selector_list_constructor_requires_selectors() {
-    assert_eq!(CssRelativeSelectorList::try_new(Vec::new()), None);
+    assert!(CssRelativeSelectorList::try_new(Vec::new()).is_err());
 }
 
 #[test]
@@ -10423,4 +10423,157 @@ fn checked_number(representation: &str) -> crate::CssSpecifiedNumber {
         crate::CssComponentValue::try_number(representation).unwrap(),
     )
     .unwrap()
+}
+
+// Checked public list admission makes these old invalid retained graphs
+// unconstructible externally. Keep the exact later owning-boundary defenses here
+// using existing private assembly, without adding a production-visible hook.
+mod selector_list_admission_defenses {
+    use super::*;
+
+    fn parsed(source: &str) -> CssSelector {
+        let report = parse_selector(source, &CssNamespaceContext::default());
+        assert!(report.is_clean(), "{source:?}: {report:?}");
+        report.into_validation_result().unwrap().unwrap()
+    }
+
+    fn exact(source: &str, expected: &str) {
+        let selector = parsed(source);
+        let before = selector.clone();
+        assert_eq!(selector.to_specified_css().unwrap(), expected);
+        assert_eq!(selector, before);
+        assert_eq!(parsed(expected).to_specified_css().unwrap(), expected);
+    }
+
+    fn pseudo_element_list() -> CssPseudoSelectorList {
+        CssPseudoSelectorList::new(vec![parsed("::before")])
+    }
+
+    fn invalid_graph(selector: CssSelector) {
+        let before = selector.clone();
+        let result = selector.to_specified_css();
+        assert!(
+            result.is_err(),
+            "invalid retained graph emitted: {result:?}"
+        );
+        assert_eq!(
+            result.unwrap_err().kind(),
+            CssSpecifiedValueSerializationErrorKind::UnrepresentableValue
+        );
+        assert_eq!(
+            selector, before,
+            "rejected emission must not mutate its input"
+        );
+    }
+
+    #[test]
+    fn retained_not_graph_cannot_emit_a_pseudo_element_member() {
+        exact(":not(.One)", ":not(.One)");
+        invalid_graph(CssSelector::PseudoClass(CssPseudoClass::Not(
+            pseudo_element_list(),
+        )));
+    }
+
+    #[test]
+    fn retained_is_graph_cannot_emit_a_pseudo_element_member() {
+        exact(":is(.One)", ":is(.One)");
+        invalid_graph(CssSelector::PseudoClass(CssPseudoClass::Is(
+            pseudo_element_list(),
+        )));
+    }
+
+    #[test]
+    fn retained_where_graph_cannot_emit_a_pseudo_element_member() {
+        exact(":where(.One)", ":where(.One)");
+        invalid_graph(CssSelector::PseudoClass(CssPseudoClass::Where(
+            pseudo_element_list(),
+        )));
+    }
+
+    #[test]
+    fn retained_nth_child_graph_cannot_emit_a_pseudo_element_of_member() {
+        exact(":nth-child(2n+1 of .One)", ":nth-child(2n+1 of .One)");
+        invalid_graph(CssSelector::PseudoClass(CssPseudoClass::NthChild(
+            CssNthChildPattern::new(CssNthPattern::Odd, Some(pseudo_element_list())),
+        )));
+    }
+
+    #[test]
+    fn retained_nth_last_child_graph_cannot_emit_a_pseudo_element_of_member() {
+        exact(":nth-last-child(2 of .One)", ":nth-last-child(2 of .One)");
+        invalid_graph(CssSelector::PseudoClass(CssPseudoClass::NthLastChild(
+            CssNthChildPattern::new(CssNthPattern::Integer(2), Some(pseudo_element_list())),
+        )));
+    }
+
+    #[test]
+    fn retained_compound_arguments_reject_logical_pseudo_element_members() {
+        for invalid in [
+            CssPseudoClass::Where(pseudo_element_list()),
+            CssPseudoClass::NthChild(CssNthChildPattern::new(
+                CssNthPattern::Odd,
+                Some(pseudo_element_list()),
+            )),
+        ] {
+            assert!(
+                CssCompoundSelectorArgument::try_new(CssSelector::PseudoClass(invalid)).is_none()
+            );
+        }
+    }
+
+    #[test]
+    fn retained_part_suffix_rejects_a_logical_pseudo_element_member() {
+        let part = CssPseudoElement::Part(
+            CssPartNameList::try_new(vec![CssPartName::try_new("label").unwrap()]).unwrap(),
+        );
+        let logical = CssPseudoClass::Is(pseudo_element_list());
+        assert!(
+            CssPseudoElementSequence::try_from_segments(vec![
+                CssPseudoElementSegment::PseudoElement(part),
+                CssPseudoElementSegment::PseudoClass(logical),
+            ])
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn retained_scope_boundary_lists_reject_recursive_pseudo_elements() {
+        let selector = parsed(".root::before");
+        for invalid in [
+            CssSelector::PseudoClass(CssPseudoClass::Is(CssPseudoSelectorList::new(vec![
+                selector.clone(),
+            ]))),
+            CssSelector::PseudoClass(CssPseudoClass::Not(CssPseudoSelectorList::new(vec![
+                selector,
+            ]))),
+        ] {
+            assert!(
+                CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(invalid)]).is_none()
+            );
+        }
+    }
+
+    #[test]
+    fn retained_scope_rule_checks_a_nul_identifier_in_functional_arguments() {
+        let selector =
+            CssSelector::PseudoClass(CssPseudoClass::Is(CssPseudoSelectorList::new(vec![
+                CssSelector::Class("\0".into()),
+            ])));
+        let root =
+            CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(selector)]).unwrap();
+        let error = CssScopeRule::try_new(
+            Some(root),
+            None,
+            Vec::new(),
+            &CssNamespaceContext::default(),
+            CssScopeNestingContext::None,
+        )
+        .unwrap_err();
+        assert_eq!(
+            error.kind(),
+            CssRuleConstructionErrorKind::InvalidSelectorIdentifier
+        );
+        assert!(error.path().is_empty());
+        assert_eq!(error.position(), None);
+    }
 }
