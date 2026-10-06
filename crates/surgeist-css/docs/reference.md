@@ -4825,7 +4825,7 @@ scope, and the marker/selection/backdrop pseudo-element rows. Matching,
 specificity, cascade, namespace URI resolution, CSSOM serialization, and
 cross-crate lowering remain downstream exclusions.
 
-## Counter Styles 3 and CSS2 page rules
+## Counter Styles 3 and authored page rules
 
 `CssRule::CounterStyle` retains a checked
 `CssCounterStyleName`, the parser-produced rule position, and typed
@@ -4939,7 +4939,7 @@ and [Nesting 1](https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#conditiona
 editions.
 
 `CssRule::Page` retains the default page form or one of the finite
-`CssPageSelector::{Left, Right, First}` choices, valid declarations in authored
+`CssPageSelector::{Left, Right, First, Recto, Verso}` choices, valid declarations in authored
 order, and the parser-produced position. Page bodies accept only `margin` and
 the four margin longhands with CSS2 lengths other than `em` and `ex`,
 percentages, `auto`, zero, and negative values. Known non-margin, unknown, and
@@ -4954,6 +4954,30 @@ body restriction. Pages remain invalid in style-rule bodies, including all group
 chains with a style ancestor. Normalization retains a page leaf and its authored
 parent without emitting its margin declarations as element-style declarations.
 Margin-box nested at-rules remain unsupported.
+
+The [selected Logical 1 page classifications](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#page)
+add `:recto` and `:verso` to the unnamed, single-pseudo page grammar. The parser
+retains those classifications without converting them to `:left` or `:right`;
+page progression and matching belong downstream. Named pages, multiple pseudos,
+and functional page selectors are rejected as one rule. Specified serialization
+uses the canonical lowercase pseudo spelling and the existing shared rule budget.
+`CssPageSelector::specificity()` and `CssPageRule::specificity()` return
+`CssPageSpecificity`: `Unqualified < Side < First`. All four side selectors
+have equal specificity. The `:first` ordering follows the
+[CSS2 page foundation](https://www.w3.org/TR/CSS2/page.html#page-selectors).
+This comparison describes the supported page grammar; it does not apply cascade,
+importance, element-selector specificity, or writing-mode mapping.
+
+Directional keyword admission follows each selected property definition.
+`float` and `clear` retain `inline-start | inline-end`; `text-align` retains
+`start | end`. The caption-side profile remains `top | bottom` under Logical 1's
+conditional addition described above. The circle and ellipse position provider
+uses the newer Values 5 grammar described under [symbolic position families](#symbolic-position-families),
+including its Cartesian physical/axis-relative mixtures; other position consumers
+retain their own grammar. Logical property occurrences retain their names and
+declaration order. The [four-side shorthand policy](#four-side-shorthand-membership)
+continues to assign exactly the selected four logical or physical members with
+no complementary resets.
 
 Ordinary conditional and layer rule lists consume semicolon-prefixed input as
 a qualified rule. For example, `@media all { a {} ;b {} c {} }` retains `a` and
@@ -4983,6 +5007,8 @@ assert_eq!(page.declarations().len(), 2);
 
 All sixteen Counter Styles 3 non-property rows and the two CSS2 page rows are
 public `Complete` atomic metadata with their dated official source fragments.
+The separate `official.selector.logical-page-pseudo` record identifies the
+selected Logical 1 addition and its `#page` source fragment.
 They have no partial remainder, recognized-unsupported code, or aggregate-alias
 targets. The crate does not paginate, match page selectors, apply page cascade,
 render generated markers, resolve counter inheritance, expose CSSOM, or lower

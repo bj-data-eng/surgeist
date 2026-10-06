@@ -2099,6 +2099,7 @@ static OFFICIAL_PROPERTY_COVERAGE_ROWS: &[CssOfficialCoverageRecord] = &[
 static OFFICIAL_NON_PROPERTY_COVERAGE_ROWS: &[CssOfficialCoverageRecord] = &[
     active_coverage!("later.rule.page"),
     active_coverage!("official.selector.page-pseudo"),
+    active_coverage!("official.selector.logical-page-pseudo"),
     active_coverage!("foundation.encoding.charset"),
     active_coverage!("baseline.rule.style"),
     active_coverage!("official.rule.at-rule"),
@@ -2920,7 +2921,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 763] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 764] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -4232,6 +4233,13 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 763] = [
         ":left|:right|:first",
         O_CSS2,
         "page.html#page-selectors",
+    ),
+    CssFeatureMetadata::complete(
+        "official.selector.logical-page-pseudo",
+        CssFeatureKind::Selector,
+        ":recto|:verso",
+        I_LOGICAL1_20251204,
+        "#page",
     ),
     CssFeatureMetadata::complete(
         "later.rule.font-feature-values",

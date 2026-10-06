@@ -19,8 +19,10 @@ use crate::{
     CssValueTokenRef,
 };
 
-pub(super) static IMPLEMENTED_SELECTORS: &[CssFeatureId] =
-    &[CssFeatureId::new("official.selector.page-pseudo")];
+pub(super) static IMPLEMENTED_SELECTORS: &[CssFeatureId] = &[
+    CssFeatureId::new("official.selector.page-pseudo"),
+    CssFeatureId::new("official.selector.logical-page-pseudo"),
+];
 
 pub(super) fn parse_page_selector<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -35,6 +37,8 @@ pub(super) fn parse_page_selector<'i, 't>(
         "left" => CssPageSelector::Left,
         "right" => CssPageSelector::Right,
         "first" => CssPageSelector::First,
+        "recto" => CssPageSelector::Recto,
+        "verso" => CssPageSelector::Verso,
         _ => return Err(unsupported_value(input, None, "unsupported page pseudo selector")),
     };
     input.expect_exhausted().map_err(basic)?;

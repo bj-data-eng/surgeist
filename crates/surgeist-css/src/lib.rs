@@ -1048,6 +1048,10 @@
 //! [`CssRule::Page`] retains the CSS2 default page form or one [`CssPageSelector`] plus valid
 //! page-context margin declarations in authored order. The page body accepts only `margin` and
 //! its four longhands with the CSS2 length, percentage, `auto`, and negative-value domains.
+//! Logical 1 adds symbolic `:recto` and `:verso` alongside `:left`, `:right`, and `:first`.
+//! [`CssPageRule::specificity`] and [`CssPageSelector::specificity`] expose the comparable
+//! [`CssPageSpecificity`] ranks for this unnamed, single-pseudo grammar:
+//! `Unqualified < Side < First`, with both logical classifications in `Side`.
 //! Invalid or unknown declarations are dropped individually. Both rule families are top-level,
 //! block-form authored syntax; pagination, page matching, cascade, counter registration,
 //! inheritance resolution, generated-marker rendering, and margin-box rules are excluded.

@@ -29,6 +29,8 @@ impl SpecifiedRuleWriter {
                 CssPageSelector::Left => " :left",
                 CssPageSelector::Right => " :right",
                 CssPageSelector::First => " :first",
+                CssPageSelector::Recto => " :recto",
+                CssPageSelector::Verso => " :verso",
             })?;
         }
         self.append(" { ")?;

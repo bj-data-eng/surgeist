@@ -4151,7 +4151,15 @@ pub fn surgeist_css::CssOverflowWrap::serialize_specified_with_limits(&self, lim
 #[non_exhaustive] pub enum surgeist_css::CssPageSelector
 pub surgeist_css::CssPageSelector::First
 pub surgeist_css::CssPageSelector::Left
+pub surgeist_css::CssPageSelector::Recto
 pub surgeist_css::CssPageSelector::Right
+pub surgeist_css::CssPageSelector::Verso
+impl surgeist_css::CssPageSelector
+pub const fn surgeist_css::CssPageSelector::specificity(self) -> surgeist_css::CssPageSpecificity
+#[non_exhaustive] pub enum surgeist_css::CssPageSpecificity
+pub surgeist_css::CssPageSpecificity::First
+pub surgeist_css::CssPageSpecificity::Side
+pub surgeist_css::CssPageSpecificity::Unqualified
 #[non_exhaustive] pub enum surgeist_css::CssParsedColorAlphaRef<'a>
 pub surgeist_css::CssParsedColorAlphaRef::HintedNumberCalculation(&'a surgeist_css::CssHintedNumberCalculation)
 pub surgeist_css::CssParsedColorAlphaRef::Missing
@@ -9855,6 +9863,7 @@ impl surgeist_css::CssPageRule
 pub const fn surgeist_css::CssPageRule::declarations(&self) -> &surgeist_css::CssDeclarationList
 pub const fn surgeist_css::CssPageRule::position(&self) -> surgeist_css::CssSourcePosition
 pub const fn surgeist_css::CssPageRule::selector(&self) -> core::option::Option<surgeist_css::CssPageSelector>
+pub const fn surgeist_css::CssPageRule::specificity(&self) -> surgeist_css::CssPageSpecificity
 pub struct surgeist_css::CssParseReport<T>
 impl<T> surgeist_css::CssParseReport<T>
 pub fn surgeist_css::CssParseReport<T>::diagnostics(&self) -> &[surgeist_css::CssRecoveryDiagnostic]

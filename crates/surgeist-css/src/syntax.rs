@@ -184,7 +184,7 @@ pub enum CssRule {
     Scope(CssScopeRule),
 }
 
-/// One valid parser-produced CSS2 page rule.
+/// One valid parser-produced page rule in the CSS2 and Logical 1 profile.
 ///
 /// The private fields retain the optional authored page pseudo selector, the
 /// ordered page-context margin declarations, and the at-keyword position.
@@ -218,6 +218,16 @@ impl CssPageRule {
         self.selector
     }
 
+    /// Returns the page selector's specificity within the supported unnamed,
+    /// single-pseudo page grammar, without matching or cascading pages.
+    #[must_use]
+    pub const fn specificity(&self) -> CssPageSpecificity {
+        match self.selector {
+            Some(selector) => selector.specificity(),
+            None => CssPageSpecificity::Unqualified,
+        }
+    }
+
     /// Returns the valid page-context margin declarations in authored order.
     #[must_use]
     pub const fn declarations(&self) -> &CssDeclarationList {
@@ -231,16 +241,50 @@ impl CssPageRule {
     }
 }
 
-/// The finite CSS2 pseudo-page selector set accepted by `@page`.
+/// The finite CSS2 and Logical 1 pseudo-page selector set accepted by `@page`.
 ///
 /// The default page form is represented by `None` from
 /// [`CssPageRule::selector`], keeping absence distinct from every authored
-/// pseudo selector.
+/// pseudo selector. Logical classifications remain symbolic until downstream
+/// page progression is known.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum CssPageSelector {
     Left,
     Right,
+    First,
+    /// The later side of a spread in its page progression.
+    Recto,
+    /// The earlier side of a spread in its page progression.
+    Verso,
+}
+
+impl CssPageSelector {
+    /// Returns the selector's page specificity, independent of page progression.
+    /// Logical 1 assigns `:recto` and `:verso` the specificity of `:left` and
+    /// `:right`; CSS2 places `:first` above those side selectors.
+    #[must_use]
+    pub const fn specificity(self) -> CssPageSpecificity {
+        match self {
+            Self::Left | Self::Right | Self::Recto | Self::Verso => CssPageSpecificity::Side,
+            Self::First => CssPageSpecificity::First,
+        }
+    }
+}
+
+/// Comparable specificity for the supported unnamed, single-pseudo page grammar.
+///
+/// The ordering is `Unqualified < Side < First`, following CSS2 §13.2.2 and
+/// Logical 1 §3. It does not represent element-selector specificity, named or
+/// compound page selectors, declaration importance, or cascade evaluation.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum CssPageSpecificity {
+    /// An `@page` rule with an empty prelude.
+    Unqualified,
+    /// `:left`, `:right`, `:recto`, or `:verso`.
+    Side,
+    /// `:first`.
     First,
 }
 

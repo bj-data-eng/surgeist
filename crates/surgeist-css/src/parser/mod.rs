@@ -3447,7 +3447,7 @@ fn parse_page_prelude<'i, 't>(
             error,
             "page",
             "later.rule.page",
-            "an empty prelude or one of :left, :right, or :first",
+            "an empty prelude or one of :left, :right, :first, :recto, or :verso",
         )
     })?;
     let following = source
