@@ -1506,6 +1506,34 @@
 //!     .same_context(parent.selector_context()));
 //! ```
 //!
+//! # Authored Text Decoration
+//!
+//! The selected effective Decoration 4 grammar covers decoration, underline,
+//! skipping, emphasis and text-shadow. All roles participate in intrinsic
+//! metadata, shorthand expansion, strict construction and pending reentry.
+//! The decoration shorthand sets Line, Thickness, Style and Color only; skip
+//! sets Self, Box, Inset, Spaces and Ink; emphasis sets Style and Color only.
+//! CSS-wide values and pending values stay symbolic, with original components.
+//! [`CssTextEmphasisMark`] preserves fill/shape omissions and origins;
+//! [`CssTextEmphasisPosition`] preserves an omitted Right side. Canonical output
+//! omits assumed Filled before a shape and explicit Right after a vertical side.
+//! Strings remain untruncated and font-dependent shape selection stays downstream.
+//! [`CssTextShadowLayer`] checks nonnegative text spread and original closure,
+//! reusing the box-shadow provider while preserving its signed-spread policy.
+//!
+//! ```
+//! use surgeist_css::{CssTextEmphasisFill, CssTextEmphasisMark, CssTextEmphasisShape,
+//!     CssTextEmphasisPosition, CssTextEmphasisVertical, CssTextSide};
+//! let mark = CssTextEmphasisMark::try_new(Some(CssTextEmphasisFill::Filled),
+//!     Some(CssTextEmphasisShape::Dot)).unwrap();
+//! assert_eq!(mark.serialize_specified().unwrap(), "dot");
+//! assert_eq!(mark.fill(), Some(CssTextEmphasisFill::Filled));
+//! let position = CssTextEmphasisPosition::new(CssTextEmphasisVertical::Over, None);
+//! assert_eq!(position.side(), None);
+//! assert_eq!(position.effective_side(), CssTextSide::Right);
+//! assert_eq!(position.serialize_specified().unwrap(), "over");
+//! ```
+//!
 //! # Boundary
 //!
 //! This crate owns authored CSS syntax, intrinsic grammar validation, recovery
@@ -1651,6 +1679,7 @@ pub use speech::{
 mod image_1d;
 mod text_alignment;
 mod text_controls;
+mod text_decoration;
 mod text_spacing;
 mod time;
 mod ui;

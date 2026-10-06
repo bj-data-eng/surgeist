@@ -125,6 +125,25 @@ fn requires_closed_components(property: crate::CssKnownProperty) -> bool {
             | crate::CssKnownProperty::InterestDelay
             | crate::CssKnownProperty::AccentColor
             | crate::CssKnownProperty::Appearance
+            | crate::CssKnownProperty::TextDecoration
+            | crate::CssKnownProperty::TextDecorationLine
+            | crate::CssKnownProperty::TextDecorationColor
+            | crate::CssKnownProperty::TextDecorationStyle
+            | crate::CssKnownProperty::TextDecorationThickness
+            | crate::CssKnownProperty::TextUnderlinePosition
+            | crate::CssKnownProperty::TextUnderlineOffset
+            | crate::CssKnownProperty::TextDecorationSkip
+            | crate::CssKnownProperty::TextDecorationSkipSelf
+            | crate::CssKnownProperty::TextDecorationSkipBox
+            | crate::CssKnownProperty::TextDecorationSkipInset
+            | crate::CssKnownProperty::TextDecorationSkipSpaces
+            | crate::CssKnownProperty::TextDecorationSkipInk
+            | crate::CssKnownProperty::TextEmphasis
+            | crate::CssKnownProperty::TextEmphasisStyle
+            | crate::CssKnownProperty::TextEmphasisColor
+            | crate::CssKnownProperty::TextEmphasisPosition
+            | crate::CssKnownProperty::TextEmphasisSkip
+            | crate::CssKnownProperty::TextShadow
             | crate::CssKnownProperty::Contain
             | crate::CssKnownProperty::ContentVisibility
             | crate::CssKnownProperty::Cursor

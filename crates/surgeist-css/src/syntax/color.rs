@@ -8,9 +8,26 @@ use super::{
 pub(crate) mod serialization;
 
 /// An authored color retaining its specified syntax and symbolic dependencies.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone)]
 pub struct CssColor {
     representation: CssColorRepresentation,
+    original_closed: bool,
+}
+
+impl std::fmt::Debug for CssColor {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CssColor")
+            .field("representation", &self.representation)
+            .finish()
+    }
+}
+
+// Closure provenance does not redefine the existing semantic color equality.
+impl PartialEq for CssColor {
+    fn eq(&self, other: &Self) -> bool {
+        self.representation == other.representation
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -150,10 +167,99 @@ impl CssLightDarkColor {
     }
 }
 
+// Closure admission is separate from browser recovery and canonical projection.
+// The checked color graph has a bounded structural depth; no source is reserialized.
+impl CssColor {
+    pub(crate) fn retain_original_closure(&mut self, closed: bool) {
+        self.original_closed = closed;
+    }
+
+    pub(crate) fn is_closed(&self) -> bool {
+        if !self.original_closed {
+            return false;
+        }
+        use CssColorRepresentation as R;
+        let channel = |v: &CssColorComponent| match v {
+            CssColorComponent::NumberCalculation(v) => {
+                v.components().first_implicit_origin().is_none()
+            }
+            CssColorComponent::HintedNumberCalculation(v) => {
+                v.components().first_implicit_origin().is_none()
+            }
+            CssColorComponent::PercentageCalculation(v) => {
+                v.components().first_implicit_origin().is_none()
+            }
+            _ => true,
+        };
+        let hue = |v: &CssColorHue| match v {
+            CssColorHue::NumberCalculation(v) => v.components().first_implicit_origin().is_none(),
+            CssColorHue::AngleCalculation(v) => v.components().first_implicit_origin().is_none(),
+            _ => true,
+        };
+        let relative = |v: &CssRelativeColorExpression| match &v.value {
+            CssRelativeColorExpressionValue::Calculation(v) => v.data.expression.is_closed(),
+            _ => true,
+        };
+        match &self.representation {
+            R::CurrentColor | R::Transparent | R::Hex(_) | R::Named(_) | R::System(_) => true,
+            R::Rgb(v) => v.channels.iter().chain(v.alpha.iter()).all(channel),
+            R::Hsl(v) => {
+                hue(&v.hue)
+                    && [&v.saturation, &v.lightness]
+                        .into_iter()
+                        .chain(v.alpha.iter())
+                        .all(channel)
+            }
+            R::Hwb(v) => {
+                hue(&v.hue)
+                    && [&v.whiteness, &v.blackness]
+                        .into_iter()
+                        .chain(v.alpha.iter())
+                        .all(channel)
+            }
+            R::Lab(v) | R::Oklab(v) => [&v.lightness, &v.a, &v.b]
+                .into_iter()
+                .chain(v.alpha.iter())
+                .all(channel),
+            R::Lch(v) | R::Oklch(v) => {
+                hue(&v.hue)
+                    && [&v.lightness, &v.chroma]
+                        .into_iter()
+                        .chain(v.alpha.iter())
+                        .all(channel)
+            }
+            R::Predefined(v) => v.channels.iter().chain(v.alpha.iter()).all(channel),
+            R::DeviceCmyk(v) => v.channels.iter().chain(v.alpha.iter()).all(channel),
+            R::Custom(v) => v.channels.iter().chain(v.alpha.iter()).all(channel),
+            R::Relative(v) => {
+                v.source.is_closed() && v.channels.iter().chain(v.alpha.iter()).all(relative)
+            }
+            R::RelativeCustom(v) => {
+                v.source.is_closed()
+                    && v.channels
+                        .iter()
+                        .chain(v.alpha.iter())
+                        .all(|v| v.components().first_implicit_origin().is_none())
+            }
+            R::Alpha(v) => v.source.is_closed() && v.alpha.iter().all(relative),
+            R::LightDark(v) => v.light.is_closed() && v.dark.is_closed(),
+            R::ContrastColor(v) => v.color.is_closed(),
+            R::ColorMix(v) => v.components.iter().all(|v| {
+                v.color.is_closed()
+                    && v.weight.as_ref().is_none_or(|v| {
+                        v.calculation()
+                            .is_none_or(|v| v.components().first_implicit_origin().is_none())
+                    })
+            }),
+        }
+    }
+}
+
 impl CssColor {
     /// Retains an uncalibrated device input without conversion or ink clamping.
     pub fn from_device_cmyk(value: CssDeviceCmykColor) -> Self {
         Self {
+            original_closed: true,
             representation: CssColorRepresentation::DeviceCmyk(Box::new(value)),
         }
     }
@@ -169,6 +275,7 @@ impl CssColor {
     /// Retains a checked symbolic input without choosing white or black.
     pub fn from_contrast_color(value: CssContrastColor) -> Self {
         Self {
+            original_closed: true,
             representation: CssColorRepresentation::ContrastColor(Box::new(value)),
         }
     }
@@ -184,6 +291,7 @@ impl CssColor {
     /// Retains a checked pair without selecting a scheme or resolving its colors.
     pub fn from_light_dark(value: CssLightDarkColor) -> Self {
         Self {
+            original_closed: true,
             representation: CssColorRepresentation::LightDark(Box::new(value)),
         }
     }
@@ -214,16 +322,19 @@ impl CssColor {
 
     pub const fn from_custom(value: CssCustomColor) -> Self {
         Self {
+            original_closed: true,
             representation: CssColorRepresentation::Custom(value),
         }
     }
     pub fn from_relative_custom(value: CssRelativeCustomColor) -> Self {
         Self {
+            original_closed: true,
             representation: CssColorRepresentation::RelativeCustom(Box::new(value)),
         }
     }
     pub const fn from_alpha(value: CssAlphaColor) -> Self {
         Self {
+            original_closed: true,
             representation: CssColorRepresentation::Alpha(value),
         }
     }
@@ -248,12 +359,14 @@ impl CssColor {
 
     pub const fn current_color() -> Self {
         Self {
+            original_closed: true,
             representation: CssColorRepresentation::CurrentColor,
         }
     }
 
     pub const fn transparent() -> Self {
         Self {
+            original_closed: true,
             representation: CssColorRepresentation::Transparent,
         }
     }
@@ -294,78 +407,91 @@ impl CssColor {
 
     pub const fn from_hex(value: CssHexColor) -> Self {
         Self {
+            original_closed: true,
             representation: CssColorRepresentation::Hex(value),
         }
     }
 
     pub const fn from_named(value: CssNamedColor) -> Self {
         Self {
+            original_closed: true,
             representation: CssColorRepresentation::Named(value),
         }
     }
 
     pub const fn from_system(value: CssSystemColor) -> Self {
         Self {
+            original_closed: true,
             representation: CssColorRepresentation::System(value),
         }
     }
 
     pub const fn from_rgb(value: CssRgbColor) -> Self {
         Self {
+            original_closed: true,
             representation: CssColorRepresentation::Rgb(value),
         }
     }
 
     pub const fn from_hsl(value: CssHslColor) -> Self {
         Self {
+            original_closed: true,
             representation: CssColorRepresentation::Hsl(value),
         }
     }
 
     pub const fn from_hwb(value: CssHwbColor) -> Self {
         Self {
+            original_closed: true,
             representation: CssColorRepresentation::Hwb(value),
         }
     }
 
     pub const fn from_lab(value: CssLabColor) -> Self {
         Self {
+            original_closed: true,
             representation: CssColorRepresentation::Lab(value),
         }
     }
 
     pub const fn from_lch(value: CssLchColor) -> Self {
         Self {
+            original_closed: true,
             representation: CssColorRepresentation::Lch(value),
         }
     }
 
     pub const fn from_oklab(value: CssLabColor) -> Self {
         Self {
+            original_closed: true,
             representation: CssColorRepresentation::Oklab(value),
         }
     }
 
     pub const fn from_oklch(value: CssLchColor) -> Self {
         Self {
+            original_closed: true,
             representation: CssColorRepresentation::Oklch(value),
         }
     }
 
     pub const fn from_predefined(value: CssPredefinedColor) -> Self {
         Self {
+            original_closed: true,
             representation: CssColorRepresentation::Predefined(value),
         }
     }
 
     pub fn from_relative(value: CssRelativeColor) -> Self {
         Self {
+            original_closed: true,
             representation: CssColorRepresentation::Relative(Box::new(value)),
         }
     }
 
     pub const fn from_color_mix(value: CssColorMix) -> Self {
         Self {
+            original_closed: true,
             representation: CssColorRepresentation::ColorMix(value),
         }
     }

@@ -2510,16 +2510,30 @@ pub surgeist_css::CssKnownProperty::TextCombineUpright
 pub surgeist_css::CssKnownProperty::TextDecoration
 pub surgeist_css::CssKnownProperty::TextDecorationColor
 pub surgeist_css::CssKnownProperty::TextDecorationLine
+pub surgeist_css::CssKnownProperty::TextDecorationSkip
+pub surgeist_css::CssKnownProperty::TextDecorationSkipBox
+pub surgeist_css::CssKnownProperty::TextDecorationSkipInk
+pub surgeist_css::CssKnownProperty::TextDecorationSkipInset
+pub surgeist_css::CssKnownProperty::TextDecorationSkipSelf
+pub surgeist_css::CssKnownProperty::TextDecorationSkipSpaces
 pub surgeist_css::CssKnownProperty::TextDecorationStyle
 pub surgeist_css::CssKnownProperty::TextDecorationThickness
+pub surgeist_css::CssKnownProperty::TextEmphasis
+pub surgeist_css::CssKnownProperty::TextEmphasisColor
+pub surgeist_css::CssKnownProperty::TextEmphasisPosition
+pub surgeist_css::CssKnownProperty::TextEmphasisSkip
+pub surgeist_css::CssKnownProperty::TextEmphasisStyle
 pub surgeist_css::CssKnownProperty::TextGroupAlign
 pub surgeist_css::CssKnownProperty::TextIndent
 pub surgeist_css::CssKnownProperty::TextJustify
 pub surgeist_css::CssKnownProperty::TextOrientation
 pub surgeist_css::CssKnownProperty::TextOverflow
+pub surgeist_css::CssKnownProperty::TextShadow
 pub surgeist_css::CssKnownProperty::TextSpacing
 pub surgeist_css::CssKnownProperty::TextSpacingTrim
 pub surgeist_css::CssKnownProperty::TextTransform
+pub surgeist_css::CssKnownProperty::TextUnderlineOffset
+pub surgeist_css::CssKnownProperty::TextUnderlinePosition
 pub surgeist_css::CssKnownProperty::TextWrap
 pub surgeist_css::CssKnownProperty::TextWrapMode
 pub surgeist_css::CssKnownProperty::TextWrapStyle
@@ -2926,16 +2940,30 @@ pub surgeist_css::CssKnownPropertyValueRef::TextCombineUpright(&'a surgeist_css:
 pub surgeist_css::CssKnownPropertyValueRef::TextDecoration(&'a surgeist_css::CssTextDecorationPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextDecorationColor(&'a surgeist_css::CssTextDecorationColorPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextDecorationLine(&'a surgeist_css::CssTextDecorationLinePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::TextDecorationSkip(&'a surgeist_css::CssTextDecorationSkipPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::TextDecorationSkipBox(&'a surgeist_css::CssTextDecorationSkipBoxPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::TextDecorationSkipInk(&'a surgeist_css::CssTextDecorationSkipInkPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::TextDecorationSkipInset(&'a surgeist_css::CssTextDecorationSkipInsetPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::TextDecorationSkipSelf(&'a surgeist_css::CssTextDecorationSkipSelfPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::TextDecorationSkipSpaces(&'a surgeist_css::CssTextDecorationSkipSpacesPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextDecorationStyle(&'a surgeist_css::CssTextDecorationStylePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextDecorationThickness(&'a surgeist_css::CssTextDecorationThicknessPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::TextEmphasis(&'a surgeist_css::CssTextEmphasisPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::TextEmphasisColor(&'a surgeist_css::CssTextEmphasisColorPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::TextEmphasisPosition(&'a surgeist_css::CssTextEmphasisPositionPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::TextEmphasisSkip(&'a surgeist_css::CssTextEmphasisSkipPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::TextEmphasisStyle(&'a surgeist_css::CssTextEmphasisStylePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextGroupAlign(&'a surgeist_css::CssTextGroupAlignPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextIndent(&'a surgeist_css::CssTextIndentPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextJustify(&'a surgeist_css::CssTextJustifyPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextOrientation(&'a surgeist_css::CssTextOrientationPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextOverflow(&'a surgeist_css::CssTextOverflowPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::TextShadow(&'a surgeist_css::CssTextShadowPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextSpacing(&'a surgeist_css::CssTextSpacingPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextSpacingTrim(&'a surgeist_css::CssTextSpacingTrimPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextTransform(&'a surgeist_css::CssTextTransformPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::TextUnderlineOffset(&'a surgeist_css::CssTextUnderlineOffsetPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::TextUnderlinePosition(&'a surgeist_css::CssTextUnderlinePositionPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextWrap(&'a surgeist_css::CssTextWrapPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextWrapMode(&'a surgeist_css::CssTextWrapModePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextWrapStyle(&'a surgeist_css::CssTextWrapStylePropertyValue)
@@ -3367,13 +3395,29 @@ pub surgeist_css::CssLonghandValueRef::TextAlignAll(&'a surgeist_css::CssTextAli
 pub surgeist_css::CssLonghandValueRef::TextAlignLast(&'a surgeist_css::CssTextAlignLastValue)
 pub surgeist_css::CssLonghandValueRef::TextAutospace(&'a surgeist_css::CssTextAutospace)
 pub surgeist_css::CssLonghandValueRef::TextCombineUpright(&'a surgeist_css::CssTextCombineUpright)
+pub surgeist_css::CssLonghandValueRef::TextDecorationColor(&'a surgeist_css::CssColor)
+pub surgeist_css::CssLonghandValueRef::TextDecorationLine(&'a surgeist_css::CssTextDecorationLine)
+pub surgeist_css::CssLonghandValueRef::TextDecorationSkipBox(&'a surgeist_css::CssTextDecorationSkipBox)
+pub surgeist_css::CssLonghandValueRef::TextDecorationSkipInk(&'a surgeist_css::CssTextDecorationSkipInk)
+pub surgeist_css::CssLonghandValueRef::TextDecorationSkipInset(&'a surgeist_css::CssTextDecorationSkipInset)
+pub surgeist_css::CssLonghandValueRef::TextDecorationSkipSelf(&'a surgeist_css::CssTextDecorationSkipSelf)
+pub surgeist_css::CssLonghandValueRef::TextDecorationSkipSpaces(&'a surgeist_css::CssTextDecorationSkipSpaces)
+pub surgeist_css::CssLonghandValueRef::TextDecorationStyle(&'a surgeist_css::CssTextDecorationStyle)
+pub surgeist_css::CssLonghandValueRef::TextDecorationThickness(&'a surgeist_css::CssTextDecorationThickness)
+pub surgeist_css::CssLonghandValueRef::TextEmphasisColor(&'a surgeist_css::CssColor)
+pub surgeist_css::CssLonghandValueRef::TextEmphasisPosition(&'a surgeist_css::CssTextEmphasisPosition)
+pub surgeist_css::CssLonghandValueRef::TextEmphasisSkip(&'a surgeist_css::CssTextEmphasisSkip)
+pub surgeist_css::CssLonghandValueRef::TextEmphasisStyle(&'a surgeist_css::CssTextEmphasisStyle)
 pub surgeist_css::CssLonghandValueRef::TextGroupAlign(&'a surgeist_css::CssTextGroupAlign)
 pub surgeist_css::CssLonghandValueRef::TextIndent(&'a surgeist_css::CssTextIndent)
 pub surgeist_css::CssLonghandValueRef::TextJustify(&'a surgeist_css::CssTextJustify)
 pub surgeist_css::CssLonghandValueRef::TextOrientation(&'a surgeist_css::CssTextOrientation)
 pub surgeist_css::CssLonghandValueRef::TextOverflow(&'a surgeist_css::CssTextOverflow)
+pub surgeist_css::CssLonghandValueRef::TextShadow(&'a surgeist_css::CssTextShadow)
 pub surgeist_css::CssLonghandValueRef::TextSpacingTrim(&'a surgeist_css::CssTextSpacingTrim)
 pub surgeist_css::CssLonghandValueRef::TextTransform(&'a surgeist_css::CssTextTransform)
+pub surgeist_css::CssLonghandValueRef::TextUnderlineOffset(&'a surgeist_css::CssTextUnderlineOffset)
+pub surgeist_css::CssLonghandValueRef::TextUnderlinePosition(&'a surgeist_css::CssTextUnderlinePosition)
 pub surgeist_css::CssLonghandValueRef::TextWrapMode(&'a surgeist_css::CssTextWrapMode)
 pub surgeist_css::CssLonghandValueRef::TextWrapStyle(&'a surgeist_css::CssTextWrapStyle)
 pub surgeist_css::CssLonghandValueRef::Top(&'a surgeist_css::CssInsetValue)
@@ -4697,11 +4741,60 @@ pub surgeist_css::CssTextCombineUpright::None
 impl surgeist_css::CssTextCombineUpright
 pub fn surgeist_css::CssTextCombineUpright::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssTextCombineUpright::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssTextDecorationError
+pub surgeist_css::CssTextDecorationError::GrammarError
+pub surgeist_css::CssTextDecorationError::SpellingError
 #[non_exhaustive] pub enum surgeist_css::CssTextDecorationLineComponent
 pub surgeist_css::CssTextDecorationLineComponent::Blink
 pub surgeist_css::CssTextDecorationLineComponent::LineThrough
 pub surgeist_css::CssTextDecorationLineComponent::Overline
 pub surgeist_css::CssTextDecorationLineComponent::Underline
+#[non_exhaustive] pub enum surgeist_css::CssTextDecorationSkip
+pub surgeist_css::CssTextDecorationSkip::Auto
+pub surgeist_css::CssTextDecorationSkip::None
+impl surgeist_css::CssTextDecorationSkip
+pub const fn surgeist_css::CssTextDecorationSkip::expanded_box(self) -> surgeist_css::CssTextDecorationSkipBox
+pub const fn surgeist_css::CssTextDecorationSkip::expanded_ink(self) -> surgeist_css::CssTextDecorationSkipInk
+pub const fn surgeist_css::CssTextDecorationSkip::expanded_inset(self) -> surgeist_css::CssTextDecorationSkipInset
+pub const fn surgeist_css::CssTextDecorationSkip::expanded_self(self) -> surgeist_css::CssTextDecorationSkipSelf
+pub const fn surgeist_css::CssTextDecorationSkip::expanded_spaces(self) -> surgeist_css::CssTextDecorationSkipSpaces
+impl surgeist_css::CssTextDecorationSkip
+pub fn surgeist_css::CssTextDecorationSkip::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextDecorationSkip::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssTextDecorationSkipBox
+pub surgeist_css::CssTextDecorationSkipBox::All
+pub surgeist_css::CssTextDecorationSkipBox::None
+impl surgeist_css::CssTextDecorationSkipBox
+pub fn surgeist_css::CssTextDecorationSkipBox::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextDecorationSkipBox::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssTextDecorationSkipInk
+pub surgeist_css::CssTextDecorationSkipInk::All
+pub surgeist_css::CssTextDecorationSkipInk::Auto
+pub surgeist_css::CssTextDecorationSkipInk::None
+impl surgeist_css::CssTextDecorationSkipInk
+pub fn surgeist_css::CssTextDecorationSkipInk::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextDecorationSkipInk::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssTextDecorationSkipInset
+pub surgeist_css::CssTextDecorationSkipInset::Auto
+pub surgeist_css::CssTextDecorationSkipInset::None
+impl surgeist_css::CssTextDecorationSkipInset
+pub fn surgeist_css::CssTextDecorationSkipInset::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextDecorationSkipInset::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssTextDecorationSkipSelf
+pub surgeist_css::CssTextDecorationSkipSelf::None
+pub surgeist_css::CssTextDecorationSkipSelf::Objects
+impl surgeist_css::CssTextDecorationSkipSelf
+pub fn surgeist_css::CssTextDecorationSkipSelf::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextDecorationSkipSelf::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssTextDecorationSkipSpaces
+pub surgeist_css::CssTextDecorationSkipSpaces::All
+pub surgeist_css::CssTextDecorationSkipSpaces::End
+pub surgeist_css::CssTextDecorationSkipSpaces::None
+pub surgeist_css::CssTextDecorationSkipSpaces::Start
+pub surgeist_css::CssTextDecorationSkipSpaces::StartEnd
+impl surgeist_css::CssTextDecorationSkipSpaces
+pub fn surgeist_css::CssTextDecorationSkipSpaces::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextDecorationSkipSpaces::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssTextDecorationStyle
 pub surgeist_css::CssTextDecorationStyle::Dashed
 pub surgeist_css::CssTextDecorationStyle::Dotted
@@ -4720,6 +4813,36 @@ pub fn surgeist_css::CssTextDecorationThickness::serialize_specified(&self) -> c
 pub fn surgeist_css::CssTextDecorationThickness::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl core::cmp::PartialEq for surgeist_css::CssTextDecorationThickness
 pub fn surgeist_css::CssTextDecorationThickness::eq(&self, other: &Self) -> bool
+#[non_exhaustive] pub enum surgeist_css::CssTextEmphasisFill
+pub surgeist_css::CssTextEmphasisFill::Filled
+pub surgeist_css::CssTextEmphasisFill::Open
+impl surgeist_css::CssTextEmphasisFill
+pub fn surgeist_css::CssTextEmphasisFill::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextEmphasisFill::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssTextEmphasisShape
+pub surgeist_css::CssTextEmphasisShape::Circle
+pub surgeist_css::CssTextEmphasisShape::Dot
+pub surgeist_css::CssTextEmphasisShape::DoubleCircle
+pub surgeist_css::CssTextEmphasisShape::Sesame
+pub surgeist_css::CssTextEmphasisShape::Triangle
+impl surgeist_css::CssTextEmphasisShape
+pub fn surgeist_css::CssTextEmphasisShape::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextEmphasisShape::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssTextEmphasisStyle
+pub surgeist_css::CssTextEmphasisStyle::Mark(surgeist_css::CssTextEmphasisMark)
+pub surgeist_css::CssTextEmphasisStyle::None
+pub surgeist_css::CssTextEmphasisStyle::String(surgeist_css::CssTextEmphasisString)
+impl surgeist_css::CssTextEmphasisStyle
+pub fn surgeist_css::CssTextEmphasisStyle::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextEmphasisStyle::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl core::cmp::PartialEq for surgeist_css::CssTextEmphasisStyle
+pub fn surgeist_css::CssTextEmphasisStyle::eq(&self, other: &Self) -> bool
+#[non_exhaustive] pub enum surgeist_css::CssTextEmphasisVertical
+pub surgeist_css::CssTextEmphasisVertical::Over
+pub surgeist_css::CssTextEmphasisVertical::Under
+impl surgeist_css::CssTextEmphasisVertical
+pub fn surgeist_css::CssTextEmphasisVertical::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextEmphasisVertical::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssTextGroupAlign
 pub surgeist_css::CssTextGroupAlign::Center
 pub surgeist_css::CssTextGroupAlign::End
@@ -4753,6 +4876,18 @@ pub surgeist_css::CssTextOverflow::Ellipsis
 impl surgeist_css::CssTextOverflow
 pub fn surgeist_css::CssTextOverflow::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssTextOverflow::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssTextShadow
+pub surgeist_css::CssTextShadow::None
+pub surgeist_css::CssTextShadow::Shadows(surgeist_css::CssTextShadowList)
+impl surgeist_css::CssTextShadow
+pub fn surgeist_css::CssTextShadow::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextShadow::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssTextSide
+pub surgeist_css::CssTextSide::Left
+pub surgeist_css::CssTextSide::Right
+impl surgeist_css::CssTextSide
+pub fn surgeist_css::CssTextSide::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextSide::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssTextSpacing
 pub surgeist_css::CssTextSpacing::Auto
 pub surgeist_css::CssTextSpacing::Components(surgeist_css::CssTextSpacingValues)
@@ -4788,6 +4923,18 @@ pub fn surgeist_css::CssTextTransform::serialize_specified_with_limits(&self, li
 pub surgeist_css::CssTextTransformCase::Capitalize
 pub surgeist_css::CssTextTransformCase::Lowercase
 pub surgeist_css::CssTextTransformCase::Uppercase
+#[non_exhaustive] pub enum surgeist_css::CssTextUnderlineOffset
+pub surgeist_css::CssTextUnderlineOffset::Auto
+pub surgeist_css::CssTextUnderlineOffset::Length(surgeist_css::CssTextUnderlineOffsetLength)
+impl surgeist_css::CssTextUnderlineOffset
+pub fn surgeist_css::CssTextUnderlineOffset::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextUnderlineOffset::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssTextUnderlinePosition
+pub surgeist_css::CssTextUnderlinePosition::Auto
+pub surgeist_css::CssTextUnderlinePosition::Position(surgeist_css::CssUnderlinePosition)
+impl surgeist_css::CssTextUnderlinePosition
+pub fn surgeist_css::CssTextUnderlinePosition::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextUnderlinePosition::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssTextWrapMode
 pub surgeist_css::CssTextWrapMode::NoWrap
 pub surgeist_css::CssTextWrapMode::Wrap
@@ -4922,6 +5069,12 @@ pub fn surgeist_css::CssTranslate::serialize_specified_with_limits(&self, limits
 pub enum surgeist_css::CssTreeCountingFunction
 pub surgeist_css::CssTreeCountingFunction::SiblingCount
 pub surgeist_css::CssTreeCountingFunction::SiblingIndex
+#[non_exhaustive] pub enum surgeist_css::CssUnderlinePositionVertical
+pub surgeist_css::CssUnderlinePositionVertical::FromFont
+pub surgeist_css::CssUnderlinePositionVertical::Under
+impl surgeist_css::CssUnderlinePositionVertical
+pub fn surgeist_css::CssUnderlinePositionVertical::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssUnderlinePositionVertical::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssUnicodeBidi
 pub surgeist_css::CssUnicodeBidi::BidiOverride
 pub surgeist_css::CssUnicodeBidi::Embed
@@ -6203,6 +6356,10 @@ pub const fn surgeist_css::CssColor::system(&self) -> core::option::Option<surge
 pub fn surgeist_css::CssColor::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssColor::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub const fn surgeist_css::CssColor::transparent() -> Self
+impl core::cmp::PartialEq for surgeist_css::CssColor
+pub fn surgeist_css::CssColor::eq(&self, other: &Self) -> bool
+impl core::fmt::Debug for surgeist_css::CssColor
+pub fn surgeist_css::CssColor::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css::CssColorAdjustPropertyValue
 impl surgeist_css::CssColorAdjustPropertyValue
 pub fn surgeist_css::CssColorAdjustPropertyValue::as_css(&self) -> &str
@@ -10475,7 +10632,10 @@ pub const fn surgeist_css::CssTextDecorationColorPropertyValue::value(&self) -> 
 pub struct surgeist_css::CssTextDecorationLine
 impl surgeist_css::CssTextDecorationLine
 pub fn surgeist_css::CssTextDecorationLine::components(&self) -> &[surgeist_css::CssTextDecorationLineComponent]
+pub fn surgeist_css::CssTextDecorationLine::error(value: surgeist_css::CssTextDecorationError) -> Self
+pub const fn surgeist_css::CssTextDecorationLine::error_kind(&self) -> core::option::Option<surgeist_css::CssTextDecorationError>
 pub const fn surgeist_css::CssTextDecorationLine::is_none(&self) -> bool
+pub fn surgeist_css::CssTextDecorationLine::none() -> Self
 pub fn surgeist_css::CssTextDecorationLine::try_new(components: alloc::vec::Vec<surgeist_css::CssTextDecorationLineComponent>) -> core::option::Option<Self>
 impl surgeist_css::CssTextDecorationLine
 pub fn surgeist_css::CssTextDecorationLine::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
@@ -10488,6 +10648,30 @@ pub struct surgeist_css::CssTextDecorationPropertyValue
 impl surgeist_css::CssTextDecorationPropertyValue
 pub fn surgeist_css::CssTextDecorationPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssTextDecorationPropertyValue::value(&self) -> &surgeist_css::CssTextDecoration
+pub struct surgeist_css::CssTextDecorationSkipBoxPropertyValue
+impl surgeist_css::CssTextDecorationSkipBoxPropertyValue
+pub fn surgeist_css::CssTextDecorationSkipBoxPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssTextDecorationSkipBoxPropertyValue::value(&self) -> &surgeist_css::CssTextDecorationSkipBox
+pub struct surgeist_css::CssTextDecorationSkipInkPropertyValue
+impl surgeist_css::CssTextDecorationSkipInkPropertyValue
+pub fn surgeist_css::CssTextDecorationSkipInkPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssTextDecorationSkipInkPropertyValue::value(&self) -> &surgeist_css::CssTextDecorationSkipInk
+pub struct surgeist_css::CssTextDecorationSkipInsetPropertyValue
+impl surgeist_css::CssTextDecorationSkipInsetPropertyValue
+pub fn surgeist_css::CssTextDecorationSkipInsetPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssTextDecorationSkipInsetPropertyValue::value(&self) -> &surgeist_css::CssTextDecorationSkipInset
+pub struct surgeist_css::CssTextDecorationSkipPropertyValue
+impl surgeist_css::CssTextDecorationSkipPropertyValue
+pub fn surgeist_css::CssTextDecorationSkipPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssTextDecorationSkipPropertyValue::value(&self) -> &surgeist_css::CssTextDecorationSkip
+pub struct surgeist_css::CssTextDecorationSkipSelfPropertyValue
+impl surgeist_css::CssTextDecorationSkipSelfPropertyValue
+pub fn surgeist_css::CssTextDecorationSkipSelfPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssTextDecorationSkipSelfPropertyValue::value(&self) -> &surgeist_css::CssTextDecorationSkipSelf
+pub struct surgeist_css::CssTextDecorationSkipSpacesPropertyValue
+impl surgeist_css::CssTextDecorationSkipSpacesPropertyValue
+pub fn surgeist_css::CssTextDecorationSkipSpacesPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssTextDecorationSkipSpacesPropertyValue::value(&self) -> &surgeist_css::CssTextDecorationSkipSpaces
 pub struct surgeist_css::CssTextDecorationStylePropertyValue
 impl surgeist_css::CssTextDecorationStylePropertyValue
 pub fn surgeist_css::CssTextDecorationStylePropertyValue::as_css(&self) -> &str
@@ -10496,6 +10680,83 @@ pub struct surgeist_css::CssTextDecorationThicknessPropertyValue
 impl surgeist_css::CssTextDecorationThicknessPropertyValue
 pub fn surgeist_css::CssTextDecorationThicknessPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssTextDecorationThicknessPropertyValue::value(&self) -> &surgeist_css::CssTextDecorationThickness
+pub struct surgeist_css::CssTextEmphasis
+impl surgeist_css::CssTextEmphasis
+pub fn surgeist_css::CssTextEmphasis::color(&self) -> core::option::Option<&surgeist_css::CssColor>
+pub const fn surgeist_css::CssTextEmphasis::style(&self) -> core::option::Option<&surgeist_css::CssTextEmphasisStyle>
+pub fn surgeist_css::CssTextEmphasis::try_new(style: core::option::Option<surgeist_css::CssTextEmphasisStyle>, color: core::option::Option<surgeist_css::CssColor>) -> core::option::Option<Self>
+impl surgeist_css::CssTextEmphasis
+pub fn surgeist_css::CssTextEmphasis::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextEmphasis::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssTextEmphasisColorPropertyValue
+impl surgeist_css::CssTextEmphasisColorPropertyValue
+pub fn surgeist_css::CssTextEmphasisColorPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssTextEmphasisColorPropertyValue::value(&self) -> &surgeist_css::CssColor
+pub struct surgeist_css::CssTextEmphasisMark
+impl surgeist_css::CssTextEmphasisMark
+pub const fn surgeist_css::CssTextEmphasisMark::effective_fill(&self) -> surgeist_css::CssTextEmphasisFill
+pub const fn surgeist_css::CssTextEmphasisMark::fill(&self) -> core::option::Option<surgeist_css::CssTextEmphasisFill>
+pub const fn surgeist_css::CssTextEmphasisMark::fill_origin(&self) -> core::option::Option<&surgeist_css::CssValueOrigin>
+pub const fn surgeist_css::CssTextEmphasisMark::shape(&self) -> core::option::Option<surgeist_css::CssTextEmphasisShape>
+pub const fn surgeist_css::CssTextEmphasisMark::shape_origin(&self) -> core::option::Option<&surgeist_css::CssValueOrigin>
+pub fn surgeist_css::CssTextEmphasisMark::try_new(fill: core::option::Option<surgeist_css::CssTextEmphasisFill>, shape: core::option::Option<surgeist_css::CssTextEmphasisShape>) -> core::option::Option<Self>
+impl surgeist_css::CssTextEmphasisMark
+pub fn surgeist_css::CssTextEmphasisMark::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextEmphasisMark::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl core::cmp::Eq for surgeist_css::CssTextEmphasisMark
+impl core::cmp::PartialEq for surgeist_css::CssTextEmphasisMark
+pub fn surgeist_css::CssTextEmphasisMark::eq(&self, other: &Self) -> bool
+pub struct surgeist_css::CssTextEmphasisPosition
+impl surgeist_css::CssTextEmphasisPosition
+pub const fn surgeist_css::CssTextEmphasisPosition::effective_side(&self) -> surgeist_css::CssTextSide
+pub fn surgeist_css::CssTextEmphasisPosition::new(vertical: surgeist_css::CssTextEmphasisVertical, side: core::option::Option<surgeist_css::CssTextSide>) -> Self
+pub const fn surgeist_css::CssTextEmphasisPosition::side(&self) -> core::option::Option<surgeist_css::CssTextSide>
+pub const fn surgeist_css::CssTextEmphasisPosition::side_origin(&self) -> core::option::Option<&surgeist_css::CssValueOrigin>
+pub const fn surgeist_css::CssTextEmphasisPosition::vertical(&self) -> surgeist_css::CssTextEmphasisVertical
+pub const fn surgeist_css::CssTextEmphasisPosition::vertical_origin(&self) -> &surgeist_css::CssValueOrigin
+impl surgeist_css::CssTextEmphasisPosition
+pub fn surgeist_css::CssTextEmphasisPosition::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextEmphasisPosition::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl core::cmp::Eq for surgeist_css::CssTextEmphasisPosition
+impl core::cmp::PartialEq for surgeist_css::CssTextEmphasisPosition
+pub fn surgeist_css::CssTextEmphasisPosition::eq(&self, other: &Self) -> bool
+pub struct surgeist_css::CssTextEmphasisPositionPropertyValue
+impl surgeist_css::CssTextEmphasisPositionPropertyValue
+pub fn surgeist_css::CssTextEmphasisPositionPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssTextEmphasisPositionPropertyValue::value(&self) -> &surgeist_css::CssTextEmphasisPosition
+pub struct surgeist_css::CssTextEmphasisPropertyValue
+impl surgeist_css::CssTextEmphasisPropertyValue
+pub fn surgeist_css::CssTextEmphasisPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssTextEmphasisPropertyValue::value(&self) -> &surgeist_css::CssTextEmphasis
+pub struct surgeist_css::CssTextEmphasisSkip
+impl surgeist_css::CssTextEmphasisSkip
+pub const fn surgeist_css::CssTextEmphasisSkip::initial() -> Self
+pub const fn surgeist_css::CssTextEmphasisSkip::narrow(&self) -> bool
+pub const fn surgeist_css::CssTextEmphasisSkip::punctuation(&self) -> bool
+pub const fn surgeist_css::CssTextEmphasisSkip::spaces(&self) -> bool
+pub const fn surgeist_css::CssTextEmphasisSkip::symbols(&self) -> bool
+pub const fn surgeist_css::CssTextEmphasisSkip::try_new(spaces: bool, punctuation: bool, symbols: bool, narrow: bool) -> core::option::Option<Self>
+impl surgeist_css::CssTextEmphasisSkip
+pub fn surgeist_css::CssTextEmphasisSkip::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextEmphasisSkip::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssTextEmphasisSkipPropertyValue
+impl surgeist_css::CssTextEmphasisSkipPropertyValue
+pub fn surgeist_css::CssTextEmphasisSkipPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssTextEmphasisSkipPropertyValue::value(&self) -> &surgeist_css::CssTextEmphasisSkip
+pub struct surgeist_css::CssTextEmphasisString
+impl surgeist_css::CssTextEmphasisString
+pub fn surgeist_css::CssTextEmphasisString::as_str(&self) -> &str
+pub const fn surgeist_css::CssTextEmphasisString::component(&self) -> &surgeist_css::CssComponentValue
+pub const fn surgeist_css::CssTextEmphasisString::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssTextEmphasisString::try_from_component(component: surgeist_css::CssComponentValue) -> core::option::Option<Self>
+pub fn surgeist_css::CssTextEmphasisString::try_new(value: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+impl surgeist_css::CssTextEmphasisString
+pub fn surgeist_css::CssTextEmphasisString::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextEmphasisString::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssTextEmphasisStylePropertyValue
+impl surgeist_css::CssTextEmphasisStylePropertyValue
+pub fn surgeist_css::CssTextEmphasisStylePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssTextEmphasisStylePropertyValue::value(&self) -> &surgeist_css::CssTextEmphasisStyle
 pub struct surgeist_css::CssTextGroupAlignPropertyValue
 impl surgeist_css::CssTextGroupAlignPropertyValue
 pub fn surgeist_css::CssTextGroupAlignPropertyValue::as_css(&self) -> &str
@@ -10536,6 +10797,25 @@ pub struct surgeist_css::CssTextOverflowPropertyValue
 impl surgeist_css::CssTextOverflowPropertyValue
 pub fn surgeist_css::CssTextOverflowPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssTextOverflowPropertyValue::value(&self) -> &surgeist_css::CssTextOverflow
+pub struct surgeist_css::CssTextShadowLayer
+impl surgeist_css::CssTextShadowLayer
+pub fn surgeist_css::CssTextShadowLayer::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextShadowLayer::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssTextShadowLayer
+pub const fn surgeist_css::CssTextShadowLayer::shadow(&self) -> &surgeist_css::CssShadow
+pub fn surgeist_css::CssTextShadowLayer::try_from_shadow(shadow: surgeist_css::CssShadow) -> core::option::Option<Self>
+pub fn surgeist_css::CssTextShadowLayer::try_new(inset: bool, offset_x: surgeist_css::CssSpecifiedLength, offset_y: surgeist_css::CssSpecifiedLength, blur_radius: core::option::Option<surgeist_css::CssSpecifiedNonNegativeLength>, spread_radius: core::option::Option<surgeist_css::CssSpecifiedNonNegativeLength>, color: core::option::Option<surgeist_css::CssColor>) -> core::option::Option<Self>
+pub struct surgeist_css::CssTextShadowList
+impl surgeist_css::CssTextShadowList
+pub fn surgeist_css::CssTextShadowList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextShadowList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssTextShadowList
+pub fn surgeist_css::CssTextShadowList::shadows(&self) -> &[surgeist_css::CssTextShadowLayer]
+pub fn surgeist_css::CssTextShadowList::try_new(shadows: alloc::vec::Vec<surgeist_css::CssTextShadowLayer>) -> core::option::Option<Self>
+pub struct surgeist_css::CssTextShadowPropertyValue
+impl surgeist_css::CssTextShadowPropertyValue
+pub fn surgeist_css::CssTextShadowPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssTextShadowPropertyValue::value(&self) -> &surgeist_css::CssTextShadow
 pub struct surgeist_css::CssTextSpacingPropertyValue
 impl surgeist_css::CssTextSpacingPropertyValue
 pub fn surgeist_css::CssTextSpacingPropertyValue::as_css(&self) -> &str
@@ -10562,6 +10842,23 @@ pub const fn surgeist_css::CssTextTransformSet::case(&self) -> core::option::Opt
 pub const fn surgeist_css::CssTextTransformSet::full_size_kana(&self) -> bool
 pub const fn surgeist_css::CssTextTransformSet::full_width(&self) -> bool
 pub const fn surgeist_css::CssTextTransformSet::try_new(case: core::option::Option<surgeist_css::CssTextTransformCase>, full_width: bool, full_size_kana: bool) -> core::option::Option<Self>
+pub struct surgeist_css::CssTextUnderlineOffsetLength
+impl surgeist_css::CssTextUnderlineOffsetLength
+pub fn surgeist_css::CssTextUnderlineOffsetLength::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextUnderlineOffsetLength::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssTextUnderlineOffsetLength
+pub fn surgeist_css::CssTextUnderlineOffsetLength::try_new(value: surgeist_css::CssSpecifiedLengthPercentage) -> core::option::Option<Self>
+pub const fn surgeist_css::CssTextUnderlineOffsetLength::value(&self) -> &surgeist_css::CssSpecifiedLengthPercentage
+impl core::cmp::PartialEq for surgeist_css::CssTextUnderlineOffsetLength
+pub fn surgeist_css::CssTextUnderlineOffsetLength::eq(&self, other: &Self) -> bool
+pub struct surgeist_css::CssTextUnderlineOffsetPropertyValue
+impl surgeist_css::CssTextUnderlineOffsetPropertyValue
+pub fn surgeist_css::CssTextUnderlineOffsetPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssTextUnderlineOffsetPropertyValue::value(&self) -> &surgeist_css::CssTextUnderlineOffset
+pub struct surgeist_css::CssTextUnderlinePositionPropertyValue
+impl surgeist_css::CssTextUnderlinePositionPropertyValue
+pub fn surgeist_css::CssTextUnderlinePositionPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssTextUnderlinePositionPropertyValue::value(&self) -> &surgeist_css::CssTextUnderlinePosition
 pub struct surgeist_css::CssTextWrap
 impl surgeist_css::CssTextWrap
 pub const fn surgeist_css::CssTextWrap::mode(&self) -> core::option::Option<surgeist_css::CssTextWrapMode>
@@ -10785,6 +11082,14 @@ pub const fn surgeist_css::CssTypedMediaQuery::modifier(&self) -> core::option::
 pub const fn surgeist_css::CssTypedMediaQuery::origin(&self) -> &surgeist_css::CssValueOrigin
 pub const fn surgeist_css::CssTypedMediaQuery::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
 pub const fn surgeist_css::CssTypedMediaQuery::unknown_media_type(&self) -> core::option::Option<&surgeist_css::CssUnknownMediaType>
+pub struct surgeist_css::CssUnderlinePosition
+impl surgeist_css::CssUnderlinePosition
+pub fn surgeist_css::CssUnderlinePosition::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssUnderlinePosition::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssUnderlinePosition
+pub const fn surgeist_css::CssUnderlinePosition::side(&self) -> core::option::Option<surgeist_css::CssTextSide>
+pub const fn surgeist_css::CssUnderlinePosition::try_new(vertical: core::option::Option<surgeist_css::CssUnderlinePositionVertical>, side: core::option::Option<surgeist_css::CssTextSide>) -> core::option::Option<Self>
+pub const fn surgeist_css::CssUnderlinePosition::vertical(&self) -> core::option::Option<surgeist_css::CssUnderlinePositionVertical>
 pub struct surgeist_css::CssUnexpectedEndError
 impl surgeist_css::CssUnexpectedEndError
 pub const fn surgeist_css::CssUnexpectedEndError::expectation(&self) -> surgeist_css::CssGrammarExpectation

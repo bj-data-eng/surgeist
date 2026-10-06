@@ -7089,7 +7089,7 @@ suppression preserves semantic costs without spending output bytes.
 These providers cover the existing typed alternatives. Broader Text, Images,
 UI and transform grammar/model work remains with those domains. They use the
 selected [Text 4](https://www.w3.org/TR/2026/WD-css-text-4-20260814/),
-[Text Decoration 3](https://www.w3.org/TR/2022/CRD-css-text-decor-3-20220505/),
+[Text Decoration 4](https://www.w3.org/TR/2022/WD-css-text-decor-4-20220504/),
 [Images 3](https://www.w3.org/TR/2023/CRD-css-images-3-20231218/),
 [UI 4](https://www.w3.org/TR/2026/WD-css-ui-4-20260120/),
 [Transforms 1](https://www.w3.org/TR/2019/CR-css-transforms-1-20190214/) and
@@ -7138,8 +7138,9 @@ contextual line-height percentages and line-box/table-cell alignment remain
 downstream. This authored property uses CSS2 rather than the Inline 3 shorthand.
 
 Decoration line output uses `underline overline line-through blink` grammar
-order while preserving the original component order in the value. `none` remains
-an explicit alternative. The [Decoration 4 shorthand grammar](https://www.w3.org/TR/2022/WD-css-text-decor-4-20220504/#text-decoration-property)
+order while preserving the original component order in the value. `none`,
+`spelling-error` and `grammar-error` are exclusive alternatives; error lines are
+represented by `CssTextDecorationError`, never combinable flags. The [Decoration 4 shorthand grammar](https://www.w3.org/TR/2022/WD-css-text-decor-4-20220504/#text-decoration-property)
 orders present fields as line, thickness, style and color. Optional fields remain
 omitted; explicit initial keywords remain explicit. Thus an authored
 `currentcolor wavy -1px overline underline` emits
@@ -7158,12 +7159,79 @@ public failure returns no partial CSS and leaves the input available for retry.
 
 The existing numeric specified precision policy still applies: a tiny exact
 `-1e-999%` can emit `0%` while the retained coefficient and origin remain intact.
-The decoration family still has remaining grammar and intrinsic lifecycle work:
-decoration-line `spelling-error`/`grammar-error`, property metadata, shorthand
-resets and normalization. Its represented values already participate in generic
-declaration dispatch. Indent and vertical-align have the complete intrinsic
-longhand lifecycle described above; decoration's remaining work does not limit
-their metadata, expansion or normalization.
+All nineteen authored Decoration properties use the selected effective
+[Decoration 4 WD](https://www.w3.org/TR/2022/WD-css-text-decor-4-20220504/),
+composed with Decoration 3, Values and the shared Color grammar. Their catalog
+source is `X-TEXTDECOR4`. Known-property lookup, typed wrappers, clean validation,
+strict component construction, pending substitution reentry, intrinsic expansion,
+normalization and bounded specified declaration/rule output share this grammar.
+Browser recovery can retain implicit closure; checked construction and reentry
+require explicitly closed original components. `CssTextDecoration::try_new` also
+rejects recovered numeric children or any recovered outer/nested Color closure;
+Color equality, public admission, debug output and canonical projection retain
+their established contracts. Reentry accepts supplied
+replacement components without executing substitution. Failure is atomic and
+keeps source origins, importance, declaration order and the supplied input.
+
+The decoration shorthand sets only Line, Thickness, Style and Color in that
+order, resetting omissions to `none`, `auto`, `solid` and `currentcolor`.
+Those four longhands do not inherit. Underline Position, Underline Offset, the
+five Skip longhands, the four Emphasis longhands and TextShadow inherit.
+`all` includes every selected longhand. No shorthand has reset-only members.
+
+Underline Position is separate `auto`, or the nonempty unordered combination of
+one `from-font`/`under` and one `left`/`right`. Side alone is admitted;
+`auto left` is rejected. Underline Offset is `auto` or signed length/percentage,
+including mixed math, with initial `auto`. `CssTextUnderlineOffsetLength`
+strictly checks original numeric closure; percentages remain symbolic. Neither
+underline property is set or reset by `text-decoration`.
+
+The Skip shorthand admits only `none | auto` and sets Self, Box, Inset, Spaces,
+Ink in that order. `none` sets all five to `none`; `auto` selects their initials:
+`objects`, `none`, `none`, `start end`, `auto`. Self admits `none | objects`,
+Box `none | all`, Inset `none | auto`, Spaces `none | all | [start || end]`, and
+Ink `auto | none | all`. These independent authored roles retain the distinction
+between ancestor/object boxes, content-edge insets, spaces and glyph ink. Parsing
+does not choose line geometry or paint interruptions.
+
+Emphasis Style admits exclusive `none`, a nonempty combination of one
+`filled`/`open` with one `dot`/`circle`/`double-circle`/`triangle`/`sesame`, or a
+retained CSS string. Empty, multi-character and multi-grapheme strings are
+accepted unchanged; author advice and UA truncation/ignore latitude are
+downstream. Fill-only values keep contextual shape unresolved.
+`CssTextEmphasisMark` retains optional fill/shape and their original origins;
+shape alone has effective Filled. The Emphasis shorthand sets Style then Color,
+with omitted initials `none` and `currentcolor`, and does not set Position or
+Skip. Emphasis Color delegates to the full shared symbolic Color provider.
+
+Emphasis Position requires `over | under` plus optional `left | right`, in either
+input order. Its intrinsic initial is `over right`; omitted horizontal side has
+effective Right. `CssTextEmphasisPosition` retains explicit side and origins.
+The adopted specified serialization composes CSSOM canonical omission with
+Decoration's assumed defaults: `filled dot` emits `dot`, and `over right` emits
+`over`. This does not change Decoration's accepted explicit-initial output.
+Emphasis Skip admits each nonempty unique subset of `spaces punctuation symbols
+narrow`, emitted in that order, with initial `spaces punctuation`.
+
+TextShadow admits `none` or a nonempty comma-separated list of selected Level 4
+shadows: optional Color, two signed offsets, optional nonnegative blur, optional
+nonnegative text spread and optional inset. Numeric slots stay consecutive.
+`CssTextShadowLayer` checks original graph closure and exact ordinary spread sign,
+then reuses the existing `CssShadow` numeric/Color provider. Valid function-root
+math stays symbolic for deferred range checking. `CssTextShadowList` retains
+layer order and rejects empty or recovered graphs on checked construction.
+BoxShadow retains signed spread; DropShadow retains its separate no-spread,
+no-inset grammar. TextShadow's initial is `none`.
+
+New finite and string leaves cost one input/projection visit each. Omitted
+assumed Fill and Right cost an input visit when authored but no projection visit.
+Emphasis aggregates cost one visit plus present children; other finite carriers
+are transparent. TextShadow inherits the shadow aggregate/list/inset charges and
+numeric/Color child prices. Spaces `start end` and every Emphasis Skip flag cost
+one visit per keyword. All providers share one cumulative input, projection and
+byte budget; a late child failure returns no partial CSS and allows retry.
+No provider performs inheritance/cascade execution, font or color resolution,
+measurement, line painting or animation execution.
 
 ## Authored image properties and represented caret, containment and blend output
 

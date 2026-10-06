@@ -2286,35 +2286,136 @@ property_records! {
         source: "S-WRITING4",
     }
     TextDecoration, "text-decoration" {
-        metadata: unavailable(),
+        metadata: shorthand([TextDecorationLine, TextDecorationThickness, TextDecorationStyle, TextDecorationColor], []),
         catalog: grammar_catalog!("baseline.property.text-decoration", "underline dotted white 3px", rejected("underline underline")),
+        source: "X-TEXTDECOR4",
         dispatch: "underline dotted white 3px",
         wrapper: yes,
     }
     TextDecorationColor, "text-decoration-color" {
-        metadata: unavailable(),
+        metadata: longhand(false, |v| assert!(v.is_current_color())),
         catalog: grammar_catalog!("baseline.property.text-decoration-color", "black", rejected("black white")),
+        source: "X-TEXTDECOR4",
         dispatch: "black",
         wrapper: yes,
     }
     TextDecorationLine, "text-decoration-line" {
-        metadata: unavailable(),
-        catalog: grammar_catalog!("baseline.property.text-decoration-line", "underline overline", rejected("underline underline")),
-        source: "S-TEXTDECOR3",
+        metadata: longhand(false, |v| { assert!(v.is_none()); assert!(v.components().is_empty()); assert_eq!(v.error_kind(), None); }),
+        catalog: grammar_catalog!("baseline.property.text-decoration-line", "spelling-error", rejected("spelling-error underline")),
+        source: "X-TEXTDECOR4",
         dispatch: "underline overline",
         wrapper: yes,
     }
     TextDecorationStyle, "text-decoration-style" {
-        metadata: unavailable(),
+        metadata: longhand(false, |v| assert_eq!(*v, CssTextDecorationStyle::Solid)),
         catalog: grammar_catalog!("baseline.property.text-decoration-style", "wavy", rejected("auto")),
+        source: "X-TEXTDECOR4",
         dispatch: "wavy",
         wrapper: yes,
     }
     TextDecorationThickness, "text-decoration-thickness" {
-        metadata: unavailable(),
+        metadata: longhand(false, |v| assert_eq!(*v, CssTextDecorationThickness::Auto)),
         catalog: grammar_catalog!("baseline.property.text-decoration-thickness", "-1px", rejected("1")),
         source: "X-TEXTDECOR4",
         dispatch: "2px",
+        wrapper: yes,
+    }
+    TextDecorationSkip, "text-decoration-skip" {
+        metadata: shorthand([TextDecorationSkipSelf, TextDecorationSkipBox, TextDecorationSkipInset, TextDecorationSkipSpaces, TextDecorationSkipInk], []),
+        catalog: grammar_catalog!("ext.property.text-decoration-skip", "auto", rejected("objects")),
+        source: "X-TEXTDECOR4",
+        dispatch: "none",
+        wrapper: yes,
+    }
+    TextDecorationSkipSelf, "text-decoration-skip-self" {
+        metadata: longhand(true, |v| assert_eq!(*v, CssTextDecorationSkipSelf::Objects)),
+        catalog: grammar_catalog!("ext.property.text-decoration-skip-self", "objects", rejected("auto")),
+        source: "X-TEXTDECOR4",
+        dispatch: "none",
+        wrapper: yes,
+    }
+    TextDecorationSkipBox, "text-decoration-skip-box" {
+        metadata: longhand(true, |v| assert_eq!(*v, CssTextDecorationSkipBox::None)),
+        catalog: grammar_catalog!("ext.property.text-decoration-skip-box", "all", rejected("objects")),
+        source: "X-TEXTDECOR4",
+        dispatch: "all",
+        wrapper: yes,
+    }
+    TextDecorationSkipInset, "text-decoration-skip-inset" {
+        metadata: longhand(true, |v| assert_eq!(*v, CssTextDecorationSkipInset::None)),
+        catalog: grammar_catalog!("ext.property.text-decoration-skip-inset", "auto", rejected("all")),
+        source: "X-TEXTDECOR4",
+        dispatch: "auto",
+        wrapper: yes,
+    }
+    TextDecorationSkipSpaces, "text-decoration-skip-spaces" {
+        metadata: longhand(true, |v| assert_eq!(*v, CssTextDecorationSkipSpaces::StartEnd)),
+        catalog: grammar_catalog!("ext.property.text-decoration-skip-spaces", "end start", rejected("start start")),
+        source: "X-TEXTDECOR4",
+        dispatch: "end start",
+        wrapper: yes,
+    }
+    TextDecorationSkipInk, "text-decoration-skip-ink" {
+        metadata: longhand(true, |v| assert_eq!(*v, CssTextDecorationSkipInk::Auto)),
+        catalog: grammar_catalog!("ext.property.text-decoration-skip-ink", "all", rejected("objects")),
+        source: "X-TEXTDECOR4",
+        dispatch: "all",
+        wrapper: yes,
+    }
+    TextEmphasis, "text-emphasis" {
+        metadata: shorthand([TextEmphasisStyle, TextEmphasisColor], []),
+        catalog: grammar_catalog!("ext.property.text-emphasis", "red open triangle", rejected("red blue")),
+        source: "X-TEXTDECOR4",
+        dispatch: "red open triangle",
+        wrapper: yes,
+    }
+    TextEmphasisStyle, "text-emphasis-style" {
+        metadata: longhand(true, |v| assert_eq!(*v, CssTextEmphasisStyle::None)),
+        catalog: grammar_catalog!("ext.property.text-emphasis-style", "'hello'", rejected("dot circle")),
+        source: "X-TEXTDECOR4",
+        dispatch: "filled dot",
+        wrapper: yes,
+    }
+    TextEmphasisColor, "text-emphasis-color" {
+        metadata: longhand(true, |v| assert!(v.is_current_color())),
+        catalog: grammar_catalog!("ext.property.text-emphasis-color", "light-dark(red,blue)", rejected("red blue")),
+        source: "X-TEXTDECOR4",
+        dispatch: "light-dark(red,blue)",
+        wrapper: yes,
+    }
+    TextEmphasisPosition, "text-emphasis-position" {
+        metadata: longhand(true, |v| { assert_eq!(v.vertical(), CssTextEmphasisVertical::Over); assert_eq!(v.side(), Some(CssTextSide::Right)); assert_eq!(v.effective_side(), CssTextSide::Right); }),
+        catalog: grammar_catalog!("ext.property.text-emphasis-position", "left under", rejected("right")),
+        source: "X-TEXTDECOR4",
+        dispatch: "left under",
+        wrapper: yes,
+    }
+    TextEmphasisSkip, "text-emphasis-skip" {
+        metadata: longhand(true, |v| { assert!(v.spaces()); assert!(v.punctuation()); assert!(!v.symbols()); assert!(!v.narrow()); }),
+        catalog: grammar_catalog!("ext.property.text-emphasis-skip", "narrow symbols spaces", rejected("spaces spaces")),
+        source: "X-TEXTDECOR4",
+        dispatch: "narrow symbols spaces",
+        wrapper: yes,
+    }
+    TextShadow, "text-shadow" {
+        metadata: longhand(true, |v| assert_eq!(*v, CssTextShadow::None)),
+        catalog: grammar_catalog!("ext.property.text-shadow", "inset red 1px 2px 3px 4px", rejected("1px 2px 0px -1px")),
+        source: "X-TEXTDECOR4",
+        dispatch: "inset red 1px 2px 3px 4px",
+        wrapper: yes,
+    }
+    TextUnderlinePosition, "text-underline-position" {
+        metadata: longhand(true, |v| assert_eq!(*v, CssTextUnderlinePosition::Auto)),
+        catalog: grammar_catalog!("ext.property.text-underline-position", "left from-font", rejected("auto left")),
+        source: "X-TEXTDECOR4",
+        dispatch: "left from-font",
+        wrapper: yes,
+    }
+    TextUnderlineOffset, "text-underline-offset" {
+        metadata: longhand(true, |v| assert_eq!(*v, CssTextUnderlineOffset::Auto)),
+        catalog: grammar_catalog!("ext.property.text-underline-offset", "-25%", rejected("from-font")),
+        source: "X-TEXTDECOR4",
+        dispatch: "-25%",
         wrapper: yes,
     }
     TextGroupAlign, "text-group-align" {

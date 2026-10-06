@@ -851,6 +851,12 @@ impl CssCalculationExpression {
         Ok(true)
     }
 
+    pub(crate) fn is_closed(&self) -> bool {
+        self.components
+            .as_ref()
+            .is_some_and(|v| v.first_implicit_origin().is_none())
+    }
+
     pub(crate) fn component_nesting_depth(&self) -> u32 {
         self.components
             .as_ref()

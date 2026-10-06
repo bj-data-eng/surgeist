@@ -159,6 +159,8 @@ use speech::*;
 use text_alignment::*;
 use timing::*;
 use typography::*;
+mod text_decoration;
+use text_decoration::*;
 pub(crate) use variables::contains_substitution;
 use variables::{
     collect_authored_declaration_value, parse_custom_property_name, parse_custom_property_value,

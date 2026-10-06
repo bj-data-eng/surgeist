@@ -17,6 +17,7 @@ pub(crate) use crate::numeric::*;
 pub use crate::page_line_minimum::CssPageLineMinimum;
 pub use crate::rotate::{CssRotate, CssRotateAxis, CssRotateValues};
 pub use crate::text_controls::*;
+pub use crate::text_decoration::*;
 use crate::{
     CssAngleLiteral, CssAngleOrZero, CssAngleValue, CssColorNumberLiteral,
     CssColorPercentageLiteral, CssColorScalarError, CssDuration, CssFontSize, CssFontStyle,
@@ -6021,6 +6022,8 @@ pub struct CssTextDecoration {
 }
 
 impl CssTextDecoration {
+    /// Rejects an empty aggregate and browser-recovered numeric or Color closure.
+    /// Parsed recovery retains its authored graph through the parser-owned boundary.
     #[must_use]
     pub fn try_new(
         line: Option<CssTextDecorationLine>,
@@ -6028,7 +6031,10 @@ impl CssTextDecoration {
         style: Option<CssTextDecorationStyle>,
         thickness: Option<CssTextDecorationThickness>,
     ) -> Option<Self> {
-        if line.is_none() && color.is_none() && style.is_none() && thickness.is_none() {
+        if (line.is_none() && color.is_none() && style.is_none() && thickness.is_none())
+            || color.as_ref().is_some_and(|value| !value.is_closed())
+            || thickness.as_ref().is_some_and(|value| matches!(value, CssTextDecorationThickness::Length(value) if !crate::text_decoration::length_percentage_closed(value)))
+        {
             None
         } else {
             Some(Self::new(line, color, style, thickness))
@@ -6073,7 +6079,22 @@ impl CssTextDecoration {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssTextDecorationLine {
     components: Vec<CssTextDecorationLineComponent>,
-    none: bool,
+    kind: CssTextDecorationLineKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CssTextDecorationLineKind {
+    None,
+    Lines,
+    Error(CssTextDecorationError),
+}
+
+/// Exclusive error decoration alternatives, never combined with ordinary lines.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssTextDecorationError {
+    SpellingError,
+    GrammarError,
 }
 
 impl CssTextDecorationLine {
@@ -6090,21 +6111,36 @@ impl CssTextDecorationLine {
     pub(crate) fn new(components: Vec<CssTextDecorationLineComponent>) -> Self {
         Self {
             components,
-            none: false,
+            kind: CssTextDecorationLineKind::Lines,
         }
     }
 
     #[must_use]
-    pub(crate) fn none() -> Self {
+    pub fn none() -> Self {
         Self {
             components: Vec::new(),
-            none: true,
+            kind: CssTextDecorationLineKind::None,
+        }
+    }
+
+    /// Constructs one exclusive spelling or grammar error line.
+    pub fn error(value: CssTextDecorationError) -> Self {
+        Self {
+            components: Vec::new(),
+            kind: CssTextDecorationLineKind::Error(value),
+        }
+    }
+
+    pub const fn error_kind(&self) -> Option<CssTextDecorationError> {
+        match self.kind {
+            CssTextDecorationLineKind::Error(value) => Some(value),
+            _ => None,
         }
     }
 
     #[must_use]
     pub const fn is_none(&self) -> bool {
-        self.none
+        matches!(self.kind, CssTextDecorationLineKind::None)
     }
 
     #[must_use]

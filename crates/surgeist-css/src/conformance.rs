@@ -2383,7 +2383,6 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::TableLayout
         | CssKnownProperty::LineHeight
         | CssKnownProperty::VerticalAlign
-        | CssKnownProperty::TextDecoration
         | CssKnownProperty::ZIndex => O_CSS2,
         CssKnownProperty::BreakBefore
         | CssKnownProperty::BreakAfter
@@ -2647,10 +2646,25 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::TextSpacingTrim
         | CssKnownProperty::TextSpacing
         | CssKnownProperty::HangingPunctuation => X_TEXT4,
-        CssKnownProperty::TextDecorationLine
+        CssKnownProperty::TextDecoration
+        | CssKnownProperty::TextDecorationLine
         | CssKnownProperty::TextDecorationColor
-        | CssKnownProperty::TextDecorationStyle => S_TEXTDECOR3,
-        CssKnownProperty::TextDecorationThickness => X_TEXTDECOR4,
+        | CssKnownProperty::TextDecorationStyle
+        | CssKnownProperty::TextDecorationThickness
+        | CssKnownProperty::TextUnderlinePosition
+        | CssKnownProperty::TextUnderlineOffset
+        | CssKnownProperty::TextDecorationSkip
+        | CssKnownProperty::TextDecorationSkipSelf
+        | CssKnownProperty::TextDecorationSkipBox
+        | CssKnownProperty::TextDecorationSkipInset
+        | CssKnownProperty::TextDecorationSkipSpaces
+        | CssKnownProperty::TextDecorationSkipInk
+        | CssKnownProperty::TextEmphasis
+        | CssKnownProperty::TextEmphasisStyle
+        | CssKnownProperty::TextEmphasisColor
+        | CssKnownProperty::TextEmphasisPosition
+        | CssKnownProperty::TextEmphasisSkip
+        | CssKnownProperty::TextShadow => X_TEXTDECOR4,
         CssKnownProperty::Position
         | CssKnownProperty::Inset
         | CssKnownProperty::Top
@@ -2794,7 +2808,6 @@ const fn property_production(property: CssKnownProperty, default: &'static str) 
             CssKnownProperty::VerticalAlign => "visudet.html#propdef-vertical-align",
             _ => default,
         },
-        CssKnownProperty::TextDecoration => "text.html#propdef-text-decoration",
         _ => default,
     }
 }
@@ -2868,7 +2881,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 716] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 730] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -5425,30 +5438,100 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 716] = [
         "text-overflow",
         "baseline.property.text-overflow"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::TextDecoration,
         "text-decoration",
         "baseline.property.text-decoration"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::TextDecorationLine,
         "text-decoration-line",
         "baseline.property.text-decoration-line"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::TextDecorationColor,
         "text-decoration-color",
         "baseline.property.text-decoration-color"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::TextDecorationStyle,
         "text-decoration-style",
         "baseline.property.text-decoration-style"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::TextDecorationThickness,
         "text-decoration-thickness",
         "baseline.property.text-decoration-thickness"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::TextUnderlinePosition,
+        "text-underline-position",
+        "ext.property.text-underline-position"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::TextUnderlineOffset,
+        "text-underline-offset",
+        "ext.property.text-underline-offset"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::TextDecorationSkip,
+        "text-decoration-skip",
+        "ext.property.text-decoration-skip"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::TextDecorationSkipSelf,
+        "text-decoration-skip-self",
+        "ext.property.text-decoration-skip-self"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::TextDecorationSkipBox,
+        "text-decoration-skip-box",
+        "ext.property.text-decoration-skip-box"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::TextDecorationSkipInset,
+        "text-decoration-skip-inset",
+        "ext.property.text-decoration-skip-inset"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::TextDecorationSkipSpaces,
+        "text-decoration-skip-spaces",
+        "ext.property.text-decoration-skip-spaces"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::TextDecorationSkipInk,
+        "text-decoration-skip-ink",
+        "ext.property.text-decoration-skip-ink"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::TextEmphasis,
+        "text-emphasis",
+        "ext.property.text-emphasis"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::TextEmphasisStyle,
+        "text-emphasis-style",
+        "ext.property.text-emphasis-style"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::TextEmphasisColor,
+        "text-emphasis-color",
+        "ext.property.text-emphasis-color"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::TextEmphasisPosition,
+        "text-emphasis-position",
+        "ext.property.text-emphasis-position"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::TextEmphasisSkip,
+        "text-emphasis-skip",
+        "ext.property.text-emphasis-skip"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::TextShadow,
+        "text-shadow",
+        "ext.property.text-shadow"
     ),
     complete_property_feature!(
         CssKnownProperty::TextTransform,

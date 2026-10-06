@@ -9,15 +9,42 @@ pub(super) fn parse_color<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> std::result::Result<CssColor, ParseError<'i, Error>> {
-    if next_is_authored_relative_color(input) {
-        return parse_authored_relative_color(input, numeric)
-            .map_err(|error| with_color_context(error, None));
-    }
-    if next_is_color_mix(input) {
-        return parse_authored_color_mix(input, numeric)
-            .map_err(|error| with_color_context(error, None));
-    }
-    parse_selected_authored_color(input, numeric).map_err(|error| with_color_context(error, None))
+    // Preserve original outer-function closure before semantic lowering loses it.
+    // No serialization or grammar reparsing is used for this provenance check.
+    let state = input.state();
+    let original_closed =
+        numeric
+            .collect(input)
+            .ok()
+            .is_some_and(|component| match component.view() {
+                crate::CssComponentValueRef::Function(function) => {
+                    !matches!(
+                        function.closing_origin(),
+                        crate::CssValueOrigin::ImplicitClosure { .. }
+                    ) && function.values().first_implicit_origin().is_none()
+                }
+                crate::CssComponentValueRef::Block(block) => {
+                    !matches!(
+                        block.closing_origin(),
+                        crate::CssValueOrigin::ImplicitClosure { .. }
+                    ) && block.values().first_implicit_origin().is_none()
+                }
+                _ => true,
+            });
+    input.reset(&state);
+    let parsed = if next_is_authored_relative_color(input) {
+        parse_authored_relative_color(input, numeric)
+    } else if next_is_color_mix(input) {
+        parse_authored_color_mix(input, numeric)
+    } else {
+        parse_selected_authored_color(input, numeric)
+    };
+    parsed
+        .map(|mut value| {
+            value.retain_original_closure(original_closed);
+            value
+        })
+        .map_err(|error| with_color_context(error, None))
 }
 
 fn next_is_color_mix<'i, 't>(input: &mut Parser<'i, 't>) -> bool {

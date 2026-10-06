@@ -1204,13 +1204,14 @@ pub(super) fn parse_text_decoration<'i, 't>(
 ) -> std::result::Result<CssTextDecoration, ParseError<'i, Error>> {
     let mut line_components = Vec::new();
     let mut line_none = false;
+    let mut line_error = None;
     let mut color = None;
     let mut style = None;
     let mut thickness = None;
 
     while !input.is_exhausted() {
         if let Ok(component) = input.try_parse(parse_text_decoration_line_component) {
-            if line_none {
+            if line_none || line_error.is_some() {
                 return Err(unsupported_value(
                     input,
                     None,
@@ -1231,7 +1232,7 @@ pub(super) fn parse_text_decoration<'i, 't>(
             .try_parse(|input| input.expect_ident_matching("none"))
             .is_ok()
         {
-            if line_none || !line_components.is_empty() {
+            if line_none || line_error.is_some() || !line_components.is_empty() {
                 return Err(unsupported_value(
                     input,
                     None,
@@ -1239,6 +1240,13 @@ pub(super) fn parse_text_decoration<'i, 't>(
                 ));
             }
             line_none = true;
+            continue;
+        }
+        if let Ok(error) = input.try_parse(super::text_decoration::parse_decoration_error) {
+            if line_none || line_error.is_some() || !line_components.is_empty() {
+                return Err(unsupported_value(input, None, "exclusive error line"));
+            }
+            line_error = Some(error);
             continue;
         }
         if style.is_none()
@@ -1268,7 +1276,9 @@ pub(super) fn parse_text_decoration<'i, 't>(
         ));
     }
 
-    let line = if line_none {
+    let line = if let Some(error) = line_error {
+        Some(CssTextDecorationLine::error(error))
+    } else if line_none {
         Some(CssTextDecorationLine::none())
     } else if line_components.is_empty() {
         None
@@ -1279,7 +1289,7 @@ pub(super) fn parse_text_decoration<'i, 't>(
     if line.is_none() && color.is_none() && style.is_none() && thickness.is_none() {
         None
     } else {
-        CssTextDecoration::try_new(line, color, style, thickness)
+        Some(CssTextDecoration::new(line, color, style, thickness))
     }
     .ok_or_else(|| unsupported_value(input, None, "text-decoration shorthand is empty"))
 }
@@ -1294,6 +1304,9 @@ pub(super) fn parse_text_decoration_line<'i, 't>(
         return Ok(CssTextDecorationLine::none());
     }
 
+    if let Ok(error) = input.try_parse(super::text_decoration::parse_decoration_error) {
+        return Ok(CssTextDecorationLine::error(error));
+    }
     let mut components = Vec::new();
     while !input.is_exhausted() {
         let component = parse_text_decoration_line_component(input)?;
