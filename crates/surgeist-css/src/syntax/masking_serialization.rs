@@ -64,12 +64,11 @@ list_provider!(CssMaskCompositeList, operators);
 provider!(CssMaskLayerBoxes, value, writer => {
     writer.node()?;
     match value {
-        Self::Box(value) => value.append_to_rule_writer(writer),
-        Self::NoClip => CssMaskClip::NoClip.append_to_rule_writer(writer),
+        Self::Box(value) => writer.source_property(crate::CssKnownProperty::MaskOrigin, |writer| value.append_to_rule_writer(writer)),
+        Self::NoClip => writer.source_property(crate::CssKnownProperty::MaskClip, |writer| CssMaskClip::NoClip.append_to_rule_writer(writer)),
         Self::Pair { origin, clip } => {
-            origin.append_to_rule_writer(writer)?;
-            writer.append(" ")?;
-            clip.append_to_rule_writer(writer)
+            writer.source_property(crate::CssKnownProperty::MaskOrigin, |writer| origin.append_to_rule_writer(writer))?;
+            writer.source_property(crate::CssKnownProperty::MaskClip, |writer| { writer.append(" ")?; clip.append_to_rule_writer(writer) })
         }
     }
 });
@@ -84,28 +83,46 @@ provider!(CssMaskBorder, value, writer => {
     writer.node()?;
     let mut emitted = false;
     if let Some(source) = value.source() {
+        writer.source_member(0, |writer| {
         before_field(writer, &mut emitted)?;
         source.append_to_rule_writer(writer)?;
+            Ok(())
+        })?;
     }
     if let Some(slice) = value.slice() {
+        writer.source_member(1, |writer| {
         before_field(writer, &mut emitted)?;
         slice.append_to_rule_writer(writer)?;
+            Ok(())
+        })?;
     }
     if let Some(width) = value.width() {
+        writer.source_member(2, |writer| {
         writer.append(" / ")?;
         width.append_to_rule_writer(writer)?;
+            Ok(())
+        })?;
     }
     if let Some(outset) = value.outset() {
+        writer.source_member(3, |writer| {
         writer.append(if value.width().is_some() { " / " } else { " / / " })?;
         outset.append_to_rule_writer(writer)?;
+            Ok(())
+        })?;
     }
     if let Some(repeat) = value.repeat() {
+        writer.source_member(4, |writer| {
         before_field(writer, &mut emitted)?;
         repeat.append_to_rule_writer(writer)?;
+            Ok(())
+        })?;
     }
     if let Some(mode) = value.mode() {
+        writer.source_member(5, |writer| {
         before_field(writer, &mut emitted)?;
         mode.append_to_rule_writer(writer)?;
+            Ok(())
+        })?;
     }
     Ok(())
 });

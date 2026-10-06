@@ -129,6 +129,17 @@ pub struct CssFilterImage {
     nesting_depth: u32,
 }
 impl CssFilterImage {
+    pub(crate) fn specified_inverse_eq(
+        &self,
+        other: &Self,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+    ) -> Result<bool, crate::CssSpecifiedValueSerializationError> {
+        use crate::specified_inverse::BoundedStructuralEquality;
+        Ok(self.input.bounded_eq(&other.input, context)?
+            && self.filters.bounded_eq(&other.filters, context)?
+            && self.nesting_depth == other.nesting_depth)
+    }
+
     /// Checks the enclosing function and every retained image/filter/color/numeric/URL child.
     /// Operand and list carriers contribute no function nesting level.
     pub fn try_new(
@@ -191,6 +202,17 @@ pub struct CssLightDarkImage {
     nesting_depth: u32,
 }
 impl CssLightDarkImage {
+    pub(crate) fn specified_inverse_eq(
+        &self,
+        other: &Self,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+    ) -> Result<bool, crate::CssSpecifiedValueSerializationError> {
+        use crate::specified_inverse::BoundedStructuralEquality;
+        Ok(self.light.bounded_eq(&other.light, context)?
+            && self.dark.bounded_eq(&other.dark, context)?
+            && self.nesting_depth == other.nesting_depth)
+    }
+
     /// Checks every supplied image, color, modifier and numeric component subtree.
     pub fn try_new(
         light: CssImageValue,

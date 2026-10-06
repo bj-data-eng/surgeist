@@ -1125,6 +1125,15 @@ pub surgeist_css::CssCustomPropertyDeclaredValue::Value(surgeist_css::CssCustomP
 impl surgeist_css::CssCustomPropertyDeclaredValue
 pub const fn surgeist_css::CssCustomPropertyDeclaredValue::global(&self) -> core::option::Option<surgeist_css::CssGlobalKeyword>
 pub const fn surgeist_css::CssCustomPropertyDeclaredValue::value(&self) -> core::option::Option<&surgeist_css::CssCustomPropertyValue>
+#[non_exhaustive] pub enum surgeist_css::CssDeclarationBlockErrorKind
+pub surgeist_css::CssDeclarationBlockErrorKind::Expansion(surgeist_css::CssExpansionError)
+pub surgeist_css::CssDeclarationBlockErrorKind::InvalidKeyframeSource
+pub surgeist_css::CssDeclarationBlockErrorKind::InvalidKeyframeSource::reason: surgeist_css::CssInvalidKeyframeSourceReason
+pub surgeist_css::CssDeclarationBlockErrorKind::PendingFootprintUndetermined
+pub surgeist_css::CssDeclarationBlockErrorKind::PendingFootprintUndetermined::property: surgeist_css::CssKnownProperty
+pub surgeist_css::CssDeclarationBlockErrorKind::Serialization(surgeist_css::CssSpecifiedValueSerializationError)
+pub surgeist_css::CssDeclarationBlockErrorKind::UnresolvedEnvironment
+pub surgeist_css::CssDeclarationBlockErrorKind::UnresolvedEnvironment::property: surgeist_css::CssKnownProperty
 #[non_exhaustive] pub enum surgeist_css::CssDeclarationBody
 pub surgeist_css::CssDeclarationBody::Custom(surgeist_css::CssCustomDeclaration)
 pub surgeist_css::CssDeclarationBody::Known(surgeist_css::CssKnownDeclaration)
@@ -2160,6 +2169,9 @@ pub surgeist_css::CssIntrinsicSizeKeyword::FitContent
 pub surgeist_css::CssIntrinsicSizeKeyword::MaxContent
 pub surgeist_css::CssIntrinsicSizeKeyword::MinContent
 pub surgeist_css::CssIntrinsicSizeKeyword::Stretch
+pub enum surgeist_css::CssInvalidKeyframeSourceReason
+pub surgeist_css::CssInvalidKeyframeSourceReason::Importance
+pub surgeist_css::CssInvalidKeyframeSourceReason::Property
 #[non_exhaustive] pub enum surgeist_css::CssIsolation
 pub surgeist_css::CssIsolation::Auto
 pub surgeist_css::CssIsolation::Isolate
@@ -4840,6 +4852,12 @@ pub surgeist_css::CssSpecificationTier::Snapshot2026Official
 pub surgeist_css::CssSpecificationTier::Snapshot2026Reliable
 pub surgeist_css::CssSpecificationTier::Snapshot2026Stable
 pub surgeist_css::CssSpecificationTier::SurgeistExtension
+#[non_exhaustive] pub enum surgeist_css::CssSpecifiedDeclarationValueRef<'a>
+pub surgeist_css::CssSpecifiedDeclarationValueRef::Completed(surgeist_css::CssContributionValueRef<'a>)
+pub surgeist_css::CssSpecifiedDeclarationValueRef::Custom(&'a surgeist_css::CssCustomDeclaration)
+pub surgeist_css::CssSpecifiedDeclarationValueRef::PendingShorthand(&'a surgeist_css::CssDeclaration)
+pub surgeist_css::CssSpecifiedDeclarationValueRef::SvgGlyphOrientationVertical(&'a surgeist_css::CssSvgGlyphOrientationVerticalContribution)
+pub surgeist_css::CssSpecifiedDeclarationValueRef::UnresolvedLonghand(&'a surgeist_css::CssComponentValues)
 #[non_exhaustive] pub enum surgeist_css::CssSpecifiedRuleSerializationErrorKind
 pub surgeist_css::CssSpecifiedRuleSerializationErrorKind::Resource(surgeist_css::CssSpecifiedValueSerializationErrorKind)
 pub surgeist_css::CssSpecifiedRuleSerializationErrorKind::Value(surgeist_css::CssSpecifiedValueSerializationErrorKind)
@@ -7479,6 +7497,7 @@ impl surgeist_css::CssDeclaration
 pub fn surgeist_css::CssDeclaration::body(&self) -> &surgeist_css::CssDeclarationBody
 pub fn surgeist_css::CssDeclaration::custom(&self) -> core::option::Option<&surgeist_css::CssCustomDeclaration>
 pub fn surgeist_css::CssDeclaration::importance(&self) -> surgeist_css::CssImportance
+pub fn surgeist_css::CssDeclaration::is_name_case_sensitive(&self) -> bool
 pub fn surgeist_css::CssDeclaration::known(&self) -> core::option::Option<&surgeist_css::CssKnownDeclaration>
 pub fn surgeist_css::CssDeclaration::parsed_name(&self) -> core::option::Option<&surgeist_css::CssParsedOrigin>
 pub fn surgeist_css::CssDeclaration::parsed_value(&self) -> core::option::Option<&surgeist_css::CssParsedOrigin>
@@ -7488,6 +7507,7 @@ pub fn surgeist_css::CssDeclaration::property_name(&self) -> surgeist_css::CssPr
 pub fn surgeist_css::CssDeclaration::same_occurrence(&self, other: &Self) -> bool
 pub fn surgeist_css::CssDeclaration::svg_glyph_orientation_vertical(&self) -> core::option::Option<&surgeist_css::CssSvgGlyphOrientationVerticalDeclaration>
 pub fn surgeist_css::CssDeclaration::value_components(&self) -> &surgeist_css::CssComponentValues
+pub fn surgeist_css::CssDeclaration::with_importance(&self, importance: surgeist_css::CssImportance) -> Self
 impl surgeist_css::CssDeclaration
 pub fn surgeist_css::CssDeclaration::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssDeclaration::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
@@ -7497,12 +7517,28 @@ pub struct surgeist_css::CssDeclarationAnnotationError
 impl surgeist_css::CssDeclarationAnnotationError
 pub const fn surgeist_css::CssDeclarationAnnotationError::context(&self) -> surgeist_css::CssDeclarationContextRef<'_>
 pub const fn surgeist_css::CssDeclarationAnnotationError::encountered(&self) -> &surgeist_css::CssTokenSummary
+pub struct surgeist_css::CssDeclarationBlockError
+impl surgeist_css::CssDeclarationBlockError
+pub const fn surgeist_css::CssDeclarationBlockError::authored_ordinal(&self) -> core::option::Option<usize>
+pub const fn surgeist_css::CssDeclarationBlockError::declaration(&self) -> core::option::Option<&surgeist_css::CssDeclaration>
+pub const fn surgeist_css::CssDeclarationBlockError::kind(&self) -> &surgeist_css::CssDeclarationBlockErrorKind
+pub const fn surgeist_css::CssDeclarationBlockError::member_ordinal(&self) -> core::option::Option<usize>
+impl core::convert::From<surgeist_css::CssExpansionError> for surgeist_css::CssDeclarationBlockError
+pub fn surgeist_css::CssDeclarationBlockError::from(error: surgeist_css::CssExpansionError) -> Self
+impl core::convert::From<surgeist_css::CssSpecifiedValueSerializationError> for surgeist_css::CssDeclarationBlockError
+pub fn surgeist_css::CssDeclarationBlockError::from(error: surgeist_css::CssSpecifiedValueSerializationError) -> Self
+impl core::error::Error for surgeist_css::CssDeclarationBlockError
+pub fn surgeist_css::CssDeclarationBlockError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_css::CssDeclarationBlockError
+pub fn surgeist_css::CssDeclarationBlockError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css::CssDeclarationList
 impl surgeist_css::CssDeclarationList
 pub fn surgeist_css::CssDeclarationList::as_slice(&self) -> &[surgeist_css::CssDeclaration]
 pub const fn surgeist_css::CssDeclarationList::is_empty(&self) -> bool
 pub fn surgeist_css::CssDeclarationList::iter(&self) -> core::slice::iter::Iter<'_, surgeist_css::CssDeclaration>
 pub const fn surgeist_css::CssDeclarationList::len(&self) -> usize
+pub fn surgeist_css::CssDeclarationList::serialize_cssom(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssDeclarationBlockError>
+pub fn surgeist_css::CssDeclarationList::serialize_cssom_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssDeclarationBlockError>
 impl core::ops::deref::Deref for surgeist_css::CssDeclarationList
 pub type surgeist_css::CssDeclarationList::Target = [surgeist_css::CssDeclaration]
 pub fn surgeist_css::CssDeclarationList::deref(&self) -> &Self::Target
@@ -7639,6 +7675,8 @@ pub const fn surgeist_css::CssExclusionMetadata::superseding_ids(&self) -> core:
 pub struct surgeist_css::CssExpansionError
 impl surgeist_css::CssExpansionError
 pub const fn surgeist_css::CssExpansionError::kind(&self) -> &surgeist_css::CssExpansionErrorKind
+impl core::convert::From<surgeist_css::CssExpansionError> for surgeist_css::CssDeclarationBlockError
+pub fn surgeist_css::CssDeclarationBlockError::from(error: surgeist_css::CssExpansionError) -> Self
 impl core::error::Error for surgeist_css::CssExpansionError
 pub fn surgeist_css::CssExpansionError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_css::CssExpansionError
@@ -8935,18 +8973,23 @@ pub const fn surgeist_css::CssKeyframeBlock::position(&self) -> surgeist_css::Cs
 pub const fn surgeist_css::CssKeyframeBlock::selectors(&self) -> &surgeist_css::CssKeyframeSelectorList
 pub struct surgeist_css::CssKeyframeDeclaration
 impl surgeist_css::CssKeyframeDeclaration
-pub const fn surgeist_css::CssKeyframeDeclaration::body(&self) -> &surgeist_css::CssDeclarationBody
-pub const fn surgeist_css::CssKeyframeDeclaration::custom(&self) -> core::option::Option<&surgeist_css::CssCustomDeclaration>
-pub const fn surgeist_css::CssKeyframeDeclaration::known(&self) -> core::option::Option<&surgeist_css::CssKnownDeclaration>
-pub const fn surgeist_css::CssKeyframeDeclaration::position(&self) -> surgeist_css::CssSourcePosition
-pub const fn surgeist_css::CssKeyframeDeclaration::property_name(&self) -> surgeist_css::CssPropertyNameRef<'_>
-pub const fn surgeist_css::CssKeyframeDeclaration::svg_glyph_orientation_vertical(&self) -> core::option::Option<&surgeist_css::CssSvgGlyphOrientationVerticalDeclaration>
+pub fn surgeist_css::CssKeyframeDeclaration::body(&self) -> &surgeist_css::CssDeclarationBody
+pub fn surgeist_css::CssKeyframeDeclaration::custom(&self) -> core::option::Option<&surgeist_css::CssCustomDeclaration>
+pub fn surgeist_css::CssKeyframeDeclaration::known(&self) -> core::option::Option<&surgeist_css::CssKnownDeclaration>
+pub fn surgeist_css::CssKeyframeDeclaration::position(&self) -> surgeist_css::CssSourcePosition
+pub fn surgeist_css::CssKeyframeDeclaration::property_name(&self) -> surgeist_css::CssPropertyNameRef<'_>
+pub fn surgeist_css::CssKeyframeDeclaration::source(&self) -> &surgeist_css::CssDeclaration
+pub fn surgeist_css::CssKeyframeDeclaration::svg_glyph_orientation_vertical(&self) -> core::option::Option<&surgeist_css::CssSvgGlyphOrientationVerticalDeclaration>
+impl core::cmp::PartialEq for surgeist_css::CssKeyframeDeclaration
+pub fn surgeist_css::CssKeyframeDeclaration::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssKeyframeDeclarationList
 impl surgeist_css::CssKeyframeDeclarationList
 pub fn surgeist_css::CssKeyframeDeclarationList::as_slice(&self) -> &[surgeist_css::CssKeyframeDeclaration]
 pub const fn surgeist_css::CssKeyframeDeclarationList::is_empty(&self) -> bool
 pub fn surgeist_css::CssKeyframeDeclarationList::iter(&self) -> core::slice::iter::Iter<'_, surgeist_css::CssKeyframeDeclaration>
 pub const fn surgeist_css::CssKeyframeDeclarationList::len(&self) -> usize
+pub fn surgeist_css::CssKeyframeDeclarationList::serialize_cssom(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssDeclarationBlockError>
+pub fn surgeist_css::CssKeyframeDeclarationList::serialize_cssom_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssDeclarationBlockError>
 impl core::ops::deref::Deref for surgeist_css::CssKeyframeDeclarationList
 pub type surgeist_css::CssKeyframeDeclarationList::Target = [surgeist_css::CssKeyframeDeclaration]
 pub fn surgeist_css::CssKeyframeDeclarationList::deref(&self) -> &Self::Target
@@ -10904,6 +10947,29 @@ pub const fn surgeist_css::CssSpecificationSource::url(self) -> core::option::Op
 pub struct surgeist_css::CssSpecificationSourceId(_)
 impl surgeist_css::CssSpecificationSourceId
 pub const fn surgeist_css::CssSpecificationSourceId::as_str(self) -> &'static str
+pub struct surgeist_css::CssSpecifiedDeclarationBlock
+impl surgeist_css::CssSpecifiedDeclarationBlock
+pub fn surgeist_css::CssSpecifiedDeclarationBlock::entries(&self) -> &[surgeist_css::CssSpecifiedDeclarationEntry]
+pub fn surgeist_css::CssSpecifiedDeclarationBlock::property_value(&self, name: surgeist_css::CssPropertyNameRef<'_>) -> core::result::Result<core::option::Option<alloc::string::String>, surgeist_css::CssDeclarationBlockError>
+pub fn surgeist_css::CssSpecifiedDeclarationBlock::property_value_with_limits(&self, name: surgeist_css::CssPropertyNameRef<'_>, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<core::option::Option<alloc::string::String>, surgeist_css::CssDeclarationBlockError>
+pub fn surgeist_css::CssSpecifiedDeclarationBlock::serialize_cssom(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssDeclarationBlockError>
+pub fn surgeist_css::CssSpecifiedDeclarationBlock::serialize_cssom_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssDeclarationBlockError>
+pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_declarations(declarations: &surgeist_css::CssDeclarationList) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
+pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_declarations_with_limits(declarations: &surgeist_css::CssDeclarationList, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
+pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_expansions(expansions: &[surgeist_css::CssExpansion]) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
+pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_expansions_with_limits(expansions: &[surgeist_css::CssExpansion], limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
+pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(declarations: &surgeist_css::CssKeyframeDeclarationList) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
+pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_keyframe_declarations_with_limits(declarations: &surgeist_css::CssKeyframeDeclarationList, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
+pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(expansions: &[surgeist_css::CssExpansion]) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
+pub fn surgeist_css::CssSpecifiedDeclarationBlock::try_from_keyframe_expansions_with_limits(expansions: &[surgeist_css::CssExpansion], limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssDeclarationBlockError>
+pub struct surgeist_css::CssSpecifiedDeclarationEntry
+impl surgeist_css::CssSpecifiedDeclarationEntry
+pub const fn surgeist_css::CssSpecifiedDeclarationEntry::authored_ordinal(&self) -> usize
+pub fn surgeist_css::CssSpecifiedDeclarationEntry::importance(&self) -> surgeist_css::CssImportance
+pub const fn surgeist_css::CssSpecifiedDeclarationEntry::member_ordinal(&self) -> usize
+pub fn surgeist_css::CssSpecifiedDeclarationEntry::property_name(&self) -> surgeist_css::CssPropertyNameRef<'_>
+pub const fn surgeist_css::CssSpecifiedDeclarationEntry::source(&self) -> &surgeist_css::CssDeclaration
+pub fn surgeist_css::CssSpecifiedDeclarationEntry::value(&self) -> surgeist_css::CssSpecifiedDeclarationValueRef<'_>
 pub struct surgeist_css::CssSpecifiedFlex
 impl surgeist_css::CssSpecifiedFlex
 pub fn surgeist_css::CssSpecifiedFlex::calculation(&self) -> core::option::Option<&surgeist_css::CssFlexCalculation>
@@ -11023,6 +11089,8 @@ pub fn surgeist_css::CssSpecifiedRuleSerializationError::fmt(&self, formatter: &
 pub struct surgeist_css::CssSpecifiedValueSerializationError
 impl surgeist_css::CssSpecifiedValueSerializationError
 pub const fn surgeist_css::CssSpecifiedValueSerializationError::kind(&self) -> surgeist_css::CssSpecifiedValueSerializationErrorKind
+impl core::convert::From<surgeist_css::CssSpecifiedValueSerializationError> for surgeist_css::CssDeclarationBlockError
+pub fn surgeist_css::CssDeclarationBlockError::from(error: surgeist_css::CssSpecifiedValueSerializationError) -> Self
 impl core::error::Error for surgeist_css::CssSpecifiedValueSerializationError
 impl core::fmt::Display for surgeist_css::CssSpecifiedValueSerializationError
 pub fn surgeist_css::CssSpecifiedValueSerializationError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result

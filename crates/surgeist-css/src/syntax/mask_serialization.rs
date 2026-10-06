@@ -29,10 +29,11 @@ impl CssMaskList {
     }
 
     pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        writer.node()?;
+        writer.source_member(0, |writer| writer.node())?;
         for (index, layer) in self.layers.iter().enumerate() {
             if index != 0 {
-                writer.append(", ")?;
+                // The admitted image-list count owns the layer separator.
+                writer.source_member(0, |writer| writer.append(", "))?;
             }
             append_layer(layer, writer)?;
         }
@@ -49,42 +50,61 @@ fn before_field(writer: &mut SpecifiedRuleWriter, emitted: &mut bool) -> Result<
 }
 
 fn append_layer(layer: &CssMaskLayer, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-    writer.node()?;
+    writer.source_property(crate::CssKnownProperty::MaskImage, |writer| writer.node())?;
     let mut emitted = false;
     if let Some(image) = &layer.image {
-        before_field(writer, &mut emitted)?;
-        image.append_to_rule_writer(writer)?;
+        writer.source_member(0, |writer| {
+            before_field(writer, &mut emitted)?;
+            image.append_to_rule_writer(writer)
+        })?;
     }
     if let Some(position) = &layer.position {
-        before_field(writer, &mut emitted)?;
-        position.append_to_rule_writer(writer)?;
+        writer.source_member(1, |writer| {
+            before_field(writer, &mut emitted)?;
+            position.append_to_rule_writer(writer)
+        })?;
     }
     if let Some(size) = &layer.size {
         if layer.position.is_none() {
-            before_field(writer, &mut emitted)?;
-            // Masking 1 §7.9 requires position before / size. These generated
-            // default tokens follow the existing projection-only default policy.
-            writer.context.charge_projection(2)?;
-            writer.append("0% 0%")?;
+            writer.source_property(crate::CssKnownProperty::MaskPosition, |writer| {
+                before_field(writer, &mut emitted)?;
+                writer.context.charge_projection(2)?;
+                writer.append("0% 0%")
+            })?;
         }
-        writer.append(" / ")?;
-        size.append_to_rule_writer(writer)?;
+        writer.source_member(2, |writer| {
+            writer.append(" / ")?;
+            size.append_to_rule_writer(writer)
+        })?;
     }
     if let Some(repeat) = &layer.repeat {
-        before_field(writer, &mut emitted)?;
-        repeat.append_to_rule_writer(writer)?;
+        writer.source_member(3, |writer| {
+            before_field(writer, &mut emitted)?;
+            repeat.append_to_rule_writer(writer)
+        })?;
     }
     if let Some(boxes) = layer.boxes {
-        before_field(writer, &mut emitted)?;
+        let first = if matches!(boxes, crate::CssMaskLayerBoxes::NoClip) {
+            crate::CssKnownProperty::MaskClip
+        } else {
+            crate::CssKnownProperty::MaskOrigin
+        };
+        writer.source_property(first, |writer| before_field(writer, &mut emitted))?;
+        // Pair boxes retain two distinct sources; a collapsed box retains one
+        // actual provider. The box owner selects those real branch transitions.
         boxes.append_to_rule_writer(writer)?;
     }
     if let Some(composite) = layer.composite {
-        before_field(writer, &mut emitted)?;
-        composite.append_to_rule_writer(writer)?;
+        writer.source_member(6, |writer| {
+            before_field(writer, &mut emitted)?;
+            composite.append_to_rule_writer(writer)
+        })?;
     }
     if let Some(mode) = layer.mode {
-        before_field(writer, &mut emitted)?;
-        mode.append_to_rule_writer(writer)?;
+        writer.source_member(7, |writer| {
+            before_field(writer, &mut emitted)?;
+            mode.append_to_rule_writer(writer)
+        })?;
     }
     Ok(())
 }

@@ -95,17 +95,16 @@ impl CssOverflowValue {
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         let context = &mut writer.context;
-        let output = &mut writer.css;
         context.charge_input(1)?;
         context.charge_projection(1)?;
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
-        context.append(output, self.x.as_css())?;
+        writer.source_member(0, |writer| writer.keyword(self.x.as_css()))?;
         if let Some(y) = self.authored_y {
-            context.charge_input(1)?;
-            context.charge_projection(1)?;
-            context.append(output, " ")?;
-            context.append(output, y.as_css())?;
+            writer.source_member(1, |writer| {
+                writer.context.charge_input(1)?;
+                writer.context.charge_projection(1)?;
+                writer.append(" ")?;
+                writer.append(y.as_css())
+            })?;
         }
         Ok(())
     }

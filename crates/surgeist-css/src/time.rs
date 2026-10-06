@@ -211,6 +211,21 @@ impl CssTimeValue {
             _ => self.structural_eq(other),
         }
     }
+    /// Exact specified equality for the new bounded inverse consumer. Ordinary
+    /// unit equivalence remains borrowed; retained math schedules its real work.
+    pub(crate) fn specified_inverse_eq(
+        &self,
+        other: &Self,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+    ) -> Result<bool, crate::CssSpecifiedValueSerializationError> {
+        match (&self.value, &other.value) {
+            (TimeValue::Literal(left), TimeValue::Literal(right)) => Ok(left.equivalent(right)),
+            (TimeValue::Calculation(left), TimeValue::Calculation(right)) => left
+                .expression
+                .specified_inverse_eq(&right.expression, context),
+            _ => Ok(false),
+        }
+    }
     pub(crate) fn structural_eq(&self, other: &Self) -> bool {
         match (&self.value, &other.value) {
             (TimeValue::Literal(left), TimeValue::Literal(right)) => left.structural_eq(right),
@@ -257,6 +272,17 @@ impl CssDuration {
     }
     pub(crate) fn specified_value_eq(&self, other: &Self) -> bool {
         self.time.specified_value_eq(&other.time)
+    }
+    pub(crate) fn specified_inverse_eq(
+        &self,
+        other: &Self,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+    ) -> Result<bool, crate::CssSpecifiedValueSerializationError> {
+        if self.time.calculation().is_none() && other.time.calculation().is_none() {
+            Ok(self.specified_value_eq(other))
+        } else {
+            self.time.specified_inverse_eq(&other.time, context)
+        }
     }
     pub(crate) fn is_exact_ordinary_zero(&self) -> bool {
         self.time.literal().is_some_and(|literal| {

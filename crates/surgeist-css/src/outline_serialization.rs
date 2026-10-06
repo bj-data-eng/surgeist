@@ -99,29 +99,35 @@ impl CssOutline {
         writer.node()?;
         let mut started = false;
         if let Some(width) = self.width() {
-            slot(writer, &mut started)?;
-            width.append_to_rule_writer(writer)?;
+            writer.source_member(0, |writer| {
+                slot(writer, &mut started)?;
+                width.append_to_rule_writer(writer)
+            })?;
         }
         if let Some(style) = self.style() {
-            slot(writer, &mut started)?;
-            style.append_to_rule_writer(writer)?;
+            writer.source_member(1, |writer| {
+                slot(writer, &mut started)?;
+                style.append_to_rule_writer(writer)
+            })?;
         } else if matches!(self.color(), Some(CssOutlineColor::Auto)) {
-            // Lone auto would change the omitted initial None style to Auto.
-            // This derived disambiguator consumes projection work, not authored input.
-            slot(writer, &mut started)?;
-            writer.context.charge_projection(1)?;
-            writer.append("none")?;
+            // The generated disambiguator belongs to the selected style slot.
+            writer.source_member(1, |writer| {
+                slot(writer, &mut started)?;
+                writer.context.charge_projection(1)?;
+                writer.append("none")
+            })?;
         }
         if let Some(color) = self.color() {
-            if self.style() == Some(CssOutlineStyle::Auto) && matches!(color, CssOutlineColor::Auto)
-            {
-                // A single auto expresses both semantic slots. The second stored
-                // field still visits its provider once, preserving outer suppression.
-                writer.without_output(|writer| color.append_to_rule_writer(writer))?;
-            } else {
-                slot(writer, &mut started)?;
-                color.append_to_rule_writer(writer)?;
-            }
+            writer.source_member(2, |writer| {
+                if self.style() == Some(CssOutlineStyle::Auto)
+                    && matches!(color, CssOutlineColor::Auto)
+                {
+                    writer.without_output(|writer| color.append_to_rule_writer(writer))
+                } else {
+                    slot(writer, &mut started)?;
+                    color.append_to_rule_writer(writer)
+                }
+            })?;
         }
         Ok(())
     }

@@ -50,17 +50,18 @@ const C13_RECOVERY_CASES: &[InvalidDeclaration] = &[
         "1 2 3 4 5",
         "5",
     ),
-    case(
+    // Images 3 section 5.1 admits either order of <angle> || flip, once each.
+    last_case(
         "official.property.image-orientation",
         "image-orientation",
-        "flip 90deg",
-        "90deg",
+        "flip 90deg flip",
+        "flip",
     ),
     case(
         "official.property.image-rendering",
         "image-rendering",
-        "smooth",
-        "smooth",
+        "smooth high-quality",
+        "high-quality",
     ),
     case(
         "official.property.object-fit",

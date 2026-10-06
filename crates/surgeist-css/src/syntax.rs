@@ -3639,6 +3639,22 @@ impl CssDeclarationList {
     pub const fn is_empty(&self) -> bool {
         self.declarations.is_empty()
     }
+
+    /// Normalizes terminal winners and emits their CSSOM specified declaration block.
+    /// Authored occurrences and the compact occurrence writer remain independent.
+    pub fn serialize_cssom(&self) -> Result<String, crate::CssDeclarationBlockError> {
+        self.serialize_cssom_with_limits(crate::CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Builds and emits atomically under one cumulative input, projection and byte budget.
+    pub fn serialize_cssom_with_limits(
+        &self,
+        limits: crate::CssSpecifiedValueSerializationLimits,
+    ) -> Result<String, crate::CssDeclarationBlockError> {
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        writer.append_cssom_declaration_list(self)?;
+        Ok(writer.css)
+    }
 }
 
 impl std::ops::Deref for CssDeclarationList {
@@ -3691,6 +3707,21 @@ impl CssKeyframeDeclarationList {
     pub const fn is_empty(&self) -> bool {
         self.declarations.is_empty()
     }
+
+    /// Emits the CSSOM declaration block under the same closed keyframe grammar.
+    pub fn serialize_cssom(&self) -> Result<String, crate::CssDeclarationBlockError> {
+        self.serialize_cssom_with_limits(crate::CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Preserves genuine parser sources while construction and output share one budget.
+    pub fn serialize_cssom_with_limits(
+        &self,
+        limits: crate::CssSpecifiedValueSerializationLimits,
+    ) -> Result<String, crate::CssDeclarationBlockError> {
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+        writer.append_cssom_keyframe_declaration_list(self)?;
+        Ok(writer.css)
+    }
 }
 
 impl std::ops::Deref for CssKeyframeDeclarationList {
@@ -3716,87 +3747,90 @@ impl std::ops::Deref for CssKeyframeDeclarationList {
 /// };
 /// let _ = rule.blocks()[0].declarations().as_slice()[0].importance();
 /// ```
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct CssKeyframeDeclaration {
-    body: CssDeclarationBody,
-    value_components: CssComponentValues,
-    position: CssSourcePosition,
+    source: NormalParsedKeyframeCssDeclaration,
+}
+
+/// Parser-only proof: a genuine parsed, normal, admitted keyframe occurrence.
+#[derive(Clone, Debug)]
+struct NormalParsedKeyframeCssDeclaration(CssDeclaration);
+
+impl PartialEq for CssKeyframeDeclaration {
+    fn eq(&self, other: &Self) -> bool {
+        self.body() == other.body()
+            && self.value_components() == other.value_components()
+            && self.position() == other.position()
+    }
 }
 
 impl CssKeyframeDeclaration {
-    /// Borrows the independent SVG authored body, including its retained admission.
+    /// Borrows the independent SVG authored body from its retained occurrence.
     #[must_use]
-    pub const fn svg_glyph_orientation_vertical(
+    pub fn svg_glyph_orientation_vertical(
         &self,
     ) -> Option<&crate::CssSvgGlyphOrientationVerticalDeclaration> {
-        match &self.body {
-            CssDeclarationBody::SvgGlyphOrientationVertical(value) => Some(value),
-            _ => None,
-        }
+        self.source().svg_glyph_orientation_vertical()
     }
-    pub(crate) const fn new(
-        body: CssDeclarationBody,
-        value_components: CssComponentValues,
-        position: CssSourcePosition,
-    ) -> Self {
+
+    pub(crate) fn from_parsed(source: CssDeclaration) -> Self {
+        assert_eq!(source.importance(), CssImportance::Normal);
+        assert!(source.parsed_name().is_some());
+        assert!(
+            source.known().is_none_or(|known| {
+                crate::parser::keyframe_property_admitted(known.property())
+            })
+        );
         Self {
-            body,
-            value_components,
-            position,
+            source: NormalParsedKeyframeCssDeclaration(source),
         }
     }
 
-    pub(crate) const fn value_components(&self) -> &CssComponentValues {
-        &self.value_components
+    /// Borrows the original parsed occurrence, including context and token origins.
+    #[must_use]
+    pub fn source(&self) -> &CssDeclaration {
+        &self.source.0
+    }
+
+    pub(crate) fn value_components(&self) -> &CssComponentValues {
+        self.source().value_components()
     }
 
     /// Returns the property-coupled authored body.
     #[must_use]
-    pub const fn body(&self) -> &CssDeclarationBody {
-        &self.body
+    pub fn body(&self) -> &CssDeclarationBody {
+        self.source().body()
     }
 
     /// Returns the known-property declaration, or `None` for custom and independent SVG bodies.
     #[must_use]
-    pub const fn known(&self) -> Option<&CssKnownDeclaration> {
-        match &self.body {
-            CssDeclarationBody::Known(known) => Some(known),
-            CssDeclarationBody::Custom(_) => None,
-            CssDeclarationBody::SvgGlyphOrientationVertical(_) => None,
-        }
+    pub fn known(&self) -> Option<&CssKnownDeclaration> {
+        self.source().known()
     }
 
     /// Returns the custom declaration, or `None` for known and independent SVG bodies.
     #[must_use]
-    pub const fn custom(&self) -> Option<&CssCustomDeclaration> {
-        match &self.body {
-            CssDeclarationBody::Known(_) => None,
-            CssDeclarationBody::SvgGlyphOrientationVertical(_) => None,
-            CssDeclarationBody::Custom(custom) => Some(custom),
-        }
+    pub fn custom(&self) -> Option<&CssCustomDeclaration> {
+        self.source().custom()
     }
 
     /// Returns a borrowed semantic property-name view derived from the active body.
     #[must_use]
-    pub const fn property_name(&self) -> CssPropertyNameRef<'_> {
-        match &self.body {
-            CssDeclarationBody::Known(known) => CssPropertyNameRef::Known(known.property()),
-            CssDeclarationBody::Custom(custom) => CssPropertyNameRef::Custom(custom.name()),
-            CssDeclarationBody::SvgGlyphOrientationVertical(_) => {
-                CssPropertyNameRef::SvgGlyphOrientationVertical
-            }
-        }
+    pub fn property_name(&self) -> CssPropertyNameRef<'_> {
+        self.source().property_name()
     }
 
-    /// Returns the semantic source position at the property-name start.
+    /// Returns the original property-name start.
     #[must_use]
-    pub const fn position(&self) -> CssSourcePosition {
-        self.position
+    pub fn position(&self) -> CssSourcePosition {
+        self.source()
+            .position()
+            .expect("parser-only keyframe source has a name origin")
     }
 
     #[cfg(test)]
     pub(crate) fn property(&self) -> crate::test_support::CssProperty {
-        crate::test_support::declaration_body_property(&self.body)
+        crate::test_support::declaration_body_property(self.body())
     }
 }
 
@@ -3857,9 +3891,14 @@ pub struct CssDeclaration {
 
 #[derive(Debug)]
 struct DeclarationOccurrence {
+    payload: Arc<DeclarationPayload>,
+    importance: CssImportance,
+}
+
+#[derive(Debug)]
+struct DeclarationPayload {
     parser_context: crate::CssParserContext,
     body: CssDeclarationBody,
-    importance: CssImportance,
     components: CssComponentValues,
     provenance: DeclarationProvenance,
 }
@@ -3907,11 +3946,13 @@ impl CssDeclaration {
     ) -> Self {
         Self {
             occurrence: Arc::new(DeclarationOccurrence {
-                parser_context,
-                body,
                 importance,
-                components,
-                provenance: DeclarationProvenance::Parsed { name, value },
+                payload: Arc::new(DeclarationPayload {
+                    parser_context,
+                    body,
+                    components,
+                    provenance: DeclarationProvenance::Parsed { name, value },
+                }),
             }),
         }
     }
@@ -3925,11 +3966,13 @@ impl CssDeclaration {
     ) -> Self {
         Self {
             occurrence: Arc::new(DeclarationOccurrence {
-                parser_context,
-                body,
                 importance,
-                components,
-                provenance: DeclarationProvenance::ParsedValue { value },
+                payload: Arc::new(DeclarationPayload {
+                    parser_context,
+                    body,
+                    components,
+                    provenance: DeclarationProvenance::ParsedValue { value },
+                }),
             }),
         }
     }
@@ -3942,11 +3985,13 @@ impl CssDeclaration {
     ) -> Self {
         Self {
             occurrence: Arc::new(DeclarationOccurrence {
-                parser_context,
-                body,
                 importance,
-                components,
-                provenance: DeclarationProvenance::Constructed,
+                payload: Arc::new(DeclarationPayload {
+                    parser_context,
+                    body,
+                    components,
+                    provenance: DeclarationProvenance::Constructed,
+                }),
             }),
         }
     }
@@ -3954,13 +3999,13 @@ impl CssDeclaration {
     /// Returns the authored parsing context retained for strict substitution reentry.
     #[must_use]
     pub fn parser_context(&self) -> crate::CssParserContext {
-        self.occurrence.parser_context
+        self.occurrence.payload.parser_context
     }
 
     /// Returns the property-coupled authored body.
     #[must_use]
     pub fn body(&self) -> &CssDeclarationBody {
-        &self.occurrence.body
+        &self.occurrence.payload.body
     }
 
     /// Returns the known-property declaration, or `None` for custom and independent SVG bodies.
@@ -3995,6 +4040,28 @@ impl CssDeclaration {
         }
     }
 
+    /// Known names are ASCII case-insensitive; custom names preserve exact code points.
+    #[must_use]
+    pub fn is_name_case_sensitive(&self) -> bool {
+        self.custom().is_some()
+    }
+
+    /// Returns an immutable occurrence with the selected priority.
+    /// An unchanged priority shares occurrence identity; a changed priority shares
+    /// the complete authored payload but has a distinct occurrence identity.
+    #[must_use]
+    pub fn with_importance(&self, importance: CssImportance) -> Self {
+        if self.importance() == importance {
+            return self.clone();
+        }
+        Self {
+            occurrence: Arc::new(DeclarationOccurrence {
+                payload: Arc::clone(&self.occurrence.payload),
+                importance,
+            }),
+        }
+    }
+
     /// Returns importance recognized from source or supplied by the caller.
     #[must_use]
     pub fn importance(&self) -> CssImportance {
@@ -4011,7 +4078,7 @@ impl CssDeclaration {
     /// Raw value parsing and checked construction have no parsed property name.
     #[must_use]
     pub fn parsed_name(&self) -> Option<&CssParsedOrigin> {
-        match &self.occurrence.provenance {
+        match &self.occurrence.payload.provenance {
             DeclarationProvenance::Parsed { name, .. } => Some(name),
             DeclarationProvenance::ParsedValue { .. } | DeclarationProvenance::Constructed => None,
         }
@@ -4024,7 +4091,7 @@ impl CssDeclaration {
     /// supplied tokens have parsed origins. Empty parsed custom values retain a zero-width span.
     #[must_use]
     pub fn parsed_value(&self) -> Option<&CssParsedOrigin> {
-        match &self.occurrence.provenance {
+        match &self.occurrence.payload.provenance {
             DeclarationProvenance::Parsed { value, .. }
             | DeclarationProvenance::ParsedValue { value } => Some(value),
             DeclarationProvenance::Constructed => None,
@@ -4034,7 +4101,7 @@ impl CssDeclaration {
     /// Returns the owned value components with their original or programmatic provenance.
     #[must_use]
     pub fn value_components(&self) -> &CssComponentValues {
-        &self.occurrence.components
+        &self.occurrence.payload.components
     }
 
     /// Reports whether both handles refer to the same immutable declaration occurrence.

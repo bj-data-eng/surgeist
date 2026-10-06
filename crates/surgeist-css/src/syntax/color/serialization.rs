@@ -2638,41 +2638,7 @@ pub(crate) fn mix_weight_texts<'a>(
         return Ok(output);
     }
 
-    let mut exact = Vec::new();
-    exact.try_reserve(count).map_err(|_| {
-        Error::new(crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow)
-    })?;
-    let mut sum: Option<crate::exact_decimal::ExactRational> = None;
-    let mut omitted = 0usize;
-    for weight in weights {
-        let value = weight
-            .and_then(CssColorMixWeight::literal_value)
-            .map(|value| exact_weight(value, context))
-            .transpose()?;
-        if let Some(value) = &value {
-            sum = Some(match sum {
-                Some(current) => current.add_nonnegative(value, context)?,
-                None => value.clone_with_budget(context)?,
-            });
-        } else {
-            omitted += 1;
-        }
-        exact.push(value);
-    }
-    let sum = sum.unwrap_or(crate::exact_decimal::ExactRational::from_lexical_factor(
-        "0",
-        exact_factor(Factor::ONE),
-        context,
-    )?);
-    let generated = if omitted == 0 {
-        None
-    } else {
-        Some(
-            sum.min_integer(100, context)?
-                .subtract_from_integer(100, context)?
-                .divide_by(omitted)?,
-        )
-    };
+    let EffectiveMixWeights { exact, generated } = effective_mix_weights(weights, context)?;
     let mut all_equal = true;
     for value in &exact {
         let value = value
@@ -2708,6 +2674,64 @@ pub(crate) fn mix_weight_texts<'a>(
             }
         })
         .collect()
+}
+
+/// Exact declared shares before serialization rounding. Explicit shares remain
+/// unchanged; only omitted shares use the capped literal sum. The caller must
+/// select this path only when no weight is a retained calculation.
+pub(super) struct EffectiveMixWeights {
+    exact: Vec<Option<crate::exact_decimal::ExactRational>>,
+    generated: Option<crate::exact_decimal::ExactRational>,
+}
+impl EffectiveMixWeights {
+    pub(super) fn value(&self, index: usize) -> &crate::exact_decimal::ExactRational {
+        self.exact[index]
+            .as_ref()
+            .or(self.generated.as_ref())
+            .expect("every mix slot has an effective weight")
+    }
+}
+pub(super) fn effective_mix_weights<'a>(
+    weights: impl ExactSizeIterator<Item = Option<&'a CssColorMixWeight>>,
+    context: &mut SpecifiedSerializationContext,
+) -> Result<EffectiveMixWeights> {
+    let count = weights.len();
+    let mut exact = Vec::new();
+    exact.try_reserve(count).map_err(|_| {
+        Error::new(crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow)
+    })?;
+    let mut sum: Option<crate::exact_decimal::ExactRational> = None;
+    let mut omitted = 0usize;
+    for weight in weights {
+        let value = weight
+            .and_then(CssColorMixWeight::literal_value)
+            .map(|value| exact_weight(value, context))
+            .transpose()?;
+        if let Some(value) = &value {
+            sum = Some(match sum {
+                Some(current) => current.add_nonnegative(value, context)?,
+                None => value.clone_with_budget(context)?,
+            });
+        } else {
+            omitted += 1;
+        }
+        exact.push(value);
+    }
+    let sum = sum.unwrap_or(crate::exact_decimal::ExactRational::from_lexical_factor(
+        "0",
+        exact_factor(Factor::ONE),
+        context,
+    )?);
+    let generated = if omitted == 0 {
+        None
+    } else {
+        Some(
+            sum.min_integer(100, context)?
+                .subtract_from_integer(100, context)?
+                .divide_by(omitted)?,
+        )
+    };
+    Ok(EffectiveMixWeights { exact, generated })
 }
 
 fn exact_weight(

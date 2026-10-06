@@ -212,18 +212,19 @@ impl CssBorderRadiusShorthand {
         writer.context.charge_input(1)?;
         writer.context.charge_projection(1)?;
         for (index, value) in self.horizontal.iter().enumerate() {
-            if index > 0 {
-                writer.append(" ")?;
-            }
-            append_scalar(value, &mut writer.context, &mut writer.css)?;
-        }
-        if let Some(vertical) = &self.authored_vertical {
-            writer.append(" / ")?;
-            for (index, value) in vertical.iter().enumerate() {
+            writer.source_member(index, |writer| {
                 if index > 0 {
                     writer.append(" ")?;
                 }
-                append_scalar(value, &mut writer.context, &mut writer.css)?;
+                append_scalar(value, &mut writer.context, &mut writer.css)
+            })?;
+        }
+        if let Some(vertical) = &self.authored_vertical {
+            for (index, value) in vertical.iter().enumerate() {
+                writer.source_member(index, |writer| {
+                    writer.append(if index == 0 { " / " } else { " " })?;
+                    append_scalar(value, &mut writer.context, &mut writer.css)
+                })?;
             }
         }
         Ok(())

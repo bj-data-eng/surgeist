@@ -174,20 +174,28 @@ impl CssTextDecoration {
         let mut started = false;
         // Selected Text Decoration 4 §2.6: line || thickness || style || color.
         if let Some(line) = self.line() {
-            separator(writer, &mut started)?;
-            line.append_to_rule_writer(writer)?;
+            writer.source_property(crate::CssKnownProperty::TextDecorationLine, |writer| {
+                separator(writer, &mut started)?;
+                line.append_to_rule_writer(writer)
+            })?;
         }
         if let Some(thickness) = self.thickness() {
-            separator(writer, &mut started)?;
-            thickness.append_to_rule_writer(writer)?;
+            writer.source_property(crate::CssKnownProperty::TextDecorationThickness, |writer| {
+                separator(writer, &mut started)?;
+                thickness.append_to_rule_writer(writer)
+            })?;
         }
         if let Some(style) = self.style() {
-            separator(writer, &mut started)?;
-            style.append_to_rule_writer(writer)?;
+            writer.source_property(crate::CssKnownProperty::TextDecorationStyle, |writer| {
+                separator(writer, &mut started)?;
+                style.append_to_rule_writer(writer)
+            })?;
         }
         if let Some(color) = self.color() {
-            separator(writer, &mut started)?;
-            color.append_specified(&mut writer.context, &mut writer.css)?;
+            writer.source_property(crate::CssKnownProperty::TextDecorationColor, |writer| {
+                separator(writer, &mut started)?;
+                color.append_specified(&mut writer.context, &mut writer.css)
+            })?;
         }
         if !started {
             return Err(unrepresentable());

@@ -77,51 +77,70 @@ impl CssExplicitFont {
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         if let Some(style) = self.style() {
-            if matches!(style, CssFontStyle::Keyword(CssFontStyleKeyword::Normal)) {
-                writer.context.charge_input(1)?;
-            } else {
-                style.append_specified(&mut writer.context, &mut writer.css)?;
-                writer.append(" ")?;
-            }
+            writer.source_property(crate::CssKnownProperty::FontStyle, |writer| {
+                if matches!(style, CssFontStyle::Keyword(CssFontStyleKeyword::Normal)) {
+                    writer.context.charge_input(1)?;
+                } else {
+                    style.append_specified(&mut writer.context, &mut writer.css)?;
+                    writer.append(" ")?;
+                }
+                Ok(())
+            })?;
         }
         if let Some(variant) = self.variant() {
-            writer.context.charge_input(1)?;
-            if variant != CssFontVariant::Normal {
-                writer.context.charge_projection(1)?;
-                writer.append("small-caps ")?;
-            }
+            writer.source_property(crate::CssKnownProperty::FontVariantCaps, |writer| {
+                writer.context.charge_input(1)?;
+                if variant != CssFontVariant::Normal {
+                    writer.context.charge_projection(1)?;
+                    writer.append("small-caps ")?;
+                }
+                Ok(())
+            })?;
         }
         if let Some(weight) = self.weight() {
-            if matches!(
-                weight,
-                CssFontWeight::Absolute(CssAbsoluteFontWeight::Normal)
-            ) {
-                writer.context.charge_input(1)?;
-            } else {
-                weight.append_specified(&mut writer.context, &mut writer.css)?;
-                writer.append(" ")?;
-            }
+            writer.source_property(crate::CssKnownProperty::FontWeight, |writer| {
+                if matches!(
+                    weight,
+                    CssFontWeight::Absolute(CssAbsoluteFontWeight::Normal)
+                ) {
+                    writer.context.charge_input(1)?;
+                } else {
+                    weight.append_specified(&mut writer.context, &mut writer.css)?;
+                    writer.append(" ")?;
+                }
+                Ok(())
+            })?;
         }
         if let Some(width) = self.stretch() {
-            writer.context.charge_input(1)?;
-            if width != CssFontWidthKeyword::Normal {
-                writer.context.charge_projection(1)?;
-                writer.append(width.as_css())?;
-                writer.append(" ")?;
-            }
-        }
-        self.size()
-            .append_specified(&mut writer.context, &mut writer.css)?;
-        if let Some(line_height) = self.line_height() {
-            if matches!(line_height, crate::CssLineHeight::Normal) {
+            writer.source_property(crate::CssKnownProperty::FontWidth, |writer| {
                 writer.context.charge_input(1)?;
-            } else {
-                writer.append("/")?;
-                line_height.append_specified(&mut writer.context, &mut writer.css)?;
-            }
+                if width != CssFontWidthKeyword::Normal {
+                    writer.context.charge_projection(1)?;
+                    writer.append(width.as_css())?;
+                    writer.append(" ")?;
+                }
+                Ok(())
+            })?;
         }
-        writer.append(" ")?;
-        self.families().append_specified(writer)?;
+        writer.source_property(crate::CssKnownProperty::FontSize, |writer| {
+            self.size()
+                .append_specified(&mut writer.context, &mut writer.css)
+        })?;
+        if let Some(line_height) = self.line_height() {
+            writer.source_property(crate::CssKnownProperty::LineHeight, |writer| {
+                if matches!(line_height, crate::CssLineHeight::Normal) {
+                    writer.context.charge_input(1)?;
+                } else {
+                    writer.append("/")?;
+                    line_height.append_specified(&mut writer.context, &mut writer.css)?;
+                }
+                Ok(())
+            })?;
+        }
+        writer.source_property(crate::CssKnownProperty::FontFamily, |writer| {
+            writer.append(" ")?;
+            self.families().append_specified(writer)
+        })?;
         Ok(())
     }
 }

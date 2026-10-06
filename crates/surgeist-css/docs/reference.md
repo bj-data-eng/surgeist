@@ -113,6 +113,55 @@ clean; discarded input is nonclean even if nothing survives.
 all diagnostics on failure. A context-selected report has the same clean conversion
 through `into_validation_result()`.
 
+## Authored CSSOM declaration blocks
+
+This projection follows the
+[selected CSSOM declaration algorithms](../../../references/cssom-1--WD-cssom-1-20210826--24d77393e4ea.md).
+`CssSpecifiedDeclarationBlock::try_from_declarations` projects an authored
+declaration list into CSSOM specified order. It expands shorthand members,
+selects duplicate winners by importance and then source order, and keeps each
+winner at its original expanded position. `entries()` exposes the retained
+source occurrence and authored/member ordinals. The input list keeps all its
+original occurrences. `CssDeclaration::with_importance` produces an immutable
+priority transition; existing handles retain their original importance and
+source payload. Custom property names remain case-sensitive.
+
+`serialize_cssom()` reconstructs eligible complete shorthands in the selected
+CSSOM preference order, requiring uniform importance, exact representability
+and no intervening conflicting logical mapping. It emits each selected property
+once, joins declarations with one space, and emits an empty string for an empty
+block. For example, `margin: 1px 2px; color: red; margin-left: 3px` produces
+`margin: 1px 2px 1px 3px; color: red;`. `property_value(name)` returns an exact
+supported terminal or reconstructed shorthand value, or `None` when it is absent
+or cannot represent the complete selected members. Equality uses the owning
+specified-value semantics, including retained math phases, rather than rounded
+output text.
+
+`try_from_expansions` consumes owner-produced expansion groups, including strict
+pending-value reentry, without replacing their original source or replacement
+token origins. The keyframe declaration and expansion constructors share this
+projection while enforcing the keyframe grammar. All includes supported
+canonical longhands and the independent SVG `glyph-orientation-vertical`
+terminal, excluding custom properties, `direction` and `unicode-bidi`; the
+keyframe domain applies its existing animation-property exclusion.
+
+Unresolved pending inset, margin, padding, border-width, border-style,
+border-color, scroll-padding and scroll-margin substitutions may select either
+physical or logical members. Their projection returns
+`CssDeclarationBlockErrorKind::PendingFootprintUndetermined` atomically until
+strict reentry establishes the selected footprint. Fixed-footprint pending
+members emit empty terminal values and reconstruct their original shorthand
+only with complete uniform-priority coverage from that same original occurrence.
+Completed uniform CSS-wide globals use semantic keyword equality.
+
+The explicit-limit counterparts use cumulative input, projection and byte
+budgets. Construction charges duplicate losers and generated members; inverse
+probes charge reached comparison work. A failure during member traversal retains
+that member's original source and ordinals. Requests permit an immutable retry
+without partial output. These operations project a supplied authored list;
+element cascade, inheritance,
+variable substitution and live CSSOM object identity remain downstream.
+
 ## Selector and media query fragments
 
 The selector and media fragment parsers consume the supplied source directly, with original

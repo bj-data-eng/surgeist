@@ -160,6 +160,36 @@ impl CssColumnCount {
 }
 
 impl CssColumns {
+    pub(crate) fn append_cssom_inverse_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> Result<()> {
+        writer.node()?;
+        let emit_width = !matches!(self.width(), crate::CssColumnWidth::Auto)
+            || matches!(self.count(), CssColumnCount::Auto);
+        writer.source_member(0, |writer| {
+            if emit_width {
+                self.width()
+                    .serialize_specified_into(&mut writer.context, &mut writer.css)
+            } else {
+                writer.without_output(|writer| {
+                    self.width()
+                        .serialize_specified_into(&mut writer.context, &mut writer.css)
+                })
+            }
+        })?;
+        writer.source_member(1, |writer| {
+            if matches!(self.count(), CssColumnCount::Auto) {
+                writer.without_output(|writer| self.count().append_to_rule_writer(writer))
+            } else {
+                if emit_width {
+                    writer.append(" ")?;
+                }
+                self.count().append_to_rule_writer(writer)
+            }
+        })
+    }
+
     /// Serializes both effective values in width-then-count order, including omitted `auto`.
     pub fn serialize_specified(&self) -> Result<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())

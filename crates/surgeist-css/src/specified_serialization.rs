@@ -117,6 +117,8 @@ pub(crate) struct SpecifiedSerializationContext {
     projection_nodes: usize,
     css_bytes: usize,
     output_suppressed: bool,
+    temporary_css_bytes: Option<usize>,
+    semantic_traversal: bool,
 }
 
 impl SpecifiedSerializationContext {
@@ -127,6 +129,8 @@ impl SpecifiedSerializationContext {
             projection_nodes: 0,
             css_bytes: 0,
             output_suppressed: false,
+            temporary_css_bytes: None,
+            semantic_traversal: false,
         }
     }
 
@@ -142,6 +146,14 @@ impl SpecifiedSerializationContext {
     }
 
     pub(crate) fn charge_input(&mut self, amount: usize) -> Result<()> {
+        if self.semantic_traversal {
+            return Self::charge(
+                &mut self.projection_nodes,
+                amount,
+                self.limits.max_projection_nodes(),
+                Kind::ProjectionNodeLimit,
+            );
+        }
         Self::charge(
             &mut self.input_nodes,
             amount,
@@ -151,6 +163,16 @@ impl SpecifiedSerializationContext {
     }
 
     pub(crate) fn charge_projection(&mut self, amount: usize) -> Result<()> {
+        if self.semantic_traversal {
+            return Ok(());
+        }
+        self.charge_generated_projection(amount)
+    }
+
+    /// Generated arena nodes are real work even during a semantic probe.
+    /// Ordinary provider projection visits are already represented by the
+    /// redirected input visits; allocations retain their independent tariff.
+    pub(crate) fn charge_generated_projection(&mut self, amount: usize) -> Result<()> {
         Self::charge(
             &mut self.projection_nodes,
             amount,
@@ -160,7 +182,7 @@ impl SpecifiedSerializationContext {
     }
 
     pub(crate) fn remaining_bytes(&self) -> usize {
-        self.limits.max_css_bytes() - self.css_bytes
+        self.limits.max_css_bytes() - self.css_bytes - self.temporary_css_bytes.unwrap_or(0)
     }
 
     pub(crate) const fn output_suppressed(&self) -> bool {
@@ -171,8 +193,31 @@ impl SpecifiedSerializationContext {
         std::mem::replace(&mut self.output_suppressed, suppressed)
     }
 
+    pub(crate) fn replace_semantic_traversal(&mut self, semantic: bool) -> bool {
+        std::mem::replace(&mut self.semantic_traversal, semantic)
+    }
+
+    pub(crate) fn replace_temporary_output(&mut self, bytes: Option<usize>) -> Option<usize> {
+        std::mem::replace(&mut self.temporary_css_bytes, bytes)
+    }
+
     pub(crate) fn append(&mut self, output: &mut String, text: &str) -> Result<()> {
         if self.output_suppressed {
+            return Ok(());
+        }
+        if let Some(bytes) = self.temporary_css_bytes {
+            debug_assert_eq!(output.len(), bytes);
+            let next = bytes
+                .checked_add(text.len())
+                .ok_or_else(|| CssSpecifiedValueSerializationError::new(Kind::CapacityOverflow))?;
+            if next > self.limits.max_css_bytes() - self.css_bytes {
+                return Err(CssSpecifiedValueSerializationError::new(Kind::ByteLimit));
+            }
+            output
+                .try_reserve(text.len())
+                .map_err(|_| CssSpecifiedValueSerializationError::new(Kind::CapacityOverflow))?;
+            output.push_str(text);
+            self.temporary_css_bytes = Some(next);
             return Ok(());
         }
         debug_assert_eq!(output.len(), self.css_bytes);

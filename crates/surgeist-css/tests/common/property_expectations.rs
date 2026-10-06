@@ -20,6 +20,36 @@ pub struct PropertyExpectation {
     pub aliases: &'static [&'static str],
     pub dispatch: Option<DispatchExpectation>,
     pub wrapper: Option<WrapperAssertion>,
+    pub inverse: Option<InverseExpectation>,
+    pub mapping: MappingExpectation,
+}
+
+pub struct InverseExpectation {
+    pub authored: &'static str,
+    pub value: &'static str,
+}
+
+pub struct IndependentTerminalExpectation {
+    pub property: CssPropertyNameRef<'static>,
+    pub name: &'static str,
+    pub mapping: MappingExpectation,
+    pub keyframe_admitted: bool,
+}
+
+#[derive(Clone, Copy)]
+pub enum MappingExpectation {
+    Neutral,
+    Logical(&'static str),
+    Physical(&'static str),
+}
+impl MappingExpectation {
+    pub const fn bucket(self) -> u8 {
+        match self {
+            Self::Logical(_) => 0,
+            Self::Neutral => 1,
+            Self::Physical(_) => 2,
+        }
+    }
 }
 
 pub enum MetadataExpectation {
@@ -186,6 +216,8 @@ macro_rules! property_records {
         $(aliases: [$($alias:literal),*],)?
         $(dispatch: $dispatch:literal $(=> $important:literal)?,)?
         $(wrapper: $wrapper:ident,)?
+        $(inverse: ($inverse_input:literal, $inverse_value:literal),)?
+        $(mapping: $mapping:ident($group:literal),)?
     } )*) => {
         pub const CASES: &[PropertyExpectation] = &[
             $(PropertyExpectation {
@@ -197,6 +229,8 @@ macro_rules! property_records {
                 aliases: &[$($($alias),*)?],
                 dispatch: property_records!(@dispatch $($dispatch $(=> $important)?)?),
                 wrapper: property_records!(@wrapper $variant $($wrapper)?),
+                inverse: optional!($(InverseExpectation { authored: $inverse_input, value: $inverse_value })?),
+                mapping: property_records!(@mapping $($mapping($group))?),
             },)*
         ];
     };
@@ -204,6 +238,9 @@ macro_rules! property_records {
     (@dispatch $ordinary:literal) => { Some(DispatchExpectation { ordinary: $ordinary, important: $ordinary }) };
     (@dispatch $ordinary:literal => $important:literal) => { Some(DispatchExpectation { ordinary: $ordinary, important: $important }) };
     (@wrapper $variant:ident) => { None };
+    (@mapping) => { MappingExpectation::Neutral };
+    (@mapping logical($group:literal)) => { MappingExpectation::Logical($group) };
+    (@mapping physical($group:literal)) => { MappingExpectation::Physical($group) };
     (@wrapper $variant:ident yes) => {
         Some(|declaration, value, expected| {
             let (P::$variant, CssKnownPropertyValueRef::$variant(value)) = (declaration.property(), value) else {

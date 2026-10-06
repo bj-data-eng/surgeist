@@ -112,13 +112,25 @@ impl CssBorderColorPair {
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        self.append_to_rule_writer_with_color_visit(writer, |_| {})
+    }
+
+    // A composed inverse retains each original member while this owning writer
+    // advances. The ordinary provider keeps its exact ordering and tariff.
+    pub(crate) fn append_to_rule_writer_with_color_visit(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+        mut before_color: impl FnMut(usize),
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         let context = &mut writer.context;
         let output = &mut writer.css;
 
         context.charge_input(1)?;
         context.charge_projection(1)?;
+        before_color(0);
         self.start.append_specified(context, output)?;
         if let Some(end) = &self.authored_end {
+            before_color(1);
             context.append(output, " ")?;
             end.append_specified(context, output)?;
         }
@@ -183,6 +195,16 @@ impl CssBorderColorShorthand {
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        self.append_to_rule_writer_with_color_visit(writer, |_| {})
+    }
+
+    // A composed inverse retains each original member while this owning writer
+    // advances. The ordinary provider keeps its exact ordering and tariff.
+    pub(crate) fn append_to_rule_writer_with_color_visit(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+        mut before_color: impl FnMut(usize),
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         let context = &mut writer.context;
         let output = &mut writer.css;
 
@@ -192,6 +214,7 @@ impl CssBorderColorShorthand {
             context.append(output, "logical ")?;
         }
         for (index, color) in self.authored_values.iter().enumerate() {
+            before_color(index);
             if index > 0 {
                 context.append(output, " ")?;
             }

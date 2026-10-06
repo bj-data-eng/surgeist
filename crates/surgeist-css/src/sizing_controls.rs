@@ -52,12 +52,15 @@ impl<T: PairValue> Pair<T> {
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> SerializationResult<()> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.width.serialize_into(context, output)?;
+        writer.source_member(0, |writer| {
+            self.width
+                .serialize_into(&mut writer.context, &mut writer.css)
+        })?;
         if let Some(height) = &self.authored_height {
-            context.append(output, " ")?;
-            height.serialize_into(context, output)?;
+            writer.source_member(1, |writer| {
+                writer.append(" ")?;
+                height.serialize_into(&mut writer.context, &mut writer.css)
+            })?;
         }
         Ok(())
     }

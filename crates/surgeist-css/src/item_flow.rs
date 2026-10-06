@@ -185,6 +185,40 @@ pub struct CssItemFlow {
 }
 
 impl CssItemFlow {
+    pub(crate) fn append_cssom_inverse_to_rule_writer(
+        &self,
+        writer: &mut SpecifiedRuleWriter,
+    ) -> SerializationResult<()> {
+        let keep_direction = self.direction != CssItemDirection::Auto || *self == Self::default();
+        let mut started = false;
+        macro_rules! component {
+            ($index:expr, $keep:expr, $value:expr) => {
+                writer.source_member($index, |writer| {
+                    if $keep {
+                        if started {
+                            writer.append(" ")?;
+                        }
+                        $value.append_to_rule_writer(writer)?;
+                        started = true;
+                    } else {
+                        writer.without_output(|writer| $value.append_to_rule_writer(writer))?;
+                    }
+                    Ok(())
+                })?;
+            };
+        }
+        component!(0, keep_direction, self.direction);
+        component!(1, self.wrap != CssItemWrap::default(), self.wrap);
+        component!(2, self.pack != CssItemPack::Normal, self.pack);
+        component!(
+            3,
+            self.tolerance != CssFlowTolerance::normal(),
+            self.tolerance
+        );
+        debug_assert!(started);
+        Ok(())
+    }
+
     /// Composes four intrinsically valid constituents without contextual work.
     #[must_use]
     pub const fn new(

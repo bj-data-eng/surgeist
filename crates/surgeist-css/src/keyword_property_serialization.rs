@@ -80,10 +80,12 @@ specified_provider!(CssWhiteSpaceTrim, value, writer => {
     Ok(())
 });
 specified_provider!(CssTextWrap, value, writer => {
-    if let Some(mode) = value.mode() { mode.append_to_rule_writer(writer)?; }
+    if let Some(mode) = value.mode() { writer.source_member(0, |writer| mode.append_to_rule_writer(writer))?; }
     if let Some(style) = value.style() {
-        if value.mode().is_some() { writer.append(" ")?; }
-        style.append_to_rule_writer(writer)?;
+        writer.source_member(1, |writer| {
+            if value.mode().is_some() { writer.append(" ")?; }
+            style.append_to_rule_writer(writer)
+        })?;
     }
     Ok(())
 });
@@ -96,14 +98,18 @@ specified_provider!(CssWhiteSpace, value, writer => {
             CssWhiteSpaceKeyword::PreLine => "pre-line",
         });
     }
-    if let Some(collapse) = value.collapse() { collapse.append_to_rule_writer(writer)?; }
+    if let Some(collapse) = value.collapse() { writer.source_member(0, |writer| collapse.append_to_rule_writer(writer))?; }
     if let Some(mode) = value.mode() {
-        if value.collapse().is_some() { writer.append(" ")?; }
-        mode.append_to_rule_writer(writer)?;
+        writer.source_member(1, |writer| {
+            if value.collapse().is_some() { writer.append(" ")?; }
+            mode.append_to_rule_writer(writer)
+        })?;
     }
     if let Some(trim) = value.trim() {
-        if value.collapse().is_some() || value.mode().is_some() { writer.append(" ")?; }
-        trim.append_to_rule_writer(writer)?;
+        writer.source_member(2, |writer| {
+            if value.collapse().is_some() || value.mode().is_some() { writer.append(" ")?; }
+            trim.append_to_rule_writer(writer)
+        })?;
     }
     Ok(())
 });

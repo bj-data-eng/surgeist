@@ -279,6 +279,22 @@ impl std::error::Error for CssExpansionError {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum MappingLogic {
+    Logical,
+    Neutral,
+    Physical,
+}
+
+macro_rules! logical_annotation {
+    () => {
+        (None, MappingLogic::Neutral)
+    };
+    ($group:ident, $mapping:ident) => {
+        (Some(stringify!($group)), MappingLogic::$mapping)
+    };
+}
+
 macro_rules! intrinsic_initial {
     ($variant:ident, value, $initial:expr) => {
         CssLonghandInitialValue {
@@ -297,6 +313,35 @@ macro_rules! intrinsic_initial {
 // First filter the full property inventory to annotated rows. The bounded
 // collector then emits complete enums and matches; macros never expand to
 // partial enum variants or match arms, and no second property registry exists.
+// New inverse-only canonical spelling stays with each typed value owner;
+// existing authored occurrence serialization continues through its original method.
+macro_rules! append_inverse_value {
+    (PlaceContent, $value:ident, $writer:ident) => {
+        $value.append_cssom_inverse_to_rule_writer($writer)
+    };
+    (PlaceItems, $value:ident, $writer:ident) => {
+        $value.append_cssom_inverse_to_rule_writer($writer)
+    };
+    (PlaceSelf, $value:ident, $writer:ident) => {
+        $value.append_cssom_inverse_to_rule_writer($writer)
+    };
+    (Columns, $value:ident, $writer:ident) => {
+        $value.append_cssom_inverse_to_rule_writer($writer)
+    };
+    (ItemFlow, $value:ident, $writer:ident) => {
+        $value.append_cssom_inverse_to_rule_writer($writer)
+    };
+    (FlexFlow, $value:ident, $writer:ident) => {
+        $value.append_cssom_inverse_to_rule_writer($writer)
+    };
+    (Flex, $value:ident, $writer:ident) => {
+        $value.append_cssom_inverse_to_rule_writer($writer)
+    };
+    ($variant:ident, $value:ident, $writer:ident) => {
+        $value.append_to_rule_writer($writer)
+    };
+}
+
 macro_rules! define_expansion_schema {
     ($input:ident, $numeric:ident;
         All, $all_canonical:literal, [$($all_alias:literal),*], $all_stable_id:literal,
@@ -307,22 +352,22 @@ macro_rules! define_expansion_schema {
         $(, expansion = $kind:ident { $($metadata:tt)* })?;
     )*) => {
         define_expansion_schema!(@collect [] [] [] []; All, universal { $($all_metadata)* };
-            $($( $variant, $kind { $($metadata)* }; )?)*
+            $($( $variant, $value, $kind { $($metadata)* }; )?)*
         );
     };
     (@collect [$($longhands:tt)*] [$($shorthands:tt)*] [$($universal:tt)*] [$($four:tt)*];
-        $variant:ident, longhand {
+        $variant:ident, $row_value:ty, longhand {
             value: $value:ty,
-            accessor: $accessor:ident, inherited: $inherited:literal, initial_kind: $initial_kind:ident, initial: $initial:expr
+            accessor: $accessor:ident, inherited: $inherited:literal, initial_kind: $initial_kind:ident, initial: $initial:expr $(, logical_group: $group:ident, mapping: $mapping:ident)?
         }; $($rest:tt)*
     ) => {
         define_expansion_schema!(@collect
-            [$($longhands)* ($variant, $value, $accessor, $inherited, $initial_kind, $initial)]
+            [$($longhands)* ($variant, $value, $accessor, $inherited, $initial_kind, $initial $(, $group, $mapping)?)]
             [$($shorthands)*] [$($universal)*] [$($four)*]; $($rest)*
         );
     };
     (@collect [$($longhands:tt)*] [$($shorthands:tt)*] [$($universal:tt)*] [$($four:tt)*];
-        $variant:ident, shorthand {
+        $variant:ident, $value:ty, shorthand {
             accessor: $accessor:ident,
             members: [$($member:ident => $projection:expr),+],
             reset_only: [$($reset:ident),*]
@@ -330,7 +375,7 @@ macro_rules! define_expansion_schema {
     ) => {
         define_expansion_schema!(@collect
             [$($longhands)*]
-            [$($shorthands)* ($variant, $accessor, [$($member => $projection),+], [$($reset),*])]
+            [$($shorthands)* ($variant, $value, $accessor, [$($member => $projection),+], [$($reset),*])]
             [$($universal)*] [$($four)*]; $($rest)*
         );
     };
@@ -346,7 +391,7 @@ macro_rules! define_expansion_schema {
         );
     };
     (@collect [$($longhands:tt)*] [$($shorthands:tt)*] [$($universal:tt)*] [$($four:tt)*];
-        $variant:ident, four_side {
+        $variant:ident, $value:ty, four_side {
             accessor: $accessor:ident, mode: $mode:expr,
             physical: [$($physical:ident => $physical_projection:expr),+],
             logical: [$($logical:ident => $logical_projection:expr),+]
@@ -354,15 +399,15 @@ macro_rules! define_expansion_schema {
     ) => {
         define_expansion_schema!(@collect
             [$($longhands)*] [$($shorthands)*] [$($universal)*]
-            [$($four)* ($variant, $accessor, $mode, [$($physical => $physical_projection),+], [$($logical => $logical_projection),+])]; $($rest)*
+            [$($four)* ($variant, $value, $accessor, $mode, [$($physical => $physical_projection),+], [$($logical => $logical_projection),+])]; $($rest)*
         );
     };
     (@collect
-        [$(($longhand:ident, $value:ty, $accessor:ident, $inherited:literal, $initial_kind:ident, $initial:expr))*]
-        [$(($shorthand:ident, $shorthand_accessor:ident,
+        [$(($longhand:ident, $value:ty, $accessor:ident, $inherited:literal, $initial_kind:ident, $initial:expr $(, $group:ident, $mapping:ident)?))*]
+        [$(($shorthand:ident, $shorthand_value:ty, $shorthand_accessor:ident,
             [$($member:ident => $projection:expr),+], [$($reset:ident),*]))*]
         [($universal:ident, $exclude_custom:literal, [$($excluded:ident),+])]
-        [$(($four_property:ident, $four_accessor:ident, $four_mode:expr,
+        [$(($four_property:ident, $four_value:ty, $four_accessor:ident, $four_mode:expr,
             [$($physical:ident => $physical_projection:expr),+],
             [$($logical:ident => $logical_projection:expr),+]))*];
     ) => {
@@ -387,6 +432,63 @@ macro_rules! define_expansion_schema {
             $longhand(&'a $value),)*
         }
 
+        /// A privately constructed exact shorthand value used by CSSOM inversion.
+        #[derive(Clone, Debug)]
+        pub(crate) enum SpecifiedInverseValue {
+            $($shorthand($shorthand_value),)*
+            $($four_property($four_value),)*
+        }
+
+        impl SpecifiedInverseValue {
+            pub(crate) fn append(&self, writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter)
+                -> Result<(), crate::CssSpecifiedValueSerializationError> {
+                match self {
+                    $(Self::$shorthand(value) => append_inverse_value!($shorthand, value, writer),)*
+                    $(Self::$four_property(value) => value.append_to_rule_writer(writer),)*
+                }
+            }
+
+            pub(crate) fn projected(&self, count: usize) -> Result<Vec<OwnedContributionValue>, crate::CssSpecifiedValueSerializationError> {
+                let mut result = Vec::new();
+                result.try_reserve(count).map_err(|_| crate::CssSpecifiedValueSerializationError::new(crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow))?;
+                if let Self::Font(CssFontValue::System(system)) = self {
+                    let CssPropertyKindRef::Shorthand(meta) = CssKnownProperty::Font.metadata().expect("font schema").kind() else {
+                        unreachable!("font shorthand metadata")
+                    };
+                    result.extend(meta.members().iter().enumerate().map(|(index, property)| {
+                        if index < meta.settable_members().len() {
+                            OwnedContributionValue::SystemFont(*property, *system)
+                        } else { property.0.initial() }
+                    }));
+                    return Ok(result);
+                }
+                match self {
+                    $(Self::$shorthand(value) => result.extend([
+                        $(match ($projection)(value) {
+                            Some(projected) => OwnedContributionValue::Ordinary(CssLonghandValue {
+                                value: Box::new(OwnedLonghandValue::$member(projected)),
+                            }),
+                            None => Longhand::$member.initial(),
+                        },)+
+                        $(Longhand::$reset.initial(),)*
+                    ]),)*
+                    $(Self::$four_property(value) => match ($four_mode)(value) {
+                        crate::CssBoxSideKind::Physical => result.extend([
+                            $(OwnedContributionValue::Ordinary(CssLonghandValue {
+                                value: Box::new(OwnedLonghandValue::$physical(($physical_projection)(value))),
+                            }),)+
+                        ]),
+                        crate::CssBoxSideKind::Logical => result.extend([
+                            $(OwnedContributionValue::Ordinary(CssLonghandValue {
+                                value: Box::new(OwnedLonghandValue::$logical(($logical_projection)(value))),
+                            }),)+
+                        ]),
+                    },)*
+                }
+                Ok(result)
+            }
+        }
+
         impl Longhand {
             fn initial(self) -> OwnedContributionValue {
                 OwnedContributionValue::from_initial(self.initial_value())
@@ -406,6 +508,12 @@ macro_rules! define_expansion_schema {
                 match self { $(Self::$longhand => $inherited,)* }
             }
 
+            fn mapping(self) -> (Option<&'static str>, MappingLogic) {
+                match self {
+                    $(Self::$longhand => logical_annotation!($($group, $mapping)?),)*
+                }
+            }
+
             fn global(self, keyword: CssGlobalKeyword) -> OwnedContributionValue {
                 OwnedContributionValue::Global(CssLonghandProperty(self), keyword)
             }
@@ -422,6 +530,10 @@ macro_rules! define_expansion_schema {
                 match self { $(Self::$longhand(value) => CssLonghandValueRef::$longhand(value),)* }
             }
         }
+
+        pub(crate) const SPECIFIED_TERMINALS: &[CssLonghandProperty] = &[
+            $(CssLonghandProperty(Longhand::$longhand),)*
+        ];
 
         pub(crate) fn grammar_metadata(
             grammar: crate::CssPropertyGrammar,
@@ -938,7 +1050,7 @@ struct ContributionContext {
 /// expansion does not duplicate a complete component tree for each longhand.
 #[derive(Clone, Debug)]
 pub struct CssLonghandContribution {
-    value: OwnedContributionValue,
+    value: Arc<OwnedContributionValue>,
     context: Arc<ContributionContext>,
 }
 
@@ -958,7 +1070,7 @@ impl CssLonghandContribution {
     /// Borrows the coupled ordinary value, excluding CSS-wide and UA initial states.
     #[must_use]
     pub fn ordinary_value(&self) -> Option<&CssLonghandValue> {
-        match &self.value {
+        match self.value.as_ref() {
             OwnedContributionValue::Ordinary(value) => Some(value),
             _ => None,
         }
@@ -1310,7 +1422,7 @@ fn complete_contributions(
         items: values
             .into_iter()
             .map(|value| CssLonghandContribution {
-                value,
+                value: Arc::new(value),
                 context: Arc::clone(&context),
             })
             .collect(),
@@ -1329,6 +1441,10 @@ mod metadata_initial_tests;
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct CssLonghandProperty(Longhand);
 impl CssLonghandProperty {
+    pub(crate) fn mapping(self) -> (Option<&'static str>, MappingLogic) {
+        self.0.mapping()
+    }
+
     /// Returns the corresponding canonical property identity.
     #[must_use]
     pub const fn known_property(self) -> CssKnownProperty {
@@ -1413,7 +1529,7 @@ impl CssLonghandInitialValue {
     }
 }
 #[derive(Clone, Debug)]
-enum OwnedContributionValue {
+pub(crate) enum OwnedContributionValue {
     Ordinary(CssLonghandValue),
     Global(CssLonghandProperty, CssGlobalKeyword),
     UserAgent(CssUserAgentInitial),
@@ -1426,7 +1542,7 @@ impl OwnedContributionValue {
             InitialValue::UserAgent(v) => Self::UserAgent(v),
         }
     }
-    fn property(&self) -> CssKnownProperty {
+    pub(crate) fn property(&self) -> CssKnownProperty {
         match self {
             Self::Ordinary(v) => v.property(),
             Self::Global(p, _) => *p,
@@ -1435,7 +1551,7 @@ impl OwnedContributionValue {
         }
         .known_property()
     }
-    fn view(&self) -> CssContributionValueRef<'_> {
+    pub(crate) fn view(&self) -> CssContributionValueRef<'_> {
         match self {
             Self::Ordinary(v) => CssContributionValueRef::Ordinary(v.view()),
             Self::Global(_, v) => CssContributionValueRef::Global(*v),

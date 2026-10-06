@@ -132,13 +132,17 @@ impl CssGapShorthand {
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         let context = &mut writer.context;
-        let output = &mut writer.css;
         context.charge_input(1)?;
         context.charge_projection(1)?;
-        self.row.serialize_specified_into(context, output)?;
+        writer.source_member(0, |writer| {
+            self.row
+                .serialize_specified_into(&mut writer.context, &mut writer.css)
+        })?;
         if let Some(column) = &self.authored_column {
-            context.append(output, " ")?;
-            column.serialize_specified_into(context, output)?;
+            writer.source_member(1, |writer| {
+                writer.append(" ")?;
+                column.serialize_specified_into(&mut writer.context, &mut writer.css)
+            })?;
         }
         Ok(())
     }

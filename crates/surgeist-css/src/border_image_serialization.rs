@@ -395,52 +395,69 @@ impl CssBorderImage {
         charge(writer, 1)?;
         let mut emitted = false;
         if let Some(source) = self.source() {
-            if matches!(source, CssImageValue::None) {
-                writer.without_output(|writer| source.append_specified(writer))?;
-            } else {
-                before_component(writer, &mut emitted)?;
-                source.append_specified(writer)?;
-            }
+            writer.source_member(0, |writer| {
+                if matches!(source, CssImageValue::None) {
+                    writer.without_output(|writer| source.append_specified(writer))?;
+                } else {
+                    before_component(writer, &mut emitted)?;
+                    source.append_specified(writer)?;
+                }
+                Ok(())
+            })?;
         }
         let retained_width = self.width().is_some_and(|value| !initial_width(value));
         let retained_outset = self.outset().is_some_and(|value| !initial_outset(value));
         if let Some(slice) = self.slice() {
-            if !retained_width && !retained_outset && initial_slice(slice) {
-                writer.without_output(|writer| slice.append_specified(writer))?;
-            } else {
-                before_component(writer, &mut emitted)?;
-                slice.append_specified(writer)?;
-            }
+            writer.source_member(1, |writer| {
+                if !retained_width && !retained_outset && initial_slice(slice) {
+                    writer.without_output(|writer| slice.append_specified(writer))?;
+                } else {
+                    before_component(writer, &mut emitted)?;
+                    slice.append_specified(writer)?;
+                }
+                Ok(())
+            })?;
         }
         if let Some(width) = self.width() {
-            if retained_width {
-                writer.append(" / ")?;
-                width.append_specified(writer)?;
-            } else {
-                writer.without_output(|writer| width.append_specified(writer))?;
-            }
+            writer.source_member(2, |writer| {
+                if retained_width {
+                    writer.append(" / ")?;
+                    width.append_specified(writer)?;
+                } else {
+                    writer.without_output(|writer| width.append_specified(writer))?;
+                }
+                Ok(())
+            })?;
         }
         if let Some(outset) = self.outset() {
-            if retained_outset {
-                writer.append(if retained_width { " / " } else { " / / " })?;
-                outset.append_specified(writer)?;
-            } else {
-                writer.without_output(|writer| outset.append_specified(writer))?;
-            }
+            writer.source_member(3, |writer| {
+                if retained_outset {
+                    writer.append(if retained_width { " / " } else { " / / " })?;
+                    outset.append_specified(writer)?;
+                } else {
+                    writer.without_output(|writer| outset.append_specified(writer))?;
+                }
+                Ok(())
+            })?;
         }
         if let Some(repeat) = self.repeat() {
-            if repeat.horizontal() == CssBorderImageRepeatKeyword::Stretch
-                && repeat.vertical() == CssBorderImageRepeatKeyword::Stretch
-            {
-                writer.without_output(|writer| repeat.append_specified(writer))?;
-            } else {
-                before_component(writer, &mut emitted)?;
-                repeat.append_specified(writer)?;
-            }
+            writer.source_member(4, |writer| {
+                if repeat.horizontal() == CssBorderImageRepeatKeyword::Stretch
+                    && repeat.vertical() == CssBorderImageRepeatKeyword::Stretch
+                {
+                    writer.without_output(|writer| repeat.append_specified(writer))?;
+                } else {
+                    before_component(writer, &mut emitted)?;
+                    repeat.append_specified(writer)?;
+                }
+                Ok(())
+            })?;
         }
         if !emitted {
-            writer.context.charge_projection(1)?;
-            writer.append("none")?;
+            writer.source_member(0, |writer| {
+                writer.context.charge_projection(1)?;
+                writer.append("none")
+            })?;
         }
         Ok(())
     }

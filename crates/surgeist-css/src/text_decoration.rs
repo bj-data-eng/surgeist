@@ -501,8 +501,12 @@ provider!(CssTextEmphasisMark, value, writer => {
 });
 provider!(CssTextEmphasisString, value, writer => { writer.node()?; writer.append_string(value.as_str()) });
 provider!(CssTextEmphasisStyle, value, writer => match value { Self::None => writer.keyword("none"), Self::Mark(value) => value.append_to_rule_writer(writer), Self::String(value) => value.append_to_rule_writer(writer) });
-provider!(CssTextEmphasis, value, writer => { writer.node()?; if let Some(style) = &value.style { style.append_to_rule_writer(writer)?; }
-    if let Some(color) = &value.color { if value.style.is_some() { writer.append(" ")?; } color.append_specified(&mut writer.context, &mut writer.css)?; } Ok(()) });
+provider!(CssTextEmphasis, value, writer => { writer.node()?;
+    if let Some(style) = &value.style { writer.source_member(0, |writer| style.append_to_rule_writer(writer))?; }
+    if let Some(color) = &value.color { writer.source_member(1, |writer| {
+        if value.style.is_some() { writer.append(" ")?; }
+        color.append_specified(&mut writer.context, &mut writer.css)
+    })?; } Ok(()) });
 provider!(CssTextEmphasisPosition, value, writer => { value.vertical.append_to_rule_writer(writer)?; if let Some(side) = value.side { if side == CssTextSide::Left { writer.append(" ")?; side.append_to_rule_writer(writer)?; } else { writer.context.charge_input(1)?; } } Ok(()) });
 provider!(CssTextEmphasisSkip, value, writer => { let mut separated = false; for (present, word) in [(value.spaces,"spaces"),(value.punctuation,"punctuation"),(value.symbols,"symbols"),(value.narrow,"narrow")] { if present { if separated { writer.append(" ")?; } writer.keyword(word)?; separated = true; } } Ok(()) });
 provider!(CssTextShadowLayer, value, writer => value.shadow.append_to_rule_writer(writer));

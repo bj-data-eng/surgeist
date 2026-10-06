@@ -64,11 +64,9 @@ impl CssColumnRule {
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        let start = output.len();
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
+        let start = writer.css.len();
+        writer.context.charge_input(1)?;
+        writer.context.charge_projection(1)?;
         let emit_width = self
             .width()
             .is_some_and(|width| *width != CssBorderWidth::Medium);
@@ -78,37 +76,45 @@ impl CssColumnRule {
         let emit_color = self.color().is_some_and(|color| !color.is_current_color());
         let all_initial = !(emit_width || emit_style || emit_color);
         if let Some(width) = self.width() {
-            if emit_width || all_initial {
-                width.append_specified(context, output)?;
-            } else {
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
-            }
+            writer.source_member(0, |writer| {
+                if emit_width || all_initial {
+                    width.append_specified(&mut writer.context, &mut writer.css)
+                } else {
+                    writer.context.charge_input(1)?;
+                    writer.context.charge_projection(1)
+                }
+            })?;
         } else if all_initial {
-            context.charge_projection(1)?;
-            context.append(output, "medium")?;
+            writer.source_member(0, |writer| {
+                writer.context.charge_projection(1)?;
+                writer.append("medium")
+            })?;
         }
         if let Some(style) = self.style() {
-            if emit_style {
-                if output.len() != start {
-                    context.append(output, " ")?;
+            writer.source_member(1, |writer| {
+                if emit_style {
+                    if writer.css.len() != start {
+                        writer.append(" ")?;
+                    }
+                    style.append_specified(&mut writer.context, &mut writer.css)
+                } else {
+                    writer.context.charge_input(1)?;
+                    writer.context.charge_projection(1)
                 }
-                style.append_specified(context, output)?;
-            } else {
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
-            }
+            })?;
         }
         if let Some(color) = self.color() {
-            if emit_color {
-                if output.len() != start {
-                    context.append(output, " ")?;
+            writer.source_member(2, |writer| {
+                if emit_color {
+                    if writer.css.len() != start {
+                        writer.append(" ")?;
+                    }
+                    color.append_specified(&mut writer.context, &mut writer.css)
+                } else {
+                    writer.context.charge_input(1)?;
+                    writer.context.charge_projection(1)
                 }
-                color.append_specified(context, output)?;
-            } else {
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
-            }
+            })?;
         }
         Ok(())
     }

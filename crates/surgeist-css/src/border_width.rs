@@ -129,13 +129,17 @@ impl CssBorderWidthPair {
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> Result<()> {
         let context = &mut writer.context;
-        let text = &mut writer.css;
         context.charge_input(1)?;
         context.charge_projection(1)?;
-        self.start.append_specified(context, text)?;
+        writer.source_member(0, |writer| {
+            self.start
+                .append_specified(&mut writer.context, &mut writer.css)
+        })?;
         if let Some(end) = &self.authored_end {
-            context.append(text, " ")?;
-            end.append_specified(context, text)?;
+            writer.source_member(1, |writer| {
+                writer.append(" ")?;
+                end.append_specified(&mut writer.context, &mut writer.css)
+            })?;
         }
         Ok(())
     }
@@ -193,17 +197,18 @@ impl CssBorderWidthShorthand {
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> Result<()> {
         let context = &mut writer.context;
-        let text = &mut writer.css;
         context.charge_input(1)?;
         context.charge_projection(1)?;
         if self.kind == CssBoxSideKind::Logical {
-            context.append(text, "logical ")?;
+            writer.source_member(0, |writer| writer.append("logical "))?;
         }
         for (index, width) in self.authored_values.iter().enumerate() {
-            if index > 0 {
-                context.append(text, " ")?;
-            }
-            width.append_specified(context, text)?;
+            writer.source_member(index, |writer| {
+                if index > 0 {
+                    writer.append(" ")?;
+                }
+                width.append_specified(&mut writer.context, &mut writer.css)
+            })?;
         }
         Ok(())
     }
@@ -259,23 +264,28 @@ impl CssBorder {
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> Result<()> {
         let context = &mut writer.context;
-        let text = &mut writer.css;
         context.charge_input(1)?;
         context.charge_projection(1)?;
         if let Some(width) = &self.width {
-            width.append_specified(context, text)?;
+            writer.source_group_member(0, 3, |writer| {
+                width.append_specified(&mut writer.context, &mut writer.css)
+            })?;
         }
         if let Some(style) = self.style {
-            if self.width.is_some() {
-                context.append(text, " ")?;
-            }
-            style.append_specified(context, text)?;
+            writer.source_group_member(1, 3, |writer| {
+                if self.width.is_some() {
+                    writer.append(" ")?;
+                }
+                style.append_specified(&mut writer.context, &mut writer.css)
+            })?;
         }
         if let Some(color) = &self.color {
-            if self.width.is_some() || self.style.is_some() {
-                context.append(text, " ")?;
-            }
-            color.append_specified(context, text)?;
+            writer.source_group_member(2, 3, |writer| {
+                if self.width.is_some() || self.style.is_some() {
+                    writer.append(" ")?;
+                }
+                color.append_specified(&mut writer.context, &mut writer.css)
+            })?;
         }
         Ok(())
     }

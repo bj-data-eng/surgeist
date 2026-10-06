@@ -139,12 +139,15 @@ impl CssInsetPair {
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.start.serialize_into(context, output)?;
+        writer.source_member(0, |writer| {
+            self.start
+                .serialize_into(&mut writer.context, &mut writer.css)
+        })?;
         if let Some(end) = &self.authored_end {
-            context.append(output, " ")?;
-            end.serialize_into(context, output)?;
+            writer.source_member(1, |writer| {
+                writer.append(" ")?;
+                end.serialize_into(&mut writer.context, &mut writer.css)
+            })?;
         }
         Ok(())
     }
@@ -209,18 +212,20 @@ impl CssInsetShorthand {
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
         if self.kind == CssBoxSideKind::Logical {
-            context.charge_input(1)?;
-            context.charge_projection(1)?;
-            context.append(output, "logical ")?;
+            writer.source_member(0, |writer| {
+                writer.context.charge_input(1)?;
+                writer.context.charge_projection(1)?;
+                writer.append("logical ")
+            })?;
         }
         for (index, value) in self.authored_values.iter().enumerate() {
-            if index > 0 {
-                context.append(output, " ")?;
-            }
-            value.serialize_into(context, output)?;
+            writer.source_member(index, |writer| {
+                if index > 0 {
+                    writer.append(" ")?;
+                }
+                value.serialize_into(&mut writer.context, &mut writer.css)
+            })?;
         }
         Ok(())
     }

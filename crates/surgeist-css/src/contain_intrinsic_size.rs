@@ -175,12 +175,15 @@ impl CssContainIntrinsicSize {
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.width.serialize_specified_into(context, output)?;
+        writer.source_member(0, |writer| {
+            self.width
+                .serialize_specified_into(&mut writer.context, &mut writer.css)
+        })?;
         if let Some(height) = &self.authored_height {
-            context.append(output, " ")?;
-            height.serialize_specified_into(context, output)?;
+            writer.source_member(1, |writer| {
+                writer.append(" ")?;
+                height.serialize_specified_into(&mut writer.context, &mut writer.css)
+            })?;
         }
         Ok(())
     }

@@ -1639,6 +1639,8 @@ mod misc_property_serialization;
 mod outline_serialization;
 mod quotes;
 mod shape_serialization;
+mod specified_declaration_block;
+mod specified_inverse;
 mod text_value_serialization;
 mod timed_property_serialization;
 mod transform_value_serialization;
@@ -1953,6 +1955,10 @@ pub use rectangular_color_conversion::{
 };
 pub use report::*;
 pub use source::*;
+pub use specified_declaration_block::{
+    CssDeclarationBlockError, CssDeclarationBlockErrorKind, CssInvalidKeyframeSourceReason,
+    CssSpecifiedDeclarationBlock, CssSpecifiedDeclarationEntry, CssSpecifiedDeclarationValueRef,
+};
 pub use specified_rule_serialization::{
     CssSpecifiedRuleSerializationError, CssSpecifiedRuleSerializationErrorKind,
 };

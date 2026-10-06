@@ -211,6 +211,11 @@ pub struct CssGridLineRange {
 }
 
 impl CssGridLineRange {
+    pub(crate) fn from_specified(start: CssGridLine, end: CssGridLine) -> Self {
+        let end = (end != start.omitted_partner()).then_some(end);
+        Self::new(start, end)
+    }
+
     #[must_use]
     pub const fn new(start: CssGridLine, end: Option<CssGridLine>) -> Self {
         Self { start, end }
@@ -245,10 +250,12 @@ impl CssGridLineRange {
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        self.start.append_specified(writer)?;
+        writer.source_member(0, |writer| self.start.append_specified(writer))?;
         if let Some(end) = &self.end {
-            writer.append(" / ")?;
-            end.append_specified(writer)?;
+            writer.source_member(1, |writer| {
+                writer.append(" / ")?;
+                end.append_specified(writer)
+            })?;
         }
         Ok(())
     }
@@ -264,6 +271,52 @@ pub struct CssGridArea {
 }
 
 impl CssGridArea {
+    pub(crate) fn from_specified<E>(
+        row_start: CssGridLine,
+        column_start: CssGridLine,
+        row_end: CssGridLine,
+        column_end: CssGridLine,
+        equal: &mut impl FnMut(&CssGridLine, &CssGridLine, usize) -> Result<bool, E>,
+    ) -> Result<Self, E> {
+        fn partner<'a>(line: &'a CssGridLine, auto: &'a CssGridLine) -> &'a CssGridLine {
+            if matches!(line, CssGridLine::Name(_)) {
+                line
+            } else {
+                auto
+            }
+        }
+        let auto = CssGridLine::Auto;
+        for count in 0..=3 {
+            let effective_column_start = if count >= 1 {
+                &column_start
+            } else {
+                partner(&row_start, &auto)
+            };
+            let effective_row_end = if count >= 2 {
+                &row_end
+            } else {
+                partner(&row_start, &auto)
+            };
+            let effective_column_end = if count >= 3 {
+                &column_end
+            } else {
+                partner(effective_column_start, &auto)
+            };
+            if equal(effective_column_start, &column_start, 1)?
+                && equal(effective_row_end, &row_end, 2)?
+                && equal(effective_column_end, &column_end, 3)?
+            {
+                return Ok(Self {
+                    row_start,
+                    column_start: (count >= 1).then_some(column_start),
+                    row_end: (count >= 2).then_some(row_end),
+                    column_end: (count >= 3).then_some(column_end),
+                });
+            }
+        }
+        unreachable!("full explicit area represents its four values")
+    }
+
     #[must_use]
     pub fn try_new(
         row_start: CssGridLine,
@@ -333,13 +386,17 @@ impl CssGridArea {
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        self.row_start.append_specified(writer)?;
-        for line in [&self.column_start, &self.row_end, &self.column_end]
+        writer.source_member(0, |writer| self.row_start.append_specified(writer))?;
+        for (index, line) in [&self.column_start, &self.row_end, &self.column_end]
             .into_iter()
-            .flatten()
+            .enumerate()
         {
-            writer.append(" / ")?;
-            line.append_specified(writer)?;
+            if let Some(line) = line {
+                writer.source_member(index + 1, |writer| {
+                    writer.append(" / ")?;
+                    line.append_specified(writer)
+                })?;
+            }
         }
         Ok(())
     }

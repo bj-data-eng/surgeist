@@ -41,9 +41,14 @@ fn integer_fixed_repeat_preserves_count_above_machine_integer_maximum() {
 }
 
 #[test]
-fn ordinary_repeat_counts_and_literal_only_grammar_remain_validated() {
+fn ordinary_repeat_literals_and_integer_calculations_keep_their_grammar() {
     assert_eq!(serialized_columns("repeat(2, 1fr)"), "repeat(2, 1fr)");
-    for count in ["0", "-0", "-1", "2.0", "2e0", "calc(2)"] {
+    // Values 4 permits number-valued math in integer slots before resolution.
+    assert_eq!(
+        serialized_columns("repeat(calc(2), 1px)"),
+        "repeat(calc(2), 1px)"
+    );
+    for count in ["0", "-0", "-1", "2.0", "2e0"] {
         let source = format!("grid-template-columns: repeat({count}, 1px); color: red");
         let report = parse_style_attribute(&source);
         assert!(!report.is_clean(), "{source}");

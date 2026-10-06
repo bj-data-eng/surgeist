@@ -827,6 +827,94 @@ pub struct CssGridTemplate {
 }
 
 impl CssGridTemplate {
+    /// Exact inverse of the finite authored template alternatives. No repeat
+    /// expansion, implicit tracks or area/column cycling is invented.
+    pub(crate) fn from_specified_longhands(
+        rows: CssGridTrackList,
+        columns: CssGridTrackList,
+        areas: crate::CssGridTemplateAreas,
+    ) -> Result<Option<Self>, crate::CssSpecifiedValueSerializationError> {
+        let mut capacity_failure = false;
+        let result = (|| {
+            let crate::CssGridTemplateAreas::Rows(areas) = areas else {
+                return Some(if rows.is_none() && columns.is_none() {
+                    Self::none()
+                } else {
+                    Self::rows_columns(rows, columns)
+                });
+            };
+            let components = rows.general_list()?.components();
+            let mut tracks = Vec::new();
+            if tracks.try_reserve(areas.rows().len()).is_err() {
+                capacity_failure = true;
+                return None;
+            }
+            let mut before = None;
+            for component in components {
+                match component {
+                    CssGridGeneralTrackComponent::LineNames(names) => {
+                        if before.is_some() {
+                            return None;
+                        }
+                        before = Some(names.clone());
+                    }
+                    CssGridGeneralTrackComponent::TrackSize(size) => {
+                        let area = areas.rows().get(tracks.len())?.clone();
+                        tracks.push(CssGridTemplateAreaTrack::new(
+                            area,
+                            Some(size.clone()),
+                            before.take(),
+                            None,
+                        ));
+                    }
+                    _ => return None,
+                }
+            }
+            if tracks.len() != areas.rows().len() {
+                return None;
+            }
+            if let Some(names) = before {
+                tracks.last_mut()?.after = Some(names);
+            }
+            let columns = if columns.is_none() {
+                None
+            } else {
+                let source = columns.general_list()?.components();
+                let mut components = Vec::new();
+                if components.try_reserve(source.len()).is_err() {
+                    capacity_failure = true;
+                    return None;
+                }
+                for component in source {
+                    components.push(match component {
+                        CssGridGeneralTrackComponent::LineNames(names) => {
+                            CssGridTrackRepeatComponent::LineNames(names.clone())
+                        }
+                        CssGridGeneralTrackComponent::TrackSize(size) => {
+                            CssGridTrackRepeatComponent::TrackSize(size.clone())
+                        }
+                        _ => return None,
+                    });
+                }
+                Some(CssGridTrackRepeatContent::try_new(components)?)
+            };
+            // The supplied area matrix is already intrinsically checked. Each
+            // row is copied once in order, and column content was checked above.
+            Some(Self {
+                representation: CssGridTemplateRepresentation::Areas {
+                    rows: tracks,
+                    columns,
+                },
+            })
+        })();
+        if capacity_failure {
+            return Err(crate::CssSpecifiedValueSerializationError::new(
+                crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
+            ));
+        }
+        Ok(result)
+    }
+
     pub const fn none() -> Self {
         Self {
             representation: CssGridTemplateRepresentation::None,
@@ -966,8 +1054,7 @@ type GridSerializationResult<T> = Result<T, crate::CssSpecifiedValueSerializatio
 trait GridSpecified {
     fn write_grid(
         &self,
-        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-        output: &mut String,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> GridSerializationResult<()>;
 }
 
@@ -996,7 +1083,7 @@ macro_rules! grid_serialization {
                 &self,
                 writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
             ) -> GridSerializationResult<()> {
-                self.write_grid(&mut writer.context, &mut writer.css)
+                self.write_grid(writer)
             }
         }
     )+};
@@ -1012,38 +1099,34 @@ grid_serialization!(
 );
 
 fn grid_node(
-    context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+    writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
 ) -> GridSerializationResult<()> {
-    context.charge_input(1)?;
-    context.charge_projection(1)
+    writer.context.charge_input(1)?;
+    writer.context.charge_projection(1)
 }
 
 impl GridSpecified for CssGridTrackBreadth {
     fn write_grid(
         &self,
-        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-        output: &mut String,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> GridSerializationResult<()> {
         match &self.representation {
             CssGridTrackBreadthRepresentation::Length(specified) => {
-                let captured = specified.capture_specified(context)?;
-                context.append(output, &captured)
+                let captured = specified.capture_specified(&mut writer.context)?;
+                writer.append(&captured)
             }
             CssGridTrackBreadthRepresentation::Fraction(specified) => {
-                let captured = specified.capture_specified(context)?;
-                context.append(output, &captured)
+                let captured = specified.capture_specified(&mut writer.context)?;
+                writer.append(&captured)
             }
             other => {
-                grid_node(context)?;
-                context.append(
-                    output,
-                    match other {
-                        CssGridTrackBreadthRepresentation::MinContent => "min-content",
-                        CssGridTrackBreadthRepresentation::MaxContent => "max-content",
-                        CssGridTrackBreadthRepresentation::Auto => "auto",
-                        _ => unreachable!(),
-                    },
-                )
+                grid_node(writer)?;
+                writer.append(match other {
+                    CssGridTrackBreadthRepresentation::MinContent => "min-content",
+                    CssGridTrackBreadthRepresentation::MaxContent => "max-content",
+                    CssGridTrackBreadthRepresentation::Auto => "auto",
+                    _ => unreachable!(),
+                })
             }
         }
     }
@@ -1052,25 +1135,24 @@ impl GridSpecified for CssGridTrackBreadth {
 impl GridSpecified for CssGridTrackSize {
     fn write_grid(
         &self,
-        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-        output: &mut String,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> GridSerializationResult<()> {
         match &self.representation {
-            CssGridTrackSizeRepresentation::Breadth(value) => value.write_grid(context, output),
+            CssGridTrackSizeRepresentation::Breadth(value) => value.write_grid(writer),
             CssGridTrackSizeRepresentation::MinMax { min, max } => {
-                grid_node(context)?;
-                context.append(output, "minmax(")?;
-                min.write_grid(context, output)?;
-                context.append(output, ", ")?;
-                max.write_grid(context, output)?;
-                context.append(output, ")")
+                grid_node(writer)?;
+                writer.append("minmax(")?;
+                min.write_grid(writer)?;
+                writer.append(", ")?;
+                max.write_grid(writer)?;
+                writer.append(")")
             }
             CssGridTrackSizeRepresentation::FitContent(specified) => {
-                grid_node(context)?;
-                context.append(output, "fit-content(")?;
-                let captured = specified.capture_specified(context)?;
-                context.append(output, &captured)?;
-                context.append(output, ")")
+                grid_node(writer)?;
+                writer.append("fit-content(")?;
+                let captured = specified.capture_specified(&mut writer.context)?;
+                writer.append(&captured)?;
+                writer.append(")")
             }
         }
     }
@@ -1079,35 +1161,34 @@ impl GridSpecified for CssGridTrackSize {
 impl GridSpecified for CssGridLineNames {
     fn write_grid(
         &self,
-        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-        output: &mut String,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> GridSerializationResult<()> {
-        grid_node(context)?;
-        context.append(output, "[")?;
+        grid_node(writer)?;
+        writer.append("[")?;
         for (index, name) in self.names.iter().enumerate() {
             if index != 0 {
-                context.append(output, " ")?;
+                writer.append(" ")?;
             }
-            grid_node(context)?;
-            if !context.output_suppressed() {
-                let escaped = crate::numeric::capture_identifier(name.ident().as_str(), context)?;
-                context.append(output, &escaped)?;
+            grid_node(writer)?;
+            if !writer.context.output_suppressed() {
+                let escaped =
+                    crate::numeric::capture_identifier(name.ident().as_str(), &writer.context)?;
+                writer.append(&escaped)?;
             }
         }
-        context.append(output, "]")
+        writer.append("]")
     }
 }
 
 fn grid_items<T: GridSpecified>(
     items: &[T],
-    context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    output: &mut String,
+    writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
 ) -> GridSerializationResult<()> {
     for (index, item) in items.iter().enumerate() {
         if index != 0 {
-            context.append(output, " ")?;
+            writer.append(" ")?;
         }
-        item.write_grid(context, output)?;
+        item.write_grid(writer)?;
     }
     Ok(())
 }
@@ -1115,12 +1196,11 @@ fn grid_items<T: GridSpecified>(
 impl GridSpecified for CssGridTrackRepeatComponent {
     fn write_grid(
         &self,
-        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-        output: &mut String,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> GridSerializationResult<()> {
         match self {
-            Self::LineNames(value) => value.write_grid(context, output),
-            Self::TrackSize(value) => value.write_grid(context, output),
+            Self::LineNames(value) => value.write_grid(writer),
+            Self::TrackSize(value) => value.write_grid(writer),
         }
     }
 }
@@ -1128,12 +1208,11 @@ impl GridSpecified for CssGridTrackRepeatComponent {
 impl GridSpecified for CssGridFixedRepeatComponent {
     fn write_grid(
         &self,
-        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-        output: &mut String,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> GridSerializationResult<()> {
         match self {
-            Self::LineNames(value) => value.write_grid(context, output),
-            Self::FixedSize(value) => value.size.write_grid(context, output),
+            Self::LineNames(value) => value.write_grid(writer),
+            Self::FixedSize(value) => value.size.write_grid(writer),
         }
     }
 }
@@ -1141,64 +1220,59 @@ impl GridSpecified for CssGridFixedRepeatComponent {
 impl GridSpecified for CssGridIntegerTrackRepeat {
     fn write_grid(
         &self,
-        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-        output: &mut String,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> GridSerializationResult<()> {
-        grid_node(context)?;
-        context.append(output, "repeat(")?;
-        self.count.serialize_specified_into(context, output)?;
-        context.append(output, ", ")?;
-        grid_items(&self.content.components, context, output)?;
-        context.append(output, ")")
+        grid_node(writer)?;
+        writer.append("repeat(")?;
+        self.count
+            .serialize_specified_into(&mut writer.context, &mut writer.css)?;
+        writer.append(", ")?;
+        grid_items(&self.content.components, writer)?;
+        writer.append(")")
     }
 }
 
 impl GridSpecified for CssGridIntegerFixedRepeat {
     fn write_grid(
         &self,
-        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-        output: &mut String,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> GridSerializationResult<()> {
-        grid_node(context)?;
-        context.append(output, "repeat(")?;
-        self.count.serialize_specified_into(context, output)?;
-        context.append(output, ", ")?;
-        grid_items(&self.content.components, context, output)?;
-        context.append(output, ")")
+        grid_node(writer)?;
+        writer.append("repeat(")?;
+        self.count
+            .serialize_specified_into(&mut writer.context, &mut writer.css)?;
+        writer.append(", ")?;
+        grid_items(&self.content.components, writer)?;
+        writer.append(")")
     }
 }
 
 impl GridSpecified for CssGridAutoRepeat {
     fn write_grid(
         &self,
-        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-        output: &mut String,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> GridSerializationResult<()> {
-        grid_node(context)?;
-        context.append(output, "repeat(")?;
-        context.append(
-            output,
-            match self.kind {
-                CssGridAutoRepeatKind::AutoFill => "auto-fill",
-                CssGridAutoRepeatKind::AutoFit => "auto-fit",
-            },
-        )?;
-        context.append(output, ", ")?;
-        grid_items(&self.content.components, context, output)?;
-        context.append(output, ")")
+        grid_node(writer)?;
+        writer.append("repeat(")?;
+        writer.append(match self.kind {
+            CssGridAutoRepeatKind::AutoFill => "auto-fill",
+            CssGridAutoRepeatKind::AutoFit => "auto-fit",
+        })?;
+        writer.append(", ")?;
+        grid_items(&self.content.components, writer)?;
+        writer.append(")")
     }
 }
 
 impl GridSpecified for CssGridGeneralTrackComponent {
     fn write_grid(
         &self,
-        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-        output: &mut String,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> GridSerializationResult<()> {
         match self {
-            Self::LineNames(value) => value.write_grid(context, output),
-            Self::TrackSize(value) => value.write_grid(context, output),
-            Self::Repeat(value) => value.write_grid(context, output),
+            Self::LineNames(value) => value.write_grid(writer),
+            Self::TrackSize(value) => value.write_grid(writer),
+            Self::Repeat(value) => value.write_grid(writer),
         }
     }
 }
@@ -1206,14 +1280,13 @@ impl GridSpecified for CssGridGeneralTrackComponent {
 impl GridSpecified for CssGridAutoTrackComponent {
     fn write_grid(
         &self,
-        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-        output: &mut String,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> GridSerializationResult<()> {
         match self {
-            Self::LineNames(value) => value.write_grid(context, output),
-            Self::FixedSize(value) => value.size.write_grid(context, output),
-            Self::Repeat(value) => value.write_grid(context, output),
-            Self::AutoRepeat(value) => value.write_grid(context, output),
+            Self::LineNames(value) => value.write_grid(writer),
+            Self::FixedSize(value) => value.size.write_grid(writer),
+            Self::Repeat(value) => value.write_grid(writer),
+            Self::AutoRepeat(value) => value.write_grid(writer),
         }
     }
 }
@@ -1221,24 +1294,19 @@ impl GridSpecified for CssGridAutoTrackComponent {
 impl GridSpecified for CssGridTrackList {
     fn write_grid(
         &self,
-        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-        output: &mut String,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> GridSerializationResult<()> {
-        grid_node(context)?;
+        grid_node(writer)?;
         match &self.representation {
-            CssGridTrackListRepresentation::None => context.append(output, "none"),
-            CssGridTrackListRepresentation::General(value) => {
-                grid_items(&value.components, context, output)
-            }
-            CssGridTrackListRepresentation::Auto(value) => {
-                grid_items(&value.components, context, output)
-            }
+            CssGridTrackListRepresentation::None => writer.append("none"),
+            CssGridTrackListRepresentation::General(value) => grid_items(&value.components, writer),
+            CssGridTrackListRepresentation::Auto(value) => grid_items(&value.components, writer),
             CssGridTrackListRepresentation::Subgrid(components) => {
-                context.append(output, "subgrid")?;
+                writer.append("subgrid")?;
                 if !components.is_empty() {
-                    context.append(output, " ")?;
+                    writer.append(" ")?;
                 }
-                grid_items(components, context, output)
+                grid_items(components, writer)
             }
         }
     }
@@ -1247,23 +1315,22 @@ impl GridSpecified for CssGridTrackList {
 impl GridSpecified for CssGridSubgridComponent {
     fn write_grid(
         &self,
-        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-        output: &mut String,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> GridSerializationResult<()> {
         match self {
-            Self::LineNames(names) => names.write_grid(context, output),
+            Self::LineNames(names) => names.write_grid(writer),
             Self::Repeat(value) => {
-                grid_node(context)?;
-                context.append(output, "repeat(")?;
+                grid_node(writer)?;
+                writer.append("repeat(")?;
                 match &value.count {
                     CssGridNameRepeatCount::Counted(count) => {
-                        count.serialize_specified_into(context, output)?
+                        count.serialize_specified_into(&mut writer.context, &mut writer.css)?
                     }
-                    CssGridNameRepeatCount::AutoFill => context.append(output, "auto-fill")?,
+                    CssGridNameRepeatCount::AutoFill => writer.append("auto-fill")?,
                 }
-                context.append(output, ", ")?;
-                grid_items(&value.groups, context, output)?;
-                context.append(output, ")")
+                writer.append(", ")?;
+                grid_items(&value.groups, writer)?;
+                writer.append(")")
             }
         }
     }
@@ -1272,51 +1339,72 @@ impl GridSpecified for CssGridSubgridComponent {
 impl GridSpecified for CssGridTrackSizeList {
     fn write_grid(
         &self,
-        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-        output: &mut String,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> GridSerializationResult<()> {
-        grid_node(context)?;
-        grid_items(&self.sizes, context, output)
+        grid_node(writer)?;
+        grid_items(&self.sizes, writer)
     }
 }
 
 impl GridSpecified for CssGridTemplate {
     fn write_grid(
         &self,
-        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-        output: &mut String,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> GridSerializationResult<()> {
-        grid_node(context)?;
+        use crate::CssKnownProperty as Property;
+        grid_node(writer)?;
         match &self.representation {
-            CssGridTemplateRepresentation::None => context.append(output, "none"),
+            CssGridTemplateRepresentation::None => writer.append("none"),
             CssGridTemplateRepresentation::RowsColumns { rows, columns } => {
-                rows.write_grid(context, output)?;
-                context.append(output, " / ")?;
-                columns.write_grid(context, output)
+                writer.source_property(Property::GridTemplateRows, |writer| {
+                    rows.write_grid(writer)
+                })?;
+                writer.source_property(Property::GridTemplateColumns, |writer| {
+                    writer.append(" / ")?;
+                    columns.write_grid(writer)
+                })
             }
             CssGridTemplateRepresentation::Areas { rows, columns } => {
                 for (index, row) in rows.iter().enumerate() {
-                    if index != 0 {
-                        context.append(output, " ")?;
-                    }
                     if let Some(names) = &row.before {
-                        names.write_grid(context, output)?;
-                        context.append(output, " ")?;
+                        writer.source_property(Property::GridTemplateRows, |writer| {
+                            if index != 0 {
+                                writer.append(" ")?;
+                            }
+                            names.write_grid(writer)?;
+                            writer.append(" ")
+                        })?;
                     }
-                    crate::grid_template_areas::write_area_row(&row.area, context, output, false)?;
+                    writer.source_property(Property::GridTemplateAreas, |writer| {
+                        if index != 0 && row.before.is_none() {
+                            writer.append(" ")?;
+                        }
+                        crate::grid_template_areas::write_area_row(
+                            &row.area,
+                            &mut writer.context,
+                            &mut writer.css,
+                            false,
+                        )
+                    })?;
                     if let Some(size) = &row.size {
-                        context.append(output, " ")?;
-                        size.write_grid(context, output)?;
+                        writer.source_property(Property::GridTemplateRows, |writer| {
+                            writer.append(" ")?;
+                            size.write_grid(writer)
+                        })?;
                     }
                     if let Some(names) = &row.after {
-                        context.append(output, " ")?;
-                        names.write_grid(context, output)?;
+                        writer.source_property(Property::GridTemplateRows, |writer| {
+                            writer.append(" ")?;
+                            names.write_grid(writer)
+                        })?;
                     }
                 }
                 if let Some(columns) = columns {
-                    context.append(output, " / ")?;
-                    grid_node(context)?;
-                    grid_items(&columns.components, context, output)?;
+                    writer.source_property(Property::GridTemplateColumns, |writer| {
+                        writer.append(" / ")?;
+                        grid_node(writer)?;
+                        grid_items(&columns.components, writer)
+                    })?;
                 }
                 Ok(())
             }
@@ -1327,35 +1415,49 @@ impl GridSpecified for CssGridTemplate {
 impl GridSpecified for CssGrid {
     fn write_grid(
         &self,
-        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-        output: &mut String,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> GridSerializationResult<()> {
+        use crate::CssKnownProperty as Property;
         match &self.representation {
             // The enum carrier is not another logical aggregate.
-            CssGridRepresentation::Template(value) => value.write_grid(context, output),
+            CssGridRepresentation::Template(value) => value.write_grid(writer),
             CssGridRepresentation::AutoFlow {
                 flow,
                 auto_tracks,
                 explicit_tracks,
             } => {
-                grid_node(context)?;
+                writer.source_property(Property::GridAutoFlow, grid_node)?;
                 if flow.axis() == CssGridAutoFlowAxis::Column {
-                    explicit_tracks.write_grid(context, output)?;
-                    context.append(output, " / ")?;
+                    writer.source_property(Property::GridTemplateRows, |writer| {
+                        explicit_tracks.write_grid(writer)
+                    })?;
+                    writer
+                        .source_property(Property::GridAutoFlow, |writer| writer.append(" / "))?;
                 }
-                grid_node(context)?;
-                context.append(output, "auto-flow")?;
-                if flow.dense() {
-                    grid_node(context)?;
-                    context.append(output, " dense")?;
-                }
+                writer.source_property(Property::GridAutoFlow, |writer| {
+                    grid_node(writer)?;
+                    writer.append("auto-flow")?;
+                    if flow.dense() {
+                        grid_node(writer)?;
+                        writer.append(" dense")?;
+                    }
+                    Ok(())
+                })?;
                 if let Some(tracks) = auto_tracks {
-                    context.append(output, " ")?;
-                    tracks.write_grid(context, output)?;
+                    let property = match flow.axis() {
+                        CssGridAutoFlowAxis::Row => Property::GridAutoRows,
+                        CssGridAutoFlowAxis::Column => Property::GridAutoColumns,
+                    };
+                    writer.source_property(property, |writer| {
+                        writer.append(" ")?;
+                        tracks.write_grid(writer)
+                    })?;
                 }
                 if flow.axis() == CssGridAutoFlowAxis::Row {
-                    context.append(output, " / ")?;
-                    explicit_tracks.write_grid(context, output)?;
+                    writer.source_property(Property::GridTemplateColumns, |writer| {
+                        writer.append(" / ")?;
+                        explicit_tracks.write_grid(writer)
+                    })?;
                 }
                 Ok(())
             }

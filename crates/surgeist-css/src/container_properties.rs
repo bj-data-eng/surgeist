@@ -114,30 +114,37 @@ fn emission_error(kind: CssComponentValueErrorKind) -> CssComponentValueError {
 }
 impl Projection<'_> {
     fn visit<E>(&self, mut push: impl FnMut(Piece<'_>) -> Result<(), E>) -> Result<(), E> {
+        self.visit_fields(|_, piece| push(piece))
+    }
+
+    fn visit_fields<E>(
+        &self,
+        mut push: impl FnMut(usize, Piece<'_>) -> Result<(), E>,
+    ) -> Result<(), E> {
         if let Some(names) = self.names {
             match names {
-                CssContainerNames::None => push(Piece::Ident("none"))?,
+                CssContainerNames::None => push(0, Piece::Ident("none"))?,
                 CssContainerNames::Names(list) => {
                     for (index, name) in list.names().iter().enumerate() {
                         if index != 0 {
-                            push(Piece::Space)?;
+                            push(0, Piece::Space)?;
                         }
-                        push(Piece::Ident(name.as_str()))?;
+                        push(0, Piece::Ident(name.as_str()))?;
                     }
                 }
             }
             if self.kind.is_some() {
-                push(Piece::Space)?;
-                push(Piece::Slash)?;
-                push(Piece::Space)?;
+                push(1, Piece::Space)?;
+                push(1, Piece::Slash)?;
+                push(1, Piece::Space)?;
             }
         }
         if let Some(kind) = self.kind {
             for (index, keyword) in kind.keywords().iter().enumerate() {
                 if index != 0 {
-                    push(Piece::Space)?;
+                    push(1, Piece::Space)?;
                 }
-                push(Piece::Ident(keyword))?;
+                push(1, Piece::Ident(keyword))?;
             }
         }
         Ok(())
@@ -148,17 +155,21 @@ impl Projection<'_> {
         writer: &mut SpecifiedRuleWriter,
     ) -> Result<(), CssSpecifiedValueSerializationError> {
         if matches!(self.names, Some(CssContainerNames::Names(_))) {
-            writer.context.charge_input(1)?;
-            writer.context.charge_projection(1)?;
-        }
-        self.visit(|piece| match piece {
-            Piece::Ident(name) => {
+            writer.source_member(0, |writer| {
                 writer.context.charge_input(1)?;
-                writer.context.charge_projection(1)?;
-                writer.append_identifier(name)
-            }
-            Piece::Space => writer.append(" "),
-            Piece::Slash => writer.append("/"),
+                writer.context.charge_projection(1)
+            })?;
+        }
+        self.visit_fields(|index, piece| {
+            writer.source_member(index, |writer| match piece {
+                Piece::Ident(name) => {
+                    writer.context.charge_input(1)?;
+                    writer.context.charge_projection(1)?;
+                    writer.append_identifier(name)
+                }
+                Piece::Space => writer.append(" "),
+                Piece::Slash => writer.append("/"),
+            })
         })
     }
     fn components(
@@ -265,7 +276,9 @@ impl CssContainer {
         writer.context.charge_projection(1)?;
         self.projection().append_to_rule_writer(writer)?;
         if self.container_type == CssContainerType::Normal {
-            writer.without_output(|writer| self.container_type.append_to_rule_writer(writer))?;
+            writer.source_member(1, |writer| {
+                writer.without_output(|writer| self.container_type.append_to_rule_writer(writer))
+            })?;
         }
         Ok(())
     }

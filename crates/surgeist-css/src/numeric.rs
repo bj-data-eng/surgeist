@@ -772,9 +772,16 @@ impl CssCalculationExpression {
     /// coordinates and the redundant raw root graph. This is deliberately
     /// separate from the provenance-sensitive raw calculation `PartialEq`.
     pub(crate) fn structural_eq(&self, other: &Self) -> bool {
-        self.structural_eq_with(other, true, |a, b| {
-            Ok::<_, std::convert::Infallible>(a.structural_eq_ignoring_origin(b))
-        })
+        Self::structural_eq_with(
+            true,
+            vec![(self, other)],
+            |a, b| a.structural_eq_ignoring_origin(b),
+            |a, b| Ok::<_, std::convert::Infallible>(a.structural_eq_ignoring_origin(b)),
+            |pending, value| {
+                pending.push(value);
+                Ok(())
+            },
+        )
         .unwrap_or_else(|never| match never {})
     }
 
@@ -785,18 +792,67 @@ impl CssCalculationExpression {
         other: &Self,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
     ) -> std::result::Result<bool, crate::CssSpecifiedValueSerializationError> {
-        self.structural_eq_with(other, false, |a, b| {
-            exact_numeric_leaf_identity(a, b, context)
-        })
+        Self::structural_eq_with(
+            false,
+            vec![(self, other)],
+            |a, b| a.structural_eq_ignoring_origin(b),
+            |a, b| exact_numeric_leaf_identity(a, b, context),
+            |pending, value| {
+                pending.push(value);
+                Ok(())
+            },
+        )
     }
 
-    fn structural_eq_with<E>(
+    /// The new inverse consumer retains the exact structural relation, with
+    /// every real comparison work slot admitted before fallible allocation.
+    pub(crate) fn specified_inverse_eq(
         &self,
         other: &Self,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+    ) -> std::result::Result<bool, crate::CssSpecifiedValueSerializationError> {
+        use crate::{
+            CssSpecifiedValueSerializationError as Error,
+            CssSpecifiedValueSerializationErrorKind as Kind,
+        };
+        context.charge_generated_projection(1)?;
+        let mut pending = Vec::new();
+        pending
+            .try_reserve(1)
+            .map_err(|_| Error::new(Kind::CapacityOverflow))?;
+        pending.push((self, other));
+        Self::structural_eq_with(
+            true,
+            pending,
+            |a, b| {
+                a.token_structural_eq_ignoring_origin(b)
+                    .expect("checked numeric syntax token")
+            },
+            |a, b| {
+                Ok(a.token_structural_eq_ignoring_origin(b)
+                    .expect("checked numeric literal token"))
+            },
+            |pending, value| {
+                context.charge_generated_projection(1)?;
+                pending
+                    .try_reserve(1)
+                    .map_err(|_| Error::new(Kind::CapacityOverflow))?;
+                pending.push(value);
+                Ok(())
+            },
+        )
+    }
+
+    fn structural_eq_with<'a, E>(
         compare_raw_syntax: bool,
+        mut pending: Vec<(&'a Self, &'a Self)>,
+        mut syntax_eq: impl FnMut(&CssComponentValue, &CssComponentValue) -> bool,
         mut value_eq: impl FnMut(&CssComponentValue, &CssComponentValue) -> std::result::Result<bool, E>,
+        mut push: impl FnMut(
+            &mut Vec<(&'a Self, &'a Self)>,
+            (&'a Self, &'a Self),
+        ) -> std::result::Result<(), E>,
     ) -> std::result::Result<bool, E> {
-        let mut pending = vec![(self, other)];
         while let Some((left, right)) = pending.pop() {
             if left.ty != right.ty
                 || (compare_raw_syntax
@@ -805,7 +861,7 @@ impl CssCalculationExpression {
                             .syntax
                             .iter()
                             .zip(&right.syntax)
-                            .all(|(a, b)| a.structural_eq_ignoring_origin(b))))
+                            .all(|(a, b)| syntax_eq(a, b))))
                 || left.closing.is_some() != right.closing.is_some()
             {
                 return Ok(false);
@@ -826,7 +882,7 @@ impl CssCalculationExpression {
                         if a_operator != b_operator {
                             return Ok(false);
                         }
-                        pending.push((a_child, b_child));
+                        push(&mut pending, (a_child, b_child))?;
                     }
                 }
                 (NodeKind::Product(a), NodeKind::Product(b)) if a.len() == b.len() => {
@@ -834,10 +890,10 @@ impl CssCalculationExpression {
                         if a_operator != b_operator {
                             return Ok(false);
                         }
-                        pending.push((a_child, b_child));
+                        push(&mut pending, (a_child, b_child))?;
                     }
                 }
-                (NodeKind::Group(a), NodeKind::Group(b)) => pending.push((a, b)),
+                (NodeKind::Group(a), NodeKind::Group(b)) => push(&mut pending, (a, b))?,
                 (
                     NodeKind::Function {
                         function: a_function,
@@ -855,7 +911,7 @@ impl CssCalculationExpression {
                 {
                     for (a, b) in a_args.iter().zip(b_args).rev() {
                         match (a, b) {
-                            (Some(a), Some(b)) => pending.push((a, b)),
+                            (Some(a), Some(b)) => push(&mut pending, (a, b))?,
                             (None, None) => {}
                             _ => return Ok(false),
                         }
@@ -3361,6 +3417,20 @@ pub struct CssProfileColorCalculation {
     references: Vec<crate::CssColorProfileComponentName>,
 }
 impl CssProfileColorCalculation {
+    // The new declaration-block inverse uses the owning graph identity while
+    // leaving authored components and diagnostic coordinates intact.
+    pub(crate) fn specified_inverse_eq(
+        &self,
+        other: &Self,
+        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+    ) -> std::result::Result<bool, crate::CssSpecifiedValueSerializationError> {
+        if self.references != other.references {
+            return Ok(false);
+        }
+        self.expression
+            .specified_inverse_eq(&other.expression, context)
+    }
+
     pub fn expression(&self) -> CssCalculationExpressionRef<'_> {
         self.expression.as_ref().as_ref()
     }

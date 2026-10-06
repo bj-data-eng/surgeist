@@ -1,5 +1,6 @@
 //! Canonical authored UI4 projection with retained optional fields and cumulative providers.
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
+use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::ui::*;
 use crate::{
     CssCaretColor, CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
@@ -62,28 +63,34 @@ impl CssCaret {
                 .shape()
                 .is_some_and(|value| value != CssCaretShape::Auto);
         if let Some(value) = self.color() {
-            if matches!(value, CssCaretColor::Auto) && (noninitial || started) {
-                writer.without_output(|writer| value.append_to_rule_writer(writer))?;
-            } else {
-                separator(writer, &mut started)?;
-                value.append_to_rule_writer(writer)?;
-            }
+            writer.source_member(0, |writer| {
+                if matches!(value, CssCaretColor::Auto) && (noninitial || started) {
+                    writer.without_output(|writer| value.append_to_rule_writer(writer))
+                } else {
+                    separator(writer, &mut started)?;
+                    value.append_to_rule_writer(writer)
+                }
+            })?;
         }
         if let Some(value) = self.animation() {
-            if value == CssCaretAnimation::Auto && (noninitial || started) {
-                writer.without_output(|writer| value.append_to_rule_writer(writer))?;
-            } else {
-                separator(writer, &mut started)?;
-                value.append_to_rule_writer(writer)?;
-            }
+            writer.source_member(1, |writer| {
+                if value == CssCaretAnimation::Auto && (noninitial || started) {
+                    writer.without_output(|writer| value.append_to_rule_writer(writer))
+                } else {
+                    separator(writer, &mut started)?;
+                    value.append_to_rule_writer(writer)
+                }
+            })?;
         }
         if let Some(value) = self.shape() {
-            if value == CssCaretShape::Auto && (noninitial || started) {
-                writer.without_output(|writer| value.append_to_rule_writer(writer))?;
-            } else {
-                separator(writer, &mut started)?;
-                value.append_to_rule_writer(writer)?;
-            }
+            writer.source_member(2, |writer| {
+                if value == CssCaretShape::Auto && (noninitial || started) {
+                    writer.without_output(|writer| value.append_to_rule_writer(writer))
+                } else {
+                    separator(writer, &mut started)?;
+                    value.append_to_rule_writer(writer)
+                }
+            })?;
         }
         Ok(())
     }
@@ -98,10 +105,29 @@ impl CssInterestDelayValue {
 }
 impl CssInterestDelay {
     pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        self.append_to_rule_writer_with_comparison(
+            writer,
+            &mut |start, end, _| Ok(start.specified_value_eq(end)),
+            &mut |_| {},
+        )
+    }
+
+    pub(crate) fn append_to_rule_writer_with_comparison(
+        &self,
+        writer: &mut SpecifiedRuleWriter,
+        equal: &mut impl FnMut(
+            &CssInterestDelayValue,
+            &CssInterestDelayValue,
+            &mut SpecifiedSerializationContext,
+        ) -> Result<bool>,
+        before_value: &mut impl FnMut(usize),
+    ) -> Result<()> {
+        before_value(0);
         writer.node()?;
         self.start().append_to_rule_writer(writer)?;
         if let Some(end) = self.authored_end() {
-            if self.start().specified_value_eq(end) {
+            before_value(1);
+            if equal(self.start(), end, &mut writer.context)? {
                 writer.without_output(|writer| end.append_to_rule_writer(writer))?;
             } else {
                 writer.append(" ")?;

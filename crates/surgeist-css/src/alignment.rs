@@ -198,6 +198,19 @@ macro_rules! checked_pair {
                 self.justify
             }
 
+            pub(crate) fn append_cssom_inverse_to_rule_writer(&self, writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter)
+                -> SerializationResult<()> {
+                writer.source_member(0, |writer| self.align.append_to_rule_writer(writer))?;
+                writer.source_member(1, |writer| {
+                    if self.justify == Self::from_align(self.align).justify {
+                        writer.without_output(|writer| self.justify.append_to_rule_writer(writer))
+                    } else {
+                        writer.append(" ")?;
+                        self.justify.append_to_rule_writer(writer)
+                    }
+                })
+            }
+
             /// Serializes both effective components in align-then-justify order.
             pub fn serialize_specified(&self) -> SerializationResult<String> {
                 self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())

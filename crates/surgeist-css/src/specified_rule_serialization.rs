@@ -129,9 +129,34 @@ impl std::error::Error for CssSpecifiedRuleSerializationError {
     }
 }
 
+#[derive(Clone, Copy)]
+struct InverseSourceTracking {
+    property: crate::CssKnownProperty,
+    mode: Option<crate::CssBoxSideKind>,
+}
+
+impl InverseSourceTracking {
+    fn members(self) -> &'static [crate::CssLonghandProperty] {
+        match self
+            .property
+            .metadata()
+            .expect("selected inverse schema")
+            .kind()
+        {
+            crate::CssPropertyKindRef::Shorthand(value) => value.settable_members(),
+            crate::CssPropertyKindRef::FourSideShorthand(value) => {
+                value.settable_members(self.mode.expect("selected side mode"))
+            }
+            _ => unreachable!("inverse shorthand source selection"),
+        }
+    }
+}
+
 pub(crate) struct SpecifiedRuleWriter {
     pub(crate) context: SpecifiedSerializationContext,
     pub(crate) css: String,
+    inverse_source_tracking: Option<InverseSourceTracking>,
+    inverse_source_member: Option<crate::CssKnownProperty>,
 }
 
 impl SpecifiedRuleWriter {
@@ -139,11 +164,124 @@ impl SpecifiedRuleWriter {
         Self {
             context: SpecifiedSerializationContext::new(limits),
             css: String::new(),
+            inverse_source_tracking: None,
+            inverse_source_member: None,
         }
+    }
+
+    /// Final inverse emission alone selects source tracking. Ordinary writers
+    /// carry no selection; notifications therefore call their body unchanged.
+    pub(crate) fn with_inverse_sources<T>(
+        &mut self,
+        property: crate::CssKnownProperty,
+        mode: Option<crate::CssBoxSideKind>,
+        visit: impl FnOnce(&mut Self) -> Result<T, CssSpecifiedValueSerializationError>,
+    ) -> (
+        Result<T, CssSpecifiedValueSerializationError>,
+        Option<crate::CssKnownProperty>,
+    ) {
+        let previous_tracking = self
+            .inverse_source_tracking
+            .replace(InverseSourceTracking { property, mode });
+        let previous_member = self.inverse_source_member.take();
+        let result = visit(self);
+        let responsible = self.inverse_source_member;
+        self.inverse_source_tracking = previous_tracking;
+        self.inverse_source_member = previous_member;
+        (result, responsible)
+    }
+
+    /// One terminal visit disables nested shorthand notifications until its
+    /// Result returns, but retains the responsible identity for a failure.
+    fn source_visit<T>(
+        &mut self,
+        property: crate::CssKnownProperty,
+        visit: impl FnOnce(&mut Self) -> Result<T, CssSpecifiedValueSerializationError>,
+    ) -> Result<T, CssSpecifiedValueSerializationError> {
+        let previous = self.inverse_source_tracking.take();
+        if previous.is_some() {
+            self.inverse_source_member = Some(property);
+        }
+        let result = visit(self);
+        self.inverse_source_tracking = previous;
+        result
+    }
+
+    pub(crate) fn source_member<T>(
+        &mut self,
+        index: usize,
+        visit: impl FnOnce(&mut Self) -> Result<T, CssSpecifiedValueSerializationError>,
+    ) -> Result<T, CssSpecifiedValueSerializationError> {
+        let Some(selection) = self.inverse_source_tracking else {
+            return visit(self);
+        };
+        self.source_visit(selection.members()[index].known_property(), visit)
+    }
+
+    pub(crate) fn source_property<T>(
+        &mut self,
+        property: crate::CssKnownProperty,
+        visit: impl FnOnce(&mut Self) -> Result<T, CssSpecifiedValueSerializationError>,
+    ) -> Result<T, CssSpecifiedValueSerializationError> {
+        let Some(selection) = self.inverse_source_tracking else {
+            return visit(self);
+        };
+        debug_assert!(
+            selection
+                .members()
+                .iter()
+                .any(|member| member.known_property() == property)
+        );
+        self.source_visit(property, visit)
+    }
+
+    /// Border triads select the first admitted side representative of each
+    /// width/style/color group from the existing ordered settable schema.
+    pub(crate) fn source_group_member<T>(
+        &mut self,
+        index: usize,
+        groups: usize,
+        visit: impl FnOnce(&mut Self) -> Result<T, CssSpecifiedValueSerializationError>,
+    ) -> Result<T, CssSpecifiedValueSerializationError> {
+        let Some(selection) = self.inverse_source_tracking else {
+            return visit(self);
+        };
+        let members = selection.members();
+        debug_assert_eq!(members.len() % groups, 0);
+        self.source_visit(
+            members[index * (members.len() / groups)].known_property(),
+            visit,
+        )
     }
 
     pub(crate) fn append(&mut self, text: &str) -> Result<(), CssSpecifiedValueSerializationError> {
         self.context.append(&mut self.css, text)
+    }
+
+    /// Uses the owning value visitor to inspect semantic nodes, charging the
+    /// CSSOM probe tariff rather than rendering/canonicalizing another value.
+    pub(crate) fn visit_semantic<T>(
+        &mut self,
+        visit: impl FnOnce(&mut Self) -> Result<T, CssSpecifiedValueSerializationError>,
+    ) -> Result<T, CssSpecifiedValueSerializationError> {
+        let previous = self.context.replace_semantic_traversal(true);
+        let result = self.without_output(visit);
+        self.context.replace_semantic_traversal(previous);
+        result
+    }
+
+    /// Captures a bounded semantic value under this request's cumulative work.
+    /// Scratch bytes consume remaining capacity without charging final bytes twice.
+    pub(crate) fn capture_value<T>(
+        &mut self,
+        visit: impl FnOnce(&mut Self) -> Result<T, CssSpecifiedValueSerializationError>,
+    ) -> Result<(T, String), CssSpecifiedValueSerializationError> {
+        let final_css = std::mem::take(&mut self.css);
+        let previous = self.context.replace_temporary_output(Some(0));
+        let result = visit(self);
+        let scratch = std::mem::replace(&mut self.css, final_css);
+        self.context.replace_temporary_output(previous);
+        result.map(|value| (value, scratch))
     }
 
     /// Emits a namespace declaration without resolving or normalizing its literal name.
@@ -469,5 +607,171 @@ mod value_error_tests {
             .expect("the immediate public source is the owning media provider");
         assert_eq!(source.origin(), media.query().queries()[1].origin());
         assert_eq!(report, before);
+    }
+}
+
+#[cfg(test)]
+mod inverse_source_scope_contract {
+    use super::SpecifiedRuleWriter;
+    use crate::{
+        CssKnownProperty as Property, CssKnownPropertyValueRef as Value,
+        CssSpecifiedValueSerializationErrorKind as Kind,
+        CssSpecifiedValueSerializationLimits as Limits,
+    };
+
+    #[test]
+    fn nested_shape_sources_and_error_suppression_restore_the_enclosing_writer() {
+        let report =
+            crate::parse_style_attribute("offset:inset(1px round 2px);margin-block:1px 2px");
+        assert!(report.is_clean(), "{report:?}");
+        let Value::Offset(offset) = report.syntax()[0]
+            .known()
+            .unwrap()
+            .property_value()
+            .unwrap()
+        else {
+            panic!("offset")
+        };
+        let offset = offset.value();
+        let Value::MarginBlock(pair) = report.syntax()[1]
+            .known()
+            .unwrap()
+            .property_value()
+            .unwrap()
+        else {
+            panic!("margin pair")
+        };
+        let pair = pair.value();
+        // Offset + path + inset + offsets-list + 1px + radius-list + 2px:
+        // seven real I/P visits. The radius's own source notification must stay
+        // inside OffsetPath. The independent literal is twenty UTF-8 bytes.
+        let exact = Limits::new(7, 7, 20);
+        assert_eq!(
+            offset.serialize_specified_with_limits(exact).unwrap(),
+            "inset(1px round 2px)"
+        );
+        for (limits, kind) in [
+            (Limits::new(6, 7, 20), Kind::InputNodeLimit),
+            (Limits::new(7, 6, 20), Kind::ProjectionNodeLimit),
+            (Limits::new(7, 7, 19), Kind::ByteLimit),
+        ] {
+            let mut writer = SpecifiedRuleWriter::new(limits);
+            let (result, member) = writer.with_inverse_sources(Property::Offset, None, |writer| {
+                offset.append_to_rule_writer(writer)
+            });
+            assert_eq!(result.unwrap_err().kind(), kind);
+            assert_eq!(member, Some(Property::OffsetPath));
+            assert!(writer.inverse_source_tracking.is_none());
+            assert!(writer.inverse_source_member.is_none());
+            assert!(!writer.context.output_suppressed());
+            let mut retry = SpecifiedRuleWriter::new(exact);
+            let (result, member) = retry.with_inverse_sources(Property::Offset, None, |writer| {
+                offset.append_to_rule_writer(writer)
+            });
+            result.unwrap();
+            assert_eq!(member, Some(Property::OffsetPath));
+            assert_eq!(retry.css, "inset(1px round 2px)");
+        }
+        // An error inside real suppression restores both modes. An ordinary
+        // pair also uses its normal bounded writer without schema notifications.
+        let mut writer = SpecifiedRuleWriter::new(Limits::new(1, usize::MAX, 0));
+        let (result, member) = writer.with_inverse_sources(Property::MarginBlock, None, |writer| {
+            writer.without_output(|writer| pair.append_to_rule_writer(writer))
+        });
+        assert_eq!(result.unwrap_err().kind(), Kind::InputNodeLimit);
+        assert_eq!(member, Some(Property::MarginBlockEnd));
+        assert!(writer.inverse_source_tracking.is_none());
+        assert!(writer.inverse_source_member.is_none());
+        assert!(!writer.context.output_suppressed());
+        assert!(writer.css.is_empty());
+        let mut ordinary = SpecifiedRuleWriter::new(Limits::new(2, 2, 7));
+        ordinary
+            .without_output(|writer| pair.append_to_rule_writer(writer))
+            .unwrap();
+        assert!(!ordinary.context.output_suppressed());
+        assert!(ordinary.inverse_source_tracking.is_none());
+        assert!(ordinary.inverse_source_member.is_none());
+        assert!(ordinary.css.is_empty());
+    }
+
+    #[test]
+    fn captured_scroll_values_reselect_the_role_whose_bytes_are_appended() {
+        for (source, expected, bytes, final_member) in [
+            (
+                "scroll-padding-block:1px 2px",
+                "1px 2px",
+                7,
+                Property::ScrollPaddingBlockEnd,
+            ),
+            (
+                "scroll-padding-block:1px 1px",
+                "1px",
+                3,
+                Property::ScrollPaddingBlockStart,
+            ),
+        ] {
+            let report = crate::parse_style_attribute(source);
+            assert!(report.is_clean(), "{report:?}");
+            let Value::ScrollPaddingBlock(pair) = report.syntax()[0]
+                .known()
+                .unwrap()
+                .property_value()
+                .unwrap()
+            else {
+                panic!("scroll pair")
+            };
+            let pair = pair.value();
+            // Both authored literals are captured before either is emitted:
+            // I2/P2. An equal end is captured but never appended; the final
+            // responsible source is reselected to the start's captured bytes.
+            let exact = Limits::new(2, 2, bytes);
+            assert_eq!(
+                pair.serialize_specified_with_limits(exact).unwrap(),
+                expected
+            );
+            let mut writer = SpecifiedRuleWriter::new(exact);
+            let (result, member) =
+                writer.with_inverse_sources(Property::ScrollPaddingBlock, None, |writer| {
+                    pair.append_to_rule_writer(writer)
+                });
+            result.unwrap();
+            assert_eq!(writer.css, expected);
+            assert_eq!(member, Some(final_member));
+            for (limits, kind) in [
+                (Limits::new(1, 2, bytes), Kind::InputNodeLimit),
+                (Limits::new(2, 1, bytes), Kind::ProjectionNodeLimit),
+            ] {
+                let mut writer = SpecifiedRuleWriter::new(limits);
+                let (result, member) =
+                    writer.with_inverse_sources(Property::ScrollPaddingBlock, None, |writer| {
+                        pair.append_to_rule_writer(writer)
+                    });
+                assert_eq!(result.unwrap_err().kind(), kind);
+                assert_eq!(member, Some(Property::ScrollPaddingBlockEnd));
+                assert!(writer.css.is_empty());
+            }
+            assert_eq!(
+                pair.serialize_specified_with_limits(exact).unwrap(),
+                expected
+            );
+        }
+        let report = crate::parse_style_attribute("scroll-padding-block:1px 2px");
+        let Value::ScrollPaddingBlock(pair) = report.syntax()[0]
+            .known()
+            .unwrap()
+            .property_value()
+            .unwrap()
+        else {
+            panic!("scroll pair")
+        };
+        let pair = pair.value();
+        let mut writer = SpecifiedRuleWriter::new(Limits::new(2, 2, 6));
+        let (result, member) =
+            writer.with_inverse_sources(Property::ScrollPaddingBlock, None, |writer| {
+                pair.append_to_rule_writer(writer)
+            });
+        assert_eq!(result.unwrap_err().kind(), Kind::ByteLimit);
+        assert_eq!(member, Some(Property::ScrollPaddingBlockEnd));
+        assert_eq!(writer.css, "1px ");
     }
 }

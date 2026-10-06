@@ -282,6 +282,9 @@ struct BigCoefficient {
     limbs: Vec<u32>,
 }
 
+// These charges precede real coefficient storage. Semantic inverse probes
+// redirect visits, but must still debit generated limbs; normal mode delegates
+// its existing projection charges to exactly the same policy and amount.
 impl BigCoefficient {
     fn zero() -> Self {
         Self { limbs: Vec::new() }
@@ -305,7 +308,7 @@ impl BigCoefficient {
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         })?;
-        context.charge_projection(limb_count)?;
+        context.charge_generated_projection(limb_count)?;
         let mut limbs = Vec::new();
         limbs.try_reserve_exact(limb_count).map_err(|_| {
             crate::CssSpecifiedValueSerializationError::new(
@@ -342,7 +345,7 @@ impl BigCoefficient {
             return Ok(Self::zero());
         }
         let limb_count = if value < DECIMAL_LIMB_BASE { 1 } else { 2 };
-        context.charge_projection(limb_count)?;
+        context.charge_generated_projection(limb_count)?;
         let mut limbs = Vec::new();
         limbs.try_reserve_exact(limb_count).map_err(|_| {
             crate::CssSpecifiedValueSerializationError::new(
@@ -368,7 +371,7 @@ impl BigCoefficient {
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         })?;
-        context.charge_projection(limb_count)?;
+        context.charge_generated_projection(limb_count)?;
         let mut limbs = Vec::new();
         limbs.try_reserve_exact(limb_count).map_err(|_| {
             crate::CssSpecifiedValueSerializationError::new(
@@ -457,7 +460,7 @@ impl BigCoefficient {
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         })?;
-        context.charge_projection(length)?;
+        context.charge_generated_projection(length)?;
         let mut limbs = Vec::new();
         limbs.try_reserve_exact(length).map_err(|_| {
             crate::CssSpecifiedValueSerializationError::new(
@@ -494,7 +497,7 @@ impl BigCoefficient {
                     crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                 )
             })?;
-        context.charge_projection(capacity)?;
+        context.charge_generated_projection(capacity)?;
         let mut limbs = Vec::new();
         limbs.try_reserve_exact(capacity).map_err(|_| {
             crate::CssSpecifiedValueSerializationError::new(
@@ -544,7 +547,7 @@ impl BigCoefficient {
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         })?;
-        context.charge_projection(length)?;
+        context.charge_generated_projection(length)?;
         let mut limbs = Vec::new();
         limbs.try_reserve_exact(length).map_err(|_| {
             crate::CssSpecifiedValueSerializationError::new(
@@ -560,7 +563,7 @@ impl BigCoefficient {
         &self,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
     ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
-        context.charge_projection(self.limbs.len())?;
+        context.charge_generated_projection(self.limbs.len())?;
         let mut limbs = Vec::new();
         limbs.try_reserve_exact(self.limbs.len()).map_err(|_| {
             crate::CssSpecifiedValueSerializationError::new(
@@ -580,7 +583,7 @@ impl BigCoefficient {
         if self.is_zero() {
             return Ok((Self::zero(), 0));
         }
-        context.charge_projection(self.limbs.len())?;
+        context.charge_generated_projection(self.limbs.len())?;
         let mut quotient = Vec::new();
         quotient.try_reserve_exact(self.limbs.len()).map_err(|_| {
             crate::CssSpecifiedValueSerializationError::new(
@@ -613,7 +616,7 @@ impl BigCoefficient {
             return Ok((Self::zero(), self.clone_with_budget(context)?));
         }
         let upper_len = self.limbs.len() - whole;
-        context.charge_projection(upper_len)?;
+        context.charge_generated_projection(upper_len)?;
         let mut upper = Vec::new();
         upper.try_reserve_exact(upper_len).map_err(|_| {
             crate::CssSpecifiedValueSerializationError::new(
@@ -628,7 +631,7 @@ impl BigCoefficient {
             upper.div_rem_small(10u64.pow(remainder_digits as u32), context)?
         };
         let lower_len = whole + usize::from(upper_remainder != 0);
-        context.charge_projection(lower_len)?;
+        context.charge_generated_projection(lower_len)?;
         let mut lower = Vec::new();
         lower.try_reserve_exact(lower_len).map_err(|_| {
             crate::CssSpecifiedValueSerializationError::new(
@@ -673,7 +676,7 @@ impl BigCoefficient {
                     crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                 )
             })?;
-        context.charge_projection(capacity)?;
+        context.charge_generated_projection(capacity)?;
         let mut limbs = Vec::new();
         limbs.try_reserve_exact(capacity).map_err(|_| {
             crate::CssSpecifiedValueSerializationError::new(
@@ -700,7 +703,7 @@ impl BigCoefficient {
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
     ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
         debug_assert!(self.cmp(other) != std::cmp::Ordering::Less);
-        context.charge_projection(self.limbs.len())?;
+        context.charge_generated_projection(self.limbs.len())?;
         let mut limbs = Vec::new();
         limbs.try_reserve_exact(self.limbs.len()).map_err(|_| {
             crate::CssSpecifiedValueSerializationError::new(
@@ -737,7 +740,7 @@ impl BigCoefficient {
             }
             *limb = 0;
         }
-        context.charge_projection(1)?;
+        context.charge_generated_projection(1)?;
         self.limbs.try_reserve(1).map_err(|_| {
             crate::CssSpecifiedValueSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
@@ -755,7 +758,7 @@ impl BigCoefficient {
         let mut index = 0usize;
         while value != 0 {
             if index == self.limbs.len() {
-                context.charge_projection(1)?;
+                context.charge_generated_projection(1)?;
                 self.limbs.try_reserve(1).map_err(|_| {
                     crate::CssSpecifiedValueSerializationError::new(
                         crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
@@ -2191,7 +2194,7 @@ impl LexicalDecimal<'_> {
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         })?;
-        context.charge_projection(work_digits)?;
+        context.charge_generated_projection(work_digits)?;
         let mut digits = Vec::new();
         digits.try_reserve_exact(work_digits).map_err(|_| {
             crate::CssSpecifiedValueSerializationError::new(

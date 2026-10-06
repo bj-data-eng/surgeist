@@ -38,10 +38,11 @@ impl CssBackground {
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        charge(writer)?;
+        writer.source_member(0, charge)?;
         for (index, layer) in self.layers().iter().enumerate() {
             if index != 0 {
-                writer.append(", ")?;
+                // The admitted image-list count owns the layer separator.
+                writer.source_member(0, |writer| writer.append(", "))?;
             }
             append_layer(layer, writer)?;
         }
@@ -90,24 +91,29 @@ fn component(
     writer: &mut SpecifiedRuleWriter,
     emitted: &mut bool,
     omit: bool,
+    property: crate::CssKnownProperty,
     visit: impl FnOnce(&mut SpecifiedRuleWriter) -> Result<()>,
 ) -> Result<()> {
-    if omit {
-        writer.without_output(visit)
-    } else {
-        before_component(writer, emitted)?;
-        visit(writer)
-    }
+    writer.source_property(property, |writer| {
+        if omit {
+            writer.without_output(visit)
+        } else {
+            before_component(writer, emitted)?;
+            visit(writer)
+        }
+    })
 }
 
 fn append_layer(layer: &CssBackgroundLayer, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-    charge(writer)?;
+    // The image list owns the admitted layer count; no item source is invented.
+    writer.source_property(crate::CssKnownProperty::BackgroundImage, charge)?;
     let mut emitted = false;
     if let Some(image) = layer.image() {
         component(
             writer,
             &mut emitted,
             matches!(image, CssImageValue::None),
+            crate::CssKnownProperty::BackgroundImage,
             |writer| image.append_specified(writer),
         )?;
     }
@@ -117,16 +123,19 @@ fn append_layer(layer: &CssBackgroundLayer, writer: &mut SpecifiedRuleWriter) ->
             writer,
             &mut emitted,
             !retained_size && initial_position(position),
+            crate::CssKnownProperty::BackgroundPosition,
             |writer| position.append_specified(writer),
         )?;
     }
     if let Some(size) = layer.size() {
-        if retained_size {
-            writer.append(" / ")?;
-            size.append_specified(writer)?;
-        } else {
-            writer.without_output(|writer| size.append_specified(writer))?;
-        }
+        writer.source_property(crate::CssKnownProperty::BackgroundSize, |writer| {
+            if retained_size {
+                writer.append(" / ")?;
+                size.append_specified(writer)
+            } else {
+                writer.without_output(|writer| size.append_specified(writer))
+            }
+        })?;
     }
     if let Some(repeat) = layer.repeat() {
         let omit = matches!(
@@ -136,15 +145,20 @@ fn append_layer(layer: &CssBackgroundLayer, writer: &mut SpecifiedRuleWriter) ->
                 y: CssBackgroundRepeatStyle::Repeat,
             }
         );
-        component(writer, &mut emitted, omit, |writer| {
-            repeat.append_specified(writer)
-        })?;
+        component(
+            writer,
+            &mut emitted,
+            omit,
+            crate::CssKnownProperty::BackgroundRepeat,
+            |writer| repeat.append_specified(writer),
+        )?;
     }
     if let Some(attachment) = layer.attachment() {
         component(
             writer,
             &mut emitted,
             attachment == CssBackgroundAttachment::Scroll,
+            crate::CssKnownProperty::BackgroundAttachment,
             |writer| attachment.append_specified(writer),
         )?;
     }
@@ -152,29 +166,46 @@ fn append_layer(layer: &CssBackgroundLayer, writer: &mut SpecifiedRuleWriter) ->
         let origin = boxes.origin();
         let clip = boxes.clip();
         let omit = origin == CssBackgroundBox::PaddingBox && clip == CssBackgroundBox::BorderBox;
-        component(writer, &mut emitted, omit, |writer| {
-            origin.append_specified(writer)?;
+        let visit = |writer: &mut SpecifiedRuleWriter| {
+            writer.source_property(crate::CssKnownProperty::BackgroundOrigin, |writer| {
+                origin.append_specified(writer)
+            })?;
             if matches!(boxes, CssBackgroundLayerBoxes::OriginAndClip { .. }) {
-                if origin == clip {
-                    // The second authored box still visits its existing provider.
-                    writer.without_output(|writer| clip.append_specified(writer))?;
-                } else {
-                    writer.append(" ")?;
-                    clip.append_specified(writer)?;
-                }
+                writer.source_property(crate::CssKnownProperty::BackgroundClip, |writer| {
+                    if origin == clip {
+                        writer.without_output(|writer| clip.append_specified(writer))
+                    } else {
+                        writer.append(" ")?;
+                        clip.append_specified(writer)
+                    }
+                })?;
             }
             Ok(())
-        })?;
+        };
+        if omit {
+            writer.without_output(visit)?;
+        } else {
+            writer.source_property(crate::CssKnownProperty::BackgroundOrigin, |writer| {
+                before_component(writer, &mut emitted)
+            })?;
+            visit(writer)?;
+        }
     }
     if let Some(color) = layer.color() {
-        component(writer, &mut emitted, color.is_transparent(), |writer| {
-            color.append_specified(&mut writer.context, &mut writer.css)
-        })?;
+        component(
+            writer,
+            &mut emitted,
+            color.is_transparent(),
+            crate::CssKnownProperty::BackgroundColor,
+            |writer| color.append_specified(&mut writer.context, &mut writer.css),
+        )?;
     }
     if !emitted {
         // The grammar requires a token for an otherwise empty effective layer.
-        writer.context.charge_projection(1)?;
-        writer.append("none")?;
+        writer.source_property(crate::CssKnownProperty::BackgroundImage, |writer| {
+            writer.context.charge_projection(1)?;
+            writer.append("none")
+        })?;
     }
     Ok(())
 }

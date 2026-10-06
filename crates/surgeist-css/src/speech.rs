@@ -367,13 +367,32 @@ impl CssSpeechBreakPair {
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        self.append_to_rule_writer_with_comparison(
+            writer,
+            &mut |after, before, _| Ok(after.specified_value_eq(before)),
+            &mut |_| {},
+        )
+    }
+
+    pub(crate) fn append_to_rule_writer_with_comparison(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+        equal: &mut impl FnMut(
+            &CssSpeechBreak,
+            &CssSpeechBreak,
+            &mut SpecifiedSerializationContext,
+        ) -> Result<bool, crate::CssSpecifiedValueSerializationError>,
+        before_value: &mut impl FnMut(usize),
+    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+        before_value(0);
         let context = &mut writer.context;
         context.charge_input(1)?;
         context.charge_projection(1)?;
         let output = &mut writer.css;
         self.before.append_specified(context, output)?;
         if let Some(after) = &self.after {
-            let omit = after.specified_value_eq(&self.before);
+            before_value(1);
+            let omit = equal(after, &self.before, context)?;
             let suppress = context.output_suppressed() || omit;
             let previous = context.replace_output_suppression(suppress);
             let result = (|| {
@@ -629,6 +648,10 @@ impl CssCue {
         }
     }
 
+    pub(crate) fn specified_inverse_eq(&self, other: &Self) -> bool {
+        self.equivalent(other)
+    }
+
     /// Serializes the specified cue without loading or resolving its resource.
     pub fn serialize_specified(&self) -> SerializationResult {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
@@ -731,14 +754,16 @@ impl CssCuePair {
     ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         writer.context.charge_input(1)?;
         writer.context.charge_projection(1)?;
-        self.before.append_specified(writer)?;
+        writer.source_member(0, |writer| self.before.append_specified(writer))?;
         if let Some(after) = &self.after {
-            if self.before.equivalent(after) {
-                writer.without_output(|writer| after.append_specified(writer))?;
-            } else {
-                writer.append(" ")?;
-                after.append_specified(writer)?;
-            }
+            writer.source_member(1, |writer| {
+                if self.before.equivalent(after) {
+                    writer.without_output(|writer| after.append_specified(writer))
+                } else {
+                    writer.append(" ")?;
+                    after.append_specified(writer)
+                }
+            })?;
         }
         Ok(())
     }

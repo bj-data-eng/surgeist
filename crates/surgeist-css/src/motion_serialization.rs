@@ -140,25 +140,33 @@ impl CssOffset {
     pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.node()?;
         if let Some(position) = self.position() {
-            position.append_to_rule_writer(writer)?;
+            writer.source_member(0, |writer| position.append_to_rule_writer(writer))?;
         }
         if let Some(path) = self.path() {
-            if self.position().is_some() {
-                writer.append(" ")?;
-            }
-            path.append_to_rule_writer(writer)?;
+            writer.source_member(1, |writer| {
+                if self.position().is_some() {
+                    writer.append(" ")?;
+                }
+                path.append_to_rule_writer(writer)
+            })?;
         }
         if let Some(distance) = self.distance() {
-            writer.append(" ")?;
-            distance.append_specified(&mut writer.context, &mut writer.css)?;
+            writer.source_member(2, |writer| {
+                writer.append(" ")?;
+                distance.append_specified(&mut writer.context, &mut writer.css)
+            })?;
         }
         if let Some(rotate) = self.rotate() {
-            writer.append(" ")?;
-            rotate.append_to_rule_writer(writer)?;
+            writer.source_member(3, |writer| {
+                writer.append(" ")?;
+                rotate.append_to_rule_writer(writer)
+            })?;
         }
         if let Some(anchor) = self.anchor() {
-            writer.append(" / ")?;
-            anchor.append_to_rule_writer(writer)?;
+            writer.source_member(4, |writer| {
+                writer.append(" / ")?;
+                anchor.append_to_rule_writer(writer)
+            })?;
         }
         Ok(())
     }

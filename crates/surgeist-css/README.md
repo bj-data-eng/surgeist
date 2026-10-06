@@ -196,6 +196,11 @@ authored occurrences and source provenance. See the
 [composition reference](docs/reference.md#checked-fonts-rule-composition) for
 placement, namespace, nesting and cumulative resource contracts.
 
+The [authored CSSOM declaration block](docs/reference.md#authored-cssom-declaration-blocks)
+projects retained occurrences into specified order and reconstructs exact
+shorthands under cumulative limits. It preserves original provenance and exposes
+the pending-footprint boundary before physical or logical reentry is established.
+
 ## License and attribution
 
 See the [MIT license](LICENSE) and [third-party notices](NOTICE.md).

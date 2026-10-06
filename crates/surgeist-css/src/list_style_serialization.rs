@@ -169,39 +169,47 @@ impl CssListStyleValue {
             || (!emit_type && !emit_image);
 
         let mut emitted = false;
-        if emit_position {
-            if let Some(value) = position {
-                append_position(writer, value)?;
-            } else {
-                writer.context.charge_projection(1)?;
-                writer.append("outside")?;
-            }
-            emitted = true;
-        } else if position.is_some() {
-            charge(writer)?;
+        if emit_position || position.is_some() {
+            writer.source_property(crate::CssKnownProperty::ListStylePosition, |writer| {
+                if emit_position {
+                    if let Some(value) = position {
+                        append_position(writer, value)?;
+                    } else {
+                        writer.context.charge_projection(1)?;
+                        writer.append("outside")?;
+                    }
+                    emitted = true;
+                } else {
+                    charge(writer)?;
+                }
+                Ok(())
+            })?;
         }
-
         if let Some(image) = self.image() {
-            if emit_image {
-                if emitted {
-                    writer.append(" ")?;
+            writer.source_property(crate::CssKnownProperty::ListStyleImage, |writer| {
+                if emit_image {
+                    if emitted {
+                        writer.append(" ")?;
+                    }
+                    image.append_specified(writer)?;
+                    emitted = true;
+                } else {
+                    charge(writer)?;
                 }
-                image.append_specified(writer)?;
-                emitted = true;
-            } else {
-                charge(writer)?;
-            }
+                Ok(())
+            })?;
         }
-
         if let Some(style_type) = self.style_type() {
-            if emit_type {
-                if emitted {
-                    writer.append(" ")?;
+            writer.source_property(crate::CssKnownProperty::ListStyleType, |writer| {
+                if emit_type {
+                    if emitted {
+                        writer.append(" ")?;
+                    }
+                    append_type(writer, style_type)
+                } else {
+                    charge(writer)
                 }
-                append_type(writer, style_type)?;
-            } else {
-                charge(writer)?;
-            }
+            })?;
         }
         Ok(())
     }

@@ -512,6 +512,13 @@ enum TokenData {
 }
 
 impl ValueToken {
+    fn structural_eq_ignoring_origin(&self, other: &Self) -> bool {
+        self.data == other.data
+            && self.spelling.text == other.spelling.text
+            && self.implicit_end.as_ref().map(|end| &end.text)
+                == other.implicit_end.as_ref().map(|end| &end.text)
+    }
+
     fn view(&self) -> CssValueTokenRef<'_> {
         match &self.data {
             TokenData::Ident(value) => CssValueTokenRef::Ident(value),
@@ -684,6 +691,17 @@ pub enum CssComponentValueRef<'a> {
 }
 
 impl CssComponentValue {
+    /// Borrows the exact primitive-token relation without component graph work.
+    /// Checked numeric syntax and literal leaves are token-only consumers.
+    pub(crate) fn token_structural_eq_ignoring_origin(&self, other: &Self) -> Option<bool> {
+        match (&self.data, &other.data) {
+            (ComponentData::Token(left), ComponentData::Token(right)) => {
+                Some(left.structural_eq_ignoring_origin(right))
+            }
+            _ => None,
+        }
+    }
+
     // Raw supplied or generated lexeme; decoded token identity is distinct.
     pub(crate) fn token_representation(&self) -> Option<&str> {
         match &self.data {
@@ -700,11 +718,7 @@ impl CssComponentValue {
         while let Some((left, right)) = pending.pop() {
             let children = match (&left.data, &right.data) {
                 (ComponentData::Token(a), ComponentData::Token(b)) => {
-                    if a.data != b.data
-                        || a.spelling.text != b.spelling.text
-                        || a.implicit_end.as_ref().map(|end| &end.text)
-                            != b.implicit_end.as_ref().map(|end| &end.text)
-                    {
+                    if !a.structural_eq_ignoring_origin(b) {
                         return false;
                     }
                     None

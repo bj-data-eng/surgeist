@@ -164,7 +164,7 @@ struct Projection<'a> {
 }
 impl Projection<'_> {
     fn add(&mut self, kind: Kind, ty: CssNumericType) -> Result<Id> {
-        self.context.charge_projection(1)?;
+        self.context.charge_generated_projection(1)?;
         self.arena
             .try_reserve(1)
             .map_err(|_| Error::new(ErrorKind::CapacityOverflow))?;

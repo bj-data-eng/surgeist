@@ -102,14 +102,18 @@ impl CssBorderStylePair {
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         let context = &mut writer.context;
-        let output = &mut writer.css;
 
         context.charge_input(1)?;
         context.charge_projection(1)?;
-        self.start.append_specified(context, output)?;
+        writer.source_member(0, |writer| {
+            self.start
+                .append_specified(&mut writer.context, &mut writer.css)
+        })?;
         if let Some(end) = &self.authored_end {
-            context.append(output, " ")?;
-            end.append_specified(context, output)?;
+            writer.source_member(1, |writer| {
+                writer.append(" ")?;
+                end.append_specified(&mut writer.context, &mut writer.css)
+            })?;
         }
         Ok(())
     }
@@ -171,18 +175,19 @@ impl CssBorderStyleShorthand {
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         let context = &mut writer.context;
-        let output = &mut writer.css;
 
         context.charge_input(1)?;
         context.charge_projection(1)?;
         if self.kind == CssBoxSideKind::Logical {
-            context.append(output, "logical ")?;
+            writer.source_member(0, |writer| writer.append("logical "))?;
         }
         for (index, style) in self.authored_values.iter().enumerate() {
-            if index > 0 {
-                context.append(output, " ")?;
-            }
-            style.append_specified(context, output)?;
+            writer.source_member(index, |writer| {
+                if index > 0 {
+                    writer.append(" ")?;
+                }
+                style.append_specified(&mut writer.context, &mut writer.css)
+            })?;
         }
         Ok(())
     }

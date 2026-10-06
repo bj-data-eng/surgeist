@@ -6,8 +6,8 @@
 use crate::{
     CssCalculationExpressionRef, CssComponentValue, CssComponentValueLimits, CssComponentValueRef,
     CssComponentValues, CssNumericConstructionError, CssNumericConstructionErrorKind,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits, CssValueOrigin,
-    CssValueTokenRef,
+    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,
+    CssSpecifiedValueSerializationLimits, CssValueOrigin, CssValueTokenRef,
     numeric::{
         CssCalculationExpression, parse_calc_size_sum, project_calc_size_sum_into,
         validate_calc_size_graph,
@@ -164,6 +164,52 @@ impl CssCalcSize {
             }
         }
         true
+    }
+
+    /// The CSSOM inverse uses this owner's same calculation-before-basis order,
+    /// admitting every actual calc-size pending slot before fallible reserve.
+    pub(crate) fn specified_inverse_eq(
+        &self,
+        other: &Self,
+        context: &mut SpecifiedSerializationContext,
+    ) -> SerializationResult<bool> {
+        context.charge_generated_projection(1)?;
+        let mut pending = Vec::new();
+        pending.try_reserve(1).map_err(|_| {
+            CssSpecifiedValueSerializationError::new(
+                CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
+            )
+        })?;
+        pending.push((self, other));
+        while let Some((left, right)) = pending.pop() {
+            if !left
+                .data
+                .calculation
+                .specified_inverse_eq(&right.data.calculation, context)?
+            {
+                return Ok(false);
+            }
+            match (&left.data.basis, &right.data.basis) {
+                (Basis::Keyword(a), Basis::Keyword(b)) if a == b => {}
+                (Basis::Any, Basis::Any) => {}
+                (Basis::Nested(a), Basis::Nested(b)) => {
+                    context.charge_generated_projection(1)?;
+                    pending.try_reserve(1).map_err(|_| {
+                        CssSpecifiedValueSerializationError::new(
+                            CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
+                        )
+                    })?;
+                    pending.push((a, b));
+                }
+                (Basis::Sum(a), Basis::Sum(b)) => {
+                    if !a.specified_inverse_eq(b, context)? {
+                        return Ok(false);
+                    }
+                }
+                _ => return Ok(false),
+            }
+        }
+        Ok(true)
     }
 
     pub fn try_from_component(component: CssComponentValue) -> Result<Self> {

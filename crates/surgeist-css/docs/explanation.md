@@ -63,13 +63,13 @@ Selector-list pseudo-class arguments are parsed as authored selector syntax with
 
 ## Downstream ownership
 
-This crate owns authored CSS syntax, intrinsic grammar validation, recovery boundaries, diagnostics, and support metadata. It does not apply cascade or inheritance, substitute or resolve variables, evaluate queries, match selectors, resolve URLs or resources, perform layout or painting, serialize a CSSOM, or lower CSS into sibling Surgeist types. Root-owned integration owns cross-crate lowering and generated API audit artifacts.
+This crate owns authored CSS syntax, intrinsic grammar validation, recovery boundaries, diagnostics, support metadata, and bounded specified-value serialization. Its [authored CSSOM declaration projection](reference.md#authored-cssom-declaration-blocks) selects duplicate winners within one supplied list and reconstructs exact shorthands while retaining original occurrences. It does not apply an element cascade or inheritance, substitute or resolve variables, evaluate queries, match selectors, resolve URLs or resources, perform layout or painting, manage live CSSOM objects, or lower CSS into sibling Surgeist types. Root-owned integration owns cross-crate lowering and generated API audit artifacts.
 
 Container queries retain authored grouping and operator order on `@container` group rules. Their checked preludes keep ordered comma alternatives, including name-only entries, as independent queries; normalization transports the complete prelude once. Parsed and checked preludes and conditions share immutable component syntax, which also supplies their serialization and source origins. Read each entry's optional name and query, inspect the query kind through its accessor, and construct through checked component admission. Container matching and mutable CSSOM behavior belong to downstream Surgeist layers.
 
 Imports are parsed as authored `@import` contracts only. `surgeist-css` preserves import targets, layer clauses, supports conditions, and media conditions, but does not resolve paths, load files, or merge imported sheets; root/style-owned Surgeist integration performs loading and composition.
 
-Cascade layers are parsed as authored `@layer` statements and blocks, including named and anonymous layer blocks. `surgeist-css` records layer names and layer-contained rules, but does not compute cascade order, declaration precedence, or runtime cascade effects.
+Cascade layers are parsed as authored `@layer` statements and blocks, including named and anonymous layer blocks. `surgeist-css` records layer names and layer-contained rules, but does not compute layer cascade order or runtime cascade effects.
 
 Scoped styles are parsed as authored `@scope` rules with optional roots, limits, scoped style
 selectors, and scoped nested group rules. A scoped style rule also retains leading declarations

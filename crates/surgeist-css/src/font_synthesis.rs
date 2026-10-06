@@ -134,14 +134,17 @@ impl CssFontSynthesis {
         match self {
             Self::None => word(writer, start, "none"),
             Self::Values(values) => {
-                for (selected, keyword) in [
+                for (index, (selected, keyword)) in [
                     (values.weight(), "weight"),
                     (values.style(), "style"),
                     (values.small_caps(), "small-caps"),
                     (values.position(), "position"),
-                ] {
+                ]
+                .into_iter()
+                .enumerate()
+                {
                     if selected {
-                        word(writer, start, keyword)?;
+                        writer.source_member(index, |writer| word(writer, start, keyword))?;
                     }
                 }
                 Ok(())

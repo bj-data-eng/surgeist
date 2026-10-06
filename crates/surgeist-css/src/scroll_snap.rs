@@ -493,22 +493,24 @@ fn append_pair<T>(
     ) -> SerializationResult<()>,
 ) -> SerializationResult<()> {
     if writer.context.output_suppressed() {
-        visit(start, writer)?;
+        writer.source_member(0, |writer| visit(start, writer))?;
         if let Some(end) = end {
-            visit(end, writer)?;
+            writer.source_member(1, |writer| visit(end, writer))?;
         }
         return Ok(());
     }
-    let context = &mut writer.context;
-    let output = &mut writer.css;
-    let first = capture(start, context)?;
-    let second = end.map(|end| capture(end, context)).transpose()?;
-    context.append(output, first.as_css())?;
+    let first = writer.source_member(0, |writer| capture(start, &mut writer.context))?;
+    let second = end
+        .map(|end| writer.source_member(1, |writer| capture(end, &mut writer.context)))
+        .transpose()?;
+    writer.source_member(0, |writer| writer.append(first.as_css()))?;
     if let (Some(end), Some(second)) = (end, second)
         && !component_equal(start, end, &first, &second)
     {
-        context.append(output, " ")?;
-        context.append(output, second.as_css())?;
+        writer.source_member(1, |writer| {
+            writer.append(" ")?;
+            writer.append(second.as_css())
+        })?;
     }
     Ok(())
 }
@@ -660,22 +662,25 @@ fn append_four<T>(
         &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> SerializationResult<()>,
 ) -> SerializationResult<()> {
-    let context = &mut writer.context;
     if values.kind == CssScrollSideKind::Logical {
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
+        writer.source_member(0, |writer| {
+            writer.context.charge_input(1)?;
+            writer.context.charge_projection(1)
+        })?;
     }
-    if context.output_suppressed() {
-        for value in &values.authored {
-            visit(value, writer)?;
+    if writer.context.output_suppressed() {
+        for (index, value) in values.authored.iter().enumerate() {
+            writer.source_member(index, |writer| visit(value, writer))?;
         }
         return Ok(());
     }
-    let output = &mut writer.css;
     let authored = values
         .authored
         .iter()
-        .map(|value| capture(value, context))
+        .enumerate()
+        .map(|(index, value)| {
+            writer.source_member(index, |writer| capture(value, &mut writer.context))
+        })
         .collect::<SerializationResult<Vec<_>>>()?;
     let role = |index: usize| -> &CapturedNumericComponent { &authored[values.role_index(index)] };
     let equal = |left: usize, right: usize| {
@@ -697,13 +702,15 @@ fn append_four<T>(
         vec![first, second, third, fourth]
     };
     if values.kind == CssScrollSideKind::Logical {
-        context.append(output, "logical ")?;
+        writer.source_member(0, |writer| writer.append("logical "))?;
     }
     for (index, value) in selected.iter().enumerate() {
-        if index > 0 {
-            context.append(output, " ")?;
-        }
-        context.append(output, value.as_css())?;
+        writer.source_member(index, |writer| {
+            if index > 0 {
+                writer.append(" ")?;
+            }
+            writer.append(value.as_css())
+        })?;
     }
     Ok(())
 }

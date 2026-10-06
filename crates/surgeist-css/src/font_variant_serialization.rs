@@ -261,25 +261,45 @@ impl CssFontVariantValue {
             Self::None => word(writer, start, "none"),
             Self::Values(values) => {
                 if let Some(value) = values.ligatures() {
-                    CssFontVariantLigatures::Values(*value).write(writer, start)?;
+                    writer.source_property(
+                        crate::CssKnownProperty::FontVariantLigatures,
+                        |writer| CssFontVariantLigatures::Values(*value).write(writer, start),
+                    )?;
                 }
                 if let Some(value) = values.caps() {
-                    value.write(writer, start)?;
+                    writer.source_property(crate::CssKnownProperty::FontVariantCaps, |writer| {
+                        value.write(writer, start)
+                    })?;
                 }
                 if let Some(value) = values.alternates() {
-                    value.write(writer, start)?;
+                    writer.source_property(
+                        crate::CssKnownProperty::FontVariantAlternates,
+                        |writer| value.write(writer, start),
+                    )?;
                 }
                 if let Some(value) = values.numeric() {
-                    CssFontVariantNumeric::Values(*value).write(writer, start)?;
+                    writer
+                        .source_property(crate::CssKnownProperty::FontVariantNumeric, |writer| {
+                            CssFontVariantNumeric::Values(*value).write(writer, start)
+                        })?;
                 }
                 if let Some(value) = values.east_asian() {
-                    CssFontVariantEastAsian::Values(*value).write(writer, start)?;
+                    writer.source_property(
+                        crate::CssKnownProperty::FontVariantEastAsian,
+                        |writer| CssFontVariantEastAsian::Values(*value).write(writer, start),
+                    )?;
                 }
                 if let Some(value) = values.position() {
-                    value.write(writer, start)?;
+                    writer.source_property(
+                        crate::CssKnownProperty::FontVariantPosition,
+                        |writer| value.write(writer, start),
+                    )?;
                 }
                 if let Some(value) = values.emoji() {
-                    value.write(writer, start)?;
+                    writer
+                        .source_property(crate::CssKnownProperty::FontVariantEmoji, |writer| {
+                            value.write(writer, start)
+                        })?;
                 }
                 Ok(())
             }

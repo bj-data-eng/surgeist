@@ -4450,7 +4450,6 @@ pub(super) enum DeclarationMode {
 pub(super) struct ParsedDeclaration {
     pub(super) body: CssDeclarationBody,
     pub(super) importance: CssImportance,
-    pub(super) position: crate::source::CssSourcePosition,
     components: CssComponentValues,
     name: CssParsedOrigin,
     value_origin: CssParsedOrigin,
@@ -4470,7 +4469,7 @@ impl ParsedDeclaration {
     }
 
     fn into_keyframe_declaration(self) -> CssKeyframeDeclaration {
-        CssKeyframeDeclaration::new(self.body, self.components, self.position)
+        CssKeyframeDeclaration::from_parsed(self.into_declaration())
     }
 }
 
@@ -4485,6 +4484,21 @@ enum DeclarationBoundaryContext<'a> {
         at_rule: &'a str,
         descriptor: &'a str,
     },
+}
+
+/// The single admission predicate for known properties in authored keyframes.
+pub(crate) fn keyframe_property_admitted(property: CssKnownProperty) -> bool {
+    !matches!(
+        property,
+        CssKnownProperty::AnimationName
+            | CssKnownProperty::AnimationDuration
+            | CssKnownProperty::AnimationDelay
+            | CssKnownProperty::AnimationIterationCount
+            | CssKnownProperty::AnimationDirection
+            | CssKnownProperty::AnimationFillMode
+            | CssKnownProperty::AnimationPlayState
+            | CssKnownProperty::Animation
+    )
 }
 
 pub(super) fn parse_declaration_core<'i, 't>(
@@ -4505,7 +4519,6 @@ pub(super) fn parse_declaration_core<'i, 't>(
         declaration_start.position().byte_index()..input.position().byte_index(),
     )
     .expect("parser name boundaries belong to the original source");
-    let position = name_origin.span().start();
     input.reset(&value_start);
 
     let (body, importance, components, value_origin) = if name.starts_with("--") {
@@ -4560,18 +4573,7 @@ pub(super) fn parse_declaration_core<'i, 't>(
             property_name_error(declaration_start.source_location(), name.as_ref())
         })?;
         let known_property = resolved_property.property();
-        if matches!(mode, DeclarationMode::Keyframe)
-            && matches!(
-                known_property,
-                CssKnownProperty::AnimationName
-                    | CssKnownProperty::AnimationDuration
-                    | CssKnownProperty::AnimationDelay
-                    | CssKnownProperty::AnimationIterationCount
-                    | CssKnownProperty::AnimationDirection
-                    | CssKnownProperty::AnimationFillMode
-                    | CssKnownProperty::AnimationPlayState
-                    | CssKnownProperty::Animation
-            )
+        if matches!(mode, DeclarationMode::Keyframe) && !keyframe_property_admitted(known_property)
         {
             return Err(with_property_context(
                 crate::error::unsupported_value_at(
@@ -4602,7 +4604,6 @@ pub(super) fn parse_declaration_core<'i, 't>(
     Ok(ParsedDeclaration {
         body,
         importance,
-        position,
         components,
         name: name_origin,
         value_origin,

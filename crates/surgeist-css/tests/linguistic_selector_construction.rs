@@ -205,13 +205,13 @@ fn source_nul_is_tokenizer_replacement_while_construction_rejects_nul() {
 
 #[test]
 fn retained_linguistic_arguments_keep_the_original_eof_closure_contract() {
-    // The recovery scanner records the unclosed function delimiter once.
-    // A quoted token ends at EOF; its missing quote is not another block opener.
-    for (source, expected) in [
-        (":dir(ltr", "ltr"),
-        (":lang(en", "en"),
-        (":lang(\"en", "en"),
-        ("/*😀*/\r\n:lang(\"en", "en"),
+    // Syntax 3 reports EOF separately for the string and enclosing function.
+    // A missing quote reports recovery without spending another nesting level.
+    for (source, expected, expected_closures) in [
+        (":dir(ltr", "ltr", 1),
+        (":lang(en", "en", 1),
+        (":lang(\"en", "en", 2),
+        ("/*😀*/\r\n:lang(\"en", "en", 2),
     ] {
         let report = parse_selector(source, &CssNamespaceContext::default());
         let value = match report.syntax() {
@@ -221,22 +221,22 @@ fn retained_linguistic_arguments_keep_the_original_eof_closure_contract() {
         };
         assert_eq!(value, expected);
         assert!(!report.is_clean());
-        let [closure] = report.diagnostics() else {
-            panic!("one retained function closure: {report:?}")
-        };
-        assert_eq!(
-            closure.action(),
-            surgeist_css::CssRecoveryAction::RetainWithImplicitClosure
-        );
-        assert_eq!(
-            closure.error().position().byte_offset().value(),
-            source.len()
-        );
-        assert_eq!(closure.span().start().byte_offset().value(), source.len());
-        assert_eq!(closure.span().end().byte_offset().value(), source.len());
-        if source.contains('\n') {
-            assert_eq!(closure.error().position().line().value(), 1);
-            assert_eq!(closure.error().position().column().value(), 9);
+        assert_eq!(report.diagnostics().len(), expected_closures, "{source}");
+        for closure in report.diagnostics() {
+            assert_eq!(
+                closure.action(),
+                surgeist_css::CssRecoveryAction::RetainWithImplicitClosure
+            );
+            assert_eq!(
+                closure.error().position().byte_offset().value(),
+                source.len()
+            );
+            assert_eq!(closure.span().start().byte_offset().value(), source.len());
+            assert_eq!(closure.span().end().byte_offset().value(), source.len());
+            if source.contains('\n') {
+                assert_eq!(closure.error().position().line().value(), 1);
+                assert_eq!(closure.error().position().column().value(), 9);
+            }
         }
         assert!(report.into_validation_result().is_err());
     }

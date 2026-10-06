@@ -78,6 +78,7 @@ property_records! {
         source: "X-UI4",
         dispatch: "red manual block",
         wrapper: yes,
+        inverse: ("red manual block", "red manual block"),
     }
     InterestDelay, "interest-delay" {
         metadata: shorthand([InterestDelayStart, InterestDelayEnd], []),
@@ -85,6 +86,7 @@ property_records! {
         source: "X-UI4",
         dispatch: "normal -1s",
         wrapper: yes,
+        inverse: ("normal -1s", "normal -1s"),
     }
     AccentColor, "accent-color" {
         metadata: longhand(true, |v| assert!(matches!(v, CssAccentColor::Auto))),
@@ -134,6 +136,7 @@ property_records! {
         source: "I-ANIMATIONS1",
         dispatch: "fade 1s ease-in 200ms 3 alternate both running",
         wrapper: yes,
+        inverse: ("fade 1s", "1s fade"),
     }
     AnimationDelay, "animation-delay" {
         metadata: longhand(false, |v| {
@@ -238,6 +241,7 @@ property_records! {
         source: "O-BACKGROUNDS3",
         dispatch: "#fff",
         wrapper: yes,
+        inverse: ("red", "red"),
     }
     BackgroundAttachment, "background-attachment" {
         metadata: longhand(false, |v| {
@@ -329,60 +333,76 @@ property_records! {
     }
     BlockSize, "block-size" {
         metadata: longhand(false, |v| assert_eq!(*v, CssSizeValue::Auto)),
+        mapping: logical("size"),
     }
     Border, "border" {
         metadata: shorthand([BorderTopWidth, BorderRightWidth, BorderBottomWidth, BorderLeftWidth, BorderTopStyle, BorderRightStyle, BorderBottomStyle, BorderLeftStyle, BorderTopColor, BorderRightColor, BorderBottomColor, BorderLeftColor], [BorderImageSource, BorderImageSlice, BorderImageWidth, BorderImageOutset, BorderImageRepeat]),
         catalog: grammar_catalog!("baseline.property.border", "solid 2px #fff", rejected("solid dotted")),
         dispatch: "solid 2px #fff",
         wrapper: yes,
+        inverse: ("1px solid red", "1px solid red"),
     }
     BorderBlock, "border-block" {
         metadata: shorthand([BorderBlockStartWidth, BorderBlockEndWidth, BorderBlockStartStyle, BorderBlockEndStyle, BorderBlockStartColor, BorderBlockEndColor], []),
+        inverse: ("1px solid red", "1px solid red"),
     }
     BorderBlockColor, "border-block-color" {
         metadata: shorthand([BorderBlockStartColor, BorderBlockEndColor], []),
+        inverse: ("red red", "red"),
     }
     BorderBlockEnd, "border-block-end" {
         metadata: shorthand([BorderBlockEndWidth, BorderBlockEndStyle, BorderBlockEndColor], []),
+        inverse: ("1px solid red", "1px solid red"),
     }
     BorderBlockEndColor, "border-block-end-color" {
         metadata: longhand(false, |v| assert!(v.is_current_color())),
+        mapping: logical("border-color"),
     }
     BorderBlockEndStyle, "border-block-end-style" {
         metadata: longhand(false, |v| assert_eq!(*v, CssBorderStyle::None)),
+        mapping: logical("border-style"),
     }
     BorderBlockEndWidth, "border-block-end-width" {
         metadata: longhand(false, |v| assert_eq!(*v, CssBorderWidth::Medium)),
+        mapping: logical("border-width"),
     }
     BorderBlockStart, "border-block-start" {
         metadata: shorthand([BorderBlockStartWidth, BorderBlockStartStyle, BorderBlockStartColor], []),
+        inverse: ("1px solid red", "1px solid red"),
     }
     BorderBlockStartColor, "border-block-start-color" {
         metadata: longhand(false, |v| assert!(v.is_current_color())),
+        mapping: logical("border-color"),
     }
     BorderBlockStartStyle, "border-block-start-style" {
         metadata: longhand(false, |v| assert_eq!(*v, CssBorderStyle::None)),
+        mapping: logical("border-style"),
     }
     BorderBlockStartWidth, "border-block-start-width" {
         metadata: longhand(false, |v| assert_eq!(*v, CssBorderWidth::Medium)),
+        mapping: logical("border-width"),
     }
     BorderBlockStyle, "border-block-style" {
         metadata: shorthand([BorderBlockStartStyle, BorderBlockEndStyle], []),
+        inverse: ("solid solid", "solid"),
     }
     BorderBlockWidth, "border-block-width" {
         metadata: shorthand([BorderBlockStartWidth, BorderBlockEndWidth], []),
+        inverse: ("1px 1px", "1px"),
     }
     BorderBottom, "border-bottom" {
         metadata: shorthand([BorderBottomWidth, BorderBottomStyle, BorderBottomColor], []),
         catalog: grammar_catalog!("baseline.property.border-bottom", "#fff", rejected("solid dotted")),
         dispatch: "#fff",
         wrapper: yes,
+        inverse: ("1px solid red", "1px solid red"),
     }
     BorderBottomColor, "border-bottom-color" {
         metadata: longhand(false, |v| assert!(v.is_current_color())),
         catalog: grammar_catalog!("baseline.property.border-bottom-color", "transparent", rejected("black white")),
         dispatch: "transparent",
         wrapper: yes,
+        mapping: physical("border-color"),
     }
     BorderBottomLeftRadius, "border-bottom-left-radius" {
         metadata: longhand(false, |v| {
@@ -396,6 +416,7 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.border-bottom-left-radius", "calc(1px + 2%)", rejected("-1px")),
         dispatch: "calc(1px + 2%)",
         wrapper: yes,
+        mapping: physical("border-radius"),
     }
     BorderBottomRightRadius, "border-bottom-right-radius" {
         metadata: longhand(false, |v| {
@@ -409,18 +430,21 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.border-bottom-right-radius", "10%", rejected("-1px")),
         dispatch: "10%",
         wrapper: yes,
+        mapping: physical("border-radius"),
     }
     BorderBottomStyle, "border-bottom-style" {
         metadata: longhand(false, |v| assert_eq!(*v, CssBorderStyle::None)),
         catalog: grammar_catalog!("baseline.property.border-bottom-style", "ridge", rejected("auto")),
         dispatch: "ridge",
         wrapper: yes,
+        mapping: physical("border-style"),
     }
     BorderBottomWidth, "border-bottom-width" {
         metadata: longhand(false, |v| assert_eq!(*v, CssBorderWidth::Medium)),
         catalog: grammar_catalog!("baseline.property.border-bottom-width", "3px", rejected("10%")),
         dispatch: "3px",
         wrapper: yes,
+        mapping: physical("border-width"),
     }
     BorderCollapse, "border-collapse" {
         metadata: longhand(true, |v| assert_eq!(*v, CssBorderCollapse::Separate)),
@@ -431,6 +455,7 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.border-color", "black", rejected("black white black white black")),
         dispatch: "black",
         wrapper: yes,
+        inverse: ("red", "red"),
     }
     BorderEndEndRadius, "border-end-end-radius" {
         metadata: longhand(false, |v| {
@@ -441,6 +466,7 @@ property_records! {
             assert_eq!(v.horizontal(), v.vertical());
             assert!(v.authored_vertical().is_none());
         }),
+        mapping: logical("border-radius"),
     }
     BorderEndStartRadius, "border-end-start-radius" {
         metadata: longhand(false, |v| {
@@ -451,10 +477,12 @@ property_records! {
             assert_eq!(v.horizontal(), v.vertical());
             assert!(v.authored_vertical().is_none());
         }),
+        mapping: logical("border-radius"),
     }
     BorderImage, "border-image" {
         metadata: shorthand([BorderImageSource, BorderImageSlice, BorderImageWidth, BorderImageOutset, BorderImageRepeat], []),
         catalog: grammar_catalog!("official.property.border-image", "url(frame.png) 10 fill / 2 / 1 round", rejected("url(frame.png) / 2")),
+        inverse: ("none", "none"),
     }
     BorderImageOutset, "border-image-outset" {
         metadata: longhand(false, |v| {
@@ -499,93 +527,114 @@ property_records! {
     }
     BorderInline, "border-inline" {
         metadata: shorthand([BorderInlineStartWidth, BorderInlineEndWidth, BorderInlineStartStyle, BorderInlineEndStyle, BorderInlineStartColor, BorderInlineEndColor], []),
+        inverse: ("1px solid red", "1px solid red"),
     }
     BorderInlineColor, "border-inline-color" {
         metadata: shorthand([BorderInlineStartColor, BorderInlineEndColor], []),
+        inverse: ("red red", "red"),
     }
     BorderInlineEnd, "border-inline-end" {
         metadata: shorthand([BorderInlineEndWidth, BorderInlineEndStyle, BorderInlineEndColor], []),
+        inverse: ("1px solid red", "1px solid red"),
     }
     BorderInlineEndColor, "border-inline-end-color" {
         metadata: longhand(false, |v| assert!(v.is_current_color())),
+        mapping: logical("border-color"),
     }
     BorderInlineEndStyle, "border-inline-end-style" {
         metadata: longhand(false, |v| assert_eq!(*v, CssBorderStyle::None)),
+        mapping: logical("border-style"),
     }
     BorderInlineEndWidth, "border-inline-end-width" {
         metadata: longhand(false, |v| assert_eq!(*v, CssBorderWidth::Medium)),
+        mapping: logical("border-width"),
     }
     BorderInlineStart, "border-inline-start" {
         metadata: shorthand([BorderInlineStartWidth, BorderInlineStartStyle, BorderInlineStartColor], []),
+        inverse: ("1px solid red", "1px solid red"),
     }
     BorderInlineStartColor, "border-inline-start-color" {
         metadata: longhand(false, |v| assert!(v.is_current_color())),
+        mapping: logical("border-color"),
     }
     BorderInlineStartStyle, "border-inline-start-style" {
         metadata: longhand(false, |v| assert_eq!(*v, CssBorderStyle::None)),
+        mapping: logical("border-style"),
     }
     BorderInlineStartWidth, "border-inline-start-width" {
         metadata: longhand(false, |v| assert_eq!(*v, CssBorderWidth::Medium)),
+        mapping: logical("border-width"),
     }
     BorderInlineStyle, "border-inline-style" {
         metadata: shorthand([BorderInlineStartStyle, BorderInlineEndStyle], []),
+        inverse: ("solid solid", "solid"),
     }
     BorderInlineWidth, "border-inline-width" {
         metadata: shorthand([BorderInlineStartWidth, BorderInlineEndWidth], []),
+        inverse: ("1px 1px", "1px"),
     }
     BorderLeft, "border-left" {
         metadata: shorthand([BorderLeftWidth, BorderLeftStyle, BorderLeftColor], []),
         catalog: grammar_catalog!("baseline.property.border-left", "dashed black", rejected("solid dotted")),
         dispatch: "dashed black",
         wrapper: yes,
+        inverse: ("1px solid red", "1px solid red"),
     }
     BorderLeftColor, "border-left-color" {
         metadata: longhand(false, |v| assert!(v.is_current_color())),
         catalog: grammar_catalog!("baseline.property.border-left-color", "#fff", rejected("black white")),
         dispatch: "#fff",
         wrapper: yes,
+        mapping: physical("border-color"),
     }
     BorderLeftStyle, "border-left-style" {
         metadata: longhand(false, |v| assert_eq!(*v, CssBorderStyle::None)),
         catalog: grammar_catalog!("baseline.property.border-left-style", "outset", rejected("auto")),
         dispatch: "outset",
         wrapper: yes,
+        mapping: physical("border-style"),
     }
     BorderLeftWidth, "border-left-width" {
         metadata: longhand(false, |v| assert_eq!(*v, CssBorderWidth::Medium)),
         catalog: grammar_catalog!("baseline.property.border-left-width", "4px", rejected("10%")),
         dispatch: "4px",
         wrapper: yes,
+        mapping: physical("border-width"),
     }
     BorderRadius, "border-radius" {
         metadata: shorthand([BorderTopLeftRadius, BorderTopRightRadius, BorderBottomRightRadius, BorderBottomLeftRadius], []),
         catalog: grammar_catalog!("baseline.property.border-radius", "1px 2px 3px / 4px 5px", rejected("-1px")),
         dispatch: "1px 2px 3px / 4px 5px",
         wrapper: yes,
+        inverse: ("1px 2px / 3px 4px", "1px 2px / 3px 4px"),
     }
     BorderRight, "border-right" {
         metadata: shorthand([BorderRightWidth, BorderRightStyle, BorderRightColor], []),
         catalog: grammar_catalog!("baseline.property.border-right", "1px", rejected("solid dotted")),
         dispatch: "1px",
         wrapper: yes,
+        inverse: ("1px solid red", "1px solid red"),
     }
     BorderRightColor, "border-right-color" {
         metadata: longhand(false, |v| assert!(v.is_current_color())),
         catalog: grammar_catalog!("baseline.property.border-right-color", "white", rejected("black white")),
         dispatch: "white",
         wrapper: yes,
+        mapping: physical("border-color"),
     }
     BorderRightStyle, "border-right-style" {
         metadata: longhand(false, |v| assert_eq!(*v, CssBorderStyle::None)),
         catalog: grammar_catalog!("baseline.property.border-right-style", "double", rejected("auto")),
         dispatch: "double",
         wrapper: yes,
+        mapping: physical("border-style"),
     }
     BorderRightWidth, "border-right-width" {
         metadata: longhand(false, |v| assert_eq!(*v, CssBorderWidth::Medium)),
         catalog: grammar_catalog!("baseline.property.border-right-width", "2px", rejected("10%")),
         dispatch: "2px",
         wrapper: yes,
+        mapping: physical("border-width"),
     }
     BorderSpacing, "border-spacing" {
         metadata: longhand(true, |v| {
@@ -603,6 +652,7 @@ property_records! {
             assert_eq!(v.horizontal(), v.vertical());
             assert!(v.authored_vertical().is_none());
         }),
+        mapping: logical("border-radius"),
     }
     BorderStartStartRadius, "border-start-start-radius" {
         metadata: longhand(false, |v| {
@@ -613,24 +663,28 @@ property_records! {
             assert_eq!(v.horizontal(), v.vertical());
             assert!(v.authored_vertical().is_none());
         }),
+        mapping: logical("border-radius"),
     }
     BorderStyle, "border-style" {
         metadata: four_side(),
         catalog: grammar_catalog!("baseline.property.border-style", "none hidden dotted dashed", rejected("auto")),
         dispatch: "none hidden dotted dashed",
         wrapper: yes,
+        inverse: ("solid", "solid"),
     }
     BorderTop, "border-top" {
         metadata: shorthand([BorderTopWidth, BorderTopStyle, BorderTopColor], []),
         catalog: grammar_catalog!("baseline.property.border-top", "black dotted", rejected("solid dotted")),
         dispatch: "black dotted",
         wrapper: yes,
+        inverse: ("1px solid red", "1px solid red"),
     }
     BorderTopColor, "border-top-color" {
         metadata: longhand(false, |v| assert!(v.is_current_color())),
         catalog: grammar_catalog!("baseline.property.border-top-color", "black", rejected("black white")),
         dispatch: "black",
         wrapper: yes,
+        mapping: physical("border-color"),
     }
     BorderTopLeftRadius, "border-top-left-radius" {
         metadata: longhand(false, |v| {
@@ -644,6 +698,7 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.border-top-left-radius", "4px 10%", rejected("-1px")),
         dispatch: "4px 10%",
         wrapper: yes,
+        mapping: physical("border-radius"),
     }
     BorderTopRightRadius, "border-top-right-radius" {
         metadata: longhand(false, |v| {
@@ -657,30 +712,35 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.border-top-right-radius", "1px", rejected("-1px")),
         dispatch: "1px",
         wrapper: yes,
+        mapping: physical("border-radius"),
     }
     BorderTopStyle, "border-top-style" {
         metadata: longhand(false, |v| assert_eq!(*v, CssBorderStyle::None)),
         catalog: grammar_catalog!("baseline.property.border-top-style", "solid", rejected("auto")),
         dispatch: "solid",
         wrapper: yes,
+        mapping: physical("border-style"),
     }
     BorderTopWidth, "border-top-width" {
         metadata: longhand(false, |v| assert_eq!(*v, CssBorderWidth::Medium)),
         catalog: grammar_catalog!("baseline.property.border-top-width", "1px", rejected("10%")),
         dispatch: "1px",
         wrapper: yes,
+        mapping: physical("border-width"),
     }
     BorderWidth, "border-width" {
         metadata: four_side(),
         catalog: grammar_catalog!("baseline.property.border-width", "1px 2px 3px 4px", rejected("10%")),
         dispatch: "1px 2px 3px 4px",
         wrapper: yes,
+        inverse: ("1px", "1px"),
     }
     Bottom, "bottom" {
         metadata: longhand(false, |v| assert_eq!(*v, CssInsetValue::Auto)),
         catalog: grammar_catalog!("baseline.property.bottom", "5%", rejected("solid")),
         dispatch: "5%",
         wrapper: yes,
+        mapping: physical("inset"),
     }
     BoxDecorationBreak, "box-decoration-break" {
         metadata: longhand(false, |v| {
@@ -803,6 +863,7 @@ property_records! {
         source: "I-MOTION1",
         dispatch: "normal none -25% reverse / auto",
         wrapper: yes,
+        inverse: ("none", "none"),
     }
     ShapeImageThreshold, "shape-image-threshold" {
         metadata: longhand(false, |v| {
@@ -849,6 +910,7 @@ property_records! {
         source: "R-COLORADJUST1",
         dispatch: "economy",
         wrapper: yes,
+        inverse: ("exact", "exact"),
     }
     ColorScheme, "color-scheme" {
         metadata: longhand(true, |v| assert_eq!(*v, CssColorScheme::normal())),
@@ -880,6 +942,7 @@ property_records! {
         metadata: shorthand([ColumnRuleWidth, ColumnRuleStyle, ColumnRuleColor], []),
         dispatch: "thick dashed rebeccapurple",
         wrapper: yes,
+        inverse: ("2px solid red", "2px solid red"),
     }
     ColumnRuleColor, "column-rule-color" {
         metadata: longhand(false, |v| assert!(v.is_current_color())),
@@ -910,6 +973,7 @@ property_records! {
         metadata: shorthand([ColumnWidth, ColumnCount], []),
         dispatch: "4 10rem",
         wrapper: yes,
+        inverse: ("2 10px", "10px 2"),
     }
     Contain, "contain" {
         metadata: longhand(false, |v| assert_eq!(*v, CssContain::None)),
@@ -930,6 +994,7 @@ property_records! {
                 CssContainIntrinsicSizeFallback::None
             ));
         }),
+        mapping: logical("contain-intrinsic-size"),
     }
     ContainIntrinsicHeight, "contain-intrinsic-height" {
         metadata: longhand(false, |v| {
@@ -943,6 +1008,7 @@ property_records! {
                 CssContainIntrinsicSizeFallback::None
             ));
         }),
+        mapping: physical("contain-intrinsic-size"),
     }
     ContainIntrinsicInlineSize, "contain-intrinsic-inline-size" {
         metadata: longhand(false, |v| {
@@ -956,9 +1022,11 @@ property_records! {
                 CssContainIntrinsicSizeFallback::None
             ));
         }),
+        mapping: logical("contain-intrinsic-size"),
     }
     ContainIntrinsicSize, "contain-intrinsic-size" {
         metadata: shorthand([ContainIntrinsicWidth, ContainIntrinsicHeight], []),
+        inverse: ("none", "none"),
     }
     ContainIntrinsicWidth, "contain-intrinsic-width" {
         metadata: longhand(false, |v| {
@@ -972,9 +1040,11 @@ property_records! {
                 CssContainIntrinsicSizeFallback::None
             ));
         }),
+        mapping: physical("contain-intrinsic-size"),
     }
     Container, "container" {
         metadata: shorthand([ContainerName, ContainerType], []),
+        inverse: ("box / inline-size", "box / inline-size"),
     }
     ContainerName, "container-name" {
         metadata: longhand(false, |v| assert_eq!(*v, CssContainerNames::None)),
@@ -1048,6 +1118,7 @@ property_records! {
     }
     Cue, "cue" {
         metadata: shorthand([CueBefore, CueAfter], []),
+        inverse: ("none", "none"),
     }
     CueAfter, "cue-after" {
         metadata: longhand(false, |value| {
@@ -1125,6 +1196,7 @@ property_records! {
         aliases: ["-webkit-flex"],
         dispatch: "2 0 10rem",
         wrapper: yes,
+        inverse: ("2 0 10px", "2 0 10px"),
     }
     FlexBasis, "flex-basis" {
         metadata: longhand(false, |v| {
@@ -1153,6 +1225,7 @@ property_records! {
         aliases: ["-webkit-flex-flow"],
         dispatch: "wrap-reverse column",
         wrapper: yes,
+        inverse: ("column wrap", "column wrap"),
     }
     FlexGrow, "flex-grow" {
         metadata: longhand(false, |v| {
@@ -1201,6 +1274,7 @@ property_records! {
         source: "I-FONTS4-20260907",
         dispatch: "italic small-caps 700 condensed 16px/normal \"Avenir Next\", sans-serif",
         wrapper: yes,
+        inverse: ("16px serif", "16px serif"),
     }
     FontFamily, "font-family" {
         metadata: longhand(true, ua(CssUserAgentInitial::FontFamily)),
@@ -1266,6 +1340,7 @@ property_records! {
         source: "I-FONTS4-20260907",
         dispatch: "position small-caps style weight",
         wrapper: yes,
+        inverse: ("weight style", "weight style"),
     }
     FontSynthesisPosition, "font-synthesis-position" {
         metadata: longhand(true, |v| {
@@ -1296,6 +1371,7 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.font-variant", "small-caps", rejected("italic")),
         dispatch: "small-caps",
         wrapper: yes,
+        inverse: ("small-caps", "small-caps"),
     }
     FontVariantAlternates, "font-variant-alternates" {
         metadata: longhand(true, |v| {
@@ -1385,6 +1461,7 @@ property_records! {
         aliases: ["grid-gap"],
         dispatch: "12px",
         wrapper: yes,
+        inverse: ("1px 2px", "1px 2px"),
     }
     Grid, "grid" {
         metadata: shorthand([GridTemplateRows, GridTemplateColumns, GridTemplateAreas, GridAutoRows, GridAutoColumns, GridAutoFlow], []),
@@ -1392,12 +1469,14 @@ property_records! {
         source: "R-GRID2",
         dispatch: "auto-flow dense 12px / repeat(auto-fit, 10px)",
         wrapper: yes,
+        inverse: ("none", "none"),
     }
     GridArea, "grid-area" {
         metadata: shorthand([GridRowStart, GridColumnStart, GridRowEnd, GridColumnEnd], []),
         catalog: grammar_catalog!("baseline.property.grid-area", "header / 1 / span 2 / main", rejected("0")),
         dispatch: "header / 1 / span 2 / main",
         wrapper: yes,
+        inverse: ("1 / 2 / 3 / 4", "1 / 2 / 3 / 4"),
     }
     GridAutoColumns, "grid-auto-columns" {
         metadata: longhand(false, |v| {
@@ -1440,6 +1519,7 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.grid-column", "nav / main", rejected("0")),
         dispatch: "nav / main",
         wrapper: yes,
+        inverse: ("1 / 3", "1 / 3"),
     }
     GridColumnEnd, "grid-column-end" {
         metadata: longhand(false, |v| {
@@ -1462,6 +1542,7 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.grid-row", "1 / span 2", rejected("0")),
         dispatch: "1 / span 2",
         wrapper: yes,
+        inverse: ("2 / 4", "2 / 4"),
     }
     GridRowEnd, "grid-row-end" {
         metadata: longhand(false, |v| {
@@ -1484,6 +1565,7 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.grid-template", "100px 1fr / repeat(2, minmax(10px, 1fr))", rejected("solid")),
         dispatch: "100px 1fr / repeat(2, minmax(10px, 1fr))",
         wrapper: yes,
+        inverse: ("none", "none"),
     }
     GridTemplateAreas, "grid-template-areas" {
         metadata: longhand(false, |v| {
@@ -1527,6 +1609,7 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.height", "auto", rejected("solid")),
         dispatch: "auto",
         wrapper: yes,
+        mapping: physical("size"),
     }
     HyphenateCharacter, "hyphenate-character" {
         metadata: longhand(true, |v| assert_eq!(*v, CssHyphenateCharacter::Auto)),
@@ -1586,6 +1669,7 @@ property_records! {
     }
     InlineSize, "inline-size" {
         metadata: longhand(false, |v| assert_eq!(*v, CssSizeValue::Auto)),
+        mapping: logical("size"),
     }
     Inset, "inset" {
         metadata: four_side(),
@@ -1593,24 +1677,31 @@ property_records! {
         source: "I-POSITION3",
         dispatch: "auto 10px 5%",
         wrapper: yes,
+        inverse: ("1px 2px", "1px 2px"),
     }
     InsetBlock, "inset-block" {
         metadata: shorthand([InsetBlockStart, InsetBlockEnd], []),
+        inverse: ("1px 2px", "1px 2px"),
     }
     InsetBlockEnd, "inset-block-end" {
         metadata: longhand(false, |v| assert_eq!(*v, CssInsetValue::Auto)),
+        mapping: logical("inset"),
     }
     InsetBlockStart, "inset-block-start" {
         metadata: longhand(false, |v| assert_eq!(*v, CssInsetValue::Auto)),
+        mapping: logical("inset"),
     }
     InsetInline, "inset-inline" {
         metadata: shorthand([InsetInlineStart, InsetInlineEnd], []),
+        inverse: ("1px 2px", "1px 2px"),
     }
     InsetInlineEnd, "inset-inline-end" {
         metadata: longhand(false, |v| assert_eq!(*v, CssInsetValue::Auto)),
+        mapping: logical("inset"),
     }
     InsetInlineStart, "inset-inline-start" {
         metadata: longhand(false, |v| assert_eq!(*v, CssInsetValue::Auto)),
+        mapping: logical("inset"),
     }
     Isolation, "isolation" {
         metadata: longhand(false, |v| assert_eq!(*v, CssIsolation::Auto)),
@@ -1629,6 +1720,7 @@ property_records! {
         source: "X-GRID3-20260121",
         dispatch: "balance dense reverse -2px row",
         wrapper: yes,
+        inverse: ("row nowrap", "row nowrap"),
     }
     ItemPack, "item-pack" {
         metadata: longhand(false, |v| assert_eq!(*v, CssItemPack::Normal)),
@@ -1675,6 +1767,7 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.left", "calc(3px + 4%)", rejected("solid")),
         dispatch: "calc(3px + 4%)",
         wrapper: yes,
+        mapping: physical("inset"),
     }
     LetterSpacing, "letter-spacing" {
         metadata: longhand(true, |v| {
@@ -1716,6 +1809,7 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.list-style", "url(marker.svg) inside square", rejected("inside outside square")),
         dispatch: "url(marker.svg) inside square",
         wrapper: yes,
+        inverse: ("square inside none", "inside square"),
     }
     ListStyleImage, "list-style-image" {
         metadata: longhand(true, |v| assert_eq!(v, &CssImageValue::None)),
@@ -1745,21 +1839,25 @@ property_records! {
         source: "O-BOX3",
         dispatch: "auto 10px 5%",
         wrapper: yes,
+        inverse: ("1px 2px", "1px 2px"),
     }
     MarginBlock, "margin-block" {
         metadata: shorthand([MarginBlockStart, MarginBlockEnd], []),
+        inverse: ("1px 2px", "1px 2px"),
     }
     MarginBlockEnd, "margin-block-end" {
         metadata: longhand(false, |v| assert_eq!(
             *v,
             CssMarginValue::LengthPercentage(CssSpecifiedLengthPercentage::zero())
         )),
+        mapping: logical("margin"),
     }
     MarginBlockStart, "margin-block-start" {
         metadata: longhand(false, |v| assert_eq!(
             *v,
             CssMarginValue::LengthPercentage(CssSpecifiedLengthPercentage::zero())
         )),
+        mapping: logical("margin"),
     }
     MarginBottom, "margin-bottom" {
         metadata: longhand(false, |v| assert_eq!(
@@ -1769,21 +1867,25 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.margin-bottom", "5%", rejected("solid")),
         dispatch: "5%",
         wrapper: yes,
+        mapping: physical("margin"),
     }
     MarginInline, "margin-inline" {
         metadata: shorthand([MarginInlineStart, MarginInlineEnd], []),
+        inverse: ("1px 2px", "1px 2px"),
     }
     MarginInlineEnd, "margin-inline-end" {
         metadata: longhand(false, |v| assert_eq!(
             *v,
             CssMarginValue::LengthPercentage(CssSpecifiedLengthPercentage::zero())
         )),
+        mapping: logical("margin"),
     }
     MarginInlineStart, "margin-inline-start" {
         metadata: longhand(false, |v| assert_eq!(
             *v,
             CssMarginValue::LengthPercentage(CssSpecifiedLengthPercentage::zero())
         )),
+        mapping: logical("margin"),
     }
     MarginLeft, "margin-left" {
         metadata: longhand(false, |v| assert_eq!(
@@ -1793,6 +1895,7 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.margin-left", "calc(3px + 4%)", rejected("solid")),
         dispatch: "calc(3px + 4%)",
         wrapper: yes,
+        mapping: physical("margin"),
     }
     MarginRight, "margin-right" {
         metadata: longhand(false, |v| assert_eq!(
@@ -1802,6 +1905,7 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.margin-right", "10px", rejected("solid")),
         dispatch: "10px",
         wrapper: yes,
+        mapping: physical("margin"),
     }
     MarginTop, "margin-top" {
         metadata: longhand(false, |v| assert_eq!(
@@ -1811,6 +1915,7 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.margin-top", "auto", rejected("solid")),
         dispatch: "auto",
         wrapper: yes,
+        mapping: physical("margin"),
     }
     MarkerSide, "marker-side" {
         metadata: longhand(true, |v| assert_eq!(*v, CssMarkerSide::MatchSelf)),
@@ -1821,6 +1926,7 @@ property_records! {
         source: "S-MASKING1",
         dispatch: "url(mask.png) center / contain no-repeat",
         wrapper: yes,
+        inverse: ("none", "none"),
     }
     MaskImage, "mask-image" {
         metadata: longhand(false, |v| assert!(matches!(v.images(), [CssImageValue::None]))),
@@ -1880,6 +1986,7 @@ property_records! {
         metadata: shorthand([MaskBorderSource, MaskBorderSlice, MaskBorderWidth, MaskBorderOutset, MaskBorderRepeat, MaskBorderMode], []),
         catalog: complete_grammar_catalog!("official.property.mask-border", "url(a) 1 2 fill / auto / 2 round alpha", rejected("fill 1")),
         source: "S-MASKING1", dispatch: "url(a) 1 2 fill / auto / 2 round alpha", wrapper: yes,
+        inverse: ("none", "none"),
     }
     MaskBorderSource, "mask-border-source" {
         metadata: longhand(false, |v| assert!(matches!(v, CssImageValue::None))),
@@ -1937,48 +2044,58 @@ property_records! {
     }
     MaxBlockSize, "max-block-size" {
         metadata: longhand(false, |v| assert_eq!(*v, CssMaxSizeValue::NONE)),
+        mapping: logical("max-size"),
     }
     MaxHeight, "max-height" {
         metadata: longhand(false, |v| assert_eq!(*v, CssMaxSizeValue::NONE)),
         catalog: grammar_catalog!("baseline.property.max-height", "fit-content", rejected("solid")),
         dispatch: "fit-content",
         wrapper: yes,
+        mapping: physical("max-size"),
     }
     MaxInlineSize, "max-inline-size" {
         metadata: longhand(false, |v| assert_eq!(*v, CssMaxSizeValue::NONE)),
+        mapping: logical("max-size"),
     }
     MaxSize, "max-size" {
         metadata: shorthand([MaxWidth, MaxHeight], []),
+        inverse: ("10px 20px", "10px 20px"),
     }
     MaxWidth, "max-width" {
         metadata: longhand(false, |v| assert_eq!(*v, CssMaxSizeValue::NONE)),
         catalog: grammar_catalog!("baseline.property.max-width", "max-content", rejected("solid")),
         dispatch: "max-content",
         wrapper: yes,
+        mapping: physical("max-size"),
     }
     MinBlockSize, "min-block-size" {
         metadata: longhand(false, |v| assert_eq!(*v, CssSizeValue::Auto)),
+        mapping: logical("min-size"),
     }
     MinHeight, "min-height" {
         metadata: longhand(false, |v| assert_eq!(*v, CssSizeValue::Auto)),
         catalog: grammar_catalog!("baseline.property.min-height", "min-content", rejected("solid")),
         dispatch: "min-content",
         wrapper: yes,
+        mapping: physical("min-size"),
     }
     MinInlineSize, "min-inline-size" {
         metadata: longhand(false, |v| assert_eq!(*v, CssSizeValue::Auto)),
+        mapping: logical("min-size"),
     }
     MinIntrinsicSizing, "min-intrinsic-sizing" {
         metadata: longhand(false, |v| assert_eq!(*v, CssMinIntrinsicSizing::Legacy)),
     }
     MinSize, "min-size" {
         metadata: shorthand([MinWidth, MinHeight], []),
+        inverse: ("1px 2px", "1px 2px"),
     }
     MinWidth, "min-width" {
         metadata: longhand(false, |v| assert_eq!(*v, CssSizeValue::Auto)),
         catalog: grammar_catalog!("baseline.property.min-width", "0", rejected("solid")),
         dispatch: "0",
         wrapper: yes,
+        mapping: physical("min-size"),
     }
     MixBlendMode, "mix-blend-mode" {
         metadata: longhand(false, |v| assert_eq!(*v, CssBlendMode::Normal)),
@@ -2036,6 +2153,7 @@ property_records! {
         source: "X-UI4",
         dispatch: "thick dotted white",
         wrapper: yes,
+        inverse: ("2px solid red", "2px solid red"),
     }
     OutlineColor, "outline-color" {
         metadata: longhand(false, |v| assert!(matches!(v, CssOutlineColor::Auto))),
@@ -2075,6 +2193,7 @@ property_records! {
             })),
         dispatch: "hidden scroll",
         wrapper: yes,
+        inverse: ("hidden scroll", "hidden scroll"),
     }
     OverflowAnchor, "overflow-anchor" {
         metadata: longhand(false, |v| assert_eq!(*v, CssOverflowAnchor::Auto)),
@@ -2085,6 +2204,7 @@ property_records! {
     }
     OverflowBlock, "overflow-block" {
         metadata: longhand(false, |v| assert_eq!(*v, CssOverflow::Visible)),
+        mapping: logical("overflow"),
     }
     OverflowClipMargin, "overflow-clip-margin" {
         metadata: longhand(false, |v| {
@@ -2098,6 +2218,7 @@ property_records! {
     }
     OverflowInline, "overflow-inline" {
         metadata: longhand(false, |v| assert_eq!(*v, CssOverflow::Visible)),
+        mapping: logical("overflow"),
     }
     OverflowWrap, "overflow-wrap" {
         metadata: longhand(true, |v| assert_eq!(v, &CssOverflowWrap::Normal)),
@@ -2118,6 +2239,7 @@ property_records! {
         source: "X-OVERFLOW3",
         dispatch: "clip",
         wrapper: yes,
+        mapping: physical("overflow"),
     }
     OverflowY, "overflow-y" {
         metadata: longhand(false, |v| assert_eq!(*v, CssOverflow::Visible)),
@@ -2129,27 +2251,32 @@ property_records! {
             })),
         dispatch: "visible",
         wrapper: yes,
+        mapping: physical("overflow"),
     }
     Padding, "padding" {
         metadata: four_side(),
         catalog: grammar_catalog!("baseline.property.padding", "1px 2% calc(3px + 4%) 0", rejected("auto")),
         dispatch: "1px 2% calc(3px + 4%) 0",
         wrapper: yes,
+        inverse: ("1px 2px", "1px 2px"),
     }
     PaddingBlock, "padding-block" {
         metadata: shorthand([PaddingBlockStart, PaddingBlockEnd], []),
+        inverse: ("1px 2px", "1px 2px"),
     }
     PaddingBlockEnd, "padding-block-end" {
         metadata: longhand(false, |v| assert_eq!(
             *v,
             CssPaddingValue::new(CssSpecifiedNonNegativeLengthPercentage::zero())
         )),
+        mapping: logical("padding"),
     }
     PaddingBlockStart, "padding-block-start" {
         metadata: longhand(false, |v| assert_eq!(
             *v,
             CssPaddingValue::new(CssSpecifiedNonNegativeLengthPercentage::zero())
         )),
+        mapping: logical("padding"),
     }
     PaddingBottom, "padding-bottom" {
         metadata: longhand(false, |v| assert_eq!(
@@ -2159,21 +2286,25 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.padding-bottom", "calc(3px + 4%)", rejected("auto")),
         dispatch: "calc(3px + 4%)",
         wrapper: yes,
+        mapping: physical("padding"),
     }
     PaddingInline, "padding-inline" {
         metadata: shorthand([PaddingInlineStart, PaddingInlineEnd], []),
+        inverse: ("1px 2px", "1px 2px"),
     }
     PaddingInlineEnd, "padding-inline-end" {
         metadata: longhand(false, |v| assert_eq!(
             *v,
             CssPaddingValue::new(CssSpecifiedNonNegativeLengthPercentage::zero())
         )),
+        mapping: logical("padding"),
     }
     PaddingInlineStart, "padding-inline-start" {
         metadata: longhand(false, |v| assert_eq!(
             *v,
             CssPaddingValue::new(CssSpecifiedNonNegativeLengthPercentage::zero())
         )),
+        mapping: logical("padding"),
     }
     PaddingLeft, "padding-left" {
         metadata: longhand(false, |v| assert_eq!(
@@ -2183,6 +2314,7 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.padding-left", "0", rejected("auto")),
         dispatch: "0",
         wrapper: yes,
+        mapping: physical("padding"),
     }
     PaddingRight, "padding-right" {
         metadata: longhand(false, |v| assert_eq!(
@@ -2192,6 +2324,7 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.padding-right", "2%", rejected("auto")),
         dispatch: "2%",
         wrapper: yes,
+        mapping: physical("padding"),
     }
     PaddingTop, "padding-top" {
         metadata: longhand(false, |v| assert_eq!(
@@ -2201,10 +2334,12 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.padding-top", "12px", rejected("auto")),
         dispatch: "12px",
         wrapper: yes,
+        mapping: physical("padding"),
     }
     Pause, "pause" {
         metadata: shorthand([PauseBefore, PauseAfter], []),
         wrapper: yes,
+        inverse: ("none", "none"),
     }
     PauseAfter, "pause-after" {
         metadata: longhand(false, |value| assert_eq!(*value, CssSpeechBreak::None)),
@@ -2239,18 +2374,21 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.place-content", "center end", rejected("auto")),
         dispatch: "center end",
         wrapper: yes,
+        inverse: ("center end", "center end"),
     }
     PlaceItems, "place-items" {
         metadata: shorthand([AlignItems, JustifyItems], []),
         catalog: grammar_catalog!("baseline.property.place-items", "stretch", rejected("space-between")),
         dispatch: "stretch",
         wrapper: yes,
+        inverse: ("stretch", "stretch"),
     }
     PlaceSelf, "place-self" {
         metadata: shorthand([AlignSelf, JustifySelf], []),
         catalog: grammar_catalog!("baseline.property.place-self", "end center", rejected("space-between")),
         dispatch: "end center",
         wrapper: yes,
+        inverse: ("auto", "auto"),
     }
     PointerEvents, "pointer-events" {
         metadata: longhand(true, |v| assert_eq!(*v, CssPointerEvents::Auto)),
@@ -2291,6 +2429,7 @@ property_records! {
     Rest, "rest" {
         metadata: shorthand([RestBefore, RestAfter], []),
         wrapper: yes,
+        inverse: ("none", "none"),
     }
     RestAfter, "rest-after" {
         metadata: longhand(false, |value| assert_eq!(*value, CssSpeechBreak::None)),
@@ -2305,6 +2444,7 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.right", "10px", rejected("solid")),
         dispatch: "10px",
         wrapper: yes,
+        mapping: physical("inset"),
     }
     Rotate, "rotate" {
         metadata: longhand(false, |v| assert_eq!(*v, CssRotate::None)),
@@ -2335,101 +2475,123 @@ property_records! {
     }
     ScrollMargin, "scroll-margin" {
         metadata: four_side(),
+        inverse: ("1px 2px", "1px 2px"),
     }
     ScrollMarginBlock, "scroll-margin-block" {
         metadata: shorthand([ScrollMarginBlockStart, ScrollMarginBlockEnd], []),
+        inverse: ("1px 2px", "1px 2px"),
     }
     ScrollMarginBlockEnd, "scroll-margin-block-end" {
         metadata: longhand(false, |v| {
             assert_eq!(*v, CssSpecifiedLength::zero())
         }),
+        mapping: logical("scroll-margin"),
     }
     ScrollMarginBlockStart, "scroll-margin-block-start" {
         metadata: longhand(false, |v| {
             assert_eq!(*v, CssSpecifiedLength::zero())
         }),
+        mapping: logical("scroll-margin"),
     }
     ScrollMarginBottom, "scroll-margin-bottom" {
         metadata: longhand(false, |v| {
             assert_eq!(*v, CssSpecifiedLength::zero())
         }),
+        mapping: physical("scroll-margin"),
     }
     ScrollMarginInline, "scroll-margin-inline" {
         metadata: shorthand([ScrollMarginInlineStart, ScrollMarginInlineEnd], []),
+        inverse: ("1px 2px", "1px 2px"),
     }
     ScrollMarginInlineEnd, "scroll-margin-inline-end" {
         metadata: longhand(false, |v| {
             assert_eq!(*v, CssSpecifiedLength::zero())
         }),
+        mapping: logical("scroll-margin"),
     }
     ScrollMarginInlineStart, "scroll-margin-inline-start" {
         metadata: longhand(false, |v| {
             assert_eq!(*v, CssSpecifiedLength::zero())
         }),
+        mapping: logical("scroll-margin"),
     }
     ScrollMarginLeft, "scroll-margin-left" {
         metadata: longhand(false, |v| {
             assert_eq!(*v, CssSpecifiedLength::zero())
         }),
+        mapping: physical("scroll-margin"),
     }
     ScrollMarginRight, "scroll-margin-right" {
         metadata: longhand(false, |v| {
             assert_eq!(*v, CssSpecifiedLength::zero())
         }),
+        mapping: physical("scroll-margin"),
     }
     ScrollMarginTop, "scroll-margin-top" {
         metadata: longhand(false, |v| {
             assert_eq!(*v, CssSpecifiedLength::zero())
         }),
+        mapping: physical("scroll-margin"),
     }
     ScrollPadding, "scroll-padding" {
         metadata: four_side(),
+        inverse: ("1px 2px", "1px 2px"),
     }
     ScrollPaddingBlock, "scroll-padding-block" {
         metadata: shorthand([ScrollPaddingBlockStart, ScrollPaddingBlockEnd], []),
+        inverse: ("1px 2px", "1px 2px"),
     }
     ScrollPaddingBlockEnd, "scroll-padding-block-end" {
         metadata: longhand(false, |v| {
             assert_eq!(*v, CssScrollPaddingValue::Auto)
         }),
+        mapping: logical("scroll-padding"),
     }
     ScrollPaddingBlockStart, "scroll-padding-block-start" {
         metadata: longhand(false, |v| {
             assert_eq!(*v, CssScrollPaddingValue::Auto)
         }),
+        mapping: logical("scroll-padding"),
     }
     ScrollPaddingBottom, "scroll-padding-bottom" {
         metadata: longhand(false, |v| {
             assert_eq!(*v, CssScrollPaddingValue::Auto)
         }),
+        mapping: physical("scroll-padding"),
     }
     ScrollPaddingInline, "scroll-padding-inline" {
         metadata: shorthand([ScrollPaddingInlineStart, ScrollPaddingInlineEnd], []),
+        inverse: ("1px 2px", "1px 2px"),
     }
     ScrollPaddingInlineEnd, "scroll-padding-inline-end" {
         metadata: longhand(false, |v| {
             assert_eq!(*v, CssScrollPaddingValue::Auto)
         }),
+        mapping: logical("scroll-padding"),
     }
     ScrollPaddingInlineStart, "scroll-padding-inline-start" {
         metadata: longhand(false, |v| {
             assert_eq!(*v, CssScrollPaddingValue::Auto)
         }),
+        mapping: logical("scroll-padding"),
     }
     ScrollPaddingLeft, "scroll-padding-left" {
         metadata: longhand(false, |v| {
             assert_eq!(*v, CssScrollPaddingValue::Auto)
         }),
+        mapping: physical("scroll-padding"),
     }
     ScrollPaddingRight, "scroll-padding-right" {
         metadata: longhand(false, |v| {
             assert_eq!(*v, CssScrollPaddingValue::Auto)
         }),
+        mapping: physical("scroll-padding"),
     }
     ScrollPaddingTop, "scroll-padding-top" {
         metadata: longhand(false, |v| {
             assert_eq!(*v, CssScrollPaddingValue::Auto)
         }),
+        mapping: physical("scroll-padding"),
     }
     ScrollSnapAlign, "scroll-snap-align" {
         metadata: longhand(false, |v| assert_eq!(
@@ -2461,6 +2623,7 @@ property_records! {
     }
     Size, "size" {
         metadata: shorthand([Width, Height], []),
+        inverse: ("10px 20px", "10px 20px"),
     }
     Speak, "speak" {
         metadata: longhand(true, |value| assert_eq!(*value, CssSpeak::Auto)),
@@ -2492,6 +2655,7 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.text-align", "start", rejected("auto")),
         dispatch: "start",
         wrapper: yes,
+        inverse: ("justify-all", "justify-all"),
     }
     TextAlignAll, "text-align-all" {
         metadata: longhand(true, |v| {
@@ -2522,6 +2686,7 @@ property_records! {
         source: "X-TEXTDECOR4",
         dispatch: "underline dotted white 3px",
         wrapper: yes,
+        inverse: ("underline", "underline"),
     }
     TextDecorationColor, "text-decoration-color" {
         metadata: longhand(false, |v| assert!(v.is_current_color())),
@@ -2557,6 +2722,7 @@ property_records! {
         source: "X-TEXTDECOR4",
         dispatch: "none",
         wrapper: yes,
+        inverse: ("none", "none"),
     }
     TextDecorationSkipSelf, "text-decoration-skip-self" {
         metadata: longhand(true, |v| assert_eq!(*v, CssTextDecorationSkipSelf::Objects)),
@@ -2599,6 +2765,7 @@ property_records! {
         source: "X-TEXTDECOR4",
         dispatch: "red open triangle",
         wrapper: yes,
+        inverse: ("open triangle red", "open triangle red"),
     }
     TextEmphasisStyle, "text-emphasis-style" {
         metadata: longhand(true, |v| assert_eq!(*v, CssTextEmphasisStyle::None)),
@@ -2690,6 +2857,7 @@ property_records! {
         source: "X-TEXT4",
         dispatch: "replace punctuation ideograph-alpha trim-both",
         wrapper: yes,
+        inverse: ("auto", "auto"),
     }
     TextSpacingTrim, "text-spacing-trim" {
         metadata: longhand(true, |v| assert_eq!(*v, CssTextSpacingTrim::Trim(CssSpacingTrim::Normal))),
@@ -2711,6 +2879,7 @@ property_records! {
         source: "X-TEXT4",
         dispatch: "balance",
         wrapper: yes,
+        inverse: ("balance", "balance"),
     }
     TextWrapMode, "text-wrap-mode" {
         metadata: longhand(true, |v| assert_eq!(*v, CssTextWrapMode::Wrap)),
@@ -2731,6 +2900,7 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.top", "auto", rejected("solid")),
         dispatch: "auto",
         wrapper: yes,
+        mapping: physical("inset"),
     }
     Transform, "transform" {
         metadata: longhand(false, |v| assert_eq!(*v, CssTransform::None)),
@@ -2773,6 +2943,7 @@ property_records! {
         source: "I-TRANSITIONS1",
         dispatch: "opacity 150ms ease-in 20ms, transform 2s linear",
         wrapper: yes,
+        inverse: ("opacity 1s", "opacity 1s"),
     }
     TransitionDelay, "transition-delay" {
         metadata: longhand(false, |v| {
@@ -2905,6 +3076,7 @@ property_records! {
         source: "X-TEXT4",
         dispatch: "pre-wrap",
         wrapper: yes,
+        inverse: ("pre-wrap", "pre-wrap"),
     }
     WhiteSpaceCollapse, "white-space-collapse" {
         metadata: longhand(true, |v| {
@@ -2933,6 +3105,7 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.width", "calc(100% - 12px)", rejected("solid")),
         dispatch: "calc(100% - 12px)",
         wrapper: yes,
+        mapping: physical("size"),
     }
     WillChange, "will-change" {
         metadata: longhand(false, |v| assert_eq!(*v, CssWillChange::Auto)),
@@ -2997,3 +3170,15 @@ property_records! {
         wrapper: yes,
     }
 }
+
+// Adopted CSSOM supported union: the independent SVG identity is neutral and
+// remains admitted in authored keyframes regardless of name-lookup selection.
+// Its finite Writing Modes legacy spelling still targets only TextOrientation.
+pub const INDEPENDENT_TERMINALS: &[IndependentTerminalExpectation] = &[
+    IndependentTerminalExpectation {
+        property: CssPropertyNameRef::SvgGlyphOrientationVertical,
+        name: "glyph-orientation-vertical",
+        mapping: MappingExpectation::Neutral,
+        keyframe_admitted: true,
+    },
+];

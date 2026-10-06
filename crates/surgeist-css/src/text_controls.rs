@@ -495,8 +495,11 @@ provider!(CssAutospace, value, writer => match value { Self::NoAutospace => writ
 provider!(CssTextAutospace, value, writer => match value { Self::Normal => writer.keyword("normal"), Self::Auto => writer.keyword("auto"), Self::Autospace(value) => value.append_to_rule_writer(writer) });
 provider!(CssTextSpacingTrim, value, writer => match value { Self::Auto => writer.keyword("auto"), Self::Trim(value) => value.append_to_rule_writer(writer) });
 provider!(CssTextSpacingValues, value, writer => {
-    if let Some(trim) = value.trim { trim.append_to_rule_writer(writer)?; }
-    if let Some(auto) = value.autospace { if value.trim.is_some() { writer.append(" ")?; } auto.append_to_rule_writer(writer)?; }
+    if let Some(trim) = value.trim { writer.source_member(0, |writer| trim.append_to_rule_writer(writer))?; }
+    if let Some(auto) = value.autospace { writer.source_member(1, |writer| {
+        if value.trim.is_some() { writer.append(" ")?; }
+        auto.append_to_rule_writer(writer)
+    })?; }
     Ok(())
 });
 provider!(CssTextSpacing, value, writer => match value { Self::None => writer.keyword("none"), Self::Auto => writer.keyword("auto"), Self::Components(value) => value.append_to_rule_writer(writer) });

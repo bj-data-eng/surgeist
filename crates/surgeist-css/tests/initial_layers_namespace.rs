@@ -34,8 +34,29 @@ fn initial_layer_statements_allow_namespaces_with_or_without_imports() {
     ] {
         let source = format!("{prefix}@namespace svg 'urn:svg'; svg|rect {{margin:0}}");
         let report = parse_sheet(&source);
-        assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-        assert!(validate_sheet(&source).is_ok(), "{source}");
+        if prefix.starts_with("@charset") {
+            // Syntax 3 section 9.3: encoding prefixes are not grammar rules.
+            let [diagnostic] = report.diagnostics() else {
+                panic!(
+                    "only the charset rule is dropped: {:?}",
+                    report.diagnostics()
+                );
+            };
+            assert_eq!(diagnostic.error().code(), CssErrorCode::UnknownAtRule);
+            assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
+            assert_eq!(diagnostic.error().position().byte_offset().value(), 0);
+            assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
+            assert_eq!(diagnostic.span().end().byte_offset().value(), 17);
+            assert_eq!(
+                validate_sheet(&source)
+                    .expect_err("charset recovery is not a clean sheet")
+                    .diagnostics(),
+                report.diagnostics(),
+            );
+        } else {
+            assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
+            assert!(validate_sheet(&source).is_ok(), "{source}");
+        }
         assert_eq!(rule_names(report.syntax().rules()), expected);
         let namespace = report
             .syntax()

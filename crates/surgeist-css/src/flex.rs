@@ -122,6 +122,31 @@ pub struct CssFlexFlow {
 }
 
 impl CssFlexFlow {
+    pub(crate) fn append_cssom_inverse_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> SerializationResult<()> {
+        let emit_direction =
+            self.direction != CssFlexDirection::Row || self.wrap == CssFlexWrap::NoWrap;
+        writer.source_member(0, |writer| {
+            if emit_direction {
+                self.direction.append_to_rule_writer(writer)
+            } else {
+                writer.without_output(|writer| self.direction.append_to_rule_writer(writer))
+            }
+        })?;
+        writer.source_member(1, |writer| {
+            if self.wrap == CssFlexWrap::NoWrap {
+                writer.without_output(|writer| self.wrap.append_to_rule_writer(writer))
+            } else {
+                if emit_direction {
+                    writer.append(" ")?;
+                }
+                self.wrap.append_to_rule_writer(writer)
+            }
+        })
+    }
+
     /// Constructs a valid pair of specified direction and wrapping values.
     pub const fn new(direction: CssFlexDirection, wrap: CssFlexWrap) -> Self {
         Self { direction, wrap }
@@ -312,6 +337,42 @@ pub enum CssFlexValue {
 }
 
 impl CssFlexValue {
+    pub(crate) fn append_cssom_inverse_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> SerializationResult<()> {
+        let Self::Components(value) = self else {
+            return self.append_to_rule_writer(writer);
+        };
+        let Some(grow) = value.grow() else {
+            return self.append_to_rule_writer(writer);
+        };
+        let emit_shrink = value.shrink().is_some_and(|v| !ordinary_factor(v, "1"));
+        let emit_basis = value.basis().is_some_and(|v| !inverse_default_basis(v));
+        writer.source_member(0, |writer| grow.append_to_rule_writer(writer))?;
+        if let Some(shrink) = value.shrink() {
+            writer.source_member(1, |writer| {
+                if emit_shrink {
+                    writer.append(" ")?;
+                    shrink.append_to_rule_writer(writer)
+                } else {
+                    writer.without_output(|writer| shrink.append_to_rule_writer(writer))
+                }
+            })?;
+        }
+        if let Some(basis) = value.basis() {
+            writer.source_member(2, |writer| {
+                if emit_basis {
+                    writer.append(" ")?;
+                    basis.append_to_rule_writer(writer)
+                } else {
+                    writer.without_output(|writer| basis.append_to_rule_writer(writer))
+                }
+            })?;
+        }
+        Ok(())
+    }
+
     pub fn serialize_specified(&self) -> SerializationResult<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
@@ -387,6 +448,30 @@ fn default_basis() -> CssFlexBasisValue {
     CssFlexBasisValue::from(CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(zero)))
 }
 
+// The owning shorthand default is an ordinary unitless zero length. Compare
+// borrowed exact coefficients with its implicit Px unit, without allocating a
+// second checked default just to inspect it. Percentage and math stay distinct.
+fn inverse_default_basis(value: &CssFlexBasisValue) -> bool {
+    let CssFlexBasisRef::Size(CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(value))) =
+        value.view()
+    else {
+        return false;
+    };
+    let Some(component) = value.literal_component() else {
+        return false;
+    };
+    match component.view() {
+        crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Number(number)) => {
+            crate::exact_decimal::LexicalDecimal::new(number.representation()).len == 0
+        }
+        crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Dimension { number, unit }) => {
+            unit.eq_ignore_ascii_case("px")
+                && crate::exact_decimal::LexicalDecimal::new(number.representation()).len == 0
+        }
+        _ => false,
+    }
+}
+
 pub(crate) fn effective_grow(value: &CssFlexValue) -> Option<CssSpecifiedNonNegativeNumber> {
     Some(match value {
         CssFlexValue::None => initial_grow(),
@@ -418,4 +503,10 @@ fn append_keyword(
     context.charge_input(1)?;
     context.charge_projection(1)?;
     context.append(output, keyword)
+}
+
+pub(crate) fn ordinary_factor(value: &CssSpecifiedNonNegativeNumber, expected: &str) -> bool {
+    value.literal_component().is_some_and(|value| matches!(value.view(),
+        crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Number(number))
+        if crate::exact_decimal::LexicalDecimal::new(number.representation()).value_eq(&crate::exact_decimal::LexicalDecimal::new(expected))))
 }

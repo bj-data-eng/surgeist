@@ -195,16 +195,20 @@ impl<T> Pair<T> {
     }
 }
 
-impl<T: SpacingValue> SpacingValue for Pair<T> {
-    fn serialize_into(
+impl<T: SpacingValue> Pair<T> {
+    fn append_to_rule_writer(
         &self,
-        context: &mut SpecifiedSerializationContext,
-        output: &mut String,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> SerializationResult<()> {
-        self.start.serialize_into(context, output)?;
+        writer.source_member(0, |writer| {
+            self.start
+                .serialize_into(&mut writer.context, &mut writer.css)
+        })?;
         if let Some(end) = &self.authored_end {
-            context.append(output, " ")?;
-            end.serialize_into(context, output)?;
+            writer.source_member(1, |writer| {
+                writer.append(" ")?;
+                end.serialize_into(&mut writer.context, &mut writer.css)
+            })?;
         }
         Ok(())
     }
@@ -258,7 +262,7 @@ impl CssMarginPair {
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        self.0.serialize_into(&mut writer.context, &mut writer.css)
+        self.0.append_to_rule_writer(writer)
     }
 }
 
@@ -310,7 +314,7 @@ impl CssPaddingPair {
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        self.0.serialize_into(&mut writer.context, &mut writer.css)
+        self.0.append_to_rule_writer(writer)
     }
 }
 
@@ -343,22 +347,25 @@ impl<T> FourSides<T> {
     }
 }
 
-impl<T: SpacingValue> SpacingValue for FourSides<T> {
-    fn serialize_into(
+impl<T: SpacingValue> FourSides<T> {
+    fn append_to_rule_writer(
         &self,
-        context: &mut SpecifiedSerializationContext,
-        output: &mut String,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> SerializationResult<()> {
         if self.kind == CssBoxSideKind::Logical {
-            context.charge_input(1)?;
-            context.charge_projection(1)?;
-            context.append(output, "logical ")?;
+            writer.source_member(0, |writer| {
+                writer.context.charge_input(1)?;
+                writer.context.charge_projection(1)?;
+                writer.append("logical ")
+            })?;
         }
         for (index, value) in self.authored_values.iter().enumerate() {
-            if index > 0 {
-                context.append(output, " ")?;
-            }
-            value.serialize_into(context, output)?;
+            writer.source_member(index, |writer| {
+                if index > 0 {
+                    writer.append(" ")?;
+                }
+                value.serialize_into(&mut writer.context, &mut writer.css)
+            })?;
         }
         Ok(())
     }
@@ -410,7 +417,7 @@ impl CssMarginShorthand {
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        self.0.serialize_into(&mut writer.context, &mut writer.css)
+        self.0.append_to_rule_writer(writer)
     }
 }
 
@@ -460,6 +467,6 @@ impl CssPaddingShorthand {
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        self.0.serialize_into(&mut writer.context, &mut writer.css)
+        self.0.append_to_rule_writer(writer)
     }
 }

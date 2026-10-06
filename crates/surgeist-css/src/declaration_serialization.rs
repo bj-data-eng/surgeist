@@ -50,6 +50,8 @@ macro_rules! append_ordinary {
     };
 }
 
+pub(crate) use append_ordinary;
+
 macro_rules! define_ordinary_dispatch {
     ($input:ident, $numeric:ident;
         All, $all_name:literal, [$($all_alias:literal),*], $all_id:literal,
@@ -80,7 +82,7 @@ property_schema!(
     declaration_numeric
 );
 
-fn append_break_between(
+pub(crate) fn append_break_between(
     value: &CssBreakBetween,
     grammar: CssPropertyGrammar,
     writer: &mut SpecifiedRuleWriter,
@@ -100,7 +102,7 @@ fn append_break_between(
     }
 }
 
-fn append_text_orientation(
+pub(crate) fn append_text_orientation(
     value: &CssTextOrientation,
     grammar: CssPropertyGrammar,
     writer: &mut SpecifiedRuleWriter,
@@ -128,7 +130,10 @@ fn append_text_orientation(
     writer.append(text)
 }
 
-fn append_global(keyword: CssGlobalKeyword, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+pub(crate) fn append_global(
+    keyword: CssGlobalKeyword,
+    writer: &mut SpecifiedRuleWriter,
+) -> Result<()> {
     writer.keyword(match keyword {
         CssGlobalKeyword::Inherit => "inherit",
         CssGlobalKeyword::Initial => "initial",
@@ -138,7 +143,7 @@ fn append_global(keyword: CssGlobalKeyword, writer: &mut SpecifiedRuleWriter) ->
     })
 }
 
-fn append_retained_value(
+pub(crate) fn append_retained_value(
     values: &CssComponentValues,
     writer: &mut SpecifiedRuleWriter,
 ) -> Result<()> {
