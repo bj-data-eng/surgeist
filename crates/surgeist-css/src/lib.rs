@@ -676,6 +676,70 @@
 //! assert_eq!(tab.value().serialize_specified().unwrap(), "0px");
 //! ```
 //!
+//! # Authored hyphenation, justification and spacing
+//!
+//! Hyphenation preserves exact nonnegative integer tokens, one to three authored
+//! character-count slots, and symbolic Integer-root calculations. Effective
+//! omitted slots remain separate from authored serialization and computed rounding.
+//! Hyphenate-character retains its original string component and decoded content;
+//! zone and line-padding reuse signed numeric owners. Text-justify preserves
+//! authored distribute and no-compress presence, with computed equivalence downstream.
+//!
+//! Text-spacing expands exactly spacing-trim then autospace. Its complete
+//! constituents remain contiguous, and omitted members receive intrinsic normal
+//! initials without extra authored output tokens. Autospace preserves omitted
+//! insertion mode; hanging-punctuation keeps an exclusive force/allow end role.
+//! These properties share strict checked admission, pending replacement, intrinsic
+//! metadata and cumulative specified output. Language, glyph and layout execution
+//! belongs to downstream owners. See the
+//! [reference](https://github.com/bj-data-eng/surgeist/blob/main/crates/surgeist-css/docs/reference.md#authored-hyphenation-justification-and-spacing).
+//!
+//! ```rust
+//! use surgeist_css::{
+//!     CssContributions, CssExpansion, CssKnownProperty, expand_declaration,
+//!     parse_style_attribute,
+//! };
+//!
+//! let report = parse_style_attribute(
+//!     "hyphenate-limit-chars:auto 2;text-justify:no-compress distribute;\
+//!      text-spacing:replace punctuation trim-both",
+//! );
+//! assert!(report.is_clean());
+//! assert_eq!(report.syntax()[0].to_specified_css().unwrap(),
+//!     "hyphenate-limit-chars: auto 2;");
+//! assert_eq!(report.syntax()[1].to_specified_css().unwrap(),
+//!     "text-justify: distribute no-compress;");
+//! assert_eq!(report.syntax()[2].to_specified_css().unwrap(),
+//!     "text-spacing: trim-both punctuation replace;");
+//! let CssExpansion::Contributions(CssContributions::Longhands(values)) =
+//!     expand_declaration(&report.syntax()[2]).unwrap()
+//! else { panic!("two spacing terminals") };
+//! assert_eq!(values.items().iter().map(|v| v.property()).collect::<Vec<_>>(),
+//!     [CssKnownProperty::TextSpacingTrim, CssKnownProperty::TextAutospace]);
+//! ```
+//!
+//! Checked constituent construction preserves authored omissions:
+//!
+//! ```rust
+//! use surgeist_css::{
+//!     CssAutospace, CssAutospaceMode, CssAutospaceValues, CssSpacingTrim,
+//!     CssTextJustify, CssTextJustifyBase, CssTextSpacing, CssTextSpacingValues,
+//! };
+//!
+//! assert!(CssTextJustify::try_new(None, false).is_none());
+//! let justify = CssTextJustify::try_new(Some(CssTextJustifyBase::Distribute), true)
+//!     .unwrap();
+//! assert_eq!(justify.serialize_specified().unwrap(), "distribute no-compress");
+//! let flags = CssAutospaceValues::try_new(true, false, true, None).unwrap();
+//! assert_eq!(flags.mode(), None);
+//! assert_eq!(flags.effective_mode(), CssAutospaceMode::Insert);
+//! let fields = CssTextSpacingValues::try_new(
+//!     Some(CssSpacingTrim::TrimBoth), Some(CssAutospace::Spacing(flags)),
+//! ).unwrap();
+//! assert_eq!(CssTextSpacing::Components(fields).serialize_specified().unwrap(),
+//!     "trim-both ideograph-alpha punctuation");
+//! ```
+//!
 //! # Typography, font families, and font-face
 //!
 //! Family lists, the `@font-face` family descriptor, and `local()` names follow
@@ -1585,6 +1649,7 @@ pub use speech::{
     CssVoiceRate, CssVoiceRateKeyword, CssVoiceStress, CssVoiceVolume, CssVoiceVolumeLevel,
 };
 mod text_alignment;
+mod text_controls;
 mod text_spacing;
 mod time;
 pub use alignment::{

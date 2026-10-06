@@ -1272,10 +1272,59 @@ property_records! {
         dispatch: "[top] 100px 1fr",
         wrapper: yes,
     }
+    HangingPunctuation, "hanging-punctuation" {
+        metadata: longhand(true, |v| assert_eq!(*v, CssHangingPunctuation::None)),
+        catalog: grammar_catalog!("ext.property.hanging-punctuation", "last allow-end first", rejected("force-end allow-end")),
+        source: "X-TEXT4",
+        dispatch: "last allow-end first",
+        wrapper: yes,
+    }
     Height, "height" {
         metadata: longhand(false, |v| assert_eq!(*v, CssSizeValue::Auto)),
         catalog: grammar_catalog!("baseline.property.height", "auto", rejected("solid")),
         dispatch: "auto",
+        wrapper: yes,
+    }
+    HyphenateCharacter, "hyphenate-character" {
+        metadata: longhand(true, |v| assert_eq!(*v, CssHyphenateCharacter::Auto)),
+        catalog: grammar_catalog!("ext.property.hyphenate-character", "\"\"", rejected("none")),
+        source: "X-TEXT4",
+        dispatch: "\"\"",
+        wrapper: yes,
+    }
+    HyphenateLimitChars, "hyphenate-limit-chars" {
+        metadata: longhand(true, |v| assert_eq!(*v, CssHyphenateLimitChars::auto())),
+        catalog: grammar_catalog!("ext.property.hyphenate-limit-chars", "auto 2 3", rejected("2 -1")),
+        source: "X-TEXT4",
+        dispatch: "auto 2 3",
+        wrapper: yes,
+    }
+    HyphenateLimitLast, "hyphenate-limit-last" {
+        metadata: longhand(true, |v| assert_eq!(*v, CssHyphenateLimitLast::None)),
+        catalog: grammar_catalog!("ext.property.hyphenate-limit-last", "spread", rejected("auto")),
+        source: "X-TEXT4",
+        dispatch: "spread",
+        wrapper: yes,
+    }
+    HyphenateLimitLines, "hyphenate-limit-lines" {
+        metadata: longhand(true, |v| assert_eq!(*v, CssHyphenateLimitLines::NoLimit)),
+        catalog: grammar_catalog!("ext.property.hyphenate-limit-lines", "calc(3 / 2)", rejected("-1")),
+        source: "X-TEXT4",
+        dispatch: "calc(3 / 2)",
+        wrapper: yes,
+    }
+    HyphenateLimitZone, "hyphenate-limit-zone" {
+        metadata: longhand(true, |v| assert_eq!(*v, CssSpecifiedLengthPercentage::zero())),
+        catalog: grammar_catalog!("ext.property.hyphenate-limit-zone", "calc(-2px + 3%)", rejected("auto")),
+        source: "X-TEXT4",
+        dispatch: "calc(-2px + 3%)",
+        wrapper: yes,
+    }
+    Hyphens, "hyphens" {
+        metadata: longhand(true, |v| assert_eq!(*v, CssHyphens::Manual)),
+        catalog: grammar_catalog!("ext.property.hyphens", "manual", rejected("none auto")),
+        source: "X-TEXT4",
+        dispatch: "manual",
         wrapper: yes,
     }
     ImageOrientation, "image-orientation" {
@@ -1397,6 +1446,13 @@ property_records! {
         metadata: longhand(true, |v| assert_eq!(v, &CssLineHeight::Normal)),
         catalog: grammar_catalog!("baseline.property.line-height", "normal", rejected("auto")),
         dispatch: "normal",
+        wrapper: yes,
+    }
+    LinePadding, "line-padding" {
+        metadata: longhand(true, |v| assert_eq!(*v, CssSpecifiedLength::zero())),
+        catalog: grammar_catalog!("ext.property.line-padding", "-2px", rejected("2%")),
+        source: "X-TEXT4",
+        dispatch: "-2px",
         wrapper: yes,
     }
     ListStyle, "list-style" {
@@ -2056,6 +2112,13 @@ property_records! {
         dispatch: "justify",
         wrapper: yes,
     }
+    TextAutospace, "text-autospace" {
+        metadata: longhand(true, |v| assert_eq!(*v, CssTextAutospace::Normal)),
+        catalog: grammar_catalog!("ext.property.text-autospace", "replace punctuation ideograph-alpha", rejected("ideograph-alpha insert punctuation")),
+        source: "X-TEXT4",
+        dispatch: "replace punctuation ideograph-alpha",
+        wrapper: yes,
+    }
     TextCombineUpright, "text-combine-upright" {
         metadata: longhand(true, |v| assert_eq!(v, &CssTextCombineUpright::None)),
         catalog: grammar_catalog!("official.property.text-combine-upright", "all", rejected("sideways")),
@@ -2093,6 +2156,13 @@ property_records! {
         dispatch: "2px",
         wrapper: yes,
     }
+    TextGroupAlign, "text-group-align" {
+        metadata: longhand(false, |v| assert_eq!(*v, CssTextGroupAlign::None)),
+        catalog: grammar_catalog!("ext.property.text-group-align", "center", rejected("justify")),
+        source: "X-TEXT4",
+        dispatch: "center",
+        wrapper: yes,
+    }
     TextIndent, "text-indent" {
         metadata: longhand(true, |v| {
             assert!(exact_literal(v.length().literal_component(), "0"));
@@ -2104,6 +2174,13 @@ property_records! {
         dispatch: "1rem hanging each-line",
         wrapper: yes,
     }
+    TextJustify, "text-justify" {
+        metadata: longhand(true, |v| assert_eq!(*v, CssTextJustify::auto())),
+        catalog: grammar_catalog!("ext.property.text-justify", "no-compress distribute", rejected("ruby auto")),
+        source: "X-TEXT4",
+        dispatch: "no-compress distribute",
+        wrapper: yes,
+    }
     TextOrientation, "text-orientation" {
         metadata: longhand(true, |v| assert_eq!(*v, CssTextOrientation::Mixed)),
         catalog: grammar_catalog!("official.property.text-orientation", "sideways", rejected("auto")),
@@ -2112,6 +2189,20 @@ property_records! {
         metadata: longhand(false, |v| assert_eq!(*v, CssTextOverflow::Clip)),
         catalog: grammar_catalog!("baseline.property.text-overflow", "ellipsis", rejected("wrap")),
         dispatch: "ellipsis",
+        wrapper: yes,
+    }
+    TextSpacing, "text-spacing" {
+        metadata: shorthand([TextSpacingTrim, TextAutospace], []),
+        catalog: grammar_catalog!("ext.property.text-spacing", "replace punctuation ideograph-alpha trim-both", rejected("ideograph-alpha trim-start punctuation")),
+        source: "X-TEXT4",
+        dispatch: "replace punctuation ideograph-alpha trim-both",
+        wrapper: yes,
+    }
+    TextSpacingTrim, "text-spacing-trim" {
+        metadata: longhand(true, |v| assert_eq!(*v, CssTextSpacingTrim::Trim(CssSpacingTrim::Normal))),
+        catalog: grammar_catalog!("ext.property.text-spacing-trim", "auto", rejected("trim-start trim-both")),
+        source: "X-TEXT4",
+        dispatch: "auto",
         wrapper: yes,
     }
     TextTransform, "text-transform" {

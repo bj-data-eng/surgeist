@@ -120,6 +120,18 @@ pub surgeist_css::CssAuthoredFontFeatureValue::Index(surgeist_css::CssFontFeatur
 pub surgeist_css::CssAuthoredFontFeatureValue::Off
 pub surgeist_css::CssAuthoredFontFeatureValue::Omitted
 pub surgeist_css::CssAuthoredFontFeatureValue::On
+#[non_exhaustive] pub enum surgeist_css::CssAutospace
+pub surgeist_css::CssAutospace::NoAutospace
+pub surgeist_css::CssAutospace::Spacing(surgeist_css::CssAutospaceValues)
+impl surgeist_css::CssAutospace
+pub fn surgeist_css::CssAutospace::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssAutospace::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssAutospaceMode
+pub surgeist_css::CssAutospaceMode::Insert
+pub surgeist_css::CssAutospaceMode::Replace
+impl surgeist_css::CssAutospaceMode
+pub fn surgeist_css::CssAutospaceMode::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssAutospaceMode::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssBackgroundAttachment
 pub surgeist_css::CssBackgroundAttachment::Fixed
 pub surgeist_css::CssBackgroundAttachment::Local
@@ -1795,6 +1807,18 @@ pub surgeist_css::CssGridTrackRepeatComponent::TrackSize(surgeist_css::CssGridTr
 pub surgeist_css::CssGridTrackSizeKind::Breadth
 pub surgeist_css::CssGridTrackSizeKind::FitContent
 pub surgeist_css::CssGridTrackSizeKind::MinMax
+#[non_exhaustive] pub enum surgeist_css::CssHangingPunctuation
+pub surgeist_css::CssHangingPunctuation::Hang(surgeist_css::CssHangingPunctuationValues)
+pub surgeist_css::CssHangingPunctuation::None
+impl surgeist_css::CssHangingPunctuation
+pub fn surgeist_css::CssHangingPunctuation::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssHangingPunctuation::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssHangingPunctuationEnd
+pub surgeist_css::CssHangingPunctuationEnd::AllowEnd
+pub surgeist_css::CssHangingPunctuationEnd::ForceEnd
+impl surgeist_css::CssHangingPunctuationEnd
+pub fn surgeist_css::CssHangingPunctuationEnd::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssHangingPunctuationEnd::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssHashFlag
 pub surgeist_css::CssHashFlag::Id
 pub surgeist_css::CssHashFlag::Unrestricted
@@ -1836,6 +1860,40 @@ pub surgeist_css::CssHueInterpolationMethod::Decreasing
 pub surgeist_css::CssHueInterpolationMethod::Increasing
 pub surgeist_css::CssHueInterpolationMethod::Longer
 pub surgeist_css::CssHueInterpolationMethod::Shorter
+#[non_exhaustive] pub enum surgeist_css::CssHyphenateCharacter
+pub surgeist_css::CssHyphenateCharacter::Auto
+pub surgeist_css::CssHyphenateCharacter::String(surgeist_css::CssHyphenateString)
+impl surgeist_css::CssHyphenateCharacter
+pub fn surgeist_css::CssHyphenateCharacter::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssHyphenateCharacter::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssHyphenateLimitCharsComponent
+pub surgeist_css::CssHyphenateLimitCharsComponent::Auto
+pub surgeist_css::CssHyphenateLimitCharsComponent::Integer(surgeist_css::CssHyphenateLimitInteger)
+impl surgeist_css::CssHyphenateLimitCharsComponent
+pub fn surgeist_css::CssHyphenateLimitCharsComponent::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssHyphenateLimitCharsComponent::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssHyphenateLimitLast
+pub surgeist_css::CssHyphenateLimitLast::Always
+pub surgeist_css::CssHyphenateLimitLast::Column
+pub surgeist_css::CssHyphenateLimitLast::None
+pub surgeist_css::CssHyphenateLimitLast::Page
+pub surgeist_css::CssHyphenateLimitLast::Spread
+impl surgeist_css::CssHyphenateLimitLast
+pub fn surgeist_css::CssHyphenateLimitLast::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssHyphenateLimitLast::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssHyphenateLimitLines
+pub surgeist_css::CssHyphenateLimitLines::Integer(surgeist_css::CssHyphenateLimitInteger)
+pub surgeist_css::CssHyphenateLimitLines::NoLimit
+impl surgeist_css::CssHyphenateLimitLines
+pub fn surgeist_css::CssHyphenateLimitLines::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssHyphenateLimitLines::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssHyphens
+pub surgeist_css::CssHyphens::Auto
+pub surgeist_css::CssHyphens::Manual
+pub surgeist_css::CssHyphens::None
+impl surgeist_css::CssHyphens
+pub fn surgeist_css::CssHyphens::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssHyphens::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssImageConstructionError
 pub surgeist_css::CssImageConstructionError::CapacityOverflow
 pub surgeist_css::CssImageConstructionError::NestingLimit
@@ -2195,7 +2253,14 @@ pub surgeist_css::CssKnownProperty::GridTemplate
 pub surgeist_css::CssKnownProperty::GridTemplateAreas
 pub surgeist_css::CssKnownProperty::GridTemplateColumns
 pub surgeist_css::CssKnownProperty::GridTemplateRows
+pub surgeist_css::CssKnownProperty::HangingPunctuation
 pub surgeist_css::CssKnownProperty::Height
+pub surgeist_css::CssKnownProperty::HyphenateCharacter
+pub surgeist_css::CssKnownProperty::HyphenateLimitChars
+pub surgeist_css::CssKnownProperty::HyphenateLimitLast
+pub surgeist_css::CssKnownProperty::HyphenateLimitLines
+pub surgeist_css::CssKnownProperty::HyphenateLimitZone
+pub surgeist_css::CssKnownProperty::Hyphens
 pub surgeist_css::CssKnownProperty::ImageOrientation
 pub surgeist_css::CssKnownProperty::ImageRendering
 pub surgeist_css::CssKnownProperty::InlineSize
@@ -2218,6 +2283,7 @@ pub surgeist_css::CssKnownProperty::Left
 pub surgeist_css::CssKnownProperty::LetterSpacing
 pub surgeist_css::CssKnownProperty::LineBreak
 pub surgeist_css::CssKnownProperty::LineHeight
+pub surgeist_css::CssKnownProperty::LinePadding
 pub surgeist_css::CssKnownProperty::ListStyle
 pub surgeist_css::CssKnownProperty::ListStyleImage
 pub surgeist_css::CssKnownProperty::ListStylePosition
@@ -2335,15 +2401,20 @@ pub surgeist_css::CssKnownProperty::TableLayout
 pub surgeist_css::CssKnownProperty::TextAlign
 pub surgeist_css::CssKnownProperty::TextAlignAll
 pub surgeist_css::CssKnownProperty::TextAlignLast
+pub surgeist_css::CssKnownProperty::TextAutospace
 pub surgeist_css::CssKnownProperty::TextCombineUpright
 pub surgeist_css::CssKnownProperty::TextDecoration
 pub surgeist_css::CssKnownProperty::TextDecorationColor
 pub surgeist_css::CssKnownProperty::TextDecorationLine
 pub surgeist_css::CssKnownProperty::TextDecorationStyle
 pub surgeist_css::CssKnownProperty::TextDecorationThickness
+pub surgeist_css::CssKnownProperty::TextGroupAlign
 pub surgeist_css::CssKnownProperty::TextIndent
+pub surgeist_css::CssKnownProperty::TextJustify
 pub surgeist_css::CssKnownProperty::TextOrientation
 pub surgeist_css::CssKnownProperty::TextOverflow
+pub surgeist_css::CssKnownProperty::TextSpacing
+pub surgeist_css::CssKnownProperty::TextSpacingTrim
 pub surgeist_css::CssKnownProperty::TextTransform
 pub surgeist_css::CssKnownProperty::TextWrap
 pub surgeist_css::CssKnownProperty::TextWrapMode
@@ -2581,7 +2652,14 @@ pub surgeist_css::CssKnownPropertyValueRef::GridTemplate(&'a surgeist_css::CssGr
 pub surgeist_css::CssKnownPropertyValueRef::GridTemplateAreas(&'a surgeist_css::CssGridTemplateAreasPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::GridTemplateColumns(&'a surgeist_css::CssGridTemplateColumnsPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::GridTemplateRows(&'a surgeist_css::CssGridTemplateRowsPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::HangingPunctuation(&'a surgeist_css::CssHangingPunctuationPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Height(&'a surgeist_css::CssHeightPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::HyphenateCharacter(&'a surgeist_css::CssHyphenateCharacterPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::HyphenateLimitChars(&'a surgeist_css::CssHyphenateLimitCharsPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::HyphenateLimitLast(&'a surgeist_css::CssHyphenateLimitLastPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::HyphenateLimitLines(&'a surgeist_css::CssHyphenateLimitLinesPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::HyphenateLimitZone(&'a surgeist_css::CssHyphenateLimitZonePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::Hyphens(&'a surgeist_css::CssHyphensPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ImageOrientation(&'a surgeist_css::CssImageOrientationPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ImageRendering(&'a surgeist_css::CssImageRenderingPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::InlineSize(&'a surgeist_css::CssInlineSizePropertyValue)
@@ -2604,6 +2682,7 @@ pub surgeist_css::CssKnownPropertyValueRef::Left(&'a surgeist_css::CssLeftProper
 pub surgeist_css::CssKnownPropertyValueRef::LetterSpacing(&'a surgeist_css::CssLetterSpacingPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::LineBreak(&'a surgeist_css::CssLineBreakPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::LineHeight(&'a surgeist_css::CssLineHeightPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::LinePadding(&'a surgeist_css::CssLinePaddingPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ListStyle(&'a surgeist_css::CssListStylePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ListStyleImage(&'a surgeist_css::CssListStyleImagePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ListStylePosition(&'a surgeist_css::CssListStylePositionPropertyValue)
@@ -2721,15 +2800,20 @@ pub surgeist_css::CssKnownPropertyValueRef::TableLayout(&'a surgeist_css::CssTab
 pub surgeist_css::CssKnownPropertyValueRef::TextAlign(&'a surgeist_css::CssTextAlignPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextAlignAll(&'a surgeist_css::CssTextAlignAllPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextAlignLast(&'a surgeist_css::CssTextAlignLastPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::TextAutospace(&'a surgeist_css::CssTextAutospacePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextCombineUpright(&'a surgeist_css::CssTextCombineUprightPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextDecoration(&'a surgeist_css::CssTextDecorationPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextDecorationColor(&'a surgeist_css::CssTextDecorationColorPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextDecorationLine(&'a surgeist_css::CssTextDecorationLinePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextDecorationStyle(&'a surgeist_css::CssTextDecorationStylePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextDecorationThickness(&'a surgeist_css::CssTextDecorationThicknessPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::TextGroupAlign(&'a surgeist_css::CssTextGroupAlignPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextIndent(&'a surgeist_css::CssTextIndentPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::TextJustify(&'a surgeist_css::CssTextJustifyPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextOrientation(&'a surgeist_css::CssTextOrientationPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextOverflow(&'a surgeist_css::CssTextOverflowPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::TextSpacing(&'a surgeist_css::CssTextSpacingPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::TextSpacingTrim(&'a surgeist_css::CssTextSpacingTrimPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextTransform(&'a surgeist_css::CssTextTransformPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextWrap(&'a surgeist_css::CssTextWrapPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextWrapMode(&'a surgeist_css::CssTextWrapModePropertyValue)
@@ -3026,7 +3110,14 @@ pub surgeist_css::CssLonghandValueRef::GridRowStart(&'a surgeist_css::CssGridLin
 pub surgeist_css::CssLonghandValueRef::GridTemplateAreas(&'a surgeist_css::CssGridTemplateAreas)
 pub surgeist_css::CssLonghandValueRef::GridTemplateColumns(&'a surgeist_css::CssGridTrackList)
 pub surgeist_css::CssLonghandValueRef::GridTemplateRows(&'a surgeist_css::CssGridTrackList)
+pub surgeist_css::CssLonghandValueRef::HangingPunctuation(&'a surgeist_css::CssHangingPunctuation)
 pub surgeist_css::CssLonghandValueRef::Height(&'a surgeist_css::CssSizeValue)
+pub surgeist_css::CssLonghandValueRef::HyphenateCharacter(&'a surgeist_css::CssHyphenateCharacter)
+pub surgeist_css::CssLonghandValueRef::HyphenateLimitChars(&'a surgeist_css::CssHyphenateLimitChars)
+pub surgeist_css::CssLonghandValueRef::HyphenateLimitLast(&'a surgeist_css::CssHyphenateLimitLast)
+pub surgeist_css::CssLonghandValueRef::HyphenateLimitLines(&'a surgeist_css::CssHyphenateLimitLines)
+pub surgeist_css::CssLonghandValueRef::HyphenateLimitZone(&'a surgeist_css::CssSpecifiedLengthPercentage)
+pub surgeist_css::CssLonghandValueRef::Hyphens(&'a surgeist_css::CssHyphens)
 pub surgeist_css::CssLonghandValueRef::InlineSize(&'a surgeist_css::CssSizeValue)
 pub surgeist_css::CssLonghandValueRef::InsetBlockEnd(&'a surgeist_css::CssInsetValue)
 pub surgeist_css::CssLonghandValueRef::InsetBlockStart(&'a surgeist_css::CssInsetValue)
@@ -3043,6 +3134,7 @@ pub surgeist_css::CssLonghandValueRef::Left(&'a surgeist_css::CssInsetValue)
 pub surgeist_css::CssLonghandValueRef::LetterSpacing(&'a surgeist_css::CssTextSpacingAdjustment)
 pub surgeist_css::CssLonghandValueRef::LineBreak(&'a surgeist_css::CssLineBreak)
 pub surgeist_css::CssLonghandValueRef::LineHeight(&'a surgeist_css::CssLineHeight)
+pub surgeist_css::CssLonghandValueRef::LinePadding(&'a surgeist_css::CssSpecifiedLength)
 pub surgeist_css::CssLonghandValueRef::ListStyleImage(&'a surgeist_css::CssImageValue)
 pub surgeist_css::CssLonghandValueRef::ListStylePosition(&'a surgeist_css::CssListStylePosition)
 pub surgeist_css::CssLonghandValueRef::ListStyleType(&'a surgeist_css::CssListStyleTypeValue)
@@ -3122,10 +3214,14 @@ pub surgeist_css::CssLonghandValueRef::TabSize(&'a surgeist_css::CssTabSize)
 pub surgeist_css::CssLonghandValueRef::TableLayout(&'a surgeist_css::CssTableLayout)
 pub surgeist_css::CssLonghandValueRef::TextAlignAll(&'a surgeist_css::CssTextAlignAllValue)
 pub surgeist_css::CssLonghandValueRef::TextAlignLast(&'a surgeist_css::CssTextAlignLastValue)
+pub surgeist_css::CssLonghandValueRef::TextAutospace(&'a surgeist_css::CssTextAutospace)
 pub surgeist_css::CssLonghandValueRef::TextCombineUpright(&'a surgeist_css::CssTextCombineUpright)
+pub surgeist_css::CssLonghandValueRef::TextGroupAlign(&'a surgeist_css::CssTextGroupAlign)
 pub surgeist_css::CssLonghandValueRef::TextIndent(&'a surgeist_css::CssTextIndent)
+pub surgeist_css::CssLonghandValueRef::TextJustify(&'a surgeist_css::CssTextJustify)
 pub surgeist_css::CssLonghandValueRef::TextOrientation(&'a surgeist_css::CssTextOrientation)
 pub surgeist_css::CssLonghandValueRef::TextOverflow(&'a surgeist_css::CssTextOverflow)
+pub surgeist_css::CssLonghandValueRef::TextSpacingTrim(&'a surgeist_css::CssTextSpacingTrim)
 pub surgeist_css::CssLonghandValueRef::TextTransform(&'a surgeist_css::CssTextTransform)
 pub surgeist_css::CssLonghandValueRef::TextWrapMode(&'a surgeist_css::CssTextWrapMode)
 pub surgeist_css::CssLonghandValueRef::TextWrapStyle(&'a surgeist_css::CssTextWrapStyle)
@@ -4185,6 +4281,16 @@ pub fn surgeist_css::CssSizeValue::serialize_specified(&self) -> core::result::R
 pub fn surgeist_css::CssSizeValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl core::convert::From<surgeist_css::CssSizeValue> for surgeist_css::CssFlexBasisValue
 pub fn surgeist_css::CssFlexBasisValue::from(value: surgeist_css::CssSizeValue) -> Self
+#[non_exhaustive] pub enum surgeist_css::CssSpacingTrim
+pub surgeist_css::CssSpacingTrim::Normal
+pub surgeist_css::CssSpacingTrim::SpaceAll
+pub surgeist_css::CssSpacingTrim::SpaceFirst
+pub surgeist_css::CssSpacingTrim::TrimAll
+pub surgeist_css::CssSpacingTrim::TrimBoth
+pub surgeist_css::CssSpacingTrim::TrimStart
+impl surgeist_css::CssSpacingTrim
+pub fn surgeist_css::CssSpacingTrim::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssSpacingTrim::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssSpeak
 pub surgeist_css::CssSpeak::Always
 pub surgeist_css::CssSpeak::Auto
@@ -4383,6 +4489,13 @@ pub surgeist_css::CssTextAlignValue::JustifyAll
 impl surgeist_css::CssTextAlignValue
 pub fn surgeist_css::CssTextAlignValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssTextAlignValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssTextAutospace
+pub surgeist_css::CssTextAutospace::Auto
+pub surgeist_css::CssTextAutospace::Autospace(surgeist_css::CssAutospace)
+pub surgeist_css::CssTextAutospace::Normal
+impl surgeist_css::CssTextAutospace
+pub fn surgeist_css::CssTextAutospace::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextAutospace::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssTextCombineUpright
 pub surgeist_css::CssTextCombineUpright::All
 pub surgeist_css::CssTextCombineUpright::Digits(core::option::Option<surgeist_css::CssTextCombineDigitCount>)
@@ -4413,6 +4526,26 @@ pub fn surgeist_css::CssTextDecorationThickness::serialize_specified(&self) -> c
 pub fn surgeist_css::CssTextDecorationThickness::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl core::cmp::PartialEq for surgeist_css::CssTextDecorationThickness
 pub fn surgeist_css::CssTextDecorationThickness::eq(&self, other: &Self) -> bool
+#[non_exhaustive] pub enum surgeist_css::CssTextGroupAlign
+pub surgeist_css::CssTextGroupAlign::Center
+pub surgeist_css::CssTextGroupAlign::End
+pub surgeist_css::CssTextGroupAlign::Left
+pub surgeist_css::CssTextGroupAlign::None
+pub surgeist_css::CssTextGroupAlign::Right
+pub surgeist_css::CssTextGroupAlign::Start
+impl surgeist_css::CssTextGroupAlign
+pub fn surgeist_css::CssTextGroupAlign::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextGroupAlign::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssTextJustifyBase
+pub surgeist_css::CssTextJustifyBase::Auto
+pub surgeist_css::CssTextJustifyBase::Distribute
+pub surgeist_css::CssTextJustifyBase::InterCharacter
+pub surgeist_css::CssTextJustifyBase::InterWord
+pub surgeist_css::CssTextJustifyBase::None
+pub surgeist_css::CssTextJustifyBase::Ruby
+impl surgeist_css::CssTextJustifyBase
+pub fn surgeist_css::CssTextJustifyBase::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextJustifyBase::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssTextOrientation
 pub surgeist_css::CssTextOrientation::Mixed
 pub surgeist_css::CssTextOrientation::Sideways
@@ -4426,6 +4559,13 @@ pub surgeist_css::CssTextOverflow::Ellipsis
 impl surgeist_css::CssTextOverflow
 pub fn surgeist_css::CssTextOverflow::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssTextOverflow::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssTextSpacing
+pub surgeist_css::CssTextSpacing::Auto
+pub surgeist_css::CssTextSpacing::Components(surgeist_css::CssTextSpacingValues)
+pub surgeist_css::CssTextSpacing::None
+impl surgeist_css::CssTextSpacing
+pub fn surgeist_css::CssTextSpacing::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextSpacing::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssTextSpacingAdjustment
 pub surgeist_css::CssTextSpacingAdjustment::LengthPercentage(surgeist_css::CssSpecifiedLengthPercentage)
 pub surgeist_css::CssTextSpacingAdjustment::Normal
@@ -4437,6 +4577,12 @@ pub fn surgeist_css::CssTextSpacingAdjustment::serialize_specified_with_limits(&
 impl core::cmp::Eq for surgeist_css::CssTextSpacingAdjustment
 impl core::cmp::PartialEq for surgeist_css::CssTextSpacingAdjustment
 pub fn surgeist_css::CssTextSpacingAdjustment::eq(&self, other: &Self) -> bool
+#[non_exhaustive] pub enum surgeist_css::CssTextSpacingTrim
+pub surgeist_css::CssTextSpacingTrim::Auto
+pub surgeist_css::CssTextSpacingTrim::Trim(surgeist_css::CssSpacingTrim)
+impl surgeist_css::CssTextSpacingTrim
+pub fn surgeist_css::CssTextSpacingTrim::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextSpacingTrim::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssTextTransform
 pub surgeist_css::CssTextTransform::MathAuto
 pub surgeist_css::CssTextTransform::None
@@ -5083,6 +5229,17 @@ pub fn surgeist_css::CssAuthoredFontFeatureList::try_new(features: alloc::vec::V
 pub struct surgeist_css::CssAuthoredFunctionArguments
 impl surgeist_css::CssAuthoredFunctionArguments
 pub fn surgeist_css::CssAuthoredFunctionArguments::as_css(&self) -> &str
+pub struct surgeist_css::CssAutospaceValues
+impl surgeist_css::CssAutospaceValues
+pub const fn surgeist_css::CssAutospaceValues::effective_mode(&self) -> surgeist_css::CssAutospaceMode
+pub const fn surgeist_css::CssAutospaceValues::ideograph_alpha(&self) -> bool
+pub const fn surgeist_css::CssAutospaceValues::ideograph_numeric(&self) -> bool
+pub const fn surgeist_css::CssAutospaceValues::mode(&self) -> core::option::Option<surgeist_css::CssAutospaceMode>
+pub const fn surgeist_css::CssAutospaceValues::punctuation(&self) -> bool
+pub const fn surgeist_css::CssAutospaceValues::try_new(ideograph_alpha: bool, ideograph_numeric: bool, punctuation: bool, mode: core::option::Option<surgeist_css::CssAutospaceMode>) -> core::option::Option<Self>
+impl surgeist_css::CssAutospaceValues
+pub fn surgeist_css::CssAutospaceValues::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssAutospaceValues::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssBackdropFilterPropertyValue
 impl surgeist_css::CssBackdropFilterPropertyValue
 pub fn surgeist_css::CssBackdropFilterPropertyValue::as_css(&self) -> &str
@@ -7648,6 +7805,19 @@ pub fn surgeist_css::CssGridTrackSizeList::serialize_specified_with_limits(&self
 impl surgeist_css::CssGridTrackSizeList
 pub fn surgeist_css::CssGridTrackSizeList::sizes(&self) -> &[surgeist_css::CssGridTrackSize]
 pub fn surgeist_css::CssGridTrackSizeList::try_new(sizes: alloc::vec::Vec<surgeist_css::CssGridTrackSize>) -> core::option::Option<Self>
+pub struct surgeist_css::CssHangingPunctuationPropertyValue
+impl surgeist_css::CssHangingPunctuationPropertyValue
+pub fn surgeist_css::CssHangingPunctuationPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssHangingPunctuationPropertyValue::value(&self) -> &surgeist_css::CssHangingPunctuation
+pub struct surgeist_css::CssHangingPunctuationValues
+impl surgeist_css::CssHangingPunctuationValues
+pub const fn surgeist_css::CssHangingPunctuationValues::end(&self) -> core::option::Option<surgeist_css::CssHangingPunctuationEnd>
+pub const fn surgeist_css::CssHangingPunctuationValues::first(&self) -> bool
+pub const fn surgeist_css::CssHangingPunctuationValues::last(&self) -> bool
+pub const fn surgeist_css::CssHangingPunctuationValues::try_new(first: bool, end: core::option::Option<surgeist_css::CssHangingPunctuationEnd>, last: bool) -> core::option::Option<Self>
+impl surgeist_css::CssHangingPunctuationValues
+pub fn surgeist_css::CssHangingPunctuationValues::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssHangingPunctuationValues::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssHeightPropertyValue
 impl surgeist_css::CssHeightPropertyValue
 pub fn surgeist_css::CssHeightPropertyValue::as_css(&self) -> &str
@@ -7696,6 +7866,60 @@ pub const fn surgeist_css::CssHwbColorCoordinates::blackness(&self) -> f64
 pub const fn surgeist_css::CssHwbColorCoordinates::hue_degrees(&self) -> core::option::Option<f64>
 pub fn surgeist_css::CssHwbColorCoordinates::try_new(hue_degrees: core::option::Option<f64>, whiteness: f64, blackness: f64) -> core::result::Result<Self, surgeist_css::CssHslHwbConversionError>
 pub const fn surgeist_css::CssHwbColorCoordinates::whiteness(&self) -> f64
+pub struct surgeist_css::CssHyphenateCharacterPropertyValue
+impl surgeist_css::CssHyphenateCharacterPropertyValue
+pub fn surgeist_css::CssHyphenateCharacterPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssHyphenateCharacterPropertyValue::value(&self) -> &surgeist_css::CssHyphenateCharacter
+pub struct surgeist_css::CssHyphenateLimitChars
+impl surgeist_css::CssHyphenateLimitChars
+pub const fn surgeist_css::CssHyphenateLimitChars::after(&self) -> core::option::Option<&surgeist_css::CssHyphenateLimitCharsComponent>
+pub const fn surgeist_css::CssHyphenateLimitChars::authored_len(&self) -> usize
+pub const fn surgeist_css::CssHyphenateLimitChars::auto() -> Self
+pub const fn surgeist_css::CssHyphenateLimitChars::before(&self) -> core::option::Option<&surgeist_css::CssHyphenateLimitCharsComponent>
+pub fn surgeist_css::CssHyphenateLimitChars::effective_components(&self) -> [surgeist_css::CssHyphenateLimitCharsComponent; 3]
+pub const fn surgeist_css::CssHyphenateLimitChars::total(&self) -> &surgeist_css::CssHyphenateLimitCharsComponent
+pub fn surgeist_css::CssHyphenateLimitChars::try_new(total: surgeist_css::CssHyphenateLimitCharsComponent, before: core::option::Option<surgeist_css::CssHyphenateLimitCharsComponent>, after: core::option::Option<surgeist_css::CssHyphenateLimitCharsComponent>) -> core::option::Option<Self>
+impl surgeist_css::CssHyphenateLimitChars
+pub fn surgeist_css::CssHyphenateLimitChars::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssHyphenateLimitChars::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssHyphenateLimitCharsPropertyValue
+impl surgeist_css::CssHyphenateLimitCharsPropertyValue
+pub fn surgeist_css::CssHyphenateLimitCharsPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssHyphenateLimitCharsPropertyValue::value(&self) -> &surgeist_css::CssHyphenateLimitChars
+pub struct surgeist_css::CssHyphenateLimitInteger
+impl surgeist_css::CssHyphenateLimitInteger
+pub fn surgeist_css::CssHyphenateLimitInteger::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssHyphenateLimitInteger::try_new(value: surgeist_css::CssIntegerValue) -> core::option::Option<Self>
+pub const fn surgeist_css::CssHyphenateLimitInteger::value(&self) -> &surgeist_css::CssIntegerValue
+impl surgeist_css::CssHyphenateLimitInteger
+pub fn surgeist_css::CssHyphenateLimitInteger::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssHyphenateLimitInteger::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssHyphenateLimitLastPropertyValue
+impl surgeist_css::CssHyphenateLimitLastPropertyValue
+pub fn surgeist_css::CssHyphenateLimitLastPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssHyphenateLimitLastPropertyValue::value(&self) -> &surgeist_css::CssHyphenateLimitLast
+pub struct surgeist_css::CssHyphenateLimitLinesPropertyValue
+impl surgeist_css::CssHyphenateLimitLinesPropertyValue
+pub fn surgeist_css::CssHyphenateLimitLinesPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssHyphenateLimitLinesPropertyValue::value(&self) -> &surgeist_css::CssHyphenateLimitLines
+pub struct surgeist_css::CssHyphenateLimitZonePropertyValue
+impl surgeist_css::CssHyphenateLimitZonePropertyValue
+pub fn surgeist_css::CssHyphenateLimitZonePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssHyphenateLimitZonePropertyValue::value(&self) -> &surgeist_css::CssSpecifiedLengthPercentage
+pub struct surgeist_css::CssHyphenateString
+impl surgeist_css::CssHyphenateString
+pub fn surgeist_css::CssHyphenateString::as_str(&self) -> &str
+pub const fn surgeist_css::CssHyphenateString::component(&self) -> &surgeist_css::CssComponentValue
+pub const fn surgeist_css::CssHyphenateString::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssHyphenateString::try_from_component(component: surgeist_css::CssComponentValue) -> core::option::Option<Self>
+pub fn surgeist_css::CssHyphenateString::try_new(value: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+impl surgeist_css::CssHyphenateString
+pub fn surgeist_css::CssHyphenateString::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssHyphenateString::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssHyphensPropertyValue
+impl surgeist_css::CssHyphensPropertyValue
+pub fn surgeist_css::CssHyphensPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssHyphensPropertyValue::value(&self) -> &surgeist_css::CssHyphens
 pub struct surgeist_css::CssIdent
 impl surgeist_css::CssIdent
 pub fn surgeist_css::CssIdent::as_str(&self) -> &str
@@ -8053,6 +8277,10 @@ pub const fn surgeist_css::CssLineHeightPropertyValue::line_height(&self) -> &su
 pub struct surgeist_css::CssLineIndex(_)
 impl surgeist_css::CssLineIndex
 pub const fn surgeist_css::CssLineIndex::value(self) -> u32
+pub struct surgeist_css::CssLinePaddingPropertyValue
+impl surgeist_css::CssLinePaddingPropertyValue
+pub fn surgeist_css::CssLinePaddingPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssLinePaddingPropertyValue::value(&self) -> &surgeist_css::CssSpecifiedLength
 pub struct surgeist_css::CssLinearGradient
 impl surgeist_css::CssLinearGradient
 pub const fn surgeist_css::CssLinearGradient::direction(&self) -> core::option::Option<&surgeist_css::CssLinearGradientDirection>
@@ -9868,6 +10096,10 @@ pub struct surgeist_css::CssTextAlignPropertyValue
 impl surgeist_css::CssTextAlignPropertyValue
 pub fn surgeist_css::CssTextAlignPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssTextAlignPropertyValue::value(&self) -> &surgeist_css::CssTextAlignValue
+pub struct surgeist_css::CssTextAutospacePropertyValue
+impl surgeist_css::CssTextAutospacePropertyValue
+pub fn surgeist_css::CssTextAutospacePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssTextAutospacePropertyValue::value(&self) -> &surgeist_css::CssTextAutospace
 pub struct surgeist_css::CssTextCombineDigitCount
 impl surgeist_css::CssTextCombineDigitCount
 pub const fn surgeist_css::CssTextCombineDigitCount::calculation(&self) -> core::option::Option<&surgeist_css::CssIntegerCalculation>
@@ -9916,6 +10148,10 @@ pub struct surgeist_css::CssTextDecorationThicknessPropertyValue
 impl surgeist_css::CssTextDecorationThicknessPropertyValue
 pub fn surgeist_css::CssTextDecorationThicknessPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssTextDecorationThicknessPropertyValue::value(&self) -> &surgeist_css::CssTextDecorationThickness
+pub struct surgeist_css::CssTextGroupAlignPropertyValue
+impl surgeist_css::CssTextGroupAlignPropertyValue
+pub fn surgeist_css::CssTextGroupAlignPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssTextGroupAlignPropertyValue::value(&self) -> &surgeist_css::CssTextGroupAlign
 pub struct surgeist_css::CssTextIndent
 impl surgeist_css::CssTextIndent
 pub const fn surgeist_css::CssTextIndent::each_line(&self) -> bool
@@ -9931,6 +10167,19 @@ pub struct surgeist_css::CssTextIndentPropertyValue
 impl surgeist_css::CssTextIndentPropertyValue
 pub fn surgeist_css::CssTextIndentPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssTextIndentPropertyValue::value(&self) -> &surgeist_css::CssTextIndent
+pub struct surgeist_css::CssTextJustify
+impl surgeist_css::CssTextJustify
+pub const fn surgeist_css::CssTextJustify::auto() -> Self
+pub const fn surgeist_css::CssTextJustify::base(&self) -> core::option::Option<surgeist_css::CssTextJustifyBase>
+pub const fn surgeist_css::CssTextJustify::no_compress(&self) -> bool
+pub const fn surgeist_css::CssTextJustify::try_new(base: core::option::Option<surgeist_css::CssTextJustifyBase>, no_compress: bool) -> core::option::Option<Self>
+impl surgeist_css::CssTextJustify
+pub fn surgeist_css::CssTextJustify::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextJustify::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssTextJustifyPropertyValue
+impl surgeist_css::CssTextJustifyPropertyValue
+pub fn surgeist_css::CssTextJustifyPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssTextJustifyPropertyValue::value(&self) -> &surgeist_css::CssTextJustify
 pub struct surgeist_css::CssTextOrientationPropertyValue
 impl surgeist_css::CssTextOrientationPropertyValue
 pub fn surgeist_css::CssTextOrientationPropertyValue::as_css(&self) -> &str
@@ -9939,6 +10188,22 @@ pub struct surgeist_css::CssTextOverflowPropertyValue
 impl surgeist_css::CssTextOverflowPropertyValue
 pub fn surgeist_css::CssTextOverflowPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssTextOverflowPropertyValue::value(&self) -> &surgeist_css::CssTextOverflow
+pub struct surgeist_css::CssTextSpacingPropertyValue
+impl surgeist_css::CssTextSpacingPropertyValue
+pub fn surgeist_css::CssTextSpacingPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssTextSpacingPropertyValue::value(&self) -> &surgeist_css::CssTextSpacing
+pub struct surgeist_css::CssTextSpacingTrimPropertyValue
+impl surgeist_css::CssTextSpacingTrimPropertyValue
+pub fn surgeist_css::CssTextSpacingTrimPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssTextSpacingTrimPropertyValue::value(&self) -> &surgeist_css::CssTextSpacingTrim
+pub struct surgeist_css::CssTextSpacingValues
+impl surgeist_css::CssTextSpacingValues
+pub const fn surgeist_css::CssTextSpacingValues::autospace(&self) -> core::option::Option<surgeist_css::CssAutospace>
+pub const fn surgeist_css::CssTextSpacingValues::trim(&self) -> core::option::Option<surgeist_css::CssSpacingTrim>
+pub const fn surgeist_css::CssTextSpacingValues::try_new(trim: core::option::Option<surgeist_css::CssSpacingTrim>, autospace: core::option::Option<surgeist_css::CssAutospace>) -> core::option::Option<Self>
+impl surgeist_css::CssTextSpacingValues
+pub fn surgeist_css::CssTextSpacingValues::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextSpacingValues::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssTextTransformPropertyValue
 impl surgeist_css::CssTextTransformPropertyValue
 pub fn surgeist_css::CssTextTransformPropertyValue::as_css(&self) -> &str

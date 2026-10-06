@@ -2595,7 +2595,20 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::WrapAfter
         | CssKnownProperty::LineBreak
         | CssKnownProperty::WordSpaceTransform
-        | CssKnownProperty::TabSize => X_TEXT4,
+        | CssKnownProperty::TabSize
+        | CssKnownProperty::Hyphens
+        | CssKnownProperty::HyphenateCharacter
+        | CssKnownProperty::HyphenateLimitZone
+        | CssKnownProperty::HyphenateLimitChars
+        | CssKnownProperty::HyphenateLimitLines
+        | CssKnownProperty::HyphenateLimitLast
+        | CssKnownProperty::TextJustify
+        | CssKnownProperty::TextGroupAlign
+        | CssKnownProperty::LinePadding
+        | CssKnownProperty::TextAutospace
+        | CssKnownProperty::TextSpacingTrim
+        | CssKnownProperty::TextSpacing
+        | CssKnownProperty::HangingPunctuation => X_TEXT4,
         CssKnownProperty::TextDecorationLine
         | CssKnownProperty::TextDecorationColor
         | CssKnownProperty::TextDecorationStyle => S_TEXTDECOR3,
@@ -2796,7 +2809,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 684] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 697] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -5201,6 +5214,67 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 684] = [
         CssKnownProperty::LetterSpacing,
         "letter-spacing",
         "baseline.property.letter-spacing"
+    ),
+    complete_property_feature!(CssKnownProperty::Hyphens, "hyphens", "ext.property.hyphens"),
+    complete_property_feature!(
+        CssKnownProperty::HyphenateCharacter,
+        "hyphenate-character",
+        "ext.property.hyphenate-character"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::HyphenateLimitZone,
+        "hyphenate-limit-zone",
+        "ext.property.hyphenate-limit-zone"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::HyphenateLimitChars,
+        "hyphenate-limit-chars",
+        "ext.property.hyphenate-limit-chars"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::HyphenateLimitLines,
+        "hyphenate-limit-lines",
+        "ext.property.hyphenate-limit-lines"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::HyphenateLimitLast,
+        "hyphenate-limit-last",
+        "ext.property.hyphenate-limit-last"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::TextJustify,
+        "text-justify",
+        "ext.property.text-justify"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::TextGroupAlign,
+        "text-group-align",
+        "ext.property.text-group-align"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::LinePadding,
+        "line-padding",
+        "ext.property.line-padding"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::TextAutospace,
+        "text-autospace",
+        "ext.property.text-autospace"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::TextSpacingTrim,
+        "text-spacing-trim",
+        "ext.property.text-spacing-trim"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::TextSpacing,
+        "text-spacing",
+        "ext.property.text-spacing"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::HangingPunctuation,
+        "hanging-punctuation",
+        "ext.property.hanging-punctuation"
     ),
     complete_property_feature!(
         CssKnownProperty::WrapInside,

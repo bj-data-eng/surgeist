@@ -6938,6 +6938,113 @@ cost final UTF-8 bytes only. Suppressed output still visits and charges children
 sibling output shares one cumulative context. Failures return no partial CSS
 and leave authored values available for retry.
 
+## Authored hyphenation, justification and spacing
+
+The selected [Text 4 hyphenation controls](https://www.w3.org/TR/2026/WD-css-text-4-20260814/#hyphenation)
+retain authored values independently of language, font and line-box execution.
+`hyphens` admits none/manual/auto. `hyphenate-character` admits auto or any CSS
+string, including an empty string; its checked payload retains the decoded
+content and original string component origin. Canonical quoting uses the shared
+string writer. Truncating the used string in whole typographic units belongs to
+text processing. `hyphenate-limit-zone` uses signed length-percentage syntax,
+including symbolic typed calculations; its percentage basis is the line-box
+length, obtained downstream.
+
+`hyphenate-limit-chars` retains one, two or three authored auto/nonnegative
+integer slots and serializes that arity. Its effective symbolic triple uses the
+first slot as total, supplies auto for an omitted second slot, and copies the
+effective second into an omitted third. This does not select UA auto counts or
+round calculations. `hyphenate-limit-lines` admits no-limit or the same
+nonnegative integer domain. Lexical integers preserve arbitrary magnitude and
+signed zero; negative, fractional and exponent literal tokens reject. Checked
+bare calculation-token roots pass that same admission gate. Supported
+Integer-root function calculations remain symbolic, including negative and
+fractional results, under [Values 4's computed/used range rules](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-range).
+`hyphenate-limit-last` admits none/always/column/page/spread.
+
+The [text-justify grammar](https://www.w3.org/TR/2026/WD-css-text-4-20260814/#propdef-text-justify)
+retains an optional base and optional no-compress flag in a checked nonempty
+aggregate. A modifier alone is valid. Bases are auto, none, inter-word,
+inter-character, ruby and the standard legacy distribute alternative.
+Distribute retains its authored spelling; its computed equivalence to
+inter-character belongs downstream. Canonical specified output places the
+present base before no-compress. This order is a Surgeist choice because the
+selected table lists canonical order as n/a. `text-group-align` admits
+none/start/end/left/right/center and is noninherited.
+
+`line-padding` uses signed Length-root syntax, initially exact unitless zero.
+It rejects percentages and nonzero bare numbers, retaining shared symbolic
+length math. `text-autospace` distinguishes exclusive normal/auto/no-autospace
+from a checked nonempty set of ideograph-alpha, ideograph-numeric and
+punctuation flags with an optional exclusive insert/replace mode. A mode alone
+is valid. Omitted mode stays observable; its effective insert meaning belongs
+to later processing. `text-spacing-trim` has seven longhand alternatives:
+space-all, normal, space-first, trim-start, trim-both, trim-all and auto.
+
+The checked public constructors preserve those distinctions:
+`CssHyphenateString::try_from_component` retains an original string token;
+`CssHyphenateLimitInteger::try_new` admits the selected range through the
+existing integer owner; and `CssHyphenateLimitChars::try_new(total, before,
+after)` rejects an after slot without a before slot. `authored_len()` reports
+specified arity, while `effective_components()` supplies only symbolic defaults.
+`CssTextJustify::try_new(base, no_compress)` rejects the all-absent aggregate.
+`CssAutospaceValues::try_new(alpha, numeric, punctuation, mode)` admits a mode
+alone and preserves mode omission through `mode()`; `effective_mode()` supplies
+Insert symbolically. Shorthand constituent types `CssSpacingTrim` and
+`CssAutospace` exclude the longhand-only alternatives by construction.
+
+The [text-spacing shorthand](https://www.w3.org/TR/2026/WD-css-text-4-20260814/#propdef-text-spacing)
+retains exclusive none/auto or present trim/autospace constituents. Its trim
+constituent excludes auto; autospace normal/auto are not ordinary shorthand
+constituents. Bare normal therefore belongs to trim. Both grouping levels stay
+contiguous: `ideograph-alpha insert punctuation`,
+`ideograph-alpha trim-start punctuation` and
+`insert trim-start ideograph-alpha` reject. A complete autospace constituent
+can precede or follow trim. Canonical output places trim before autospace;
+autospace emits alpha/numeric/punctuation flags before the explicit mode.
+Authored omissions do not gain specified tokens.
+
+Text-spacing expands exactly TextSpacingTrim then TextAutospace, with no
+reset-only members. None projects to space-all/no-autospace; auto projects to
+auto/auto; an omitted whole member receives its intrinsic normal initial.
+White-space, letter-spacing, word-spacing and justification remain independent.
+`hanging-punctuation` retains none or unique first/last flags and one optional
+force-end/allow-end role, emitting first/end/last in grammar order. Punctuation
+classification, glyph hanging and contextual CJK spacing remain downstream.
+
+| Longhand | Intrinsic initial | Inherited by default |
+| --- | --- | --- |
+| hyphens | manual | yes |
+| hyphenate-character | auto | yes |
+| hyphenate-limit-zone | 0 | yes |
+| hyphenate-limit-chars | authored auto; effective auto/auto/auto | yes |
+| hyphenate-limit-lines | no-limit | yes |
+| hyphenate-limit-last | none | yes |
+| text-justify | auto | yes |
+| text-group-align | none | no |
+| line-padding | 0 | yes |
+| text-autospace, text-spacing-trim | normal | yes |
+| hanging-punctuation | none | yes |
+
+Each longhand contributes one terminal, and text-spacing contributes exactly
+two for ordinary or whole CSS-wide values. Var/env/attr remains one pending
+occurrence until strict replacement succeeds. Both checked front doors reject
+original implicit quote/comment/function closures; browser recovery retains
+its diagnostics separately. Reentry rejects residual substitution before
+ordinary grammar and retains the original occurrence and importance alongside
+replacement child origins. Normalization preserves duplicate order, contexts
+and diagnostics.
+
+Specified providers charge one input/projection visit per emitted keyword or
+string, with transparent finite aggregates and existing numeric child prices.
+Chars visits only its authored slots. Quotes, spaces and punctuation count
+final UTF-8 bytes; declarations and names add their existing two visits.
+Suppressed children and sibling output share one cumulative writer. Resource
+failures return no partial CSS and leave values reusable. Behavioral contracts
+are in [hyphenation](../tests/hyphenation_authored_contract.rs),
+[justification](../tests/justification_authored_contract.rs) and
+[spacing](../tests/text_spacing_authored_contract.rs).
+
 ## Represented keyword specified output
 
 `CssWordBreak`, `CssTextDecorationStyle`, `CssImageRendering`, `CssObjectFit`,

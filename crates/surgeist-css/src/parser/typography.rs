@@ -1483,3 +1483,267 @@ pub(super) fn parse_tab_size<'i, 't>(
     }
     super::values::parse_nonnegative_length(input, numeric, "tab-size").map(CssTabSize::Length)
 }
+
+// Text4's remaining authored families share finite role models and the existing
+// exact numeric/component owners. Nested reorderable groups stay contiguous.
+macro_rules! text_keyword_parser {
+    ($parser:ident, $ty:ident, $($text:literal => $variant:ident),+ $(,)?) => {
+        pub(super) fn $parser<'i, 't>(input: &mut Parser<'i, 't>) -> std::result::Result<$ty, ParseError<'i, Error>> {
+            let ident = input.expect_ident_cloned().map_err(basic)?;
+            match_ignore_ascii_case! { &ident,
+                $($text => Ok($ty::$variant),)+
+                _ => Err(unsupported_value(input, None, "invalid Text keyword")),
+            }
+        }
+    };
+}
+text_keyword_parser!(parse_hyphens, CssHyphens, "none" => None, "manual" => Manual, "auto" => Auto);
+text_keyword_parser!(parse_hyphenate_limit_last, CssHyphenateLimitLast,
+    "none" => None, "always" => Always, "column" => Column, "page" => Page, "spread" => Spread);
+text_keyword_parser!(parse_text_justify_base, CssTextJustifyBase,
+    "auto" => Auto, "none" => None, "inter-word" => InterWord, "inter-character" => InterCharacter,
+    "ruby" => Ruby, "distribute" => Distribute);
+text_keyword_parser!(parse_text_group_align, CssTextGroupAlign,
+    "none" => None, "start" => Start, "end" => End, "left" => Left, "right" => Right, "center" => Center);
+text_keyword_parser!(parse_autospace_mode, CssAutospaceMode, "insert" => Insert, "replace" => Replace);
+text_keyword_parser!(parse_spacing_trim, CssSpacingTrim,
+    "space-all" => SpaceAll, "normal" => Normal, "space-first" => SpaceFirst,
+    "trim-start" => TrimStart, "trim-both" => TrimBoth, "trim-all" => TrimAll);
+
+pub(super) fn parse_hyphenate_character<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> std::result::Result<CssHyphenateCharacter, ParseError<'i, Error>> {
+    if input
+        .try_parse(|input| input.expect_ident_matching("auto"))
+        .is_ok()
+    {
+        return Ok(CssHyphenateCharacter::Auto);
+    }
+    input.skip_whitespace();
+    let location = input.current_source_location();
+    let component = numeric
+        .collect(input)
+        .map_err(|_| unsupported_value_at(location, None, "expected hyphenation string"))?;
+    CssHyphenateString::try_from_component(component)
+        .map(CssHyphenateCharacter::String)
+        .ok_or_else(|| unsupported_value_at(location, None, "expected hyphenation string or auto"))
+}
+fn parse_hyphenate_integer<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> std::result::Result<CssHyphenateLimitInteger, ParseError<'i, Error>> {
+    let location = input.current_source_location();
+    let integer = super::values::parse_integer_value(input, numeric)?;
+    CssHyphenateLimitInteger::try_new(integer).ok_or_else(|| {
+        unsupported_value_at(
+            location,
+            None,
+            "expected nonnegative integer or Integer-root function",
+        )
+    })
+}
+fn parse_hyphenate_chars_component<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> std::result::Result<CssHyphenateLimitCharsComponent, ParseError<'i, Error>> {
+    if input
+        .try_parse(|input| input.expect_ident_matching("auto"))
+        .is_ok()
+    {
+        return Ok(CssHyphenateLimitCharsComponent::Auto);
+    }
+    parse_hyphenate_integer(input, numeric).map(CssHyphenateLimitCharsComponent::Integer)
+}
+pub(super) fn parse_hyphenate_limit_chars<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> std::result::Result<CssHyphenateLimitChars, ParseError<'i, Error>> {
+    let total = parse_hyphenate_chars_component(input, numeric)?;
+    let before = if input.is_exhausted() {
+        None
+    } else {
+        Some(parse_hyphenate_chars_component(input, numeric)?)
+    };
+    let after = if input.is_exhausted() {
+        None
+    } else {
+        Some(parse_hyphenate_chars_component(input, numeric)?)
+    };
+    Ok(CssHyphenateLimitChars::try_new(total, before, after).expect("ordered authored slots"))
+}
+pub(super) fn parse_hyphenate_limit_lines<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> std::result::Result<CssHyphenateLimitLines, ParseError<'i, Error>> {
+    if input
+        .try_parse(|input| input.expect_ident_matching("no-limit"))
+        .is_ok()
+    {
+        return Ok(CssHyphenateLimitLines::NoLimit);
+    }
+    parse_hyphenate_integer(input, numeric).map(CssHyphenateLimitLines::Integer)
+}
+pub(super) fn parse_hyphenate_limit_zone<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> std::result::Result<CssSpecifiedLengthPercentage, ParseError<'i, Error>> {
+    parse_length_percentage(input, numeric, "hyphenate-limit-zone")
+}
+pub(super) fn parse_line_padding<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> std::result::Result<CssSpecifiedLength, ParseError<'i, Error>> {
+    super::values::parse_length(input, numeric, "line-padding")
+}
+pub(super) fn parse_text_justify<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> std::result::Result<CssTextJustify, ParseError<'i, Error>> {
+    let mut base = None;
+    let mut no_compress = false;
+    while !input.is_exhausted() {
+        if input
+            .try_parse(|input| input.expect_ident_matching("no-compress"))
+            .is_ok()
+        {
+            if no_compress {
+                return Err(unsupported_value(input, None, "duplicate no-compress"));
+            }
+            no_compress = true;
+        } else {
+            let value = parse_text_justify_base(input)?;
+            if base.replace(value).is_some() {
+                return Err(unsupported_value(
+                    input,
+                    None,
+                    "duplicate justification base",
+                ));
+            }
+        }
+    }
+    CssTextJustify::try_new(base, no_compress)
+        .ok_or_else(|| unsupported_value(input, None, "empty justification value"))
+}
+fn parse_autospace_flags<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> std::result::Result<[bool; 3], ParseError<'i, Error>> {
+    let mut flags = [false; 3];
+    while !input.is_exhausted() {
+        let state = input.state();
+        let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) else {
+            break;
+        };
+        let index = if ident.eq_ignore_ascii_case("ideograph-alpha") {
+            0
+        } else if ident.eq_ignore_ascii_case("ideograph-numeric") {
+            1
+        } else if ident.eq_ignore_ascii_case("punctuation") {
+            2
+        } else {
+            input.reset(&state);
+            break;
+        };
+        if std::mem::replace(&mut flags[index], true) {
+            return Err(unsupported_value(input, None, "duplicate autospace flag"));
+        }
+    }
+    Ok(flags)
+}
+fn parse_autospace<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> std::result::Result<CssAutospace, ParseError<'i, Error>> {
+    if input
+        .try_parse(|input| input.expect_ident_matching("no-autospace"))
+        .is_ok()
+    {
+        return Ok(CssAutospace::NoAutospace);
+    }
+    // The entire nested flag group appears either before or after the mode.
+    let (flags, mode) = if let Ok(mode) = input.try_parse(parse_autospace_mode) {
+        (parse_autospace_flags(input)?, Some(mode))
+    } else {
+        let flags = parse_autospace_flags(input)?;
+        (flags, input.try_parse(parse_autospace_mode).ok())
+    };
+    CssAutospaceValues::try_new(flags[0], flags[1], flags[2], mode)
+        .map(CssAutospace::Spacing)
+        .ok_or_else(|| unsupported_value(input, None, "empty autospace constituent"))
+}
+pub(super) fn parse_text_autospace<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> std::result::Result<CssTextAutospace, ParseError<'i, Error>> {
+    if input
+        .try_parse(|input| input.expect_ident_matching("normal"))
+        .is_ok()
+    {
+        return Ok(CssTextAutospace::Normal);
+    }
+    if input
+        .try_parse(|input| input.expect_ident_matching("auto"))
+        .is_ok()
+    {
+        return Ok(CssTextAutospace::Auto);
+    }
+    parse_autospace(input).map(CssTextAutospace::Autospace)
+}
+pub(super) fn parse_text_spacing_trim<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> std::result::Result<CssTextSpacingTrim, ParseError<'i, Error>> {
+    if input
+        .try_parse(|input| input.expect_ident_matching("auto"))
+        .is_ok()
+    {
+        return Ok(CssTextSpacingTrim::Auto);
+    }
+    parse_spacing_trim(input).map(CssTextSpacingTrim::Trim)
+}
+pub(super) fn parse_text_spacing<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> std::result::Result<CssTextSpacing, ParseError<'i, Error>> {
+    if input
+        .try_parse(|input| input.expect_ident_matching("none"))
+        .is_ok()
+    {
+        return Ok(CssTextSpacing::None);
+    }
+    if input
+        .try_parse(|input| input.expect_ident_matching("auto"))
+        .is_ok()
+    {
+        return Ok(CssTextSpacing::Auto);
+    }
+    let mut trim = input.try_parse(parse_spacing_trim).ok();
+    let autospace = input.try_parse(parse_autospace).ok();
+    if trim.is_none() {
+        trim = input.try_parse(parse_spacing_trim).ok();
+    }
+    CssTextSpacingValues::try_new(trim, autospace)
+        .map(CssTextSpacing::Components)
+        .ok_or_else(|| unsupported_value(input, None, "empty text-spacing value"))
+}
+pub(super) fn parse_hanging_punctuation<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> std::result::Result<CssHangingPunctuation, ParseError<'i, Error>> {
+    if input
+        .try_parse(|input| input.expect_ident_matching("none"))
+        .is_ok()
+    {
+        return Ok(CssHangingPunctuation::None);
+    }
+    let mut first = false;
+    let mut end = None;
+    let mut last = false;
+    while !input.is_exhausted() {
+        let ident = input.expect_ident_cloned().map_err(basic)?;
+        match_ignore_ascii_case! { &ident,
+            "first" if !first => first = true,
+            "last" if !last => last = true,
+            "force-end" if end.is_none() => end = Some(CssHangingPunctuationEnd::ForceEnd),
+            "allow-end" if end.is_none() => end = Some(CssHangingPunctuationEnd::AllowEnd),
+            _ => return Err(unsupported_value(input, None, "duplicate, conflicting or unknown hanging role")),
+        };
+    }
+    CssHangingPunctuationValues::try_new(first, end, last)
+        .map(CssHangingPunctuation::Hang)
+        .ok_or_else(|| unsupported_value(input, None, "empty hanging-punctuation value"))
+}

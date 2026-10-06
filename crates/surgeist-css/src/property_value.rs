@@ -96,7 +96,26 @@ fn is_time_property(property: crate::CssKnownProperty) -> bool {
 fn requires_closed_components(property: crate::CssKnownProperty) -> bool {
     matches!(
         property,
-        crate::CssKnownProperty::TextTransform
+        crate::CssKnownProperty::Hyphens
+            | crate::CssKnownProperty::HyphenateCharacter
+            | crate::CssKnownProperty::HyphenateLimitZone
+            | crate::CssKnownProperty::HyphenateLimitChars
+            | crate::CssKnownProperty::HyphenateLimitLines
+            | crate::CssKnownProperty::HyphenateLimitLast
+            | crate::CssKnownProperty::TextJustify
+            | crate::CssKnownProperty::TextGroupAlign
+            | crate::CssKnownProperty::LinePadding
+            | crate::CssKnownProperty::TextAutospace
+            | crate::CssKnownProperty::TextSpacingTrim
+            | crate::CssKnownProperty::TextSpacing
+            | crate::CssKnownProperty::HangingPunctuation
+            | crate::CssKnownProperty::TextAlign
+            | crate::CssKnownProperty::TextAlignAll
+            | crate::CssKnownProperty::TextAlignLast
+            | crate::CssKnownProperty::OverflowWrap
+            | crate::CssKnownProperty::WordSpacing
+            | crate::CssKnownProperty::LetterSpacing
+            | crate::CssKnownProperty::TextTransform
             | crate::CssKnownProperty::WrapInside
             | crate::CssKnownProperty::WrapBefore
             | crate::CssKnownProperty::WrapAfter

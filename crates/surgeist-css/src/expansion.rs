@@ -72,6 +72,23 @@ pub(crate) fn white_space_trim(value: &CssWhiteSpace) -> Option<CssWhiteSpaceTri
     }
 }
 
+// Text4 spacing has exactly two settable terminals; whole-member omissions
+// request the terminal's shared intrinsic normal initial.
+pub(crate) fn text_spacing_trim(value: &CssTextSpacing) -> Option<CssTextSpacingTrim> {
+    match value {
+        CssTextSpacing::None => Some(CssTextSpacingTrim::Trim(CssSpacingTrim::SpaceAll)),
+        CssTextSpacing::Auto => Some(CssTextSpacingTrim::Auto),
+        CssTextSpacing::Components(value) => value.trim().map(CssTextSpacingTrim::Trim),
+    }
+}
+pub(crate) fn text_spacing_autospace(value: &CssTextSpacing) -> Option<CssTextAutospace> {
+    match value {
+        CssTextSpacing::None => Some(CssTextAutospace::Autospace(CssAutospace::NoAutospace)),
+        CssTextSpacing::Auto => Some(CssTextAutospace::Auto),
+        CssTextSpacing::Components(value) => value.autospace().map(CssTextAutospace::Autospace),
+    }
+}
+
 // Grid alternatives project typed children into the existing schema. Omitted
 // values request that terminal's central initial; no CSS is serialized/reparsed.
 pub(crate) fn grid_template_rows(value: &CssGridTemplate) -> Option<CssGridTrackList> {
