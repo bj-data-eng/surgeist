@@ -143,7 +143,7 @@ fn authored_alias_origin_and_all_reset_use_the_canonical_identity() {
     };
     assert!(!reset.excludes(CssPropertyNameRef::Known(CssKnownProperty::OverflowWrap)));
 
-    let word_break = property_support_metadata("word-break").expect("shared Text 3 source");
-    assert_eq!(word_break.feature().source().id().as_str(), "S-TEXT3");
-    assert_eq!(word_break.feature().status(), CssSupportStatus::Partial);
+    let word_break = property_support_metadata("word-break").expect("selected Text 4 source");
+    assert_eq!(word_break.feature().source().id().as_str(), "X-TEXT4");
+    assert_eq!(word_break.feature().status(), CssSupportStatus::Complete);
 }
