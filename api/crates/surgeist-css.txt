@@ -132,6 +132,12 @@ pub surgeist_css::CssAutospaceMode::Replace
 impl surgeist_css::CssAutospaceMode
 pub fn surgeist_css::CssAutospaceMode::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssAutospaceMode::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssBackfaceVisibility
+pub surgeist_css::CssBackfaceVisibility::Hidden
+pub surgeist_css::CssBackfaceVisibility::Visible
+impl surgeist_css::CssBackfaceVisibility
+pub fn surgeist_css::CssBackfaceVisibility::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBackfaceVisibility::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssBackgroundAttachment
 pub surgeist_css::CssBackgroundAttachment::Fixed
 pub surgeist_css::CssBackgroundAttachment::Local
@@ -2086,6 +2092,7 @@ pub surgeist_css::CssKnownProperty::AnimationPlayState
 pub surgeist_css::CssKnownProperty::AnimationTimingFunction
 pub surgeist_css::CssKnownProperty::AspectRatio
 pub surgeist_css::CssKnownProperty::BackdropFilter
+pub surgeist_css::CssKnownProperty::BackfaceVisibility
 pub surgeist_css::CssKnownProperty::Background
 pub surgeist_css::CssKnownProperty::BackgroundAttachment
 pub surgeist_css::CssKnownProperty::BackgroundBlendMode
@@ -2354,6 +2361,8 @@ pub surgeist_css::CssKnownProperty::PaddingTop
 pub surgeist_css::CssKnownProperty::Pause
 pub surgeist_css::CssKnownProperty::PauseAfter
 pub surgeist_css::CssKnownProperty::PauseBefore
+pub surgeist_css::CssKnownProperty::Perspective
+pub surgeist_css::CssKnownProperty::PerspectiveOrigin
 pub surgeist_css::CssKnownProperty::PlaceContent
 pub surgeist_css::CssKnownProperty::PlaceItems
 pub surgeist_css::CssKnownProperty::PlaceSelf
@@ -2428,6 +2437,7 @@ pub surgeist_css::CssKnownProperty::Top
 pub surgeist_css::CssKnownProperty::Transform
 pub surgeist_css::CssKnownProperty::TransformBox
 pub surgeist_css::CssKnownProperty::TransformOrigin
+pub surgeist_css::CssKnownProperty::TransformStyle
 pub surgeist_css::CssKnownProperty::Transition
 pub surgeist_css::CssKnownProperty::TransitionDelay
 pub surgeist_css::CssKnownProperty::TransitionDuration
@@ -2485,6 +2495,7 @@ pub surgeist_css::CssKnownPropertyValueRef::AnimationPlayState(&'a surgeist_css:
 pub surgeist_css::CssKnownPropertyValueRef::AnimationTimingFunction(&'a surgeist_css::CssAnimationTimingFunctionPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::AspectRatio(&'a surgeist_css::CssAspectRatioPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BackdropFilter(&'a surgeist_css::CssBackdropFilterPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::BackfaceVisibility(&'a surgeist_css::CssBackfaceVisibilityPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Background(&'a surgeist_css::CssBackgroundPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BackgroundAttachment(&'a surgeist_css::CssBackgroundAttachmentPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BackgroundBlendMode(&'a surgeist_css::CssBackgroundBlendModePropertyValue)
@@ -2753,6 +2764,8 @@ pub surgeist_css::CssKnownPropertyValueRef::PaddingTop(&'a surgeist_css::CssPadd
 pub surgeist_css::CssKnownPropertyValueRef::Pause(&'a surgeist_css::CssPausePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::PauseAfter(&'a surgeist_css::CssPauseAfterPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::PauseBefore(&'a surgeist_css::CssPauseBeforePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::Perspective(&'a surgeist_css::CssPerspectivePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::PerspectiveOrigin(&'a surgeist_css::CssPerspectiveOriginPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::PlaceContent(&'a surgeist_css::CssPlaceContentPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::PlaceItems(&'a surgeist_css::CssPlaceItemsPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::PlaceSelf(&'a surgeist_css::CssPlaceSelfPropertyValue)
@@ -2827,6 +2840,7 @@ pub surgeist_css::CssKnownPropertyValueRef::Top(&'a surgeist_css::CssTopProperty
 pub surgeist_css::CssKnownPropertyValueRef::Transform(&'a surgeist_css::CssTransformPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TransformBox(&'a surgeist_css::CssTransformBoxPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TransformOrigin(&'a surgeist_css::CssTransformOriginPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::TransformStyle(&'a surgeist_css::CssTransformStylePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Transition(&'a surgeist_css::CssTransitionPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TransitionDelay(&'a surgeist_css::CssTransitionDelayPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TransitionDuration(&'a surgeist_css::CssTransitionDurationPropertyValue)
@@ -2986,6 +3000,7 @@ pub surgeist_css::CssLonghandValueRef::AnimationPlayState(&'a surgeist_css::CssA
 pub surgeist_css::CssLonghandValueRef::AnimationTimingFunction(&'a surgeist_css::CssEasingList)
 pub surgeist_css::CssLonghandValueRef::AspectRatio(&'a surgeist_css::CssAspectRatioValue)
 pub surgeist_css::CssLonghandValueRef::BackdropFilter(&'a surgeist_css::CssFilter)
+pub surgeist_css::CssLonghandValueRef::BackfaceVisibility(&'a surgeist_css::CssBackfaceVisibility)
 pub surgeist_css::CssLonghandValueRef::BackgroundAttachment(&'a surgeist_css::CssBackgroundAttachmentList)
 pub surgeist_css::CssLonghandValueRef::BackgroundBlendMode(&'a surgeist_css::CssBlendModeList)
 pub surgeist_css::CssLonghandValueRef::BackgroundClip(&'a surgeist_css::CssBackgroundBoxList)
@@ -3190,6 +3205,8 @@ pub surgeist_css::CssLonghandValueRef::PaddingRight(&'a surgeist_css::CssPadding
 pub surgeist_css::CssLonghandValueRef::PaddingTop(&'a surgeist_css::CssPaddingValue)
 pub surgeist_css::CssLonghandValueRef::PauseAfter(&'a surgeist_css::CssSpeechBreak)
 pub surgeist_css::CssLonghandValueRef::PauseBefore(&'a surgeist_css::CssSpeechBreak)
+pub surgeist_css::CssLonghandValueRef::Perspective(&'a surgeist_css::CssPerspective)
+pub surgeist_css::CssLonghandValueRef::PerspectiveOrigin(&'a surgeist_css::CssPhysicalPosition)
 pub surgeist_css::CssLonghandValueRef::PointerEvents(&'a surgeist_css::CssPointerEvents)
 pub surgeist_css::CssLonghandValueRef::Position(&'a surgeist_css::CssLayoutPosition)
 pub surgeist_css::CssLonghandValueRef::PrintColorAdjust(&'a surgeist_css::CssPrintColorAdjust)
@@ -3198,7 +3215,9 @@ pub surgeist_css::CssLonghandValueRef::Resize(&'a surgeist_css::CssResize)
 pub surgeist_css::CssLonghandValueRef::RestAfter(&'a surgeist_css::CssSpeechBreak)
 pub surgeist_css::CssLonghandValueRef::RestBefore(&'a surgeist_css::CssSpeechBreak)
 pub surgeist_css::CssLonghandValueRef::Right(&'a surgeist_css::CssInsetValue)
+pub surgeist_css::CssLonghandValueRef::Rotate(&'a surgeist_css::CssRotate)
 pub surgeist_css::CssLonghandValueRef::RowGap(&'a surgeist_css::CssGapValue)
+pub surgeist_css::CssLonghandValueRef::Scale(&'a surgeist_css::CssScale)
 pub surgeist_css::CssLonghandValueRef::ScrollBehavior(&'a surgeist_css::CssScrollBehavior)
 pub surgeist_css::CssLonghandValueRef::ScrollMarginBlockEnd(&'a surgeist_css::CssSpecifiedLength)
 pub surgeist_css::CssLonghandValueRef::ScrollMarginBlockStart(&'a surgeist_css::CssSpecifiedLength)
@@ -3240,10 +3259,15 @@ pub surgeist_css::CssLonghandValueRef::TextTransform(&'a surgeist_css::CssTextTr
 pub surgeist_css::CssLonghandValueRef::TextWrapMode(&'a surgeist_css::CssTextWrapMode)
 pub surgeist_css::CssLonghandValueRef::TextWrapStyle(&'a surgeist_css::CssTextWrapStyle)
 pub surgeist_css::CssLonghandValueRef::Top(&'a surgeist_css::CssInsetValue)
+pub surgeist_css::CssLonghandValueRef::Transform(&'a surgeist_css::CssTransform)
+pub surgeist_css::CssLonghandValueRef::TransformBox(&'a surgeist_css::CssTransformBox)
+pub surgeist_css::CssLonghandValueRef::TransformOrigin(&'a surgeist_css::CssTransformOrigin)
+pub surgeist_css::CssLonghandValueRef::TransformStyle(&'a surgeist_css::CssTransformStyle)
 pub surgeist_css::CssLonghandValueRef::TransitionDelay(&'a surgeist_css::CssDelayList)
 pub surgeist_css::CssLonghandValueRef::TransitionDuration(&'a surgeist_css::CssDurationList)
 pub surgeist_css::CssLonghandValueRef::TransitionProperty(&'a surgeist_css::CssTransitionPropertyList)
 pub surgeist_css::CssLonghandValueRef::TransitionTimingFunction(&'a surgeist_css::CssEasingList)
+pub surgeist_css::CssLonghandValueRef::Translate(&'a surgeist_css::CssTranslate)
 pub surgeist_css::CssLonghandValueRef::UnicodeBidi(&'a surgeist_css::CssUnicodeBidi)
 pub surgeist_css::CssLonghandValueRef::UserSelect(&'a surgeist_css::CssUserSelect)
 pub surgeist_css::CssLonghandValueRef::VerticalAlign(&'a surgeist_css::CssVerticalAlign)
@@ -3739,6 +3763,14 @@ pub surgeist_css::CssPathDataConstructionErrorKind::EmptyPath
 pub surgeist_css::CssPathDataConstructionErrorKind::ExpectedString
 pub surgeist_css::CssPathDataConstructionErrorKind::InvalidPathData
 pub surgeist_css::CssPathDataConstructionErrorKind::RecoveredInput
+#[non_exhaustive] pub enum surgeist_css::CssPerspective
+pub surgeist_css::CssPerspective::Length(surgeist_css::CssSpecifiedNonNegativeLength)
+pub surgeist_css::CssPerspective::None
+impl surgeist_css::CssPerspective
+pub fn surgeist_css::CssPerspective::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssPerspective::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl core::cmp::PartialEq for surgeist_css::CssPerspective
+pub fn surgeist_css::CssPerspective::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssPointerCapability
 pub surgeist_css::CssPointerCapability::Coarse
 pub surgeist_css::CssPointerCapability::Fine
@@ -4678,8 +4710,8 @@ pub surgeist_css::CssTransformFunction::RotateY(surgeist_css::CssAngleOrZero)
 pub surgeist_css::CssTransformFunction::RotateZ(surgeist_css::CssAngleOrZero)
 pub surgeist_css::CssTransformFunction::Scale(surgeist_css::CssTransformScale)
 pub surgeist_css::CssTransformFunction::Scale3d(surgeist_css::CssTransformScale3d)
-pub surgeist_css::CssTransformFunction::ScaleX(surgeist_css::CssSpecifiedNumber)
-pub surgeist_css::CssTransformFunction::ScaleY(surgeist_css::CssSpecifiedNumber)
+pub surgeist_css::CssTransformFunction::ScaleX(surgeist_css::CssTransformScaleComponent)
+pub surgeist_css::CssTransformFunction::ScaleY(surgeist_css::CssTransformScaleComponent)
 pub surgeist_css::CssTransformFunction::ScaleZ(surgeist_css::CssTransformScaleComponent)
 pub surgeist_css::CssTransformFunction::Skew(surgeist_css::CssTransformSkew)
 pub surgeist_css::CssTransformFunction::SkewX(surgeist_css::CssAngleOrZero)
@@ -4726,6 +4758,12 @@ pub surgeist_css::CssTransformScaleComponent::Number(surgeist_css::CssSpecifiedN
 pub surgeist_css::CssTransformScaleComponent::Percentage(surgeist_css::CssSpecifiedPercentage)
 impl core::cmp::PartialEq for surgeist_css::CssTransformScaleComponent
 pub fn surgeist_css::CssTransformScaleComponent::eq(&self, other: &Self) -> bool
+#[non_exhaustive] pub enum surgeist_css::CssTransformStyle
+pub surgeist_css::CssTransformStyle::Flat
+pub surgeist_css::CssTransformStyle::Preserve3d
+impl surgeist_css::CssTransformStyle
+pub fn surgeist_css::CssTransformStyle::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTransformStyle::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssTransitionProperty
 pub surgeist_css::CssTransitionProperty::All
 pub surgeist_css::CssTransitionProperty::Custom(surgeist_css::CssTransitionPropertyName)
@@ -5261,6 +5299,10 @@ pub struct surgeist_css::CssBackdropFilterPropertyValue
 impl surgeist_css::CssBackdropFilterPropertyValue
 pub fn surgeist_css::CssBackdropFilterPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssBackdropFilterPropertyValue::value(&self) -> &surgeist_css::CssFilter
+pub struct surgeist_css::CssBackfaceVisibilityPropertyValue
+impl surgeist_css::CssBackfaceVisibilityPropertyValue
+pub fn surgeist_css::CssBackfaceVisibilityPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssBackfaceVisibilityPropertyValue::value(&self) -> &surgeist_css::CssBackfaceVisibility
 pub struct surgeist_css::CssBackground
 impl surgeist_css::CssBackground
 pub fn surgeist_css::CssBackground::layers(&self) -> &[surgeist_css::CssBackgroundLayer]
@@ -9004,6 +9046,14 @@ pub fn surgeist_css::CssPercentageCalculation::try_from_components(values: surge
 pub fn surgeist_css::CssPercentageCalculation::try_from_components_with_limits(values: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 impl surgeist_css::CssPercentageCalculation
 pub fn surgeist_css::CssPercentageCalculation::try_literal(value: f32) -> core::option::Option<Self>
+pub struct surgeist_css::CssPerspectiveOriginPropertyValue
+impl surgeist_css::CssPerspectiveOriginPropertyValue
+pub fn surgeist_css::CssPerspectiveOriginPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssPerspectiveOriginPropertyValue::position(&self) -> &surgeist_css::CssPhysicalPosition
+pub struct surgeist_css::CssPerspectivePropertyValue
+impl surgeist_css::CssPerspectivePropertyValue
+pub fn surgeist_css::CssPerspectivePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssPerspectivePropertyValue::value(&self) -> &surgeist_css::CssPerspective
 pub struct surgeist_css::CssPhysicalPosition
 impl surgeist_css::CssPhysicalPosition
 pub const fn surgeist_css::CssPhysicalPosition::horizontal(&self) -> &surgeist_css::CssHorizontalPosition
@@ -9415,8 +9465,8 @@ pub fn surgeist_css::CssScalePropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssScalePropertyValue::value(&self) -> &surgeist_css::CssScale
 pub struct surgeist_css::CssScaleValues
 impl surgeist_css::CssScaleValues
-pub fn surgeist_css::CssScaleValues::try_new(values: alloc::vec::Vec<surgeist_css::CssSpecifiedNumber>) -> core::option::Option<Self>
-pub fn surgeist_css::CssScaleValues::values(&self) -> &[surgeist_css::CssSpecifiedNumber]
+pub fn surgeist_css::CssScaleValues::try_new(values: alloc::vec::Vec<surgeist_css::CssTransformScaleComponent>) -> core::option::Option<Self>
+pub fn surgeist_css::CssScaleValues::values(&self) -> &[surgeist_css::CssTransformScaleComponent]
 impl core::cmp::PartialEq for surgeist_css::CssScaleValues
 pub fn surgeist_css::CssScaleValues::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssScopeRule
@@ -10350,9 +10400,9 @@ impl core::cmp::PartialEq for surgeist_css::CssTransformRotate3d
 pub fn surgeist_css::CssTransformRotate3d::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssTransformScale
 impl surgeist_css::CssTransformScale
-pub const fn surgeist_css::CssTransformScale::new(x: surgeist_css::CssSpecifiedNumber, y: core::option::Option<surgeist_css::CssSpecifiedNumber>) -> Self
-pub const fn surgeist_css::CssTransformScale::x(&self) -> &surgeist_css::CssSpecifiedNumber
-pub const fn surgeist_css::CssTransformScale::y(&self) -> core::option::Option<&surgeist_css::CssSpecifiedNumber>
+pub const fn surgeist_css::CssTransformScale::new(x: surgeist_css::CssTransformScaleComponent, y: core::option::Option<surgeist_css::CssTransformScaleComponent>) -> Self
+pub const fn surgeist_css::CssTransformScale::x(&self) -> &surgeist_css::CssTransformScaleComponent
+pub const fn surgeist_css::CssTransformScale::y(&self) -> core::option::Option<&surgeist_css::CssTransformScaleComponent>
 impl core::cmp::PartialEq for surgeist_css::CssTransformScale
 pub fn surgeist_css::CssTransformScale::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssTransformScale3d
@@ -10368,6 +10418,10 @@ pub const fn surgeist_css::CssTransformSkew::x(&self) -> &surgeist_css::CssAngle
 pub const fn surgeist_css::CssTransformSkew::y(&self) -> core::option::Option<&surgeist_css::CssAngleOrZero>
 impl core::cmp::PartialEq for surgeist_css::CssTransformSkew
 pub fn surgeist_css::CssTransformSkew::eq(&self, other: &Self) -> bool
+pub struct surgeist_css::CssTransformStylePropertyValue
+impl surgeist_css::CssTransformStylePropertyValue
+pub fn surgeist_css::CssTransformStylePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssTransformStylePropertyValue::value(&self) -> &surgeist_css::CssTransformStyle
 pub struct surgeist_css::CssTransformTranslate
 impl surgeist_css::CssTransformTranslate
 pub const fn surgeist_css::CssTransformTranslate::new(x: surgeist_css::CssSpecifiedLengthPercentage, y: core::option::Option<surgeist_css::CssSpecifiedLengthPercentage>) -> Self

@@ -132,6 +132,13 @@ property_records! {
         dispatch: "none",
         wrapper: yes,
     }
+    BackfaceVisibility, "backface-visibility" {
+        metadata: longhand(false, |v| assert_eq!(*v, CssBackfaceVisibility::Visible)),
+        catalog: grammar_catalog!("official.property.backface-visibility", "hidden", rejected("auto")),
+        source: "I-TRANSFORMS2",
+        dispatch: "hidden",
+        wrapper: yes,
+    }
     Background, "background" {
         metadata: shorthand([BackgroundImage, BackgroundPosition, BackgroundSize, BackgroundRepeat, BackgroundAttachment, BackgroundOrigin, BackgroundClip, BackgroundColor], [BackgroundBlendMode]),
         catalog: grammar_catalog!("baseline.property.background", "#fff", rejected("#fff #000")),
@@ -1878,6 +1885,26 @@ property_records! {
         metadata: longhand(false, |value| assert_eq!(*value, CssSpeechBreak::None)),
         wrapper: yes,
     }
+    Perspective, "perspective" {
+        metadata: longhand(false, |v| assert_eq!(*v, CssPerspective::None)),
+        catalog: grammar_catalog!("official.property.perspective", ".25px", rejected("-1e-999px")),
+        source: "I-TRANSFORMS2",
+        dispatch: "calc(1px - 2px)",
+        wrapper: yes,
+    }
+    PerspectiveOrigin, "perspective-origin" {
+        metadata: longhand(false, |v| {
+            let (CssHorizontalPosition::Offset(x), CssVerticalPosition::Offset(y)) = (v.horizontal(), v.vertical()) else { panic!("initial physical free offsets") };
+            for offset in [x, y] {
+                assert!(exact_literal(offset.literal_component(), "50%"));
+                assert_eq!(offset.origin(), &CssValueOrigin::Programmatic);
+            }
+        }),
+        catalog: grammar_catalog!("official.property.perspective-origin", "right 2px bottom 3%", rejected("left 2px top")),
+        source: "I-TRANSFORMS2",
+        dispatch: "right 2px bottom 3%",
+        wrapper: yes,
+    }
     PlaceContent, "place-content" {
         metadata: shorthand([AlignContent, JustifyContent], []),
         catalog: grammar_catalog!("baseline.property.place-content", "center end", rejected("auto")),
@@ -1951,8 +1978,9 @@ property_records! {
         wrapper: yes,
     }
     Rotate, "rotate" {
-        metadata: unavailable(),
+        metadata: longhand(false, |v| assert_eq!(*v, CssRotate::None)),
         catalog: grammar_catalog!("baseline.property.rotate", "45deg", rejected("45px")),
+        source: "I-TRANSFORMS2",
         dispatch: "45deg",
         wrapper: yes,
     }
@@ -1967,8 +1995,9 @@ property_records! {
         wrapper: yes,
     }
     Scale, "scale" {
-        metadata: unavailable(),
-        catalog: grammar_catalog!("baseline.property.scale", "1.5 2", rejected("solid")),
+        metadata: longhand(false, |v| assert_eq!(*v, CssScale::None)),
+        catalog: grammar_catalog!("baseline.property.scale", "50% 2", rejected("solid")),
+        source: "I-TRANSFORMS2",
         dispatch: "1.5 2",
         wrapper: yes,
     }
@@ -2274,20 +2303,38 @@ property_records! {
         wrapper: yes,
     }
     Transform, "transform" {
-        metadata: unavailable(),
+        metadata: longhand(false, |v| assert_eq!(*v, CssTransform::None)),
         catalog: grammar_catalog!("baseline.property.transform", "translate(10px, 20px) rotate(45deg) scale(1.5)", rejected("translate(red)")),
         source: "O-TRANSFORMS1",
         dispatch: "translate(10px, 20px) rotate(45deg) scale(1.5)",
         wrapper: yes,
     }
     TransformBox, "transform-box" {
-        metadata: unavailable(),
+        metadata: longhand(false, |v| assert_eq!(v.edge(), CssBoxEdgeKeyword::ViewBox)),
         catalog: grammar_catalog!("official.property.transform-box", "view-box", rejected("padding-box")),
+        source: "O-TRANSFORMS1",
+        dispatch: "stroke-box",
+        wrapper: yes,
     }
     TransformOrigin, "transform-origin" {
-        metadata: unavailable(),
+        metadata: longhand(false, |v| {
+            let (CssHorizontalPosition::Offset(x), CssVerticalPosition::Offset(y)) = (v.horizontal(), v.vertical()) else { panic!("initial physical free offsets") };
+            for offset in [x, y] {
+                assert!(exact_literal(offset.literal_component(), "50%"));
+                assert_eq!(offset.origin(), &CssValueOrigin::Programmatic);
+            }
+            assert!(v.z().is_none());
+        }),
         catalog: grammar_catalog!("baseline.property.transform-origin", "center top", rejected("left right")),
+        source: "O-TRANSFORMS1",
         dispatch: "center top",
+        wrapper: yes,
+    }
+    TransformStyle, "transform-style" {
+        metadata: longhand(false, |v| assert_eq!(*v, CssTransformStyle::Flat)),
+        catalog: grammar_catalog!("official.property.transform-style", "preserve-3d", rejected("auto")),
+        source: "I-TRANSFORMS2",
+        dispatch: "preserve-3d",
         wrapper: yes,
     }
     Transition, "transition" {
@@ -2336,7 +2383,7 @@ property_records! {
         wrapper: yes,
     }
     Translate, "translate" {
-        metadata: unavailable(),
+        metadata: longhand(false, |v| assert_eq!(*v, CssTranslate::None)),
         catalog: grammar_catalog!("baseline.property.translate", "10px 20px", rejected("red")),
         source: "I-TRANSFORMS2",
         dispatch: "10px 20px",

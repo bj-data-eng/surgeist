@@ -7,7 +7,7 @@
 //! projection nodes in its owner. Six-place formatting never selects omission.
 
 use crate::{
-    CssAngleOrZero, CssComponentValue, CssComponentValueRef, CssScale,
+    CssAngleOrZero, CssComponentValue, CssComponentValueRef, CssPerspective, CssScale,
     CssSpecifiedLengthPercentage, CssSpecifiedPercentage, CssSpecifiedValueSerializationError,
     CssSpecifiedValueSerializationLimits, CssTransform, CssTransformFunction, CssTransformOrigin,
     CssTransformPerspective, CssTransformScaleComponent, CssTranslate, CssValueTokenRef,
@@ -61,23 +61,45 @@ fn zero_translation(value: &CssSpecifiedLengthPercentage, allow_percentage: bool
         .is_some_and(|value| ordinary_zero(value, allow_percentage))
 }
 
-fn ordinary_one(value: &crate::CssSpecifiedNumber) -> bool {
-    let Some(component) = value.literal_component() else {
-        return false;
+fn ordinary_scale(value: &CssTransformScaleComponent) -> Option<LexicalDecimal<'_>> {
+    let (component, shift) = match value {
+        CssTransformScaleComponent::Number(v) => (v.literal_component()?, 0),
+        CssTransformScaleComponent::Percentage(v) => (v.literal_component()?, -2),
+        CssTransformScaleComponent::HintedNumberCalculation(_) => return None,
     };
-    let CssComponentValueRef::Token(CssValueTokenRef::Number(number)) = component.view() else {
-        unreachable!("checked number literal")
+    let number = match component.view() {
+        CssComponentValueRef::Token(
+            CssValueTokenRef::Number(v) | CssValueTokenRef::Percentage(v),
+        ) => v,
+        _ => unreachable!("checked scale literal"),
     };
-    LexicalDecimal::new(number.representation()).value_eq(&LexicalDecimal::new("1"))
+    Some(LexicalDecimal::new(number.representation()).shifted(shift))
+}
+fn ordinary_one(value: &CssTransformScaleComponent) -> bool {
+    ordinary_scale(value).is_some_and(|v| v.value_eq(&LexicalDecimal::new("1")))
+}
+fn scale_factors_equal(
+    left: &CssTransformScaleComponent,
+    right: &CssTransformScaleComponent,
+) -> bool {
+    match (ordinary_scale(left), ordinary_scale(right)) {
+        (Some(left), Some(right)) => left.value_eq(&right),
+        // Same typed calculation structure proves equality without resolving its basis.
+        (None, None) => left == right,
+        _ => false,
+    }
 }
 
-fn ordinary_numbers_equal(
-    left: &crate::CssSpecifiedNumber,
-    right: &crate::CssSpecifiedNumber,
-) -> bool {
-    match (left.literal_component(), right.literal_component()) {
-        (Some(left), Some(right)) => crate::specified_numeric::ordinary_literal_equal(left, right),
-        _ => false,
+impl CssPerspective {
+    specified_methods!();
+    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        match self {
+            Self::None => writer.keyword("none"),
+            Self::Length(value) => {
+                writer.node()?;
+                value.append_to_rule_writer(writer)
+            }
+        }
     }
 }
 
@@ -146,23 +168,23 @@ impl CssScale {
             return writer.append("none");
         };
         let values = values.values();
-        // Public construction already guarantees one to three literal numbers.
+        // Construction guarantees one to three checked factors; defaults compare before rounding.
         let retain_z = values.get(2).is_some_and(|z| !ordinary_one(z));
-        values[0].append_to_rule_writer(writer)?;
+        append_scale_component(&values[0], writer)?;
         if let Some(y) = values.get(1) {
-            if retain_z || !ordinary_numbers_equal(&values[0], y) {
+            if retain_z || !scale_factors_equal(&values[0], y) {
                 writer.append(" ")?;
-                y.append_to_rule_writer(writer)?;
+                append_scale_component(y, writer)?;
             } else {
-                writer.without_output(|writer| y.append_to_rule_writer(writer))?;
+                writer.without_output(|writer| append_scale_component(y, writer))?;
             }
         }
         if let Some(z) = values.get(2) {
             if retain_z {
                 writer.append(" ")?;
-                z.append_to_rule_writer(writer)?;
+                append_scale_component(z, writer)?;
             } else {
-                writer.without_output(|writer| z.append_to_rule_writer(writer))?;
+                writer.without_output(|writer| append_scale_component(z, writer))?;
             }
         }
         Ok(())
@@ -219,13 +241,13 @@ fn append_function(
         }
         CssTransformFunction::Scale(value) => {
             writer.append("scale(")?;
-            value.x().append_to_rule_writer(writer)?;
+            append_scale_component(value.x(), writer)?;
             if let Some(y) = value.y() {
-                if ordinary_numbers_equal(value.x(), y) {
-                    writer.without_output(|writer| y.append_to_rule_writer(writer))?;
+                if scale_factors_equal(value.x(), y) {
+                    writer.without_output(|writer| append_scale_component(y, writer))?;
                 } else {
                     writer.append(", ")?;
-                    y.append_to_rule_writer(writer)?;
+                    append_scale_component(y, writer)?;
                 }
             }
         }
@@ -239,11 +261,11 @@ fn append_function(
         }
         CssTransformFunction::ScaleX(value) => {
             writer.append("scaleX(")?;
-            value.append_to_rule_writer(writer)?;
+            append_scale_component(value, writer)?;
         }
         CssTransformFunction::ScaleY(value) => {
             writer.append("scaleY(")?;
-            value.append_to_rule_writer(writer)?;
+            append_scale_component(value, writer)?;
         }
         CssTransformFunction::ScaleZ(value) => {
             writer.append("scaleZ(")?;
@@ -499,6 +521,7 @@ mod tests {
                         )
                         .unwrap()
                     })
+                    .map(CssTransformScaleComponent::Number)
                     .to_vec(),
             )
             .unwrap(),
@@ -551,6 +574,101 @@ mod tests {
         shared("rotate3d(1, 0, 0, -30deg)", 6, 10, |writer| {
             value.append_to_rule_writer(writer)
         });
+    }
+
+    #[test]
+    fn authored_3d_and_expanded_scale_providers_share_work_and_restore_nested_suppression() {
+        shared("preserve-3d", 1, 1, |writer| {
+            crate::CssTransformStyle::Preserve3d.append_to_rule_writer(writer)
+        });
+        shared("hidden", 1, 1, |writer| {
+            crate::CssBackfaceVisibility::Hidden.append_to_rule_writer(writer)
+        });
+        shared("none", 1, 1, |writer| {
+            CssPerspective::None.append_to_rule_writer(writer)
+        });
+        let perspective = CssPerspective::Length(crate::CssSpecifiedNonNegativeLength::zero());
+        shared("0", 2, 2, |writer| {
+            perspective.append_to_rule_writer(writer)
+        });
+        let perspective = CssPerspective::Length(
+            crate::CssSpecifiedNonNegativeLength::try_from_calculation(
+                crate::CssLengthCalculation::try_from_components(
+                    crate::parse_component_values("calc(1px - 2px)").unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap(),
+        );
+        shared("calc(-1px)", 5, 5, |writer| {
+            perspective.append_to_rule_writer(writer)
+        });
+        let origin = crate::expansion::initial_transform_position();
+        shared("50% 50%", 5, 5, |writer| {
+            origin.append_to_rule_writer(writer)
+        });
+        let values = crate::CssScaleValues::try_new(vec![
+            CssTransformScaleComponent::Percentage(
+                crate::CssSpecifiedPercentage::try_from_component(
+                    crate::CssComponentValue::try_token("50%").unwrap(),
+                )
+                .unwrap(),
+            ),
+            CssTransformScaleComponent::Number(
+                crate::CssSpecifiedNumber::try_from_component(
+                    crate::CssComponentValue::try_number(".5").unwrap(),
+                )
+                .unwrap(),
+            ),
+            CssTransformScaleComponent::Percentage(
+                crate::CssSpecifiedPercentage::try_from_component(
+                    crate::CssComponentValue::try_token("100%").unwrap(),
+                )
+                .unwrap(),
+            ),
+        ])
+        .unwrap();
+        let value = CssScale::Values(values);
+        shared("0.5", 4, 4, |writer| value.append_to_rule_writer(writer));
+        let symbolic = CssTransformScaleComponent::HintedNumberCalculation(
+            crate::CssHintedNumberCalculation::try_from_components(
+                crate::parse_component_values("calc((1px + 1%) / 1px)").unwrap(),
+            )
+            .unwrap(),
+        );
+        let value = CssScale::Values(
+            crate::CssScaleValues::try_new(vec![
+                symbolic.clone(),
+                symbolic,
+                CssTransformScaleComponent::Number(
+                    crate::CssSpecifiedNumber::try_from_component(
+                        crate::CssComponentValue::try_number("1").unwrap(),
+                    )
+                    .unwrap(),
+                ),
+            ])
+            .unwrap(),
+        );
+        // Two 7/8 checked hinted calculations, one literal, one aggregate;
+        // the duplicate Y and ordinary Z are still fully visited while omitted.
+        shared("calc((1% + 1px) / 1px)", 16, 18, |writer| {
+            value.append_to_rule_writer(writer)
+        });
+        for (source, output, input, projection) in [
+            ("scale(50%, .5)", "scale(0.5)", 4, 4),
+            ("scaleX(calc(50% + 50%))", "scaleX(calc(1))", 6, 8),
+            (
+                "scaleY(calc((1px + 1%) / 1px))",
+                "scaleY(calc((1% + 1px) / 1px))",
+                9,
+                10,
+            ),
+        ] {
+            let value = transform(source);
+            shared(output, input, projection, |writer| {
+                value.append_to_rule_writer(writer)
+            });
+        }
     }
 
     #[test]

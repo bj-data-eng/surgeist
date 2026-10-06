@@ -242,10 +242,10 @@ fn cubic_bezier_defers_range_checks_inside_genuine_number_math() {
 }
 
 #[test]
-fn independent_scale_preserves_its_current_literal_only_admission_subset() {
-    // Characterization of current incomplete support, not a normative CSS ban.
-    // This corrective unit does not add independent-scale math or percentages.
+fn independent_scale_admits_historical_math_and_percentage_boundaries() {
+    // Transforms 2 §5 selects number/percentage factors with genuine checked math.
+    // Keep the exact former unsupported-characterization stimuli as admission evidence.
     for value in ["calc(1)", "1 calc(2)", "50%", "1 50%"] {
-        assert_rejected_property_preserves_neighbor(&format!("scale: {value}"));
+        assert_clean_typed_property(&format!("scale: {value}"), CssKnownProperty::Scale);
     }
 }

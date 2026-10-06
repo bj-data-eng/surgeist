@@ -46,6 +46,19 @@ use crate::{
     CssFontWidth, CssFontWidthKeyword, CssLineHeight, CssSpecifiedLength,
 };
 
+// Transforms 1/2 select the same intrinsic 50% 50% planar initial.
+pub(crate) fn initial_transform_position() -> CssPhysicalPosition {
+    let center = CssSpecifiedLengthPercentage::try_from_component(
+        crate::CssComponentValue::try_token("50%").expect("percentage token"),
+    )
+    .expect("percentage position offset");
+    CssPhysicalPosition::try_new(
+        CssHorizontalPosition::Offset(center.clone()),
+        CssVerticalPosition::Offset(center),
+    )
+    .expect("two physical free offsets")
+}
+
 // Text4's special spellings project source-defined constituents. Components
 // retain omissions so the existing terminal owner supplies intrinsic initials.
 pub(crate) fn white_space_collapse(value: &CssWhiteSpace) -> Option<CssWhiteSpaceCollapse> {

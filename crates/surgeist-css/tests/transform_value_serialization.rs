@@ -249,7 +249,12 @@ fn individual_scale_uses_exact_literal_equality_and_one_before_shortening() {
         assert_eq!(value, before);
     }
     let value = CssScale::Values(
-        CssScaleValues::try_new(vec![number("2"), number("3"), number("4")]).unwrap(),
+        CssScaleValues::try_new(vec![
+            CssTransformScaleComponent::Number(number("2")),
+            CssTransformScaleComponent::Number(number("3")),
+            CssTransformScaleComponent::Number(number("4")),
+        ])
+        .unwrap(),
     );
     assert_eq!(value, parsed!("scale:2 3 4", Scale));
     assert_eq!(value.serialize_specified().unwrap(), "2 3 4");
@@ -512,7 +517,9 @@ fn rounded_output_and_atomic_byte_failure_preserve_exact_operands_and_origins() 
     let CssScale::Values(values) = &value else {
         panic!("scale values")
     };
-    let operand = &values.values()[1];
+    let CssTransformScaleComponent::Number(operand) = &values.values()[1] else {
+        panic!("number factor")
+    };
     let CssComponentValueRef::Token(CssValueTokenRef::Number(token)) =
         operand.literal_component().unwrap().view()
     else {

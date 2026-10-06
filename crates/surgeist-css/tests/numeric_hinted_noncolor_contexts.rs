@@ -1,10 +1,12 @@
 #![forbid(unsafe_code)]
 //! Existing percentage-permitting consumers must accept Number results with
 //! unresolved hints without evaluating the percentage basis.
-//! Transforms 2 WD 2021-11-09 §12.2 admits percentages in scale3d/scaleZ;
-//! the selected Level 1 scale/scaleX/scaleY Number grammar remains separate.
+//! Transforms 2 WD 2021-11-09 §§5/12.1/12.2 admit percentages in all
+//! scale functions and in the independent Scale property.
 //! Filter Effects 1 WD 2018-12-18 §6.1 admits number-percentage amounts.
 //! Backgrounds 3 CRD 2024-03-11 §§5.2–5.3 and CSS2 §10.8 admit percentages.
+//! https://www.w3.org/TR/2021/WD-css-transforms-2-20211109/#individual-transforms
+//! https://www.w3.org/TR/2021/WD-css-transforms-2-20211109/#two-d-transform-functions
 //! https://www.w3.org/TR/2021/WD-css-transforms-2-20211109/#three-d-transform-functions
 //! https://www.w3.org/TR/2018/WD-filter-effects-1-20181218/#FilterProperty
 //! https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/#border-image-slice
@@ -94,12 +96,6 @@ fn checked(property: CssKnownProperty, text: &str) -> CssDeclaration {
 fn admits(property: CssKnownProperty, text: &str) {
     let parsed = parsed(property, text);
     let checked = checked(property, text);
-    if !has_expansion(property) {
-        assert_unsupported_expansion(property, &parsed);
-        assert_unsupported_expansion(property, &checked);
-        assert_unsupported_expansion(property, &checked_pending(property));
-        return;
-    }
     let CssExpansion::Contributions(CssContributions::Longhands(expected)) =
         expand_declaration(&checked).unwrap()
     else {
@@ -141,35 +137,18 @@ fn checked_pending(property: CssKnownProperty) -> CssDeclaration {
     checked(property, "var(--numeric)")
 }
 
-fn has_expansion(property: CssKnownProperty) -> bool {
-    // Independent oracle from properties.rs expansion annotations, consumed by
-    // expansion.rs: Transform and Scale are parsed but not selected for expansion.
-    match property {
-        CssKnownProperty::Transform | CssKnownProperty::Scale => false,
-        CssKnownProperty::Filter
-        | CssKnownProperty::BorderImageSlice
-        | CssKnownProperty::BorderImageWidth
-        | CssKnownProperty::LineHeight
-        | CssKnownProperty::VoiceBalance => true,
-        _ => panic!("property outside this target's explicit expansion boundary"),
-    }
-}
-
-fn assert_unsupported_expansion(property: CssKnownProperty, source: &CssDeclaration) {
-    assert_eq!(
-        expand_declaration(source).unwrap_err().kind(),
-        &CssExpansionErrorKind::UnsupportedProperty(property)
-    );
-}
-
 #[test]
-fn transform_scale3d_and_scalez_accept_hinted_numbers() {
+fn all_transform_scale_functions_and_independent_scale_accept_hinted_numbers() {
     for text in [
         format!("scale3d({HINTED}, 1, 1)"),
         format!("scaleZ({HINTED})"),
+        format!("scale({HINTED})"),
+        format!("scaleX({HINTED})"),
+        format!("scaleY({HINTED})"),
     ] {
         admits(CssKnownProperty::Transform, &text);
     }
+    admits(CssKnownProperty::Scale, HINTED);
 }
 
 #[test]
@@ -267,10 +246,6 @@ fn rejects_atomically(property: CssKnownProperty, text: &str) {
         .is_err()
     );
     let pending_source = checked_pending(property);
-    if !has_expansion(property) {
-        assert_unsupported_expansion(property, &pending_source);
-        return;
-    }
     let CssExpansion::Pending(pending) = expand_declaration(&pending_source).unwrap() else {
         panic!("pending")
     };
@@ -282,18 +257,18 @@ fn rejects_atomically(property: CssKnownProperty, text: &str) {
 }
 
 #[test]
-fn pure_number_consumers_and_transform_functions_keep_hint_rejection() {
+fn pure_number_voice_balance_keeps_hint_rejection_and_scale_keeps_dimension_cancellation() {
     rejects_atomically(CssKnownProperty::VoiceBalance, HINTED);
     admits(CssKnownProperty::VoiceBalance, PURE);
     for function in ["scale", "scaleX", "scaleY"] {
-        rejects_atomically(
+        admits(
             CssKnownProperty::Transform,
             &format!("{function}({HINTED})"),
         );
         admits(CssKnownProperty::Transform, &format!("{function}({PURE})"));
     }
-    // Independent scale remains outside the selected supported property boundary.
-    rejects_atomically(CssKnownProperty::Scale, HINTED);
+    admits(CssKnownProperty::Scale, HINTED);
+    admits(CssKnownProperty::Scale, PURE);
 }
 
 #[test]

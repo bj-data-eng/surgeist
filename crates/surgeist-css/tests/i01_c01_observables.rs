@@ -3262,7 +3262,10 @@ fn assert_known_property_value(
             assert!(
                 matches!(angle, CssAngleOrZero::Angle(value) if value.literal().is_some_and(|literal| literal.numeric().representation() == "45" && literal.unit() == CssAngleUnit::Degrees))
             );
-            assert!(exact_number((scale.x()).literal_component(), "1.5"));
+            assert!(exact_number(
+                scale_number(scale.x()).literal_component(),
+                "1.5"
+            ));
             assert!(scale.y().is_none());
             Some(value.as_css())
         }
@@ -6448,8 +6451,14 @@ fn assert_known_property_value(
                 panic!("captured scale");
             };
             assert_eq!(values.values().len(), 2);
-            assert!(exact_number(values.values()[0].literal_component(), "1.5"));
-            assert!(exact_number(values.values()[1].literal_component(), "2"));
+            assert!(exact_number(
+                scale_number(&values.values()[0]).literal_component(),
+                "1.5"
+            ));
+            assert!(exact_number(
+                scale_number(&values.values()[1]).literal_component(),
+                "2"
+            ));
         }
         (CssKnownProperty::OutlineStyle, CssKnownPropertyValueRef::OutlineStyle(value)) => {
             assert_archive_wrapper(property, value.as_css(), semantic, authored);
@@ -6871,4 +6880,13 @@ fn exact_percentage(
 
 fn exact_number(component: Option<&surgeist_css::CssComponentValue>, representation: &str) -> bool {
     matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Number(number))) if number.representation() == representation)
+}
+
+fn scale_number(
+    value: &surgeist_css::CssTransformScaleComponent,
+) -> &surgeist_css::CssSpecifiedNumber {
+    let surgeist_css::CssTransformScaleComponent::Number(value) = value else {
+        panic!("number factor")
+    };
+    value
 }

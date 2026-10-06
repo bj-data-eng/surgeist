@@ -425,7 +425,7 @@ and integer rounding belong to later resolution.
 cancel while its percentage hint remains non-null. Color and opacity expose
 distinct `HintedNumberCalculation` branches for these percentage-permitting
 slots. Relative non-hue channels, profile expressions and alpha retain the same
-permission. Percentage-permitting scale3d/scaleZ operands, filter amounts,
+permission. Percentage-permitting scale operands, filter amounts,
 border-image slice/width and line-height also expose this distinct branch.
 Pure `CssNumberCalculation` and integer roots, hue, and legacy
 number-only CMYK channels reject this payload. This follows
@@ -2134,15 +2134,19 @@ checked matrix, rotation, scale, skew, and translation operands, preserving
 omitted second operands and symbolic calculations. `translate3d` keeps a pure
 length on Z while X and Y accept length-percentages; `perspective` keeps a
 checked nonnegative length or `none`. Matrix operands, rotate3d axes, scale
-numbers, and cubic-bezier coordinates use `CssSpecifiedNumber`; three-dimensional
-scale percentage branches use `CssSpecifiedPercentage`. The three-dimensional
-scale3d/scaleZ grammar also admits `CssTransformScaleComponent::HintedNumberCalculation`,
-retaining a Number result whose percentage basis remains unresolved. The selected
-Level 1 scale/scaleX/scaleY grammar still uses pure Numbers. These payloads retain exact token
-spelling and provenance, or genuine symbolic calculations. Numeric aggregate
-equality compares exact structure while ignoring numeric source origins; direct
-scalar equality retains provenance. The independent `scale` property accepts
-one to three ordinary shared numbers and retains its literal-only subset.
+numbers, and cubic-bezier coordinates use `CssSpecifiedNumber`. All scale
+functions and the independent scale property use `CssTransformScaleComponent`:
+Number, Percentage, or HintedNumberCalculation. The selected Transforms 2
+extension admits percentages in scale/scaleX/scaleY as well as scale3d/scaleZ.
+These factors preserve checked exact tokens or genuine symbolic calculations.
+Aggregate equality ignores numeric provenance while retaining branch, lexical
+and calculation structure. `CssScaleValues::try_new` retains one to three
+factors; `CssTransformScale::new` retains its authored optional Y. ScaleX/Y
+carry the same checked component as ScaleZ. No raw scalar compatibility
+conversion is retained. Specified percentages emit equivalent Number factors.
+Ordinary defaults compare exact decimals across Number and Percentage before
+rounding; same typed calculation structure proves equality without resolving
+context, while other symbolic defaults remain present.
 Transform evaluation remains downstream.
 
 The individual `rotate` property exposes `CssRotate::None` or
@@ -7455,3 +7459,36 @@ and leaves the entire input available for retry. Evidence is in
 [`specified_rule_graph_contract.rs`](../tests/specified_rule_graph_contract.rs),
 [`specified_rule_provider_closure.rs`](../tests/specified_rule_provider_closure.rs)
 and [`specified_graph_composition_edges.rs`](../tests/specified_graph_composition_edges.rs).
+
+
+## Complete authored Transforms contribution
+
+The selected [Transforms 1](https://www.w3.org/TR/2019/CR-css-transforms-1-20190214/)
+and [Transforms 2](https://www.w3.org/TR/2021/WD-css-transforms-2-20211109/)
+properties are ten ordinary, non-inherited longhands. Their intrinsic initials
+are none for transform, translate, rotate, scale and perspective; view-box for
+transform-box; two programmatic 50% offsets for both origins (no authored Z for
+transform-origin); flat for transform-style; and visible for backface-visibility.
+The shared schema supplies typed initials, single contributions, CSS-wide values,
+whole-value pending substitutions and immutable strict reentry. Normalization
+preserves occurrences, order, importance and original/replacement provenance.
+Checked components reject original implicit closures; ordinary browser EOF
+recovery retains its diagnostic contract.
+
+`CssPerspective` retains None or a checked nonnegative length; zero and symbolic
+negative calculations remain authored. `CssTransformStyle` and
+`CssBackfaceVisibility` retain their source keywords; perspective-origin borrows
+the existing checked physical position owner, including four-component edge
+offsets. Transform-origin retains its distinct planar-pair/Z grammar and the
+explicit Values 4/WebKit conflict documented above. No vendor axis shorthand
+or migration machinery is introduced.
+
+All providers share cumulative input, projection and final UTF-8 byte limits.
+Transform/style/backface keywords each cost 1/1; perspective None costs 1/1,
+Length adds one perspective aggregate to its numeric owner's costs. Origin and
+scale retain their existing aggregate tariffs. Suppressed default factors still
+consume owning semantic work; only emitted bytes count toward output. Failures
+return no partial CSS and leave retained operands/origins reusable. Specified
+math retains Values 4 wrappers and sorted symbolic units. Reference-box bases,
+matrix execution, computed/resolved values, perspective floors, used-value
+flattening and rendering/backface decisions belong to downstream owners.

@@ -2668,9 +2668,13 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         CssKnownProperty::BackgroundBlendMode
         | CssKnownProperty::Isolation
         | CssKnownProperty::MixBlendMode => O_COMPOSITING1,
-        CssKnownProperty::Translate | CssKnownProperty::Rotate | CssKnownProperty::Scale => {
-            I_TRANSFORMS2
-        }
+        CssKnownProperty::Translate
+        | CssKnownProperty::Rotate
+        | CssKnownProperty::Scale
+        | CssKnownProperty::Perspective
+        | CssKnownProperty::PerspectiveOrigin
+        | CssKnownProperty::TransformStyle
+        | CssKnownProperty::BackfaceVisibility => I_TRANSFORMS2,
         CssKnownProperty::Filter => I_FILTER1,
         CssKnownProperty::BackdropFilter => X_BACKDROP_FILTER,
         CssKnownProperty::Clip
@@ -2810,7 +2814,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 697] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 701] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -6068,6 +6072,26 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 697] = [
         "baseline.property.rotate"
     ),
     property_feature!(CssKnownProperty::Scale, "scale", "baseline.property.scale"),
+    property_feature!(
+        CssKnownProperty::Perspective,
+        "perspective",
+        "official.property.perspective"
+    ),
+    property_feature!(
+        CssKnownProperty::PerspectiveOrigin,
+        "perspective-origin",
+        "official.property.perspective-origin"
+    ),
+    property_feature!(
+        CssKnownProperty::TransformStyle,
+        "transform-style",
+        "official.property.transform-style"
+    ),
+    property_feature!(
+        CssKnownProperty::BackfaceVisibility,
+        "backface-visibility",
+        "official.property.backface-visibility"
+    ),
     CssFeatureMetadata::complete_property(
         "baseline.property.filter",
         CssKnownProperty::Filter,

@@ -71,20 +71,24 @@ fn rotate3d_scale_and_skew_constructors_preserve_distinct_operands() {
         matches!(rotate.angle(), CssAngleOrZero::Angle(v) if v.literal().is_some_and(|literal| literal.numeric().representation() == "45" && literal.unit() == CssAngleUnit::Degrees))
     );
 
-    let one = CssTransformScale::new(number("2"), None);
-    assert!(exact_number((one.x()).literal_component(), "2"));
+    let one = CssTransformScale::new(CssTransformScaleComponent::Number(number("2")), None);
+    assert!(
+        matches!(one.x(), CssTransformScaleComponent::Number(v) if exact_number(v.literal_component(), "2"))
+    );
     assert!(one.y().is_none());
     let two = CssTransformScale::new(
-        number("2"),
-        Some(CssSpecifiedNumber::try_from_calculation(number_calculation("calc(3 / 2)")).unwrap()),
+        CssTransformScaleComponent::Number(number("2")),
+        Some(CssTransformScaleComponent::Number(
+            CssSpecifiedNumber::try_from_calculation(number_calculation("calc(3 / 2)")).unwrap(),
+        )),
     );
     assert!(
-        two.y().unwrap().calculation().is_some_and(|v| v
+        matches!(two.y().unwrap(), CssTransformScaleComponent::Number(n) if n.calculation().is_some_and(|v| v
             .components()
             .serialize()
             .unwrap()
             .as_css()
-            == "calc(3 / 2)")
+            == "calc(3 / 2)"))
     );
 
     let scale3d = CssTransformScale3d::new(
@@ -215,7 +219,10 @@ fn checked_length_leaves_reject_foreign_domains_but_retain_pure_math() {
 fn perspective_and_function_list_preserve_none_order_and_nonempty_invariant() {
     let perspective = CssTransformPerspective::Length(nonnegative_length("8px"));
     let functions = CssTransformFunctionList::try_new(vec![
-        CssTransformFunction::Scale(CssTransformScale::new(number("2"), None)),
+        CssTransformFunction::Scale(CssTransformScale::new(
+            CssTransformScaleComponent::Number(number("2")),
+            None,
+        )),
         CssTransformFunction::Perspective(perspective),
         CssTransformFunction::Translate3d(CssTransformTranslate3d::new(
             signed_length_percentage("10%"),

@@ -266,31 +266,55 @@ fn transform_scale_components_preserve_signed_percentage_identity_and_omission()
         CssTransformFunction::ScaleZ(y),
         CssTransformFunction::ScaleZ(CssTransformScaleComponent::Percentage(_))
     ));
-    let one = CssTransformScale::new(number("-1e999"), None);
-    assert_eq!(number_spelling(one.x()), "-1e999");
+    let one = CssTransformScale::new(CssTransformScaleComponent::Number(number("-1e999")), None);
+    assert_eq!(number_spelling(scale_number(one.x())), "-1e999");
     assert!(one.y().is_none());
-    let two = CssTransformScale::new(number("-1e999"), Some(number_math("calc(2)")));
-    assert!(two.y().unwrap().calculation().is_some());
+    let two = CssTransformScale::new(
+        CssTransformScaleComponent::Number(number("-1e999")),
+        Some(CssTransformScaleComponent::Number(number_math("calc(2)"))),
+    );
+    assert!(scale_number(two.y().unwrap()).calculation().is_some());
     assert_ne!(one, two);
 }
 
 #[test]
-fn independent_scale_checks_cardinality_and_its_selected_literal_only_subset() {
+fn independent_scale_checks_cardinality_and_retains_symbolic_number_factors() {
     assert!(CssScaleValues::try_new(vec![]).is_none());
     for count in 1..=3 {
-        let values = CssScaleValues::try_new(vec![number("-1e999"); count]).unwrap();
+        let values =
+            CssScaleValues::try_new(vec![
+                CssTransformScaleComponent::Number(number("-1e999"));
+                count
+            ])
+            .unwrap();
         assert_eq!(values.values().len(), count);
         assert!(
             values
                 .values()
                 .iter()
-                .all(|value| number_spelling(value) == "-1e999")
+                .all(|value| number_spelling(scale_number(value)) == "-1e999")
         );
     }
-    assert!(CssScaleValues::try_new(vec![number("1"); 4]).is_none());
-    assert!(CssScaleValues::try_new(vec![number_math("calc(1)")]).is_none());
-    assert!(CssScaleValues::try_new(vec![number("1"), number_math("calc(2)")]).is_none());
-    assert!(CssScaleValues::try_new(vec![number_math("1")]).is_some());
+    assert!(
+        CssScaleValues::try_new(vec![CssTransformScaleComponent::Number(number("1")); 4]).is_none()
+    );
+    assert!(
+        CssScaleValues::try_new(vec![CssTransformScaleComponent::Number(number_math(
+            "calc(1)"
+        ))])
+        .is_some()
+    );
+    assert!(
+        CssScaleValues::try_new(vec![
+            CssTransformScaleComponent::Number(number("1")),
+            CssTransformScaleComponent::Number(number_math("calc(2)"))
+        ])
+        .is_some()
+    );
+    assert!(
+        CssScaleValues::try_new(vec![CssTransformScaleComponent::Number(number_math("1"))])
+            .is_some()
+    );
 }
 
 #[test]
@@ -316,36 +340,45 @@ fn number_aggregates_ignore_only_origins_and_keep_order_omission_and_lexical_str
     ]);
     assert_eq!(a, b);
     assert_eq!(
-        CssTransformFunction::ScaleX(parsed.clone()),
-        CssTransformFunction::ScaleX(built.clone())
+        CssTransformFunction::ScaleX(CssTransformScaleComponent::Number(parsed.clone())),
+        CssTransformFunction::ScaleX(CssTransformScaleComponent::Number(built.clone()))
     );
     assert_eq!(
-        CssTransformFunction::ScaleY(parsed.clone()),
-        CssTransformFunction::ScaleY(built.clone())
+        CssTransformFunction::ScaleY(CssTransformScaleComponent::Number(parsed.clone())),
+        CssTransformFunction::ScaleY(CssTransformScaleComponent::Number(built.clone()))
     );
     assert_ne!(
-        CssTransformFunction::ScaleX(parsed.clone()),
-        CssTransformFunction::ScaleY(built.clone())
+        CssTransformFunction::ScaleX(CssTransformScaleComponent::Number(parsed.clone())),
+        CssTransformFunction::ScaleY(CssTransformScaleComponent::Number(built.clone()))
     );
     assert_eq!(
-        CssTransformScale::new(parsed.clone(), None),
-        CssTransformScale::new(built.clone(), None)
+        CssTransformScale::new(CssTransformScaleComponent::Number(parsed.clone()), None),
+        CssTransformScale::new(CssTransformScaleComponent::Number(built.clone()), None)
     );
     assert_ne!(
-        CssTransformScale::new(parsed.clone(), None),
-        CssTransformScale::new(built.clone(), Some(number("1")))
+        CssTransformScale::new(CssTransformScaleComponent::Number(parsed.clone()), None),
+        CssTransformScale::new(
+            CssTransformScaleComponent::Number(built.clone()),
+            Some(CssTransformScaleComponent::Number(number("1")))
+        )
     );
     assert_ne!(
-        CssTransformScale::new(number("1"), Some(number("2"))),
-        CssTransformScale::new(number("2"), Some(number("1")))
+        CssTransformScale::new(
+            CssTransformScaleComponent::Number(number("1")),
+            Some(CssTransformScaleComponent::Number(number("2")))
+        ),
+        CssTransformScale::new(
+            CssTransformScaleComponent::Number(number("2")),
+            Some(CssTransformScaleComponent::Number(number("1")))
+        )
     );
     assert_ne!(
-        CssTransformScale::new(number("1"), None),
-        CssTransformScale::new(number("1.0"), None)
+        CssTransformScale::new(CssTransformScaleComponent::Number(number("1")), None),
+        CssTransformScale::new(CssTransformScaleComponent::Number(number("1.0")), None)
     );
     assert_eq!(
-        CssScaleValues::try_new(vec![parsed]).unwrap(),
-        CssScaleValues::try_new(vec![built]).unwrap()
+        CssScaleValues::try_new(vec![CssTransformScaleComponent::Number(parsed)]).unwrap(),
+        CssScaleValues::try_new(vec![CssTransformScaleComponent::Number(built)]).unwrap()
     );
 }
 
@@ -407,12 +440,16 @@ fn cubic_and_symbolic_number_aggregate_equality_keeps_ast_and_axis_roles() {
         "cubic_and_symbolic_number_aggregate_equality_keeps_ast_and_axis_roles: direct equality contract"
     );
     assert!(
-        (CssTransformScale::new(a.clone(), None)) == (CssTransformScale::new(b.clone(), None)),
+        (CssTransformScale::new(CssTransformScaleComponent::Number(a.clone()), None))
+            == (CssTransformScale::new(CssTransformScaleComponent::Number(b.clone()), None)),
         "cubic_and_symbolic_number_aggregate_equality_keeps_ast_and_axis_roles: direct equality contract"
     );
     assert!(
-        (CssTransformScale::new(a.clone(), None))
-            != (CssTransformScale::new(number_math("calc(2 + 1)"), None)),
+        (CssTransformScale::new(CssTransformScaleComponent::Number(a.clone()), None))
+            != (CssTransformScale::new(
+                CssTransformScaleComponent::Number(number_math("calc(2 + 1)")),
+                None
+            )),
         "cubic_and_symbolic_number_aggregate_equality_keeps_ast_and_axis_roles: direct equality contract"
     );
     let make = |y| CssCubicBezier::try_new(number("0"), y, number("1"), number("0")).unwrap();
@@ -601,4 +638,11 @@ fn shared_signed_number_projection_keeps_cumulative_existing_variation_budgets()
         );
     }
     assert_eq!(value.serialize_specified().unwrap(), expected);
+}
+
+fn scale_number(value: &CssTransformScaleComponent) -> &CssSpecifiedNumber {
+    let CssTransformScaleComponent::Number(v) = value else {
+        panic!("number factor")
+    };
+    v
 }

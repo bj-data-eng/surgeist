@@ -2,12 +2,12 @@
 //! This adds no grammar alternatives or computed-value behavior.
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::{
-    CssBlendMode, CssImageRendering, CssIsolation, CssLineBreak, CssObjectFit, CssPointerEvents,
-    CssResize, CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
-    CssTextDecorationStyle, CssTextTransform, CssTextTransformCase, CssTextWrap, CssTextWrapMode,
-    CssTextWrapStyle, CssTransformBox, CssUserSelect, CssWhiteSpace, CssWhiteSpaceCollapse,
-    CssWhiteSpaceKeyword, CssWhiteSpaceTrim, CssWordBreak, CssWordSpaceTransform, CssWrapBoundary,
-    CssWrapInside,
+    CssBackfaceVisibility, CssBlendMode, CssImageRendering, CssIsolation, CssLineBreak,
+    CssObjectFit, CssPointerEvents, CssResize, CssSpecifiedValueSerializationError,
+    CssSpecifiedValueSerializationLimits, CssTextDecorationStyle, CssTextTransform,
+    CssTextTransformCase, CssTextWrap, CssTextWrapMode, CssTextWrapStyle, CssTransformBox,
+    CssTransformStyle, CssUserSelect, CssWhiteSpace, CssWhiteSpaceCollapse, CssWhiteSpaceKeyword,
+    CssWhiteSpaceTrim, CssWordBreak, CssWordSpaceTransform, CssWrapBoundary, CssWrapInside,
 };
 
 type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
@@ -173,6 +173,8 @@ enum_keywords!(CssResize,
     Block => "block", Inline => "inline",
 );
 enum_keywords!(CssIsolation, Auto => "auto", Isolate => "isolate");
+enum_keywords!(CssTransformStyle, Flat => "flat", Preserve3d => "preserve-3d");
+enum_keywords!(CssBackfaceVisibility, Visible => "visible", Hidden => "hidden");
 keyword_provider!(CssTransformBox, value => value.edge().as_css_str());
 keyword_provider!(CssBlendMode, value => value.as_css_str());
 

@@ -7897,7 +7897,7 @@ pub enum CssTransformFunctionKind {
 #[non_exhaustive]
 pub enum CssTransformScaleComponent {
     Number(CssSpecifiedNumber),
-    /// A contextual Number admitted only by the percentage-permitting 3D grammar.
+    /// A Number result whose dimensional percentage basis remains unresolved.
     HintedNumberCalculation(CssHintedNumberCalculation),
     Percentage(CssSpecifiedPercentage),
 }
@@ -8025,24 +8025,25 @@ impl CssTransformRotate3d {
 
 #[derive(Clone, Debug)]
 pub struct CssTransformScale {
-    x: CssSpecifiedNumber,
-    y: Option<CssSpecifiedNumber>,
+    x: CssTransformScaleComponent,
+    y: Option<CssTransformScaleComponent>,
 }
 
-numeric_fields_eq!(CssTransformScale, [x], [y], []);
-
+impl PartialEq for CssTransformScale {
+    fn eq(&self, other: &Self) -> bool {
+        self.x == other.x && self.y == other.y
+    }
+}
 impl CssTransformScale {
-    pub const fn new(x: CssSpecifiedNumber, y: Option<CssSpecifiedNumber>) -> Self {
+    pub const fn new(x: CssTransformScaleComponent, y: Option<CssTransformScaleComponent>) -> Self {
         Self { x, y }
     }
-
     #[must_use]
-    pub const fn x(&self) -> &CssSpecifiedNumber {
+    pub const fn x(&self) -> &CssTransformScaleComponent {
         &self.x
     }
-
     #[must_use]
-    pub const fn y(&self) -> Option<&CssSpecifiedNumber> {
+    pub const fn y(&self) -> Option<&CssTransformScaleComponent> {
         self.y.as_ref()
     }
 }
@@ -8176,8 +8177,8 @@ pub enum CssTransformFunction {
     RotateZ(CssAngleOrZero),
     Scale(CssTransformScale),
     Scale3d(CssTransformScale3d),
-    ScaleX(CssSpecifiedNumber),
-    ScaleY(CssSpecifiedNumber),
+    ScaleX(CssTransformScaleComponent),
+    ScaleY(CssTransformScaleComponent),
     ScaleZ(CssTransformScaleComponent),
     Skew(CssTransformSkew),
     SkewX(CssAngleOrZero),
@@ -8206,7 +8207,7 @@ impl PartialEq for CssTransformFunction {
             (Self::Scale(left), Self::Scale(right)) => left == right,
             (Self::Scale3d(left), Self::Scale3d(right)) => left == right,
             (Self::ScaleX(left), Self::ScaleX(right))
-            | (Self::ScaleY(left), Self::ScaleY(right)) => left.structural_eq(right),
+            | (Self::ScaleY(left), Self::ScaleY(right)) => left == right,
             (Self::ScaleZ(left), Self::ScaleZ(right)) => left == right,
             (Self::Skew(left), Self::Skew(right)) => left == right,
             (Self::SkewX(left), Self::SkewX(right)) | (Self::SkewY(left), Self::SkewY(right)) => {
@@ -8321,41 +8322,55 @@ pub enum CssScale {
 
 #[derive(Clone, Debug)]
 pub struct CssScaleValues {
-    values: Vec<CssSpecifiedNumber>,
+    values: Vec<CssTransformScaleComponent>,
 }
-
 impl PartialEq for CssScaleValues {
     fn eq(&self, other: &Self) -> bool {
-        self.values.len() == other.values.len()
-            && self
-                .values
-                .iter()
-                .zip(&other.values)
-                .all(|(left, right)| left.structural_eq(right))
+        self.values == other.values
+    }
+}
+impl CssScaleValues {
+    /// Retains one to three checked number/percentage factors in authored axis order.
+    /// Symbolic number, percentage and hinted-number calculations remain unresolved.
+    #[must_use]
+    pub fn try_new(values: Vec<CssTransformScaleComponent>) -> Option<Self> {
+        (1..=3).contains(&values.len()).then_some(Self { values })
+    }
+    #[must_use]
+    pub fn values(&self) -> &[CssTransformScaleComponent] {
+        &self.values
     }
 }
 
-impl CssScaleValues {
-    /// Retains one to three ordinary number tokens in authored axis order.
-    /// This independent property currently accepts literal numbers only.
-    #[must_use]
-    pub fn try_new(values: Vec<CssSpecifiedNumber>) -> Option<Self> {
-        if values.is_empty()
-            || values.len() > 3
-            || values
-                .iter()
-                .any(|value| value.literal_component().is_none())
-        {
-            None
-        } else {
-            Some(Self { values })
+/// Authored perspective; zero is valid and the rendering floor is not applied here.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub enum CssPerspective {
+    None,
+    Length(CssSpecifiedNonNegativeLength),
+}
+impl PartialEq for CssPerspective {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::None, Self::None) => true,
+            (Self::Length(a), Self::Length(b)) => a.structural_eq(b),
+            _ => false,
         }
     }
-
-    #[must_use]
-    pub fn values(&self) -> &[CssSpecifiedNumber] {
-        &self.values
-    }
+}
+/// Authored transform-style, distinct from contextual used-value flattening.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssTransformStyle {
+    Flat,
+    Preserve3d,
+}
+/// Authored visibility of the back face, without executing an accumulated matrix.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssBackfaceVisibility {
+    Visible,
+    Hidden,
 }
 
 /// The optional authored amount accepted by a filter amount function.

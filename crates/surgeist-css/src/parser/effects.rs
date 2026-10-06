@@ -13,8 +13,7 @@ use super::url::parse_url;
 use super::values::{
     AngleParserContext, next_is_comma, next_is_delim, next_is_ident, parse_angle_or_zero,
     parse_angle_value, parse_hinted_number_calculation, parse_nonnegative_number,
-    parse_nonnegative_percentage, parse_specified_number, parse_specified_number_literal,
-    parse_specified_percentage,
+    parse_nonnegative_percentage, parse_specified_number, parse_specified_percentage,
 };
 use crate::CssValueOrigin;
 use crate::error::{CssFeatureId, Error, basic, unsupported_value, unsupported_value_at};
@@ -67,6 +66,42 @@ pub(super) fn parse_transform_box<'i, 't>(
                 unsupported_keyword_reason("transform-box", ident.as_ref()),
             )
         })
+}
+
+pub(super) fn parse_perspective<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Result<CssPerspective, ParseError<'i, Error>> {
+    if input
+        .try_parse(|input| input.expect_ident_matching("none"))
+        .is_ok()
+    {
+        Ok(CssPerspective::None)
+    } else {
+        parse_nonnegative_length(input, numeric, "perspective").map(CssPerspective::Length)
+    }
+}
+pub(super) fn parse_transform_style<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> Result<CssTransformStyle, ParseError<'i, Error>> {
+    let location = input.current_source_location();
+    let ident = input.expect_ident_cloned().map_err(basic)?;
+    match_ignore_ascii_case! { &ident,
+        "flat" => Ok(CssTransformStyle::Flat),
+        "preserve-3d" => Ok(CssTransformStyle::Preserve3d),
+        _ => Err(unsupported_value_at(location, None, unsupported_keyword_reason("transform-style", ident.as_ref()))),
+    }
+}
+pub(super) fn parse_backface_visibility<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> Result<CssBackfaceVisibility, ParseError<'i, Error>> {
+    let location = input.current_source_location();
+    let ident = input.expect_ident_cloned().map_err(basic)?;
+    match_ignore_ascii_case! { &ident,
+        "visible" => Ok(CssBackfaceVisibility::Visible),
+        "hidden" => Ok(CssBackfaceVisibility::Hidden),
+        _ => Err(unsupported_value_at(location, None, unsupported_keyword_reason("backface-visibility", ident.as_ref()))),
+    }
 }
 
 pub(super) fn parse_blend_mode<'i, 't>(
@@ -324,7 +359,7 @@ fn parse_transform_function_value<'i, 't>(
         }
         CssTransformFunctionKind::Scale => {
             let (x, y) = parse_one_or_two(input, |input| {
-                parse_specified_number(input, numeric, "transform")
+                parse_transform_scale_component(input, numeric)
             })?;
             CssTransformFunction::Scale(CssTransformScale::new(x, y))
         }
@@ -345,12 +380,12 @@ fn parse_transform_function_value<'i, 't>(
         }
         CssTransformFunctionKind::ScaleX => {
             CssTransformFunction::ScaleX(parse_one(input, |input| {
-                parse_specified_number(input, numeric, "transform")
+                parse_transform_scale_component(input, numeric)
             })?)
         }
         CssTransformFunctionKind::ScaleY => {
             CssTransformFunction::ScaleY(parse_one(input, |input| {
-                parse_specified_number(input, numeric, "transform")
+                parse_transform_scale_component(input, numeric)
             })?)
         }
         CssTransformFunctionKind::ScaleZ => {
@@ -886,7 +921,7 @@ pub(super) fn parse_scale<'i, 't>(
     }
     let mut values = Vec::new();
     while !input.is_exhausted() {
-        values.push(parse_specified_number_literal(input, numeric, "scale")?);
+        values.push(parse_transform_scale_component(input, numeric)?);
         if values.len() > 3 {
             return Err(unsupported_value(input, None, "scale has too many values"));
         }

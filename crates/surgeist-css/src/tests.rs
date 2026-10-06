@@ -9296,10 +9296,10 @@ fn background_effect_and_animation_constructors_reject_invalid_states() {
     assert_eq!(CssScaleValues::try_new(Vec::new()), None);
     assert_eq!(
         CssScaleValues::try_new(vec![
-            checked_number("1"),
-            checked_number("2"),
-            checked_number("3"),
-            checked_number("4")
+            CssTransformScaleComponent::Number(checked_number("1")),
+            CssTransformScaleComponent::Number(checked_number("2")),
+            CssTransformScaleComponent::Number(checked_number("3")),
+            CssTransformScaleComponent::Number(checked_number("4"))
         ]),
         None
     );

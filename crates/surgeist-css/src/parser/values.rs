@@ -670,21 +670,6 @@ pub(super) fn parse_ordinary_resolution<'i, 't>(
     })
 }
 
-pub(super) fn parse_specified_number_literal<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-    context: &str,
-) -> Result<CssSpecifiedNumber, ParseError<'i, Error>> {
-    let start = input.state();
-    let location = input.current_source_location();
-    match input.next().map_err(basic)? {
-        Token::Number { .. } => {}
-        token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    }
-    input.reset(&start);
-    parse_specified_number(input, numeric, context)
-}
-
 #[derive(Clone, Copy)]
 pub(super) enum AngleParserContext {
     Transform,

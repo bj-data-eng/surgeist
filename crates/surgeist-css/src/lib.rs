@@ -423,10 +423,10 @@
 //! functions and the selected three-dimensional subset with exact arity,
 //! separators, and dimensions. Matrices, rotation axes, scale numbers, and easing
 //! coordinates share `CssSpecifiedNumber`, which retains exact literals and symbolic
-//! math. Three-dimensional scale percentage branches use `CssSpecifiedPercentage`.
+//! math. All scale percentage branches use `CssSpecifiedPercentage`.
 //! Ordinary cubic-bezier X coordinates are checked exactly against inclusive [0, 1];
 //! genuine calculations remain unresolved. The independent `scale` property retains
-//! its selected one-to-three literal-number subset. Transform, filter, gradient, and
+//! one to three typed number/percentage factors, including symbolic calculations. Transform, filter, gradient, and
 //! image-orientation angles share exact `CssAngleLiteral` values and symbolic
 //! Angle-root calculations through the strict `CssAngleValue`. Transforms, filters,
 //! and gradient directions admit bare zero through `CssAngleOrZero`; image orientation

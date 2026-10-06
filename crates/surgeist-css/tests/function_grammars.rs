@@ -1096,7 +1096,7 @@ fn every_selected_two_dimensional_transform_function_preserves_authored_order() 
     assert!(matches!(
         &functions.functions()[2],
         CssTransformFunction::Scale(scale)
-            if scale.y().is_some_and(|value| value.calculation().is_some())
+            if matches!(scale.y(), Some(CssTransformScaleComponent::Number(value)) if value.calculation().is_some())
     ));
     assert!(matches!(
         functions.functions()[3],
@@ -1333,9 +1333,7 @@ fn transform_functions_require_exact_commas_and_arities() {
         "translate(1px 2px)",
         "translateX(1px, 2px)",
         "scale(1 2)",
-        "scale(1, 50%)",
         "scaleX()",
-        "scaleY(50%)",
         "skew(10deg 20deg)",
         "rotate(10deg, 20deg)",
         "matrix3d(1 0 0 0 0 1 0 0 0 0 1 0 10 20 30 1)",
@@ -1348,6 +1346,31 @@ fn transform_functions_require_exact_commas_and_arities() {
     ] {
         assert_transform_rejected(value);
     }
+}
+
+#[test]
+fn selected_level_two_extension_admits_historical_two_dimensional_percentage_boundaries() {
+    // Preserve the former rejection stimuli: Transforms 2 §12.1 extends these
+    // existing functions to the same number/percentage factors as 3D scale.
+    assert_function_sequence(
+        "scale(1, 50%) scaleY(50%)",
+        &[
+            CssTransformFunctionKind::Scale,
+            CssTransformFunctionKind::ScaleY,
+        ],
+    );
+    let property = parsed_transform_property("scale(1, 50%) scaleY(50%)");
+    let CssTransform::Functions(functions) = property.value() else {
+        panic!("functions");
+    };
+    assert!(
+        matches!(&functions.functions()[0], CssTransformFunction::Scale(scale)
+        if matches!(scale.y(), Some(CssTransformScaleComponent::Percentage(value))
+            if exact_percentage(value.literal_component(), "50")))
+    );
+    assert!(matches!(&functions.functions()[1],
+        CssTransformFunction::ScaleY(CssTransformScaleComponent::Percentage(value))
+            if exact_percentage(value.literal_component(), "50")));
 }
 
 #[test]
