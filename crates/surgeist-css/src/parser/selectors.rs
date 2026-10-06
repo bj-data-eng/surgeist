@@ -979,6 +979,21 @@ fn parse_pseudo_element<'i, 't>(
     }
 }
 
+// Comments are absent from CSS grammar, but actual whitespace cannot separate
+// the two components of an attribute matcher.
+fn expect_adjacent_attribute_equals<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<(), cssparser::BasicParseError<'i>> {
+    loop {
+        let location = input.current_source_location();
+        match input.next_including_whitespace_and_comments()?.clone() {
+            Token::Comment(_) => continue,
+            Token::Delim('=') => return Ok(()),
+            token => return Err(location.new_basic_unexpected_token_error(token)),
+        }
+    }
+}
+
 fn parse_attribute_selector<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &SelectorRecovery<'_>,
@@ -1013,6 +1028,26 @@ fn parse_attribute_selector<'i, 't>(
         Ok(Token::SubstringMatch) => {
             CssAttributeMatcher::Substring(parse_attribute_selector_value(input)?)
         }
+        Ok(Token::Delim('~')) => {
+            expect_adjacent_attribute_equals(input).map_err(selector_basic)?;
+            CssAttributeMatcher::Includes(parse_attribute_selector_value(input)?)
+        }
+        Ok(Token::Delim('|')) => {
+            expect_adjacent_attribute_equals(input).map_err(selector_basic)?;
+            CssAttributeMatcher::DashMatch(parse_attribute_selector_value(input)?)
+        }
+        Ok(Token::Delim('^')) => {
+            expect_adjacent_attribute_equals(input).map_err(selector_basic)?;
+            CssAttributeMatcher::Prefix(parse_attribute_selector_value(input)?)
+        }
+        Ok(Token::Delim('$')) => {
+            expect_adjacent_attribute_equals(input).map_err(selector_basic)?;
+            CssAttributeMatcher::Suffix(parse_attribute_selector_value(input)?)
+        }
+        Ok(Token::Delim('*')) => {
+            expect_adjacent_attribute_equals(input).map_err(selector_basic)?;
+            CssAttributeMatcher::Substring(parse_attribute_selector_value(input)?)
+        }
         Ok(token) => {
             let message = format!(
                 "unsupported attribute selector token `{}`",
@@ -1041,6 +1076,16 @@ fn parse_attribute_selector_name<'i, 't>(
             let after_ident = input.state();
             match input.next_including_whitespace() {
                 Ok(Token::Delim('|')) => {
+                    // A split |= matcher belongs to this unqualified name;
+                    // a namespace separator instead requires an adjacent ident.
+                    if input.try_parse(expect_adjacent_attribute_equals).is_ok() {
+                        input.reset(&after_ident);
+                        return Ok(CssQualifiedAttributeName::new(
+                            CssNamespaceConstraint::ExplicitNone,
+                            CssQualifiedNamePrefix::Unqualified,
+                            CssAttributeName::new(prefix_or_name),
+                        ));
+                    }
                     let local_start = input.state();
                     let local_name = input.next_including_whitespace();
                     let local_name = match local_name {
