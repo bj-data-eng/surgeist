@@ -22,6 +22,7 @@ subset; it does not establish complete support for all CSS syntax.
 | `parse_declaration(&str)` | Default features | `CssParseReport<Option<CssDeclaration>>` |
 | `parse_selector(&str, &CssNamespaceContext)` | Default features | `CssParseReport<Option<CssSelector>>` |
 | `parse_selector_list(&str, &CssNamespaceContext)` | Default features | `CssParseReport<Option<CssStyleSelectorList>>` |
+| `parse_relative_selector_list(&str, &CssNamespaceContext)` | Default features | `CssParseReport<Option<CssRelativeSelectorList>>` |
 | `parse_media_query(&str)` | Default features | `CssParseReport<CssMediaQuery>` |
 | `parse_media_query_list(&str)` | Default features | `CssParseReport<CssMediaQueryList>` |
 | `parse_font_face_descriptor_value(&str, CssFontFaceDescriptorKind)` | Default features | `CssParseReport<Option<CssFontFaceDescriptorValue>>` |
@@ -82,7 +83,7 @@ sequence through `diagnostics()`, `first()`, and `into_diagnostics()`. See the
 
 ## Selector and media query fragments
 
-The four fragment parsers consume the supplied source directly, with original
+The selector and media fragment parsers consume the supplied source directly, with original
 UTF-8 byte offsets, zero-based lines and UTF-16 columns, and actual EOF. Callers do not need
 to synthesize a stylesheet rule around a selector or query. The single-item
 functions require exactly one complete grammar production; a root comma is an
@@ -92,8 +93,15 @@ error even when a second item would be valid.
 explicit `&` anchors. Anchors remain authored and symbolic: with a parent selector
 list they use that complete list and its maximum specificity; without one they
 match the context's scope elements and contribute zero specificity. They are not
-rewritten into `:scope`. Relative leading combinators still require their owning
-stylesheet contexts. Normalized `ExplicitAnchors` bindings retain an optional
+rewritten into `:scope`. `parse_relative_selector_list` consumes a nonempty strict
+general relative list, retaining each explicit leading `>`, `+`, `~` or `||`
+relationship or an implicit descendant relation. It admits legal terminal
+pseudo-elements and independent `:has()` selectors; attaching its result as
+`:has()` arguments rechecks that narrower context. One invalid outer member
+rejects the complete list, while forgiving inner `:is()`/`:where()` recovery
+retains its diagnostics. `into_validation_result()` accepts only a clean report.
+Detached relative anchors remain symbolic until an admitting consumer binds
+them. Normalized `ExplicitAnchors` bindings retain an optional
 parent through `CssSelectorContext::parent()` rather than manufacturing one.
 `CssSelector::to_specified_css()` emits canonical authored selector text.
 `to_specified_css_with_limits()` applies cumulative semantic-node and final UTF-8

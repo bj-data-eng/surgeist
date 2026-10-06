@@ -1477,29 +1477,47 @@ fn parse_has_relative_selector_list<'i, 't>(
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
 ) -> std::result::Result<CssRelativeSelectorList, ParseError<'i, Error>> {
+    parse_relative_selector_list_with_options(
+        input,
+        options.without_nested_has().without_pseudo_elements(),
+        recovery,
+    )
+}
+
+pub(super) fn parse_general_relative_selector_list<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    recovery: &mut SelectorRecovery<'_>,
+) -> std::result::Result<CssRelativeSelectorList, ParseError<'i, Error>> {
+    recovery.check_depth(input)?;
+    parse_relative_selector_list_with_options(input, SelectorParseOptions::standard(), recovery)
+}
+
+fn parse_relative_selector_list_with_options<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    options: SelectorParseOptions,
+    recovery: &mut SelectorRecovery<'_>,
+) -> std::result::Result<CssRelativeSelectorList, ParseError<'i, Error>> {
     let mut selectors = Vec::new();
     loop {
-        selectors.push(parse_has_relative_selector(input, options, recovery)?);
+        selectors.push(parse_relative_selector_with_options(
+            input, options, recovery,
+        )?);
         if input.try_parse(Parser::expect_comma).is_err() {
             break;
         }
     }
     input.expect_exhausted().map_err(selector_basic)?;
-    // Has grammar and its parse budget are already checked above; avoid applying
+    // The caller's grammar and parse budget are already checked; avoid applying
     // an unrelated default specified-output budget or losing parse provenance.
     Ok(CssRelativeSelectorList::new(selectors))
 }
 
-fn parse_has_relative_selector<'i, 't>(
+fn parse_relative_selector_with_options<'i, 't>(
     input: &mut Parser<'i, 't>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
 ) -> std::result::Result<CssRelativeSelector, ParseError<'i, Error>> {
-    match parse_style_selector_with_options(
-        input,
-        options.without_nested_has().without_pseudo_elements(),
-        recovery,
-    )? {
+    match parse_style_selector_with_options(input, options, recovery)? {
         CssStyleSelector::Selector(selector) => Ok(CssRelativeSelector::new(
             CssSelectorCombinator::Descendant,
             selector,

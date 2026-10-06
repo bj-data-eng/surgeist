@@ -236,6 +236,51 @@ pub fn parse_selector_list(
     })
 }
 
+/// Parses a complete nonempty general relative selector list atomically.
+///
+/// Each member retains its explicit leading `>`, `+`, `~` or `||` relationship,
+/// or an implicit descendant relation. Namespace bindings and diagnostics use
+/// the caller's original source. One invalid outer member rejects the whole list;
+/// forgiving inner Is/Where recovery retains its existing diagnostics. Use
+/// `into_validation_result` when only a clean report is acceptable.
+///
+/// General relative grammar permits legal terminal pseudo-elements and independent
+/// Has functions. Attaching the resulting list as Has's own argument imposes its
+/// narrower pseudo-element and nested-Has restrictions. Detached anchors remain
+/// symbolic; parsing does not bind or match them. Specified-output limits apply
+/// to later serialization or checked readmission, separately from parsing.
+///
+/// ```
+/// use surgeist_css::{CssNamespaceContext, CssSelectorCombinator, parse_relative_selector_list};
+/// let list = parse_relative_selector_list(
+///     "> .Child, .Descendant", &CssNamespaceContext::default(),
+/// ).into_validation_result().unwrap().unwrap();
+/// assert_eq!(list.selectors()[0].combinator(), CssSelectorCombinator::Child);
+/// assert_eq!(list.selectors()[1].combinator(), CssSelectorCombinator::Descendant);
+/// assert_eq!(list.to_specified_css().unwrap(), "> .Child, .Descendant");
+/// ```
+///
+/// An ordinary checked list cannot take a relative carrier:
+///
+/// ```compile_fail
+/// use surgeist_css::{CssRelativeSelector, CssSelector, CssSelectorCombinator, CssSelectorList};
+/// let relative = CssRelativeSelector::new(CssSelectorCombinator::Child, CssSelector::Class("One".into()));
+/// let _ = CssSelectorList::try_new(vec![relative]);
+/// ```
+pub fn parse_relative_selector_list(
+    source: &str,
+    context: &CssNamespaceContext,
+) -> crate::CssParseReport<Option<CssRelativeSelectorList>> {
+    bounded(source, || {
+        selector_fragment(
+            source,
+            context,
+            false,
+            selectors::parse_general_relative_selector_list,
+        )
+    })
+}
+
 /// Parses exactly one media query, replacing rejected input with a never-matching query.
 pub fn parse_media_query(source: &str) -> crate::CssParseReport<CssMediaQuery> {
     bounded(source, || {
