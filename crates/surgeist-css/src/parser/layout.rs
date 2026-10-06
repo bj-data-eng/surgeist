@@ -56,6 +56,7 @@ pub(super) fn parse_contain<'i, 't>(
         let component = match_ignore_ascii_case! { &ident,
             "size" => CssContainComponent::Size,
             "layout" => CssContainComponent::Layout,
+            "style" => CssContainComponent::Style,
             "paint" => CssContainComponent::Paint,
             _ => return Err(unsupported_value_at(
                 location,

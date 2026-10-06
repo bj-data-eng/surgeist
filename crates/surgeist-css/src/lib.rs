@@ -1047,8 +1047,8 @@
 //! # Residual official properties and legacy orientation
 //!
 //! The C12 family exposes complete typed authored grammars for thirteen CSS2 residual
-//! properties; Writing Modes 3 text combination, orientation, and bidi properties; UI3 caret,
-//! outline-offset, and resize properties; Containment 1 `contain`; Transforms 1
+//! properties; Writing Modes 3 text combination, orientation, and bidi properties; UI3
+//! outline-offset and UI4 caret-color and resize; Containment 2 `contain`; Transforms 1
 //! `transform-box`; and Compositing 1 blend and isolation properties. These values retain
 //! authored syntax and parser coordinates without applying cascade, layout, pagination,
 //! painting, containment semantics, blending, hit testing, or writing-mode resolution.

@@ -624,6 +624,7 @@ pub fn surgeist_css::CssContain::serialize_specified_with_limits(&self, limits: 
 pub surgeist_css::CssContainComponent::Layout
 pub surgeist_css::CssContainComponent::Paint
 pub surgeist_css::CssContainComponent::Size
+pub surgeist_css::CssContainComponent::Style
 #[non_exhaustive] pub enum surgeist_css::CssContainIntrinsicSizeFallback
 pub surgeist_css::CssContainIntrinsicSizeFallback::Length(surgeist_css::CssSpecifiedNonNegativeLength)
 pub surgeist_css::CssContainIntrinsicSizeFallback::None
@@ -3052,6 +3053,7 @@ pub surgeist_css::CssLonghandValueRef::ColumnRuleStyle(&'a surgeist_css::CssLine
 pub surgeist_css::CssLonghandValueRef::ColumnRuleWidth(&'a surgeist_css::CssLineWidth)
 pub surgeist_css::CssLonghandValueRef::ColumnSpan(&'a surgeist_css::CssColumnSpan)
 pub surgeist_css::CssLonghandValueRef::ColumnWidth(&'a surgeist_css::CssColumnWidth)
+pub surgeist_css::CssLonghandValueRef::Contain(&'a surgeist_css::CssContain)
 pub surgeist_css::CssLonghandValueRef::ContainIntrinsicBlockSize(&'a surgeist_css::CssContainIntrinsicSizeValue)
 pub surgeist_css::CssLonghandValueRef::ContainIntrinsicHeight(&'a surgeist_css::CssContainIntrinsicSizeValue)
 pub surgeist_css::CssLonghandValueRef::ContainIntrinsicInlineSize(&'a surgeist_css::CssContainIntrinsicSizeValue)

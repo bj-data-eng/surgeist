@@ -724,8 +724,11 @@ property_records! {
         wrapper: yes,
     }
     Contain, "contain" {
-        metadata: unavailable(),
-        catalog: grammar_catalog!("official.property.contain", "paint size", rejected("size size")),
+        metadata: longhand(false, |v| assert_eq!(*v, CssContain::None)),
+        catalog: grammar_catalog!("official.property.contain", "paint style size", rejected("size size")),
+        source: "I-CONTAIN2",
+        dispatch: "paint style size",
+        wrapper: yes,
     }
     ContainIntrinsicBlockSize, "contain-intrinsic-block-size" {
         metadata: longhand(false, |v| {

@@ -3821,7 +3821,7 @@ fn c12_property_metadata_is_truthful() {
         (
             "official.property.contain",
             "contain",
-            "O-CONTAIN1",
+            "I-CONTAIN2",
             "#propdef-contain",
             "paint size",
         ),

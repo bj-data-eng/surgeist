@@ -1204,10 +1204,37 @@ retains authored spelling through `as_css()` and exposes the checked enum throug
 Ordinary declarations expand to one terminal contribution. CSS-wide keywords
 remain symbolic, and variable, environment, and attribute substitutions reenter
 the same whole-value grammar while retaining the original occurrence.
+Checked construction and strict replacement reentry reject original implicit
+comment/function closures with their original EOF failures and source origins;
+browser parsing and recovered-report normalization retain recovery diagnostics.
 `CssContentVisibility::serialize_specified()` emits one canonical keyword; its
 bounded variant charges one input node, one projection node, and exact output
 bytes. Skipped-content state, user relevance, used containment, layout, painting,
 and interaction need downstream context and are not decided by this authored API.
+
+`contain` follows the selected
+[Containment 2 §2](https://www.w3.org/TR/2022/WD-css-contain-2-20220917/#contain-property)
+grammar: exclusive `none`, `strict`, or `content`, or any nonempty combination of
+unique `size`, `layout`, `style`, and `paint` components. This dated pin excludes
+`inline-size`. `CssContainComponentList::try_new` checks nonemptiness and
+uniqueness while retaining authored component order; specified output emits
+components in `size layout style paint` order. `strict` and `content` preserve
+their authored keyword identity rather than emitting computed component aliases.
+`CssContainPropertyValue::containment()` exposes the typed value, and `as_css()`
+retains authored spelling.
+
+Contain is a noninherited longhand with intrinsic initial `CssContain::None` and
+exactly one terminal contribution. Ordinary values, whole CSS-wide alternatives
+and pending substitutions use the shared intrinsic lifecycle; checked property
+construction and replacement reject original implicit closures, and residual
+substitutions take priority during reentry. Contributions and normalization keep
+the original occurrence, source components, order and importance. The primitive
+specified provider charges one input/projection node for an exclusive keyword,
+or one aggregate plus each component keyword for a list. Declaration names,
+sibling output and UTF-8 separators share the existing cumulative budgets;
+public output remains atomic and reusable after failure. Applying effective
+containment, scoping counters and quotes, and layout or painting effects require
+downstream context.
 
 Order is a non-inherited longhand with a checked programmatic integer initial of zero.
 Its specified integer value expands to one contribution; normalization retains
@@ -4733,7 +4760,7 @@ residual properties, `quotes` in CSS Generated Content 3, the deprecated `clip`
 property in Masking 1 Appendix A,
 Writing Modes 3 `text-combine-upright`,
 `text-orientation`, and `unicode-bidi`, UI3 `outline-offset`, UI4 `caret-color`
-and `resize`, Containment 1 `contain`, Transforms 1 `transform-box`, and Compositing
+and `resize`, Containment 2 `contain`, Transforms 1 `transform-box`, and Compositing
 1 `background-blend-mode`, `isolation`, and `mix-blend-mode`. Their property
 wrappers preserve exact authored CSS and expose typed current values without
 performing cascade, layout, pagination, painting, hit testing, containment

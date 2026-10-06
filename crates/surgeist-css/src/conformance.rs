@@ -2377,7 +2377,7 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::OutlineColor
         | CssKnownProperty::OutlineStyle
         | CssKnownProperty::OutlineWidth => O_UI3,
-        CssKnownProperty::Contain => O_CONTAIN1,
+        CssKnownProperty::Contain => I_CONTAIN2,
         CssKnownProperty::Direction
         | CssKnownProperty::TextOrientation
         | CssKnownProperty::UnicodeBidi => O_WRITING3,

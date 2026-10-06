@@ -97,6 +97,8 @@ fn requires_closed_components(property: crate::CssKnownProperty) -> bool {
     matches!(
         property,
         crate::CssKnownProperty::CaretColor
+            | crate::CssKnownProperty::Contain
+            | crate::CssKnownProperty::ContentVisibility
             | crate::CssKnownProperty::Cursor
             | crate::CssKnownProperty::PointerEvents
             | crate::CssKnownProperty::UserSelect

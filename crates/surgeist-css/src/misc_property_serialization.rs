@@ -37,7 +37,7 @@ public_serialization!(
 );
 public_serialization!(
     CssContain,
-    "Emits represented Containment 1 syntax in grammar order, preserving `strict` and `content`. A keyword charges one node in each budget; a component list charges one aggregate plus each represented keyword. Authored component order remains unchanged."
+    "Emits Containment 2 syntax in size/layout/style/paint grammar order, preserving `strict` and `content`. A keyword charges one node in each budget; a component list charges one aggregate plus each keyword. Authored component order remains unchanged."
 );
 public_serialization!(
     CssBlendModeList,
@@ -66,6 +66,7 @@ impl CssContain {
                 for (component, keyword) in [
                     (CssContainComponent::Size, "size"),
                     (CssContainComponent::Layout, "layout"),
+                    (CssContainComponent::Style, "style"),
                     (CssContainComponent::Paint, "paint"),
                 ] {
                     if components.components().contains(&component) {
@@ -133,6 +134,18 @@ mod tests {
         .append_to_rule_writer(writer)
     }
 
+    fn contain_style(writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        CssContain::Components(
+            CssContainComponentList::try_new(vec![
+                CssContainComponent::Paint,
+                CssContainComponent::Style,
+                CssContainComponent::Size,
+            ])
+            .unwrap(),
+        )
+        .append_to_rule_writer(writer)
+    }
+
     fn blend(writer: &mut SpecifiedRuleWriter) -> Result<()> {
         CssBlendModeList::try_new(vec![
             CssBlendMode::ColorBurn,
@@ -186,6 +199,7 @@ mod tests {
             (strict, 1),
             (content, 1),
             (contain, 3),
+            (contain_style, 4),
             (blend, 4),
         ] {
             let mut writer = SpecifiedRuleWriter::new(Limits::new(nodes, nodes, 0));
@@ -211,6 +225,7 @@ mod tests {
             (strict, 1),
             (content, 1),
             (contain, 3),
+            (contain_style, 4),
             (blend, 4),
         ] {
             for (limits, kind) in [
@@ -271,5 +286,45 @@ mod tests {
         assert!(!writer.context.output_suppressed());
         assert_eq!(value.caret(), &before);
         assert_eq!(value.caret().serialize_specified().unwrap(), "rgb(1, 2, 3)");
+    }
+
+    #[test]
+    fn style_containment_and_keyword_siblings_share_exact_work_and_utf8_bytes() {
+        let prefix = "prefix size style paint é";
+        let expected = "prefix size style paint éstrict";
+        for (limits, failure) in [
+            (Limits::new(5, 5, expected.len()), None),
+            (
+                Limits::new(4, 5, expected.len()),
+                Some(Kind::InputNodeLimit),
+            ),
+            (
+                Limits::new(5, 4, expected.len()),
+                Some(Kind::ProjectionNodeLimit),
+            ),
+            (Limits::new(5, 5, expected.len() - 1), Some(Kind::ByteLimit)),
+        ] {
+            let mut writer = SpecifiedRuleWriter::new(limits);
+            writer.append("prefix ").unwrap();
+            contain_style(&mut writer).unwrap();
+            writer.append(" é").unwrap();
+            let result = strict(&mut writer);
+            if let Some(kind) = failure {
+                assert_eq!(result.unwrap_err().kind(), kind);
+                assert_eq!(writer.css, prefix);
+            } else {
+                result.unwrap();
+                assert_eq!(writer.css, expected);
+            }
+        }
+        let mut writer = SpecifiedRuleWriter::new(Limits::new(5, 5, "éstrict".len()));
+        writer
+            .without_output(|writer| writer.without_output(contain_style))
+            .unwrap();
+        assert!(writer.css.is_empty());
+        assert!(!writer.context.output_suppressed());
+        writer.append("é").unwrap();
+        strict(&mut writer).unwrap();
+        assert_eq!(writer.css, "éstrict");
     }
 }

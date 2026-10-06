@@ -4916,12 +4916,13 @@ pub enum CssResize {
     Inline,
 }
 
-/// One independently authored Containment 1 containment kind.
+/// One independently authored Containment 2 containment kind.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssContainComponent {
     Size,
     Layout,
+    Style,
     Paint,
 }
 
@@ -4951,9 +4952,9 @@ impl CssContainComponentList {
     }
 }
 
-/// The authored Containment 1 `contain` value.
+/// The authored Containment 2 `contain` value.
 ///
-/// This is syntax only and does not apply size, layout, or paint containment.
+/// This is syntax only and does not apply size, layout, style, or paint containment.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssContain {
