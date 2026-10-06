@@ -2416,6 +2416,55 @@ charge. Literal angles and unitless zero charge one input and projection node;
 calculations delegate their existing visited-input and allocated-projection costs.
 Wrappers and separators cost bytes. Failure returns no partial CSS or mutation.
 
+The selected [Filter Effects 1 WD 2018-12-18 §12](https://www.w3.org/TR/2018/WD-filter-effects-1-20181218/#FilterCSSImageValue)
+adds the image-valued `filter([ <image> | <string> ], <filter-value-list>)`.
+`CssImageValue::Filter` stores a checked `CssFilterImage` with one
+`CssFilterImageInput` and the existing nonempty `CssFilterFunctionList`.
+`input().view()` distinguishes `CssFilterImageInputRef::String` from `Image`;
+`filters().functions()` borrows the complete authored function/URL order.
+Both operands exclude a bare `none`. A real `light-dark(none, none)` image and
+nested filter images remain valid. The `filter` and `backdrop-filter` properties
+keep their separate filter-function/URL grammar; `filter()` is an image alternative.
+All shared image consumers import this alternative, including Shapes, Content,
+symbols and counter-style image slots. The selected UI 4 Cursor URL/limited
+URL-set grammar and unrelated URL-valued properties retain their own boundaries.
+
+`CssFilterImageString::try_new(decoded)` creates a checked String with
+programmatic provenance; `try_from_component(token)` requires a complete
+quoted-string token and retains its exact spelling and original origin.
+`as_str()`, `component()` and `origin()` borrow that information, including empty
+Strings, escapes and Unicode. Wrong tokens or implicitly recovered terminations
+return `CssComponentValueErrorKind::InvalidToken` at their supplied token or EOF
+origin; NUL construction uses the shared `InvalidString` failure.
+`CssFilterImageInput::from_string` preserves this branch, `from_image` takes a
+checked `CssImage`, and `try_from_image` admits an image value through the canonical
+checked Image boundary. `CssFilterImage::try_new(input, filters)` checks the
+entire retained graph, preserving `NestingLimit` and `CapacityOverflow` errors.
+One enclosing filter function adds one structural level to the maximum child
+depth; operand/list carriers add none. The common ceiling is 256, including all
+original numeric components, Color graphs and URL modifier functions/arguments.
+The immutable checked payload caches that admitted depth for enclosing images.
+
+The printed grammar admits Strings, while the following draft prose describes
+only an image input and leaves String-to-processing-input meaning undefined.
+The authored model therefore retains Strings without URL conversion or resource
+interpretation. The frozen WebKit witness has an explicit FIXME for its wider
+`none` acceptance and lacks a distinct String lane under its default image
+options. That discrepancy supplies no missing String execution meaning. Resource
+loading, geometry, filtering execution and interpolation remain downstream.
+
+The new String, input and filter-image models provide `serialize_specified()`
+and a limits variant. Strings emit quoted escaped text; Images use their existing
+provider. The shared iterative image writer charges one input/projection node
+for a filter-image aggregate and one for a String leaf. It delegates Image
+operands without a new carrier tariff; the ordered filter list charges one
+aggregate and retains the existing function/child costs and omitted arguments.
+For example, `filter("a", blur())` costs four nodes in each budget, while
+`filter(url("a"), blur())` costs five. Structural checks add no serializer tariff.
+Nested images, sibling lists, suppressed defaults and enclosing declarations
+share one input/projection/UTF-8 budget. Failure exposes no partial public output
+and permits a fresh retry with the authored children unchanged.
+
 Both filter properties are noninherited terminals with intrinsic `CssFilter::None`
 initials. Central expansion, pending reentry and normalization retain occurrence,
 importance and replacement provenance. The selected
@@ -5147,7 +5196,7 @@ global keywords and substitution-dependent declarations remain separate branches
 checks the complete retained image graph. It rejects the property keyword
 `CssImageValue::None` with `NotImage`, and reports `NestingLimit` or
 `CapacityOverflow` for structural failures. Its borrowed `value()` retains a
-URL, gradient or checked `light-dark()` pair. Every retained color, numeric and
+URL, gradient, checked `light-dark()` pair or filter image. Every retained color, numeric and
 URL-modifier subtree contributes to the shared 256-level function-depth ceiling;
 the checked image carrier adds no function level of its own.
 Programmatic gradients use `CssGradientColorStop::from_color`, checked

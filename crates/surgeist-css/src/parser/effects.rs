@@ -954,12 +954,18 @@ pub(super) fn parse_filter<'i, 't>(
     {
         return Ok(CssFilter::None);
     }
+    parse_filter_function_list(input, numeric).map(CssFilter::Functions)
+}
+
+pub(super) fn parse_filter_function_list<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> std::result::Result<CssFilterFunctionList, ParseError<'i, Error>> {
     let mut functions = Vec::new();
     while !input.is_exhausted() {
         functions.push(parse_filter_function(input, numeric)?);
     }
     CssFilterFunctionList::try_new(functions)
-        .map(CssFilter::Functions)
         .ok_or_else(|| unsupported_value(input, None, "filter function list is empty"))
 }
 
@@ -967,8 +973,10 @@ pub(super) fn parse_filter_function<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssFilterFunction, ParseError<'i, Error>> {
-    if let Ok(url) = input.try_parse(|input| parse_url(input, numeric)) {
-        return Ok(CssFilterFunction::Url(url));
+    match input.try_parse(|input| parse_url(input, numeric)) {
+        Ok(url) => return Ok(CssFilterFunction::Url(url)),
+        Err(error) if crate::error::is_resource_parse_error(&error) => return Err(error),
+        Err(_) => {}
     }
     let location = input.current_source_location();
     let name = match input.next().map_err(basic)? {

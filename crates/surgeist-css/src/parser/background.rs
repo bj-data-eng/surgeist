@@ -27,6 +27,7 @@ pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
     CssFeatureId::new("official.value.line-style"),
     CssFeatureId::new("official.value.line-width"),
     CssFeatureId::new("official.value.image"),
+    CssFeatureId::new("ext.value.filter-image"),
     CssFeatureId::new("official.value.gradient"),
     CssFeatureId::new("official.value.linear-gradient"),
     CssFeatureId::new("official.value.radial-gradient"),
@@ -200,6 +201,7 @@ pub(super) fn next_starts_background_image<'i, 't>(input: &mut Parser<'i, 't>) -
         Ok(Token::Function(name)) => {
             name.eq_ignore_ascii_case("url")
                 || name.eq_ignore_ascii_case("light-dark")
+                || name.eq_ignore_ascii_case("filter")
                 || name.eq_ignore_ascii_case("src")
                 || matches!(
                     name.to_ascii_lowercase().as_str(),
@@ -322,6 +324,46 @@ pub(super) fn parse_image_value<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssImageValue, ParseError<'i, Error>> {
+    let state = input.state();
+    let filter =
+        matches!(input.next(), Ok(Token::Function(name)) if name.eq_ignore_ascii_case("filter"));
+    input.reset(&state);
+    if filter {
+        input.skip_whitespace();
+        let location = input.current_source_location();
+        let start = input.position().byte_index();
+        input.next().map_err(basic)?;
+        return input.parse_nested_block(|input| {
+            let state = input.state();
+            let string = matches!(input.next(), Ok(Token::QuotedString(_)));
+            input.reset(&state);
+            let input_value = if string {
+                // Collect the exact original String rather than decoded text re-tokenization.
+                input.skip_whitespace();
+                let string_location = input.current_source_location();
+                let string_start = input.position().byte_index();
+                let component = numeric.collect(input).map_err(|error| {
+                    let location = numeric.error_location(&error, string_location, string_start);
+                    error.component_error().map_or_else(
+                        || unsupported_value_at(location, None, "invalid filter image String"),
+                        |detail| crate::error::invalid_component_value(location, detail.clone()),
+                    )
+                })?;
+                let string =
+                    CssFilterImageString::try_from_component(component).map_err(|error| {
+                        crate::error::invalid_component_value(string_location, error)
+                    })?;
+                CssFilterImageInput::from_string(string)
+            } else {
+                CssFilterImageInput::from_image(parse_image(input, numeric)?)
+            };
+            input.expect_comma().map_err(basic)?;
+            let filters = super::effects::parse_filter_function_list(input, numeric)?;
+            CssFilterImage::try_new(input_value, filters)
+                .map(|value| CssImageValue::Filter(Box::new(value)))
+                .map_err(|error| image_construction_error(error, location, start, numeric))
+        });
+    }
     if next_is_light_dark(input) {
         input.skip_whitespace();
         let location = input.current_source_location();

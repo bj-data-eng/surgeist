@@ -2214,6 +2214,7 @@ static OFFICIAL_NON_PROPERTY_COVERAGE_ROWS: &[CssOfficialCoverageRecord] = &[
     active_coverage!("official.value.line-width"),
     active_coverage!("official.value.shadow"),
     active_coverage!("official.value.image"),
+    active_coverage!("ext.value.filter-image"),
     active_coverage!("official.value.gradient"),
     active_coverage!("official.value.linear-gradient"),
     active_coverage!("official.value.radial-gradient"),
@@ -2919,7 +2920,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 762] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 763] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -3650,6 +3651,13 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 762] = [
         "<image>",
         O_IMAGES3,
         "#image-values",
+    ),
+    CssFeatureMetadata::complete(
+        "ext.value.filter-image",
+        CssFeatureKind::Value,
+        "filter()",
+        I_FILTER1,
+        "#FilterCSSImageValue",
     ),
     CssFeatureMetadata::complete(
         "official.value.gradient",

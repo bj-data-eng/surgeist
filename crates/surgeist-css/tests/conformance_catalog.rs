@@ -5032,6 +5032,16 @@ fn filter_function_list_preserves_typed_authored_order() {
 }
 
 #[test]
+fn filter_image_metadata_uses_the_selected_imported_section_twelve_owner() {
+    assert_complete_function_metadata(
+        "ext.value.filter-image",
+        "filter()",
+        "I-FILTER1",
+        "#FilterCSSImageValue",
+    );
+}
+
+#[test]
 fn every_filter_amount_function_has_exact_typed_domain() {
     let report = parse_style_attribute(concat!(
         "filter: blur(2px) brightness() contrast(25%) grayscale(.5) ",

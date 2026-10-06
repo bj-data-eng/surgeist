@@ -6825,7 +6825,7 @@ impl CssAuthoredFunctionArguments {
     }
 }
 
-/// An authored image value accepted by Images 3 consumers.
+/// An authored image value accepted by the shared Image consumers.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssImageValue {
@@ -6834,6 +6834,8 @@ pub enum CssImageValue {
     Gradient(CssGradient),
     /// Two authored image/none branches, retaining their order and scheme dependency.
     LightDark(Box<CssLightDarkImage>),
+    /// A distinct authored String or checked Image input and nonempty filter list.
+    Filter(Box<CssFilterImage>),
 }
 
 /// One non-negative authored `border-image-slice` component.
@@ -7405,7 +7407,10 @@ mod position;
 pub use position::*;
 
 mod images;
-pub use images::{CssImage, CssImageConstructionError, CssLightDarkImage};
+pub use images::{
+    CssFilterImage, CssFilterImageInput, CssFilterImageInputRef, CssFilterImageString, CssImage,
+    CssImageConstructionError, CssLightDarkImage,
+};
 
 /// The exact authored background box component count for one shorthand layer.
 ///

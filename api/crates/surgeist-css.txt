@@ -1306,6 +1306,9 @@ pub surgeist_css::CssFilterFunction::Url(surgeist_css::CssUrl)
 impl surgeist_css::CssFilterFunction
 pub fn surgeist_css::CssFilterFunction::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssFilterFunction::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssFilterImageInputRef<'a>
+pub surgeist_css::CssFilterImageInputRef::Image(&'a surgeist_css::CssImage)
+pub surgeist_css::CssFilterImageInputRef::String(&'a surgeist_css::CssFilterImageString)
 #[non_exhaustive] pub enum surgeist_css::CssFlexBasisRef<'a>
 pub surgeist_css::CssFlexBasisRef::CalcSize(&'a surgeist_css::CssCalcSize)
 pub surgeist_css::CssFlexBasisRef::Content
@@ -2028,6 +2031,7 @@ impl surgeist_css::CssImageRendering
 pub fn surgeist_css::CssImageRendering::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssImageRendering::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssImageValue
+pub surgeist_css::CssImageValue::Filter(alloc::boxed::Box<surgeist_css::CssFilterImage>)
 pub surgeist_css::CssImageValue::Gradient(surgeist_css::CssGradient)
 pub surgeist_css::CssImageValue::LightDark(alloc::boxed::Box<surgeist_css::CssLightDarkImage>)
 pub surgeist_css::CssImageValue::None
@@ -7632,6 +7636,33 @@ pub const fn surgeist_css::CssFilterHueRotate::new(angle: surgeist_css::CssAngle
 pub fn surgeist_css::CssFilterHueRotate::omitted() -> Self
 impl core::cmp::PartialEq for surgeist_css::CssFilterHueRotate
 pub fn surgeist_css::CssFilterHueRotate::eq(&self, other: &Self) -> bool
+pub struct surgeist_css::CssFilterImage
+impl surgeist_css::CssFilterImage
+pub const fn surgeist_css::CssFilterImage::filters(&self) -> &surgeist_css::CssFilterFunctionList
+pub const fn surgeist_css::CssFilterImage::input(&self) -> &surgeist_css::CssFilterImageInput
+pub fn surgeist_css::CssFilterImage::try_new(input: surgeist_css::CssFilterImageInput, filters: surgeist_css::CssFilterFunctionList) -> core::result::Result<Self, surgeist_css::CssImageConstructionError>
+impl surgeist_css::CssFilterImage
+pub fn surgeist_css::CssFilterImage::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFilterImage::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssFilterImageInput
+impl surgeist_css::CssFilterImageInput
+pub const fn surgeist_css::CssFilterImageInput::from_image(value: surgeist_css::CssImage) -> Self
+pub const fn surgeist_css::CssFilterImageInput::from_string(value: surgeist_css::CssFilterImageString) -> Self
+pub fn surgeist_css::CssFilterImageInput::try_from_image(value: surgeist_css::CssImageValue) -> core::result::Result<Self, surgeist_css::CssImageConstructionError>
+pub const fn surgeist_css::CssFilterImageInput::view(&self) -> surgeist_css::CssFilterImageInputRef<'_>
+impl surgeist_css::CssFilterImageInput
+pub fn surgeist_css::CssFilterImageInput::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFilterImageInput::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssFilterImageString
+impl surgeist_css::CssFilterImageString
+pub fn surgeist_css::CssFilterImageString::as_str(&self) -> &str
+pub const fn surgeist_css::CssFilterImageString::component(&self) -> &surgeist_css::CssComponentValue
+pub const fn surgeist_css::CssFilterImageString::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssFilterImageString::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssFilterImageString::try_new(decoded: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+impl surgeist_css::CssFilterImageString
+pub fn surgeist_css::CssFilterImageString::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFilterImageString::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssFilterPropertyValue
 impl surgeist_css::CssFilterPropertyValue
 pub fn surgeist_css::CssFilterPropertyValue::as_css(&self) -> &str
