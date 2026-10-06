@@ -6,22 +6,38 @@
 //! Slice continuations retain only the remaining children, so graph width does
 //! not allocate a pending event for every sibling before checking work limits.
 
+use crate::cssom_rule_serialization::{
+    CssRuleCssomFormat, CssRuleCssomKind, CssRuleCssomSerializationError, RuleCssomSource,
+};
 use crate::specified_rule_serialization::{SpecifiedRuleSerializationSource, SpecifiedRuleWriter};
 use crate::{
     CssDeclarationList, CssLayerName, CssLayerNameList, CssMediaQueryList, CssRule, CssScopeRule,
     CssScopedRule, CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,
 };
 
-type Result<T> = std::result::Result<T, SpecifiedRuleSerializationSource>;
+type Result<T> = std::result::Result<T, RuleCssomSource>;
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum Format {
+    Compact,
+    Cssom,
+}
+
+struct GraphFailure {
+    source: RuleCssomSource,
+    path: Vec<usize>,
+    keyframe_block_index: Option<usize>,
+}
 type ValueResult<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
 
 enum Event<'a> {
-    Ordinary(&'a CssRule),
-    Scoped(&'a CssScopedRule),
-    OrdinaryChildren(&'a [CssRule], bool),
-    ScopedChildren(&'a [CssScopedRule], bool),
+    Ordinary(&'a CssRule, Option<usize>),
+    Scoped(&'a CssScopedRule, Option<usize>),
+    OrdinaryChildren(&'a [CssRule], usize, bool),
+    ScopedChildren(&'a [CssScopedRule], usize, bool),
     Declarations(&'a CssDeclarationList),
     Text(&'static str),
+    EndRule(bool),
 }
 
 fn push<'a>(work: &mut Vec<Event<'a>>, event: Event<'a>) -> ValueResult<()> {
@@ -37,206 +53,505 @@ fn push<'a>(work: &mut Vec<Event<'a>>, event: Event<'a>) -> ValueResult<()> {
 impl SpecifiedRuleWriter {
     /// One borrowed loop visits both rule enums without constructing a second
     /// graph, recursively walking groups, or resetting any provider budget.
-    pub(crate) fn append_rule_graph(&mut self, rule: &CssRule) -> Result<()> {
+    pub(crate) fn append_rule_graph(
+        &mut self,
+        rule: &CssRule,
+    ) -> std::result::Result<(), SpecifiedRuleSerializationSource> {
+        self.append_graph(rule, Format::Compact, Vec::new())
+            .map_err(|error| match error.source {
+                RuleCssomSource::Provider(source) => source,
+                _ => unreachable!("compact traversal uses only compact providers"),
+            })
+    }
+
+    pub(crate) fn append_cssom_rule_graph(
+        &mut self,
+        rule: &CssRule,
+        path: Vec<usize>,
+    ) -> std::result::Result<(), CssRuleCssomSerializationError> {
+        self.append_graph(rule, Format::Cssom, path)
+            .map_err(|failure| {
+                CssRuleCssomSerializationError::new(
+                    failure.source,
+                    failure.path,
+                    failure.keyframe_block_index,
+                )
+            })
+    }
+
+    fn append_graph(
+        &mut self,
+        rule: &CssRule,
+        format: Format,
+        mut path: Vec<usize>,
+    ) -> std::result::Result<(), GraphFailure> {
         let mut work = Vec::new();
-        push(&mut work, Event::Ordinary(rule))?;
-        while let Some(event) = work.pop() {
-            match event {
-                Event::Text(text) => self.append(text)?,
-                Event::Declarations(declarations) => {
-                    self.append_authored_declaration_list(declarations)?;
-                }
-                Event::OrdinaryChildren(rules, separator) => {
-                    if let Some((first, rest)) = rules.split_first() {
-                        if separator {
-                            self.append(" ")?;
+        let mut keyframe_block_index = None;
+        let result =
+            (|| -> Result<()> {
+                push(&mut work, Event::Ordinary(rule, None))?;
+                while let Some(event) = work.pop() {
+                    match event {
+                        Event::Text(text) => self.append(text)?,
+                        Event::EndRule(pop) => {
+                            if pop {
+                                path.pop();
+                            }
                         }
-                        push(&mut work, Event::OrdinaryChildren(rest, true))?;
-                        push(&mut work, Event::Ordinary(first))?;
-                    }
-                }
-                Event::ScopedChildren(rules, separator) => {
-                    if let Some((first, rest)) = rules.split_first() {
-                        if separator {
-                            self.append(" ")?;
+                        Event::Declarations(declarations) => {
+                            if format == Format::Cssom {
+                                self.append_cssom_declaration_list(declarations)?;
+                            } else {
+                                self.append_authored_declaration_list(declarations)?;
+                            }
                         }
-                        push(&mut work, Event::ScopedChildren(rest, true))?;
-                        push(&mut work, Event::Scoped(first))?;
+                        Event::OrdinaryChildren(rules, index, separator) => {
+                            if let Some((first, rest)) = rules.split_first() {
+                                if format == Format::Cssom {
+                                    self.append("\n  ")?;
+                                } else if separator {
+                                    self.append(" ")?;
+                                }
+                                push(&mut work, Event::OrdinaryChildren(rest, index + 1, true))?;
+                                push(&mut work, Event::Ordinary(first, Some(index)))?;
+                            }
+                        }
+                        Event::ScopedChildren(rules, index, separator) => {
+                            if let Some((first, rest)) = rules.split_first() {
+                                if format == Format::Cssom {
+                                    self.append("\n  ")?;
+                                } else if separator {
+                                    self.append(" ")?;
+                                }
+                                push(&mut work, Event::ScopedChildren(rest, index + 1, true))?;
+                                push(&mut work, Event::Scoped(first, Some(index)))?;
+                            }
+                        }
+                        Event::Ordinary(rule, index) => {
+                            if format == Format::Cssom
+                                && let Some(index) = index
+                            {
+                                path.try_reserve(1).map_err(|_| {
+                                    CssSpecifiedValueSerializationError::new(
+                                        CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
+                                    )
+                                })?;
+                                path.push(index);
+                            }
+                            if format == Format::Cssom {
+                                push(&mut work, Event::EndRule(index.is_some()))?;
+                            }
+                            match rule {
+                                CssRule::Namespace(rule) => self.namespace(rule)?,
+                                CssRule::CounterStyle(rule) => {
+                                    if format == Format::Cssom {
+                                        self.node()?;
+                                        return Err(RuleCssomSource::FormatUnavailable(
+                                            CssRuleCssomFormat::CounterStyle,
+                                        ));
+                                    }
+                                    rule.append_to_rule_writer(self)?
+                                }
+                                CssRule::FontFace(rule) => self.font_face(rule)?,
+                                CssRule::FontFeatureValues(rule) => {
+                                    if format == Format::Cssom {
+                                        self.node()?;
+                                        return Err(RuleCssomSource::FormatUnavailable(
+                                            CssRuleCssomFormat::FontFeatureValues,
+                                        ));
+                                    }
+                                    self.font_features(rule)?
+                                }
+                                CssRule::FontPaletteValues(rule) => {
+                                    if format == Format::Cssom {
+                                        self.node()?;
+                                        return Err(RuleCssomSource::FormatUnavailable(
+                                            CssRuleCssomFormat::FontPaletteValues,
+                                        ));
+                                    }
+                                    self.palette(rule)?
+                                }
+                                CssRule::ColorProfile(rule) => {
+                                    if format == Format::Cssom {
+                                        self.node()?;
+                                        return Err(RuleCssomSource::FormatUnavailable(
+                                            CssRuleCssomFormat::ColorProfile,
+                                        ));
+                                    }
+                                    self.color_profile(rule)?
+                                }
+                                CssRule::SupportsCondition(rule) => {
+                                    if format == Format::Cssom {
+                                        self.node()?;
+                                        return Err(RuleCssomSource::FormatUnavailable(
+                                            CssRuleCssomFormat::SupportsCondition,
+                                        ));
+                                    }
+                                    self.named_supports_rule(rule)?
+                                }
+                                CssRule::NestedDeclarations(rule) => {
+                                    self.node()?;
+                                    push(&mut work, Event::Declarations(rule.declarations()))?;
+                                }
+                                CssRule::Page(rule) => {
+                                    self.node()?;
+                                    if format == Format::Cssom {
+                                        return Err(RuleCssomSource::SourceUndefined(
+                                            CssRuleCssomKind::Page,
+                                        ));
+                                    }
+                                    self.page(rule)?;
+                                }
+                                CssRule::Keyframes(rule) => {
+                                    self.node()?;
+                                    if format == Format::Cssom {
+                                        self.keyframes_cssom(rule, &mut keyframe_block_index)?;
+                                    } else {
+                                        self.keyframes(rule)?;
+                                    }
+                                }
+                                CssRule::CustomMedia(rule) => {
+                                    if format == Format::Cssom {
+                                        self.node()?;
+                                        return Err(RuleCssomSource::FormatUnavailable(
+                                            CssRuleCssomFormat::CustomMedia,
+                                        ));
+                                    }
+                                    self.node()?;
+                                    rule.append_specified(&mut self.context, &mut self.css)?;
+                                }
+                                CssRule::Import(rule) => {
+                                    self.node()?;
+                                    rule.append_specified(&mut self.context, &mut self.css)?;
+                                }
+                                CssRule::LayerStatement(rule) => {
+                                    if format == Format::Cssom {
+                                        self.node()?;
+                                        return Err(RuleCssomSource::FormatUnavailable(
+                                            CssRuleCssomFormat::LayerStatement,
+                                        ));
+                                    }
+                                    self.node()?;
+                                    self.append("@layer ")?;
+                                    self.layer_names(rule.names())?;
+                                    self.append(";")?;
+                                }
+                                CssRule::LayerBlock(rule) => {
+                                    if format == Format::Cssom {
+                                        self.node()?;
+                                        return Err(RuleCssomSource::FormatUnavailable(
+                                            CssRuleCssomFormat::LayerBlock,
+                                        ));
+                                    }
+                                    self.node()?;
+                                    self.layer_prelude(rule.name())?;
+                                    self.open_block(
+                                        &mut work,
+                                        format,
+                                        (!rule.rules().is_empty()).then_some(
+                                            Event::OrdinaryChildren(rule.rules(), 0, false),
+                                        ),
+                                    )?;
+                                }
+                                CssRule::Style(rule) => {
+                                    self.node()?;
+                                    if format == Format::Cssom {
+                                        self.cssom_style_selectors(rule.selectors())?;
+                                    } else {
+                                        self.style_selectors(rule.selectors())?;
+                                    }
+                                    self.style_block(
+                                        &mut work,
+                                        rule.declarations(),
+                                        rule.rules(),
+                                        format,
+                                    )?;
+                                }
+                                CssRule::Media(rule) => {
+                                    self.node()?;
+                                    self.media_prelude(rule.query(), format)?;
+                                    self.open_block(
+                                        &mut work,
+                                        format,
+                                        (!rule.rules().is_empty()).then_some(
+                                            Event::OrdinaryChildren(rule.rules(), 0, false),
+                                        ),
+                                    )?;
+                                }
+                                CssRule::Supports(rule) => {
+                                    if format == Format::Cssom {
+                                        self.node()?;
+                                        return Err(RuleCssomSource::FormatUnavailable(
+                                            CssRuleCssomFormat::Supports,
+                                        ));
+                                    }
+                                    self.node()?;
+                                    self.append("@supports ")?;
+                                    rule.condition()
+                                        .append_specified(&mut self.context, &mut self.css)?;
+                                    self.open_block(
+                                        &mut work,
+                                        format,
+                                        (!rule.rules().is_empty()).then_some(
+                                            Event::OrdinaryChildren(rule.rules(), 0, false),
+                                        ),
+                                    )?;
+                                }
+                                CssRule::Container(rule) => {
+                                    if format == Format::Cssom {
+                                        self.node()?;
+                                        return Err(RuleCssomSource::FormatUnavailable(
+                                            CssRuleCssomFormat::Container,
+                                        ));
+                                    }
+                                    self.node()?;
+                                    self.append("@container ")?;
+                                    rule.prelude()
+                                        .append_specified(&mut self.context, &mut self.css)?;
+                                    self.open_block(
+                                        &mut work,
+                                        format,
+                                        (!rule.rules().is_empty()).then_some(
+                                            Event::OrdinaryChildren(rule.rules(), 0, false),
+                                        ),
+                                    )?;
+                                }
+                                CssRule::Scope(rule) => {
+                                    if format == Format::Cssom {
+                                        self.node()?;
+                                        return Err(RuleCssomSource::FormatUnavailable(
+                                            CssRuleCssomFormat::Scope,
+                                        ));
+                                    }
+                                    self.scope_block(&mut work, rule, format)?
+                                }
+                            }
+                        }
+                        Event::Scoped(rule, index) => {
+                            if format == Format::Cssom
+                                && let Some(index) = index
+                            {
+                                path.try_reserve(1).map_err(|_| {
+                                    CssSpecifiedValueSerializationError::new(
+                                        CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
+                                    )
+                                })?;
+                                path.push(index);
+                            }
+                            if format == Format::Cssom {
+                                push(&mut work, Event::EndRule(index.is_some()))?;
+                            }
+                            match rule {
+                                CssScopedRule::CounterStyle(rule) => {
+                                    if format == Format::Cssom {
+                                        self.node()?;
+                                        return Err(RuleCssomSource::FormatUnavailable(
+                                            CssRuleCssomFormat::CounterStyle,
+                                        ));
+                                    }
+                                    rule.append_to_rule_writer(self)?
+                                }
+                                CssScopedRule::FontFace(rule) => self.font_face(rule)?,
+                                CssScopedRule::FontFeatureValues(rule) => {
+                                    if format == Format::Cssom {
+                                        self.node()?;
+                                        return Err(RuleCssomSource::FormatUnavailable(
+                                            CssRuleCssomFormat::FontFeatureValues,
+                                        ));
+                                    }
+                                    self.font_features(rule)?
+                                }
+                                CssScopedRule::FontPaletteValues(rule) => {
+                                    if format == Format::Cssom {
+                                        self.node()?;
+                                        return Err(RuleCssomSource::FormatUnavailable(
+                                            CssRuleCssomFormat::FontPaletteValues,
+                                        ));
+                                    }
+                                    self.palette(rule)?
+                                }
+                                CssScopedRule::ColorProfile(rule) => {
+                                    if format == Format::Cssom {
+                                        self.node()?;
+                                        return Err(RuleCssomSource::FormatUnavailable(
+                                            CssRuleCssomFormat::ColorProfile,
+                                        ));
+                                    }
+                                    self.color_profile(rule)?
+                                }
+                                CssScopedRule::SupportsCondition(rule) => {
+                                    if format == Format::Cssom {
+                                        self.node()?;
+                                        return Err(RuleCssomSource::FormatUnavailable(
+                                            CssRuleCssomFormat::SupportsCondition,
+                                        ));
+                                    }
+                                    self.named_supports_rule(rule)?
+                                }
+                                CssScopedRule::NestedDeclarations(rule) => {
+                                    self.node()?;
+                                    push(&mut work, Event::Declarations(rule.declarations()))?;
+                                }
+                                CssScopedRule::Page(rule) => {
+                                    self.node()?;
+                                    if format == Format::Cssom {
+                                        return Err(RuleCssomSource::SourceUndefined(
+                                            CssRuleCssomKind::Page,
+                                        ));
+                                    }
+                                    self.page(rule)?;
+                                }
+                                CssScopedRule::Keyframes(rule) => {
+                                    self.node()?;
+                                    if format == Format::Cssom {
+                                        self.keyframes_cssom(rule, &mut keyframe_block_index)?;
+                                    } else {
+                                        self.keyframes(rule)?;
+                                    }
+                                }
+                                CssScopedRule::CustomMedia(rule) => {
+                                    if format == Format::Cssom {
+                                        self.node()?;
+                                        return Err(RuleCssomSource::FormatUnavailable(
+                                            CssRuleCssomFormat::CustomMedia,
+                                        ));
+                                    }
+                                    self.node()?;
+                                    rule.append_specified(&mut self.context, &mut self.css)?;
+                                }
+                                CssScopedRule::LayerStatement(rule) => {
+                                    if format == Format::Cssom {
+                                        self.node()?;
+                                        return Err(RuleCssomSource::FormatUnavailable(
+                                            CssRuleCssomFormat::LayerStatement,
+                                        ));
+                                    }
+                                    self.node()?;
+                                    self.append("@layer ")?;
+                                    self.layer_names(rule.names())?;
+                                    self.append(";")?;
+                                }
+                                CssScopedRule::LayerBlock(rule) => {
+                                    if format == Format::Cssom {
+                                        self.node()?;
+                                        return Err(RuleCssomSource::FormatUnavailable(
+                                            CssRuleCssomFormat::LayerBlock,
+                                        ));
+                                    }
+                                    self.node()?;
+                                    self.layer_prelude(rule.name())?;
+                                    self.open_block(
+                                        &mut work,
+                                        format,
+                                        (!rule.rules().rules().is_empty()).then_some(
+                                            Event::ScopedChildren(rule.rules().rules(), 0, false),
+                                        ),
+                                    )?;
+                                }
+                                CssScopedRule::Style(rule) => {
+                                    self.node()?;
+                                    if format == Format::Cssom {
+                                        self.cssom_scoped_style_selectors(rule.selectors())?;
+                                    } else {
+                                        self.scoped_style_selectors(rule.selectors())?;
+                                    }
+                                    // Scoped style children have ordinary nesting semantics.
+                                    self.style_block(
+                                        &mut work,
+                                        rule.declarations(),
+                                        rule.rules(),
+                                        format,
+                                    )?;
+                                }
+                                CssScopedRule::Media(rule) => {
+                                    self.node()?;
+                                    self.media_prelude(rule.query(), format)?;
+                                    self.open_block(
+                                        &mut work,
+                                        format,
+                                        (!rule.rules().rules().is_empty()).then_some(
+                                            Event::ScopedChildren(rule.rules().rules(), 0, false),
+                                        ),
+                                    )?;
+                                }
+                                CssScopedRule::Supports(rule) => {
+                                    if format == Format::Cssom {
+                                        self.node()?;
+                                        return Err(RuleCssomSource::FormatUnavailable(
+                                            CssRuleCssomFormat::Supports,
+                                        ));
+                                    }
+                                    self.node()?;
+                                    self.append("@supports ")?;
+                                    rule.condition()
+                                        .append_specified(&mut self.context, &mut self.css)?;
+                                    self.open_block(
+                                        &mut work,
+                                        format,
+                                        (!rule.rules().rules().is_empty()).then_some(
+                                            Event::ScopedChildren(rule.rules().rules(), 0, false),
+                                        ),
+                                    )?;
+                                }
+                                CssScopedRule::Container(rule) => {
+                                    if format == Format::Cssom {
+                                        self.node()?;
+                                        return Err(RuleCssomSource::FormatUnavailable(
+                                            CssRuleCssomFormat::Container,
+                                        ));
+                                    }
+                                    self.node()?;
+                                    self.append("@container ")?;
+                                    rule.prelude()
+                                        .append_specified(&mut self.context, &mut self.css)?;
+                                    self.open_block(
+                                        &mut work,
+                                        format,
+                                        (!rule.rules().rules().is_empty()).then_some(
+                                            Event::ScopedChildren(rule.rules().rules(), 0, false),
+                                        ),
+                                    )?;
+                                }
+                                CssScopedRule::Scope(rule) => {
+                                    if format == Format::Cssom {
+                                        self.node()?;
+                                        return Err(RuleCssomSource::FormatUnavailable(
+                                            CssRuleCssomFormat::Scope,
+                                        ));
+                                    }
+                                    self.scope_block(&mut work, rule, format)?
+                                }
+                            }
+                        }
                     }
                 }
-                Event::Ordinary(rule) => match rule {
-                    CssRule::Namespace(rule) => self.namespace(rule)?,
-                    CssRule::CounterStyle(rule) => rule.append_to_rule_writer(self)?,
-                    CssRule::FontFace(rule) => self.font_face(rule)?,
-                    CssRule::FontFeatureValues(rule) => self.font_features(rule)?,
-                    CssRule::FontPaletteValues(rule) => self.palette(rule)?,
-                    CssRule::ColorProfile(rule) => self.color_profile(rule)?,
-                    CssRule::SupportsCondition(rule) => self.named_supports_rule(rule)?,
-                    CssRule::NestedDeclarations(rule) => {
-                        self.node()?;
-                        push(&mut work, Event::Declarations(rule.declarations()))?;
-                    }
-                    CssRule::Page(rule) => {
-                        self.node()?;
-                        self.page(rule)?;
-                    }
-                    CssRule::Keyframes(rule) => {
-                        self.node()?;
-                        self.keyframes(rule)?;
-                    }
-                    CssRule::CustomMedia(rule) => {
-                        self.node()?;
-                        rule.append_specified(&mut self.context, &mut self.css)?;
-                    }
-                    CssRule::Import(rule) => {
-                        self.node()?;
-                        rule.append_specified(&mut self.context, &mut self.css)?;
-                    }
-                    CssRule::LayerStatement(rule) => {
-                        self.node()?;
-                        self.append("@layer ")?;
-                        self.layer_names(rule.names())?;
-                        self.append(";")?;
-                    }
-                    CssRule::LayerBlock(rule) => {
-                        self.node()?;
-                        self.layer_prelude(rule.name())?;
-                        self.open_block(
-                            &mut work,
-                            (!rule.rules().is_empty())
-                                .then_some(Event::OrdinaryChildren(rule.rules(), false)),
-                        )?;
-                    }
-                    CssRule::Style(rule) => {
-                        self.node()?;
-                        self.style_selectors(rule.selectors())?;
-                        self.style_block(&mut work, rule.declarations(), rule.rules())?;
-                    }
-                    CssRule::Media(rule) => {
-                        self.node()?;
-                        self.media_prelude(rule.query())?;
-                        self.open_block(
-                            &mut work,
-                            (!rule.rules().is_empty())
-                                .then_some(Event::OrdinaryChildren(rule.rules(), false)),
-                        )?;
-                    }
-                    CssRule::Supports(rule) => {
-                        self.node()?;
-                        self.append("@supports ")?;
-                        rule.condition()
-                            .append_specified(&mut self.context, &mut self.css)?;
-                        self.open_block(
-                            &mut work,
-                            (!rule.rules().is_empty())
-                                .then_some(Event::OrdinaryChildren(rule.rules(), false)),
-                        )?;
-                    }
-                    CssRule::Container(rule) => {
-                        self.node()?;
-                        self.append("@container ")?;
-                        rule.prelude()
-                            .append_specified(&mut self.context, &mut self.css)?;
-                        self.open_block(
-                            &mut work,
-                            (!rule.rules().is_empty())
-                                .then_some(Event::OrdinaryChildren(rule.rules(), false)),
-                        )?;
-                    }
-                    CssRule::Scope(rule) => self.scope_block(&mut work, rule)?,
-                },
-                Event::Scoped(rule) => match rule {
-                    CssScopedRule::CounterStyle(rule) => rule.append_to_rule_writer(self)?,
-                    CssScopedRule::FontFace(rule) => self.font_face(rule)?,
-                    CssScopedRule::FontFeatureValues(rule) => self.font_features(rule)?,
-                    CssScopedRule::FontPaletteValues(rule) => self.palette(rule)?,
-                    CssScopedRule::ColorProfile(rule) => self.color_profile(rule)?,
-                    CssScopedRule::SupportsCondition(rule) => self.named_supports_rule(rule)?,
-                    CssScopedRule::NestedDeclarations(rule) => {
-                        self.node()?;
-                        push(&mut work, Event::Declarations(rule.declarations()))?;
-                    }
-                    CssScopedRule::Page(rule) => {
-                        self.node()?;
-                        self.page(rule)?;
-                    }
-                    CssScopedRule::Keyframes(rule) => {
-                        self.node()?;
-                        self.keyframes(rule)?;
-                    }
-                    CssScopedRule::CustomMedia(rule) => {
-                        self.node()?;
-                        rule.append_specified(&mut self.context, &mut self.css)?;
-                    }
-                    CssScopedRule::LayerStatement(rule) => {
-                        self.node()?;
-                        self.append("@layer ")?;
-                        self.layer_names(rule.names())?;
-                        self.append(";")?;
-                    }
-                    CssScopedRule::LayerBlock(rule) => {
-                        self.node()?;
-                        self.layer_prelude(rule.name())?;
-                        self.open_block(
-                            &mut work,
-                            (!rule.rules().rules().is_empty())
-                                .then_some(Event::ScopedChildren(rule.rules().rules(), false)),
-                        )?;
-                    }
-                    CssScopedRule::Style(rule) => {
-                        self.node()?;
-                        self.scoped_style_selectors(rule.selectors())?;
-                        // Scoped style children have ordinary nesting semantics.
-                        self.style_block(&mut work, rule.declarations(), rule.rules())?;
-                    }
-                    CssScopedRule::Media(rule) => {
-                        self.node()?;
-                        self.media_prelude(rule.query())?;
-                        self.open_block(
-                            &mut work,
-                            (!rule.rules().rules().is_empty())
-                                .then_some(Event::ScopedChildren(rule.rules().rules(), false)),
-                        )?;
-                    }
-                    CssScopedRule::Supports(rule) => {
-                        self.node()?;
-                        self.append("@supports ")?;
-                        rule.condition()
-                            .append_specified(&mut self.context, &mut self.css)?;
-                        self.open_block(
-                            &mut work,
-                            (!rule.rules().rules().is_empty())
-                                .then_some(Event::ScopedChildren(rule.rules().rules(), false)),
-                        )?;
-                    }
-                    CssScopedRule::Container(rule) => {
-                        self.node()?;
-                        self.append("@container ")?;
-                        rule.prelude()
-                            .append_specified(&mut self.context, &mut self.css)?;
-                        self.open_block(
-                            &mut work,
-                            (!rule.rules().rules().is_empty())
-                                .then_some(Event::ScopedChildren(rule.rules().rules(), false)),
-                        )?;
-                    }
-                    CssScopedRule::Scope(rule) => self.scope_block(&mut work, rule)?,
-                },
-            }
-        }
-        Ok(())
+                Ok(())
+            })();
+        result.map_err(|source| GraphFailure {
+            source,
+            path,
+            keyframe_block_index,
+        })
     }
 
     fn open_block<'a>(
         &mut self,
         work: &mut Vec<Event<'a>>,
+        format: Format,
         child: Option<Event<'a>>,
     ) -> ValueResult<()> {
         self.append(" {")?;
-        push(work, Event::Text(" }"))?;
+        push(
+            work,
+            Event::Text(if format == Format::Cssom { "\n}" } else { " }" }),
+        )?;
         if let Some(child) = child {
-            self.append(" ")?;
+            if format == Format::Compact {
+                self.append(" ")?;
+            }
             push(work, child)?;
+        } else if format == Format::Cssom {
+            self.append("\n")?;
         }
         Ok(())
     }
@@ -248,7 +563,26 @@ impl SpecifiedRuleWriter {
         work: &mut Vec<Event<'a>>,
         declarations: &'a CssDeclarationList,
         children: &'a [CssRule],
-    ) -> ValueResult<()> {
+        format: Format,
+    ) -> Result<()> {
+        if format == Format::Cssom {
+            self.append(" {")?;
+            if children.is_empty() {
+                if !declarations.is_empty() {
+                    self.append(" ")?;
+                }
+                self.append_cssom_declaration_list(declarations)?;
+                self.append(" }")?;
+            } else {
+                if !declarations.is_empty() {
+                    self.append("\n  ")?;
+                }
+                self.append_cssom_declaration_list(declarations)?;
+                push(work, Event::Text("\n}"))?;
+                push(work, Event::OrdinaryChildren(children, 0, false))?;
+            }
+            return Ok(());
+        }
         self.append(" {")?;
         push(work, Event::Text(" }"))?;
         if !declarations.is_empty() || !children.is_empty() {
@@ -257,16 +591,18 @@ impl SpecifiedRuleWriter {
         if !children.is_empty() {
             push(
                 work,
-                Event::OrdinaryChildren(children, !declarations.is_empty()),
+                Event::OrdinaryChildren(children, 0, !declarations.is_empty()),
             )?;
         }
-        push(work, Event::Declarations(declarations))
+        push(work, Event::Declarations(declarations))?;
+        Ok(())
     }
 
     fn scope_block<'a>(
         &mut self,
         work: &mut Vec<Event<'a>>,
         rule: &'a CssScopeRule,
+        format: Format,
     ) -> ValueResult<()> {
         self.node()?;
         self.append("@scope")?;
@@ -282,14 +618,18 @@ impl SpecifiedRuleWriter {
         }
         self.open_block(
             work,
-            (!rule.rules().rules().is_empty())
-                .then_some(Event::ScopedChildren(rule.rules().rules(), false)),
+            format,
+            (!rule.rules().rules().is_empty()).then_some(Event::ScopedChildren(
+                rule.rules().rules(),
+                0,
+                false,
+            )),
         )
     }
 
-    fn media_prelude(&mut self, list: &CssMediaQueryList) -> Result<()> {
+    fn media_prelude(&mut self, list: &CssMediaQueryList, format: Format) -> Result<()> {
         self.append("@media")?;
-        if !list.queries().is_empty() {
+        if format == Format::Cssom || !list.queries().is_empty() {
             self.append(" ")?;
         }
         let captured = list.capture_cssom(&mut self.context)?;

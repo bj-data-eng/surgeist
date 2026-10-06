@@ -4,6 +4,14 @@ use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::syntax::CssSelectorGrammarContext;
 use crate::*;
 type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+/// Output proof scope, independent of the existing intrinsic selector grammar.
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum OutputRole {
+    Authored,
+    LiteralStyle,
+    SelectorArgument,
+}
+
 enum Event<'a> {
     Selector(&'a CssSelector, CssSelectorGrammarContext),
     Complex(&'a CssComplexSelector, CssSelectorGrammarContext),
@@ -36,6 +44,7 @@ enum Event<'a> {
     ScopeList(&'a [CssScopeSelector], usize),
     Relative(&'a CssRelativeSelector, CssSelectorGrammarContext),
     Text(&'a str),
+    OutputRole(OutputRole),
     Nth(CssNthPattern),
 }
 fn push<'a>(work: &mut Vec<Event<'a>>, event: Event<'a>) -> Result<()> {
@@ -47,6 +56,14 @@ fn push<'a>(work: &mut Vec<Event<'a>>, event: Event<'a>) -> Result<()> {
     work.push(event);
     Ok(())
 }
+/// Selector-function arguments conservatively retain every explicit universal,
+/// including non-subject compounds. Restore the caller's output proof on return.
+fn push_argument<'a>(work: &mut Vec<Event<'a>>, event: Event<'a>, role: OutputRole) -> Result<()> {
+    push(work, Event::OutputRole(role))?;
+    push(work, event)?;
+    push(work, Event::OutputRole(OutputRole::SelectorArgument))
+}
+
 impl CssSelector {
     /// Emits an authored selector, without resolving its symbolic ancestry.
     pub fn to_specified_css(&self) -> Result<String> {
@@ -213,17 +230,45 @@ impl SpecifiedRuleWriter {
         self.selector_events(Event::ScopedStyleList(list.selectors(), 0))
     }
 
+    pub(crate) fn cssom_style_selectors(&mut self, list: &CssStyleSelectorList) -> Result<()> {
+        self.node()?;
+        self.selector_events_with_role(
+            Event::StyleList(list.selectors(), 0),
+            OutputRole::LiteralStyle,
+        )
+    }
+
+    pub(crate) fn cssom_scoped_style_selectors(
+        &mut self,
+        list: &CssScopedStyleSelectorList,
+    ) -> Result<()> {
+        self.node()?;
+        self.selector_events_with_role(
+            Event::ScopedStyleList(list.selectors(), 0),
+            OutputRole::LiteralStyle,
+        )
+    }
+
     pub(crate) fn scope_selectors(&mut self, list: &CssScopeSelectorList) -> Result<()> {
         self.node()?;
         self.selector_events(Event::ScopeList(list.selectors(), 0))
     }
 
     fn selector_events(&mut self, initial: Event<'_>) -> Result<()> {
+        self.selector_events_with_role(initial, OutputRole::Authored)
+    }
+
+    fn selector_events_with_role(
+        &mut self,
+        initial: Event<'_>,
+        mut role: OutputRole,
+    ) -> Result<()> {
         let mut work = Vec::new();
         push(&mut work, initial)?;
         while let Some(event) = work.pop() {
             match event {
                 Event::Text(value) => self.append(value)?,
+                Event::OutputRole(value) => role = value,
                 Event::Selector(value, grammar) => {
                     if !grammar.admits_selector(value) {
                         return Err(CssSpecifiedValueSerializationError::new(
@@ -270,11 +315,27 @@ impl SpecifiedRuleWriter {
                     self.node()?;
                     if let Some(name) = value.type_selector() {
                         self.node()?;
-                        self.name_prefix(name.prefix())?;
-                        if let Some(local) = name.local_name() {
-                            self.selector_identifier(local)?;
-                        } else {
-                            self.append("*")?;
+                        // The real type-name visit above remains charged even when
+                        // its star contributes no bytes under the selected literal policy.
+                        let omit = role == OutputRole::LiteralStyle
+                            && name.local_name().is_none()
+                            && matches!(name.prefix(), CssQualifiedNamePrefix::Unqualified)
+                            && matches!(
+                                name.namespace(),
+                                CssNamespaceConstraint::Any | CssNamespaceConstraint::Default
+                            )
+                            && value.nesting_selectors() == 0
+                            && value.scope_anchors() == 0
+                            && (!value.ids().is_empty()
+                                || !value.classes().is_empty()
+                                || !value.attributes().is_empty());
+                        if !omit {
+                            self.name_prefix(name.prefix())?;
+                            if let Some(local) = name.local_name() {
+                                self.selector_identifier(local)?;
+                            } else {
+                                self.append("*")?;
+                            }
                         }
                     }
                     for _ in 0..value.nesting_selectors() {
@@ -513,9 +574,10 @@ impl SpecifiedRuleWriter {
                                 ":host-context("
                             })?;
                             push(&mut work, Event::Text(")"))?;
-                            push(
+                            push_argument(
                                 &mut work,
                                 Event::Compound(arg.compound(), grammar.compound_arguments()),
+                                role,
                             )?;
                         }
                         CssPseudoClass::Not(list)
@@ -527,7 +589,7 @@ impl SpecifiedRuleWriter {
                                 _ => ":where(",
                             })?;
                             push(&mut work, Event::Text(")"))?;
-                            push(
+                            push_argument(
                                 &mut work,
                                 Event::PseudoList(
                                     list.items(),
@@ -535,18 +597,20 @@ impl SpecifiedRuleWriter {
                                     grammar.logical_arguments(),
                                     !matches!(value, CssPseudoClass::Not(_)),
                                 ),
+                                role,
                             )?;
                         }
                         CssPseudoClass::Has(list) => {
                             self.append(":has(")?;
                             push(&mut work, Event::Text(")"))?;
-                            push(
+                            push_argument(
                                 &mut work,
                                 Event::RelativeList(
                                     list.selectors(),
                                     0,
                                     grammar.relative_arguments(),
                                 ),
+                                role,
                             )?;
                         }
                         CssPseudoClass::NthChild(pattern)
@@ -558,7 +622,7 @@ impl SpecifiedRuleWriter {
                             })?;
                             push(&mut work, Event::Text(")"))?;
                             if let Some(list) = pattern.selector_list() {
-                                push(
+                                push_argument(
                                     &mut work,
                                     Event::PseudoList(
                                         list.items(),
@@ -566,6 +630,7 @@ impl SpecifiedRuleWriter {
                                         grammar.independent_arguments(),
                                         false,
                                     ),
+                                    role,
                                 )?;
                                 push(&mut work, Event::Text(" of "))?;
                             }
@@ -640,9 +705,10 @@ impl SpecifiedRuleWriter {
                         CssPseudoElement::Slotted(arg) => {
                             self.append("::slotted(")?;
                             push(&mut work, Event::Text(")"))?;
-                            push(
+                            push_argument(
                                 &mut work,
                                 Event::Compound(arg.compound(), grammar.compound_arguments()),
+                                role,
                             )?;
                         }
                         CssPseudoElement::Part(list) => {

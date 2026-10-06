@@ -64,6 +64,46 @@ impl SpecifiedRuleWriter {
         self.append("}")
     }
 
+    /// Selected valid wrapper repair: literal LF and one two-space prefix per block.
+    /// The declaration bridge retains the parser's genuine Normal-only sources.
+    pub(crate) fn keyframes_cssom(
+        &mut self,
+        rule: &CssKeyframesRule,
+        block_index: &mut Option<usize>,
+    ) -> std::result::Result<(), crate::cssom_rule_serialization::RuleCssomSource> {
+        self.append("@keyframes ")?;
+        self.node()?;
+        match rule.name() {
+            CssKeyframesName::Ident(name) => self.append_identifier(name.as_str())?,
+            CssKeyframesName::String(name) => self.append_string(name.as_str())?,
+        }
+        self.append(" {\n")?;
+        for (index, block) in rule.blocks().iter().enumerate() {
+            *block_index = Some(index);
+            if index != 0 {
+                self.append("\n")?;
+            }
+            self.append("  ")?;
+            self.node()?;
+            self.node()?; // Selector-list aggregate.
+            for (index, selector) in block.selectors().selectors().iter().enumerate() {
+                if index != 0 {
+                    self.append(", ")?;
+                }
+                self.keyframe_selector(selector)?;
+            }
+            self.append(" {")?;
+            if !block.declarations().is_empty() {
+                self.append(" ")?;
+            }
+            self.append_cssom_keyframe_declaration_list(block.declarations())?;
+            self.append(" }")?;
+            *block_index = None;
+        }
+        self.append("\n}")?;
+        Ok(())
+    }
+
     fn keyframe_block(&mut self, block: &CssKeyframeBlock) -> Result<()> {
         self.node()?;
         self.node()?; // Selector-list aggregate.

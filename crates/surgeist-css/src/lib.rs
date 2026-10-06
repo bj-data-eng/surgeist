@@ -1660,6 +1660,7 @@ pub use container_features::*;
 pub use container_style::*;
 mod supports;
 pub use supports::CssSupportsConstructionError;
+mod cssom_rule_serialization;
 mod media;
 mod named_supports_serialization;
 mod page_keyframe_serialization;
@@ -1899,6 +1900,10 @@ pub use component_values::{
 pub use conformance::*;
 pub use content_values::*;
 pub use counter_changes::{CssCounterChangeValue, CssCounterChangesValue, CssCounterProperty};
+pub use cssom_rule_serialization::{
+    CssRuleCssomFormat, CssRuleCssomKind, CssRuleCssomSerializationError,
+    CssRuleCssomSerializationErrorKind,
+};
 pub use cursor_values::*;
 pub use error::*;
 pub use expansion::{

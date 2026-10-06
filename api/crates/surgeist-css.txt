@@ -4550,6 +4550,9 @@ pub surgeist_css::CssRule::Style(surgeist_css::CssStyleRule)
 pub surgeist_css::CssRule::Supports(surgeist_css::CssSupportsRule)
 pub surgeist_css::CssRule::SupportsCondition(surgeist_css::CssSupportsConditionRule)
 impl surgeist_css::CssRule
+pub fn surgeist_css::CssRule::serialize_cssom(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssRule::serialize_cssom_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
+impl surgeist_css::CssRule
 pub fn surgeist_css::CssRule::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedRuleSerializationError>
 pub fn surgeist_css::CssRule::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedRuleSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssRuleConstructionErrorKind
@@ -4586,6 +4589,26 @@ pub surgeist_css::CssRuleContextKindRef::ScopedStyle(&'a surgeist_css::CssSelect
 pub surgeist_css::CssRuleContextKindRef::Style(&'a surgeist_css::CssSelectorContext)
 pub surgeist_css::CssRuleContextKindRef::Supports(&'a surgeist_css::CssSupportsCondition)
 pub surgeist_css::CssRuleContextKindRef::SupportsCondition(&'a surgeist_css::CssSupportsConditionRule)
+#[non_exhaustive] pub enum surgeist_css::CssRuleCssomFormat
+pub surgeist_css::CssRuleCssomFormat::ColorProfile
+pub surgeist_css::CssRuleCssomFormat::Container
+pub surgeist_css::CssRuleCssomFormat::CounterStyle
+pub surgeist_css::CssRuleCssomFormat::CustomMedia
+pub surgeist_css::CssRuleCssomFormat::FontFeatureValues
+pub surgeist_css::CssRuleCssomFormat::FontPaletteValues
+pub surgeist_css::CssRuleCssomFormat::LayerBlock
+pub surgeist_css::CssRuleCssomFormat::LayerStatement
+pub surgeist_css::CssRuleCssomFormat::Scope
+pub surgeist_css::CssRuleCssomFormat::Supports
+pub surgeist_css::CssRuleCssomFormat::SupportsCondition
+#[non_exhaustive] pub enum surgeist_css::CssRuleCssomKind
+pub surgeist_css::CssRuleCssomKind::Page
+#[non_exhaustive] pub enum surgeist_css::CssRuleCssomSerializationErrorKind
+pub surgeist_css::CssRuleCssomSerializationErrorKind::DeclarationBlock
+pub surgeist_css::CssRuleCssomSerializationErrorKind::FormatUnavailable(surgeist_css::CssRuleCssomFormat)
+pub surgeist_css::CssRuleCssomSerializationErrorKind::Resource(surgeist_css::CssSpecifiedValueSerializationErrorKind)
+pub surgeist_css::CssRuleCssomSerializationErrorKind::SourceUndefined(surgeist_css::CssRuleCssomKind)
+pub surgeist_css::CssRuleCssomSerializationErrorKind::Value(surgeist_css::CssSpecifiedValueSerializationErrorKind)
 #[non_exhaustive] pub enum surgeist_css::CssScale
 pub surgeist_css::CssScale::None
 pub surgeist_css::CssScale::Values(surgeist_css::CssScaleValues)
@@ -10500,6 +10523,15 @@ pub fn surgeist_css::CssRuleContext::kind(&self) -> surgeist_css::CssRuleContext
 pub fn surgeist_css::CssRuleContext::parent(&self) -> core::option::Option<&Self>
 pub fn surgeist_css::CssRuleContext::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
 pub fn surgeist_css::CssRuleContext::same_context(&self, other: &Self) -> bool
+pub struct surgeist_css::CssRuleCssomSerializationError
+impl surgeist_css::CssRuleCssomSerializationError
+pub const fn surgeist_css::CssRuleCssomSerializationError::keyframe_block_index(&self) -> core::option::Option<usize>
+pub const fn surgeist_css::CssRuleCssomSerializationError::kind(&self) -> surgeist_css::CssRuleCssomSerializationErrorKind
+pub fn surgeist_css::CssRuleCssomSerializationError::rule_path(&self) -> &[usize]
+impl core::error::Error for surgeist_css::CssRuleCssomSerializationError
+pub fn surgeist_css::CssRuleCssomSerializationError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_css::CssRuleCssomSerializationError
+pub fn surgeist_css::CssRuleCssomSerializationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css::CssScalePropertyValue
 impl surgeist_css::CssScalePropertyValue
 pub fn surgeist_css::CssScalePropertyValue::as_css(&self) -> &str
@@ -10865,6 +10897,9 @@ impl surgeist_css::CssSheet
 pub const fn surgeist_css::CssSheet::location(&self) -> core::option::Option<&surgeist_css::CssStylesheetLocation>
 pub const fn surgeist_css::CssSheet::new() -> Self
 pub fn surgeist_css::CssSheet::rules(&self) -> &[surgeist_css::CssRule]
+impl surgeist_css::CssSheet
+pub fn surgeist_css::CssSheet::serialize_cssom(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssSheet::serialize_cssom_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
 impl surgeist_css::CssSheet
 pub fn surgeist_css::CssSheet::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedRuleSerializationError>
 pub fn surgeist_css::CssSheet::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedRuleSerializationError>

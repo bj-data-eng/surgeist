@@ -8379,6 +8379,72 @@ symbolic parent and scope bindings. Focused evidence is in
 and [`selector_column_lifecycle.rs`](../tests/selector_column_lifecycle.rs).
 
 
+## Authored literal CSSOM rule and sheet output
+
+`CssRule::serialize_cssom` and `CssSheet::serialize_cssom`, with their bounded
+forms, compose selected literal rule formats over the retained authored model.
+Style rules normalize each declaration run through the shared specified-block
+core. Leading declarations and later runs retain their positions around nested
+rules; coalescing stays within one run. Original parsed syntax, diagnostics and
+occurrence handles remain available.
+
+Style, Media and Keyframes use literal line feeds and prefix each child string
+once with two spaces. This preserves the selected dated child-prefix algorithm,
+including its unusual multiline result. Empty Media contains two line feeds;
+its wrapper retains both spaces even for a genuinely empty query list.
+Keyframes uses the adopted valid opening brace and its existing key-text provider.
+Normal keyframe declarations project through their genuine retained occurrences
+and the shared filtered domain. Import keeps its effective URL and layer,
+supports and media clauses. Namespace uses its escaped prefix and quoted URL
+provider. FontFace retains the selected modern fourteen-kind effective descriptor
+order, width identity, shortest family spelling and owning value shortening.
+It emits only present descriptors.
+
+Ordinary Style selectors omit an unqualified universal before a retained class,
+ID or attribute when the effective namespace is Any or Default and the compound
+has no symbolic ancestry or scope anchor. Thus `*.card > *[data-x]` emits
+`.card > [data-x]`. The retained type nodes still consume work; only the omitted
+stars spend no bytes. Explicit namespace prefixes, sole universals, universal
+pseudo-element-only compounds and pseudo-only compounds remain explicit.
+Every selector-function argument conservatively retains its universals, including
+non-subject compounds. The same selector visitor enforces the owning intrinsic
+grammar and restores the ordinary output role after each argument.
+
+This bounded policy follows the meaning-preserving equivalences in
+[Selectors 4 §5.2](https://www.w3.org/TR/2026/WD-selectors-4-20260122/#universal-selector)
+and its default-namespace rules and exceptions. The negative omission predicate
+in [CSSOM WD 20210826 §5.2](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serializing-selectors)
+would suppress non-default namespace identity; Surgeist does not apply that
+predicate literally or infer unresolved namespace URI bindings. This operation
+therefore provides the selected safe canonicalization, rather than a general
+shortest-selector search. Standalone selector and compact rule output preserve
+the authored explicit universals.
+
+The pinned CSSOM source has no Page rule format. Literal Page output reports
+`SourceUndefined` at its actual rule path. Other represented modern wrappers
+without a selected literal byte format report `FormatUnavailable`; their defined
+name/value providers and compact authored output remain usable. These limits
+preserve the source boundary explicitly. The eight unresolved mode-dependent
+pending shorthand families retain the shared block's
+`PendingFootprintUndetermined` cause until replacement establishes their footprint.
+
+One monotonic context composes borrowed graph traversal, selectors, source
+admission, normalization, inverse probes, values and output. Typed failures retain
+the actual ordinary/scoped rule path, keyframe block index where applicable,
+and underlying declaration, media or value cause. No failed public request
+returns a prefix string. The retained model supports an independent retry.
+The sheet operation joins selected rule strings with one newline and no final
+newline as an authored aggregate contract; live CSSOM sheet identity remains
+with its downstream owner.
+
+Evidence is in [`cssom_literal_rules.rs`](../tests/cssom_literal_rules.rs),
+which exercises literal formats, parse recovery, retained declaration runs,
+selector scope, typed capabilities, original error causes and cumulative limits.
+
+The compact `to_specified_css` operations preserve authored duplicates and their
+existing rule/provider behavior. The literal operation's selected formats and
+explicit limits are separate contracts.
+
 ## Complete authored Transforms contribution
 
 The selected [Transforms 1](https://www.w3.org/TR/2019/CR-css-transforms-1-20190214/)
