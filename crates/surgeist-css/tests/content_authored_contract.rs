@@ -723,7 +723,7 @@ fn typed_attribute_functions_keep_the_whole_occurrence_pending_until_full_replac
             "Chapter attr(data-title)",
             "Chapter \"Title\"",
         ),
-        ("bookmark-level", "attr(data-level type(<integer>), 1)", "1"),
+        ("bookmark-level", "attr(data-level <integer>, 1)", "1"),
         (
             "bookmark-label",
             "content(text) attr(data-label)",
