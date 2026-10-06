@@ -1608,6 +1608,7 @@ mod content_values;
 mod counter_changes;
 mod counter_changes_serialization;
 mod counter_style_serialization;
+mod stylesheet_input;
 pub use counter_style_serialization::CssCounterStyleDescriptorKind;
 mod cursor_serialization;
 mod cursor_values;
@@ -1953,6 +1954,7 @@ pub use source::*;
 pub use specified_rule_serialization::{
     CssSpecifiedRuleSerializationError, CssSpecifiedRuleSerializationErrorKind,
 };
+pub use stylesheet_input::*;
 pub use syntax::*;
 
 /// Shared ceiling for authored rules and owned component-value trees.

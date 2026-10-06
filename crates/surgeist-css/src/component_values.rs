@@ -148,14 +148,22 @@ impl Default for CssComponentValueLimits {
 pub struct CssSourceSnapshot(Arc<SourceSnapshotData>);
 
 struct SourceSnapshotData {
-    text: Box<str>,
-    checkpoints: Box<[CssSourcePosition]>,
+    text: String,
+    checkpoints: Vec<CssSourcePosition>,
 }
 
 impl CssSourceSnapshot {
     pub(crate) fn new(source: &str) -> Self {
+        Self::try_from_owned(source.to_owned()).expect("source snapshot allocation")
+    }
+
+    pub(crate) fn try_from_owned(
+        source: String,
+    ) -> Result<Self, std::collections::TryReserveError> {
         let mut position = CssSourcePosition::from_byte_offset_in("", 0);
-        let mut checkpoints = vec![position];
+        let mut checkpoints = Vec::new();
+        checkpoints.try_reserve(1)?;
+        checkpoints.push(position);
         let mut start = 0;
         let mut characters = source.char_indices().peekable();
         while let Some((offset, character)) = characters.next() {
@@ -166,14 +174,15 @@ impl CssSourceSnapshot {
             }
             if end - start >= 64 {
                 position = position.advanced_by(&source[start..end]);
+                checkpoints.try_reserve(1)?;
                 checkpoints.push(position);
                 start = end;
             }
         }
-        Self(Arc::new(SourceSnapshotData {
-            text: source.into(),
-            checkpoints: checkpoints.into_boxed_slice(),
-        }))
+        Ok(Self(Arc::new(SourceSnapshotData {
+            text: source,
+            checkpoints,
+        })))
     }
 
     pub(crate) fn position_at(&self, byte_offset: usize) -> Option<CssSourcePosition> {

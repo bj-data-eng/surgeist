@@ -561,6 +561,14 @@ pub(crate) fn parse_sheet_with_context(
     parser_context: crate::CssParserContext,
 ) -> crate::CssParseReport<CssSheet> {
     let source_snapshot = CssSourceSnapshot::new(source);
+    parse_sheet_snapshot(&source_snapshot, parser_context)
+}
+
+pub(crate) fn parse_sheet_snapshot(
+    source_snapshot: &CssSourceSnapshot,
+    parser_context: crate::CssParserContext,
+) -> crate::CssParseReport<CssSheet> {
+    let source = source_snapshot.as_str();
     if recovery::maximum_nested_depth(source) > recovery::DIRECT_PARSE_DEPTH {
         // The public limit is intentionally higher than the platform's small
         // default test-thread stack. A bounded parser thread preserves the exact
@@ -572,7 +580,7 @@ pub(crate) fn parse_sheet_with_context(
                 .spawn_scoped(scope, || {
                     parse_sheet_bounded(
                         source,
-                        &source_snapshot,
+                        source_snapshot,
                         0,
                         BoundedParseContext::Sheet,
                         StyleContextCaptures::default(),
@@ -586,7 +594,7 @@ pub(crate) fn parse_sheet_with_context(
                 },
                 Err(_) => parse_sheet_bounded(
                     source,
-                    &source_snapshot,
+                    source_snapshot,
                     0,
                     BoundedParseContext::Sheet,
                     StyleContextCaptures::default(),
@@ -598,7 +606,7 @@ pub(crate) fn parse_sheet_with_context(
     }
     let report = parse_sheet_bounded(
         source,
-        &source_snapshot,
+        source_snapshot,
         0,
         BoundedParseContext::Sheet,
         StyleContextCaptures::default(),

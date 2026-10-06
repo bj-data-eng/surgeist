@@ -12,6 +12,10 @@ subset; it does not establish complete support for all CSS syntax.
 | Interface | Available with | Result |
 | --- | --- | --- |
 | `parse_sheet(&str)` | Default features | `CssParseReport<CssSheet>` |
+| `decode_stylesheet_bytes(bytes, hints)` | Default features | `Result<CssDecodedStylesheetInput, CssInputDecodeError>` |
+| `decode_stylesheet_bytes_with_limits(bytes, hints, limits)` | Default features | Atomic bounded byte decoding |
+| `parse_decoded_stylesheet(input, location)` | Default features | `CssParseReport<CssSheet>` using the exact decoded snapshot |
+| `parse_sheet_with_options(source, options)` | Default features | Unicode stylesheet with optional symbolic location |
 | `parse_style_attribute(&str)` | Default features | `CssParseReport<CssDeclarationList>` |
 | `parse_style_block(source, namespace_context)` | Default features | `CssParseReport<Option<CssStyleBlock>>` |
 | `parse_rule(source, namespace_context)` | Default features | `CssParseReport<Option<CssRule>>` |
@@ -32,13 +36,41 @@ subset; it does not establish complete support for all CSS syntax.
 The [manifest](../Cargo.toml) declares package `surgeist-css`, library
 `surgeist_css`, version `0.1.0`, Rust edition 2024, and no default features.
 Clean-report validation is always available. Production dependencies are pinned to
-`cssparser = 0.37.0`; test-only JSON support uses
+`cssparser = 0.37.0`, `encoding_rs = 0.8.35` (default `alloc`) and
+`unicode-segmentation = 1.13.3`; test-only JSON support uses
 `serde = 1.0.228` and `serde_json = 1.0.145`.
 
 `parse_sheet` receives decoded Unicode text. A leading U+FEFF is preserved as
-identifier content, just like an interior U+FEFF; byte-stream BOM decoding belongs
-to the caller. For example, `\u{feff}a {}` retains the complete type-selector name,
+identifier content, just like an interior U+FEFF. For byte streams, first use
+`decode_stylesheet_bytes`, then `parse_decoded_stylesheet`.
+For example, `\u{feff}a {}` retains the complete type-selector name,
 while a lone U+FEFF is an incomplete qualified rule and produces a diagnostic.
+
+The byte front uses the complete standard Encoding registry: a valid protocol
+label wins over an exact leading ASCII `@charset "label";` wholly within the
+first 1024 bytes, then a validated environment encoding, then UTF-8. An encoded
+UTF-8/UTF-16 BOM overrides that fallback. Only the ASCII prefix branch remaps
+UTF-16 labels to UTF-8. Invalid labels fall through; recognized replacement
+labels select the replacement encoding. Decoding exposes the actual encoding,
+selection cause and malformed-sequence replacement flag. These describe decoding,
+without adding CSS grammar diagnostics.
+
+`CssDecodedStylesheetInput` retains unchanged original bytes and one unfiltered
+decoded UTF-8 `CssSourceSnapshot`. Clones share input identity; separately decoded
+equal contents compare equal while `same_input` and `same_snapshot` remain false.
+Sheet components use that exact snapshot. CSS offsets address decoded UTF-8,
+and columns count UTF-16 units; original network-byte offsets are separate.
+CR, FF, CRLF and NUL remain in the snapshot for the existing tokenizer to filter.
+An inferred charset prefix remains in decoded text and passes through the current
+string sheet grammar; decoding does not strip it or certify charset admission.
+
+`CssStylesheetDecodeLimits` bounds original bytes and decoded UTF-8 bytes
+independently. Defaults follow component-input length policy, with no extra
+finite cap. Limit and checked-capacity failures return no partial input.
+`CssSheet::location()` is null by default. `CssStylesheetLocation` preserves
+host-supplied location text without URL parsing, canonicalization, resource URL
+resolution, loading or mutable CSSOM identity. `parse_sheet_with_options` supplies
+the same optional context to an already-decoded Unicode input.
 
 `CssParseReport` exposes `syntax()`, `diagnostics()`, `is_clean()`,
 `into_parts()`, and `into_validation_result()`. The consuming validation conversion

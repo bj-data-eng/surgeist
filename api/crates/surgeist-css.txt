@@ -1229,6 +1229,12 @@ pub surgeist_css::CssEmptyCells::Show
 impl surgeist_css::CssEmptyCells
 pub fn surgeist_css::CssEmptyCells::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssEmptyCells::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssEncodingSelection
+pub surgeist_css::CssEncodingSelection::ByteOrderMark
+pub surgeist_css::CssEncodingSelection::CharsetPrefix
+pub surgeist_css::CssEncodingSelection::DefaultUtf8
+pub surgeist_css::CssEncodingSelection::Environment
+pub surgeist_css::CssEncodingSelection::Protocol
 #[non_exhaustive] pub enum surgeist_css::CssErrorCode
 pub surgeist_css::CssErrorCode::EscapeParseError
 pub surgeist_css::CssErrorCode::InvalidAtRuleBody
@@ -2104,6 +2110,14 @@ pub surgeist_css::CssInlinePosition::Start
 pub surgeist_css::CssInlinePosition::StartOffset(surgeist_css::CssSpecifiedLengthPercentage)
 impl core::cmp::PartialEq for surgeist_css::CssInlinePosition
 pub fn surgeist_css::CssInlinePosition::eq(&self, other: &Self) -> bool
+#[non_exhaustive] pub enum surgeist_css::CssInputDecodeError
+pub surgeist_css::CssInputDecodeError::AllocationFailure
+pub surgeist_css::CssInputDecodeError::CapacityOverflow
+pub surgeist_css::CssInputDecodeError::DecodedUtf8ByteLimit
+pub surgeist_css::CssInputDecodeError::OriginalByteLimit
+impl core::error::Error for surgeist_css::CssInputDecodeError
+impl core::fmt::Display for surgeist_css::CssInputDecodeError
+pub fn surgeist_css::CssInputDecodeError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_css::CssInsetValue
 pub surgeist_css::CssInsetValue::Auto
 pub surgeist_css::CssInsetValue::LengthPercentage(surgeist_css::CssSpecifiedLengthPercentage)
@@ -7467,6 +7481,14 @@ pub const fn surgeist_css::CssDeclarationList::len(&self) -> usize
 impl core::ops::deref::Deref for surgeist_css::CssDeclarationList
 pub type surgeist_css::CssDeclarationList::Target = [surgeist_css::CssDeclaration]
 pub fn surgeist_css::CssDeclarationList::deref(&self) -> &Self::Target
+pub struct surgeist_css::CssDecodedStylesheetInput(_)
+impl surgeist_css::CssDecodedStylesheetInput
+pub fn surgeist_css::CssDecodedStylesheetInput::encoding(&self) -> surgeist_css::CssEncoding
+pub fn surgeist_css::CssDecodedStylesheetInput::had_replacements(&self) -> bool
+pub fn surgeist_css::CssDecodedStylesheetInput::original_bytes(&self) -> &[u8]
+pub fn surgeist_css::CssDecodedStylesheetInput::same_input(&self, other: &Self) -> bool
+pub fn surgeist_css::CssDecodedStylesheetInput::selection(&self) -> surgeist_css::CssEncodingSelection
+pub fn surgeist_css::CssDecodedStylesheetInput::source(&self) -> &surgeist_css::CssSourceSnapshot
 pub struct surgeist_css::CssDelayList
 impl surgeist_css::CssDelayList
 pub fn surgeist_css::CssDelayList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
@@ -7578,6 +7600,10 @@ pub struct surgeist_css::CssEmptyLanguageRangeList
 impl core::error::Error for surgeist_css::CssEmptyLanguageRangeList
 impl core::fmt::Display for surgeist_css::CssEmptyLanguageRangeList
 pub fn surgeist_css::CssEmptyLanguageRangeList::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_css::CssEncoding(_)
+impl surgeist_css::CssEncoding
+pub fn surgeist_css::CssEncoding::for_label(label: &str) -> core::option::Option<Self>
+pub fn surgeist_css::CssEncoding::name(self) -> &'static str
 pub struct surgeist_css::CssExclusionMetadata
 impl surgeist_css::CssExclusionMetadata
 pub const fn surgeist_css::CssExclusionMetadata::id(&self) -> surgeist_css::CssConformanceExclusionId
@@ -10760,6 +10786,7 @@ pub const fn surgeist_css::CssShapeSmooth::to(end: surgeist_css::CssPosition, co
 pub const fn surgeist_css::CssShapeSmooth::view(&self) -> surgeist_css::CssShapeSmoothRef<'_>
 pub struct surgeist_css::CssSheet
 impl surgeist_css::CssSheet
+pub const fn surgeist_css::CssSheet::location(&self) -> core::option::Option<&surgeist_css::CssStylesheetLocation>
 pub const fn surgeist_css::CssSheet::new() -> Self
 pub fn surgeist_css::CssSheet::rules(&self) -> &[surgeist_css::CssRule]
 impl surgeist_css::CssSheet
@@ -11050,6 +11077,22 @@ pub const fn surgeist_css::CssStyleRule::selectors(&self) -> &surgeist_css::CssS
 pub struct surgeist_css::CssStyleSelectorList
 impl surgeist_css::CssStyleSelectorList
 pub fn surgeist_css::CssStyleSelectorList::selectors(&self) -> &[surgeist_css::CssStyleSelector]
+pub struct surgeist_css::CssStylesheetDecodeHints<'a>
+pub surgeist_css::CssStylesheetDecodeHints::environment_encoding: core::option::Option<surgeist_css::CssEncoding>
+pub surgeist_css::CssStylesheetDecodeHints::protocol_label: core::option::Option<&'a str>
+pub struct surgeist_css::CssStylesheetDecodeLimits
+impl surgeist_css::CssStylesheetDecodeLimits
+pub const fn surgeist_css::CssStylesheetDecodeLimits::max_decoded_utf8_bytes(self) -> usize
+pub const fn surgeist_css::CssStylesheetDecodeLimits::max_original_bytes(self) -> usize
+pub const fn surgeist_css::CssStylesheetDecodeLimits::new(original_bytes: usize, decoded_utf8_bytes: usize) -> Self
+impl core::default::Default for surgeist_css::CssStylesheetDecodeLimits
+pub fn surgeist_css::CssStylesheetDecodeLimits::default() -> Self
+pub struct surgeist_css::CssStylesheetLocation(_)
+impl surgeist_css::CssStylesheetLocation
+pub fn surgeist_css::CssStylesheetLocation::as_str(&self) -> &str
+pub fn surgeist_css::CssStylesheetLocation::new(text: alloc::string::String) -> Self
+pub struct surgeist_css::CssStylesheetParseOptions
+pub surgeist_css::CssStylesheetParseOptions::location: core::option::Option<surgeist_css::CssStylesheetLocation>
 pub struct surgeist_css::CssSubstitutionDependentValue
 impl surgeist_css::CssSubstitutionDependentValue
 pub fn surgeist_css::CssSubstitutionDependentValue::as_css(&self) -> &str
@@ -12025,6 +12068,8 @@ pub fn surgeist_css::convert_oklab_to_oklch(oklab: [f64; 3]) -> core::result::Re
 pub fn surgeist_css::convert_oklch_to_oklab(oklch: &surgeist_css::CssPolarColorCoordinates) -> [f64; 3]
 pub fn surgeist_css::convert_srgb_to_hsl(rgb: [f64; 3]) -> core::result::Result<surgeist_css::CssHslColorCoordinates, surgeist_css::CssHslHwbConversionError>
 pub fn surgeist_css::convert_srgb_to_hwb(rgb: [f64; 3]) -> core::result::Result<surgeist_css::CssHwbColorCoordinates, surgeist_css::CssHslHwbConversionError>
+pub fn surgeist_css::decode_stylesheet_bytes(bytes: &[u8], hints: surgeist_css::CssStylesheetDecodeHints<'_>) -> core::result::Result<surgeist_css::CssDecodedStylesheetInput, surgeist_css::CssInputDecodeError>
+pub fn surgeist_css::decode_stylesheet_bytes_with_limits(bytes: &[u8], hints: surgeist_css::CssStylesheetDecodeHints<'_>, limits: surgeist_css::CssStylesheetDecodeLimits) -> core::result::Result<surgeist_css::CssDecodedStylesheetInput, surgeist_css::CssInputDecodeError>
 pub fn surgeist_css::expand_declaration(source: &surgeist_css::CssDeclaration) -> core::result::Result<surgeist_css::CssExpansion, surgeist_css::CssExpansionError>
 pub fn surgeist_css::feature_catalog() -> &'static [surgeist_css::CssFeatureMetadata]
 pub fn surgeist_css::feature_metadata(id: &str) -> core::option::Option<&'static surgeist_css::CssFeatureMetadata>
@@ -12041,6 +12086,7 @@ pub fn surgeist_css::parse_css_supports_condition(source: &str) -> core::result:
 pub fn surgeist_css::parse_css_supports_declaration(property: &str, value: &str) -> core::result::Result<surgeist_css::CssSupportsDeclaration, surgeist_css::CssSupportsConstructionError>
 pub fn surgeist_css::parse_cssom_media_query(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssMediaQuery>>
 pub fn surgeist_css::parse_declaration(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssDeclaration>>
+pub fn surgeist_css::parse_decoded_stylesheet(input: &surgeist_css::CssDecodedStylesheetInput, location: core::option::Option<surgeist_css::CssStylesheetLocation>) -> surgeist_css::CssParseReport<surgeist_css::CssSheet>
 pub fn surgeist_css::parse_font_face_descriptor_value(source: &str, descriptor: surgeist_css::CssFontFaceDescriptorKind) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssAuthoredFontFaceDescriptorValue>>
 pub fn surgeist_css::parse_font_palette_descriptor_value(source: &str, descriptor: surgeist_css::CssFontPaletteDescriptorKind) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssFontPaletteDescriptorValue>>
 pub fn surgeist_css::parse_media_query(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssMediaQuery>
@@ -12053,6 +12099,7 @@ pub fn surgeist_css::parse_rule(source: &str, context: &surgeist_css::CssNamespa
 pub fn surgeist_css::parse_selector(source: &str, context: &surgeist_css::CssNamespaceContext) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssSelector>>
 pub fn surgeist_css::parse_selector_list(source: &str, context: &surgeist_css::CssNamespaceContext) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssStyleSelectorList>>
 pub fn surgeist_css::parse_sheet(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssSheet>
+pub fn surgeist_css::parse_sheet_with_options(source: &str, options: surgeist_css::CssStylesheetParseOptions) -> surgeist_css::CssParseReport<surgeist_css::CssSheet>
 pub fn surgeist_css::parse_style_attribute(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssDeclarationList>
 pub fn surgeist_css::parse_style_block(source: &str, context: &surgeist_css::CssNamespaceContext) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssStyleBlock>>
 pub fn surgeist_css::property_support_metadata(name: &str) -> core::option::Option<surgeist_css::CssPropertySupportMetadata>

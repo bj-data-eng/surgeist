@@ -20,6 +20,13 @@ and uses the shared rounding policy; computation and quadrant rounding remain
 downstream. See the [glyph reference](docs/reference.md#independent-svg-glyph-definition)
 for precedence, sources and unresolved normative clauses.
 
+Byte stylesheets enter through `decode_stylesheet_bytes(bytes, hints)` and
+`parse_decoded_stylesheet(&input, optional_location)`. Decoding uses standard
+Encoding labels, CSS fallback precedence and BOM overrides, with optional atomic
+byte limits. The immutable input retains original bytes and the exact unfiltered
+UTF-8 snapshot used by parsing. The stylesheet location is host-supplied symbolic
+text; see the [entry-point reference](docs/reference.md#entry-points-and-features).
+
 Authored Shapes 1 retains `shape-outside` with images, the eight shared basic
 shapes and four reference boxes; `shape-image-threshold` keeps unrestricted
 number/percentage values; `shape-margin` keeps exact nonnegative literals and

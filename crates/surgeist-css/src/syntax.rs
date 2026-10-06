@@ -74,17 +74,32 @@ macro_rules! numeric_fields_eq {
 /// does not apply cascade, substitution, selector matching, or resource loading.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct CssSheet {
+    location: Option<crate::CssStylesheetLocation>,
     rules: Vec<CssRule>,
 }
 
 impl CssSheet {
     #[must_use]
     pub const fn new() -> Self {
-        Self { rules: Vec::new() }
+        Self {
+            location: None,
+            rules: Vec::new(),
+        }
     }
 
     pub(crate) fn push_rule(&mut self, rule: CssRule) {
         self.rules.push(rule);
+    }
+
+    /// Returns the host-supplied symbolic stylesheet location, or null.
+    /// Relative URLs are not resolved against this value by the CSS crate.
+    #[must_use]
+    pub const fn location(&self) -> Option<&crate::CssStylesheetLocation> {
+        self.location.as_ref()
+    }
+
+    pub(crate) fn set_location(&mut self, location: Option<crate::CssStylesheetLocation>) {
+        self.location = location;
     }
 
     /// Returns the valid authored rules retained in source order.
@@ -9604,10 +9619,13 @@ impl PartialEq for CssAnimationComponents {
 
 impl CssSheet {
     /// Checks ordered authored rules, deriving bindings from leading namespace declarations.
-    /// No encoding or enclosing parsed position is invented.
+    /// No supplied location or enclosing parsed position is invented.
     pub fn try_from_rules(rules: Vec<CssRule>) -> Result<Self, crate::CssRuleConstructionError> {
         crate::rule_construction::sheet(&rules)?;
-        Ok(Self { rules })
+        Ok(Self {
+            location: None,
+            rules,
+        })
     }
 }
 

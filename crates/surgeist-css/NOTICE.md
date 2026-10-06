@@ -4,13 +4,19 @@ The project's own license is in [LICENSE](LICENSE).
 
 ## Dependencies
 
-This notice covers the bundled CSSTree and Web Platform Tests fixtures and the 23 registry crates in
+This notice covers the bundled CSSTree and Web Platform Tests fixtures and the 25 registry crates in
 the local Cargo resolution of `surgeist-css` 0.1.0 with default features,
 including development and build dependencies.
 The Cargo dependencies are not vendored in this repository. The roles below
 describe their use by this crate; a downstream executable's contents depend on
 its build. Transitive versions can change with dependency resolution. Upstream
 license alternatives are preserved without selecting one.
+
+This product depends on `cfg-if` 1.0.4 through stylesheet decoding, distributed
+by Alex Crichton:
+
+* License: [MIT](licenses/cfg-if/LICENSE-MIT) OR [Apache-2.0](licenses/cfg-if/LICENSE-APACHE)
+* Homepage: [cfg-if](https://github.com/rust-lang/cfg-if)
 
 This product depends on `cssparser` 0.37.0 as a direct runtime dependency
 and `cssparser-macros` 0.7.0 for procedural macros, distributed by Simon Sapin:
@@ -38,6 +44,13 @@ distributed by Xidorn Quan:
 
 * License: [MPL-2.0](licenses/dtoa-short/LICENSE)
 * Homepage: [dtoa-short](https://github.com/upsuper/dtoa-short)
+
+This product depends on `encoding_rs` 0.8.35 for CSS stylesheet byte decoding,
+copyright Mozilla Foundation, authored by Henri Sivonen. Its included WHATWG
+Encoding Standard data carries the additional BSD license:
+
+* License: ([Apache-2.0](licenses/encoding-rs/LICENSE-APACHE) OR [MIT](licenses/encoding-rs/LICENSE-MIT)) AND [BSD-3-Clause](licenses/encoding-rs/LICENSE-WHATWG); [upstream copyright and declaration](licenses/encoding-rs/COPYRIGHT)
+* Homepage: [encoding_rs](https://github.com/hsivonen/encoding_rs)
 
 This product depends on `fastrand` 2.4.1 for PHF macro generation at build time,
 distributed by Stjepan Glavina:
