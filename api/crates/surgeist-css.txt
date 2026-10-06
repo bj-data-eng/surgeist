@@ -275,6 +275,12 @@ pub surgeist_css::CssBlockPosition::Start
 pub surgeist_css::CssBlockPosition::StartOffset(surgeist_css::CssSpecifiedLengthPercentage)
 impl core::cmp::PartialEq for surgeist_css::CssBlockPosition
 pub fn surgeist_css::CssBlockPosition::eq(&self, other: &Self) -> bool
+#[non_exhaustive] pub enum surgeist_css::CssBookmarkState
+pub surgeist_css::CssBookmarkState::Closed
+pub surgeist_css::CssBookmarkState::Open
+impl surgeist_css::CssBookmarkState
+pub fn surgeist_css::CssBookmarkState::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBookmarkState::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssBorderCollapse
 pub surgeist_css::CssBorderCollapse::Collapse
 pub surgeist_css::CssBorderCollapse::Separate
@@ -2197,6 +2203,9 @@ pub surgeist_css::CssKnownProperty::BackgroundPosition
 pub surgeist_css::CssKnownProperty::BackgroundRepeat
 pub surgeist_css::CssKnownProperty::BackgroundSize
 pub surgeist_css::CssKnownProperty::BlockSize
+pub surgeist_css::CssKnownProperty::BookmarkLabel
+pub surgeist_css::CssKnownProperty::BookmarkLevel
+pub surgeist_css::CssKnownProperty::BookmarkState
 pub surgeist_css::CssKnownProperty::Border
 pub surgeist_css::CssKnownProperty::BorderBlock
 pub surgeist_css::CssKnownProperty::BorderBlockColor
@@ -2534,6 +2543,7 @@ pub surgeist_css::CssKnownProperty::ShapeOutside
 pub surgeist_css::CssKnownProperty::Size
 pub surgeist_css::CssKnownProperty::Speak
 pub surgeist_css::CssKnownProperty::SpeakAs
+pub surgeist_css::CssKnownProperty::StringSet
 pub surgeist_css::CssKnownProperty::TabSize
 pub surgeist_css::CssKnownProperty::TableLayout
 pub surgeist_css::CssKnownProperty::TextAlign
@@ -2647,6 +2657,9 @@ pub surgeist_css::CssKnownPropertyValueRef::BackgroundPosition(&'a surgeist_css:
 pub surgeist_css::CssKnownPropertyValueRef::BackgroundRepeat(&'a surgeist_css::CssBackgroundRepeatPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BackgroundSize(&'a surgeist_css::CssBackgroundSizePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BlockSize(&'a surgeist_css::CssBlockSizePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::BookmarkLabel(&'a surgeist_css::CssBookmarkLabelPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::BookmarkLevel(&'a surgeist_css::CssBookmarkLevelPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::BookmarkState(&'a surgeist_css::CssBookmarkStatePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Border(&'a surgeist_css::CssBorderPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BorderBlock(&'a surgeist_css::CssBorderBlockPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BorderBlockColor(&'a surgeist_css::CssBorderBlockColorPropertyValue)
@@ -2984,6 +2997,7 @@ pub surgeist_css::CssKnownPropertyValueRef::ShapeOutside(&'a surgeist_css::CssSh
 pub surgeist_css::CssKnownPropertyValueRef::Size(&'a surgeist_css::CssSizePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Speak(&'a surgeist_css::CssSpeakPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::SpeakAs(&'a surgeist_css::CssSpeakAsPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::StringSet(&'a surgeist_css::CssStringSetPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TabSize(&'a surgeist_css::CssTabSizePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TableLayout(&'a surgeist_css::CssTableLayoutPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextAlign(&'a surgeist_css::CssTextAlignPropertyValue)
@@ -3198,6 +3212,9 @@ pub surgeist_css::CssLonghandValueRef::BackgroundPosition(&'a surgeist_css::CssB
 pub surgeist_css::CssLonghandValueRef::BackgroundRepeat(&'a surgeist_css::CssBackgroundRepeatList)
 pub surgeist_css::CssLonghandValueRef::BackgroundSize(&'a surgeist_css::CssBackgroundSizeList)
 pub surgeist_css::CssLonghandValueRef::BlockSize(&'a surgeist_css::CssSizeValue)
+pub surgeist_css::CssLonghandValueRef::BookmarkLabel(&'a surgeist_css::CssContentList)
+pub surgeist_css::CssLonghandValueRef::BookmarkLevel(&'a surgeist_css::CssBookmarkLevel)
+pub surgeist_css::CssLonghandValueRef::BookmarkState(&'a surgeist_css::CssBookmarkState)
 pub surgeist_css::CssLonghandValueRef::BorderBlockEndColor(&'a surgeist_css::CssColor)
 pub surgeist_css::CssLonghandValueRef::BorderBlockEndStyle(&'a surgeist_css::CssBorderStyle)
 pub surgeist_css::CssLonghandValueRef::BorderBlockEndWidth(&'a surgeist_css::CssBorderWidth)
@@ -3465,6 +3482,7 @@ pub surgeist_css::CssLonghandValueRef::ShapeMargin(&'a surgeist_css::CssSpecifie
 pub surgeist_css::CssLonghandValueRef::ShapeOutside(&'a surgeist_css::CssShapeOutside)
 pub surgeist_css::CssLonghandValueRef::Speak(&'a surgeist_css::CssSpeak)
 pub surgeist_css::CssLonghandValueRef::SpeakAs(&'a surgeist_css::CssSpeakAs)
+pub surgeist_css::CssLonghandValueRef::StringSet(&'a surgeist_css::CssStringSet)
 pub surgeist_css::CssLonghandValueRef::TabSize(&'a surgeist_css::CssTabSize)
 pub surgeist_css::CssLonghandValueRef::TableLayout(&'a surgeist_css::CssTableLayout)
 pub surgeist_css::CssLonghandValueRef::TextAlignAll(&'a surgeist_css::CssTextAlignAllValue)
@@ -5868,6 +5886,26 @@ pub struct surgeist_css::CssBlockSizePropertyValue
 impl surgeist_css::CssBlockSizePropertyValue
 pub fn surgeist_css::CssBlockSizePropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssBlockSizePropertyValue::value(&self) -> &surgeist_css::CssSizeValue
+pub struct surgeist_css::CssBookmarkLabelPropertyValue
+impl surgeist_css::CssBookmarkLabelPropertyValue
+pub fn surgeist_css::CssBookmarkLabelPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssBookmarkLabelPropertyValue::value(&self) -> &surgeist_css::CssContentList
+pub struct surgeist_css::CssBookmarkLevel
+impl surgeist_css::CssBookmarkLevel
+pub const fn surgeist_css::CssBookmarkLevel::level(&self) -> core::option::Option<&surgeist_css::CssPositiveIntegerValue>
+pub const fn surgeist_css::CssBookmarkLevel::none() -> Self
+pub fn surgeist_css::CssBookmarkLevel::try_new(level: surgeist_css::CssPositiveIntegerValue) -> core::option::Option<Self>
+impl surgeist_css::CssBookmarkLevel
+pub fn surgeist_css::CssBookmarkLevel::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssBookmarkLevel::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssBookmarkLevelPropertyValue
+impl surgeist_css::CssBookmarkLevelPropertyValue
+pub fn surgeist_css::CssBookmarkLevelPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssBookmarkLevelPropertyValue::value(&self) -> &surgeist_css::CssBookmarkLevel
+pub struct surgeist_css::CssBookmarkStatePropertyValue
+impl surgeist_css::CssBookmarkStatePropertyValue
+pub fn surgeist_css::CssBookmarkStatePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssBookmarkStatePropertyValue::value(&self) -> &surgeist_css::CssBookmarkState
 pub struct surgeist_css::CssBorder
 impl surgeist_css::CssBorder
 pub const fn surgeist_css::CssBorder::color(&self) -> core::option::Option<&surgeist_css::CssColor>
@@ -7031,6 +7069,13 @@ pub const fn surgeist_css::CssContentCounters::name(&self) -> &surgeist_css::Css
 pub const fn surgeist_css::CssContentCounters::new(name: surgeist_css::CssContentCounterName, separator: surgeist_css::CssContentString, style: core::option::Option<surgeist_css::CssCounterStyleValue>) -> Self
 pub const fn surgeist_css::CssContentCounters::separator(&self) -> &surgeist_css::CssContentString
 pub const fn surgeist_css::CssContentCounters::style(&self) -> core::option::Option<&surgeist_css::CssCounterStyleValue>
+pub struct surgeist_css::CssContentList
+impl surgeist_css::CssContentList
+pub fn surgeist_css::CssContentList::items(&self) -> &[surgeist_css::CssContentValueItem]
+pub fn surgeist_css::CssContentList::try_new(items: alloc::vec::Vec<surgeist_css::CssContentValueItem>) -> core::option::Option<Self>
+impl surgeist_css::CssContentList
+pub fn surgeist_css::CssContentList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssContentList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssContentName(_)
 impl surgeist_css::CssContentName
 pub fn surgeist_css::CssContentName::as_str(&self) -> &str
@@ -10698,6 +10743,23 @@ pub fn surgeist_css::CssSteps::try_new(count: surgeist_css::CssPositiveIntegerVa
 impl surgeist_css::CssSteps
 pub fn surgeist_css::CssSteps::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssSteps::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssStringSet
+impl surgeist_css::CssStringSet
+pub fn surgeist_css::CssStringSet::entries(&self) -> core::option::Option<&[surgeist_css::CssStringSetEntry]>
+pub const fn surgeist_css::CssStringSet::none() -> Self
+pub fn surgeist_css::CssStringSet::try_entries(entries: alloc::vec::Vec<surgeist_css::CssStringSetEntry>) -> core::option::Option<Self>
+impl surgeist_css::CssStringSet
+pub fn surgeist_css::CssStringSet::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssStringSet::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssStringSetEntry
+impl surgeist_css::CssStringSetEntry
+pub const fn surgeist_css::CssStringSetEntry::name(&self) -> &surgeist_css::CssContentName
+pub fn surgeist_css::CssStringSetEntry::strings(&self) -> &[surgeist_css::CssContentString]
+pub fn surgeist_css::CssStringSetEntry::try_new(name: surgeist_css::CssContentName, strings: alloc::vec::Vec<surgeist_css::CssContentString>) -> core::option::Option<Self>
+pub struct surgeist_css::CssStringSetPropertyValue
+impl surgeist_css::CssStringSetPropertyValue
+pub fn surgeist_css::CssStringSetPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssStringSetPropertyValue::value(&self) -> &surgeist_css::CssStringSet
 pub struct surgeist_css::CssStripe
 impl surgeist_css::CssStripe
 pub const fn surgeist_css::CssStripe::color(&self) -> &surgeist_css::CssColor

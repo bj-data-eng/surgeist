@@ -4942,6 +4942,38 @@ Target-text selector and target-counter style omissions remain distinct from
 explicit arguments. Counter lookup, target retrieval, repeated-content
 processing, generated boxes, resources, and painting remain downstream.
 
+The same [Content 3 working draft](https://www.w3.org/TR/2025/WD-css-content-3-20251204/)
+defines four further noninherited authored longhands. `CssStringSet` preserves
+`none` or a nonempty ordered list of `CssStringSetEntry` assignments, each with
+one generic Content name and separate string leaves. The selected property
+table, local prose, and index admit `none | [ <custom-ident> <string>+ ]#`.
+The enclosing named-strings prose describes broader content-like extraction;
+that source contradiction remains unresolved. This bounded product grammar
+admits ordinary strings and whole pending substitutions, and does not admit
+counter or content functions as resolved string-set leaves. A named entry
+`none "text"` remains distinct from the whole keyword `none`.
+
+`CssBookmarkLevel` retains `none`, an exact positive ordinary integer without a
+machine magnitude bound, or a genuine integer function calculation with deferred
+computed range and rounding. Its checked constructor routes bare calculation
+tokens through the same positive literal boundary. `CssBookmarkLabelPropertyValue`
+uses `CssContentList`, the shared nonempty full Content item-list provider;
+a sole image stays a list item here. Property keywords and slash alternatives
+belong to `content` and are excluded from this list. `CssBookmarkState` retains
+`open` or `closed`. The intrinsic initials are `none`, `none`, explicit
+`content(text)`, and `open`, respectively. The explicit label initial serializes
+as `content()` while retaining its authored text argument in the typed view.
+
+Content, Quotes, and all four further roles require complete original components
+at checked construction and strict pending reentry. Their serializers share one
+cumulative budget. A string-set list charges one aggregate, each assignment one
+aggregate, and each name/string one leaf. A Content list charges one aggregate
+plus its existing item providers. Suppressed explicit defaults still consume
+work budget. Bookmark level and state add no wrapper tariff over their numeric
+or keyword provider. Named-string capture, counter evaluation, bookmark
+construction and interaction, generated boxes, and resource loading remain
+downstream.
+
 [CSS Lists 3 §3](https://www.w3.org/TR/2020/WD-css-lists-3-20201117/#propdef-list-style)
 defines inherited `list-style-type`, `list-style-position`, and
 `list-style-image` with `disc`, `outside`, and `none` initials. The `list-style`

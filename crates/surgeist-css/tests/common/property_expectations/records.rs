@@ -938,6 +938,36 @@ property_records! {
         dispatch: "\"Chapter \"",
         wrapper: yes,
     }
+    StringSet, "string-set" {
+        metadata: longhand(false, |v| assert!(v.entries().is_none())),
+        catalog: grammar_catalog!("official.property.string-set", "Chapter \"Title\"", rejected("Chapter counter(chapter)")),
+        source: "X-CONTENT3",
+        dispatch: "Chapter \"Title\"",
+        wrapper: yes,
+    }
+    BookmarkLevel, "bookmark-level" {
+        metadata: longhand(false, |v| assert!(v.level().is_none())),
+        catalog: grammar_catalog!("official.property.bookmark-level", "1", rejected("0")),
+        source: "X-CONTENT3",
+        dispatch: "1",
+        wrapper: yes,
+    }
+    BookmarkLabel, "bookmark-label" {
+        metadata: longhand(false, |v| {
+            assert!(matches!(v.items(), [CssContentValueItem::Content(Some(CssContentReferenceMode::Text))]))
+        }),
+        catalog: grammar_catalog!("official.property.bookmark-label", "content(text)", rejected("normal")),
+        source: "X-CONTENT3",
+        dispatch: "content(text)",
+        wrapper: yes,
+    }
+    BookmarkState, "bookmark-state" {
+        metadata: longhand(false, |v| assert_eq!(*v, CssBookmarkState::Open)),
+        catalog: grammar_catalog!("official.property.bookmark-state", "closed", rejected("auto")),
+        source: "X-CONTENT3",
+        dispatch: "closed",
+        wrapper: yes,
+    }
     ContentVisibility, "content-visibility" {
         metadata: longhand(false, |v| {
             assert_eq!(v, &CssContentVisibility::Visible)

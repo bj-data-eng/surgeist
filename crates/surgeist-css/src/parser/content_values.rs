@@ -56,6 +56,19 @@ pub(super) fn parse_content_value<'i, 't>(
         .ok_or_else(|| unsupported_value(input, None, "content requires at least one item"))
 }
 
+/// Admits the full shared nonempty list without `content` keywords/slash branches.
+pub(super) fn parse_content_list<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Result<'i, CssContentList> {
+    let mut items = Vec::new();
+    while !input.is_exhausted() {
+        items.push(parse_item(input, numeric)?);
+    }
+    CssContentList::try_new(items)
+        .ok_or_else(|| unsupported_value(input, None, "content list requires at least one item"))
+}
+
 fn parse_alternative<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
@@ -141,7 +154,7 @@ fn parse_item<'i, 't>(
     }
 }
 
-fn parse_generic_name<'i, 't>(input: &mut Parser<'i, 't>) -> Result<'i, CssContentName> {
+pub(super) fn parse_generic_name<'i, 't>(input: &mut Parser<'i, 't>) -> Result<'i, CssContentName> {
     let ident = input.expect_ident_cloned().map_err(basic)?;
     let checked = CssIdent::try_new(ident.to_string())
         .map_err(|_| unsupported_value(input, None, "invalid decoded identifier"))?;

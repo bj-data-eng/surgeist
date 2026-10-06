@@ -283,13 +283,7 @@ impl CssContentValue {
             CssContentValue::Normal => keyword(writer, "normal")?,
             CssContentValue::None => keyword(writer, "none")?,
             CssContentValue::Generated(value) => {
-                charge(writer)?;
-                for (index, item_value) in value.items().iter().enumerate() {
-                    if index != 0 {
-                        writer.append(" ")?;
-                    }
-                    item(writer, item_value)?;
-                }
+                value.list().append_to_rule_writer(writer)?;
                 if let Some(value) = value.alternative() {
                     writer.append(" / ")?;
                     alternative(writer, value)?;
@@ -297,5 +291,112 @@ impl CssContentValue {
             }
         }
         Ok(())
+    }
+}
+
+impl CssContentList {
+    /// Serializes an ordered content list without resolving its context.
+    pub fn serialize_specified(&self) -> Result<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+    /// Applies one cumulative input, projection and byte budget to all children.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String> {
+        let mut writer = SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        charge(writer)?;
+        for (index, value) in self.items().iter().enumerate() {
+            if index != 0 {
+                writer.append(" ")?;
+            }
+            item(writer, value)?;
+        }
+        Ok(())
+    }
+}
+
+impl CssStringSet {
+    /// Serializes separate named string assignments without concatenation.
+    pub fn serialize_specified(&self) -> Result<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+    /// Applies one cumulative input, projection and byte budget to all children.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String> {
+        let mut writer = SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        let Some(entries) = self.entries() else {
+            return keyword(writer, "none");
+        };
+        charge(writer)?;
+        for (index, entry) in entries.iter().enumerate() {
+            if index != 0 {
+                writer.append(", ")?;
+            }
+            charge(writer)?;
+            ident(writer, entry.name().as_str())?;
+            for value in entry.strings() {
+                writer.append(" ")?;
+                string(writer, value.as_str())?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl CssBookmarkLevel {
+    /// Serializes the exact level or its symbolic integer calculation.
+    pub fn serialize_specified(&self) -> Result<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+    /// Applies one cumulative input, projection and byte budget to all children.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String> {
+        let mut writer = SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        match self.level() {
+            None => keyword(writer, "none"),
+            Some(level) => level.append_to_rule_writer(writer),
+        }
+    }
+}
+
+impl CssBookmarkState {
+    /// Serializes the authored bookmark state without toggling a subtree.
+    pub fn serialize_specified(&self) -> Result<String> {
+        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+    /// Applies one cumulative input, projection and byte budget to all children.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String> {
+        let mut writer = SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        keyword(
+            writer,
+            match self {
+                Self::Open => "open",
+                Self::Closed => "closed",
+            },
+        )
     }
 }

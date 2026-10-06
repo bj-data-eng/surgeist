@@ -473,7 +473,7 @@ pub enum CssGeneratedContentBodyRef<'a> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssGeneratedContent {
-    items: Vec<CssContentValueItem>,
+    items: CssContentList,
     alternative: Option<CssContentAlternative>,
 }
 impl CssGeneratedContent {
@@ -482,17 +482,21 @@ impl CssGeneratedContent {
         items: Vec<CssContentValueItem>,
         alternative: Option<CssContentAlternative>,
     ) -> Option<Self> {
-        (!items.is_empty()).then_some(Self { items, alternative })
+        CssContentList::try_new(items).map(|items| Self { items, alternative })
     }
     #[must_use]
     pub fn body(&self) -> CssGeneratedContentBodyRef<'_> {
-        match self.items.as_slice() {
+        match self.items.items() {
             [CssContentValueItem::Image(image)] => CssGeneratedContentBodyRef::Replacement(image),
             items => CssGeneratedContentBodyRef::List(items),
         }
     }
     #[must_use]
     pub fn items(&self) -> &[CssContentValueItem] {
+        self.items.items()
+    }
+    #[must_use]
+    pub(crate) const fn list(&self) -> &CssContentList {
         &self.items
     }
     #[must_use]
@@ -508,4 +512,107 @@ pub enum CssContentValue {
     Normal,
     None,
     Generated(CssGeneratedContent),
+}
+
+/// A nonempty ordered `<content-list>`, without property keywords or alternative text.
+/// A sole image remains a list item; only `content` classifies it as replacement.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssContentList {
+    items: Vec<CssContentValueItem>,
+}
+impl CssContentList {
+    /// Checks the list's nonempty invariant; every supplied child is already checked.
+    #[must_use]
+    pub fn try_new(items: Vec<CssContentValueItem>) -> Option<Self> {
+        (!items.is_empty()).then_some(Self { items })
+    }
+    /// Borrows items in authored order, including duplicates and explicit defaults.
+    #[must_use]
+    pub fn items(&self) -> &[CssContentValueItem] {
+        &self.items
+    }
+}
+
+/// One string-set assignment, preserving a nonempty list of separate string leaves.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssStringSetEntry {
+    name: CssContentName,
+    strings: Vec<CssContentString>,
+}
+impl CssStringSetEntry {
+    /// Rejects an assignment with no strings; empty individual strings remain valid.
+    #[must_use]
+    pub fn try_new(name: CssContentName, strings: Vec<CssContentString>) -> Option<Self> {
+        (!strings.is_empty()).then_some(Self { name, strings })
+    }
+    /// Borrows the decoded, case-sensitive generic Content name.
+    #[must_use]
+    pub const fn name(&self) -> &CssContentName {
+        &self.name
+    }
+    /// Borrows separate string leaves without computed concatenation.
+    #[must_use]
+    pub fn strings(&self) -> &[CssContentString] {
+        &self.strings
+    }
+}
+
+/// `none` or nonempty string-set assignments under the selected property-table grammar.
+/// The conflicting enclosing Content 3 prose remains an unresolved source question.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssStringSet {
+    entries: Option<Vec<CssStringSetEntry>>,
+}
+impl CssStringSet {
+    /// Constructs the intrinsic `none` value.
+    #[must_use]
+    pub const fn none() -> Self {
+        Self { entries: None }
+    }
+    /// Checks nonempty assignment order without merging repeated names.
+    #[must_use]
+    pub fn try_entries(entries: Vec<CssStringSetEntry>) -> Option<Self> {
+        (!entries.is_empty()).then_some(Self {
+            entries: Some(entries),
+        })
+    }
+    /// `None` denotes the whole-value keyword; an assignment list is always nonempty.
+    #[must_use]
+    pub fn entries(&self) -> Option<&[CssStringSetEntry]> {
+        self.entries.as_deref()
+    }
+}
+
+/// `none` or an exact positive ordinary integer / deferred integer calculation.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssBookmarkLevel {
+    level: Option<crate::CssPositiveIntegerValue>,
+}
+impl CssBookmarkLevel {
+    /// Constructs the intrinsic `none` value without generating a bookmark.
+    #[must_use]
+    pub const fn none() -> Self {
+        Self { level: None }
+    }
+    /// Normalizes bare calculation tokens through the shared positive literal boundary.
+    /// Genuine function math retains its graph and defers computed rounding/range.
+    #[must_use]
+    pub fn try_new(level: crate::CssPositiveIntegerValue) -> Option<Self> {
+        level
+            .normalized_positive_root()
+            .map(|level| Self { level: Some(level) })
+    }
+    /// Borrows the exact integer or deferred calculation; `None` is the CSS keyword.
+    #[must_use]
+    pub const fn level(&self) -> Option<&crate::CssPositiveIntegerValue> {
+        self.level.as_ref()
+    }
+}
+
+/// Authored bookmark subtree state; interaction and visibility are downstream.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssBookmarkState {
+    Open,
+    Closed,
 }

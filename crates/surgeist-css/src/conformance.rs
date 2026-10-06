@@ -2375,7 +2375,12 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::VoiceRate
         | CssKnownProperty::VoiceBalance
         | CssKnownProperty::VoiceVolume => S_SPEECH1,
-        CssKnownProperty::Quotes | CssKnownProperty::Content => X_CONTENT3,
+        CssKnownProperty::Quotes
+        | CssKnownProperty::Content
+        | CssKnownProperty::StringSet
+        | CssKnownProperty::BookmarkLevel
+        | CssKnownProperty::BookmarkLabel
+        | CssKnownProperty::BookmarkState => X_CONTENT3,
         CssKnownProperty::BorderCollapse
         | CssKnownProperty::BorderSpacing
         | CssKnownProperty::CaptionSide
@@ -2812,6 +2817,10 @@ const fn property_production(property: CssKnownProperty, default: &'static str) 
         },
         CssKnownProperty::Quotes => "#propdef-quotes",
         CssKnownProperty::Content => "#propdef-content",
+        CssKnownProperty::StringSet => "#propdef-string-set",
+        CssKnownProperty::BookmarkLevel => "#propdef-bookmark-level",
+        CssKnownProperty::BookmarkLabel => "#propdef-bookmark-label",
+        CssKnownProperty::BookmarkState => "#propdef-bookmark-state",
         CssKnownProperty::WordSpacing => "#propdef-word-spacing",
         CssKnownProperty::LetterSpacing => "#propdef-letter-spacing",
         CssKnownProperty::ZIndex => "visuren.html#propdef-z-index",
@@ -2901,7 +2910,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 750] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 754] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -4775,6 +4784,26 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 750] = [
         CssKnownProperty::Content,
         "content",
         "baseline.property.content"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::StringSet,
+        "string-set",
+        "official.property.string-set"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::BookmarkLevel,
+        "bookmark-level",
+        "official.property.bookmark-level"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::BookmarkLabel,
+        "bookmark-label",
+        "official.property.bookmark-label"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::BookmarkState,
+        "bookmark-state",
+        "official.property.bookmark-state"
     ),
     complete_property_feature!(
         CssKnownProperty::ContentVisibility,
