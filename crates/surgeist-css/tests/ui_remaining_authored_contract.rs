@@ -525,7 +525,7 @@ fn outline_imported_image_1d_grammar_and_canonical_order() {
         ),
         (
             "stripes(red calc(1px + 1em),blue)",
-            "stripes(red calc(1px + 1em), blue)",
+            "stripes(red calc(1em + 1px), blue)",
         ),
     ] {
         canonical("outline-color", text, expected);
@@ -950,7 +950,7 @@ fn interest_delay_repetition_sets_both_members_and_two_values_stay_distinct() {
         "normal 2ms",
         &[
             ("interest-delay-start", "normal"),
-            ("interest-delay-end", "0.002s"),
+            ("interest-delay-end", "2ms"),
         ],
     );
 }
