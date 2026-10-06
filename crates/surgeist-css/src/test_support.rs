@@ -78,6 +78,7 @@ macro_rules! define_test_property {
     )*) => {
         #[derive(Clone, Debug, Eq, Hash, PartialEq)]
         pub(crate) enum CssProperty {
+            SvgGlyphOrientationVertical,
             All,
             $($variant,)*
             Custom(CssCustomPropertyName),
@@ -124,6 +125,9 @@ pub(crate) fn declaration_body_property(body: &CssDeclarationBody) -> CssPropert
     match body {
         CssDeclarationBody::Known(known) => known.property().into(),
         CssDeclarationBody::Custom(custom) => CssProperty::Custom(custom.name().clone()),
+        CssDeclarationBody::SvgGlyphOrientationVertical(_) => {
+            CssProperty::SvgGlyphOrientationVertical
+        }
         _ => unreachable!("test adapter saw a future declaration-body branch"),
     }
 }

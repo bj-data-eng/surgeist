@@ -1086,7 +1086,17 @@
 //! authored syntax and parser coordinates without applying cascade, layout, pagination,
 //! painting, containment semantics, blending, hit testing, or writing-mode resolution.
 //!
-//! `glyph-orientation-vertical` is an explicit restricted legacy shorthand that maps to a
+//! [`CssParserContext::with_svg_glyph_orientation_vertical`] explicitly selects
+//! the independent frozen SVG authored definition. Its Auto/Angle/implied-degree
+//! Number body retains actual document mode and presentation-attribute admission
+//! through originals, pending reentry and one independent terminal contribution.
+//! Explicit finite grammar handles keep the Writing Modes meaning. Fixed
+//! attribute-value fronts use Normal importance; root owns markup binding.
+//! Specified Unitless output becomes degrees using shared numeric precision,
+//! without computed quadrant rounding. See the crate's reference for source
+//! reconciliation, canonical reparse policy and unresolved normative clauses.
+//!
+//! Ordinary `glyph-orientation-vertical` is an explicit restricted legacy shorthand that maps to a
 //! parser-produced [`CssKnownProperty::TextOrientation`] value. It is not a name-equivalent
 //! schema alias: [`CssKnownProperty::aliases`] remains empty for `TextOrientation`, while
 //! [`feature_metadata`] exposes its distinct [`CssFeatureKind::PropertyAlias`] record. That
@@ -1835,6 +1845,11 @@ pub use specified_serialization::{
 };
 mod parser;
 mod parser_context;
+mod svg_glyph;
+pub use svg_glyph::{
+    CssSvgGlyphOrientationVerticalDeclaration, CssSvgGlyphOrientationVerticalMetadata,
+    CssSvgGlyphOrientationVerticalValue,
+};
 mod properties;
 mod property_value;
 pub use parser_context::{
@@ -1888,8 +1903,8 @@ pub use expansion::{
     CssLonghandContribution, CssLonghandContributions, CssLonghandInitialValue,
     CssLonghandMetadata, CssLonghandProperty, CssLonghandValue, CssLonghandValueRef,
     CssPendingSubstitution, CssPropertyKindRef, CssPropertyMetadata, CssPropertyMetadataError,
-    CssShorthandMetadata, CssUniversalReset, CssUniversalResetMetadata, CssUserAgentInitial,
-    expand_declaration,
+    CssShorthandMetadata, CssSvgGlyphOrientationVerticalContribution, CssUniversalReset,
+    CssUniversalResetMetadata, CssUserAgentInitial, expand_declaration,
 };
 pub use font_face_values::{
     CssFontMetricOverride, CssFontNamedInstance, CssFontNamedInstanceString,

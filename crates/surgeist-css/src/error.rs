@@ -671,6 +671,8 @@ impl CssPropertyValueError {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum CssDeclarationContext {
+    SvgGlyph,
+    KeyframeSvgGlyph,
     OrdinaryKnown(CssKnownProperty),
     OrdinaryCustom(CssCustomPropertyName),
     Keyframe(CssKnownProperty),
@@ -688,6 +690,10 @@ enum CssDeclarationContext {
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssDeclarationContextRef<'a> {
+    /// The independent SVG glyph definition in an ordinary declaration.
+    SvgGlyphOrientationVertical,
+    /// The independent SVG glyph definition inside an authored keyframe.
+    KeyframeSvgGlyphOrientationVertical,
     /// A declaration for a known ordinary property.
     KnownProperty(CssKnownProperty),
     /// A declaration for a case-sensitive authored custom property.
@@ -708,6 +714,8 @@ pub enum CssDeclarationContextRef<'a> {
 impl CssDeclarationContext {
     const fn as_ref(&self) -> CssDeclarationContextRef<'_> {
         match self {
+            Self::SvgGlyph => CssDeclarationContextRef::SvgGlyphOrientationVertical,
+            Self::KeyframeSvgGlyph => CssDeclarationContextRef::KeyframeSvgGlyphOrientationVertical,
             Self::OrdinaryKnown(property) => CssDeclarationContextRef::KnownProperty(*property),
             Self::OrdinaryCustom(property) => CssDeclarationContextRef::CustomProperty(property),
             Self::Keyframe(property) => CssDeclarationContextRef::Keyframe(*property),
@@ -1886,6 +1894,23 @@ fn explicit_descriptor_error<'i>(
         location,
         kind: ParseErrorKind::Custom(error),
     }
+}
+
+pub(crate) fn invalid_svg_glyph_declaration_annotation<'i>(
+    location: cssparser::SourceLocation,
+    keyframe: bool,
+) -> ParseError<'i, Error> {
+    error_at(
+        location,
+        ErrorKind::InvalidDeclarationAnnotation(CssDeclarationAnnotationError {
+            context: if keyframe {
+                CssDeclarationContext::KeyframeSvgGlyph
+            } else {
+                CssDeclarationContext::SvgGlyph
+            },
+            encountered: CssTokenSummary::bang(),
+        }),
+    )
 }
 
 pub(crate) fn invalid_known_declaration_annotation<'i>(

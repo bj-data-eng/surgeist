@@ -251,6 +251,18 @@ impl CssSupportsCondition {
     }
 }
 impl CssSupportsDeclaration {
+    pub(crate) fn try_from_components_in_context(
+        values: CssComponentValues,
+        context: CssParserContext,
+    ) -> Result<Self, CssSupportsConstructionError> {
+        construct(values, |values| {
+            crate::parser::construct_supports_declaration_with_context(
+                values,
+                CssComponentValueLimits::default(),
+                context,
+            )
+        })
+    }
     /// Accepts a bare declaration, excluding its surrounding parentheses.
     pub fn try_from_components(
         values: CssComponentValues,

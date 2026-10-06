@@ -1299,6 +1299,15 @@ const BASELINE_QUERIES: CssSpecificationSource = CssSpecificationSource::from_re
     "bc5394f:src/parser/queries.rs",
 );
 
+profile_source!(
+    I_WEBKIT_SVG_GLYPH,
+    "I-WEBKIT-SVG-GLYPH",
+    "SVG glyph authored compatibility",
+    "WebKit73aa6c89e2cb77c46184a81aec944e4ab99d114d",
+    CssSpecificationTier::Snapshot2026Interop,
+    "https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/CSSProperties.json#L5350-L5367"
+);
+
 static SPECIFICATION_SOURCES: &[CssSpecificationSource] = &[
     O_CSS2,
     O_SYNTAX3,
@@ -1385,6 +1394,7 @@ static SPECIFICATION_SOURCES: &[CssSpecificationSource] = &[
     X_GRID3_20260121,
     BASELINE_SELECTORS,
     BASELINE_QUERIES,
+    I_WEBKIT_SVG_GLYPH,
 ];
 
 macro_rules! exclusion {
@@ -2921,7 +2931,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 765] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 766] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -7547,6 +7557,13 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 765] = [
         X_MEDIA5,
         "#descdef-media-prefers-reduced-data",
     ),
+    CssFeatureMetadata::complete(
+        "interop.property.svg-glyph-orientation-vertical",
+        CssFeatureKind::Property,
+        "glyph-orientation-vertical",
+        I_WEBKIT_SVG_GLYPH,
+        "#L5350-L5367",
+    ),
 ];
 
 /// Returns the immutable support catalog in stable inventory order.
@@ -7605,7 +7622,7 @@ pub fn feature_metadata(id: &str) -> Option<&'static CssFeatureMetadata> {
 /// Returns support metadata for a canonical property or name-equivalent alias.
 ///
 /// Matching is ASCII-case-insensitive. Distinct legacy shorthand grammars, custom
-/// properties, and unknown spellings return `None`. For legacy grammars, use
+/// properties, independent SVG definitions, and unknown spellings return `None`. For legacy grammars, use
 /// [`crate::CssPropertyGrammar::from_name`], then [`feature_metadata`] with the
 /// grammar's feature ID or its intrinsic metadata accessor. This lookup does not
 /// parse a declaration or classify its diagnostics.
@@ -7613,7 +7630,7 @@ pub fn feature_metadata(id: &str) -> Option<&'static CssFeatureMetadata> {
 pub fn property_support_metadata(name: &str) -> Option<CssPropertySupportMetadata> {
     FEATURE_CATALOG
         .iter()
-        .filter(|feature| feature.kind == CssFeatureKind::Property)
+        .filter(|feature| feature.kind == CssFeatureKind::Property && feature.property.is_some())
         .find(|feature| {
             feature.spelling.eq_ignore_ascii_case(name)
                 || feature

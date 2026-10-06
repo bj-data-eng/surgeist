@@ -2839,6 +2839,35 @@
   ],
   "source_reconciliations": [
     {
+      "id": "writing-modes-glyph-svg-authored-compatibility",
+      "source": "https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/CSSProperties.json#L5350-L5367",
+      "source_sha256": "848d6e24bbd4421ced9e8e840d718a5da012703f9c95851d60f7c1d1364ebaac",
+      "runtime_source_id": "I-WEBKIT-SVG-GLYPH",
+      "runtime_feature_id": "interop.property.svg-glyph-orientation-vertical",
+      "revision": "73aa6c89e2cb77c46184a81aec944e4ab99d114d",
+      "controlling_sections": [
+        "https://www.w3.org/TR/2019/REC-css-writing-modes-3-20191210/#glyph-orientation",
+        "https://www.w3.org/TR/2019/CR-css-writing-modes-4-20190730/#glyph-orientation"
+      ],
+      "selected_publisher_sha256": [
+        "39564c2366c0d46ad5cb4bf9363f232667e2d0b6833ac79931117baa24873aec",
+        "30a59de49343d984c8570e2c1a5fa5bda511dda4f2e83841c862caa99d155fcd"
+      ],
+      "frozen_witnesses": [
+        { "path": "Source/WebCore/css/parser/CSSPropertyParserConsumer+AngleDefinitions.h", "sha256": "10d4aa270b04af27d091362a9f686708632ab7c3c5cd7eb232668cc60dd8547d", "role": "Raw angle validation and Standards zero, Quirks and SVGAttribute unitless admission." },
+        { "path": "Source/WebCore/css/parser/CSSPropertyParserConsumer+MetaConsumerDefinitions.h", "sha256": "33cd25a1bc6708095493cf47591475611638e93f9d6460d657fca4b7ac7efd15", "role": "Raw finite numeric validation and separate typed Angle-root calculation consumption." },
+        { "path": "Source/WebCore/css/parser/CSSParserMode.h", "sha256": "1a3985d5ca7fd58c4cb6dfb4930bb9010fc497a2ca4faad3d698013031d358cd", "role": "SVGAttribute forces unitless parsing separately from document quirks." },
+        { "path": "Source/WebCore/dom/StyledElement.cpp", "sha256": "c92354d9ffcfe8d786ca121c1a6e56a5072915b42463e4283ceb7877ea3e6878", "role": "Presentation-hint declaration storage explicitly selects SVGAttribute mode." },
+        { "path": "Source/WebCore/style/values/svg/StyleSVGGlyphOrientationVertical.h", "sha256": "3e5a574e31242ea8d5b9253e324884ef30e7d16ece94ed4b077f6299d181cc5d", "role": "Independent computed SVG terminal; a downstream witness, not an authored quadrant oracle." },
+        { "path": "Source/WebCore/style/values/svg/StyleSVGGlyphOrientationVertical.cpp", "sha256": "fc529408269bd8117b5eb2104320ee2d99950b8e942cd2d25eb40576b9a84c0c", "role": "Downstream modulo and interval rounding are outside CSS authored values." },
+        { "path": "LayoutTests/svg/css/glyph-orientation-rounding-test.xhtml", "sha256": "85597b484e045381dd44ed38523db36e57a81873929f56b1fe5a35ed99bcc868", "role": "Attribute binding and getComputedStyle execution witness, not authored expected values." },
+        { "path": "LayoutTests/svg/css/glyph-orientation-rounding-test-expected.txt", "sha256": "072212afb94b5ea72d1d0761200e4d3fcc6a755113396cc77d12804fa96666a3", "role": "Downstream rounding results retained only as execution provenance." }
+      ],
+      "conflict": "Selected Writing Modes defines a finite TextOrientation shorthand, while frozen WebKit defines independent SVG auto or general angle storage, Auto initial, inheritance and no animation. The two selected CSSWG8032 numeric-terminal-spelling and math-applicability requirements remain unresolved.",
+      "decision": "Keep ordinary fronts and explicit finite grammar handles on the accepted exact finite alias. Named immutable context selection or an explicit SVG property-name reference selects the independent SVG authored terminal. Standards admits finite angles and binary64-zero raw Numbers; Quirks and fixed presentation-attribute values also admit finite nonzero raw Numbers. Angle-root math remains authored, and Number-root math receives no literal exception. Attribute binding, computation and quadrant rounding belong downstream.",
+      "justification": "This is a bounded operational browser compatibility definition with exact frozen consumers, separate metadata and actual admission retained through originals, globals, pending reentry, supports, keyframes, contributions and specified writing. It is neither normative source consensus nor an acquired SVG11 glyph module. The upstream SVG11 link is historical attribution; no SVG11 glyph publisher hash, new canonical schema property or full module selection is asserted. Existing normative source records, finite Partial classification and unresolved requirements are preserved."
+    },
+    {
       "id": "backdrop-filter-named-property-source",
       "source": "https://raw.githubusercontent.com/w3c/csswg-drafts/034f50a78495b619478342d71117cd7ca7e76de7/filter-effects-2/Overview.bs",
       "source_sha256": "4e5ad82b5130dcc048913e30637e3962a6184b6eab19aca6e707fa8970ea1aa6",

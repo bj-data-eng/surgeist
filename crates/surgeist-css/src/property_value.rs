@@ -168,11 +168,36 @@ pub(crate) fn checked_property_value_body(
     {
         return Err(error);
     }
+    if matches!(property, CssPropertyNameRef::SvgGlyphOrientationVertical)
+        && let Some(error) = recovered_component_error(value)
+    {
+        return Err(error);
+    }
     crate::parser::parse_property_value_body(
         property,
         serialized.as_css(),
         &crate::numeric::NumericInputContext::components(value, &serialized),
         parser_context,
+    )
+    .map_err(|error| CssPropertyValueParseError::from_grammar(error, &serialized))
+}
+
+pub(crate) fn checked_svg_glyph_value_body(
+    admission: crate::svg_glyph::SvgGlyphAdmission,
+    value: &CssComponentValues,
+    context: crate::CssParserContext,
+) -> Result<crate::CssDeclarationBody, CssPropertyValueParseError> {
+    let serialized = value
+        .serialize()
+        .map_err(CssPropertyValueParseError::from_component)?;
+    if let Some(error) = recovered_component_error(value) {
+        return Err(error);
+    }
+    crate::parser::parse_svg_glyph_value_body(
+        admission,
+        serialized.as_css(),
+        &crate::numeric::NumericInputContext::components(value, &serialized),
+        context,
     )
     .map_err(|error| CssPropertyValueParseError::from_grammar(error, &serialized))
 }

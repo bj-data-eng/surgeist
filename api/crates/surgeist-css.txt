@@ -940,6 +940,7 @@ pub surgeist_css::CssContributionValueRef::UserAgentInitial(surgeist_css::CssUse
 #[non_exhaustive] pub enum surgeist_css::CssContributions
 pub surgeist_css::CssContributions::Custom(surgeist_css::CssCustomPropertyContribution)
 pub surgeist_css::CssContributions::Longhands(surgeist_css::CssLonghandContributions)
+pub surgeist_css::CssContributions::SvgGlyphOrientationVertical(surgeist_css::CssSvgGlyphOrientationVerticalContribution)
 pub surgeist_css::CssContributions::UniversalReset(surgeist_css::CssUniversalReset)
 #[non_exhaustive] pub enum surgeist_css::CssCoordBox
 pub surgeist_css::CssCoordBox::BorderBox
@@ -1127,6 +1128,7 @@ pub const fn surgeist_css::CssCustomPropertyDeclaredValue::value(&self) -> core:
 #[non_exhaustive] pub enum surgeist_css::CssDeclarationBody
 pub surgeist_css::CssDeclarationBody::Custom(surgeist_css::CssCustomDeclaration)
 pub surgeist_css::CssDeclarationBody::Known(surgeist_css::CssKnownDeclaration)
+pub surgeist_css::CssDeclarationBody::SvgGlyphOrientationVertical(surgeist_css::CssSvgGlyphOrientationVerticalDeclaration)
 #[non_exhaustive] pub enum surgeist_css::CssDeclarationContextRef<'a>
 pub surgeist_css::CssDeclarationContextRef::CustomProperty(&'a surgeist_css::CssCustomPropertyName)
 pub surgeist_css::CssDeclarationContextRef::Descriptor
@@ -1134,7 +1136,9 @@ pub surgeist_css::CssDeclarationContextRef::Descriptor::at_rule: &'a surgeist_cs
 pub surgeist_css::CssDeclarationContextRef::Descriptor::descriptor: &'a surgeist_css::CssDescriptorName
 pub surgeist_css::CssDeclarationContextRef::Keyframe(surgeist_css::CssKnownProperty)
 pub surgeist_css::CssDeclarationContextRef::KeyframeCustomProperty(&'a surgeist_css::CssCustomPropertyName)
+pub surgeist_css::CssDeclarationContextRef::KeyframeSvgGlyphOrientationVertical
 pub surgeist_css::CssDeclarationContextRef::KnownProperty(surgeist_css::CssKnownProperty)
+pub surgeist_css::CssDeclarationContextRef::SvgGlyphOrientationVertical
 #[non_exhaustive] pub enum surgeist_css::CssDefinedFalseMediaReason
 pub surgeist_css::CssDefinedFalseMediaReason::UnknownType
 #[non_exhaustive] pub enum surgeist_css::CssDirection
@@ -4252,6 +4256,7 @@ pub fn surgeist_css::CssPropertyMetadataError::fmt(&self, f: &mut core::fmt::For
 #[non_exhaustive] pub enum surgeist_css::CssPropertyNameRef<'a>
 pub surgeist_css::CssPropertyNameRef::Custom(&'a surgeist_css::CssCustomPropertyName)
 pub surgeist_css::CssPropertyNameRef::Known(surgeist_css::CssKnownProperty)
+pub surgeist_css::CssPropertyNameRef::SvgGlyphOrientationVertical
 #[non_exhaustive] pub enum surgeist_css::CssPropertyValueErrorKind
 pub surgeist_css::CssPropertyValueErrorKind::Component(surgeist_css::CssComponentValueErrorKind)
 pub surgeist_css::CssPropertyValueErrorKind::Grammar(surgeist_css::ErrorKind)
@@ -7442,6 +7447,7 @@ pub fn surgeist_css::CssDeclaration::parser_context(&self) -> surgeist_css::CssP
 pub fn surgeist_css::CssDeclaration::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
 pub fn surgeist_css::CssDeclaration::property_name(&self) -> surgeist_css::CssPropertyNameRef<'_>
 pub fn surgeist_css::CssDeclaration::same_occurrence(&self, other: &Self) -> bool
+pub fn surgeist_css::CssDeclaration::svg_glyph_orientation_vertical(&self) -> core::option::Option<&surgeist_css::CssSvgGlyphOrientationVerticalDeclaration>
 pub fn surgeist_css::CssDeclaration::value_components(&self) -> &surgeist_css::CssComponentValues
 impl surgeist_css::CssDeclaration
 pub fn surgeist_css::CssDeclaration::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
@@ -8884,6 +8890,7 @@ pub const fn surgeist_css::CssKeyframeDeclaration::custom(&self) -> core::option
 pub const fn surgeist_css::CssKeyframeDeclaration::known(&self) -> core::option::Option<&surgeist_css::CssKnownDeclaration>
 pub const fn surgeist_css::CssKeyframeDeclaration::position(&self) -> surgeist_css::CssSourcePosition
 pub const fn surgeist_css::CssKeyframeDeclaration::property_name(&self) -> surgeist_css::CssPropertyNameRef<'_>
+pub const fn surgeist_css::CssKeyframeDeclaration::svg_glyph_orientation_vertical(&self) -> core::option::Option<&surgeist_css::CssSvgGlyphOrientationVerticalDeclaration>
 pub struct surgeist_css::CssKeyframeDeclarationList
 impl surgeist_css::CssKeyframeDeclarationList
 pub fn surgeist_css::CssKeyframeDeclarationList::as_slice(&self) -> &[surgeist_css::CssKeyframeDeclaration]
@@ -9880,6 +9887,8 @@ pub struct surgeist_css::CssParserContext
 impl surgeist_css::CssParserContext
 pub const fn surgeist_css::CssParserContext::mode(self) -> surgeist_css::CssParserMode
 pub const fn surgeist_css::CssParserContext::new(mode: surgeist_css::CssParserMode) -> Self
+pub fn surgeist_css::CssParserContext::parse_css_supports_condition(self, source: &str) -> core::result::Result<surgeist_css::CssSupportsCondition, surgeist_css::CssSupportsConstructionError>
+pub fn surgeist_css::CssParserContext::parse_css_supports_declaration(self, property: &str, value: &str) -> core::result::Result<surgeist_css::CssSupportsDeclaration, surgeist_css::CssSupportsConstructionError>
 pub fn surgeist_css::CssParserContext::parse_declaration(self, source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssDeclaration>>
 pub fn surgeist_css::CssParserContext::parse_property_value(self, property: surgeist_css::CssPropertyNameRef<'_>, values: surgeist_css::CssComponentValues, importance: surgeist_css::CssImportance) -> core::result::Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError>
 pub fn surgeist_css::CssParserContext::parse_property_value_for_grammar(self, grammar: surgeist_css::CssPropertyGrammar, values: surgeist_css::CssComponentValues, importance: surgeist_css::CssImportance) -> core::result::Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError>
@@ -9891,6 +9900,9 @@ pub fn surgeist_css::CssParserContext::parse_style_attribute(self, source: &str)
 pub fn surgeist_css::CssParserContext::parse_style_block(self, source: &str, namespaces: &surgeist_css::CssNamespaceContext) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssStyleBlock>>
 pub fn surgeist_css::CssParserContext::parse_supports_condition(self, source: &str, namespaces: &surgeist_css::CssNamespaceContext) -> core::result::Result<surgeist_css::CssSupportsCondition, surgeist_css::CssSupportsConstructionError>
 pub fn surgeist_css::CssParserContext::parse_supports_condition_with_limits(self, source: &str, namespaces: &surgeist_css::CssNamespaceContext, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<surgeist_css::CssSupportsCondition, surgeist_css::CssSupportsConstructionError>
+pub fn surgeist_css::CssParserContext::parse_svg_glyph_orientation_vertical_attribute_components(self, values: surgeist_css::CssComponentValues) -> core::result::Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError>
+pub fn surgeist_css::CssParserContext::parse_svg_glyph_orientation_vertical_attribute_value(self, source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssDeclaration>>
+pub const fn surgeist_css::CssParserContext::with_svg_glyph_orientation_vertical(self) -> Self
 pub struct surgeist_css::CssPartName
 impl surgeist_css::CssPartName
 pub fn surgeist_css::CssPartName::as_str(&self) -> &str
@@ -11086,6 +11098,7 @@ pub fn surgeist_css::CssSupportsDeclaration::origin(&self) -> &surgeist_css::Css
 pub fn surgeist_css::CssSupportsDeclaration::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
 pub fn surgeist_css::CssSupportsDeclaration::property(&self) -> &str
 pub fn surgeist_css::CssSupportsDeclaration::property_component(&self) -> &surgeist_css::CssComponentValue
+pub const fn surgeist_css::CssSupportsDeclaration::svg_glyph_orientation_vertical(&self) -> core::option::Option<&surgeist_css::CssSvgGlyphOrientationVerticalDeclaration>
 pub fn surgeist_css::CssSupportsDeclaration::value_components(&self) -> &[surgeist_css::CssComponentValue]
 impl surgeist_css::CssSupportsDeclaration
 pub fn surgeist_css::CssSupportsDeclaration::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
@@ -11128,6 +11141,42 @@ pub fn surgeist_css::CssSupportsTestDeclaration::value_components(&self) -> &[su
 pub struct surgeist_css::CssSupportsTestDeclarations
 impl surgeist_css::CssSupportsTestDeclarations
 pub fn surgeist_css::CssSupportsTestDeclarations::declarations(&self) -> &[surgeist_css::CssSupportsTestDeclaration]
+pub struct surgeist_css::CssSvgGlyphOrientationVerticalContribution
+impl surgeist_css::CssSvgGlyphOrientationVerticalContribution
+pub const fn surgeist_css::CssSvgGlyphOrientationVerticalContribution::global(&self) -> core::option::Option<surgeist_css::CssGlobalKeyword>
+pub const fn surgeist_css::CssSvgGlyphOrientationVerticalContribution::ordinary_value(&self) -> core::option::Option<&surgeist_css::CssSvgGlyphOrientationVerticalValue>
+pub const fn surgeist_css::CssSvgGlyphOrientationVerticalContribution::property(&self) -> surgeist_css::CssPropertyNameRef<'static>
+pub fn surgeist_css::CssSvgGlyphOrientationVerticalContribution::replacement_components(&self) -> core::option::Option<&surgeist_css::CssComponentValues>
+pub fn surgeist_css::CssSvgGlyphOrientationVerticalContribution::source(&self) -> &surgeist_css::CssDeclaration
+pub struct surgeist_css::CssSvgGlyphOrientationVerticalDeclaration
+impl surgeist_css::CssSvgGlyphOrientationVerticalDeclaration
+pub const fn surgeist_css::CssSvgGlyphOrientationVerticalDeclaration::global(&self) -> core::option::Option<surgeist_css::CssGlobalKeyword>
+pub const fn surgeist_css::CssSvgGlyphOrientationVerticalDeclaration::is_presentation_attribute(&self) -> bool
+pub const fn surgeist_css::CssSvgGlyphOrientationVerticalDeclaration::metadata() -> &'static surgeist_css::CssSvgGlyphOrientationVerticalMetadata
+pub const fn surgeist_css::CssSvgGlyphOrientationVerticalDeclaration::parser_mode(&self) -> surgeist_css::CssParserMode
+pub const fn surgeist_css::CssSvgGlyphOrientationVerticalDeclaration::property(&self) -> surgeist_css::CssPropertyNameRef<'static>
+pub const fn surgeist_css::CssSvgGlyphOrientationVerticalDeclaration::substitution_dependent(&self) -> core::option::Option<&surgeist_css::CssSubstitutionDependentValue>
+pub const fn surgeist_css::CssSvgGlyphOrientationVerticalDeclaration::value(&self) -> core::option::Option<&surgeist_css::CssSvgGlyphOrientationVerticalValue>
+pub struct surgeist_css::CssSvgGlyphOrientationVerticalMetadata
+impl surgeist_css::CssSvgGlyphOrientationVerticalMetadata
+pub const fn surgeist_css::CssSvgGlyphOrientationVerticalMetadata::feature_id(&self) -> surgeist_css::CssFeatureId
+pub const fn surgeist_css::CssSvgGlyphOrientationVerticalMetadata::inherited_by_default(&self) -> bool
+pub const fn surgeist_css::CssSvgGlyphOrientationVerticalMetadata::initial_value(&self) -> &surgeist_css::CssSvgGlyphOrientationVerticalValue
+pub const fn surgeist_css::CssSvgGlyphOrientationVerticalMetadata::is_animatable(&self) -> bool
+pub const fn surgeist_css::CssSvgGlyphOrientationVerticalMetadata::name(&self) -> &'static str
+pub const fn surgeist_css::CssSvgGlyphOrientationVerticalMetadata::property(&self) -> surgeist_css::CssPropertyNameRef<'static>
+pub const fn surgeist_css::CssSvgGlyphOrientationVerticalMetadata::reset_only_members(&self) -> &'static [surgeist_css::CssPropertyNameRef<'static>]
+pub const fn surgeist_css::CssSvgGlyphOrientationVerticalMetadata::settable_members(&self) -> &'static [surgeist_css::CssPropertyNameRef<'static>]
+pub struct surgeist_css::CssSvgGlyphOrientationVerticalValue
+impl surgeist_css::CssSvgGlyphOrientationVerticalValue
+pub const fn surgeist_css::CssSvgGlyphOrientationVerticalValue::angle(&self) -> core::option::Option<&surgeist_css::CssAngleValue>
+pub const fn surgeist_css::CssSvgGlyphOrientationVerticalValue::auto() -> Self
+pub const fn surgeist_css::CssSvgGlyphOrientationVerticalValue::is_auto(&self) -> bool
+pub fn surgeist_css::CssSvgGlyphOrientationVerticalValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssSvgGlyphOrientationVerticalValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssSvgGlyphOrientationVerticalValue::try_from_angle(angle: surgeist_css::CssAngleValue) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub fn surgeist_css::CssSvgGlyphOrientationVerticalValue::try_from_unitless(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub fn surgeist_css::CssSvgGlyphOrientationVerticalValue::unitless_component(&self) -> core::option::Option<&surgeist_css::CssComponentValue>
 pub struct surgeist_css::CssSymbolsStyleValue
 impl surgeist_css::CssSymbolsStyleValue
 pub fn surgeist_css::CssSymbolsStyleValue::symbols(&self) -> &[surgeist_css::CssCounterSymbolValue]

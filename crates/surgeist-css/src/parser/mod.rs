@@ -77,7 +77,7 @@ mod will_change;
 pub(crate) use queries::{construct_media_condition, construct_media_query};
 pub(crate) use supports::{
     construct_supports_condition, construct_supports_condition_with_context,
-    construct_supports_declaration,
+    construct_supports_declaration, construct_supports_declaration_with_context,
 };
 mod recovery;
 mod scroll_snap;
@@ -93,6 +93,7 @@ mod typography;
 mod url;
 mod values;
 mod variables;
+pub(crate) use fragments::parse_svg_glyph_attribute_value;
 pub(crate) use variables::first_substitution_origin;
 
 use cssparser::{
@@ -250,6 +251,9 @@ static IMPLEMENTED_DECLARATIONS: &[CssFeatureId] = &[
     CssFeatureId::new("foundation.declaration.importance"),
     CssFeatureId::new("official.declaration.generic"),
 ];
+static IMPLEMENTED_SVG_GLYPH: &[CssFeatureId] = &[CssFeatureId::new(
+    "interop.property.svg-glyph-orientation-vertical",
+)];
 
 static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
     CssFeatureId::new("official.value.stylesheet"),
@@ -264,6 +268,11 @@ static ATOMIC_IMPLEMENTATION_INVENTORIES: &[CssAtomicImplementationInventory] = 
         module: "crate::parser::quirky_length",
         kind: CssAtomicImplementationKind::SharedValue,
         stable_ids: quirky_length::IMPLEMENTED_SHARED_VALUES,
+    },
+    CssAtomicImplementationInventory {
+        module: "crate::parser::parse_svg_glyph_declaration_body",
+        kind: CssAtomicImplementationKind::PropertyExtension,
+        stable_ids: IMPLEMENTED_SVG_GLYPH,
     },
     CssAtomicImplementationInventory {
         module: "crate::parser::quirky_color",
@@ -4557,6 +4566,8 @@ impl ParsedDeclaration {
 }
 
 enum DeclarationBoundaryContext<'a> {
+    OrdinarySvgGlyph,
+    KeyframeSvgGlyph,
     OrdinaryKnown(crate::CssKnownProperty),
     OrdinaryCustom(CssCustomPropertyName),
     KeyframeKnown(crate::CssKnownProperty),
@@ -4619,6 +4630,22 @@ pub(super) fn parse_declaration_core<'i, 't>(
             components,
             origin,
         )
+    } else if parser_context.selects_svg_glyph(name.as_ref()) {
+        let context = match mode {
+            DeclarationMode::Ordinary => DeclarationBoundaryContext::OrdinarySvgGlyph,
+            DeclarationMode::Keyframe => DeclarationBoundaryContext::KeyframeSvgGlyph,
+        };
+        let ((body, components, origin), importance) =
+            parse_declaration_boundary(input, &context, |input| {
+                collect_declaration_value(input, source_snapshot, |input| {
+                    parse_svg_glyph_declaration_body(
+                        input,
+                        &crate::numeric::NumericInputContext::parsed(source_snapshot),
+                        crate::svg_glyph::SvgGlyphAdmission::css(parser_context),
+                    )
+                })
+            })?;
+        (body, importance, components, origin)
     } else {
         let resolved_property = resolve_property_name(name.as_ref()).ok_or_else(|| {
             property_name_error(declaration_start.source_location(), name.as_ref())
@@ -4703,6 +4730,9 @@ pub(crate) fn parse_property_value_body(
     let grammar = match property {
         CssPropertyNameRef::Known(property) => PropertyValueGrammar::Known(property.grammar()),
         CssPropertyNameRef::Custom(name) => PropertyValueGrammar::Custom(name),
+        CssPropertyNameRef::SvgGlyphOrientationVertical => {
+            PropertyValueGrammar::SvgGlyph(crate::svg_glyph::SvgGlyphAdmission::css(parser_context))
+        }
     };
     parse_property_value_body_selected(grammar, source, numeric, parser_context)
 }
@@ -4721,9 +4751,11 @@ pub(crate) fn parse_property_value_body_for_grammar(
     )
 }
 
+#[derive(Clone, Copy)]
 enum PropertyValueGrammar<'a> {
     Known(CssPropertyGrammar),
     Custom(&'a CssCustomPropertyName),
+    SvgGlyph(crate::svg_glyph::SvgGlyphAdmission),
 }
 
 fn parse_property_value_body_selected(
@@ -4774,6 +4806,9 @@ fn parse_property_value_from_parser<'i>(
     let body = match grammar {
         PropertyValueGrammar::Known(grammar) => {
             parse_known_declaration_body(grammar.resolved(), parser, numeric, parser_context)
+        }
+        PropertyValueGrammar::SvgGlyph(admission) => {
+            parse_svg_glyph_declaration_body(parser, numeric, admission)
         }
         PropertyValueGrammar::Custom(name) => {
             parse_custom_property_value(parser, numeric).map(|value| {
@@ -4856,6 +4891,223 @@ fn parse_known_declaration_body<'i, 't>(
     )))
 }
 
+fn parse_svg_glyph_declaration_body<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+    admission: crate::svg_glyph::SvgGlyphAdmission,
+) -> Result<CssDeclarationBody, ParseError<'i, Error>> {
+    let name = "glyph-orientation-vertical";
+    let parse = |input: &mut Parser<'i, 't>| {
+        let state = input.state();
+        let (authored, substitution) = collect_authored_declaration_value(
+            input,
+            numeric,
+            variables::SubstitutionContext::KnownProperty,
+        )?;
+        let declared = if substitution {
+            CssDeclaredValue::SubstitutionDependent(CssSubstitutionDependentValue::new(authored))
+        } else {
+            input.reset(&state);
+            let first_state = loop {
+                let candidate = input.state();
+                match input.next_including_whitespace_and_comments() {
+                    Ok(Token::WhiteSpace(_) | Token::Comment(_)) => {}
+                    _ => break candidate,
+                }
+            };
+            input.reset(&first_state);
+            let first_location = input.current_source_location();
+            if let Ok(ident) = input.try_parse(|input| input.expect_ident_cloned()) {
+                if let Some(global) = parse_global_keyword(&ident) {
+                    input.expect_exhausted()?;
+                    CssDeclaredValue::Global(global)
+                } else if ident.eq_ignore_ascii_case("auto") {
+                    input.expect_exhausted()?;
+                    CssDeclaredValue::Value(crate::CssSvgGlyphOrientationVerticalValue::auto())
+                } else {
+                    return Err(
+                        first_location.new_unexpected_token_error::<Error>(Token::Ident(ident))
+                    );
+                }
+            } else {
+                input.reset(&first_state);
+                input.skip_whitespace();
+                let location = input.current_source_location();
+                let offset = input.position().byte_index();
+                // SVG has no canonical-property error target. Retain the real
+                // root cursor/token for a present-token grammar rejection.
+                let literal_start = input.state();
+                let root_token = input.next().ok().cloned();
+                input.reset(&literal_start);
+                let component = numeric.collect(input).map_err(|error| {
+                    values::angle_error(
+                        numeric,
+                        &error,
+                        location,
+                        offset,
+                        values::AngleParserContext::SvgGlyph,
+                    )
+                })?;
+                let root_origin = component.origin().clone();
+                let value = if matches!(
+                    component.view(),
+                    crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Number(_))
+                ) {
+                    crate::CssSvgGlyphOrientationVerticalValue::try_from_unitless(component.clone())
+                } else {
+                    crate::CssAngleValue::from_parser_component(component.clone(), numeric)
+                        .and_then(crate::CssSvgGlyphOrientationVerticalValue::from_parser_angle)
+                }
+                .map_err(|error| {
+                    let mapped = values::angle_error(
+                        numeric,
+                        &error,
+                        location,
+                        offset,
+                        values::AngleParserContext::SvgGlyph,
+                    );
+                    if let Some(token) = &root_token
+                        && !crate::error::is_resource_parse_error(&mapped)
+                        && (matches!(token, Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. })
+                            || (matches!(error.kind(), crate::CssNumericConstructionErrorKind::Component(crate::CssComponentValueErrorKind::InvalidToken))
+                                && error.origin() == Some(&root_origin))
+                            || (matches!(token, Token::Function(_) | Token::ParenthesisBlock | Token::SquareBracketBlock | Token::CurlyBracketBlock)
+                                && matches!(error.kind(), crate::CssNumericConstructionErrorKind::RootDomainMismatch)
+                                && error.path() == Some(&[0][..])
+                                && error.origin() == Some(&root_origin)))
+                    {
+                        location.new_unexpected_token_error::<Error>(token.clone())
+                    } else {
+                        if matches!(error.kind(), crate::CssNumericConstructionErrorKind::UnknownFunction | crate::CssNumericConstructionErrorKind::IncompatibleTypes | crate::CssNumericConstructionErrorKind::InvalidArgumentType | crate::CssNumericConstructionErrorKind::MalformedExpression)
+                            && error.path().is_some_and(|path| !path.is_empty())
+                            && error.origin().is_some()
+                        {
+                            // The numeric owner identifies the responsible child;
+                            // use its mapped cursor rather than the outer function.
+                            let source = match numeric.ordinary() {
+                                crate::numeric::NumericInputContext::Parsed(source) => source.as_str(),
+                                crate::numeric::NumericInputContext::Components(_, serialized) => serialized.as_css(),
+                                crate::numeric::NumericInputContext::QuirkyLengths(_) => unreachable!("ordinary numeric provenance"),
+                            };
+                            let responsible = crate::CssSourcePosition::from_source_location_in(source, mapped.location).byte_offset().value();
+                            if let Some((start, _, token)) = crate::tokenization::next_source_token(source, responsible)
+                                && !matches!(token, Token::WhiteSpace(_) | Token::Comment(_))
+                                // Distinguish an actual residual operand from the
+                                // native cursor's EOF/operator-spacing fallback.
+                                && (!matches!(error.kind(), crate::CssNumericConstructionErrorKind::MalformedExpression)
+                                    || svg_glyph_numeric_present_rejection(&component, &error))
+                            {
+                                return cssparser::ParseError {
+                                    kind: cssparser::ParseErrorKind::Custom(crate::error::unexpected_token_at(source, start, &token)),
+                                    location: mapped.location,
+                                };
+                            }
+                        }
+                        mapped
+                    }
+                })?;
+                if !value.admitted(admission) {
+                    return Err(location.new_unexpected_token_error::<Error>(
+                        root_token.expect("only a direct Number has mode-dependent admission"),
+                    ));
+                }
+                input.expect_exhausted()?;
+                CssDeclaredValue::Value(value)
+            }
+        };
+        Ok(CssDeclarationBody::SvgGlyphOrientationVertical(
+            crate::CssSvgGlyphOrientationVerticalDeclaration::new(declared, admission),
+        ))
+    };
+    parse(input).map_err(|error| with_property_context(error, name))
+}
+
+fn svg_glyph_numeric_present_rejection(
+    root: &crate::CssComponentValue,
+    error: &crate::CssNumericConstructionError,
+) -> bool {
+    use crate::{CssComponentValueRef as Component, CssValueTokenRef as Value};
+    let operand = |component: &crate::CssComponentValue| match component.view() {
+        Component::Token(
+            Value::Number(_) | Value::Dimension { .. } | Value::Percentage(_) | Value::Ident(_),
+        )
+        | Component::Function(_) => true,
+        Component::Block(block) => block.kind() == crate::CssBlockKind::Parenthesis,
+        _ => false,
+    };
+    let Some(path) = error.path() else {
+        return false;
+    };
+    if path.first() != Some(&0) {
+        return false;
+    }
+    let Some((&index, parent_path)) = path[1..].split_last() else {
+        return false;
+    };
+    let mut parent = root;
+    for &index in parent_path {
+        let children = match parent.view() {
+            Component::Function(function) => function.values(),
+            Component::Block(block) => block.values(),
+            _ => return false,
+        };
+        let Some(child) = children.items().get(index) else {
+            return false;
+        };
+        parent = child;
+    }
+    let children = match parent.view() {
+        Component::Function(function) => function.values(),
+        Component::Block(block) => block.values(),
+        _ => return false,
+    };
+    let Some(current) = children.items().get(index) else {
+        return false;
+    };
+    if error.origin() != Some(current.origin()) {
+        return false;
+    }
+    let previous = children.items()[..index].iter().rev().find(|component| {
+        !matches!(
+            component.view(),
+            Component::Comment(_) | Component::Token(Value::Whitespace(_))
+        )
+    });
+    if operand(current) {
+        // A completed preceding operand proves sequence() left this real value.
+        // An operator predecessor instead identifies a spacing error.
+        return previous.is_some_and(operand);
+    }
+    match current.view() {
+        Component::Comment(_) | Component::Token(Value::Whitespace(_)) => false,
+        Component::Token(Value::Delim('+' | '-' | '*' | '/')) => {
+            // At a segment's first operand parse_node rejects this actual token.
+            // Elsewhere it can be an operator-spacing or EOF fallback cursor.
+            previous.is_none()
+                || previous.is_some_and(|component| {
+                    matches!(component.view(), Component::Token(Value::Comma))
+                })
+        }
+        // These component classes are rejected by parse_node itself. They cannot
+        // be the last-operator fallback for an absent operand.
+        _ => true,
+    }
+}
+
+pub(crate) fn parse_svg_glyph_value_body(
+    admission: crate::svg_glyph::SvgGlyphAdmission,
+    source: &str,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+    context: crate::CssParserContext,
+) -> Result<CssDeclarationBody, Error> {
+    parse_property_value_body_selected(
+        PropertyValueGrammar::SvgGlyph(admission),
+        source,
+        numeric,
+        context,
+    )
+}
+
 fn parse_legacy_property_alias_value<'i, 't>(
     alias: CssLegacyPropertyAlias,
     authored: CssAuthoredDeclarationValue,
@@ -4918,6 +5170,7 @@ fn parse_declaration_boundary<'i, 't, T>(
         context,
         DeclarationBoundaryContext::OrdinaryKnown(_)
             | DeclarationBoundaryContext::OrdinaryCustom(_)
+            | DeclarationBoundaryContext::OrdinarySvgGlyph
     );
     if annotation_valid && ordinary {
         Ok((value, CssImportance::Important))
@@ -4931,6 +5184,13 @@ fn invalid_annotation_for_context<'i>(
     context: &DeclarationBoundaryContext<'_>,
 ) -> ParseError<'i, Error> {
     match context {
+        DeclarationBoundaryContext::OrdinarySvgGlyph
+        | DeclarationBoundaryContext::KeyframeSvgGlyph => {
+            crate::error::invalid_svg_glyph_declaration_annotation(
+                location,
+                matches!(context, DeclarationBoundaryContext::KeyframeSvgGlyph),
+            )
+        }
         DeclarationBoundaryContext::OrdinaryKnown(property) => {
             invalid_known_declaration_annotation(location, *property, false)
         }

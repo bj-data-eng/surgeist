@@ -672,6 +672,7 @@ pub(super) fn parse_ordinary_resolution<'i, 't>(
 
 #[derive(Clone, Copy)]
 pub(super) enum AngleParserContext {
+    SvgGlyph,
     Transform,
     Filter,
     Gradient,
@@ -682,6 +683,7 @@ pub(super) enum AngleParserContext {
 impl AngleParserContext {
     fn label(self) -> &'static str {
         match self {
+            Self::SvgGlyph => "SVG glyph orientation",
             Self::Transform => "transform",
             Self::Filter => "filter",
             Self::Gradient => "gradient",
@@ -726,7 +728,7 @@ fn collect_angle_component<'i, 't>(
     Ok((component, location, offset))
 }
 
-fn angle_error<'i>(
+pub(super) fn angle_error<'i>(
     numeric: &NumericInputContext<'_>,
     error: &crate::CssNumericConstructionError,
     fallback: cssparser::SourceLocation,

@@ -553,6 +553,7 @@ macro_rules! define_expansion_schema {
         fn universal_excludes(property: CssPropertyNameRef<'_>) -> bool {
             match property {
                 CssPropertyNameRef::Custom(_) => $exclude_custom,
+                CssPropertyNameRef::SvgGlyphOrientationVertical => false,
                 CssPropertyNameRef::Known(property) => matches!(property, $(CssKnownProperty::$excluded)|+),
             }
         }
@@ -1051,10 +1052,51 @@ impl CssCustomPropertyContribution {
     }
 }
 
+/// One completed independent SVG terminal with its original occurrence and replacement origins.
+#[derive(Clone, Debug)]
+pub struct CssSvgGlyphOrientationVerticalContribution {
+    declaration: crate::CssSvgGlyphOrientationVerticalDeclaration,
+    context: Arc<ContributionContext>,
+}
+impl CssSvgGlyphOrientationVerticalContribution {
+    #[must_use]
+    pub const fn property(&self) -> CssPropertyNameRef<'static> {
+        CssPropertyNameRef::SvgGlyphOrientationVertical
+    }
+    #[must_use]
+    pub const fn ordinary_value(&self) -> Option<&crate::CssSvgGlyphOrientationVerticalValue> {
+        self.declaration.value()
+    }
+    #[must_use]
+    pub const fn global(&self) -> Option<CssGlobalKeyword> {
+        self.declaration.global()
+    }
+    #[must_use]
+    pub fn source(&self) -> &CssDeclaration {
+        &self.context.source
+    }
+    #[must_use]
+    pub fn replacement_components(&self) -> Option<&CssComponentValues> {
+        self.context.replacement.as_ref()
+    }
+}
+fn complete_svg_contribution(
+    declaration: &crate::CssSvgGlyphOrientationVerticalDeclaration,
+    context: Arc<ContributionContext>,
+) -> CssContributions {
+    debug_assert!(declaration.substitution_dependent().is_none());
+    CssContributions::SvgGlyphOrientationVertical(CssSvgGlyphOrientationVerticalContribution {
+        declaration: declaration.clone(),
+        context,
+    })
+}
+
 /// Completed intrinsic contributions; custom values and universal resets stay symbolic.
 #[non_exhaustive]
 #[derive(Clone, Debug)]
 pub enum CssContributions {
+    /// One independent SVG terminal write, without a modern TextOrientation projection.
+    SvgGlyphOrientationVertical(CssSvgGlyphOrientationVerticalContribution),
     Longhands(CssLonghandContributions),
     UniversalReset(CssUniversalReset),
     Custom(CssCustomPropertyContribution),
@@ -1101,29 +1143,39 @@ impl CssPendingSubstitution {
                 CssExpansionErrorKind::ResidualSubstitution,
             ));
         }
-        let body = crate::property_value::checked_grammar_value_body(
-            self.source
-                .known()
-                .expect("pending known declaration")
-                .grammar(),
-            &replacement,
-            self.source.parser_context(),
-        )
+        let body = match self.source.body() {
+            CssDeclarationBody::Known(known) => crate::property_value::checked_grammar_value_body(
+                known.grammar(),
+                &replacement,
+                self.source.parser_context(),
+            ),
+            CssDeclarationBody::SvgGlyphOrientationVertical(value) => {
+                crate::property_value::checked_svg_glyph_value_body(
+                    value.admission(),
+                    &replacement,
+                    self.source.parser_context(),
+                )
+            }
+            CssDeclarationBody::Custom(_) => {
+                unreachable!("custom declarations do not create pending expansion")
+            }
+        }
         .map_err(|error| {
             CssExpansionError::new(CssExpansionErrorKind::InvalidReplacement(error))
         })?;
-        let CssDeclarationBody::Known(known) = body else {
-            unreachable!("pending expansion is created only for supported known properties");
+        let context = Arc::new(ContributionContext {
+            source: self.source.clone(),
+            replacement: Some(replacement),
+        });
+        let known = match body {
+            CssDeclarationBody::Known(known) => known,
+            CssDeclarationBody::SvgGlyphOrientationVertical(value) => {
+                return Ok(complete_svg_contribution(&value, context));
+            }
+            CssDeclarationBody::Custom(_) => unreachable!("pending grammar cannot become custom"),
         };
         let shape = expansion_shape(&known)?;
-        complete_contributions(
-            &known,
-            shape,
-            Arc::new(ContributionContext {
-                source: self.source.clone(),
-                replacement: Some(replacement),
-            }),
-        )
+        complete_contributions(&known, shape, context)
     }
 }
 
@@ -1140,6 +1192,20 @@ impl CssPendingSubstitution {
 /// resolve writing modes, evaluate lengths or colors, or load images.
 pub fn expand_declaration(source: &CssDeclaration) -> Result<CssExpansion, CssExpansionError> {
     let known = match source.body() {
+        CssDeclarationBody::SvgGlyphOrientationVertical(value) => {
+            if value.substitution_dependent().is_some() {
+                return Ok(CssExpansion::Pending(CssPendingSubstitution {
+                    source: source.clone(),
+                }));
+            }
+            return Ok(CssExpansion::Contributions(complete_svg_contribution(
+                value,
+                Arc::new(ContributionContext {
+                    source: source.clone(),
+                    replacement: None,
+                }),
+            )));
+        }
         CssDeclarationBody::Known(known) => known,
         CssDeclarationBody::Custom(_) => {
             return Ok(CssExpansion::Contributions(CssContributions::Custom(

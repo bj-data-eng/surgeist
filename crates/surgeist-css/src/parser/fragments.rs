@@ -507,6 +507,9 @@ pub(crate) fn parse_property_value_text_with_context(
     let grammar = match property {
         CssPropertyNameRef::Known(property) => PropertyValueGrammar::Known(property.grammar()),
         CssPropertyNameRef::Custom(name) => PropertyValueGrammar::Custom(name),
+        CssPropertyNameRef::SvgGlyphOrientationVertical => {
+            PropertyValueGrammar::SvgGlyph(crate::svg_glyph::SvgGlyphAdmission::css(parser_context))
+        }
     };
     property_value_text(source, grammar, importance, parser_context)
 }
@@ -540,6 +543,18 @@ pub(crate) fn parse_property_value_text_for_grammar_with_context(
         PropertyValueGrammar::Known(grammar),
         importance,
         parser_context,
+    )
+}
+
+pub(crate) fn parse_svg_glyph_attribute_value(
+    source: &str,
+    context: crate::CssParserContext,
+) -> crate::CssParseReport<Option<CssDeclaration>> {
+    property_value_text(
+        source,
+        PropertyValueGrammar::SvgGlyph(crate::svg_glyph::SvgGlyphAdmission::attribute(context)),
+        CssImportance::Normal,
+        context,
     )
 }
 

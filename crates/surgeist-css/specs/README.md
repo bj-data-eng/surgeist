@@ -221,6 +221,21 @@ points. The catalog keeps the original hash and identifies the affected source
 lines; it does not silently substitute a corrected draft.
 
 The top-level `source_reconciliations` also records bounded Color 4 and
+SVG glyph authored compatibility decisions. `I-WEBKIT-SVG-GLYPH` identifies
+the independent frozen WebKit73aa6c89 Auto/Angle definition and its exact
+raw numeric, mode and presentation-attribute consumers. Ordinary lookup retains
+the selected finite Writing Modes shorthand; explicit SVG selection supplies
+one independent SVG terminal, Auto initial, inheritance and no animation.
+Standards admits finite angles and raw Number zero; Quirks and the fixed
+attribute-value front also admit finite nonzero Numbers. Angle math remains
+authored, while attribute binding and computed quadrant rounding remain
+downstream. The recorded property and consumer hashes cover immutable Git blobs,
+with the computed-style/attribute test witnesses labelled as downstream evidence.
+The two CSSWG8032 conflicts remain unresolved. This operational record imports
+no normative SVG11 glyph document or full SVG module and adds no canonical
+schema row or Snapshot module count.
+
+The same reconciliation array records bounded Color 4 and
 Color 5 serialization decisions: grammar-valid relative alpha with explicit
 override retention, case-sensitive custom profile identifiers, nonnegative
 omitted mix weights, phase-specific numeric rounding, and deferred HSL or HWB

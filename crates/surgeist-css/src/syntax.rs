@@ -1782,17 +1782,26 @@ pub struct CssSupportsDeclaration {
     authored: Option<String>,
     property: String,
     importance: CssImportance,
-    known: Option<CssKnownDeclaration>,
+    admitted: Option<SupportsAdmitted>,
     lexical: crate::supports::SupportsLexical,
     property_index: usize,
     value_range: std::ops::Range<usize>,
+}
+#[derive(Clone, Debug, PartialEq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "admitted supports views retain their checked property values inline"
+)]
+enum SupportsAdmitted {
+    Known(CssKnownDeclaration),
+    SvgGlyph(crate::CssSvgGlyphOrientationVerticalDeclaration),
 }
 impl CssSupportsDeclaration {
     pub(crate) fn new(
         authored: Option<String>,
         property: String,
         importance: CssImportance,
-        known: Option<CssKnownDeclaration>,
+        admitted: Option<CssDeclarationBody>,
         lexical: crate::supports::SupportsLexical,
         property_index: usize,
         value_range: std::ops::Range<usize>,
@@ -1801,7 +1810,13 @@ impl CssSupportsDeclaration {
             authored,
             property,
             importance,
-            known,
+            admitted: admitted.and_then(|body| match body {
+                CssDeclarationBody::Known(value) => Some(SupportsAdmitted::Known(value)),
+                CssDeclarationBody::SvgGlyphOrientationVertical(value) => {
+                    Some(SupportsAdmitted::SvgGlyph(value))
+                }
+                CssDeclarationBody::Custom(_) => None,
+            }),
             lexical,
             property_index,
             value_range,
@@ -1821,7 +1836,20 @@ impl CssSupportsDeclaration {
     }
     #[must_use]
     pub const fn known(&self) -> Option<&CssKnownDeclaration> {
-        self.known.as_ref()
+        match &self.admitted {
+            Some(SupportsAdmitted::Known(value)) => Some(value),
+            _ => None,
+        }
+    }
+    /// Borrows the admitted independent SVG definition; `known()` returns None for it.
+    #[must_use]
+    pub const fn svg_glyph_orientation_vertical(
+        &self,
+    ) -> Option<&crate::CssSvgGlyphOrientationVerticalDeclaration> {
+        match &self.admitted {
+            Some(SupportsAdmitted::SvgGlyph(value)) => Some(value),
+            _ => None,
+        }
     }
     #[must_use]
     pub fn origin(&self) -> &CssValueOrigin {
@@ -3738,6 +3766,16 @@ pub struct CssKeyframeDeclaration {
 }
 
 impl CssKeyframeDeclaration {
+    /// Borrows the independent SVG authored body, including its retained admission.
+    #[must_use]
+    pub const fn svg_glyph_orientation_vertical(
+        &self,
+    ) -> Option<&crate::CssSvgGlyphOrientationVerticalDeclaration> {
+        match &self.body {
+            CssDeclarationBody::SvgGlyphOrientationVertical(value) => Some(value),
+            _ => None,
+        }
+    }
     pub(crate) const fn new(
         body: CssDeclarationBody,
         value_components: CssComponentValues,
@@ -3760,20 +3798,22 @@ impl CssKeyframeDeclaration {
         &self.body
     }
 
-    /// Returns the known-property declaration, or `None` for a custom declaration.
+    /// Returns the known-property declaration, or `None` for custom and independent SVG bodies.
     #[must_use]
     pub const fn known(&self) -> Option<&CssKnownDeclaration> {
         match &self.body {
             CssDeclarationBody::Known(known) => Some(known),
             CssDeclarationBody::Custom(_) => None,
+            CssDeclarationBody::SvgGlyphOrientationVertical(_) => None,
         }
     }
 
-    /// Returns the custom declaration, or `None` for a known declaration.
+    /// Returns the custom declaration, or `None` for known and independent SVG bodies.
     #[must_use]
     pub const fn custom(&self) -> Option<&CssCustomDeclaration> {
         match &self.body {
             CssDeclarationBody::Known(_) => None,
+            CssDeclarationBody::SvgGlyphOrientationVertical(_) => None,
             CssDeclarationBody::Custom(custom) => Some(custom),
         }
     }
@@ -3784,6 +3824,9 @@ impl CssKeyframeDeclaration {
         match &self.body {
             CssDeclarationBody::Known(known) => CssPropertyNameRef::Known(known.property()),
             CssDeclarationBody::Custom(custom) => CssPropertyNameRef::Custom(custom.name()),
+            CssDeclarationBody::SvgGlyphOrientationVertical(_) => {
+                CssPropertyNameRef::SvgGlyphOrientationVertical
+            }
         }
     }
 
@@ -3885,6 +3928,16 @@ impl PartialEq for CssDeclaration {
 }
 
 impl CssDeclaration {
+    /// Borrows the independent SVG authored body; known/custom accessors return None for it.
+    #[must_use]
+    pub fn svg_glyph_orientation_vertical(
+        &self,
+    ) -> Option<&crate::CssSvgGlyphOrientationVerticalDeclaration> {
+        match self.body() {
+            CssDeclarationBody::SvgGlyphOrientationVertical(value) => Some(value),
+            _ => None,
+        }
+    }
     #[must_use]
     pub(crate) fn new_parsed(
         parser_context: crate::CssParserContext,
@@ -3952,20 +4005,22 @@ impl CssDeclaration {
         &self.occurrence.body
     }
 
-    /// Returns the known-property declaration, or `None` for a custom declaration.
+    /// Returns the known-property declaration, or `None` for custom and independent SVG bodies.
     #[must_use]
     pub fn known(&self) -> Option<&CssKnownDeclaration> {
         match self.body() {
             CssDeclarationBody::Known(known) => Some(known),
             CssDeclarationBody::Custom(_) => None,
+            CssDeclarationBody::SvgGlyphOrientationVertical(_) => None,
         }
     }
 
-    /// Returns the custom declaration, or `None` for a known declaration.
+    /// Returns the custom declaration, or `None` for known and independent SVG bodies.
     #[must_use]
     pub fn custom(&self) -> Option<&CssCustomDeclaration> {
         match self.body() {
             CssDeclarationBody::Known(_) => None,
+            CssDeclarationBody::SvgGlyphOrientationVertical(_) => None,
             CssDeclarationBody::Custom(custom) => Some(custom),
         }
     }
@@ -3976,6 +4031,9 @@ impl CssDeclaration {
         match self.body() {
             CssDeclarationBody::Known(known) => CssPropertyNameRef::Known(known.property()),
             CssDeclarationBody::Custom(custom) => CssPropertyNameRef::Custom(custom.name()),
+            CssDeclarationBody::SvgGlyphOrientationVertical(_) => {
+                CssPropertyNameRef::SvgGlyphOrientationVertical
+            }
         }
     }
 
@@ -4033,10 +4091,11 @@ impl CssDeclaration {
     }
 }
 
-/// The authored body of a declaration, split between known and custom property invariants.
+/// The authored body of a declaration, with known, custom and independent SVG invariants.
 ///
 /// Known values are coupled to their schema identity; custom values remain attached to their
-/// case-sensitive custom name. Parsing and [`crate::parse_property_value`] construct these
+/// case-sensitive custom name. SVG values retain their actual independent admission.
+/// Parsing and [`crate::parse_property_value`] construct these
 /// checked bodies without performing cascade or substitution.
 #[non_exhaustive]
 #[expect(
@@ -4045,6 +4104,8 @@ impl CssDeclaration {
 )]
 #[derive(Clone, Debug, PartialEq)]
 pub enum CssDeclarationBody {
+    /// The independent SVG authored definition, retaining CSS versus attribute admission.
+    SvgGlyphOrientationVertical(crate::CssSvgGlyphOrientationVerticalDeclaration),
     /// A schema-recognized property carrying only its property-specific declared value.
     Known(CssKnownDeclaration),
     /// A case-sensitive custom property carrying its current authored value representation.
@@ -4091,11 +4152,14 @@ impl CssCustomDeclaration {
 
 /// A borrowed authored property-name view derived from a declaration body.
 ///
-/// The known branch uses canonical generated identity; the custom branch preserves its
+/// The known branch uses canonical generated identity, SVG has its independent terminal,
+/// and the custom branch preserves its
 /// case-sensitive name. The view stores no parallel identity and performs no cascade lookup.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssPropertyNameRef<'a> {
+    /// The independent SVG terminal, selected explicitly without a canonical schema target.
+    SvgGlyphOrientationVertical,
     /// A canonical schema-generated known property identity.
     Known(CssKnownProperty),
     /// A borrowed case-sensitive custom property name.

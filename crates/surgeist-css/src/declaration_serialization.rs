@@ -240,6 +240,16 @@ pub(crate) fn append_authored_declaration(
     writer.node()?;
     writer.node()?; // One semantic property name.
     match body {
+        CssDeclarationBody::SvgGlyphOrientationVertical(value) => {
+            writer.append("glyph-orientation-vertical: ")?;
+            if let Some(value) = value.value() {
+                value.append_to_rule_writer(writer)?;
+            } else if let Some(keyword) = value.global() {
+                append_global(keyword, writer)?;
+            } else {
+                append_retained_value(value_components, writer)?;
+            }
+        }
         CssDeclarationBody::Known(known) => {
             writer.append(known.grammar().name())?;
             writer.append(": ")?;

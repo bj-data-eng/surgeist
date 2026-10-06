@@ -151,13 +151,15 @@ pub(crate) fn construct_supports_declaration(
     values: CssComponentValues,
     limits: CssComponentValueLimits,
 ) -> Result<CssSupportsDeclaration, CssSupportsConstructionError> {
+    construct_supports_declaration_with_context(values, limits, crate::CssParserContext::default())
+}
+pub(crate) fn construct_supports_declaration_with_context(
+    values: CssComponentValues,
+    limits: CssComponentValueLimits,
+    context: crate::CssParserContext,
+) -> Result<CssSupportsDeclaration, CssSupportsConstructionError> {
     validate(&values, limits)?;
-    let value = declaration(
-        SupportsLexical::root(values),
-        false,
-        limits,
-        crate::CssParserContext::default(),
-    )?;
+    let value = declaration(SupportsLexical::root(values), false, limits, context)?;
     value.serialize_with_limit(limits.max_css_bytes())?;
     Ok(value)
 }
@@ -396,13 +398,31 @@ fn declaration(
             _ => {}
         }
     }
-    let known = if authored {
-        parsed_known(name, &items[colon + 1..value_end], parser_context)?
-    } else if let Some(grammar) = CssPropertyGrammar::from_name(name) {
+    let admitted = if authored {
+        parsed_admitted(name, &items[colon + 1..value_end], parser_context)?
+    } else if parser_context.selects_svg_glyph(name)
+        || CssPropertyGrammar::from_name(name).is_some()
+    {
         let values =
             CssComponentValues::try_new_with_limits(items[colon + 1..value_end].to_vec(), limits)?;
-        match crate::property_value::checked_grammar_value_body(grammar, &values, parser_context) {
-            Ok(CssDeclarationBody::Known(known)) => Some(known),
+        let checked = if parser_context.selects_svg_glyph(name) {
+            crate::property_value::checked_svg_glyph_value_body(
+                crate::svg_glyph::SvgGlyphAdmission::css(parser_context),
+                &values,
+                parser_context,
+            )
+        } else {
+            crate::property_value::checked_grammar_value_body(
+                CssPropertyGrammar::from_name(name).expect("recognized grammar"),
+                &values,
+                parser_context,
+            )
+        };
+        match checked {
+            Ok(
+                body @ (CssDeclarationBody::Known(_)
+                | CssDeclarationBody::SvgGlyphOrientationVertical(_)),
+            ) => Some(body),
             Err(error) => {
                 let component_kind = match error.kind() {
                     CssPropertyValueErrorKind::Component(kind) => Some(*kind),
@@ -452,7 +472,7 @@ fn declaration(
         authored,
         property,
         importance,
-        known,
+        admitted,
         lexical,
         property_index,
         colon + 1..value_end,
@@ -462,14 +482,15 @@ fn declaration(
 // Keep parser recovery policy and authored alias selection while retaining the
 // original snapshot. Masking only preceding bytes preserves component offsets;
 // ending the cursor at the original value boundary preserves EOF recovery.
-fn parsed_known(
+fn parsed_admitted(
     name: &str,
     values: &[CssComponentValue],
     parser_context: crate::CssParserContext,
-) -> Result<Option<CssKnownDeclaration>, CssSupportsConstructionError> {
-    let Some(resolved) = crate::properties::resolve_property_name(name) else {
+) -> Result<Option<CssDeclarationBody>, CssSupportsConstructionError> {
+    let resolved = crate::properties::resolve_property_name(name);
+    if resolved.is_none() && !parser_context.selects_svg_glyph(name) {
         return Ok(None);
-    };
+    }
     let Some(first) = values.first().and_then(CssComponentValue::parsed_origin) else {
         return Ok(None);
     };
@@ -484,8 +505,25 @@ fn parsed_known(
     let mut parser_input = cssparser::ParserInput::new(&working_source);
     let mut input = Parser::new(&mut parser_input);
     let numeric = crate::numeric::NumericInputContext::parsed(first.source());
-    match super::parse_known_declaration_body(resolved, &mut input, &numeric, parser_context) {
-        Ok(CssDeclarationBody::Known(known)) if input.is_exhausted() => Ok(Some(known)),
+    let parsed = if parser_context.selects_svg_glyph(name) {
+        super::parse_svg_glyph_declaration_body(
+            &mut input,
+            &numeric,
+            crate::svg_glyph::SvgGlyphAdmission::css(parser_context),
+        )
+    } else {
+        super::parse_known_declaration_body(
+            resolved.expect("recognized known grammar"),
+            &mut input,
+            &numeric,
+            parser_context,
+        )
+    };
+    match parsed {
+        Ok(
+            body @ (CssDeclarationBody::Known(_)
+            | CssDeclarationBody::SvgGlyphOrientationVertical(_)),
+        ) if input.is_exhausted() => Ok(Some(body)),
         Err(error) if terminal_error(&error) => {
             if let cssparser::ParseErrorKind::Custom(error) = error.kind
                 && let ErrorKind::InvalidComponentValue(component) = error.kind()

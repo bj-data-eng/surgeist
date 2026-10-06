@@ -5143,7 +5143,8 @@ pure-length spacing models have no remaining grammar owner.
 `CssWordSpacingPropertyValue::spacing()` and
 `CssLetterSpacingPropertyValue::value()` borrow the shared checked value.
 
-`glyph-orientation-vertical` is the selected Writing Modes legacy shorthand,
+Ordinary free parsing and a newly constructed `CssParserContext` interpret
+`glyph-orientation-vertical` as the selected Writing Modes legacy shorthand,
 not a name-equivalent schema alias. Its implemented compatibility subset admits
 decoded `auto`, unitless integer-flag `0` and `90`, and exact degree-valued
 `0deg` and `90deg`, mapping to a parser-produced `text-orientation` declaration.
@@ -5159,6 +5160,89 @@ math applicability without a defined bridge to the finite keyword target
 ([CSSWG issue 8032](https://github.com/w3c/csswg-drafts/issues/8032)). The parser
 continues to enforce its documented compatibility subset; this metadata does
 not declare every other spelling or math expression invalid CSS.
+
+### Independent SVG glyph definition
+
+The immutable `CssParserContext::with_svg_glyph_orientation_vertical()` selects
+the independent frozen [WebKit SVG authored definition](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/CSSProperties.json#L5350-L5367)
+for decoded property-name lookup. This selection preserves the document mode
+and is idempotent. `CssPropertyGrammar::from_name` and both explicit-grammar
+fronts keep their finite Writing Modes meaning, even in an SVG-selected context.
+The explicit `CssPropertyNameRef::SvgGlyphOrientationVertical` handle selects
+SVG through checked/raw-value fronts even in a default context.
+
+`CssSvgGlyphOrientationVerticalValue` retains Auto, an existing `CssAngleValue`,
+or exactly one checked Number token with implied degrees. Standards CSS admits
+finite raw angle dimensions and binary64-zero raw Numbers; Quirks also admits
+finite nonzero Numbers. Raw overflow rejects, while Angle-root calculations,
+including typed nonfinite constants, retain their authored tree. Number-root
+math receives no literal exception. The private binary64 conversion decides
+raw literal eligibility only; no floating value is stored or evaluated.
+Native constructors report existing typed numeric failures at the original
+origin. Equality follows the retained providers' origin-bearing equality rather
+than computed orientation or canonical text.
+
+The fixed `parse_svg_glyph_orientation_vertical_attribute_value` and
+`parse_svg_glyph_orientation_vertical_attribute_components` context methods
+admit finite nonzero Numbers independently of the document mode and selected
+lookup definition. They always construct Normal importance and reject root
+annotations or declaration delimiters before globals or pending syntax. These
+fronts parse attribute values; root owns markup binding. The body retains its
+actual mode and attribute role for strict pending replacement, supports and
+keyframe views. `CssDeclaration::svg_glyph_orientation_vertical()` borrows it;
+`known()` and `custom()` return None for this independent body.
+
+```rust
+use surgeist_css::{CssParserContext, CssParserMode, CssPropertyNameRef};
+
+let svg = CssParserContext::new(CssParserMode::Standards)
+    .with_svg_glyph_orientation_vertical();
+let report = svg.parse_declaration("glyph-orientation-vertical: 180deg");
+assert!(report.is_clean());
+let declaration = report.syntax().as_ref().unwrap();
+assert_eq!(declaration.property_name(), CssPropertyNameRef::SvgGlyphOrientationVertical);
+assert!(declaration.svg_glyph_orientation_vertical().unwrap().value().unwrap().angle().is_some());
+assert_eq!(declaration.to_specified_css().unwrap(), "glyph-orientation-vertical: 180deg;");
+
+let attribute = svg.parse_svg_glyph_orientation_vertical_attribute_value("90.0");
+let attribute = attribute.syntax().as_ref().unwrap();
+assert!(attribute.svg_glyph_orientation_vertical().unwrap().is_presentation_attribute());
+assert_eq!(attribute.to_specified_css().unwrap(), "glyph-orientation-vertical: 90deg;");
+```
+
+SVG expansion produces one `CssSvgGlyphOrientationVerticalContribution`, with
+Auto initial metadata, inheritance, no animation and no reset-only members.
+Globals remain symbolic. Pending reentry uses the actual body definition and
+admission, retaining original occurrence/importance and replacement origins;
+residual substitutions fail before grammar and failures permit retry. Symbolic
+`all` includes this terminal as a potential target without enumerating writes.
+Normalization preserves source order, duplicates and cumulative limits.
+
+Context rule-supports fronts retain mode and definition. Context
+`parse_css_supports_condition` and `parse_css_supports_declaration` method fronts
+force Standards while retaining the definition choice. They preserve
+complete-condition-first parsing and grammar-only parentheses retry, literal
+two-argument property validation, separate argument snapshots and the
+two-argument-only root importance exclusion. Unsupported declarations retain
+lexical tests with no typed SVG view; `CssSupportsDeclaration` has the same
+borrowed SVG accessor. Free method fronts keep Standards and the finite alias.
+
+Specified output delegates to the existing Angle/math and six-fraction-place
+CSSOM decimal writers. Unitless Numbers write explicit `deg` syntax using one
+original leaf visit; the transparent carrier adds no node. Output applies no
+modulo, absolute value or quadrant rounding. Canonical output needs explicit SVG
+selection on reparse and can round coefficients or change the lexical branch;
+it does not promise origin or original-graph equality. Both node budgets and
+bytes remain cumulative and failures return no partial public string.
+
+`I-WEBKIT-SVG-GLYPH` and
+`interop.property.svg-glyph-orientation-vertical` attribute only this independent
+operational definition. The exact frozen property, consumer, mode and attribute
+witnesses are recorded in [the source reconciliation](../specs/catalog.json).
+Computed-style rounding tests establish downstream provenance, not authored
+quadrant expectations. No normative SVG11 glyph source or full module is
+imported. The finite alias remains Partial, and both genuine CSSWG8032 conflicts
+remain unresolved; operational SVG support does not establish normative consensus.
 
 ```rust
 use surgeist_css::{

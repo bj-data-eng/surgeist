@@ -1,4 +1,4 @@
-//! Explicit authored document parsing mode, independent of namespace bindings.
+//! Explicit authored document mode and glyph definition, independent of namespace bindings.
 use crate::*;
 
 /// The document mode that selects contextual authored CSS grammar.
@@ -11,19 +11,86 @@ pub enum CssParserMode {
     Quirks,
 }
 
-/// Immutable authored grammar context. Ordinary free parsing functions use Standards.
+/// Immutable authored grammar context. Ordinary free parsing functions use Standards
+/// and the finite Writing Modes glyph alias. Named SVG selection is independent of mode.
 ///
 /// This context does not resolve colors, evaluate queries, bind DOM objects, or
 /// supply selector namespaces. Declarations retain it for strict pending reentry.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct CssParserContext {
     mode: CssParserMode,
+    glyph: GlyphDefinition,
+}
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+enum GlyphDefinition {
+    #[default]
+    WritingModes,
+    Svg,
 }
 impl CssParserContext {
     /// Selects one closed authored document mode.
     #[must_use]
     pub const fn new(mode: CssParserMode) -> Self {
-        Self { mode }
+        Self {
+            mode,
+            glyph: GlyphDefinition::WritingModes,
+        }
+    }
+    /// Selects the independent frozen SVG authored definition in property-name lookup.
+    /// Explicit finite grammar handles retain their finite meaning. This is idempotent.
+    #[must_use]
+    pub const fn with_svg_glyph_orientation_vertical(mut self) -> Self {
+        self.glyph = GlyphDefinition::Svg;
+        self
+    }
+    pub(crate) fn selects_svg_glyph(self, name: &str) -> bool {
+        self.glyph == GlyphDefinition::Svg
+            && name.eq_ignore_ascii_case("glyph-orientation-vertical")
+    }
+    const fn standards(mut self) -> Self {
+        self.mode = CssParserMode::Standards;
+        self
+    }
+    /// Parses a fixed SVG presentation attribute value with Normal importance.
+    /// This retains document mode but uses attribute admission, independently of lookup selection.
+    #[must_use]
+    pub fn parse_svg_glyph_orientation_vertical_attribute_value(
+        self,
+        source: &str,
+    ) -> CssParseReport<Option<CssDeclaration>> {
+        crate::parser::parse_svg_glyph_attribute_value(source, self)
+    }
+    /// Checks a fixed SVG presentation attribute's components; markup binding is downstream.
+    pub fn parse_svg_glyph_orientation_vertical_attribute_components(
+        self,
+        values: CssComponentValues,
+    ) -> Result<CssDeclaration, CssPropertyValueParseError> {
+        let body = crate::property_value::checked_svg_glyph_value_body(
+            crate::svg_glyph::SvgGlyphAdmission::attribute(self),
+            &values,
+            self,
+        )?;
+        Ok(CssDeclaration::new_constructed(
+            self,
+            body,
+            CssImportance::Normal,
+            values,
+        ))
+    }
+    /// Parses CSS.supports() condition text with Standards admission and this definition choice.
+    pub fn parse_css_supports_condition(
+        self,
+        source: &str,
+    ) -> Result<CssSupportsCondition, CssSupportsConstructionError> {
+        css_supports_condition(source, self.standards())
+    }
+    /// Parses the literal property/value overload with Standards admission and this definition choice.
+    pub fn parse_css_supports_declaration(
+        self,
+        property: &str,
+        value: &str,
+    ) -> Result<CssSupportsDeclaration, CssSupportsConstructionError> {
+        css_supports_declaration(property, value, self.standards())
     }
     /// Returns the immutable selected mode.
     #[must_use]
@@ -137,18 +204,31 @@ impl CssParserContext {
 pub fn parse_css_supports_condition(
     source: &str,
 ) -> Result<CssSupportsCondition, CssSupportsConstructionError> {
+    css_supports_condition(source, CssParserContext::default())
+}
+fn css_supports_condition(
+    source: &str,
+    context: CssParserContext,
+) -> Result<CssSupportsCondition, CssSupportsConstructionError> {
     let values = parse_component_values(source)?;
     let namespaces = CssNamespaceContext::default();
-    match CssSupportsCondition::try_from_components(values.clone(), &namespaces) {
+    match CssSupportsCondition::try_from_components_in_context(
+        values.clone(),
+        &namespaces,
+        CssComponentValueLimits::default(),
+        context,
+    ) {
         Ok(condition) => Ok(condition),
         Err(
             CssSupportsConstructionError::InvalidConditionGrammar { .. }
             | CssSupportsConstructionError::InvalidDeclarationGrammar { .. },
         ) => {
             let block = CssComponentValue::try_block(CssBlockKind::Parenthesis, values)?;
-            CssSupportsCondition::try_from_components(
+            CssSupportsCondition::try_from_components_in_context(
                 CssComponentValues::try_new(vec![block])?,
                 &namespaces,
+                CssComponentValueLimits::default(),
+                context,
             )
         }
         Err(error) => Err(error),
@@ -163,6 +243,13 @@ pub fn parse_css_supports_condition(
 pub fn parse_css_supports_declaration(
     property: &str,
     value: &str,
+) -> Result<CssSupportsDeclaration, CssSupportsConstructionError> {
+    css_supports_declaration(property, value, CssParserContext::default())
+}
+fn css_supports_declaration(
+    property: &str,
+    value: &str,
+    context: CssParserContext,
 ) -> Result<CssSupportsDeclaration, CssSupportsConstructionError> {
     let property_values = parse_component_values(property)?;
     if let Some(origin) = property_values.first_implicit_origin() {
@@ -201,5 +288,8 @@ pub fn parse_css_supports_declaration(
     let mut items = property_values.items().to_vec();
     items.push(CssComponentValue::try_token(":")?);
     items.extend_from_slice(value.items());
-    CssSupportsDeclaration::try_from_components(CssComponentValues::try_new(items)?)
+    CssSupportsDeclaration::try_from_components_in_context(
+        CssComponentValues::try_new(items)?,
+        context,
+    )
 }

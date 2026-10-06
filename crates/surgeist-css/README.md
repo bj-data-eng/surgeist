@@ -8,6 +8,18 @@ unsupported productions; consult the [support reference](docs/reference.md#confo
 for exact boundaries. Cascade, substitution, matching, resource loading, and
 layout belong to downstream consumers.
 
+`CssParserContext::with_svg_glyph_orientation_vertical()` explicitly selects
+the independent frozen SVG authored definition while ordinary fronts retain
+the finite Writing Modes shorthand. The SVG body preserves Auto, Angle-root
+values or finite implied-degree Number literals, actual document mode and
+presentation-attribute admission through checked construction, pending reentry,
+contributions and bounded specified output. Fixed attribute-value methods parse
+Normal-importance values; root owns markup binding. Explicit finite grammar
+handles keep their finite meaning. Unitless canonical output becomes degrees
+and uses the shared rounding policy; computation and quadrant rounding remain
+downstream. See the [glyph reference](docs/reference.md#independent-svg-glyph-definition)
+for precedence, sources and unresolved normative clauses.
+
 Authored Shapes 1 retains `shape-outside` with images, the eight shared basic
 shapes and four reference boxes; `shape-image-threshold` keeps unrestricted
 number/percentage values; `shape-margin` keeps exact nonnegative literals and
