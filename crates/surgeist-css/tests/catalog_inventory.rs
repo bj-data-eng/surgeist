@@ -1,14 +1,10 @@
 #[path = "common/property_expectations.rs"]
 mod property_expectations;
 
-mod catalog_inventory {
-    pub mod vectors;
-}
-
-use catalog_inventory::vectors::{negative_vectors, positive_vectors};
+use property_expectations::{BoundaryOutcome, CASES, CatalogExpectation};
 use surgeist_css::{
-    CssErrorCode, CssFeatureKind, CssKnownPropertyValueRef, CssOverflow, CssSupportStatus,
-    ErrorKind, feature_metadata, parse_style_attribute, property_support_metadata,
+    CssErrorCode, CssFeatureKind, CssSupportStatus, ErrorKind, feature_metadata,
+    parse_style_attribute, property_support_metadata,
 };
 
 const CSS_WIDE_KEYWORDS: &[&str] = &["inherit", "initial", "unset", "revert", "revert-layer"];
@@ -31,31 +27,34 @@ fn contains_substitution(authored_value: &str) -> bool {
 
 #[test]
 fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
-    for vector in positive_vectors() {
-        let metadata = property_support_metadata(vector.canonical_name)
-            .unwrap_or_else(|| panic!("missing metadata for `{}`", vector.canonical_name));
+    for case in CASES {
+        let Some(CatalogExpectation::Grammar {
+            feature_id,
+            production,
+            ..
+        }) = &case.catalog
+        else {
+            continue;
+        };
+        let metadata = property_support_metadata(case.name)
+            .unwrap_or_else(|| panic!("missing metadata for `{}`", case.name));
         let feature = metadata.feature();
-
-        assert_eq!(feature.id().as_str(), vector.id);
+        assert_eq!(metadata.property(), case.property);
+        assert_eq!(feature.id().as_str(), *feature_id);
         assert_eq!(feature.kind(), CssFeatureKind::Property);
-        assert_eq!(feature.spelling(), vector.canonical_name);
-        if matches!(
-            vector.id,
-            "baseline.property.float" | "baseline.property.clear"
-        ) {
+        assert_eq!(feature.spelling(), case.name);
+        if let Some(production) = production {
             assert_eq!(
                 feature.production(),
-                "#float-clear",
-                "{} Logical 1 production",
-                vector.id
+                *production,
+                "{} exact production",
+                case.name
             );
-        } else if vector.canonical_name == "backdrop-filter" {
-            assert_eq!(feature.production(), "#BackdropFilterProperty");
         } else {
             assert!(
                 feature.production().contains("#propdef-"),
                 "{} exact property production",
-                vector.id
+                feature_id
             );
         }
         assert_eq!(feature.recognized_unsupported_code(), None);
@@ -63,49 +62,22 @@ fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
             feature.source().id().as_str(),
             "I01-BASE-PARSER",
             "{} retained generic baseline provenance",
-            vector.id
+            feature_id
         );
         assert_ne!(
             feature.source().url().is_some(),
             feature.source().repository_provenance().is_some(),
             "{} source provenance XOR",
-            vector.id
+            feature_id
         );
-        assert_eq!(metadata.property().canonical_name(), vector.canonical_name);
-        assert_eq!(metadata.canonical_name(), vector.canonical_name);
-        let expected_aliases: &[&str] = match vector.canonical_name {
-            "align-content" => &["-webkit-align-content"],
-            "align-items" => &["-webkit-align-items"],
-            "align-self" => &["-webkit-align-self"],
-            "justify-content" => &["-webkit-justify-content"],
-            "flex" => &["-webkit-flex"],
-            "flex-basis" => &["-webkit-flex-basis"],
-            "flex-direction" => &["-webkit-flex-direction"],
-            "flex-flow" => &["-webkit-flex-flow"],
-            "flex-grow" => &["-webkit-flex-grow"],
-            "flex-shrink" => &["-webkit-flex-shrink"],
-            "flex-wrap" => &["-webkit-flex-wrap"],
-            "order" => &["-webkit-order"],
-            "row-gap" => &["grid-row-gap"],
-            "column-gap" => &["grid-column-gap"],
-            "gap" => &["grid-gap"],
-            "overflow-wrap" => &["word-wrap"],
-            "font-width" => &["font-stretch"],
-            _ => &[],
-        };
-        assert_eq!(metadata.aliases(), expected_aliases);
-        assert_eq!(metadata.property().aliases(), expected_aliases);
-        if !expected_aliases.is_empty() {
+        assert_eq!(metadata.property().canonical_name(), case.name);
+        assert_eq!(metadata.canonical_name(), case.name);
+        assert_eq!(metadata.aliases(), case.aliases);
+        assert_eq!(metadata.property().aliases(), case.aliases);
+        if !case.aliases.is_empty() {
             assert_eq!(
                 feature.source().id().as_str(),
-                match vector.canonical_name {
-                    "overflow-wrap" => "S-TEXT3",
-                    "font-width" => "I-FONTS4-20260907",
-                    "order" => "S-DISPLAY3",
-                    "flex" | "flex-basis" | "flex-direction" | "flex-flow" | "flex-grow"
-                    | "flex-shrink" | "flex-wrap" => "O-FLEXBOX1",
-                    _ => "S-ALIGN3",
-                }
+                case.source_id.expect("alias provenance expectation")
             );
             assert_eq!(feature.status(), CssSupportStatus::Complete);
             assert_eq!(feature.supported_subset(), None);
@@ -113,27 +85,24 @@ fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
         }
         assert!(std::ptr::eq(
             feature,
-            feature_metadata(vector.id).expect("exact feature lookup")
+            feature_metadata(feature_id).expect("exact feature lookup")
         ));
-
-        for alias in expected_aliases {
+        for alias in case.aliases {
             let alias_metadata = property_support_metadata(alias)
                 .unwrap_or_else(|| panic!("missing alias metadata for `{alias}`"));
             assert!(std::ptr::eq(alias_metadata.feature(), feature));
             let folded = alias.to_ascii_uppercase();
             assert_eq!(
                 property_support_metadata(&folded).map(|entry| entry.property()),
-                Some(metadata.property())
+                Some(case.property)
             );
         }
-
-        let folded = vector.canonical_name.to_ascii_uppercase();
+        let folded = case.name.to_ascii_uppercase();
         assert_eq!(
             property_support_metadata(&folded).map(|entry| entry.property()),
-            Some(metadata.property())
+            Some(case.property)
         );
     }
-
     for name in [
         "--display",
         "--custom",
@@ -147,307 +116,172 @@ fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
         );
     }
     assert!(feature_metadata("BASELINE.PROPERTY.DISPLAY").is_none());
-
-    let exact_source_cases = [
-        ("display", "S-DISPLAY3"),
-        ("visibility", "S-DISPLAY3"),
-        ("all", "O-CASCADE4"),
-        ("margin", "O-BOX3"),
-        ("color", "O-COLOR4"),
-        ("background", "O-BACKGROUNDS3"),
-        ("font", "I-FONTS4-20260907"),
-        ("font-width", "I-FONTS4-20260907"),
-        ("direction", "O-WRITING3"),
-        ("box-sizing", "I-SIZING3-20260904"),
-        ("writing-mode", "S-WRITING4"),
-        ("text-combine-upright", "S-WRITING4"),
-        ("flex", "O-FLEXBOX1"),
-        ("cursor", "O-UI3"),
-        ("transform", "O-TRANSFORMS1"),
-        ("overflow-x", "X-OVERFLOW3"),
-        ("gap", "S-ALIGN3"),
-        ("content-visibility", "I-CONTAIN2"),
-        ("counter-set", "I-LISTS3"),
-        ("flow-tolerance", "X-GRID3-20260121"),
-        ("item-direction", "X-GRID3-20260121"),
-        ("item-wrap", "X-GRID3-20260121"),
-        ("item-pack", "X-GRID3-20260121"),
-        ("item-flow", "X-GRID3-20260121"),
-        ("grid", "R-GRID2"),
-        ("wrap-inside", "X-TEXT4"),
-        ("wrap-before", "X-TEXT4"),
-        ("wrap-after", "X-TEXT4"),
-        ("line-break", "X-TEXT4"),
-        ("word-space-transform", "X-TEXT4"),
-        ("tab-size", "X-TEXT4"),
-        ("text-indent", "X-TEXT4"),
-        ("text-transform", "X-TEXT4"),
-        ("vertical-align", "O-CSS2"),
-        ("quotes", "X-CONTENT3"),
-        ("word-spacing", "X-TEXT4"),
-        ("letter-spacing", "X-TEXT4"),
-        ("text-decoration-line", "S-TEXTDECOR3"),
-        ("text-decoration-thickness", "X-TEXTDECOR4"),
-        ("inset", "I-POSITION3"),
-        ("box-decoration-break", "S-BREAK3"),
-        ("will-change", "I-WILLCHANGE1"),
-        ("overflow-anchor", "I-SCROLLANCHORING1"),
-        ("order", "S-DISPLAY3"),
-        ("aspect-ratio", "X-SIZING4-20260904"),
-        ("scrollbar-width", "R-SCROLLBARS1"),
-        ("scrollbar-color", "R-SCROLLBARS1"),
-        ("color-scheme", "R-COLORADJUST1"),
-        ("forced-color-adjust", "R-COLORADJUST1"),
-        ("print-color-adjust", "R-COLORADJUST1"),
-        ("color-adjust", "R-COLORADJUST1"),
-        ("user-select", "X-UI4"),
-        ("translate", "I-TRANSFORMS2"),
-        ("filter", "I-FILTER1"),
-        ("backdrop-filter", "X-BACKDROP-FILTER"),
-        ("mask", "S-MASKING1"),
-        ("transition", "I-TRANSITIONS1"),
-        ("animation", "I-ANIMATIONS1"),
-    ];
-    for (property, source_id) in exact_source_cases.into_iter().chain(
-        property_expectations::CASES
-            .iter()
-            .map(|case| (case.name, case.source_id)),
-    ) {
-        let feature = property_support_metadata(property)
-            .expect("representative property")
-            .feature();
-        assert_eq!(feature.source().id().as_str(), source_id, "{property}");
+    for case in CASES {
+        if let Some(source_id) = case.source_id {
+            let metadata = property_support_metadata(case.name)
+                .expect("independently expected property provenance");
+            assert_eq!(metadata.property(), case.property);
+            assert_eq!(
+                metadata.feature().source().id().as_str(),
+                source_id,
+                "{} provenance",
+                case.name
+            );
+        }
     }
 }
 
 #[test]
 fn authored_property_cases_exercise_public_parser_behavior() {
-    for vector in positive_vectors() {
-        if vector.canonical_name == "all" {
+    for case in CASES {
+        let Some(CatalogExpectation::Grammar {
+            feature_id,
+            positive,
+            boundary,
+            ..
+        }) = &case.catalog
+        else {
+            continue;
+        };
+        if case.name == "all" {
             assert!(
                 CSS_WIDE_KEYWORDS
                     .iter()
-                    .any(|keyword| vector.authored_value.trim().eq_ignore_ascii_case(keyword))
-                    || contains_substitution(vector.authored_value),
+                    .any(|keyword| positive.trim().eq_ignore_ascii_case(keyword))
+                    || contains_substitution(positive),
                 "`all` positive must use its valid global/substitution contract"
             );
         } else {
             assert!(
-                !starts_with_css_wide_keyword(vector.authored_value),
-                "{} positive must reach property-specific dispatch",
-                vector.id
+                !starts_with_css_wide_keyword(positive),
+                "{} positive must use an ordinary value",
+                feature_id
             );
             assert!(
-                !contains_substitution(vector.authored_value),
-                "{} positive must not use substitution-dependent parsing",
-                vector.id
+                !contains_substitution(positive),
+                "{} positive must reach property-specific dispatch",
+                feature_id
             );
         }
-        let report = parse_style_attribute(&format!(
-            "{}: {}",
-            vector.canonical_name, vector.authored_value
-        ));
-        let (declarations, diagnostics) = report.into_parts();
+        let report = parse_style_attribute(&format!("{}: {}", case.name, positive));
         assert!(
-            diagnostics.is_empty(),
-            "{} positive vector produced {diagnostics:?}",
-            vector.id
+            report.is_clean(),
+            "{} positive diagnostics: {:?}",
+            feature_id,
+            report.diagnostics()
         );
-        let [declaration] = declarations.as_slice() else {
+        let [declaration] = report.syntax().as_slice() else {
             panic!(
-                "{} positive vector did not retain one declaration",
-                vector.id
+                "{} positive must retain exactly one declaration",
+                feature_id
             );
         };
         let known = declaration
             .known()
-            .unwrap_or_else(|| panic!("{} positive was not a known declaration", vector.id));
-        assert_eq!(known.property().canonical_name(), vector.canonical_name);
-        assert_eq!(known.property().stable_id(), vector.id);
-    }
+            .expect("ordinary known property declaration");
+        assert_eq!(known.property(), case.property);
+        assert_eq!(known.property().canonical_name(), case.name);
+        assert_eq!(known.property().stable_id(), *feature_id);
 
-    for vector in negative_vectors() {
-        if vector.canonical_name == "all" {
-            assert_eq!(vector.authored_value, "block");
+        let negative = boundary.authored;
+        if case.name == "all" {
+            assert_eq!(negative, "block");
         } else {
             assert!(
-                !vector.authored_value.trim_end().ends_with('/'),
+                !negative.trim_end().ends_with('/'),
                 "{} negative must use a property-specific rejection, not shared trailing syntax",
-                vector.id
+                feature_id
             );
         }
         assert!(
-            !starts_with_css_wide_keyword(vector.authored_value),
+            !starts_with_css_wide_keyword(negative),
             "{} negative must reach property-specific dispatch",
-            vector.id
+            feature_id
         );
         assert!(
-            !contains_substitution(vector.authored_value),
+            !contains_substitution(negative),
             "{} negative must not use substitution-dependent parsing",
-            vector.id
+            feature_id
         );
-        // These archived negative vectors captured the I01 omission of `auto`.
-        // Overflow 3 §3.1 admits it on both axes and their shorthand; retain the
-        // old vector while checking the current typed result independently.
-        if matches!(
-            vector.id,
-            "baseline.property.overflow"
-                | "baseline.property.overflow-x"
-                | "baseline.property.overflow-y"
-        ) {
-            assert_eq!(vector.authored_value, "auto");
-            let report = parse_style_attribute(&format!(
-                "{}: {}",
-                vector.canonical_name, vector.authored_value
-            ));
-            assert!(report.is_clean(), "{} current auto", vector.id);
+        let report = parse_style_attribute(&format!("{}: {}", case.name, negative));
+        if let BoundaryOutcome::Accepted(assertion) = boundary.outcome {
+            // The three archived overflow stimuli remain provenance-bearing
+            // cases whose current accepted outcome is explicit in their records.
+            assert_eq!(negative, "auto");
+            assert!(report.is_clean(), "{} current auto", feature_id);
             let [declaration] = report.syntax().as_slice() else {
-                panic!("{} must retain one declaration", vector.id);
+                panic!("{} must retain one declaration", feature_id);
             };
-            let known = declaration.known().expect("known overflow declaration");
-            assert_eq!(known.property().stable_id(), vector.id);
-            match known.property_value().expect("typed overflow value") {
-                CssKnownPropertyValueRef::Overflow(value) => {
-                    assert_eq!(value.value().x(), CssOverflow::Auto);
-                    assert_eq!(value.value().authored_y(), None);
-                    assert_eq!(value.value().y(), CssOverflow::Auto);
-                }
-                CssKnownPropertyValueRef::OverflowX(value) => {
-                    assert_eq!(*value.value(), CssOverflow::Auto);
-                }
-                CssKnownPropertyValueRef::OverflowY(value) => {
-                    assert_eq!(*value.value(), CssOverflow::Auto);
-                }
-                other => panic!("{} wrong current overflow value: {other:?}", vector.id),
-            }
+            let known = declaration
+                .known()
+                .expect("known accepted boundary declaration");
+            assert_eq!(known.property(), case.property);
+            assert_eq!(known.property().stable_id(), *feature_id);
+            assertion(known);
             continue;
         }
-        let report = parse_style_attribute(&format!(
-            "{}: {}",
-            vector.canonical_name, vector.authored_value
-        ));
-        let (declarations, diagnostics) = report.into_parts();
         assert!(
-            declarations.is_empty(),
+            report.syntax().is_empty(),
             "{} negative vector was retained",
-            vector.id
+            feature_id
         );
-        assert_eq!(diagnostics.len(), 1, "{} negative diagnostics", vector.id);
+        let diagnostics = report.diagnostics();
+        assert_eq!(diagnostics.len(), 1, "{} negative diagnostics", feature_id);
         let error = diagnostics[0].error();
         assert_eq!(
             error.code(),
             CssErrorCode::InvalidPropertyValue,
             "{} negative diagnostic root",
-            vector.id
+            feature_id
         );
         let ErrorKind::InvalidPropertyValue(detail) = error.kind() else {
-            panic!("{} negative returned {error:?}", vector.id);
+            panic!("{} negative returned {error:?}", feature_id);
         };
-        assert_eq!(detail.property().canonical_name(), vector.canonical_name);
-        assert_eq!(detail.property().stable_id(), vector.id);
+        assert_eq!(detail.property(), case.property);
+        assert_eq!(detail.property().canonical_name(), case.name);
+        assert_eq!(detail.property().stable_id(), *feature_id);
     }
 }
 
 #[test]
 fn added_fonts_property_rows_expose_complete_authored_metadata() {
-    for (id, name, production, authored) in [
-        (
-            "official.property.font-kerning",
-            "font-kerning",
-            "#propdef-font-kerning",
-            "normal",
-        ),
-        (
-            "official.property.font-size-adjust",
-            "font-size-adjust",
-            "#propdef-font-size-adjust",
-            "0.5",
-        ),
-        (
-            "official.property.font-synthesis",
-            "font-synthesis",
-            "#propdef-font-synthesis",
-            "style weight",
-        ),
-        (
-            "official.property.font-palette",
-            "font-palette",
-            "#propdef-font-palette",
-            "palette-mix(light, dark)",
-        ),
-        (
-            "official.property.font-variant-alternates",
-            "font-variant-alternates",
-            "#propdef-font-variant-alternates",
-            "styleset(Alpha, beta)",
-        ),
-        (
-            "official.property.font-variant-caps",
-            "font-variant-caps",
-            "#propdef-font-variant-caps",
-            "all-small-caps",
-        ),
-        (
-            "official.property.font-variant-east-asian",
-            "font-variant-east-asian",
-            "#propdef-font-variant-east-asian",
-            "jis04 ruby",
-        ),
-        (
-            "official.property.font-variant-emoji",
-            "font-variant-emoji",
-            "#propdef-font-variant-emoji",
-            "emoji",
-        ),
-        (
-            "official.property.font-variant-ligatures",
-            "font-variant-ligatures",
-            "#propdef-font-variant-ligatures",
-            "common-ligatures no-discretionary-ligatures",
-        ),
-        (
-            "official.property.font-variant-numeric",
-            "font-variant-numeric",
-            "#propdef-font-variant-numeric",
-            "lining-nums tabular-nums slashed-zero",
-        ),
-        (
-            "official.property.font-variant-position",
-            "font-variant-position",
-            "#propdef-font-variant-position",
-            "super",
-        ),
-    ] {
-        let report = parse_style_attribute(&format!("{name}: {authored}"));
-        assert!(report.is_clean(), "{id}: {:?}", report.diagnostics());
-        let [declaration] = report.syntax().as_slice() else {
-            panic!("{id}: expected one retained declaration");
+    for case in CASES {
+        let Some(CatalogExpectation::Complete {
+            feature_id,
+            authored,
+            production,
+        }) = &case.catalog
+        else {
+            continue;
         };
-        assert_eq!(
-            declaration
-                .known()
-                .expect("known Fonts 3 declaration")
-                .property()
-                .stable_id(),
-            id,
+        let report = parse_style_attribute(&format!("{}: {}", case.name, authored));
+        assert!(
+            report.is_clean(),
+            "{}: {:?}",
+            feature_id,
+            report.diagnostics()
         );
-
-        let metadata = property_support_metadata(name).unwrap_or_else(|| panic!("missing {id}"));
-        assert_eq!(metadata.feature().id().as_str(), id);
-        let source = match name {
-            name if name.starts_with("font-synthesis") => "I-FONTS4-20260907",
-            "font-kerning" | "font-size-adjust" | "font-palette" => "I-FONTS4-20260907",
-            name if name.starts_with("font-variant-") => "I-FONTS4-20260907",
-            _ => unreachable!("the source inventory lists every property in this test"),
+        let [declaration] = report.syntax().as_slice() else {
+            panic!("{}: expected one retained declaration", feature_id);
         };
-        assert_eq!(metadata.feature().source().id().as_str(), source);
+        let known = declaration.known().expect("known Fonts declaration");
+        assert_eq!(known.property(), case.property);
+        assert_eq!(known.property().stable_id(), *feature_id);
+        let metadata =
+            property_support_metadata(case.name).unwrap_or_else(|| panic!("missing {feature_id}"));
+        assert_eq!(metadata.feature().id().as_str(), *feature_id);
+        assert_eq!(
+            metadata.feature().source().id().as_str(),
+            case.source_id.expect("complete property provenance")
+        );
         assert_eq!(metadata.feature().status(), CssSupportStatus::Complete);
         assert_eq!(metadata.feature().supported_subset(), None);
         assert_eq!(metadata.feature().unsupported_remainder(), None);
-        assert_eq!(metadata.canonical_name(), name);
+        assert_eq!(metadata.feature().production(), *production);
+        assert_eq!(metadata.canonical_name(), case.name);
         assert_eq!(
-            feature_metadata(id).map(|feature| feature.production()),
-            Some(production),
+            feature_metadata(feature_id).map(|feature| feature.production()),
+            Some(*production)
         );
     }
 }

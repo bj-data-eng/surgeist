@@ -1,153 +1,225 @@
-//! Independently authored expectations shared by catalog, dispatch, and metadata consumers.
-//!
-//! These records are test inputs, never generated from the production property schema.
-//! CSS Text 4: `references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md`.
-//! Preserve additional grammar/lifecycle stimuli in their owning family suites.
+//! Independently authored common property contracts, consumed through public CSS APIs.
+//! See `property_expectations/README.md` for ownership and adding a record.
 
 #![expect(
     dead_code,
-    reason = "each consumer exercises a different expectation subset"
+    reason = "each consumer exercises a different contract subset"
 )]
 
+use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
+pub type WrapperAssertion = fn(&CssKnownDeclaration, CssKnownPropertyValueRef<'_>, &str);
+
 pub struct PropertyExpectation {
-    pub property: CssKnownProperty,
+    pub property: P,
     pub name: &'static str,
-    pub feature_id: &'static str,
-    pub source_id: &'static str,
-    pub positive: &'static str,
-    pub negative: &'static str,
-    pub dispatch: &'static str,
     pub metadata: MetadataExpectation,
+    pub catalog: Option<CatalogExpectation>,
+    pub source_id: Option<&'static str>,
+    pub aliases: &'static [&'static str],
+    pub dispatch: Option<DispatchExpectation>,
+    pub wrapper: Option<WrapperAssertion>,
 }
 
 pub enum MetadataExpectation {
     Longhand {
         inherited: bool,
-        assert_initial: fn(CssLonghandValueRef<'_>),
+        initial: InitialExpectation,
     },
     Shorthand {
-        settable: &'static [CssKnownProperty],
-        reset: &'static [CssKnownProperty],
+        settable: &'static [P],
+        reset: &'static [P],
+    },
+    FourSide,
+    UniversalReset,
+    Unavailable,
+}
+
+pub enum InitialExpectation {
+    Fixed(fn(CssLonghandValueRef<'_>)),
+    UserAgent(CssUserAgentInitial),
+}
+
+pub enum CatalogExpectation {
+    Grammar {
+        feature_id: &'static str,
+        positive: &'static str,
+        boundary: BoundaryExpectation,
+        production: Option<&'static str>,
+    },
+    Complete {
+        feature_id: &'static str,
+        authored: &'static str,
+        production: &'static str,
     },
 }
 
-// The independently supplied variant token drives both the expected public
-// wrapper arm and the typed initial arm. No production macro is imported.
-macro_rules! property_expectations {
-    (
-        source: $source:literal;
-        longhands: { $( $longhand:ident {
-            name: $name:literal, feature: $feature:literal,
-            positive: $positive:literal, negative: $negative:literal,
-            $(dispatch: $dispatch:literal,)?
-            inherited: $inherited:literal, initial: $initial:expr
-        } )* }
-        shorthands: { $( $shorthand:ident {
-            name: $short_name:literal, feature: $short_feature:literal,
-            positive: $short_positive:literal, negative: $short_negative:literal,
-            settable: [$($member:ident),*], reset: [$($reset:ident),*]
-        } )* }
-    ) => {
-        pub const CASES: &[PropertyExpectation] = &[
-            $(PropertyExpectation {
-                property: CssKnownProperty::$longhand,
-                name: $name,
-                feature_id: $feature,
-                source_id: $source,
-                positive: $positive,
-                negative: $negative,
-                dispatch: property_expectations!(@dispatch $positive $(, $dispatch)?),
-                metadata: MetadataExpectation::Longhand {
-                    inherited: $inherited,
-                    assert_initial: |value| {
-                        let CssLonghandValueRef::$longhand(actual) = value else {
-                            panic!("{} initial has the wrong typed variant: {value:?}", $name);
-                        };
-                        assert_eq!(*actual, $initial, "{} intrinsic initial", $name);
-                    },
-                },
-            },)*
-            $(PropertyExpectation {
-                property: CssKnownProperty::$shorthand,
-                name: $short_name,
-                feature_id: $short_feature,
-                source_id: $source,
-                positive: $short_positive,
-                negative: $short_negative,
-                dispatch: $short_positive,
-                metadata: MetadataExpectation::Shorthand {
-                    settable: &[$(CssKnownProperty::$member),*],
-                    reset: &[$(CssKnownProperty::$reset),*],
-                },
-            },)*
-        ];
+pub struct BoundaryExpectation {
+    pub authored: &'static str,
+    pub outcome: BoundaryOutcome,
+}
 
-        pub fn assert_wrapper(
-            declaration: &CssKnownDeclaration,
-            value: CssKnownPropertyValueRef<'_>,
-            expected: &str,
-        ) {
-            match (declaration.property(), value) {
-                $( (CssKnownProperty::$longhand, CssKnownPropertyValueRef::$longhand(value)) => {
-                    assert_eq!(value.as_css(), expected, "{} authored wrapper", $name);
-                }, )*
-                $( (CssKnownProperty::$shorthand, CssKnownPropertyValueRef::$shorthand(value)) => {
-                    assert_eq!(value.as_css(), expected, "{} authored wrapper", $short_name);
-                }, )*
-                other => panic!("property/value wrapper mismatch for `{expected}`: {other:?}"),
-            }
+pub enum BoundaryOutcome {
+    Rejected,
+    Accepted(fn(&CssKnownDeclaration)),
+}
+
+pub struct DispatchExpectation {
+    pub ordinary: &'static str,
+    pub important: &'static str,
+}
+
+impl PropertyExpectation {
+    pub fn feature_id(&self) -> Option<&'static str> {
+        self.catalog.as_ref().map(|catalog| match catalog {
+            CatalogExpectation::Grammar { feature_id, .. }
+            | CatalogExpectation::Complete { feature_id, .. } => *feature_id,
+        })
+    }
+
+    #[track_caller]
+    pub fn assert_wrapper(
+        &self,
+        declaration: &CssKnownDeclaration,
+        value: CssKnownPropertyValueRef<'_>,
+        authored: &str,
+    ) {
+        assert_eq!(
+            declaration.property(),
+            self.property,
+            "{} parsed identity",
+            self.name
+        );
+        self.wrapper
+            .expect("ordinary stimulus requires a typed wrapper")(
+            declaration, value, authored
+        );
+    }
+}
+
+macro_rules! optional {
+    () => {
+        None
+    };
+    ($value:expr) => {
+        Some($value)
+    };
+}
+
+const fn rejected(authored: &'static str) -> BoundaryExpectation {
+    BoundaryExpectation {
+        authored,
+        outcome: BoundaryOutcome::Rejected,
+    }
+}
+
+const fn accepted(
+    authored: &'static str,
+    assertion: fn(&CssKnownDeclaration),
+) -> BoundaryExpectation {
+    BoundaryExpectation {
+        authored,
+        outcome: BoundaryOutcome::Accepted(assertion),
+    }
+}
+
+macro_rules! grammar_catalog {
+    ($id:literal, $positive:literal, $boundary:expr $(, $production:literal)?) => {
+        CatalogExpectation::Grammar { feature_id: $id, positive: $positive, boundary: $boundary, production: optional!($($production)?) }
+    };
+}
+
+macro_rules! metadata_expectation {
+    ($variant:ident, longhand($inherited:literal, ua($requirement:expr))) => {
+        MetadataExpectation::Longhand { inherited: $inherited, initial: InitialExpectation::UserAgent($requirement) }
+    };
+    ($variant:ident, longhand($inherited:literal, |$value:ident| $body:expr)) => {
+        MetadataExpectation::Longhand {
+            inherited: $inherited,
+            initial: InitialExpectation::Fixed(|view| {
+                let CssLonghandValueRef::$variant($value) = view else {
+                    panic!("{} initial has the wrong typed variant: {view:?}", stringify!($variant));
+                };
+                $body
+            }),
         }
     };
-    (@dispatch $positive:literal) => { $positive };
-    (@dispatch $positive:literal, $dispatch:literal) => { $dispatch };
+    ($variant:ident, shorthand([$($settable:ident),*], [$($reset:ident),*])) => {
+        MetadataExpectation::Shorthand { settable: &[$(P::$settable),*], reset: &[$(P::$reset),*] }
+    };
+    ($variant:ident, four_side()) => { MetadataExpectation::FourSide };
+    ($variant:ident, universal()) => { MetadataExpectation::UniversalReset };
+    ($variant:ident, unavailable()) => { MetadataExpectation::Unavailable };
 }
 
-property_expectations! {
-    source: "X-TEXT4";
-    longhands: {
-        TextWrapMode {
-            name: "text-wrap-mode", feature: "ext.property.text-wrap-mode",
-            positive: "nowrap", negative: "balance",
-            inherited: true, initial: CssTextWrapMode::Wrap
-        }
-        TextWrapStyle {
-            name: "text-wrap-style", feature: "ext.property.text-wrap-style",
-            positive: "avoid-short-last-line", negative: "nowrap",
-            inherited: true, initial: CssTextWrapStyle::Auto
-        }
-        WhiteSpaceCollapse {
-            name: "white-space-collapse", feature: "ext.property.white-space-collapse",
-            positive: "discard", negative: "pre",
-            inherited: true, initial: CssWhiteSpaceCollapse::Collapse
-        }
-        WhiteSpaceTrim {
-            name: "white-space-trim", feature: "ext.property.white-space-trim",
-            positive: "discard-after discard-before", negative: "discard-before discard-before",
-            dispatch: "discard-inner discard-before",
-            inherited: false, initial: CssWhiteSpaceTrim::none()
-        }
-        WordBreak {
-            name: "word-break", feature: "baseline.property.word-break",
-            positive: "keep-all", negative: "nowrap",
-            inherited: true, initial: CssWordBreak::Normal
-        }
-    }
-    shorthands: {
-        TextWrap {
-            name: "text-wrap", feature: "baseline.property.text-wrap",
-            positive: "balance", negative: "nowrap wrap",
-            settable: [TextWrapMode, TextWrapStyle], reset: []
-        }
-        WhiteSpace {
-            name: "white-space", feature: "baseline.property.white-space",
-            positive: "pre-wrap", negative: "balance",
-            settable: [WhiteSpaceCollapse, TextWrapMode, WhiteSpaceTrim], reset: []
-        }
-    }
+macro_rules! property_records {
+    ($( $variant:ident, $name:literal {
+        metadata: $kind:ident $arguments:tt,
+        $(catalog: $catalog:expr,)?
+        $(source: $source:literal,)?
+        $(aliases: [$($alias:literal),*],)?
+        $(dispatch: $dispatch:literal $(=> $important:literal)?,)?
+        $(wrapper: $wrapper:ident,)?
+    } )*) => {
+        pub const CASES: &[PropertyExpectation] = &[
+            $(PropertyExpectation {
+                property: P::$variant,
+                name: $name,
+                metadata: metadata_expectation!($variant, $kind $arguments),
+                catalog: optional!($($catalog)?),
+                source_id: optional!($($source)?),
+                aliases: &[$($($alias),*)?],
+                dispatch: property_records!(@dispatch $($dispatch $(=> $important)?)?),
+                wrapper: property_records!(@wrapper $variant $($wrapper)?),
+            },)*
+        ];
+    };
+    (@dispatch) => { None };
+    (@dispatch $ordinary:literal) => { Some(DispatchExpectation { ordinary: $ordinary, important: $ordinary }) };
+    (@dispatch $ordinary:literal => $important:literal) => { Some(DispatchExpectation { ordinary: $ordinary, important: $important }) };
+    (@wrapper $variant:ident) => { None };
+    (@wrapper $variant:ident yes) => {
+        Some(|declaration, value, expected| {
+            let (P::$variant, CssKnownPropertyValueRef::$variant(value)) = (declaration.property(), value) else {
+                panic!("{} property/value wrapper mismatch for `{expected}`: {value:?}", stringify!($variant));
+            };
+            assert_eq!(value.as_css(), expected, "{} authored wrapper", stringify!($variant));
+        })
+    };
 }
 
-pub fn find(property: CssKnownProperty) -> Option<&'static PropertyExpectation> {
+pub fn find(property: P) -> Option<&'static PropertyExpectation> {
     CASES.iter().find(|case| case.property == property)
+}
+
+include!("property_expectations/records.rs");
+
+fn exact_literal(component: Option<&surgeist_css::CssComponentValue>, css: &str) -> bool {
+    use surgeist_css::{CssComponentValueRef as Component, CssValueTokenRef as Token};
+    let expected = surgeist_css::CssComponentValue::try_token(css).unwrap();
+    match (
+        component.map(surgeist_css::CssComponentValue::view),
+        expected.view(),
+    ) {
+        (
+            Some(Component::Token(Token::Number(actual))),
+            Component::Token(Token::Number(expected)),
+        )
+        | (
+            Some(Component::Token(Token::Percentage(actual))),
+            Component::Token(Token::Percentage(expected)),
+        ) => actual.representation() == expected.representation(),
+        (
+            Some(Component::Token(Token::Dimension {
+                number: actual,
+                unit: actual_unit,
+            })),
+            Component::Token(Token::Dimension {
+                number: expected,
+                unit: expected_unit,
+            }),
+        ) => actual.representation() == expected.representation() && actual_unit == expected_unit,
+        _ => false,
+    }
 }

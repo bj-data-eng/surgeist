@@ -33,6 +33,7 @@ authoritative; root-owned API audits are generated through
 | Specification provenance, support, and exclusions | `src/conformance.rs` |
 | Human documentation and API examples | `README.md` and `docs/` |
 | Verification and public-contract evidence | Tracked test modules in `src/`, rustdoc examples, and `tests/` |
+| Shared handwritten property inventories and their consumers | `tests/common/property_expectations/README.md` and `records.rs` in that directory |
 | Corpus provenance, generated set, and maintenance owner | `tests/corpus/csstree/README.md` and `tests/corpus/csstree/corpus.toml` |
 | CSS-owned expectation and oracle contracts | `tests/csstree/`, `tests/support/csstree.rs`, and `tests/support/csstree_adapters.rs` |
 | Project license and third-party attribution | `LICENSE`, `NOTICE.md`, and the local license files linked by the notice |
