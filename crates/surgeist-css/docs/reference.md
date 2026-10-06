@@ -3698,20 +3698,69 @@ order, preserving duplicates and the presence of empty groups.
 The shared Grid track-size model keeps exact ordinary nonnegative `fr`, length,
 and percentage quantities until a consumer has a finite conversion policy.
 For example, `1e50fr` and `1e-50fr` remain distinct, while `-1e-50fr` fails
-ordinary range admission before floating-point rounding. Its checked Flex and
-length-percentage calculations remain symbolic. The selected [Grid 2 `fr`
-wording](https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#fr-unit) conflicts
-with [Values 4 calculation typing](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-type-checking)
-for flex-result math. Following the product's browser tiebreaker, pinned
-[WebKit Grid consumption](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/parser/CSSPropertyParserConsumer%2BGrid.cpp)
-selects checked Flex first, then length-percentage for contextual type failures.
-This is an operational parser choice, not a claim that the two specifications
-agree. Flex results are excluded from inflexible `minmax()` minima and
-`fit-content()` arguments. `length_percentage()`,
-`flex()`, and `fit_content()` expose the retained checked
-scalar without floating-point narrowing.
-`serialize_specified()` on typed track sizes and lists emits bounded canonical
-CSS from retained values, whereas declaration `as_css()` preserves authored text.
+ordinary range admission before floating-point rounding. Checked calculations
+retain their authored graphs, numeric types and origins; specified serialization
+may simplify subtrees whose required values are known.
+
+The selected [Grid 1](https://www.w3.org/TR/2025/CRD-css-grid-1-20250326/#fr-unit)
+and [Grid 2 `fr` wording](https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#fr-unit)
+says Flex cannot be represented in `calc()`, while selected
+[Values 4 calculation typing](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-type-checking)
+assigns Flex a type and permits mathematical functions to resolve to it.
+The source conflict remains. Surgeist follows the existing operational parser
+choice corroborated by pinned
+[WebKit Grid consumption](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/parser/CSSPropertyParserConsumer%2BGrid.cpp#L460-L467)
+and its [typed Flex function consumer](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/parser/CSSPropertyParserConsumer%2BFlexDefinitions.h#L44-L46).
+Ordinary track breadths in explicit and implicit lists, including shorthand
+members, first check an unhinted Flex result. Root-domain, type-compatibility or
+argument-domain failures then try the length-percentage root. Malformed syntax,
+wrong arity, strict recovery and resource failures remain terminal. This choice
+establishes actual Grid admission without asserting agreement between the
+selected specifications.
+
+Function recognition alone does not establish a valid track result. Each graph
+must satisfy its argument domains, arity and dimensional algebra:
+
+| Function family | Grid mathematical admission |
+| --- | --- |
+| `calc`, `abs` | May directly produce an unhinted Flex result from a valid Flex operand; `abs` preserves the input type. |
+| `min`, `max`, `clamp`, `hypot`, `round`, `mod`, `rem` | May directly produce Flex from type-compatible Flex arguments. Dimension-valued `round` requires a step: `round(2.5fr, 1fr)` is valid, while `round(1fr)` rejects. |
+| `sign`, `sin`, `cos`, `tan`, `pow`, `sqrt`, `log`, `exp` | Produce Number results, which are invalid as direct track breadths. They may occur inside a dimensionally valid enclosing Flex graph, such as `calc(pow(2, 3) * 1fr)`. |
+| `asin`, `acos`, `atan`, `atan2` | Produce Angle results, which are invalid as direct track breadths. An enclosing graph must cancel the Angle dimension through valid algebra before it can produce Flex. |
+| Length and percentage graphs | Use the separate length-percentage branch and retain required percentage hints. Mixed Flex-plus-length or Flex-plus-percentage addition rejects at the Grid boundary. |
+
+Ordinary breadths and `minmax()` maxima admit valid Flex-result graphs.
+Inflexible `minmax()` minima and `fit-content()` arguments exclude them:
+`minmax(round(2.5px, 1px), hypot(3fr, 4fr))` is valid,
+while `minmax(hypot(3fr, 4fr), 10px)` and `fit-content(abs(-2fr))` reject.
+These are slot restrictions, rather than a universal mathematical-function
+exclusion. Mathematical range checking remains contextual: `calc(-2fr)` is
+retained, while bare `-2fr` fails ordinary range admission. Computed and used
+range clamping belongs to the consuming owner.
+
+Admission and specified projection remain separate. The
+[shared mathematical projection policy](#calculated-number-output) conservatively
+keeps contextual Flex magnitudes unresolved: `round(2.5fr, 1fr)`,
+`mod(-5fr, 3fr)`, `rem(-5fr, 3fr)`, `hypot(3fr, 4fr)` and `abs(-2fr)` retain
+their named functions. `calc(sign(-2fr) * 1fr)` emits
+`calc(1fr * sign(-2fr))`. A coefficient alone supplies neither a resolved
+magnitude nor the basis guarantee needed by these functions. Known Number and
+absolute-unit subtrees still fold, and the existing same-unit comparison policy
+can emit `calc(2fr)` for `clamp(1fr, 2fr, 3fr)`.
+
+Pinned WebKit instead represents Flex as a
+[canonical dimension](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/calc/CSSCalcTree.h#L119-L137),
+which its [simplifier treats as fully resolved](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/calc/CSSCalcTree%2BSimplification.cpp#L159-L162).
+Its coefficient folding therefore extends beyond Surgeist's adopted conservative
+contextual-Flex projection. The browser witness supports the parser choice; it
+does not replace that separately adopted projection policy or supply a layout
+basis to authored CSS.
+
+`length_percentage()`, `flex()` and `fit_content()` expose the retained checked
+scalar without floating-point narrowing. `serialize_specified()` on typed track
+sizes and lists emits bounded canonical CSS from retained values, whereas
+declaration `as_css()` preserves authored text. Neither operation performs Grid
+layout or resolves contextual track magnitudes.
 
 `CssGridTemplate` and `CssGrid` expose bounded canonical specified serialization
 for `none`, rows/columns, area-string templates and auto-flow aggregates.
