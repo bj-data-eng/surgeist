@@ -376,7 +376,7 @@ fn ui_containment_and_compositing_invalid_values_drop_only_their_declaration() {
         ("outline-offset", "10%"),
         ("outline-offset", "auto"),
         ("outline-offset", "1px 2px"),
-        ("resize", "block"),
+        ("resize", "block inline"),
         ("resize", "horizontal vertical"),
         ("contain", "none size"),
         ("contain", "strict paint"),
