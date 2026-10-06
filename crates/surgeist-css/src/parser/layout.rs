@@ -22,6 +22,8 @@ pub(super) fn parse_resize<'i, 't>(
         "both" => Ok(CssResize::Both),
         "horizontal" => Ok(CssResize::Horizontal),
         "vertical" => Ok(CssResize::Vertical),
+        "block" => Ok(CssResize::Block),
+        "inline" => Ok(CssResize::Inline),
         _ => Err(unsupported_value(
             input,
             None,

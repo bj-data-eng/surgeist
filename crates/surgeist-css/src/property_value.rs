@@ -96,7 +96,12 @@ fn is_time_property(property: crate::CssKnownProperty) -> bool {
 fn requires_closed_components(property: crate::CssKnownProperty) -> bool {
     matches!(
         property,
-        crate::CssKnownProperty::Hyphens
+        crate::CssKnownProperty::CaretColor
+            | crate::CssKnownProperty::Cursor
+            | crate::CssKnownProperty::PointerEvents
+            | crate::CssKnownProperty::UserSelect
+            | crate::CssKnownProperty::Resize
+            | crate::CssKnownProperty::Hyphens
             | crate::CssKnownProperty::HyphenateCharacter
             | crate::CssKnownProperty::HyphenateLimitZone
             | crate::CssKnownProperty::HyphenateLimitChars

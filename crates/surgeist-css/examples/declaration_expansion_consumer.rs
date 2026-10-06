@@ -16,6 +16,9 @@
 
 use surgeist_css::{CssKnownProperty as Property, *};
 
+#[path = "../tests/common/property_expectations.rs"]
+mod property_expectations;
+
 fn assert_selected_four(result: Result<CssExpansion, CssExpansionError>) {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) = result.unwrap() else {
         panic!("selected four-side contributions")
@@ -911,13 +914,28 @@ fn strict_reentry_rejects_atomically_and_preserves_out_of_slice_identity() {
             assert_eq!(spacing(member(&values, property)), "3px");
         }
     }
-    let source = declaration(Property::Cursor, "auto", CssImportance::Normal);
-    let error = expand_declaration(&source).unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssExpansionErrorKind::UnsupportedProperty(Property::Cursor)
-    ));
-    assert_eq!(source.known().unwrap().property(), Property::Cursor);
+    for case in property_expectations::CASES {
+        if !matches!(
+            case.metadata,
+            property_expectations::MetadataExpectation::Unavailable
+        ) {
+            continue;
+        }
+        let source = declaration(
+            case.property,
+            case.ordinary_stimulus()
+                .expect("authored unavailable-property stimulus"),
+            CssImportance::Normal,
+        );
+        let before = source.clone();
+        let error = expand_declaration(&source).unwrap_err();
+        assert_eq!(
+            error.kind(),
+            &CssExpansionErrorKind::UnsupportedProperty(case.property)
+        );
+        assert_eq!(source.known().unwrap().property(), case.property);
+        assert_eq!(source, before);
+    }
     let source = declaration(Property::TextAlign, "justify-all", CssImportance::Normal);
     let Some(CssKnownPropertyValueRef::TextAlign(value)) = source.known().unwrap().property_value()
     else {

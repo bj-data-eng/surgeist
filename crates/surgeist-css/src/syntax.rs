@@ -4910,6 +4910,10 @@ pub enum CssResize {
     Both,
     Horizontal,
     Vertical,
+    /// Allows resizing along the block axis, resolved by the downstream writing mode.
+    Block,
+    /// Allows resizing along the inline axis, resolved by the downstream writing mode.
+    Inline,
 }
 
 /// One independently authored Containment 1 containment kind.

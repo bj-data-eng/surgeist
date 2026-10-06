@@ -71,6 +71,18 @@ pub struct DispatchExpectation {
 }
 
 impl PropertyExpectation {
+    pub fn ordinary_stimulus(&self) -> Option<&'static str> {
+        self.dispatch
+            .as_ref()
+            .map(|dispatch| dispatch.ordinary)
+            .or_else(|| {
+                self.catalog.as_ref().map(|catalog| match catalog {
+                    CatalogExpectation::Grammar { positive, .. } => *positive,
+                    CatalogExpectation::Complete { authored, .. } => *authored,
+                })
+            })
+    }
+
     pub fn feature_id(&self) -> Option<&'static str> {
         self.catalog.as_ref().map(|catalog| match catalog {
             CatalogExpectation::Grammar { feature_id, .. }

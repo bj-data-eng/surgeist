@@ -2372,10 +2372,7 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::MaxSize
         | CssKnownProperty::FrameSizing
         | CssKnownProperty::MinIntrinsicSizing => X_SIZING4_20260904,
-        CssKnownProperty::CaretColor
-        | CssKnownProperty::OutlineOffset
-        | CssKnownProperty::Resize
-        | CssKnownProperty::Cursor
+        CssKnownProperty::OutlineOffset
         | CssKnownProperty::Outline
         | CssKnownProperty::OutlineColor
         | CssKnownProperty::OutlineStyle
@@ -2660,7 +2657,11 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::ScrollMarginBlock
         | CssKnownProperty::ScrollMarginInline
         | CssKnownProperty::ScrollMargin => R_SCROLLSNAP1,
-        CssKnownProperty::PointerEvents | CssKnownProperty::UserSelect => X_UI4,
+        CssKnownProperty::CaretColor
+        | CssKnownProperty::Cursor
+        | CssKnownProperty::PointerEvents
+        | CssKnownProperty::UserSelect
+        | CssKnownProperty::Resize => X_UI4,
         CssKnownProperty::Transform
         | CssKnownProperty::TransformBox
         | CssKnownProperty::TransformOrigin => O_TRANSFORMS1,
@@ -6006,20 +6007,21 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 697] = [
         "color-adjust",
         "official.property.color-adjust"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::Cursor,
         "cursor",
         "baseline.property.cursor"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::PointerEvents,
         "pointer-events",
         "baseline.property.pointer-events"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::UserSelect,
         "user-select",
-        "baseline.property.user-select"
+        "baseline.property.user-select",
+        CssKnownProperty::UserSelect.aliases()
     ),
     property_feature!(
         CssKnownProperty::Outline,

@@ -3800,7 +3800,7 @@ fn c12_property_metadata_is_truthful() {
         (
             "official.property.caret-color",
             "caret-color",
-            "O-UI3",
+            "X-UI4",
             "#propdef-caret-color",
             "rebeccapurple",
         ),
@@ -3814,7 +3814,7 @@ fn c12_property_metadata_is_truthful() {
         (
             "official.property.resize",
             "resize",
-            "O-UI3",
+            "X-UI4",
             "#propdef-resize",
             "horizontal",
         ),

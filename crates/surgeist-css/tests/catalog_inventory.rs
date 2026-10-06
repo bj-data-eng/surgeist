@@ -205,10 +205,15 @@ fn authored_property_cases_exercise_public_parser_behavior() {
         );
         let report = parse_style_attribute(&format!("{}: {}", case.name, negative));
         if let BoundaryOutcome::Accepted(assertion) = boundary.outcome {
-            // The three archived overflow stimuli remain provenance-bearing
-            // cases whose current accepted outcome is explicit in their records.
-            assert_eq!(negative, "auto");
-            assert!(report.is_clean(), "{} current auto", feature_id);
+            // Accepted boundary stimuli and their typed assertions are explicit
+            // in the independently authored records, including historical cases.
+            assert!(
+                report.is_clean(),
+                "{} accepted boundary {:?}: {:?}",
+                feature_id,
+                negative,
+                report.diagnostics()
+            );
             let [declaration] = report.syntax().as_slice() else {
                 panic!("{} must retain one declaration", feature_id);
             };

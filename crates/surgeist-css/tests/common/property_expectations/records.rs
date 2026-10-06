@@ -625,8 +625,11 @@ property_records! {
         catalog: grammar_catalog!("official.property.caption-side", "bottom", rejected("left")),
     }
     CaretColor, "caret-color" {
-        metadata: unavailable(),
+        metadata: longhand(true, |v| assert!(matches!(v, CssCaretColor::Auto))),
         catalog: grammar_catalog!("official.property.caret-color", "rebeccapurple", rejected("auto auto")),
+        source: "X-UI4",
+        dispatch: "rebeccapurple",
+        wrapper: yes,
     }
     Clear, "clear" {
         metadata: longhand(false, |v| assert_eq!(*v, CssClear::None)),
@@ -836,9 +839,9 @@ property_records! {
         }),
     }
     Cursor, "cursor" {
-        metadata: unavailable(),
+        metadata: longhand(true, |v| assert_eq!(v, &CssCursor::Keyword(CssCursorKeyword::Auto))),
         catalog: grammar_catalog!("baseline.property.cursor", "grab", rejected("10px")),
-        source: "O-UI3",
+        source: "X-UI4",
         dispatch: "grab",
         wrapper: yes,
     }
@@ -1872,8 +1875,9 @@ property_records! {
         wrapper: yes,
     }
     PointerEvents, "pointer-events" {
-        metadata: unavailable(),
+        metadata: longhand(true, |v| assert_eq!(*v, CssPointerEvents::Auto)),
         catalog: grammar_catalog!("baseline.property.pointer-events", "none", rejected("grab")),
+        source: "X-UI4",
         dispatch: "none",
         wrapper: yes,
     }
@@ -1895,8 +1899,16 @@ property_records! {
         source: "X-CONTENT3",
     }
     Resize, "resize" {
-        metadata: unavailable(),
-        catalog: grammar_catalog!("official.property.resize", "horizontal", rejected("inline")),
+        metadata: longhand(false, |v| assert_eq!(*v, CssResize::None)),
+        catalog: grammar_catalog!("official.property.resize", "block", accepted("inline", |known| {
+            let CssKnownPropertyValueRef::Resize(value) = known.property_value().unwrap() else {
+                panic!("typed logical resize")
+            };
+            assert_eq!(*value.resize(), CssResize::Inline);
+        })),
+        source: "X-UI4",
+        dispatch: "block",
+        wrapper: yes,
     }
     Rest, "rest" {
         metadata: shorthand([RestBefore, RestAfter], []),
@@ -2313,9 +2325,10 @@ property_records! {
         catalog: grammar_catalog!("official.property.unicode-bidi", "isolate-override", rejected("isolate isolate")),
     }
     UserSelect, "user-select" {
-        metadata: unavailable(),
+        metadata: longhand(false, |v| assert_eq!(*v, CssUserSelect::Auto)),
         catalog: grammar_catalog!("baseline.property.user-select", "text", rejected("grab")),
         source: "X-UI4",
+        aliases: ["-webkit-user-select"],
         dispatch: "text",
         wrapper: yes,
     }

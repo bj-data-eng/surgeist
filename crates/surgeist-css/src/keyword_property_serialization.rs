@@ -168,6 +168,7 @@ enum_keywords!(CssUserSelect,
 );
 enum_keywords!(CssResize,
     None => "none", Both => "both", Horizontal => "horizontal", Vertical => "vertical",
+    Block => "block", Inline => "inline",
 );
 enum_keywords!(CssIsolation, Auto => "auto", Isolate => "isolate");
 keyword_provider!(CssTransformBox, value => value.edge().as_css_str());

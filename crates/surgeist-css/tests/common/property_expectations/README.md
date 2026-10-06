@@ -54,6 +54,10 @@ schema macros. It is shared by:
 - [property_metadata_consumer.rs](../../../examples/property_metadata_consumer.rs),
   for metadata availability, inheritance, intrinsic initials, ordered members,
   resets, and public grammar identity.
+- [declaration_expansion_consumer.rs](../../../examples/declaration_expansion_consumer.rs)
+  and [normalization_consumer.rs](../../../examples/normalization_consumer.rs),
+  for atomic capability failures against the explicitly unavailable records,
+  using each record's ordinary dispatch or catalog stimulus.
 
 The metadata consumer rejects duplicate fixture identities and compares actual
 available metadata with the independent fixture set. There is no fixed property

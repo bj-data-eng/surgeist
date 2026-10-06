@@ -30,6 +30,9 @@ use surgeist_css::{
     normalize_sheet_with_limits, parse_component_values, parse_property_value, parse_sheet,
 };
 
+#[path = "../tests/common/property_expectations.rs"]
+mod property_expectations;
+
 fn declaration_items(sheet: &CssNormalizedSheet) -> Vec<&CssNormalizedDeclaration> {
     sheet
         .items()
@@ -716,52 +719,66 @@ fn ordered_terminal_payloads() {
 }
 
 fn atomic_unsupported_declaration() {
-    let css = ".a { margin-block:0; @media screen { cursor:auto; padding-block:1px } }";
-    let report = parse_sheet(css);
-    assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let before = report.clone();
-    let error = normalize_sheet(report.syntax()).expect_err("cursor expansion is not yet selected");
-    let CssNormalizationErrorKind::UnsupportedDeclaration(expansion) = error.kind() else {
-        panic!("typed expansion capability failure: {error:?}")
-    };
-    assert_eq!(
-        expansion.kind(),
-        &CssExpansionErrorKind::UnsupportedProperty(Property::Cursor)
-    );
-    let [CssRule::Media(media)] = style(&report.syntax().rules()[0]).rules() else {
-        unreachable!()
-    };
-    let [CssRule::NestedDeclarations(run)] = media.rules() else {
-        unreachable!()
-    };
-    assert!(
-        error
-            .declaration()
-            .unwrap()
-            .same_occurrence(&run.declarations()[0])
-    );
-    assert_eq!(error.declaration_order(), Some(1));
-    assert_eq!(
-        error.position().unwrap().byte_offset().value(),
-        css.find("cursor:").unwrap()
-    );
-    assert_eq!(
-        ancestors(error.rule_context().unwrap()),
-        ["style", "media", "declarations"]
-    );
-    assert_eq!(
-        report, before,
-        "failed normalization cannot change authored syntax or diagnostics"
-    );
-    let again =
-        normalize_report(&report).expect_err("report entry uses the same capability boundary");
-    assert_eq!(again.declaration_order(), Some(1));
-    assert!(
-        again
-            .declaration()
-            .unwrap()
-            .same_occurrence(error.declaration().unwrap())
-    );
+    for case in property_expectations::CASES {
+        if !matches!(
+            case.metadata,
+            property_expectations::MetadataExpectation::Unavailable
+        ) {
+            continue;
+        }
+        let css = format!(
+            ".a {{ margin-block:0; @media screen {{ {}:{}; padding-block:1px }} }}",
+            case.name,
+            case.ordinary_stimulus()
+                .expect("authored unavailable-property stimulus")
+        );
+        let report = parse_sheet(&css);
+        assert!(report.is_clean(), "{:?}", report.diagnostics());
+        let before = report.clone();
+        let error = normalize_sheet(report.syntax())
+            .expect_err("record selects unavailable expansion metadata");
+        let CssNormalizationErrorKind::UnsupportedDeclaration(expansion) = error.kind() else {
+            panic!("typed expansion capability failure: {error:?}")
+        };
+        assert_eq!(
+            expansion.kind(),
+            &CssExpansionErrorKind::UnsupportedProperty(case.property)
+        );
+        let [CssRule::Media(media)] = style(&report.syntax().rules()[0]).rules() else {
+            unreachable!()
+        };
+        let [CssRule::NestedDeclarations(run)] = media.rules() else {
+            unreachable!()
+        };
+        assert!(
+            error
+                .declaration()
+                .unwrap()
+                .same_occurrence(&run.declarations()[0])
+        );
+        assert_eq!(error.declaration_order(), Some(1));
+        assert_eq!(
+            error.position().unwrap().byte_offset().value(),
+            css.find(&format!("{}:", case.name)).unwrap()
+        );
+        assert_eq!(
+            ancestors(error.rule_context().unwrap()),
+            ["style", "media", "declarations"]
+        );
+        assert_eq!(
+            report, before,
+            "failed normalization cannot change authored syntax or diagnostics"
+        );
+        let again =
+            normalize_report(&report).expect_err("report entry uses the same capability boundary");
+        assert_eq!(again.declaration_order(), Some(1));
+        assert!(
+            again
+                .declaration()
+                .unwrap()
+                .same_occurrence(error.declaration().unwrap())
+        );
+    }
     println!("atomic unsupported declaration: ok");
 }
 

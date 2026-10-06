@@ -4732,8 +4732,8 @@ This property family provides the selected authored grammars for ten CSS2
 residual properties, `quotes` in CSS Generated Content 3, the deprecated `clip`
 property in Masking 1 Appendix A,
 Writing Modes 3 `text-combine-upright`,
-`text-orientation`, and `unicode-bidi`, UI3 `caret-color`, `outline-offset`, and
-`resize`, Containment 1 `contain`, Transforms 1 `transform-box`, and Compositing
+`text-orientation`, and `unicode-bidi`, UI3 `outline-offset`, UI4 `caret-color`
+and `resize`, Containment 1 `contain`, Transforms 1 `transform-box`, and Compositing
 1 `background-blend-mode`, `isolation`, and `mix-blend-mode`. Their property
 wrappers preserve exact authored CSS and expose typed current values without
 performing cascade, layout, pagination, painting, hit testing, containment
@@ -7157,10 +7157,46 @@ costs one aggregate plus each keyword. Blend output retains comma-list order and
 duplicates, costing one aggregate plus each primitive mode. All use one cumulative
 writer and return no partial public output on failure.
 
-These writers certify represented values. Broader containment alternatives,
-image-rendering alternatives and the remaining caret/containment property
-lifecycles retain their existing owners. The complete authored Compositing
+Broader containment alternatives, image-rendering alternatives and the remaining
+containment property lifecycle retain their existing owners. The complete authored Compositing
 lifecycle is described above.
+
+## Authored UI interaction values
+
+The selected [UI 4 publication](https://www.w3.org/TR/2026/WD-css-ui-4-20260120/)
+owns five independent longhands. `caret-color` admits `auto` or the complete
+selected Color 4/5 authored domain. `cursor` admits its 36 predefined keywords
+or ordered image alternatives with a mandatory predefined fallback, as detailed
+below. `pointer-events` admits `auto` or `none`; SVG's additional keywords are
+outside this selected grammar. `user-select` admits `auto`, `text`, `none`,
+`contain` or `all`. `resize` admits `none`, `both`, `horizontal`, `vertical`,
+`block` or `inline`; the logical keywords remain symbolic until writing mode
+resolution downstream.
+
+Caret color, cursor and pointer events inherit by default and have intrinsic
+initial `auto`. User selection is noninherited with initial `auto`; resize is
+noninherited with initial `none`. Each ordinary or CSS-wide occurrence contributes
+one typed terminal longhand. A whole-value `var()`, `env()` or `attr()` remains
+pending; strict reentry preserves the original occurrence and importance while
+retaining the caller's replacement components and origins. Residual substitutions
+reject before grammar reentry. Checked construction and replacement reentry reject
+implicit original function, block or comment closures; browser parsing retains
+its ordinary recovery diagnostics. Normalization preserves occurrence order,
+selector/rule contexts and pending handles under cumulative limits.
+
+The standard `-webkit-user-select` alias selects the same canonical property and
+grammar. Parsed name spelling and source coordinates remain authored; canonical
+specified output emits `user-select`. There is no second canonical property or
+separate shorthand grammar. The five typed borrowed views are exposed through
+`CssLonghandValueRef`; intrinsic initials use those same property-specific values
+without fabricated source occurrences.
+
+Specified output uses the existing cumulative providers and charges final text
+only once. UI keywords cost one input/projection node each; caret's Color carrier
+is transparent, and Cursor child prices are detailed below. Public failure is
+atomic and leaves source models reusable. Resource loading, MIME/candidate
+selection, hotspot clamping, caret appearance, hit testing, selection and resize
+execution remain downstream.
 
 ## Cursor images and represented transform, mask and outline output
 

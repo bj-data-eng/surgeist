@@ -17,6 +17,7 @@ use crate::border_width::*;
 use crate::box_spacing::*;
 use crate::color_adjustment::{CssColorScheme, CssForcedColorAdjust, CssPrintColorAdjust};
 use crate::contain_intrinsic_size::*;
+use crate::cursor_values::CssCursor;
 use crate::flex::{CssFlexBasisValue, CssFlexDirection, CssFlexFlow, CssFlexWrap};
 use crate::font_controls::*;
 use crate::font_palette::CssFontPalette;

@@ -3038,6 +3038,7 @@ pub surgeist_css::CssLonghandValueRef::BreakAfter(&'a surgeist_css::CssBreakBetw
 pub surgeist_css::CssLonghandValueRef::BreakBefore(&'a surgeist_css::CssBreakBetween)
 pub surgeist_css::CssLonghandValueRef::BreakInside(&'a surgeist_css::CssBreakInside)
 pub surgeist_css::CssLonghandValueRef::CaptionSide(&'a surgeist_css::CssCaptionSide)
+pub surgeist_css::CssLonghandValueRef::CaretColor(&'a surgeist_css::CssCaretColor)
 pub surgeist_css::CssLonghandValueRef::Clear(&'a surgeist_css::CssClear)
 pub surgeist_css::CssLonghandValueRef::Clip(&'a surgeist_css::CssClip)
 pub surgeist_css::CssLonghandValueRef::ClipPath(&'a surgeist_css::CssClipPath)
@@ -3064,6 +3065,7 @@ pub surgeist_css::CssLonghandValueRef::CounterReset(&'a surgeist_css::CssCounter
 pub surgeist_css::CssLonghandValueRef::CounterSet(&'a surgeist_css::CssCounterChangesValue)
 pub surgeist_css::CssLonghandValueRef::CueAfter(&'a surgeist_css::CssCue)
 pub surgeist_css::CssLonghandValueRef::CueBefore(&'a surgeist_css::CssCue)
+pub surgeist_css::CssLonghandValueRef::Cursor(&'a surgeist_css::CssCursor)
 pub surgeist_css::CssLonghandValueRef::Direction(&'a surgeist_css::CssDirection)
 pub surgeist_css::CssLonghandValueRef::Display(&'a surgeist_css::CssDisplayValue)
 pub surgeist_css::CssLonghandValueRef::EmptyCells(&'a surgeist_css::CssEmptyCells)
@@ -3178,9 +3180,11 @@ pub surgeist_css::CssLonghandValueRef::PaddingRight(&'a surgeist_css::CssPadding
 pub surgeist_css::CssLonghandValueRef::PaddingTop(&'a surgeist_css::CssPaddingValue)
 pub surgeist_css::CssLonghandValueRef::PauseAfter(&'a surgeist_css::CssSpeechBreak)
 pub surgeist_css::CssLonghandValueRef::PauseBefore(&'a surgeist_css::CssSpeechBreak)
+pub surgeist_css::CssLonghandValueRef::PointerEvents(&'a surgeist_css::CssPointerEvents)
 pub surgeist_css::CssLonghandValueRef::Position(&'a surgeist_css::CssLayoutPosition)
 pub surgeist_css::CssLonghandValueRef::PrintColorAdjust(&'a surgeist_css::CssPrintColorAdjust)
 pub surgeist_css::CssLonghandValueRef::Quotes(&'a surgeist_css::CssQuotes)
+pub surgeist_css::CssLonghandValueRef::Resize(&'a surgeist_css::CssResize)
 pub surgeist_css::CssLonghandValueRef::RestAfter(&'a surgeist_css::CssSpeechBreak)
 pub surgeist_css::CssLonghandValueRef::RestBefore(&'a surgeist_css::CssSpeechBreak)
 pub surgeist_css::CssLonghandValueRef::Right(&'a surgeist_css::CssInsetValue)
@@ -3231,6 +3235,7 @@ pub surgeist_css::CssLonghandValueRef::TransitionDuration(&'a surgeist_css::CssD
 pub surgeist_css::CssLonghandValueRef::TransitionProperty(&'a surgeist_css::CssTransitionPropertyList)
 pub surgeist_css::CssLonghandValueRef::TransitionTimingFunction(&'a surgeist_css::CssEasingList)
 pub surgeist_css::CssLonghandValueRef::UnicodeBidi(&'a surgeist_css::CssUnicodeBidi)
+pub surgeist_css::CssLonghandValueRef::UserSelect(&'a surgeist_css::CssUserSelect)
 pub surgeist_css::CssLonghandValueRef::VerticalAlign(&'a surgeist_css::CssVerticalAlign)
 pub surgeist_css::CssLonghandValueRef::Visibility(&'a surgeist_css::CssVisibility)
 pub surgeist_css::CssLonghandValueRef::VoiceBalance(&'a surgeist_css::CssVoiceBalance)
@@ -3993,8 +3998,10 @@ pub surgeist_css::CssRelativeColorResultDomain::Alpha
 pub surgeist_css::CssRelativeColorResultDomain::Hue
 pub surgeist_css::CssRelativeColorResultDomain::NumberPercentage
 #[non_exhaustive] pub enum surgeist_css::CssResize
+pub surgeist_css::CssResize::Block
 pub surgeist_css::CssResize::Both
 pub surgeist_css::CssResize::Horizontal
+pub surgeist_css::CssResize::Inline
 pub surgeist_css::CssResize::None
 pub surgeist_css::CssResize::Vertical
 impl surgeist_css::CssResize
