@@ -2,8 +2,8 @@
 //! Nesting 1 section 4: parentless & matches scope with zero anchor specificity.
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nest-selector
 use surgeist_css::{
-    CssNamespaceContext, CssNormalizedItem, CssSelector, CssSelectorBinding, normalize_sheet,
-    parse_selector, parse_selector_list, parse_sheet,
+    CssNamespaceContext, CssNormalizedItem, CssPseudoSelectorListItem, CssSelector,
+    CssSelectorBinding, normalize_sheet, parse_selector, parse_selector_list, parse_sheet,
 };
 
 #[test]
@@ -146,12 +146,18 @@ fn functional_anchors_keep_their_function_structure_and_parentless_binding() {
         };
         let anchor = match (source, pseudo) {
             (":is(&,.a)", CssPseudoClass::Is(list)) => {
-                assert_eq!(list.selectors().len(), 2);
-                &list.selectors()[0]
+                assert_eq!(list.items().len(), 2);
+                match &list.items()[0] {
+                    CssPseudoSelectorListItem::Selector(selector) => selector,
+                    _ => panic!("valid nesting argument"),
+                }
             }
             (":where(&)", CssPseudoClass::Where(list)) | (":not(&)", CssPseudoClass::Not(list)) => {
-                assert_eq!(list.selectors().len(), 1);
-                &list.selectors()[0]
+                assert_eq!(list.items().len(), 1);
+                match &list.items()[0] {
+                    CssPseudoSelectorListItem::Selector(selector) => selector,
+                    _ => panic!("valid nesting argument"),
+                }
             }
             (":has(> &)", CssPseudoClass::Has(list)) => {
                 assert_eq!(list.selectors().len(), 1);
@@ -163,8 +169,11 @@ fn functional_anchors_keep_their_function_structure_and_parentless_binding() {
             }
             (":nth-child(2n of &)", CssPseudoClass::NthChild(pattern)) => {
                 let list = pattern.selector_list().unwrap();
-                assert_eq!(list.selectors().len(), 1);
-                &list.selectors()[0]
+                assert_eq!(list.items().len(), 1);
+                match &list.items()[0] {
+                    CssPseudoSelectorListItem::Selector(selector) => selector,
+                    _ => panic!("valid nesting argument"),
+                }
             }
             _ => panic!("function kind must remain authored: {source}"),
         };

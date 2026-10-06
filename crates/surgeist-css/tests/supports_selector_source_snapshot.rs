@@ -1,8 +1,8 @@
 #![forbid(unsafe_code)]
 //! Clean constructed Supports selectors retain their typed grammar and authored outer origin.
 use surgeist_css::{
-    CssNamespaceContext, CssPseudoClass, CssSelector, CssSupportsCondition,
-    CssSupportsConditionKind, CssValueOrigin, parse_component_values,
+    CssNamespaceContext, CssPseudoClass, CssPseudoSelectorListItem, CssSelector,
+    CssSupportsCondition, CssSupportsConditionKind, CssValueOrigin, parse_component_values,
 };
 
 fn condition(source: &str) -> CssSupportsCondition {
@@ -38,5 +38,10 @@ fn clean_forgiving_selector_uses_its_generated_input_snapshot() {
     else {
         panic!("typed clean Is selector")
     };
-    assert_eq!(list.selectors(), [CssSelector::Class("A".into())]);
+    assert_eq!(
+        list.items(),
+        [CssPseudoSelectorListItem::Selector(CssSelector::Class(
+            "A".into()
+        ))]
+    );
 }

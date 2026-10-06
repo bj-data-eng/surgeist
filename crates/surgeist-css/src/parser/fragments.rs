@@ -203,7 +203,9 @@ fn selector_fragment<T>(
 /// Parses exactly one ordinary selector using the supplied namespace bindings.
 ///
 /// Rejected outer syntax is `None` with diagnostics. Forgiving inner lists retain
-/// valid members and report discarded members. Positions refer directly to `source`;
+/// admitted members and diagnose invalid members. Invalid delimiter-`&` members
+/// remain explicit match-nothing items; other invalid members are discarded.
+/// Positions refer directly to `source`;
 /// implicit EOF closures are reported only when the outer syntax is retained.
 /// Explicit `&` anchors remain symbolic; without a parent selector list they match
 /// the context's scope elements and contribute zero specificity. Leading relative

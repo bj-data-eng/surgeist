@@ -5,9 +5,9 @@
 
 use surgeist_css::{
     CssAttributeCaseSensitivity, CssErrorCode, CssNamespaceConstraint, CssNamespaceContext,
-    CssNamespaceName, CssNamespacePrefix, CssNthPattern, CssPseudoClass, CssQualifiedNamePrefix,
-    CssRecoveryAction, CssRelativeSelectorList, CssSelector, CssSelectorCombinator as Combinator,
-    CssSelectorConstructionErrorKind, CssSourcePosition,
+    CssNamespaceName, CssNamespacePrefix, CssNthPattern, CssPseudoClass, CssPseudoSelectorListItem,
+    CssQualifiedNamePrefix, CssRecoveryAction, CssRelativeSelectorList, CssSelector,
+    CssSelectorCombinator as Combinator, CssSelectorConstructionErrorKind, CssSourcePosition,
     CssSpecifiedValueSerializationErrorKind as Kind,
     CssSpecifiedValueSerializationLimits as Limits, CssTokenKind, ErrorKind,
     parse_relative_selector_list, parse_selector, parse_selector_list,
@@ -111,8 +111,11 @@ fn nested_commas_and_strings_do_not_split_outer_relative_members() {
     };
     assert_eq!(authored.pattern(), CssNthPattern::Odd);
     assert_eq!(
-        authored.selector_list().unwrap().selectors(),
-        [CssSelector::Class("A".into()), CssSelector::Key("B".into())]
+        authored.selector_list().unwrap().items(),
+        [
+            CssPseudoSelectorListItem::Selector(CssSelector::Class("A".into())),
+            CssPseudoSelectorListItem::Selector(CssSelector::Key("B".into()))
+        ]
     );
     let canonical = clean(literal);
     assert_eq!(canonical.selectors().len(), 3);
@@ -189,7 +192,7 @@ fn independent_has_selectors_remain_general_relatives_without_authorizing_nested
     let CssSelector::PseudoClass(CssPseudoClass::Is(forgiving)) = inner.selector() else {
         panic!("retained forgiving Is");
     };
-    assert!(forgiving.selectors().is_empty());
+    assert!(forgiving.items().is_empty());
     assert_eq!(
         recovered
             .syntax()
@@ -483,7 +486,12 @@ fn inner_forgiveness_retains_members_and_exact_original_diagnostics_without_beco
     let CssSelector::PseudoClass(CssPseudoClass::Is(inner)) = list.selectors()[0].selector() else {
         panic!("retained forgiving Is");
     };
-    assert_eq!(inner.selectors(), [CssSelector::Class("é".into())]);
+    assert_eq!(
+        inner.items(),
+        [CssPseudoSelectorListItem::Selector(CssSelector::Class(
+            "é".into()
+        ))]
+    );
     assert_eq!(list.to_specified_css().unwrap(), "> :is(.é), + .Two");
     let [diagnostic] = report.diagnostics() else {
         panic!("one dropped inner member");
@@ -569,7 +577,7 @@ fn relative_fragments_share_the_exact_256_function_depth_and_257_rejection_bound
             let CssSelector::PseudoClass(CssPseudoClass::Is(inner)) = selector else {
                 panic!("one logical level");
             };
-            let [child] = inner.selectors() else {
+            let [CssPseudoSelectorListItem::Selector(child)] = inner.items() else {
                 panic!("one retained member");
             };
             selector = child;

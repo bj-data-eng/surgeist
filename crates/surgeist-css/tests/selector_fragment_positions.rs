@@ -10,8 +10,9 @@
 //! Rule and forgiving-member recovery units retain their full original spans.
 
 use surgeist_css::{
-    CssErrorCode, CssPseudoClass, CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssSelector,
-    CssSourcePosition, CssTokenKind, ErrorKind, parse_sheet, validate_sheet,
+    CssErrorCode, CssPseudoClass, CssPseudoSelectorListItem, CssRecoveryAction,
+    CssRecoveryDiagnostic, CssRule, CssSelector, CssSourcePosition, CssTokenKind, ErrorKind,
+    parse_sheet, validate_sheet,
 };
 
 fn assert_position(actual: CssSourcePosition, expected: (usize, u32, u32)) {
@@ -120,7 +121,12 @@ fn forgiving_unknown_named_pseudo_reports_name_without_blaming_following_comma()
     else {
         panic!("typed forgiving selector list");
     };
-    assert_eq!(members.selectors(), [CssSelector::Class("ok".into())]);
+    assert_eq!(
+        members.items(),
+        [CssPseudoSelectorListItem::Selector(CssSelector::Class(
+            "ok".into()
+        ))]
+    );
     assert_eq!(first.declarations().len(), 1);
     assert_eq!(
         after.selectors().selectors()[0].selector(),

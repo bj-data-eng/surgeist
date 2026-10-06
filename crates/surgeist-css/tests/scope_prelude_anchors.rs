@@ -213,7 +213,11 @@ fn anchor_modes_propagate_through_exact_function_members_and_combinators() {
     let CssSelector::PseudoClass(CssPseudoClass::Is(root)) = single(root) else {
         panic!("is function")
     };
-    let [parent, fallback] = root.selectors() else {
+    let [
+        surgeist_css::CssPseudoSelectorListItem::Selector(parent),
+        surgeist_css::CssPseudoSelectorListItem::Selector(fallback),
+    ] = root.items()
+    else {
         panic!("both authored members, no forgiving loss")
     };
     anchor(parent, 1, false);
@@ -221,7 +225,7 @@ fn anchor_modes_propagate_through_exact_function_members_and_combinators() {
     let CssSelector::PseudoClass(CssPseudoClass::Not(limit)) = single(limit) else {
         panic!("not function")
     };
-    let [limit] = limit.selectors() else {
+    let [surgeist_css::CssPseudoSelectorListItem::Selector(limit)] = limit.items() else {
         panic!("one not member")
     };
     anchor(limit, 0, true);

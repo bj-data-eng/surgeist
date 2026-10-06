@@ -5,8 +5,8 @@
 use serde_json::{Value, json};
 use std::{collections::BTreeSet, fs, path::Path};
 use surgeist_css::{
-    CssNamespaceContext, CssNamespaceName, CssNamespacePrefix, CssPseudoClass, CssSelector,
-    parse_selector,
+    CssNamespaceContext, CssNamespaceName, CssNamespacePrefix, CssPseudoClass,
+    CssPseudoSelectorListItem, CssSelector, parse_selector,
 };
 
 #[path = "support/digest.rs"]
@@ -37,7 +37,14 @@ fn snake_name(value: impl std::fmt::Debug) -> String {
 fn pseudo_meaning(pseudo: &CssPseudoClass) -> Value {
     match pseudo {
         CssPseudoClass::Not(list) => {
-            let selectors: Vec<_> = list.selectors().iter().map(typed_meaning).collect();
+            let selectors: Vec<_> = list
+                .items()
+                .iter()
+                .map(|item| match item {
+                    CssPseudoSelectorListItem::Selector(selector) => typed_meaning(selector),
+                    _ => panic!("strict admitted Not member"),
+                })
+                .collect();
             json!({"pseudo_class": "Not", "selectors": selectors})
         }
         CssPseudoClass::Lang(list) => {

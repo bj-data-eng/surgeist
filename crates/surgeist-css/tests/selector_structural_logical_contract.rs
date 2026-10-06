@@ -53,10 +53,10 @@ fn compound(selector: &CssSelector) -> &CssCompoundSelector {
     }
 }
 
-fn logical_members(selector: &CssSelector) -> &[CssSelector] {
+fn logical_members(selector: &CssSelector) -> &[CssPseudoSelectorListItem] {
     match selector {
         CssSelector::PseudoClass(CssPseudoClass::Is(list) | CssPseudoClass::Where(list)) => {
-            list.selectors()
+            list.items()
         }
         other => panic!("forgiving selector: {other:?}"),
     }
@@ -549,15 +549,33 @@ fn explicit_universals_survive_logical_arguments_and_implicit_types_remain_absen
     let members = logical_members(&selector);
     assert_eq!(members.len(), 3);
     assert_eq!(
-        compound(&members[0]).type_selector().unwrap().namespace(),
+        compound(match &members[0] {
+            CssPseudoSelectorListItem::Selector(selector) => selector,
+            _ => panic!("valid typed member"),
+        })
+        .type_selector()
+        .unwrap()
+        .namespace(),
         &CssNamespaceConstraint::Named(CssNamespacePrefix::try_new("svg").unwrap())
     );
     assert_eq!(
-        compound(&members[1]).type_selector().unwrap().namespace(),
+        compound(match &members[1] {
+            CssPseudoSelectorListItem::Selector(selector) => selector,
+            _ => panic!("valid typed member"),
+        })
+        .type_selector()
+        .unwrap()
+        .namespace(),
         &CssNamespaceConstraint::ExplicitNone
     );
     assert_eq!(
-        compound(&members[2]).type_selector().unwrap().namespace(),
+        compound(match &members[2] {
+            CssPseudoSelectorListItem::Selector(selector) => selector,
+            _ => panic!("valid typed member"),
+        })
+        .type_selector()
+        .unwrap()
+        .namespace(),
         &CssNamespaceConstraint::Default
     );
     assert_eq!(parsed(".One"), CssSelector::Class("One".into()));
@@ -728,10 +746,10 @@ fn positional_pseudos_preserve_anb_and_strict_of_list_identity() {
         assert_eq!(coefficients, (a, b));
         if source.contains("OF") {
             assert_eq!(
-                value.selector_list().unwrap().selectors(),
+                value.selector_list().unwrap().items(),
                 [
-                    CssSelector::Class("One".into()),
-                    CssSelector::Key("Two".into())
+                    CssPseudoSelectorListItem::Selector(CssSelector::Class("One".into())),
+                    CssPseudoSelectorListItem::Selector(CssSelector::Key("Two".into()))
                 ]
             );
         } else {
@@ -823,8 +841,8 @@ fn forgiving_members_drop_invalid_selectors_without_becoming_strict_clean_report
         assert_eq!(
             logical_members(selector),
             [
-                CssSelector::Class("One".into()),
-                CssSelector::Key("Two".into())
+                CssPseudoSelectorListItem::Selector(CssSelector::Class("One".into())),
+                CssPseudoSelectorListItem::Selector(CssSelector::Key("Two".into()))
             ]
         );
         assert_eq!(
@@ -942,7 +960,9 @@ fn missing_eof_closure_is_reported_only_for_retained_syntax() {
     let report = parse_selector(source, &CssNamespaceContext::default());
     assert_eq!(
         logical_members(report.syntax().as_ref().unwrap()),
-        [CssSelector::Class("One".into())]
+        [CssPseudoSelectorListItem::Selector(CssSelector::Class(
+            "One".into()
+        ))]
     );
     let [closure] = report.diagnostics() else {
         panic!("one actual EOF closure")
@@ -1223,7 +1243,7 @@ fn parsed_empty_list() -> CssPseudoSelectorList {
     let Some(CssSelector::PseudoClass(CssPseudoClass::Is(list))) = report.syntax() else {
         panic!("empty is")
     };
-    assert!(list.selectors().is_empty());
+    assert!(list.items().is_empty());
     assert_eq!(
         report.diagnostics()[0].action(),
         CssRecoveryAction::DropSelectorListItem
@@ -1234,14 +1254,14 @@ fn parsed_empty_list() -> CssPseudoSelectorList {
 #[test]
 fn empty_forgiving_list_cannot_be_transplanted_to_public_not_graph() {
     let empty = parsed_empty_list();
-    assert!(empty.selectors().is_empty());
+    assert!(empty.items().is_empty());
     invalid_graph(CssSelector::PseudoClass(CssPseudoClass::Not(empty)));
 }
 
 #[test]
 fn empty_forgiving_list_cannot_be_transplanted_to_public_nth_of_graph() {
     let empty = parsed_empty_list();
-    assert!(empty.selectors().is_empty());
+    assert!(empty.items().is_empty());
     invalid_graph(CssSelector::PseudoClass(CssPseudoClass::NthChild(
         CssNthChildPattern::new(CssNthPattern::Odd, Some(empty)),
     )));
@@ -1414,7 +1434,8 @@ fn deep_logical_parse_clone_emit_and_limit_recovery_work_on_an_ordinary_stack() 
                 let selector = parsed_in(&source, &context);
                 let mut current = &selector;
                 for _ in 0..depth {
-                    let [child] = logical_members(current) else {
+                    let [CssPseudoSelectorListItem::Selector(child)] = logical_members(current)
+                    else {
                         panic!("one logical child")
                     };
                     current = child;

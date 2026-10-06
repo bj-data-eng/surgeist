@@ -145,10 +145,10 @@ fn root_limit_and_body_counts_survive_clone_and_normalization() {
     }
 }
 
-fn function_members(selector: &CssSelector) -> &[CssSelector] {
+fn function_members(selector: &CssSelector) -> &[CssPseudoSelectorListItem] {
     match selector {
-        CssSelector::PseudoClass(CssPseudoClass::Is(list)) => list.selectors(),
-        CssSelector::PseudoClass(CssPseudoClass::Not(list)) => list.selectors(),
+        CssSelector::PseudoClass(CssPseudoClass::Is(list)) => list.items(),
+        CssSelector::PseudoClass(CssPseudoClass::Not(list)) => list.items(),
         _ => panic!("is or not function"),
     }
 }
@@ -167,14 +167,20 @@ fn functional_members_retain_zero_one_and_multiple_anchors_in_each_context() {
         panic!("inner normalized scope")
     };
     for selector in [single(root), single(limit)] {
-        let [zero, one, multiple] = function_members(selector) else {
+        let [
+            CssPseudoSelectorListItem::Selector(zero),
+            CssPseudoSelectorListItem::Selector(one),
+            CssPseudoSelectorListItem::Selector(multiple),
+        ] = function_members(selector)
+        else {
             panic!("every function member retained")
         };
         counts(zero, 0, 0, false);
         counts(one, 0, 1, true);
         counts(multiple, 0, 3, true);
         let detached = selector.clone();
-        let [_, _, multiple] = function_members(&detached) else {
+        let [_, _, CssPseudoSelectorListItem::Selector(multiple)] = function_members(&detached)
+        else {
             panic!("cloned function members")
         };
         counts(multiple, 0, 3, true);
@@ -193,7 +199,12 @@ fn functional_members_retain_zero_one_and_multiple_anchors_in_each_context() {
     let [member] = body.selectors() else {
         panic!("body function")
     };
-    let [zero, one, multiple] = function_members(member.selector()) else {
+    let [
+        CssPseudoSelectorListItem::Selector(zero),
+        CssPseudoSelectorListItem::Selector(one),
+        CssPseudoSelectorListItem::Selector(multiple),
+    ] = function_members(member.selector())
+    else {
         panic!("body function members")
     };
     counts(zero, 0, 0, false);
@@ -213,13 +224,23 @@ fn style_nested_function_root_counts_remain_separate_from_scope_limit_counts() {
     let [CssRule::Scope(scope)] = parent.rules() else {
         panic!("scope")
     };
-    let [zero, one, multiple] = function_members(single(scope.root().unwrap())) else {
+    let [
+        CssPseudoSelectorListItem::Selector(zero),
+        CssPseudoSelectorListItem::Selector(one),
+        CssPseudoSelectorListItem::Selector(multiple),
+    ] = function_members(single(scope.root().unwrap()))
+    else {
         panic!("three root members")
     };
     counts(zero, 0, 0, false);
     counts(one, 1, 0, false);
     counts(multiple, 3, 0, false);
-    let [zero, one, multiple] = function_members(single(scope.limit().unwrap())) else {
+    let [
+        CssPseudoSelectorListItem::Selector(zero),
+        CssPseudoSelectorListItem::Selector(one),
+        CssPseudoSelectorListItem::Selector(multiple),
+    ] = function_members(single(scope.limit().unwrap()))
+    else {
         panic!("three limit members")
     };
     counts(zero, 0, 0, false);
@@ -233,7 +254,7 @@ fn nested_function(depth: usize) -> String {
 
 fn deep_leaf(mut selector: &CssSelector, depth: usize, nesting: usize, scope: usize) {
     for _ in 0..depth {
-        let [member] = function_members(selector) else {
+        let [CssPseudoSelectorListItem::Selector(member)] = function_members(selector) else {
             panic!("single retained function member")
         };
         selector = member;

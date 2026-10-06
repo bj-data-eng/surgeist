@@ -1,6 +1,6 @@
 use surgeist_css::{
     CssErrorCode, CssMediaConditionKind, CssMediaQuery, CssNamespaceConstraint, CssPseudoClass,
-    CssRecoveryAction, CssRule, CssSelector, ErrorKind, parse_sheet,
+    CssPseudoSelectorListItem, CssRecoveryAction, CssRule, CssSelector, ErrorKind, parse_sheet,
 };
 
 fn style_rule(
@@ -33,7 +33,7 @@ fn media_rule(
 
 fn forgiving_selectors(
     report: &surgeist_css::CssParseReport<surgeist_css::CssSheet>,
-) -> &[CssSelector] {
+) -> &[CssPseudoSelectorListItem] {
     let pseudo = match style_rule(report).selectors().selectors()[0].selector() {
         CssSelector::PseudoClass(pseudo) => pseudo,
         CssSelector::Compound(selector) => selector
@@ -43,12 +43,15 @@ fn forgiving_selectors(
         _ => panic!("expected a selector-list pseudo-class"),
     };
     match pseudo {
-        CssPseudoClass::Is(selectors) | CssPseudoClass::Where(selectors) => selectors.selectors(),
+        CssPseudoClass::Is(selectors) | CssPseudoClass::Where(selectors) => selectors.items(),
         _ => panic!("expected :is() or :where()"),
     }
 }
 
-fn selector_name(selector: &CssSelector) -> &str {
+fn selector_name(item: &CssPseudoSelectorListItem) -> &str {
+    let CssPseudoSelectorListItem::Selector(selector) = item else {
+        panic!("admitted simple selector")
+    };
     match selector {
         CssSelector::Class(name) | CssSelector::Tag(name) | CssSelector::Key(name) => name,
         _ => panic!("expected a simple selector"),
@@ -130,7 +133,11 @@ fn forgiving_selector_lists_drop_only_undeclared_namespace_members() {
         [CssRule::Namespace(_), CssRule::Style(_)]
     ));
 
-    let [qualified, CssSelector::Class(kept)] = forgiving_selectors(&report) else {
+    let [
+        CssPseudoSelectorListItem::Selector(qualified),
+        CssPseudoSelectorListItem::Selector(CssSelector::Class(kept)),
+    ] = forgiving_selectors(&report)
+    else {
         panic!("expected qualified and class members after forgiving recovery")
     };
     let CssSelector::Compound(qualified) = qualified else {
@@ -236,9 +243,9 @@ fn selectors3_pseudos_preserve_forgiving_and_unforgiving_list_recovery() {
     assert!(matches!(
         forgiving_selectors(&report),
         [
-            CssSelector::PseudoClass(CssPseudoClass::Target),
-            CssSelector::PseudoClass(CssPseudoClass::Lang(range)),
-            CssSelector::PseudoClass(CssPseudoClass::Visited),
+            CssPseudoSelectorListItem::Selector(CssSelector::PseudoClass(CssPseudoClass::Target)),
+            CssPseudoSelectorListItem::Selector(CssSelector::PseudoClass(CssPseudoClass::Lang(range))),
+            CssPseudoSelectorListItem::Selector(CssSelector::PseudoClass(CssPseudoClass::Visited)),
         ] if range.ranges()[0].as_str() == "en"
     ));
     let [diagnostic] = report.diagnostics() else {

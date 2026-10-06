@@ -1030,7 +1030,8 @@
 //! repeated IDs and classes, the structural/UI/dynamic pseudo-class families, `:lang()`, and
 //! first-line/first-letter pseudo-elements. Legacy single-colon `before`, `after`, `first-line`,
 //! and `first-letter` map to the same typed pseudo-elements. Undeclared namespace prefixes follow
-//! the existing consumer recovery contract: `:is()` and `:where()` drop only the invalid member,
+//! consumer recovery contract: `:is()` and `:where()` retain an invalid member containing a
+//! delimiter `&` as explicit match-nothing syntax and otherwise drop only that member,
 //! while unforgiving style, scope, nesting, `:not()`, `:has()`, and nth `of` consumers drop their
 //! established containing unit. Matching, specificity, cascade, namespace URI resolution,
 //! CSSOM serialization, and cross-crate lowering remain downstream.

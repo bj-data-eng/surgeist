@@ -293,7 +293,7 @@ fn empty_forgiving_lists_cannot_be_reused_for_nonempty_argument_grammars() {
     let Some(CssSelector::PseudoClass(CssPseudoClass::Is(empty))) = report.syntax().clone() else {
         panic!("retained empty forgiving list")
     };
-    assert!(empty.selectors().is_empty());
+    assert!(empty.items().is_empty());
     for invalid in [
         CssPseudoClass::Not(empty.clone()),
         CssPseudoClass::NthChild(CssNthChildPattern::new(

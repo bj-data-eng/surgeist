@@ -5,8 +5,8 @@
 //! functions surviving that recovery, not all lexically open functions.
 
 use surgeist_css::{
-    CssNamespaceContext, CssPseudoClass, CssRecoveryAction, CssRecoveryDiagnostic, CssSelector,
-    parse_selector, parse_selector_list,
+    CssNamespaceContext, CssPseudoClass, CssPseudoSelectorListItem, CssRecoveryAction,
+    CssRecoveryDiagnostic, CssSelector, parse_selector, parse_selector_list,
 };
 
 fn assert_retained_closures(
@@ -52,7 +52,7 @@ fn discarded_unclosed_function_does_not_claim_a_retained_closure() {
     let Some(CssSelector::PseudoClass(CssPseudoClass::Is(members))) = report.syntax() else {
         panic!("retained is selector");
     };
-    assert!(members.selectors().is_empty());
+    assert!(members.items().is_empty());
     assert_retained_closures(report.diagnostics(), 4, 9, 1);
 }
 
@@ -62,10 +62,18 @@ fn nested_retained_functions_keep_their_own_closures_after_member_recovery() {
     let Some(CssSelector::PseudoClass(CssPseudoClass::Is(outer))) = report.syntax() else {
         panic!("retained is selector");
     };
-    let [CssSelector::PseudoClass(CssPseudoClass::Where(inner))] = outer.selectors() else {
+    let [
+        CssPseudoSelectorListItem::Selector(CssSelector::PseudoClass(CssPseudoClass::Where(inner))),
+    ] = outer.items()
+    else {
         panic!("retained where selector");
     };
-    assert_eq!(inner.selectors(), [CssSelector::Class("kept".into())]);
+    assert_eq!(
+        inner.items(),
+        [CssPseudoSelectorListItem::Selector(CssSelector::Class(
+            "kept".into()
+        ))]
+    );
     assert_retained_closures(report.diagnostics(), 17, 22, 2);
 }
 
@@ -78,7 +86,12 @@ fn selector_list_preserves_siblings_and_only_surviving_function_closures() {
     let CssSelector::PseudoClass(CssPseudoClass::Where(inner)) = members[1].selector() else {
         panic!("retained where selector");
     };
-    assert_eq!(inner.selectors(), [CssSelector::Class("kept".into())]);
+    assert_eq!(
+        inner.items(),
+        [CssPseudoSelectorListItem::Selector(CssSelector::Class(
+            "kept".into()
+        ))]
+    );
     assert_retained_closures(report.diagnostics(), 20, 25, 1);
 }
 

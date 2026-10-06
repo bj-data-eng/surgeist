@@ -3,8 +3,9 @@
 //! Unknown function names are invalid under pinned Selectors 4 section 3.9:
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid
 use surgeist_css::{
-    CssNamespaceContext, CssPseudoClass, CssRecoveryAction, CssRecoveryDiagnostic, CssRule,
-    CssSelector, CssTokenKind, ErrorKind, parse_selector, parse_sheet,
+    CssNamespaceContext, CssPseudoClass, CssPseudoSelectorListItem, CssRecoveryAction,
+    CssRecoveryDiagnostic, CssRule, CssSelector, CssTokenKind, ErrorKind, parse_selector,
+    parse_sheet,
 };
 
 fn assert_origin(
@@ -86,7 +87,12 @@ fn forgiving_unknown_function_preserves_whole_member_span_and_valid_member() {
     let Some(CssSelector::PseudoClass(CssPseudoClass::Is(members))) = report.syntax() else {
         panic!("retained forgiving selector: {report:?}");
     };
-    assert_eq!(members.selectors(), [CssSelector::Class("ok".into())]);
+    assert_eq!(
+        members.items(),
+        [CssPseudoSelectorListItem::Selector(CssSelector::Class(
+            "ok".into()
+        ))]
+    );
     let diagnostic = report
         .diagnostics()
         .iter()

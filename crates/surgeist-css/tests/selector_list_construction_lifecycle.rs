@@ -4,8 +4,8 @@
 
 use surgeist_css::{
     CssCompoundSelectorArgument, CssNamespaceContext, CssNthChildPattern, CssNthPattern,
-    CssPseudoClass, CssPseudoSelectorList, CssRelativeSelector, CssRelativeSelectorList,
-    CssSelector, CssSelectorCombinator, CssSelectorConstructionError,
+    CssPseudoClass, CssPseudoSelectorList, CssPseudoSelectorListItem, CssRelativeSelector,
+    CssRelativeSelectorList, CssSelector, CssSelectorCombinator, CssSelectorConstructionError,
     CssSelectorConstructionErrorKind, CssSelectorList, CssSpecifiedValueSerializationError,
     CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits, parse_selector,
 };
@@ -146,7 +146,14 @@ fn pseudo_admission_charges_argument_bytes_without_guessing_an_attachment() {
         Limits::new(3, 3, arguments.len()),
     )
     .unwrap();
-    assert_eq!(list.selectors(), members.as_slice());
+    assert_eq!(
+        list.items(),
+        members
+            .iter()
+            .cloned()
+            .map(CssPseudoSelectorListItem::Selector)
+            .collect::<Vec<_>>()
+    );
     for (limits, cause) in [
         (Limits::new(2, 3, arguments.len()), Kind::InputNodeLimit),
         (
@@ -170,7 +177,7 @@ fn checked_forgiving_empty_list_costs_one_aggregate_and_retains_strict_consumers
     let empty =
         CssPseudoSelectorList::try_new_forgiving_with_limits(Vec::new(), Limits::new(1, 1, 0))
             .unwrap();
-    assert!(empty.selectors().is_empty());
+    assert!(empty.items().is_empty());
     assert_eq!(
         CssPseudoSelectorList::try_new_forgiving(Vec::new()).unwrap(),
         empty
@@ -229,7 +236,13 @@ fn checked_forgiving_factory_rejects_supplied_invalid_members_without_dropping()
     }
     let members = vec![parsed(".One > .Two"), parsed(":has(> .Cell)")];
     let list = CssPseudoSelectorList::try_new_forgiving(members.clone()).unwrap();
-    assert_eq!(list.selectors(), members.as_slice());
+    assert_eq!(
+        list.items(),
+        members
+            .into_iter()
+            .map(CssPseudoSelectorListItem::Selector)
+            .collect::<Vec<_>>()
+    );
     assert_eq!(
         CssSelector::PseudoClass(CssPseudoClass::Where(list))
             .to_specified_css()

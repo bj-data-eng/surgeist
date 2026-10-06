@@ -30,7 +30,7 @@ fn anchor_free_scope_boundary_parenthesis_counts_toward_structural_limit() {
             let CssSelector::PseudoClass(CssPseudoClass::Is(list)) = selector else {
                 panic!("retained function")
             };
-            let [member] = list.selectors() else {
+            let [surgeist_css::CssPseudoSelectorListItem::Selector(member)] = list.items() else {
                 panic!("one retained member")
             };
             selector = member;

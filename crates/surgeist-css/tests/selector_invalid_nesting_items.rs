@@ -4,9 +4,9 @@
 //! exactly as authored. Their preservation does not make invalid source clean.
 
 use surgeist_css::{
-    CssErrorCode, CssNamespaceContext, CssPseudoClass, CssRecoveryAction, CssRule, CssSelector,
-    CssSelectorCombinator, CssStyleSelector, CssTokenKind, ErrorKind, parse_relative_selector_list,
-    parse_selector, parse_selector_list, parse_sheet,
+    CssErrorCode, CssNamespaceContext, CssPseudoClass, CssPseudoSelectorListItem,
+    CssRecoveryAction, CssRule, CssSelector, CssSelectorCombinator, CssStyleSelector, CssTokenKind,
+    ErrorKind, parse_relative_selector_list, parse_selector, parse_selector_list, parse_sheet,
 };
 
 fn retained(source: &str, literal: &str) {
@@ -46,10 +46,10 @@ fn retained(source: &str, literal: &str) {
     assert!(reparsed.into_validation_result().is_err());
 }
 
-fn members(selector: &CssSelector) -> &[CssSelector] {
+fn members(selector: &CssSelector) -> &[CssPseudoSelectorListItem] {
     match selector {
         CssSelector::PseudoClass(CssPseudoClass::Is(list) | CssPseudoClass::Where(list)) => {
-            list.selectors()
+            list.items()
         }
         _ => panic!("logical forgiving selector"),
     }
@@ -273,7 +273,12 @@ fn strings_comments_and_escaped_identifiers_do_not_turn_invalid_items_into_nesti
                 &CssNamespaceContext::default(),
             );
             let selector = report.syntax().as_ref().unwrap();
-            assert_eq!(members(selector), [CssSelector::Class("Keep".into())]);
+            assert_eq!(
+                members(selector),
+                [CssPseudoSelectorListItem::Selector(CssSelector::Class(
+                    "Keep".into()
+                ))]
+            );
             assert_eq!(
                 selector.to_specified_css().unwrap(),
                 format!(":{name}(.Keep)")
@@ -294,8 +299,8 @@ fn valid_nesting_members_remain_symbolic_and_distinct_from_literal_scope() {
     assert!(report.is_clean());
     let selector = report.into_validation_result().unwrap().unwrap();
     let [
-        CssSelector::Compound(nesting),
-        CssSelector::PseudoClass(CssPseudoClass::Scope),
+        CssPseudoSelectorListItem::Selector(CssSelector::Compound(nesting)),
+        CssPseudoSelectorListItem::Selector(CssSelector::PseudoClass(CssPseudoClass::Scope)),
     ] = members(&selector)
     else {
         panic!("nesting and literal Scope identities");

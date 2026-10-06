@@ -351,7 +351,72 @@ impl CssSelectorList {
 /// can retain zero members; strict construction still requires a nonempty list.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssPseudoSelectorList {
-    selectors: Vec<CssSelector>,
+    items: Vec<CssPseudoSelectorListItem>,
+}
+
+/// One ordered argument of a logical pseudo selector.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub enum CssPseudoSelectorListItem {
+    /// An admitted typed selector, checked in its receiving grammar.
+    Selector(CssSelector),
+    /// A parser-retained invalid member containing a delimiter `&`.
+    InvalidNesting(CssInvalidNestingSelectorItem),
+}
+
+/// Invalid forgiving syntax retained exactly in its original parse environment.
+///
+/// This is a match-nothing, zero-specificity authored state, not an admitted
+/// selector. Only Is/Where can receive it, in the original or a more restrictive
+/// intrinsic grammar. Clone/output never rebinds namespaces: explicitly parsing
+/// its emitted text with different bindings is a new operation and may admit a
+/// different state. Source coordinates are metadata, not structural identity.
+#[derive(Clone, Debug)]
+pub struct CssInvalidNestingSelectorItem {
+    origin: crate::CssParsedOrigin,
+    components: crate::CssComponentValues,
+    grammar: CssSelectorGrammarContext,
+}
+
+impl CssInvalidNestingSelectorItem {
+    pub(crate) const fn new(
+        origin: crate::CssParsedOrigin,
+        components: crate::CssComponentValues,
+        grammar: CssSelectorGrammarContext,
+    ) -> Self {
+        Self {
+            origin,
+            components,
+            grammar,
+        }
+    }
+
+    /// Complete original member, excluding its comma and including edge trivia.
+    #[must_use]
+    pub fn authored(&self) -> &str {
+        &self.origin.source().as_str()[self.origin.span().start().byte_offset().value()
+            ..self.origin.span().end().byte_offset().value()]
+    }
+
+    #[must_use]
+    pub const fn origin(&self) -> &crate::CssParsedOrigin {
+        &self.origin
+    }
+
+    #[must_use]
+    pub const fn components(&self) -> &crate::CssComponentValues {
+        &self.components
+    }
+
+    pub(crate) fn admitted_in(&self, grammar: CssSelectorGrammarContext) -> bool {
+        grammar.at_least_as_restrictive_as(self.grammar)
+    }
+}
+
+impl PartialEq for CssInvalidNestingSelectorItem {
+    fn eq(&self, other: &Self) -> bool {
+        self.authored() == other.authored() && self.grammar == other.grammar
+    }
 }
 
 impl CssPseudoSelectorList {
@@ -391,33 +456,53 @@ impl CssPseudoSelectorList {
         selectors: Vec<CssSelector>,
         limits: crate::CssSpecifiedValueSerializationLimits,
     ) -> Result<Self, CssSelectorConstructionError> {
-        let value = Self::new_forgiving(selectors);
         let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
         writer
-            .pseudo_selectors(&value)
+            .pseudo_selector_members(&selectors)
             .map_err(CssSelectorConstructionError::specified)?;
-        Ok(value)
+        let mut items = Vec::new();
+        items.try_reserve(selectors.len()).map_err(|_| {
+            CssSelectorConstructionError::specified(
+                crate::CssSpecifiedValueSerializationError::new(
+                    crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
+                ),
+            )
+        })?;
+        items.extend(
+            selectors
+                .into_iter()
+                .map(CssPseudoSelectorListItem::Selector),
+        );
+        Ok(Self { items })
     }
 
-    #[must_use]
+    // Owning private writer fixtures may deliberately bypass public admission.
+    #[cfg(test)]
     pub(crate) fn new(selectors: Vec<CssSelector>) -> Self {
-        debug_assert!(!selectors.is_empty());
-        Self { selectors }
+        Self {
+            items: selectors
+                .into_iter()
+                .map(CssPseudoSelectorListItem::Selector)
+                .collect(),
+        }
     }
 
-    #[must_use]
-    pub(crate) const fn new_forgiving(selectors: Vec<CssSelector>) -> Self {
-        Self { selectors }
+    pub(crate) const fn from_parsed_items(items: Vec<CssPseudoSelectorListItem>) -> Self {
+        Self { items }
     }
 
+    /// Every argument in source order, including explicit retained invalid state.
     #[must_use]
-    pub fn selectors(&self) -> &[CssSelector] {
-        &self.selectors
+    pub fn items(&self) -> &[CssPseudoSelectorListItem] {
+        &self.items
     }
 
     #[must_use]
     pub fn has_pseudo_elements(&self) -> bool {
-        self.selectors.iter().any(CssSelector::has_pseudo_elements)
+        self.items.iter().any(|item| match item {
+            CssPseudoSelectorListItem::Selector(selector) => selector.has_pseudo_elements(),
+            CssPseudoSelectorListItem::InvalidNesting(_) => false,
+        })
     }
 }
 
@@ -991,7 +1076,7 @@ impl CssPseudoElementSequence {
 
 /// Intrinsic authored grammar inherited by selector-function arguments. Matching
 /// and namespace resolution are separate from these structural restrictions.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct CssSelectorGrammarContext {
     allow_pseudo_elements: bool,
     allow_has: bool,
@@ -1006,6 +1091,31 @@ impl CssSelectorGrammarContext {
         compound_only: false,
         pseudo_suffix: None,
     };
+
+    pub(crate) const fn from_parser_restrictions(
+        allow_pseudo_elements: bool,
+        allow_has: bool,
+        compound_only: bool,
+        pseudo_suffix: Option<bool>,
+    ) -> Self {
+        Self {
+            allow_pseudo_elements,
+            allow_has,
+            compound_only,
+            pseudo_suffix,
+        }
+    }
+
+    fn at_least_as_restrictive_as(self, original: Self) -> bool {
+        (!self.allow_pseudo_elements || original.allow_pseudo_elements)
+            && (!self.allow_has || original.allow_has)
+            && (!original.compound_only || self.compound_only)
+            && match original.pseudo_suffix {
+                None => true,
+                Some(true) => self.pseudo_suffix.is_some(),
+                Some(false) => self.pseudo_suffix == Some(false),
+            }
+    }
 
     pub(crate) fn logical_arguments(self) -> Self {
         Self {
@@ -1085,12 +1195,12 @@ impl CssSelectorGrammarContext {
             );
         suffix
             && match pseudo {
-                CssPseudoClass::Not(list) => !list.selectors().is_empty(),
+                CssPseudoClass::Not(list) => !list.items().is_empty(),
                 CssPseudoClass::Has(_) => self.allow_has,
                 CssPseudoClass::NthChild(pattern) | CssPseudoClass::NthLastChild(pattern) => {
                     pattern
                         .selector_list()
-                        .is_none_or(|list| !list.selectors().is_empty())
+                        .is_none_or(|list| !list.items().is_empty())
                 }
                 _ => true,
             }
@@ -1173,8 +1283,14 @@ fn pseudo_is_valid_in_context(pseudo: &CssPseudoClass, context: CssSelectorGramm
                 compound_is_valid_in_context(argument.compound(), context.compound_arguments())
             }
             CssPseudoClass::Not(list) | CssPseudoClass::Is(list) | CssPseudoClass::Where(list) => {
-                list.selectors().iter().all(|selector| {
-                    selector_is_valid_in_context(selector, context.logical_arguments())
+                list.items().iter().all(|item| match item {
+                    CssPseudoSelectorListItem::Selector(selector) => {
+                        selector_is_valid_in_context(selector, context.logical_arguments())
+                    }
+                    CssPseudoSelectorListItem::InvalidNesting(item) => {
+                        !matches!(pseudo, CssPseudoClass::Not(_))
+                            && item.admitted_in(context.logical_arguments())
+                    }
                 })
             }
             CssPseudoClass::Has(list) => list.selectors().iter().all(|relative| {
@@ -1182,8 +1298,11 @@ fn pseudo_is_valid_in_context(pseudo: &CssPseudoClass, context: CssSelectorGramm
             }),
             CssPseudoClass::NthChild(pattern) | CssPseudoClass::NthLastChild(pattern) => {
                 pattern.selector_list().is_none_or(|list| {
-                    list.selectors().iter().all(|selector| {
-                        selector_is_valid_in_context(selector, context.independent_arguments())
+                    list.items().iter().all(|item| match item {
+                        CssPseudoSelectorListItem::Selector(selector) => {
+                            selector_is_valid_in_context(selector, context.independent_arguments())
+                        }
+                        CssPseudoSelectorListItem::InvalidNesting(_) => false,
                     })
                 })
             }

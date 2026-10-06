@@ -105,6 +105,8 @@ pub enum CssRecoveryAction {
     DropKeyframeBlock,
     /// The diagnostic phase discarded one invalid member of a forgiving selector list.
     DropSelectorListItem,
+    /// Retained a match-nothing invalid nesting-containing member of Is/Where.
+    PreserveInvalidSelectorListItem,
     /// The diagnostic phase retained a guaranteed-false sentinel for an invalid media query.
     ReplaceMediaQueryWithNever,
     /// The diagnostic phase retained valid authored syntax after an implicit EOF closure.

@@ -1325,19 +1325,28 @@ fn pseudo_has_anchor(pseudo: &CssPseudoClass, kind: AnchorKind) -> bool {
         CssPseudoClass::HostFunction(argument) | CssPseudoClass::HostContext(argument) => {
             compound_has_anchor(argument.compound(), kind)
         }
-        CssPseudoClass::Not(list) | CssPseudoClass::Is(list) | CssPseudoClass::Where(list) => list
-            .selectors()
-            .iter()
-            .any(|selector| selector_has_anchor(selector, kind)),
+        CssPseudoClass::Not(list) | CssPseudoClass::Is(list) | CssPseudoClass::Where(list) => {
+            list.items().iter().any(|item| match item {
+                CssPseudoSelectorListItem::Selector(selector) => {
+                    selector_has_anchor(selector, kind)
+                }
+                CssPseudoSelectorListItem::InvalidNesting(_) => matches!(kind, AnchorKind::Nesting),
+            })
+        }
         CssPseudoClass::Has(list) => list
             .selectors()
             .iter()
             .any(|relative| selector_has_anchor(relative.selector(), kind)),
         CssPseudoClass::NthChild(pattern) | CssPseudoClass::NthLastChild(pattern) => {
             pattern.selector_list().is_some_and(|list| {
-                list.selectors()
-                    .iter()
-                    .any(|selector| selector_has_anchor(selector, kind))
+                list.items().iter().any(|item| match item {
+                    CssPseudoSelectorListItem::Selector(selector) => {
+                        selector_has_anchor(selector, kind)
+                    }
+                    CssPseudoSelectorListItem::InvalidNesting(_) => {
+                        matches!(kind, AnchorKind::Nesting)
+                    }
+                })
             })
         }
         CssPseudoClass::Host

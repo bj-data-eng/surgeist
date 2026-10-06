@@ -337,6 +337,22 @@ impl RecoveryState {
         }
     }
 
+    /// Selector probes use generated offsets, while keeping the live grammar
+    /// environment and structural depth. Their source-relative bookkeeping must
+    /// not publish offsets into the enclosing authored snapshot.
+    pub(super) fn generated_selector_probe(&self, source: &str) -> Self {
+        Self {
+            parser_context: self.parser_context,
+            depth: Rc::clone(&self.depth),
+            source_snapshot: crate::CssSourceSnapshot::new(source),
+            style_context_captures: self.style_context_captures.clone(),
+            namespace_bindings: Rc::clone(&self.namespace_bindings),
+            implicit_openings: Rc::new(unclosed_openings(source)),
+            retained_implicit_openings: Rc::new(RefCell::new(Vec::new())),
+            retained_navigation_diagnostics: Rc::new(RefCell::new(Vec::new())),
+        }
+    }
+
     pub(super) fn pending_component_closures(&self) -> Vec<usize> {
         self.retained_implicit_openings.borrow().clone()
     }
@@ -1215,6 +1231,54 @@ mod tests {
     use cssparser::{Parser, ParserInput};
 
     use super::{RecoveryLoopOutcome, RecoveryProgress, unclosed_openings};
+
+    #[test]
+    fn generated_selector_probe_shares_environment_but_owns_source_offsets() {
+        let source = "original(";
+        let captures = super::StyleContextCaptures::default();
+        captures.register(9);
+        let context = crate::CssParserContext::new(crate::CssParserMode::Quirks)
+            .with_svg_glyph_orientation_vertical();
+        let state = super::RecoveryState::at_depth(source, 7, captures.clone())
+            .with_parser_context(context);
+        state.retain_component_closures(vec![8]);
+        let prefix = crate::CssNamespacePrefix::try_new("Svg").unwrap();
+        let name = crate::CssNamespaceName::new("urn:svg");
+        state.activate_namespace(Some(prefix.clone()), name.clone());
+        let probe = state.generated_selector_probe(":is(.A)");
+        assert_eq!(probe.parser_context(), context);
+        assert_eq!(probe.source_snapshot().as_str(), ":is(.A)");
+        assert_eq!(state.source_snapshot().as_str(), source);
+        assert_eq!(probe.active_namespace_prefix("Svg"), Some(prefix));
+        assert!(probe.active_namespace_prefix("svg").is_none());
+        probe.activate_namespace(None, name);
+        assert!(state.has_default_namespace());
+        probe.record_style_context(9);
+        assert!(captures.contains_parsed(9));
+        let mut input = ParserInput::new("(");
+        let mut parser = Parser::new(&mut input);
+        parser.next().unwrap();
+        {
+            let _guard = probe
+                .enter_component_block("(", &parser, "baseline.selector.complex")
+                .unwrap();
+            assert_eq!(state.structural_depth(), 8);
+        }
+        assert_eq!(state.structural_depth(), 7);
+        assert!(probe.pending_component_closures().is_empty());
+        assert_eq!(state.pending_component_closures(), [8]);
+        assert!(
+            probe
+                .take_implicit_closure_diagnostics(":is(.A)")
+                .is_empty()
+        );
+        let diagnostics = state.take_implicit_closure_diagnostics(source);
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].error().position().byte_offset().value(),
+            source.len()
+        );
+    }
 
     #[test]
     fn implicit_closure_scan_ignores_delimiters_in_strings_and_comments() {

@@ -151,9 +151,12 @@ owning leaf policies cumulative: omitted output still visits its semantic work
 without consuming final output bytes.
 
 An invalid outer selector or unforgiving root list produces `None` and a
-`RejectInput` diagnostic spanning the complete input. A valid `:is()` or
-`:where()` can retain its valid members while reporting discarded forgiving
-members. Before that recovery, the complete function argument must satisfy the
+`RejectInput` diagnostic spanning the complete input. An `:is()` or `:where()` retains admitted members and diagnoses invalid
+forgiving members. An invalid member containing a delimiter `&` anywhere in its
+component tree is retained as `CssPseudoSelectorListItem::InvalidNesting` with
+`PreserveInvalidSelectorListItem`; other invalid members are discarded with
+`DropSelectorListItem`. Strings, URLs, comments and escaped identifiers containing
+ampersands do not contain that delimiter token. Before that recovery, the complete function argument must satisfy the
 lexical `<any-value>?` envelope: bad strings, bad URLs and unmatched closing
 delimiters at any depth reject the selector, even when another member is valid.
 A missing EOF delimiter alone remains recoverable. This gate uses original
@@ -187,6 +190,30 @@ rejecting invalid supplied members. An empty value costs one aggregate node and
 zero argument bytes. Not and nth-of attachment require nonempty arguments and
 reject that same empty container. This checked typed operation does not perform
 parsed member forgiveness or erase recovery diagnostics.
+
+`CssPseudoSelectorList::items()` exposes one ordered sequence of typed `Selector`
+and parser-owned `InvalidNesting` items. Public factories still take typed
+`Vec<CssSelector>` and cannot manufacture invalid raw state. An invalid item exposes
+its exact member spelling, original source origin and immutable components,
+including trivia at both edges. Its equality uses spelling and intrinsic grammar
+proof rather than source coordinates. It represents match-nothing syntax with
+zero specificity; this crate does not perform matching or specificity evaluation.
+
+Only Is/Where can receive that state. Clone/composition must preserve or tighten
+its original intrinsic restrictions on pseudo-elements, Has, compound arguments
+and pseudo-element suffixes. Not and nth-of reject it; weakening a receiving
+context returns the existing unrepresentable-value error atomically. Its namespace
+invalidity stays bound to the original parse environment. Explicitly parsing the
+emitted text with different namespace bindings is a new operation and may yield
+an admitted selector.
+
+Specified output emits original borrowed member chunks with owner-recorded EOF
+terminations. It emits only a comma before raw state, since the member already
+owns its leading trivia; admitted members keep canonical comma-space separation.
+One retained carrier and every component consume cumulative input/projection
+work; each closing or implicit leaf termination additionally consumes projection
+work. Scratch allocation and final UTF-8 output use the same live bounded writer.
+An unsafe lexical boundary fails atomically instead of escaping into outer grammar.
 
 Linguistic selectors preserve authored argument tokens. `CssPseudoClass::Dir`
 contains `CssDirectionality`; its checked `try_new` accepts a decoded identifier,

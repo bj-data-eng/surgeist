@@ -4,7 +4,8 @@
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#nth-child-pseudo
 use surgeist_css::{
     CssNamespaceConstraint, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix,
-    CssNthPattern, CssPseudoClass, CssRecoveryAction, CssSelector, parse_selector,
+    CssNthPattern, CssPseudoClass, CssPseudoSelectorListItem, CssRecoveryAction, CssSelector,
+    parse_selector,
 };
 
 fn coefficients(pattern: CssNthPattern) -> (i32, i32) {
@@ -242,8 +243,12 @@ fn nth_corpus_preserves_token_grammar_and_typed_patterns() {
         assert_eq!(kind, *expected_kind, "{id}");
         assert_eq!(coefficients(pattern), (*a, *b), "{id}");
         if *has_filter {
-            let members = filter.expect("authored of selector list").selectors();
-            let [first, second] = members else {
+            let members = filter.expect("authored of selector list").items();
+            let [
+                CssPseudoSelectorListItem::Selector(first),
+                CssPseudoSelectorListItem::Selector(second),
+            ] = members
+            else {
                 panic!("two authored of-list members for {id}: {members:?}");
             };
             assert_type_li(first);

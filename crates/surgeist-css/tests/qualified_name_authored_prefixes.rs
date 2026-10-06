@@ -222,7 +222,12 @@ fn undeclared_and_ignored_prefixes_recover_at_the_selected_host_unit() {
     else {
         panic!("retained forgiving host: {forgiving:?}");
     };
-    assert_eq!(list.selectors(), [selector("svg|leaf", &context)]);
+    assert_eq!(
+        list.items(),
+        [surgeist_css::CssPseudoSelectorListItem::Selector(selector(
+            "svg|leaf", &context
+        ))]
+    );
     let ignored = parse_sheet("@namespace svg ident;svg|leaf{}.after{}");
     assert!(matches!(ignored.syntax().rules(), [CssRule::Style(_)]));
     assert_eq!(ignored.diagnostics().len(), 2);

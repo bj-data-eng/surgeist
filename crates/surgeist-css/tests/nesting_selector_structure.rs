@@ -3,8 +3,8 @@
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/
 
 use surgeist_css::{
-    CssCompoundSelector, CssPseudoClass, CssRule, CssSelector, CssSelectorCombinator,
-    CssStyleSelector, parse_sheet,
+    CssCompoundSelector, CssPseudoClass, CssPseudoSelectorListItem, CssRule, CssSelector,
+    CssSelectorCombinator, CssStyleSelector, parse_sheet,
 };
 
 fn compound_anchors(compound: &CssCompoundSelector) -> usize {
@@ -22,9 +22,15 @@ fn compound_anchors(compound: &CssCompoundSelector) -> usize {
 
 fn pseudo_anchors(pseudo: &CssPseudoClass) -> usize {
     match pseudo {
-        CssPseudoClass::Is(list) | CssPseudoClass::Where(list) | CssPseudoClass::Not(list) => {
-            list.selectors().iter().map(selector_anchors).sum()
-        }
+        CssPseudoClass::Is(list) | CssPseudoClass::Where(list) | CssPseudoClass::Not(list) => list
+            .items()
+            .iter()
+            .map(|item| match item {
+                CssPseudoSelectorListItem::Selector(selector) => selector_anchors(selector),
+                CssPseudoSelectorListItem::InvalidNesting(_) => 1,
+                _ => panic!("known item"),
+            })
+            .sum(),
         CssPseudoClass::Has(list) => list
             .selectors()
             .iter()
@@ -32,7 +38,14 @@ fn pseudo_anchors(pseudo: &CssPseudoClass) -> usize {
             .sum(),
         CssPseudoClass::NthChild(pattern) | CssPseudoClass::NthLastChild(pattern) => {
             pattern.selector_list().map_or(0, |list| {
-                list.selectors().iter().map(selector_anchors).sum()
+                list.items()
+                    .iter()
+                    .map(|item| match item {
+                        CssPseudoSelectorListItem::Selector(selector) => selector_anchors(selector),
+                        CssPseudoSelectorListItem::InvalidNesting(_) => 1,
+                        _ => panic!("known item"),
+                    })
+                    .sum()
             })
         }
         _ => 0,

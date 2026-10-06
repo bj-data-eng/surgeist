@@ -101,16 +101,16 @@ impl<'a> SelectorRecovery<'a> {
             .map_err(|error| selector_component_error(start.source_location(), error))
     }
 
-    fn drop_forgiving_member(
+    fn diagnose_forgiving_member(
         &mut self,
         error: ParseError<'_, Error>,
         member_start: usize,
         member_end: usize,
         following_comma: Option<(usize, usize)>,
         preceding_comma: Option<(usize, usize)>,
+        ordinary_action: crate::CssRecoveryAction,
     ) {
-        let action =
-            recovery_action_for_error(&error, crate::CssRecoveryAction::DropSelectorListItem);
+        let action = recovery_action_for_error(&error, ordinary_action);
         let error = from_parse_error(self.source, error);
         let Some(span) = comma_member_span(
             self.source,
@@ -300,6 +300,15 @@ struct SelectorParseOptions {
 }
 
 impl SelectorParseOptions {
+    const fn grammar(self) -> CssSelectorGrammarContext {
+        CssSelectorGrammarContext::from_parser_restrictions(
+            self.allow_pseudo_elements,
+            self.allow_has,
+            self.compound_only,
+            self.pseudo_suffix,
+        )
+    }
+
     const fn standard() -> Self {
         Self {
             allow_has: true,
@@ -1456,17 +1465,27 @@ fn parse_pseudo_selector_list_with_options<'i, 't>(
     let selectors = parse_pseudo_selector_list_items_with_options(input, options, recovery)?;
     // This parser has proved each member in its actual containing context and
     // charged the shared parse budget. Programmatic output limits are separate.
-    Ok(CssPseudoSelectorList::new(selectors))
+    Ok(CssPseudoSelectorList::from_parsed_items(selectors))
 }
 
 fn parse_pseudo_selector_list_items_with_options<'i, 't>(
     input: &mut Parser<'i, 't>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<Vec<CssSelector>, ParseError<'i, Error>> {
+) -> std::result::Result<Vec<CssPseudoSelectorListItem>, ParseError<'i, Error>> {
     let mut selectors = Vec::new();
     loop {
-        selectors.push(parse_rule_selector_with_options(input, options, recovery)?);
+        let selector = parse_rule_selector_with_options(input, options, recovery)?;
+        selectors.try_reserve(1).map_err(|_| {
+            selector_component_error(
+                input.current_source_location(),
+                crate::CssComponentValueError::new(
+                    crate::CssComponentValueErrorKind::CapacityOverflow,
+                    crate::CssValueOrigin::Programmatic,
+                ),
+            )
+        })?;
+        selectors.push(CssPseudoSelectorListItem::Selector(selector));
         if input.try_parse(Parser::expect_comma).is_err() {
             break;
         }
@@ -1481,13 +1500,36 @@ fn parse_forgiving_pseudo_selector_list<'i, 't>(
     recovery: &mut SelectorRecovery<'_>,
 ) -> std::result::Result<CssPseudoSelectorList, ParseError<'i, Error>> {
     recovery.check_forgiving_envelope(input)?;
-    let mut selectors = Vec::new();
+    let mut items = Vec::new();
     let mut preceding_comma = None;
     loop {
         let member_start = input.position().byte_index();
-        let result = input.parse_until_before(Delimiter::Comma, |member| {
-            parse_rule_selector_with_options(member, options, recovery)
-        });
+        let (result, invalid_components) =
+            input.parse_until_before(Delimiter::Comma, |member| {
+                let start = member.state();
+                let result = parse_rule_selector_with_options(member, options, recovery);
+                let components = match &result {
+                    Err(error)
+                        if matches!(&error.kind,
+                    cssparser::ParseErrorKind::Custom(error)
+                    if matches!(error.kind(), crate::ErrorKind::InvalidSelector(_))) =>
+                    {
+                        member.reset(&start);
+                        Some(
+                            crate::CssComponentValues::collect_from_parser(
+                                member,
+                                recovery.state.source_snapshot(),
+                            )
+                            .map_err(|error| {
+                                selector_component_error(start.source_location(), error)
+                            })?,
+                        )
+                    }
+                    Err(error) => return Err(error.clone()),
+                    Ok(_) => None,
+                };
+                Ok((result, components))
+            })?;
         let member_end = input.position().byte_index();
         let comma_start = member_end;
         let following_comma = match input.next() {
@@ -1497,24 +1539,59 @@ fn parse_forgiving_pseudo_selector_list<'i, 't>(
             Err(error) => return Err(selector_basic(error)),
         };
 
-        match result {
-            Ok(selector) => selectors.push(selector),
-            Err(error) => recovery.drop_forgiving_member(
-                error,
-                member_start,
-                member_end,
-                following_comma,
-                preceding_comma,
-            ),
+        let item = match result {
+            Ok(selector) => Some(CssPseudoSelectorListItem::Selector(selector)),
+            Err(error) => {
+                let components = invalid_components.expect("failed member components");
+                let location = error.location;
+                let contains_nesting = components
+                    .contains_delimiter('&')
+                    .map_err(|error| selector_component_error(location, error))?;
+                let action = if contains_nesting {
+                    crate::CssRecoveryAction::PreserveInvalidSelectorListItem
+                } else {
+                    crate::CssRecoveryAction::DropSelectorListItem
+                };
+                recovery.diagnose_forgiving_member(
+                    error,
+                    member_start,
+                    member_end,
+                    following_comma,
+                    preceding_comma,
+                    action,
+                );
+                if contains_nesting {
+                    let origin = crate::CssParsedOrigin::from_range(
+                        recovery.state.source_snapshot(),
+                        member_start..member_end,
+                    )
+                    .expect("parser proved original member boundaries");
+                    Some(CssPseudoSelectorListItem::InvalidNesting(
+                        CssInvalidNestingSelectorItem::new(origin, components, options.grammar()),
+                    ))
+                } else {
+                    None
+                }
+            }
+        };
+        if let Some(item) = item {
+            items.try_reserve(1).map_err(|_| {
+                selector_component_error(
+                    input.current_source_location(),
+                    crate::CssComponentValueError::new(
+                        crate::CssComponentValueErrorKind::CapacityOverflow,
+                        crate::CssValueOrigin::Programmatic,
+                    ),
+                )
+            })?;
+            items.push(item);
         }
-
         let Some(comma) = following_comma else {
             break;
         };
         preceding_comma = Some(comma);
     }
-
-    Ok(CssPseudoSelectorList::new_forgiving(selectors))
+    Ok(CssPseudoSelectorList::from_parsed_items(items))
 }
 
 fn parse_has_relative_selector_list<'i, 't>(

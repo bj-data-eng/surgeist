@@ -6,8 +6,8 @@
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#parse-as-a-forgiving-selector-list
 //! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value
 use surgeist_css::{
-    CssErrorCode, CssNamespaceContext, CssPseudoClass, CssRecoveryAction, CssSelector,
-    CssTokenKind, ErrorKind, parse_selector,
+    CssErrorCode, CssNamespaceContext, CssPseudoClass, CssPseudoSelectorListItem,
+    CssRecoveryAction, CssSelector, CssTokenKind, ErrorKind, parse_selector,
 };
 
 fn assert_rejected(source: &str) {
@@ -54,10 +54,10 @@ fn where_rejects_invalid_envelope_even_with_a_valid_first_member() {
     assert_rejected(":where(.a,.b{)");
 }
 
-fn retained_members(selector: &Option<CssSelector>) -> &[CssSelector] {
+fn retained_members(selector: &Option<CssSelector>) -> &[CssPseudoSelectorListItem] {
     match selector {
         Some(CssSelector::PseudoClass(CssPseudoClass::Is(list) | CssPseudoClass::Where(list))) => {
-            list.selectors()
+            list.items()
         }
         other => panic!("retained forgiving pseudo: {other:?}"),
     }
@@ -70,7 +70,9 @@ fn lexical_validity_does_not_prevent_forgiving_removal_of_invalid_selector_membe
         let report = parse_selector(&source, &CssNamespaceContext::default());
         assert_eq!(
             retained_members(report.syntax()),
-            [CssSelector::Class("ok".into())]
+            [CssPseudoSelectorListItem::Selector(CssSelector::Class(
+                "ok".into()
+            ))]
         );
         assert!(
             report
@@ -103,7 +105,13 @@ fn missing_eof_closure_retains_a_lexically_valid_forgiving_selector() {
         } else {
             vec![CssSelector::Class("a".into())]
         };
-        assert_eq!(retained_members(report.syntax()), expected);
+        assert_eq!(
+            retained_members(report.syntax()),
+            expected
+                .into_iter()
+                .map(CssPseudoSelectorListItem::Selector)
+                .collect::<Vec<_>>()
+        );
         let [diagnostic] = report.diagnostics() else {
             panic!("one retained EOF closure: {report:?}")
         };
@@ -189,7 +197,9 @@ fn a_lexically_valid_nested_invalid_selector_still_allows_the_outer_valid_siblin
         let report = parse_selector(source, &CssNamespaceContext::default());
         assert_eq!(
             retained_members(report.syntax()),
-            [CssSelector::Class("ok".into())]
+            [CssPseudoSelectorListItem::Selector(CssSelector::Class(
+                "ok".into()
+            ))]
         );
         assert!(
             report

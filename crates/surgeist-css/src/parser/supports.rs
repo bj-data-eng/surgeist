@@ -305,8 +305,11 @@ fn operand(
                 let mut parser_input = cssparser::ParserInput::new(&working_source);
                 let mut input = Parser::new(&mut parser_input);
                 let mut diagnostics = Vec::new();
-                let mut selector_recovery =
-                    SelectorRecovery::new(source, &mut diagnostics, recovery.clone());
+                let mut selector_recovery = SelectorRecovery::new(
+                    source,
+                    &mut diagnostics,
+                    recovery.generated_selector_probe(source),
+                );
                 let parsed = parse_rule_selector(&mut input, &mut selector_recovery);
                 match parsed {
                     Ok(selector) if input.is_exhausted() && diagnostics.is_empty() => {
@@ -540,5 +543,62 @@ fn parsed_admitted(
             ))
         }
         _ => Ok(None),
+    }
+}
+
+#[cfg(test)]
+mod generated_selector_tests {
+    use super::*;
+
+    #[test]
+    fn live_depth_limit_maps_generated_function_error_to_original_unicode_source() {
+        let source = "/*😀*/\r\nselector(:is(:where(.A)))";
+        let values = crate::parse_component_values(source).unwrap();
+        let function = values
+            .items()
+            .iter()
+            .find_map(|item| match item.view() {
+                CssComponentValueRef::Function(function) => Some(function),
+                _ => None,
+            })
+            .unwrap();
+        let CssComponentValueRef::Function(is) = function.values().items()[1].view() else {
+            panic!("Is")
+        };
+        let expected = is.values().items()[1].origin().clone();
+        let state = RecoveryState::at_depth(source, 254, StyleContextCaptures::default());
+        let value = condition(
+            SupportsLexical::root(values.clone()),
+            &state,
+            false,
+            CssComponentValueLimits::default(),
+        )
+        .unwrap();
+        assert!(matches!(
+            value.kind(),
+            CssSupportsConditionKind::Selector(_)
+        ));
+        assert_eq!(state.structural_depth(), 254);
+        let state = RecoveryState::at_depth(source, 255, StyleContextCaptures::default());
+        let error = condition(
+            SupportsLexical::root(values),
+            &state,
+            false,
+            CssComponentValueLimits::default(),
+        )
+        .unwrap_err();
+        let CssSupportsConstructionError::Component(error) = error else {
+            panic!("terminal resource failure")
+        };
+        assert_eq!(error.kind(), CssComponentValueErrorKind::NestingLimit);
+        assert_eq!(error.origin(), &expected);
+        let crate::CssValueOrigin::Parsed(origin) = error.origin() else {
+            panic!("original origin")
+        };
+        assert_eq!(origin.source().as_str(), source);
+        assert_eq!(origin.span().start().byte_offset().value(), 24);
+        assert_eq!(origin.span().start().line().value(), 1);
+        assert_eq!(origin.span().start().column().value(), 14);
+        assert_eq!(state.structural_depth(), 255);
     }
 }

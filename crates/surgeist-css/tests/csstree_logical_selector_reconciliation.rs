@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 use std::{collections::BTreeSet, fs, path::Path};
 use surgeist_css::{
     CssErrorCode, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix, CssPseudoClass,
-    CssRecoveryAction, CssSelector, parse_selector,
+    CssPseudoSelectorListItem, CssRecoveryAction, CssSelector, parse_selector,
 };
 #[path = "support/digest.rs"]
 mod digest;
@@ -54,7 +54,14 @@ fn assert_group(present: bool, clean: bool, count: usize) {
                 .iter()
                 .map(|v| CssSelector::Class(v.as_str().unwrap().strip_prefix('.').unwrap().into()))
                 .collect();
-            assert_eq!(list.selectors(), expected, "{id}: actual surviving members");
+            assert_eq!(
+                list.items(),
+                expected
+                    .into_iter()
+                    .map(CssPseudoSelectorListItem::Selector)
+                    .collect::<Vec<_>>(),
+                "{id}: actual surviving members"
+            );
         }
     }
     assert_eq!(seen, count);

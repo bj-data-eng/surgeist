@@ -4336,6 +4336,9 @@ pub surgeist_css::CssPseudoElement::Slotted(surgeist_css::CssCompoundSelectorArg
 #[non_exhaustive] pub enum surgeist_css::CssPseudoElementSegment
 pub surgeist_css::CssPseudoElementSegment::PseudoClass(surgeist_css::CssPseudoClass)
 pub surgeist_css::CssPseudoElementSegment::PseudoElement(surgeist_css::CssPseudoElement)
+#[non_exhaustive] pub enum surgeist_css::CssPseudoSelectorListItem
+pub surgeist_css::CssPseudoSelectorListItem::InvalidNesting(surgeist_css::CssInvalidNestingSelectorItem)
+pub surgeist_css::CssPseudoSelectorListItem::Selector(surgeist_css::CssSelector)
 #[non_exhaustive] pub enum surgeist_css::CssQualifiedNameError
 pub surgeist_css::CssQualifiedNameError::UndeclaredNamespacePrefix(surgeist_css::CssNamespacePrefix)
 impl core::error::Error for surgeist_css::CssQualifiedNameError
@@ -4395,6 +4398,7 @@ pub surgeist_css::CssRecoveryAction::DropKeyframeBlock
 pub surgeist_css::CssRecoveryAction::DropQualifiedRule
 pub surgeist_css::CssRecoveryAction::DropSelectorListItem
 pub surgeist_css::CssRecoveryAction::IgnoreUnterminatedComment
+pub surgeist_css::CssRecoveryAction::PreserveInvalidSelectorListItem
 pub surgeist_css::CssRecoveryAction::RecoverEscape
 pub surgeist_css::CssRecoveryAction::RejectInput
 pub surgeist_css::CssRecoveryAction::ReplaceMediaQueryWithNever
@@ -8856,6 +8860,13 @@ pub struct surgeist_css::CssInterestDelayStartPropertyValue
 impl surgeist_css::CssInterestDelayStartPropertyValue
 pub fn surgeist_css::CssInterestDelayStartPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssInterestDelayStartPropertyValue::delay(&self) -> &surgeist_css::CssInterestDelayValue
+pub struct surgeist_css::CssInvalidNestingSelectorItem
+impl surgeist_css::CssInvalidNestingSelectorItem
+pub fn surgeist_css::CssInvalidNestingSelectorItem::authored(&self) -> &str
+pub const fn surgeist_css::CssInvalidNestingSelectorItem::components(&self) -> &surgeist_css::CssComponentValues
+pub const fn surgeist_css::CssInvalidNestingSelectorItem::origin(&self) -> &surgeist_css::CssParsedOrigin
+impl core::cmp::PartialEq for surgeist_css::CssInvalidNestingSelectorItem
+pub fn surgeist_css::CssInvalidNestingSelectorItem::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssIsolationPropertyValue
 impl surgeist_css::CssIsolationPropertyValue
 pub fn surgeist_css::CssIsolationPropertyValue::as_css(&self) -> &str
@@ -10195,7 +10206,7 @@ pub fn surgeist_css::CssPseudoElementSequence::try_new(pseudo_elements: alloc::v
 pub struct surgeist_css::CssPseudoSelectorList
 impl surgeist_css::CssPseudoSelectorList
 pub fn surgeist_css::CssPseudoSelectorList::has_pseudo_elements(&self) -> bool
-pub fn surgeist_css::CssPseudoSelectorList::selectors(&self) -> &[surgeist_css::CssSelector]
+pub fn surgeist_css::CssPseudoSelectorList::items(&self) -> &[surgeist_css::CssPseudoSelectorListItem]
 pub fn surgeist_css::CssPseudoSelectorList::try_new(selectors: alloc::vec::Vec<surgeist_css::CssSelector>) -> core::result::Result<Self, surgeist_css::CssSelectorConstructionError>
 pub fn surgeist_css::CssPseudoSelectorList::try_new_forgiving(selectors: alloc::vec::Vec<surgeist_css::CssSelector>) -> core::result::Result<Self, surgeist_css::CssSelectorConstructionError>
 pub fn surgeist_css::CssPseudoSelectorList::try_new_forgiving_with_limits(selectors: alloc::vec::Vec<surgeist_css::CssSelector>, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssSelectorConstructionError>

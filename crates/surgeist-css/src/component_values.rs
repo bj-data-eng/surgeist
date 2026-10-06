@@ -1030,6 +1030,153 @@ impl CssComponentValues {
         parse::collect(input, source, CssComponentValueLimits::default())
     }
 
+    /// Token-category detection for parser-proved complete forgiving members.
+    pub(crate) fn contains_delimiter(
+        &self,
+        delimiter: char,
+    ) -> Result<bool, CssComponentValueError> {
+        let mut pending = Vec::new();
+        pending.try_reserve(1).map_err(|_| {
+            CssComponentValueError::programmatic(CssComponentValueErrorKind::CapacityOverflow)
+        })?;
+        pending.push(self.items());
+        while let Some(items) = pending.pop() {
+            if let Some((component, rest)) = items.split_first() {
+                if matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Delim(value)) if value == delimiter)
+                {
+                    return Ok(true);
+                }
+                pending.try_reserve(2).map_err(|_| {
+                    CssComponentValueError::new(
+                        CssComponentValueErrorKind::CapacityOverflow,
+                        component.origin().clone(),
+                    )
+                })?;
+                pending.push(rest);
+                if let Some(children) = component.child_values() {
+                    pending.push(children.items());
+                }
+            }
+        }
+        Ok(false)
+    }
+
+    /// Emits original chunks with only owner-recorded implicit terminations.
+    /// Each component consumes one input/projection node; each closing or leaf
+    /// termination visit additionally consumes one projection node. The caller
+    /// charges the retained region carrier in the same live budget.
+    pub(crate) fn append_original_region(
+        &self,
+        origin: &CssParsedOrigin,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> Result<(), crate::CssSpecifiedValueSerializationError> {
+        enum Event<'a> {
+            Items(&'a [CssComponentValue]),
+            Closing(&'a Lexeme),
+        }
+        use crate::CssSpecifiedValueSerializationErrorKind as Kind;
+        let error = |kind| crate::CssSpecifiedValueSerializationError::new(kind);
+        let mut pending = Vec::new();
+        // The caller has already charged the carrier before scratch admission.
+        pending
+            .try_reserve(1)
+            .map_err(|_| error(Kind::CapacityOverflow))?;
+        pending.push(Event::Items(self.items()));
+        let source = origin.source().as_str();
+        let mut cursor = origin.span().start().byte_offset().value();
+        let mut reverse_solidus = false;
+        while let Some(event) = pending.pop() {
+            let (spelling, ending, children, closing, is_reverse, newline) = match event {
+                Event::Closing(spelling) => {
+                    writer.context.charge_projection(1)?;
+                    (spelling, None, None, None, false, false)
+                }
+                Event::Items(items) => {
+                    let Some((component, rest)) = items.split_first() else {
+                        continue;
+                    };
+                    writer.node()?;
+                    pending
+                        .try_reserve(3)
+                        .map_err(|_| error(Kind::CapacityOverflow))?;
+                    pending.push(Event::Items(rest));
+                    match &component.data {
+                        ComponentData::Token(token) => (
+                            &token.spelling,
+                            token.implicit_end.as_ref(),
+                            None,
+                            None,
+                            matches!(token.data, TokenData::Delim('\\')),
+                            matches!(token.data, TokenData::Whitespace)
+                                && token.spelling.text.starts_with(['\n', '\r', '\u{000c}']),
+                        ),
+                        ComponentData::Comment {
+                            spelling,
+                            implicit_end,
+                            ..
+                        } => (spelling, implicit_end.as_ref(), None, None, false, false),
+                        ComponentData::Function(function) => (
+                            &function.opening,
+                            None,
+                            Some(function.values.items()),
+                            Some(&function.closing),
+                            false,
+                            false,
+                        ),
+                        ComponentData::Block(block) => (
+                            &block.opening,
+                            None,
+                            Some(block.values.items()),
+                            Some(&block.closing),
+                            false,
+                            false,
+                        ),
+                    }
+                }
+            };
+            if reverse_solidus && !newline {
+                return Err(error(Kind::UnserializableBoundary));
+            }
+            reverse_solidus = is_reverse;
+            match &spelling.origin {
+                CssValueOrigin::Parsed(parsed) => {
+                    let end = parsed.span().end().byte_offset().value();
+                    writer.append(
+                        source
+                            .get(cursor..end)
+                            .ok_or_else(|| error(Kind::UnrepresentableValue))?,
+                    )?;
+                    cursor = end;
+                }
+                CssValueOrigin::ImplicitClosure { at, .. } => {
+                    let end = at.span().start().byte_offset().value();
+                    writer.append(
+                        source
+                            .get(cursor..end)
+                            .ok_or_else(|| error(Kind::UnrepresentableValue))?,
+                    )?;
+                    cursor = end;
+                    writer.append(&spelling.text)?;
+                }
+                _ => return Err(error(Kind::UnrepresentableValue)),
+            }
+            if let Some(ending) = ending {
+                writer.context.charge_projection(1)?;
+                writer.append(&ending.text)?;
+            }
+            if let Some(closing) = closing {
+                pending.push(Event::Closing(closing));
+            }
+            if let Some(children) = children {
+                pending.push(Event::Items(children));
+            }
+        }
+        if reverse_solidus {
+            return Err(error(Kind::UnserializableBoundary));
+        }
+        writer.append(&source[cursor..origin.span().end().byte_offset().value()])
+    }
+
     /// Joins components without merging tokens or changing their origins.
     pub fn try_new(items: Vec<CssComponentValue>) -> Result<Self, CssComponentValueError> {
         Self::try_new_with_limits(items, CssComponentValueLimits::default())
@@ -1551,5 +1698,42 @@ mod tests {
                 )
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod original_region_tests {
+    use super::*;
+
+    #[test]
+    fn bounded_bare_reverse_solidus_region_cannot_escape_into_outer_grammar() {
+        // The actual parsed delimiter requires a following newline. A deliberately
+        // truncated owner region proves output rejects losing that lexical guard.
+        // Parser-owned invalid items capture the newline and cannot publicly
+        // construct this shortened region.
+        let values = parse_component_values("\\\n").unwrap();
+        assert!(matches!(
+            values.items()[0].view(),
+            CssComponentValueRef::Token(CssValueTokenRef::Delim('\\'))
+        ));
+        let CssValueOrigin::Parsed(delimiter) = values.items()[0].origin() else {
+            panic!("parsed delimiter")
+        };
+        let origin = CssParsedOrigin::from_range(delimiter.source(), 0..1).unwrap();
+        let shortened = CssComponentValues::from_items(
+            vec![values.items()[0].clone()],
+            CssComponentValueLimits::default(),
+        )
+        .unwrap();
+        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(
+            crate::CssSpecifiedValueSerializationLimits::new(1, 1, 10),
+        );
+        assert_eq!(
+            shortened
+                .append_original_region(&origin, &mut writer)
+                .unwrap_err()
+                .kind(),
+            crate::CssSpecifiedValueSerializationErrorKind::UnserializableBoundary
+        );
     }
 }

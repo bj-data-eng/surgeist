@@ -24,6 +24,12 @@ enum Event<'a> {
     Element(&'a CssPseudoElement, CssSelectorGrammarContext),
     Attribute(&'a CssAttributeSelector),
     List(&'a [CssSelector], usize, CssSelectorGrammarContext),
+    PseudoList(
+        &'a [CssPseudoSelectorListItem],
+        usize,
+        CssSelectorGrammarContext,
+        bool,
+    ),
     RelativeList(&'a [CssRelativeSelector], usize, CssSelectorGrammarContext),
     StyleList(&'a [CssStyleSelector], usize),
     ScopedStyleList(&'a [CssScopedStyleSelector], usize),
@@ -173,10 +179,10 @@ impl SpecifiedRuleWriter {
         ))
     }
 
-    pub(crate) fn pseudo_selectors(&mut self, list: &CssPseudoSelectorList) -> Result<()> {
+    pub(crate) fn pseudo_selector_members(&mut self, selectors: &[CssSelector]) -> Result<()> {
         self.node()?;
         self.selector_events(Event::List(
-            list.selectors(),
+            selectors,
             0,
             CssSelectorGrammarContext::ORDINARY.logical_arguments(),
         ))
@@ -340,6 +346,37 @@ impl SpecifiedRuleWriter {
                         push(&mut work, Event::Selector(value, grammar))?;
                     }
                 }
+                Event::PseudoList(values, index, grammar, forgiving) => {
+                    if let Some(value) = values.get(index) {
+                        if index != 0 {
+                            self.append(
+                                if matches!(value, CssPseudoSelectorListItem::InvalidNesting(_)) {
+                                    ","
+                                } else {
+                                    ", "
+                                },
+                            )?;
+                        }
+                        push(
+                            &mut work,
+                            Event::PseudoList(values, index + 1, grammar, forgiving),
+                        )?;
+                        match value {
+                            CssPseudoSelectorListItem::Selector(value) => {
+                                push(&mut work, Event::Selector(value, grammar))?
+                            }
+                            CssPseudoSelectorListItem::InvalidNesting(value) => {
+                                self.node()?;
+                                if !forgiving || !value.admitted_in(grammar) {
+                                    return Err(CssSpecifiedValueSerializationError::new(CssSpecifiedValueSerializationErrorKind::UnrepresentableValue));
+                                }
+                                value
+                                    .components()
+                                    .append_original_region(value.origin(), self)?;
+                            }
+                        }
+                    }
+                }
                 Event::RelativeList(values, index, grammar) => {
                     if let Some(value) = values.get(index) {
                         if index != 0 {
@@ -492,7 +529,12 @@ impl SpecifiedRuleWriter {
                             push(&mut work, Event::Text(")"))?;
                             push(
                                 &mut work,
-                                Event::List(list.selectors(), 0, grammar.logical_arguments()),
+                                Event::PseudoList(
+                                    list.items(),
+                                    0,
+                                    grammar.logical_arguments(),
+                                    !matches!(value, CssPseudoClass::Not(_)),
+                                ),
                             )?;
                         }
                         CssPseudoClass::Has(list) => {
@@ -518,10 +560,11 @@ impl SpecifiedRuleWriter {
                             if let Some(list) = pattern.selector_list() {
                                 push(
                                     &mut work,
-                                    Event::List(
-                                        list.selectors(),
+                                    Event::PseudoList(
+                                        list.items(),
                                         0,
                                         grammar.independent_arguments(),
+                                        false,
                                     ),
                                 )?;
                                 push(&mut work, Event::Text(" of "))?;
@@ -625,5 +668,45 @@ impl SpecifiedRuleWriter {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod invalid_nesting_context_tests {
+    use super::*;
+
+    #[test]
+    fn incomparable_receiver_cannot_trade_compound_restriction_for_has_restriction() {
+        let source = ":host(:is(.a &))";
+        let host = crate::parse_selector(source, &CssNamespaceContext::default())
+            .syntax()
+            .clone()
+            .unwrap();
+        let CssSelector::PseudoClass(CssPseudoClass::HostFunction(argument)) = &host else {
+            panic!("Host")
+        };
+        let [CssPseudoClass::Is(list)] = argument.compound().pseudo_classes() else {
+            panic!("logical compound argument")
+        };
+        let detached = CssSelector::PseudoClass(CssPseudoClass::Is(list.clone()));
+        let before = detached.clone();
+        // This is the actual provider receiving grammar. Relative arguments
+        // forbid Has but re-enable complexes, incomparable to the original proof.
+        let grammar = CssSelectorGrammarContext::ORDINARY.relative_arguments();
+        let mut writer = SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::default());
+        assert_eq!(
+            writer
+                .selector_events(Event::Selector(&detached, grammar))
+                .unwrap_err()
+                .kind(),
+            CssSpecifiedValueSerializationErrorKind::UnrepresentableValue
+        );
+        assert_eq!(detached, before);
+        // Keeping the compound owner while tightening Has preserves both proofs.
+        let mut writer = SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::default());
+        writer
+            .selector_events(Event::Selector(&host, grammar))
+            .unwrap();
+        assert_eq!(writer.css, source);
     }
 }

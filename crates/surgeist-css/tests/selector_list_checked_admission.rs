@@ -5,9 +5,10 @@
 
 use surgeist_css::{
     CssCompoundSelectorArgument, CssErrorCode, CssNamespaceContext, CssNthChildPattern,
-    CssNthPattern, CssPseudoClass, CssPseudoSelectorList, CssRecoveryAction, CssRelativeSelector,
-    CssRelativeSelectorList, CssSelector, CssSelectorCombinator, CssSelectorList,
-    CssSpecifiedValueSerializationErrorKind, ErrorKind, parse_selector, parse_selector_list,
+    CssNthPattern, CssPseudoClass, CssPseudoSelectorList, CssPseudoSelectorListItem,
+    CssRecoveryAction, CssRelativeSelector, CssRelativeSelectorList, CssSelector,
+    CssSelectorCombinator, CssSelectorList, CssSpecifiedValueSerializationErrorKind, ErrorKind,
+    parse_selector, parse_selector_list,
 };
 
 fn parsed(source: &str) -> CssSelector {
@@ -63,7 +64,7 @@ fn recovered_empty_pseudo(source: &str) -> CssSelector {
         | (CssSelector::PseudoClass(CssPseudoClass::Where(list)), ":where()") => list,
         _ => panic!("fixture preserves the requested empty function: {selector:?}"),
     };
-    assert!(list.selectors().is_empty());
+    assert!(list.items().is_empty());
     let diagnostics = report.diagnostics().to_vec();
     assert_eq!(
         report.into_validation_result().unwrap_err().diagnostics(),
@@ -165,7 +166,13 @@ fn pseudo_factory_admits_complex_real_and_has_members() {
         recovered_empty_pseudo(":where()"),
     ];
     let list = CssPseudoSelectorList::try_new(members.clone()).unwrap();
-    assert_eq!(list.selectors(), members);
+    assert_eq!(
+        list.items(),
+        members
+            .into_iter()
+            .map(CssPseudoSelectorListItem::Selector)
+            .collect::<Vec<_>>()
+    );
     let selector = CssSelector::PseudoClass(CssPseudoClass::Is(list));
     let before = selector.clone();
     let literal = ":is(.One > .Two, :has(> .One), :where())";
@@ -226,7 +233,10 @@ fn forgiving_empty_is_where_graphs_are_valid_members_of_all_three_lists() {
         let ordinary = CssSelectorList::try_new(vec![selector.clone()]).unwrap();
         assert_eq!(ordinary.selectors(), std::slice::from_ref(&selector));
         let pseudo = CssPseudoSelectorList::try_new(vec![selector.clone()]).unwrap();
-        assert_eq!(pseudo.selectors(), std::slice::from_ref(&selector));
+        assert_eq!(
+            pseudo.items(),
+            [CssPseudoSelectorListItem::Selector(selector.clone())]
+        );
         let member = relative(selector);
         let relative = CssRelativeSelectorList::try_new(vec![member.clone()]).unwrap();
         assert_eq!(relative.selectors(), [member]);
@@ -241,7 +251,10 @@ fn selected_shadow_compound_has_remains_valid_under_list_admission() {
     let ordinary = CssSelectorList::try_new(vec![host.clone()]).unwrap();
     assert_eq!(ordinary.selectors(), std::slice::from_ref(&host));
     let pseudo = CssPseudoSelectorList::try_new(vec![host.clone()]).unwrap();
-    assert_eq!(pseudo.selectors(), std::slice::from_ref(&host));
+    assert_eq!(
+        pseudo.items(),
+        [CssPseudoSelectorListItem::Selector(host.clone())]
+    );
     let member = relative(host);
     let relative = CssRelativeSelectorList::try_new(vec![member.clone()]).unwrap();
     assert_eq!(relative.selectors(), [member]);

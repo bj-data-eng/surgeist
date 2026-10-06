@@ -5,7 +5,7 @@
 
 use surgeist_css::{
     CssNamespaceConstraint, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix,
-    CssPseudoClass, CssSelector, parse_selector,
+    CssPseudoClass, CssPseudoSelectorListItem, CssSelector, parse_selector,
 };
 
 fn context() -> CssNamespaceContext {
@@ -74,24 +74,23 @@ fn logical_selector_arguments_retain_universal_namespace_constraints() {
     let Some(CssSelector::PseudoClass(CssPseudoClass::Is(list))) = report.syntax() else {
         panic!("expected logical selector: {report:?}");
     };
-    assert_eq!(list.selectors().len(), 3);
+    assert_eq!(list.items().len(), 3);
     for (selector, expected, suffix) in [
         (
-            &list.selectors()[0],
+            &list.items()[0],
             CssNamespaceConstraint::Named(CssNamespacePrefix::try_new("svg").unwrap()),
             ".card",
         ),
         (
-            &list.selectors()[1],
+            &list.items()[1],
             CssNamespaceConstraint::ExplicitNone,
             "#card",
         ),
-        (
-            &list.selectors()[2],
-            CssNamespaceConstraint::Default,
-            ":hover",
-        ),
+        (&list.items()[2], CssNamespaceConstraint::Default, ":hover"),
     ] {
+        let CssPseudoSelectorListItem::Selector(selector) = selector else {
+            panic!("valid universal member");
+        };
         assert_universal(selector, &expected, suffix);
     }
 }

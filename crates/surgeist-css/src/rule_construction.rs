@@ -695,8 +695,24 @@ fn check_selector_with_anchors(
                     CssPseudoClass::Not(list)
                     | CssPseudoClass::Is(list)
                     | CssPseudoClass::Where(list) => {
-                        for selector in list.selectors().iter().rev() {
-                            stack.push(SelectorWork::Selector(selector, next))?;
+                        for item in list.items().iter().rev() {
+                            match item {
+                                CssPseudoSelectorListItem::Selector(selector) => {
+                                    stack.push(SelectorWork::Selector(selector, next))?
+                                }
+                                CssPseudoSelectorListItem::InvalidNesting(item) => {
+                                    if matches!(pseudo, CssPseudoClass::Not(_)) {
+                                        return Err(CssRuleConstructionErrorKind::InvalidPlacement);
+                                    }
+                                    if next + item.components().nesting_depth()
+                                        > crate::STRUCTURAL_NESTING_LIMIT
+                                    {
+                                        return Err(
+                                            CssRuleConstructionErrorKind::SelectorNestingLimit,
+                                        );
+                                    }
+                                }
+                            }
                         }
                     }
                     CssPseudoClass::Has(list) => {
@@ -710,8 +726,15 @@ fn check_selector_with_anchors(
                     }
                     CssPseudoClass::NthChild(pattern) | CssPseudoClass::NthLastChild(pattern) => {
                         if let Some(list) = pattern.selector_list() {
-                            for selector in list.selectors().iter().rev() {
-                                stack.push(SelectorWork::Selector(selector, next))?;
+                            for item in list.items().iter().rev() {
+                                match item {
+                                    CssPseudoSelectorListItem::Selector(selector) => {
+                                        stack.push(SelectorWork::Selector(selector, next))?
+                                    }
+                                    CssPseudoSelectorListItem::InvalidNesting(_) => {
+                                        return Err(CssRuleConstructionErrorKind::InvalidPlacement);
+                                    }
+                                }
                             }
                         }
                     }

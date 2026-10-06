@@ -2769,7 +2769,10 @@ fn pseudo_selector_list_constructor_accepts_complex_selectors() {
     let complex = CssSelector::Complex(CssComplexSelector::try_new(first, vec![part]).unwrap());
 
     let list = CssPseudoSelectorList::try_new(vec![complex.clone()]).unwrap();
-    assert_eq!(list.selectors(), &[complex]);
+    assert_eq!(
+        list.items(),
+        &[CssPseudoSelectorListItem::Selector(complex)]
+    );
 }
 
 #[test]
@@ -2901,8 +2904,10 @@ fn nth_child_pattern_preserves_optional_selector_list() {
         matches!(pattern.pattern(), CssNthPattern::AnPlusB(value) if value.a() == 2 && value.b() == 1)
     );
     assert_eq!(
-        pattern.selector_list().unwrap().selectors(),
-        &[CssSelector::Class("important".to_owned())]
+        pattern.selector_list().unwrap().items(),
+        &[CssPseudoSelectorListItem::Selector(CssSelector::Class(
+            "important".to_owned()
+        ))]
     );
 }
 
@@ -3030,14 +3035,14 @@ fn nth_child_accepts_strict_of_selector_lists() {
         matches!(pattern.pattern(), CssNthPattern::AnPlusB(value) if value.a() == 2 && value.b() == 1)
     );
     let selector_list = pattern.selector_list().expect("expected of selector list");
-    assert_eq!(selector_list.selectors().len(), 2);
+    assert_eq!(selector_list.items().len(), 2);
     assert!(matches!(
-        selector_list.selectors()[0],
-        CssSelector::Compound(_)
+        selector_list.items()[0],
+        CssPseudoSelectorListItem::Selector(CssSelector::Compound(_))
     ));
     assert!(matches!(
-        selector_list.selectors()[1],
-        CssSelector::Compound(_)
+        selector_list.items()[1],
+        CssPseudoSelectorListItem::Selector(CssSelector::Compound(_))
     ));
 
     let sheet =
@@ -3052,8 +3057,8 @@ fn nth_child_accepts_strict_of_selector_lists() {
     };
     assert_eq!(pattern.pattern(), CssNthPattern::Even);
     assert!(matches!(
-        pattern.selector_list().unwrap().selectors()[0],
-        CssSelector::Complex(_)
+        pattern.selector_list().unwrap().items()[0],
+        CssPseudoSelectorListItem::Selector(CssSelector::Complex(_))
     ));
 }
 
@@ -3110,10 +3115,10 @@ fn parses_selector_list_functional_pseudo_classes() {
         panic!("expected :not selector list");
     };
     assert_eq!(
-        list.selectors(),
+        list.items(),
         &[
-            CssSelector::Class("disabled".to_owned()),
-            CssSelector::Class("loading".to_owned()),
+            CssPseudoSelectorListItem::Selector(CssSelector::Class("disabled".to_owned())),
+            CssPseudoSelectorListItem::Selector(CssSelector::Class("loading".to_owned())),
         ]
     );
 
@@ -3153,10 +3158,10 @@ fn parses_compound_selector_list_functional_pseudo_classes() {
         panic!("expected :not selector list");
     };
     assert_eq!(
-        list.selectors(),
+        list.items(),
         &[
-            CssSelector::PseudoClass(CssPseudoClass::Disabled),
-            CssSelector::PseudoClass(CssPseudoClass::Focus),
+            CssPseudoSelectorListItem::Selector(CssSelector::PseudoClass(CssPseudoClass::Disabled)),
+            CssPseudoSelectorListItem::Selector(CssSelector::PseudoClass(CssPseudoClass::Focus)),
         ]
     );
 }
@@ -3175,10 +3180,19 @@ fn functional_selector_lists_accept_supported_complex_selectors() {
     let [CssPseudoClass::Is(list)] = selector.pseudo_classes() else {
         panic!("expected :is selector list");
     };
-    assert_eq!(list.selectors().len(), 3);
-    assert!(matches!(list.selectors()[0], CssSelector::Complex(_)));
-    assert!(matches!(list.selectors()[1], CssSelector::Compound(_)));
-    assert!(matches!(list.selectors()[2], CssSelector::Compound(_)));
+    assert_eq!(list.items().len(), 3);
+    assert!(matches!(
+        list.items()[0],
+        CssPseudoSelectorListItem::Selector(CssSelector::Complex(_))
+    ));
+    assert!(matches!(
+        list.items()[1],
+        CssPseudoSelectorListItem::Selector(CssSelector::Compound(_))
+    ));
+    assert!(matches!(
+        list.items()[2],
+        CssPseudoSelectorListItem::Selector(CssSelector::Compound(_))
+    ));
 
     let sheet = parse_sheet(":not(.field .icon, button.primary:hover) { color: black; }").unwrap();
     let CssSelector::PseudoClass(CssPseudoClass::Not(list)) =
@@ -3186,9 +3200,15 @@ fn functional_selector_lists_accept_supported_complex_selectors() {
     else {
         panic!("expected :not selector list");
     };
-    assert_eq!(list.selectors().len(), 2);
-    assert!(matches!(list.selectors()[0], CssSelector::Complex(_)));
-    assert!(matches!(list.selectors()[1], CssSelector::Compound(_)));
+    assert_eq!(list.items().len(), 2);
+    assert!(matches!(
+        list.items()[0],
+        CssPseudoSelectorListItem::Selector(CssSelector::Complex(_))
+    ));
+    assert!(matches!(
+        list.items()[1],
+        CssPseudoSelectorListItem::Selector(CssSelector::Compound(_))
+    ));
 
     let sheet = parse_sheet(":where(.toolbar + .panel, .stack ~ .item) { color: black; }").unwrap();
     let CssSelector::PseudoClass(CssPseudoClass::Where(list)) =
@@ -3196,12 +3216,11 @@ fn functional_selector_lists_accept_supported_complex_selectors() {
     else {
         panic!("expected :where selector list");
     };
-    assert_eq!(list.selectors().len(), 2);
-    assert!(
-        list.selectors()
-            .iter()
-            .all(|selector| matches!(selector, CssSelector::Complex(_)))
-    );
+    assert_eq!(list.items().len(), 2);
+    assert!(list.items().iter().all(|selector| matches!(
+        selector,
+        CssPseudoSelectorListItem::Selector(CssSelector::Complex(_))
+    )));
 }
 
 #[test]
@@ -3328,8 +3347,10 @@ fn functional_pseudo_class_arguments_are_publicly_inspectable() {
         panic!("expected :not selector list");
     };
     assert_eq!(
-        list.selectors(),
-        &[CssSelector::Class("disabled".to_owned())]
+        list.items(),
+        &[CssPseudoSelectorListItem::Selector(CssSelector::Class(
+            "disabled".to_owned()
+        ))]
     );
 }
 

@@ -20,10 +20,10 @@ use surgeist_css::{
     CssCompoundSelector, CssDefinedFalseMediaReason, CssErrorCode, CssMediaConditionKind,
     CssMediaFeatureQuery, CssMediaQuery, CssMediaQueryList, CssMediaQueryModifier, CssMediaType,
     CssNamespaceConstraint, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix,
-    CssParseReport, CssPseudoClass, CssRecoveryAction, CssRecoveryDiagnostic, CssSelector,
-    CssSelectorCombinator, CssSourcePosition, CssStyleSelector, CssStyleSelectorList, CssTokenKind,
-    ErrorKind, parse_media_query, parse_media_query_list, parse_selector, parse_selector_list,
-    parse_sheet,
+    CssParseReport, CssPseudoClass, CssPseudoSelectorListItem, CssRecoveryAction,
+    CssRecoveryDiagnostic, CssSelector, CssSelectorCombinator, CssSourcePosition, CssStyleSelector,
+    CssStyleSelectorList, CssTokenKind, ErrorKind, parse_media_query, parse_media_query_list,
+    parse_selector, parse_selector_list, parse_sheet,
 };
 
 fn assert_position(actual: CssSourcePosition, expected: (usize, u32, u32)) {
@@ -321,10 +321,10 @@ fn selector_admission_and_semantics() {
     println!("selector exact admission and authored semantics: ok");
 }
 
-fn forgiving_members(selector: &CssSelector) -> &[CssSelector] {
+fn forgiving_members(selector: &CssSelector) -> &[CssPseudoSelectorListItem] {
     match selector {
         CssSelector::PseudoClass(CssPseudoClass::Is(list) | CssPseudoClass::Where(list)) => {
-            list.selectors()
+            list.items()
         }
         _ => panic!("expected an :is() or :where() selector"),
     }
@@ -355,7 +355,9 @@ fn selector_recovery_eof_and_coordinates() {
     let report = parse_selector(source, &context);
     assert_eq!(
         forgiving_members(report.syntax().as_ref().unwrap()),
-        [CssSelector::Class("ok".into())]
+        [CssPseudoSelectorListItem::Selector(CssSelector::Class(
+            "ok".into()
+        ))]
     );
     let [diagnostic] = report.diagnostics() else {
         panic!("one balanced malformed member")
@@ -376,7 +378,9 @@ fn selector_recovery_eof_and_coordinates() {
     let recovered = parse_selector(":is(.ok,???", &context);
     assert_eq!(
         forgiving_members(recovered.syntax().as_ref().unwrap()),
-        [CssSelector::Class("ok".into())]
+        [CssPseudoSelectorListItem::Selector(CssSelector::Class(
+            "ok".into()
+        ))]
     );
     assert_eq!(recovered.diagnostics().len(), 2);
     assert_eq!(
@@ -788,7 +792,7 @@ fn nested_selector(depth: usize, closed: bool) -> String {
 
 fn assert_nested_selector(mut selector: &CssSelector, depth: usize) {
     for _ in 0..depth {
-        let [inner] = forgiving_members(selector) else {
+        let [CssPseudoSelectorListItem::Selector(inner)] = forgiving_members(selector) else {
             panic!("one retained member at each depth")
         };
         selector = inner;
