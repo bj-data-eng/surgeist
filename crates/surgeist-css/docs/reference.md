@@ -8156,6 +8156,44 @@ checked property-name/grammar components and their raw-text fronts. Namespace
 bindings remain a separate argument where selector grammar needs them. Reports
 retain normal browser recovery; `into_validation_result()` accepts only clean reports.
 
+Selected [Values4 Appendix C](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#deprecated-quirky-length)
+permits Number tokens as pixel lengths only in its 33 named property owners:
+background-position, border-spacing, the four physical border widths and
+border-width, bottom, clip, font-size, height, left, letter-spacing, the four
+physical margins and margin, max-height, max-width, min-height, min-width, the
+four physical paddings and padding, right, text-indent, top, vertical-align,
+width, and word-spacing. The permission follows the actual property name; a
+referencing shorthand such as background, border, font, or inset has ordinary
+length grammar. Functions also retain ordinary grammar, including fit-content()
+and all mathematical roots; only clip's rect() admits quirky lengths at its four
+Length/auto edges. Ordinary exact unitless zero retains its ordinary spelling.
+Nonnegative destination domains still reject negative nonzero coefficients.
+
+The four specified length owners expose `is_quirky_length()` for a retained
+nonzero Number with contextual pixel interpretation. Their `literal_component()`
+returns the unchanged Number token, including exact coefficient spelling,
+Integer/Number flag and parsed or programmatic origin. Specified serialization
+emits that coefficient under the shared number-formatting policy followed by px,
+with the same one-leaf input/projection tariff as an ordinary literal. Raw
+declaration components remain authored; no replacement dimension token or
+fabricated parsed source is created. Unscoped `try_from_component()` and
+`try_from_calculation()` constructors retain ordinary length admission.
+Already checked contextual pixel values remain intrinsic lengths when reused in
+typed composites. Signed/nonnegative shadow spread conversion retains that
+interpretation and the original Number token; exact negative nonzero pixels
+still reject during text-shadow narrowing. This semantic reuse grants no fresh
+Number syntax to text-shadow, underline-offset or corner-radius declarations.
+
+The selected Logical1 §4.7 marker composes with Appendix C for the same named
+margin, padding and border-width shorthands. `logical 1 2` in Quirks selects
+pixel coefficients and only the four logical assignments, without complementary
+physical resets. Logical longhand and axis-shorthand names remain ordinary.
+Pending replacement reuses its source declaration's mode and may select that
+logical assignment without changing the original occurrence or replacement
+components. Authored @supports uses document mode; both CSS.supports method
+overloads use Standards. The fixed WebKit 73aa6c89 witness corroborates the named
+property gate and clip exception; it supplies no logical-marker witness.
+
 Selected Color4 Appendix B permits quirky hexadecimal fallback only in color,
 background-color, border-color and the four physical border-color longhands.
 Ordinary Color grammar wins first. Direct physical border-color accepts one
@@ -8179,7 +8217,7 @@ Declaration occurrences retain their immutable parser context. Equality includes
 that context because pending reentry can observe its grammar; cloning retains
 occurrence identity and provenance. Pending handles reuse the original mode for
 replacement checks, including immutable failed/successful retry. Canonical
-converted output is ordinary Color syntax and can be parsed in Standards.
+converted output is ordinary Color or pixel-length syntax and can be parsed in Standards.
 
 Authored @supports rule conditions and children use document mode, including
 conditions parsed with `CssParserContext::parse_supports_condition`. The free

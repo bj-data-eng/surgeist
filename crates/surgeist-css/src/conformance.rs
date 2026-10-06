@@ -2921,7 +2921,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 764] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 765] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -3331,6 +3331,13 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 764] = [
         "<color>",
         O_COLOR4,
         "#color-type",
+    ),
+    CssFeatureMetadata::complete(
+        "official.value.quirky-length",
+        CssFeatureKind::Value,
+        "<quirky-length> in explicit document contexts",
+        I_VALUES4_20240312,
+        "#deprecated-quirky-length",
     ),
     CssFeatureMetadata::complete(
         "official.value.quirky-color",

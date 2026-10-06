@@ -45,13 +45,15 @@ fn parse_signed_length_percentage<'i, 't>(
             let component = numeric.collect(input).map_err(|_| {
                 unsupported_value_at(location, None, "invalid margin length-percentage")
             })?;
-            CssSpecifiedLengthPercentage::try_from_component(component).map_err(|error| {
-                unsupported_value_at(
-                    numeric.error_location(&error, location, root_offset),
-                    None,
-                    "margin requires a length-percentage or auto",
-                )
-            })
+            CssSpecifiedLengthPercentage::from_property_component(component, numeric).map_err(
+                |error| {
+                    unsupported_value_at(
+                        numeric.error_location(&error, location, root_offset),
+                        None,
+                        "margin requires a length-percentage or auto",
+                    )
+                },
+            )
         }
         Token::Function(name) if is_math_function(name) => {
             let expression =
@@ -85,15 +87,14 @@ fn parse_nonnegative_length_percentage<'i, 't>(
             let component = numeric.collect(input).map_err(|_| {
                 unsupported_value_at(location, None, "invalid padding length-percentage")
             })?;
-            CssSpecifiedNonNegativeLengthPercentage::try_from_component(component).map_err(
-                |error| {
+            CssSpecifiedNonNegativeLengthPercentage::from_property_component(component, numeric)
+                .map_err(|error| {
                     unsupported_value_at(
                         numeric.error_location(&error, location, root_offset),
                         None,
                         "padding requires a nonnegative length-percentage",
                     )
-                },
-            )
+                })
         }
         Token::Function(name) if is_math_function(name) => {
             let expression =

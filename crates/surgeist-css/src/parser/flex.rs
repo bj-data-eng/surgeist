@@ -212,7 +212,7 @@ pub(super) fn parse_flex_basis<'i, 't>(
             CssCalcSize::from_component_with_policy(
                 component,
                 CssComponentValueLimits::default(),
-                matches!(numeric, NumericInputContext::Parsed(_)),
+                matches!(numeric.ordinary(), NumericInputContext::Parsed(_)),
             )
             .map(CssFlexBasisValue::from)
             .map_err(|error| {

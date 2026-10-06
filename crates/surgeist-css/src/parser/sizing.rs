@@ -69,7 +69,7 @@ fn parse_box_size<'i, 't>(
         }
         Token::Function(name) if name.eq_ignore_ascii_case("fit-content") => {
             let value = input.parse_nested_block(|input| {
-                let value = parse_nonnegative_length_percentage(input, numeric)?;
+                let value = parse_nonnegative_length_percentage(input, numeric.ordinary())?;
                 input.expect_exhausted().map_err(basic)?;
                 Ok(value)
             })?;
@@ -80,7 +80,7 @@ fn parse_box_size<'i, 't>(
             let component = numeric
                 .collect(input)
                 .map_err(|_| unsupported_value_at(location, None, "invalid calc-size component"))?;
-            let recovered = matches!(numeric, NumericInputContext::Parsed(_));
+            let recovered = matches!(numeric.ordinary(), NumericInputContext::Parsed(_));
             let value = CssCalcSize::from_component_with_policy(
                 component,
                 CssComponentValueLimits::default(),
@@ -108,7 +108,7 @@ fn parse_box_size<'i, 't>(
             let component = numeric
                 .collect(input)
                 .map_err(|_| unsupported_value_at(location, None, "invalid sizing component"))?;
-            CssSpecifiedNonNegativeLengthPercentage::try_from_component(component)
+            CssSpecifiedNonNegativeLengthPercentage::from_property_component(component, numeric)
                 .map(CssBoxSize::LengthPercentage)
                 .map_err(|error| {
                     unsupported_value_at(

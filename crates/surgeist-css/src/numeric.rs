@@ -19,15 +19,27 @@ pub(crate) use projection::{
 pub(crate) enum NumericInputContext<'a> {
     Parsed(&'a crate::CssSourceSnapshot),
     Components(&'a CssComponentValues, &'a CssSerializedValue),
+    QuirkyLengths(&'a NumericInputContext<'a>),
 }
 impl<'a> NumericInputContext<'a> {
+    pub(crate) fn ordinary(&self) -> &Self {
+        match self {
+            Self::QuirkyLengths(source) => source.ordinary(),
+            _ => self,
+        }
+    }
+    pub(crate) fn allows_quirky_lengths(&self) -> bool {
+        matches!(self, Self::QuirkyLengths(_))
+    }
+
     pub(crate) fn error_location(
         &self,
         error: &CssNumericConstructionError,
         fallback: cssparser::SourceLocation,
         root_offset: usize,
     ) -> cssparser::SourceLocation {
-        match self {
+        match self.ordinary() {
+            Self::QuirkyLengths(_) => unreachable!("ordinary numeric provenance"),
             Self::Parsed(source) => {
                 let Some(CssValueOrigin::Parsed(origin)) = error.origin() else {
                     return fallback;
@@ -73,7 +85,8 @@ impl<'a> NumericInputContext<'a> {
         root: CalculationRoot,
         limits: CssComponentValueLimits,
     ) -> Result<CssCalculationExpression> {
-        let policy = match self {
+        let policy = match self.ordinary() {
+            Self::QuirkyLengths(_) => unreachable!("ordinary numeric provenance"),
             Self::Parsed(_) => AdmissionPolicy::RecoveredSyntax,
             Self::Components(..) => AdmissionPolicy::Strict,
         };
@@ -83,14 +96,16 @@ impl<'a> NumericInputContext<'a> {
         &self,
         values: CssComponentValues,
     ) -> Result<GridTrackMath> {
-        let policy = match self {
+        let policy = match self.ordinary() {
+            Self::QuirkyLengths(_) => unreachable!("ordinary numeric provenance"),
             Self::Parsed(_) => AdmissionPolicy::RecoveredSyntax,
             Self::Components(..) => AdmissionPolicy::Strict,
         };
         construct_grid_track_math(values, CssComponentValueLimits::default(), policy)
     }
     pub(crate) fn origin_at(&self, offset: usize) -> Option<CssValueOrigin> {
-        match self {
+        match self.ordinary() {
+            Self::QuirkyLengths(_) => unreachable!("ordinary numeric provenance"),
             Self::Components(_, serialized) => serialized.value_origin_at(offset).cloned(),
             Self::Parsed(source) => {
                 let (_, end, _) = crate::tokenization::next_source_token(source.as_str(), offset)?;
@@ -112,7 +127,8 @@ impl<'a> NumericInputContext<'a> {
         input: &mut cssparser::Parser<'_, '_>,
     ) -> Result<CssComponentValue> {
         input.skip_whitespace();
-        match self {
+        match self.ordinary() {
+            Self::QuirkyLengths(_) => unreachable!("ordinary numeric provenance"),
             Self::Parsed(source) => CssComponentValue::collect_from_parser(input, source)
                 .map_err(CssNumericConstructionError::component),
             Self::Components(values, serialized) => {
@@ -3106,7 +3122,8 @@ impl crate::CssRelativeColorExpression {
         environment: crate::CssRelativeColorEnvironment,
         result_domain: crate::CssRelativeColorResultDomain,
     ) -> Result<Self> {
-        let policy = match context {
+        let policy = match context.ordinary() {
+            NumericInputContext::QuirkyLengths(_) => unreachable!("ordinary numeric provenance"),
             NumericInputContext::Parsed(_) => AdmissionPolicy::RecoveredSyntax,
             NumericInputContext::Components(..) => AdmissionPolicy::Strict,
         };
@@ -3247,7 +3264,10 @@ impl CssProfileColorExpression {
     ) -> Result<Self> {
         Self::from_components(
             values,
-            match context {
+            match context.ordinary() {
+                NumericInputContext::QuirkyLengths(_) => {
+                    unreachable!("ordinary numeric provenance")
+                }
                 NumericInputContext::Parsed(_) => AdmissionPolicy::RecoveredSyntax,
                 NumericInputContext::Components(..) => AdmissionPolicy::Strict,
             },

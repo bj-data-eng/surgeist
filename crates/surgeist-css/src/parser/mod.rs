@@ -67,6 +67,7 @@ mod position;
 mod queries;
 mod query_components;
 mod quirky_color;
+mod quirky_length;
 mod shape_outside;
 use motion::*;
 mod shapes;
@@ -259,6 +260,11 @@ static IMPLEMENTED_CONTAINER_EXTENSIONS: &[CssFeatureId] =
     &[CssFeatureId::new("baseline.rule.container")];
 
 static ATOMIC_IMPLEMENTATION_INVENTORIES: &[CssAtomicImplementationInventory] = &[
+    CssAtomicImplementationInventory {
+        module: "crate::parser::quirky_length",
+        kind: CssAtomicImplementationKind::SharedValue,
+        stable_ids: quirky_length::IMPLEMENTED_SHARED_VALUES,
+    },
     CssAtomicImplementationInventory {
         module: "crate::parser::quirky_color",
         kind: CssAtomicImplementationKind::SharedValue,
@@ -4827,6 +4833,8 @@ fn parse_known_declaration_body<'i, 't>(
         input.reset(&state);
     }
 
+    let length_scope = quirky_length::property_context(known_property, parser_context, numeric);
+    let numeric = &length_scope;
     let declaration = match resolved_property {
         CssResolvedPropertyName::Canonical(_) => quirky_color::parse_property_value(
             known_property,

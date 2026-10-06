@@ -176,7 +176,10 @@ impl CssAngleValue {
         }
         let values = CssComponentValues::try_new(vec![component])
             .map_err(CssNumericConstructionError::component)?;
-        let admission = match context {
+        let admission = match context.ordinary() {
+            crate::numeric::NumericInputContext::QuirkyLengths(_) => {
+                unreachable!("ordinary numeric provenance")
+            }
             crate::numeric::NumericInputContext::Parsed(_) => Admission::RecoveringSyntax,
             crate::numeric::NumericInputContext::Components(..) => Admission::Strict,
         };

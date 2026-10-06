@@ -30,7 +30,7 @@ pub(super) fn parse_inset_value<'i, 't>(
             let component = numeric.collect(input).map_err(|_| {
                 unsupported_value_at(location, None, "invalid inset length-percentage")
             })?;
-            CssSpecifiedLengthPercentage::try_from_component(component)
+            CssSpecifiedLengthPercentage::from_property_component(component, numeric)
                 .map(CssInsetValue::LengthPercentage)
                 .map_err(|error| {
                     unsupported_value_at(

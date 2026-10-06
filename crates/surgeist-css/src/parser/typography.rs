@@ -71,7 +71,9 @@ pub(super) fn parse_font_size<'i, 't>(
             let component = numeric
                 .collect(input)
                 .map_err(|_| unsupported_value_at(location, None, "invalid font-size component"))?;
-            crate::CssSpecifiedNonNegativeLengthPercentage::try_from_component(component)
+            crate::CssSpecifiedNonNegativeLengthPercentage::from_property_component(
+                component, numeric,
+            )
         }
         Token::Function(name) if crate::numeric::is_math_function(name) => {
             let expression =
@@ -935,7 +937,7 @@ fn parse_text_spacing_adjustment<'i, 't>(
             let component = numeric.collect(input).map_err(|_| {
                 unsupported_value_at(location, None, format!("invalid {property} component"))
             })?;
-            CssSpecifiedLengthPercentage::try_from_component(component)
+            CssSpecifiedLengthPercentage::from_property_component(component, numeric)
         }
         Token::Function(name) if crate::numeric::is_math_function(name) => {
             let expression =

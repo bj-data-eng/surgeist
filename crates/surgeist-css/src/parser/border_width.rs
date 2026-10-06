@@ -58,7 +58,7 @@ pub(super) fn parse_exact_line_width<'i, 't>(
             let component = numeric
                 .collect(input)
                 .map_err(|_| unsupported_value_at(location, None, format!("invalid {context}")))?;
-            CssSpecifiedNonNegativeLength::try_from_component(component)
+            CssSpecifiedNonNegativeLength::from_property_component(component, numeric)
         }
         Token::Function(name) if is_math_function(name) => {
             let expression =

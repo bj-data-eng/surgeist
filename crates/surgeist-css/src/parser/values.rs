@@ -102,7 +102,7 @@ macro_rules! checked_length_parser {
                             format!("invalid {context}"),
                         )
                     })?;
-                    crate::$owner::try_from_component(component)
+                    crate::$owner::from_property_component(component, numeric)
                 }
                 Token::Function(name) if is_math_function(name) => {
                     let expression =
@@ -737,7 +737,7 @@ fn angle_error<'i>(
     // Map the exact recovered angle closure through the original component map;
     // canonical output coordinates never become an authored source position.
     if let Some(origin @ crate::CssValueOrigin::ImplicitClosure { .. }) = error.origin()
-        && let NumericInputContext::Components(_, serialized) = numeric
+        && let NumericInputContext::Components(_, serialized) = numeric.ordinary()
         && let Some(segment) = serialized.segments().iter().find(|segment| matches!(segment.origin(), crate::CssSerializedOrigin::Token(candidate) if candidate == origin))
     {
         let mut input = cssparser::ParserInput::new(&serialized.as_css()[..segment.byte_range().start]);

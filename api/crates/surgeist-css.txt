@@ -10836,6 +10836,7 @@ pub fn surgeist_css::CssSpecifiedFlex::try_from_component(component: surgeist_cs
 pub struct surgeist_css::CssSpecifiedLength
 impl surgeist_css::CssSpecifiedLength
 pub fn surgeist_css::CssSpecifiedLength::calculation(&self) -> core::option::Option<&surgeist_css::CssLengthCalculation>
+pub fn surgeist_css::CssSpecifiedLength::is_quirky_length(&self) -> bool
 pub fn surgeist_css::CssSpecifiedLength::literal_component(&self) -> core::option::Option<&surgeist_css::CssComponentValue>
 pub fn surgeist_css::CssSpecifiedLength::origin(&self) -> &surgeist_css::CssValueOrigin
 pub fn surgeist_css::CssSpecifiedLength::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
@@ -10846,6 +10847,7 @@ pub fn surgeist_css::CssSpecifiedLength::zero() -> Self
 pub struct surgeist_css::CssSpecifiedLengthPercentage
 impl surgeist_css::CssSpecifiedLengthPercentage
 pub fn surgeist_css::CssSpecifiedLengthPercentage::calculation(&self) -> core::option::Option<&surgeist_css::CssLengthPercentageCalculation>
+pub fn surgeist_css::CssSpecifiedLengthPercentage::is_quirky_length(&self) -> bool
 pub fn surgeist_css::CssSpecifiedLengthPercentage::literal_component(&self) -> core::option::Option<&surgeist_css::CssComponentValue>
 pub fn surgeist_css::CssSpecifiedLengthPercentage::origin(&self) -> &surgeist_css::CssValueOrigin
 pub fn surgeist_css::CssSpecifiedLengthPercentage::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
@@ -10865,6 +10867,7 @@ pub fn surgeist_css::CssSpecifiedNonNegativeFlex::try_from_component(component: 
 pub struct surgeist_css::CssSpecifiedNonNegativeLength
 impl surgeist_css::CssSpecifiedNonNegativeLength
 pub fn surgeist_css::CssSpecifiedNonNegativeLength::calculation(&self) -> core::option::Option<&surgeist_css::CssLengthCalculation>
+pub fn surgeist_css::CssSpecifiedNonNegativeLength::is_quirky_length(&self) -> bool
 pub fn surgeist_css::CssSpecifiedNonNegativeLength::literal_component(&self) -> core::option::Option<&surgeist_css::CssComponentValue>
 pub fn surgeist_css::CssSpecifiedNonNegativeLength::origin(&self) -> &surgeist_css::CssValueOrigin
 pub fn surgeist_css::CssSpecifiedNonNegativeLength::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
@@ -10875,6 +10878,7 @@ pub fn surgeist_css::CssSpecifiedNonNegativeLength::zero() -> Self
 pub struct surgeist_css::CssSpecifiedNonNegativeLengthPercentage
 impl surgeist_css::CssSpecifiedNonNegativeLengthPercentage
 pub fn surgeist_css::CssSpecifiedNonNegativeLengthPercentage::calculation(&self) -> core::option::Option<&surgeist_css::CssLengthPercentageCalculation>
+pub fn surgeist_css::CssSpecifiedNonNegativeLengthPercentage::is_quirky_length(&self) -> bool
 pub fn surgeist_css::CssSpecifiedNonNegativeLengthPercentage::literal_component(&self) -> core::option::Option<&surgeist_css::CssComponentValue>
 pub fn surgeist_css::CssSpecifiedNonNegativeLengthPercentage::origin(&self) -> &surgeist_css::CssValueOrigin
 pub fn surgeist_css::CssSpecifiedNonNegativeLengthPercentage::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>

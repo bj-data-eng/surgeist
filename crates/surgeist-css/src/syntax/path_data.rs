@@ -103,7 +103,10 @@ impl CssPathData {
         component: CssComponentValue,
         context: &crate::numeric::NumericInputContext<'_>,
     ) -> Result<Self, CssPathDataConstructionError> {
-        let admission = match context {
+        let admission = match context.ordinary() {
+            crate::numeric::NumericInputContext::QuirkyLengths(_) => {
+                unreachable!("ordinary numeric provenance")
+            }
             crate::numeric::NumericInputContext::Parsed(_) => Admission::RecoveredSyntax,
             crate::numeric::NumericInputContext::Components(..) => Admission::Strict,
         };

@@ -206,7 +206,8 @@ fn issue_offset(
     closing: bool,
     root_offset: usize,
 ) -> Option<usize> {
-    match numeric {
+    match numeric.ordinary() {
+        NumericInputContext::QuirkyLengths(_) => unreachable!("ordinary numeric provenance"),
         NumericInputContext::Parsed(source) => {
             let parsed = match origin {
                 CssValueOrigin::Parsed(parsed) => parsed,
@@ -232,7 +233,8 @@ fn issue_offset(
 }
 
 fn input_css<'a>(numeric: &'a NumericInputContext<'_>) -> &'a str {
-    match numeric {
+    match numeric.ordinary() {
+        NumericInputContext::QuirkyLengths(_) => unreachable!("ordinary numeric provenance"),
         NumericInputContext::Parsed(source) => source.as_str(),
         NumericInputContext::Components(_, serialized) => serialized.as_css(),
     }

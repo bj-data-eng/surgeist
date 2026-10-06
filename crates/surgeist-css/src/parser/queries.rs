@@ -1468,7 +1468,8 @@ impl MediaInput<'_> {
         start: &cssparser::ParserState,
     ) -> Result<CssComponentValues, ParseError<'i, Error>> {
         let end = input.state();
-        let items = match self.numeric {
+        let items = match self.numeric.ordinary() {
+            NumericInputContext::QuirkyLengths(_) => unreachable!("ordinary numeric provenance"),
             NumericInputContext::Parsed(snapshot) => {
                 input.reset(start);
                 let mut items = Vec::new();

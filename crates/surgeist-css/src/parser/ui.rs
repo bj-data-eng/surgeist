@@ -165,7 +165,7 @@ pub(super) fn parse_navigation<'i, 't>(
             CssComponentValueRef::Token(CssValueTokenRef::String(value))
                 if value.starts_with('_') =>
             {
-                if matches!(numeric, NumericInputContext::Components(..)) {
+                if matches!(numeric.ordinary(), NumericInputContext::Components(..)) {
                     return Err(unsupported_value_at(
                         location,
                         None,

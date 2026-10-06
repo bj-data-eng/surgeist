@@ -6057,3 +6057,30 @@ fn complete_z_index_catalogue_matches_the_typed_authored_lifecycle() {
         "visuren.html#propdef-z-index",
     );
 }
+
+#[test]
+fn quirky_length_metadata_matches_scoped_pixel_admission() {
+    let metadata = feature_metadata("official.value.quirky-length").unwrap();
+    assert_eq!(metadata.kind(), CssFeatureKind::Value);
+    assert_eq!(
+        metadata.spelling(),
+        "<quirky-length> in explicit document contexts"
+    );
+    assert_eq!(metadata.source().id().as_str(), "I-VALUES4-20240312");
+    assert_eq!(metadata.production(), "#deprecated-quirky-length");
+    assert_eq!(metadata.status(), CssSupportStatus::Complete);
+    let context = CssParserContext::new(CssParserMode::Quirks);
+    let report = context.parse_declaration("margin-top:7");
+    assert!(report.is_clean());
+    assert_eq!(
+        report
+            .syntax()
+            .as_ref()
+            .unwrap()
+            .to_specified_css()
+            .unwrap(),
+        "margin-top: 7px;"
+    );
+    assert!(!parse_declaration("margin-top:7").is_clean());
+    assert!(!context.parse_declaration("background:7 8").is_clean());
+}

@@ -416,14 +416,7 @@ impl CssTextShadowLayer {
         spread_radius: Option<CssSpecifiedNonNegativeLength>,
         color: Option<CssColor>,
     ) -> Option<Self> {
-        let spread = match spread_radius {
-            Some(value) => Some(if let Some(component) = value.literal_component() {
-                CssSpecifiedLength::try_from_component(component.clone()).ok()?
-            } else {
-                CssSpecifiedLength::try_from_calculation(value.calculation()?.clone()).ok()?
-            }),
-            None => None,
-        };
+        let spread = spread_radius.map(CssSpecifiedNonNegativeLength::into_signed);
         Self::try_from_shadow(CssShadow::try_new(
             inset,
             offset_x,
@@ -450,12 +443,7 @@ impl CssTextShadowLayer {
     }
     pub(crate) fn from_parsed(shadow: CssShadow) -> Option<Self> {
         if let Some(spread) = shadow.spread_radius() {
-            if let Some(component) = spread.literal_component() {
-                CssSpecifiedNonNegativeLength::try_from_component(component.clone()).ok()?;
-            } else {
-                CssSpecifiedNonNegativeLength::try_from_calculation(spread.calculation()?.clone())
-                    .ok()?;
-            }
+            spread.try_nonnegative().ok()?;
         }
         Some(Self { shadow })
     }
