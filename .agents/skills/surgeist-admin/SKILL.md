@@ -65,11 +65,15 @@ The enabled built-in workflows own these effects:
 The coordinator records planned completion through Status. Close unplanned work
 directly as **not planned** and let the built-in closure rule set Done. Done
 means resolved or unplanned; it does not assert verified implementation.
-Before changing Status or issue state, account for these side effects and inspect
-the resulting state. Do not duplicate built-in transitions with synchronization
-scripts or assume an event order. Archive timing follows the last update, not
-simply the closure date. Workflow settings are user-owned; inspect saved
-configuration when changing or troubleshooting it within authorized scope.
+Before changing Status or issue state, account for these side effects. Trust
+successful API updates and the configured workflows without routine post-update
+issue or Project readback. The cloud agent
+monitors consistency periodically. Inspect state when an update fails or its
+outcome is uncertain, or when reconciling work on resume. Do not duplicate built-in
+transitions with synchronization scripts or assume an event order. Archive timing
+follows the last update, not simply the closure date. Workflow settings are
+user-owned; inspect saved configuration when changing or troubleshooting it
+within authorized scope.
 
 ## Review And Working Material
 
@@ -113,6 +117,6 @@ administration does not authorize stashing, discarding, or resuming code.
 On authorized resume, inspect Git, the owning issue and relevant relationships,
 local working material, and active ownership. Reconcile changed source before
 reusing evidence. Restore only material the next action needs. At completion,
-record the scoped outcome and applicable Review state, verify the Project result,
-and remove owned consumed temporary material. Report the result and remaining
-work briefly. Publication and unrelated cleanup retain their own authority.
+record the scoped outcome and applicable Review state, and remove owned consumed
+temporary material. Report the result and remaining work briefly. Publication
+and unrelated cleanup retain their own authority.
