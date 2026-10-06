@@ -1,5 +1,4 @@
 mod source_resolution;
-use source_resolution::previous_authored_token_before;
 
 use std::fmt;
 
@@ -25,8 +24,6 @@ pub enum CssErrorCode {
     UnexpectedEnd,
     /// The parser encountered an authored token that the active grammar did not accept.
     UnexpectedToken,
-    /// The authored encoding declaration did not satisfy its grammar or placement rules.
-    InvalidEncodingDeclaration,
     /// An authored at-rule appeared outside its permitted grammar context.
     InvalidAtRulePlacement,
     /// An authored at-rule prelude did not satisfy the rule's grammar.
@@ -279,8 +276,6 @@ impl CssTokenSummary {
 }
 
 const EXPECT_CSS_SYNTAX: CssGrammarExpectation = CssGrammarExpectation::new("valid CSS syntax");
-const EXPECT_ENCODING_DECLARATION: CssGrammarExpectation =
-    CssGrammarExpectation::new("a non-empty double-quoted encoding label followed by a semicolon");
 const EXPECT_DECLARATION_VALUE: CssGrammarExpectation =
     CssGrammarExpectation::new("a declaration value");
 const EXPECT_PROPERTY_VALUE: CssGrammarExpectation =
@@ -333,30 +328,6 @@ impl CssUnexpectedTokenError {
     /// Returns the exact authored token rejected by the grammar.
     pub const fn encountered(&self) -> &CssTokenSummary {
         &self.encountered
-    }
-}
-
-/// Diagnostic detail for an invalid authored CSS encoding declaration.
-///
-/// The detail preserves the violated grammar expectation and any responsible token; it does not
-/// decode bytes, change source encoding, or recover the declaration.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssEncodingDeclarationError {
-    expectation: CssGrammarExpectation,
-    encountered: Option<CssTokenSummary>,
-}
-
-impl CssEncodingDeclarationError {
-    #[must_use]
-    /// Returns the grammar expectation for a valid encoding declaration.
-    pub const fn expectation(&self) -> CssGrammarExpectation {
-        self.expectation
-    }
-
-    #[must_use]
-    /// Returns the responsible authored token, or `None` when the declaration ended at EOF.
-    pub const fn encountered(&self) -> Option<&CssTokenSummary> {
-        self.encountered.as_ref()
     }
 }
 
@@ -973,8 +944,6 @@ pub enum ErrorKind {
     UnexpectedEnd(CssUnexpectedEndError),
     /// Strict parsing encountered a token rejected by the active grammar.
     UnexpectedToken(CssUnexpectedTokenError),
-    /// An authored encoding declaration was invalid.
-    InvalidEncodingDeclaration(CssEncodingDeclarationError),
     /// An authored at-rule appeared outside its permitted grammar context.
     InvalidAtRulePlacement(CssAtRulePlacementError),
     /// An authored at-rule prelude was invalid.
@@ -1056,7 +1025,6 @@ impl Error {
             ErrorKind::EscapeParseError(_) => CssErrorCode::EscapeParseError,
             ErrorKind::UnexpectedEnd(_) => CssErrorCode::UnexpectedEnd,
             ErrorKind::UnexpectedToken(_) => CssErrorCode::UnexpectedToken,
-            ErrorKind::InvalidEncodingDeclaration(_) => CssErrorCode::InvalidEncodingDeclaration,
             ErrorKind::InvalidAtRulePlacement(_) => CssErrorCode::InvalidAtRulePlacement,
             ErrorKind::InvalidAtRulePrelude(_) => CssErrorCode::InvalidAtRulePrelude,
             ErrorKind::InvalidAtRuleBody(_) => CssErrorCode::InvalidAtRuleBody,
@@ -1231,68 +1199,6 @@ pub(crate) fn from_rule_parse_error(
             encountered: None,
         });
     }
-    error
-}
-
-pub(crate) fn with_encoding_declaration_context<'i>(
-    mut error: ParseError<'i, Error>,
-) -> ParseError<'i, Error> {
-    let encountered = take_encountered(&mut error.kind);
-    error.kind = ParseErrorKind::Custom(Error::at(
-        error.location,
-        ErrorKind::InvalidEncodingDeclaration(CssEncodingDeclarationError {
-            expectation: EXPECT_ENCODING_DECLARATION,
-            encountered,
-        }),
-    ));
-    error
-}
-
-pub(crate) fn invalid_encoding_declaration<'i>(
-    location: cssparser::SourceLocation,
-) -> ParseError<'i, Error> {
-    error_at(
-        location,
-        ErrorKind::InvalidEncodingDeclaration(CssEncodingDeclarationError {
-            expectation: EXPECT_ENCODING_DECLARATION,
-            encountered: None,
-        }),
-    )
-}
-
-pub(crate) fn normalize_encoding_error(
-    source: &str,
-    unit_start: usize,
-    unit_end: usize,
-    failed_unit: &str,
-    mut error: Error,
-) -> Error {
-    let ErrorKind::InvalidEncodingDeclaration(detail) = &error.kind else {
-        return error;
-    };
-    if let Some(encountered) = &detail.encountered {
-        if let Some((start, summary)) = previous_authored_token_before(source, error.position)
-            && start >= unit_start
-            && start < unit_end
-            && summary.kind == encountered.kind
-        {
-            error.position = CssSourcePosition::from_byte_offset_in(source, start);
-            if let ErrorKind::InvalidEncodingDeclaration(detail) = &mut error.kind {
-                detail.encountered = Some(summary);
-            }
-        }
-        return error;
-    }
-
-    let unit = failed_unit.trim_end();
-    let responsible = if unit.ends_with(';') {
-        unit_start
-    } else if let Some(opening_brace) = source[unit_start..unit_end].find('{') {
-        unit_start + opening_brace
-    } else {
-        unit_end
-    };
-    error.position = CssSourcePosition::from_byte_offset_in(source, responsible);
     error
 }
 
@@ -2000,7 +1906,6 @@ fn take_encountered(kind: &mut ParseErrorKind<'_, Error>) -> Option<CssTokenSumm
 fn encountered_mut(kind: &mut ErrorKind) -> Option<&mut CssTokenSummary> {
     match kind {
         ErrorKind::UnexpectedToken(detail) => Some(&mut detail.encountered),
-        ErrorKind::InvalidEncodingDeclaration(detail) => detail.encountered.as_mut(),
         ErrorKind::InvalidAtRulePrelude(detail) | ErrorKind::InvalidAtRuleBody(detail) => {
             detail.encountered.as_mut()
         }
@@ -2017,7 +1922,6 @@ fn encountered_mut(kind: &mut ErrorKind) -> Option<&mut CssTokenSummary> {
 
 fn optional_encountered_mut(kind: &mut ErrorKind) -> Option<&mut Option<CssTokenSummary>> {
     match kind {
-        ErrorKind::InvalidEncodingDeclaration(detail) => Some(&mut detail.encountered),
         ErrorKind::InvalidAtRulePrelude(detail) | ErrorKind::InvalidAtRuleBody(detail) => {
             Some(&mut detail.encountered)
         }
@@ -2173,13 +2077,6 @@ mod tests {
                     encountered: token.clone(),
                 }),
                 CssErrorCode::UnexpectedToken,
-            ),
-            (
-                ErrorKind::InvalidEncodingDeclaration(CssEncodingDeclarationError {
-                    expectation: EXPECT_CSS_SYNTAX,
-                    encountered: None,
-                }),
-                CssErrorCode::InvalidEncodingDeclaration,
             ),
             (
                 ErrorKind::InvalidAtRulePlacement(CssAtRulePlacementError {
@@ -2350,13 +2247,6 @@ mod tests {
         };
         assert_eq!(unexpected_token.expectation().as_str(), "valid CSS syntax");
         assert_eq!(unexpected_token.encountered().kind(), CssTokenKind::Delim);
-        let encoding = CssEncodingDeclarationError {
-            expectation: CssGrammarExpectation::new("a quoted encoding label"),
-            encountered: Some(token.clone()),
-        };
-        assert_eq!(encoding.expectation().as_str(), "a quoted encoding label");
-        assert_eq!(encoding.encountered().unwrap().authored(), "!");
-
         let unsupported_property = CssUnsupportedPropertyError {
             name: CssPropertyName::new("future-property"),
             feature: CssFeatureId::new("later.property.future-property"),

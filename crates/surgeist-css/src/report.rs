@@ -113,8 +113,6 @@ pub enum CssRecoveryAction {
     RetainNonconformingRule,
     /// Retained an underscore-leading target as symbolic legacy navigation syntax.
     RetainLegacyNavigationTarget,
-    /// The diagnostic phase ignored one authored top-level legacy CDO or CDC token.
-    IgnoreLegacyToken,
     /// The tokenizer ignored an authored comment terminated by EOF instead of `*/`.
     /// This recovery is independent of retention or rejection of surrounding syntax.
     IgnoreUnterminatedComment,

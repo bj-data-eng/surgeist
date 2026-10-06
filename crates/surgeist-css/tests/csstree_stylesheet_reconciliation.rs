@@ -104,7 +104,6 @@ fn snake_name(value: impl std::fmt::Debug) -> String {
 fn original_stylesheets_retain_independently_expected_ordered_rules_and_values() {
     for row in expectations()["rows"].as_array().unwrap() {
         let report = parse_sheet(text(row, "input"));
-        assert!(report.syntax().encoding().is_none(), "{}", row["id"]);
         assert_eq!(
             rules(report.syntax().rules()),
             row["expected"]["ordered_rules"],

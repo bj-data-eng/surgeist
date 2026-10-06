@@ -1283,7 +1283,6 @@ profile_source!(
     "https://www.w3.org/TR/2026/WD-css-grid-3-20260121/"
 );
 
-const CSS_SYNTAX_3: CssSpecificationSource = O_SYNTAX3;
 const CSS_STYLE_ATTRIBUTES: CssSpecificationSource = O_STYLE_ATTR;
 const CSS_CASCADE_4: CssSpecificationSource = O_CASCADE4;
 const BASELINE_SELECTORS: CssSpecificationSource = CssSpecificationSource::from_repository(
@@ -2110,7 +2109,6 @@ static OFFICIAL_NON_PROPERTY_COVERAGE_ROWS: &[CssOfficialCoverageRecord] = &[
     active_coverage!("later.rule.page"),
     active_coverage!("official.selector.page-pseudo"),
     active_coverage!("official.selector.logical-page-pseudo"),
-    active_coverage!("foundation.encoding.charset"),
     active_coverage!("baseline.rule.style"),
     active_coverage!("official.rule.at-rule"),
     active_coverage!("official.qualified-rule.generic"),
@@ -2931,7 +2929,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 766] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 765] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -3039,13 +3037,6 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 766] = [
         "#scope-atrule",
         BASELINE_RULE_SUBSET,
         BASELINE_RULE_REMAINDER,
-    ),
-    CssFeatureMetadata::complete(
-        "foundation.encoding.charset",
-        CssFeatureKind::Rule,
-        "optional leading legacy @charset metadata",
-        CSS_SYNTAX_3,
-        "#charset-rule",
     ),
     CssFeatureMetadata::complete(
         "foundation.declaration-list.style-attribute",

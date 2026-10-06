@@ -1239,7 +1239,6 @@ pub surgeist_css::CssErrorCode::InvalidComponentValue
 pub surgeist_css::CssErrorCode::InvalidDeclarationAnnotation
 pub surgeist_css::CssErrorCode::InvalidDescriptorCombination
 pub surgeist_css::CssErrorCode::InvalidDescriptorValue
-pub surgeist_css::CssErrorCode::InvalidEncodingDeclaration
 pub surgeist_css::CssErrorCode::InvalidMediaQuery
 pub surgeist_css::CssErrorCode::InvalidPropertyValue
 pub surgeist_css::CssErrorCode::InvalidQualifiedRule
@@ -4381,7 +4380,6 @@ pub surgeist_css::CssRecoveryAction::DropFontSourceListItem
 pub surgeist_css::CssRecoveryAction::DropKeyframeBlock
 pub surgeist_css::CssRecoveryAction::DropQualifiedRule
 pub surgeist_css::CssRecoveryAction::DropSelectorListItem
-pub surgeist_css::CssRecoveryAction::IgnoreLegacyToken
 pub surgeist_css::CssRecoveryAction::IgnoreUnterminatedComment
 pub surgeist_css::CssRecoveryAction::RecoverEscape
 pub surgeist_css::CssRecoveryAction::RejectInput
@@ -5626,7 +5624,6 @@ pub surgeist_css::ErrorKind::InvalidComponentValue(alloc::boxed::Box<surgeist_cs
 pub surgeist_css::ErrorKind::InvalidDeclarationAnnotation(surgeist_css::CssDeclarationAnnotationError)
 pub surgeist_css::ErrorKind::InvalidDescriptorCombination(surgeist_css::CssDescriptorCombinationError)
 pub surgeist_css::ErrorKind::InvalidDescriptorValue(surgeist_css::CssDescriptorValueError)
-pub surgeist_css::ErrorKind::InvalidEncodingDeclaration(surgeist_css::CssEncodingDeclarationError)
 pub surgeist_css::ErrorKind::InvalidMediaQuery(surgeist_css::CssMediaQueryError)
 pub surgeist_css::ErrorKind::InvalidPropertyValue(surgeist_css::CssPropertyValueError)
 pub surgeist_css::ErrorKind::InvalidQualifiedRule(surgeist_css::CssQualifiedRuleError)
@@ -7581,14 +7578,6 @@ pub struct surgeist_css::CssEmptyLanguageRangeList
 impl core::error::Error for surgeist_css::CssEmptyLanguageRangeList
 impl core::fmt::Display for surgeist_css::CssEmptyLanguageRangeList
 pub fn surgeist_css::CssEmptyLanguageRangeList::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-pub struct surgeist_css::CssEncodingDeclaration
-impl surgeist_css::CssEncodingDeclaration
-pub fn surgeist_css::CssEncodingDeclaration::label(&self) -> &str
-pub const fn surgeist_css::CssEncodingDeclaration::position(&self) -> surgeist_css::CssSourcePosition
-pub struct surgeist_css::CssEncodingDeclarationError
-impl surgeist_css::CssEncodingDeclarationError
-pub const fn surgeist_css::CssEncodingDeclarationError::encountered(&self) -> core::option::Option<&surgeist_css::CssTokenSummary>
-pub const fn surgeist_css::CssEncodingDeclarationError::expectation(&self) -> surgeist_css::CssGrammarExpectation
 pub struct surgeist_css::CssExclusionMetadata
 impl surgeist_css::CssExclusionMetadata
 pub const fn surgeist_css::CssExclusionMetadata::id(&self) -> surgeist_css::CssConformanceExclusionId
@@ -9552,7 +9541,6 @@ pub const fn surgeist_css::CssNormalizedSelector::binding(&self) -> surgeist_css
 pub const fn surgeist_css::CssNormalizedSelector::selector(&self) -> &surgeist_css::CssSelector
 pub struct surgeist_css::CssNormalizedSheet
 impl surgeist_css::CssNormalizedSheet
-pub const fn surgeist_css::CssNormalizedSheet::encoding(&self) -> core::option::Option<&surgeist_css::CssEncodingDeclaration>
 pub fn surgeist_css::CssNormalizedSheet::items(&self) -> &[surgeist_css::CssNormalizedItem]
 pub struct surgeist_css::CssNthAnPlusB
 impl surgeist_css::CssNthAnPlusB
@@ -10772,7 +10760,6 @@ pub const fn surgeist_css::CssShapeSmooth::to(end: surgeist_css::CssPosition, co
 pub const fn surgeist_css::CssShapeSmooth::view(&self) -> surgeist_css::CssShapeSmoothRef<'_>
 pub struct surgeist_css::CssSheet
 impl surgeist_css::CssSheet
-pub const fn surgeist_css::CssSheet::encoding(&self) -> core::option::Option<&surgeist_css::CssEncodingDeclaration>
 pub const fn surgeist_css::CssSheet::new() -> Self
 pub fn surgeist_css::CssSheet::rules(&self) -> &[surgeist_css::CssRule]
 impl surgeist_css::CssSheet

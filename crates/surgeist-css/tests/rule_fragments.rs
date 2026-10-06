@@ -188,7 +188,7 @@ fn namespaces_and_unicode_positions_come_from_the_supplied_context_and_source() 
 }
 
 #[test]
-fn encoding_metadata_and_stylesheet_sentinels_are_not_stripped_from_raw_rules() {
+fn apparent_charset_and_stylesheet_sentinels_are_not_stripped_from_raw_rules() {
     reject("@charset \"utf-8\";");
     reject("<!--a{}-->");
     reject("a{} -->");

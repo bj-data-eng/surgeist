@@ -339,12 +339,12 @@ fn validation_page_rules_match_ordinary_retention_and_recovery() {
 #[test]
 fn validation_parity_preserves_multiple_diagnostics_and_every_special_action() {
     let sheet = assert_sheet_parity("<!-- .x { mystery: 1; width: nope; } -->");
-    assert!(sheet.diagnostics().len() >= 4);
+    assert_eq!(sheet.diagnostics().len(), 2);
     assert!(
         sheet
             .diagnostics()
             .iter()
-            .any(|diagnostic| diagnostic.action() == CssRecoveryAction::IgnoreLegacyToken)
+            .all(|diagnostic| { diagnostic.action() == CssRecoveryAction::DropDeclaration })
     );
 
     let style = assert_style_parity("mystery: 1; width: nope; color: red");

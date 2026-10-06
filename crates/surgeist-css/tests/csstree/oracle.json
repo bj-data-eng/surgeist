@@ -5,7 +5,7 @@
   "source_tree": "bfadc7a7a8d93dce59a27fa7df3bb0f6f6a623d8",
   "expectation_schema_version": 1,
   "generation_report_sha256": "ed8c70539c10effc254a8c2c4faa750396c7f3647996f5120e9e311bbe96d366",
-  "expected_class_registry_sha256": "17ad3f5c8aba6f288866b6e3d9a7f9b3d461a4f3c798c0251ce9473d102d13f9",
+  "expected_class_registry_sha256": "750e7970ab4387306041e55a210028dbbcec3ece61446bd16701da15cfb1e431",
   "records": [
     {
       "id": "atrule/atrule/container.json#/all together",
@@ -27433,25 +27433,15 @@
         }
       },
       "outcome": {
-        "kind": "strict_rejected"
+        "kind": "clean"
       },
       "observation": {
         "extractor": {
           "kind": "sheet_rules"
         },
         "syntax_count": 0,
-        "is_clean": false,
-        "diagnostics": [
-          {
-            "code": "unexpected_token",
-            "action": "ignore_legacy_token",
-            "byte_offset": 0,
-            "span_start": 0,
-            "span_end": 3,
-            "multiplicity": 1,
-            "payload_relation": "intersects"
-          }
-        ]
+        "is_clean": true,
+        "diagnostics": []
       }
     },
     {
@@ -27478,25 +27468,15 @@
         }
       },
       "outcome": {
-        "kind": "strict_rejected"
+        "kind": "clean"
       },
       "observation": {
         "extractor": {
           "kind": "sheet_rules"
         },
         "syntax_count": 0,
-        "is_clean": false,
-        "diagnostics": [
-          {
-            "code": "unexpected_token",
-            "action": "ignore_legacy_token",
-            "byte_offset": 0,
-            "span_start": 0,
-            "span_end": 4,
-            "multiplicity": 1,
-            "payload_relation": "intersects"
-          }
-        ]
+        "is_clean": true,
+        "diagnostics": []
       }
     },
     {
@@ -27523,34 +27503,15 @@
         }
       },
       "outcome": {
-        "kind": "recovered"
+        "kind": "clean"
       },
       "observation": {
         "extractor": {
           "kind": "sheet_rules"
         },
         "syntax_count": 1,
-        "is_clean": false,
-        "diagnostics": [
-          {
-            "code": "unexpected_token",
-            "action": "ignore_legacy_token",
-            "byte_offset": 0,
-            "span_start": 0,
-            "span_end": 4,
-            "multiplicity": 1,
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "unexpected_token",
-            "action": "ignore_legacy_token",
-            "byte_offset": 7,
-            "span_start": 7,
-            "span_end": 10,
-            "multiplicity": 1,
-            "payload_relation": "intersects"
-          }
-        ]
+        "is_clean": true,
+        "diagnostics": []
       }
     },
     {

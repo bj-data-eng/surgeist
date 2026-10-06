@@ -712,15 +712,14 @@ pub(crate) fn parse_rule_with_context(
         let mut parser_input = ParserInput::new(&working_source);
         let mut input = Parser::new(&mut parser_input);
         let mut parser = SingleRuleParser {
-            grammar: StrictRuleParser::isolated_rule(source, state.clone()),
+            grammar: StrictRuleParser::top_level(source, state.clone()),
             completed: false,
         };
         input.skip_whitespace();
         let rule_start = input.position().byte_index();
         match cssparser::parse_one_rule(&mut input, &mut parser) {
             Ok(rules) => {
-                // The ordinary grammar emits one outer node. Encoding, which
-                // emits no node, was excluded by the isolated constructor.
+                // The ordinary grammar emits one outer node for a successful rule.
                 let [rule]: [CssRule; 1] = rules
                     .try_into()
                     .expect("a successful isolated ordinary rule emits one outer node");

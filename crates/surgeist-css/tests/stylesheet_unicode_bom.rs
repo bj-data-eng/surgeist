@@ -19,7 +19,6 @@ fn assert_position(position: CssSourcePosition, byte: usize, line: u32, column: 
 fn assert_incomplete_unicode_rule(source: &str, start: (usize, u32, u32), end: (usize, u32, u32)) {
     let report = parse_sheet(source);
     assert!(report.syntax().rules().is_empty(), "{source:?}");
-    assert!(report.syntax().encoding().is_none(), "{source:?}");
     assert!(!report.is_clean(), "{source:?}");
     assert!(validate_sheet(source).is_err(), "{source:?}");
     assert_eq!(report.diagnostics().len(), 1, "{source:?}");
@@ -70,7 +69,6 @@ fn unicode_feff_is_retained_in_complete_type_selector_names() {
         let report = parse_sheet(source);
         assert!(report.is_clean(), "{source:?}: {:?}", report.diagnostics());
         assert!(validate_sheet(source).is_ok(), "{source:?}");
-        assert!(report.syntax().encoding().is_none());
         assert_eq!(report.syntax().rules().len(), 2, "{source:?}");
         for (rule, name, byte, column) in [
             (&report.syntax().rules()[0], expected_name, 0, 0),

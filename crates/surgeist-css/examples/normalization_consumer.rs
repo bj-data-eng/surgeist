@@ -640,10 +640,18 @@ fn ordered_terminal_payloads() {
         "@counter-style marks {system:cyclic;symbols:x y} @page {margin:1cm} ",
         ".a {margin-block:0}",
     ));
-    assert!(report.is_clean(), "{:?}", report.diagnostics());
+    let [diagnostic] = report.diagnostics() else {
+        panic!("one unknown charset")
+    };
+    assert_eq!(
+        diagnostic.error().code(),
+        surgeist_css::CssErrorCode::UnknownAtRule
+    );
+    assert_eq!(
+        diagnostic.action(),
+        surgeist_css::CssRecoveryAction::DropAtRule
+    );
     let normalized = normalize_sheet(report.syntax()).unwrap();
-    assert_eq!(normalized.encoding(), report.syntax().encoding());
-    assert_eq!(normalized.encoding().unwrap().label(), "UTF-8");
     let contexts = rules(&normalized);
     assert_eq!(
         contexts

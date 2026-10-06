@@ -7,14 +7,19 @@ use surgeist_css::{
 };
 
 const FIXTURE: &str = include_str!("fixtures/i01-c01-observables.tsv");
-// Case inputs and feature labels retain their capture provenance.
+// Case inputs and feature labels retain their capture provenance. Syntax 3
+// (2021-12-24) §§3, 5.4.1 and 9.3 supersede captured charset metadata and
+// top-level CDO/CDC diagnostics. The explicit archived-sheet cohort below binds
+// each historical input/outcome and asserts independent current expectations.
+// https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#charset-rule
+// https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-list-of-rules
 // Selectors 4 (2026-01-22) §16 and Nesting 1 (2026-01-22) §§3.1, 4
-// supersede one archived nested Column rejection. Its closed current-source
-// witness preserves all nine historical fields and inspects retained origins.
+// supersede the one archived nested Column rejection. The closed Column cohort
+// binds all nine historical fields and directly inspects the newly retained
+// declaration without borrowing the archive's absent-declaration cursor.
 // https://www.w3.org/TR/2026/WD-selectors-4-20260122/#grammar
 // https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nesting
-// Selected
-// value expectations follow CSS Variables 1 §2.1 (2022-06-16): a CSS-wide
+// Selected value expectations follow CSS Variables 1 §2.1 (2022-06-16): a CSS-wide
 // keyword followed by ordinary custom-property tokens is declaration-value,
 // not a global value.
 // https://www.w3.org/TR/2022/CR-css-variables-1-20220616/#syntax
@@ -791,12 +796,18 @@ fn authored_css_cases_match_selected_public_report_observables() {
     let mut migrated_thickness_cases = 0;
     let mut migrated_timing_name_cases = 0;
     let mut migrated_text_wrap_cases = 0;
+    let mut selected_sheet_source_cases = 0;
     let mut selected_column_source_cases = 0;
     for row in rows {
         // Fixture feature labels record the original capture profile. Validation is
         // now unconditional, so every historical profile runs through the same API.
         if assert_archived_column_selector_contract(&row) {
             selected_column_source_cases += 1;
+            assert_strict_parity(&row);
+            continue;
+        }
+        if assert_archived_sheet_source_contract(&row) {
+            selected_sheet_source_cases += 1;
             assert_strict_parity(&row);
             continue;
         }
@@ -899,6 +910,7 @@ fn authored_css_cases_match_selected_public_report_observables() {
         "all three archived intrinsic auto-repeat cases require current acceptance witnesses"
     );
     assert_eq!(migrated_unicode_cases, 1);
+    assert_eq!(selected_sheet_source_cases, 18);
     assert_eq!(selected_column_source_cases, 1);
     assert_eq!(migrated_display_cases, 1);
     assert_eq!(migrated_overflow_auto_cases, 3);
@@ -1060,6 +1072,169 @@ fn assert_column_position(position: surgeist_css::CssSourcePosition, byte: usize
     assert_eq!(position.byte_offset().value(), byte);
     assert_eq!(position.line().value(), 0);
     assert_eq!(position.column().value() as usize, byte);
+}
+
+// Historical I01 rows remain verbatim. This closed table changes no captured
+// outcome: it binds each archived stimulus/diagnostic and tests the selected
+// Syntax 3 current contract through the real sheet front and normal observers.
+fn assert_archived_sheet_source_contract(row: &Row) -> bool {
+    let (input, historical_clean, historical_diagnostics, clean, diagnostics) = match row
+        .case_id
+        .as_str()
+    {
+        "catalog.non-property.foundation.encoding.charset.positive" => (
+            "@charset \"UTF-8\"; .x { color: red; }",
+            "true",
+            "-",
+            "false",
+            "UnknownAtRule/UnknownAtRule:charset/DropAtRule@0:0:0>0:0:0-17:0:17:17",
+        ),
+        "focused.initiative-audit.04" => (
+            "@charset \"UTF-8\"; .x { color: red; }",
+            "true",
+            "-",
+            "false",
+            "UnknownAtRule/UnknownAtRule:charset/DropAtRule@0:0:0>0:0:0-17:0:17:17",
+        ),
+        "focused.app-strict.multi-sheet" => (
+            "<!-- .x { mystery: 1; width: nope; } -->",
+            "false",
+            "UnexpectedToken/UnexpectedToken:valid CSS syntax:Cdo:<!--/IgnoreLegacyToken@0:0:0>0:0:0-4:0:4:4~UnknownProperty/UnknownProperty:mystery/DropDeclaration@10:0:10>10:0:10-21:0:21:21~InvalidPropertyValue/InvalidPropertyValue:baseline.property.width:a value accepted by the property's grammar:Ident:nope/DropDeclaration@29:0:29>22:0:22-34:0:34:34~UnexpectedToken/UnexpectedToken:valid CSS syntax:Cdc:-->/IgnoreLegacyToken@37:0:37>37:0:37-40:0:40:40",
+            "false",
+            "UnknownProperty/UnknownProperty:mystery/DropDeclaration@10:0:10>10:0:10-21:0:21:21~InvalidPropertyValue/InvalidPropertyValue:baseline.property.width:a value accepted by the property's grammar:Ident:nope/DropDeclaration@29:0:29>22:0:22-34:0:34:34",
+        ),
+        "focused.public.actions.ignore-legacy" => (
+            "<!-- .x { color: red; }",
+            "false",
+            "UnexpectedToken/UnexpectedToken:valid CSS syntax:Cdo:<!--/IgnoreLegacyToken@0:0:0>0:0:0-4:0:4:4",
+            "true",
+            "-",
+        ),
+        "focused.stylesheet-recovery.01" => (
+            "<!-- .before { color: red; } <!-- .after { color: blue; }",
+            "false",
+            "UnexpectedToken/UnexpectedToken:valid CSS syntax:Cdo:<!--/IgnoreLegacyToken@0:0:0>0:0:0-4:0:4:4~UnexpectedToken/UnexpectedToken:valid CSS syntax:Cdo:<!--/IgnoreLegacyToken@29:0:29>29:0:29-33:0:33:33",
+            "true",
+            "-",
+        ),
+        "focused.stylesheet-recovery.02" => (
+            "--> .before { color: red; } --> .after { color: blue; }",
+            "false",
+            "UnexpectedToken/UnexpectedToken:valid CSS syntax:Cdc:-->/IgnoreLegacyToken@0:0:0>0:0:0-3:0:3:3~UnexpectedToken/UnexpectedToken:valid CSS syntax:Cdc:-->/IgnoreLegacyToken@28:0:28>28:0:28-31:0:31:31",
+            "true",
+            "-",
+        ),
+        "focused.stylesheet-recovery.09" => (
+            " \n/**/ <!-- --> \t",
+            "false",
+            "UnexpectedToken/UnexpectedToken:valid CSS syntax:Cdo:<!--/IgnoreLegacyToken@7:1:5>7:1:5-11:1:9:11~UnexpectedToken/UnexpectedToken:valid CSS syntax:Cdc:-->/IgnoreLegacyToken@12:1:10>12:1:10-15:1:13:15",
+            "true",
+            "-",
+        ),
+        "focused.stylesheet-recovery.07" => (
+            "; @charset \"UTF-8\"; .after { color: blue; }",
+            "false",
+            "InvalidQualifiedRule/InvalidQualifiedRule:css.qualified-rule:valid CSS syntax:Semicolon:;/DropQualifiedRule@0:0:0>0:0:0-1:0:1:1~InvalidEncodingDeclaration/InvalidEncodingDeclaration:a non-empty double-quoted encoding label followed by a semicolon:String:\"UTF-8\"/DropAtRule@11:0:11>2:0:2-19:0:19:19",
+            "false",
+            "InvalidQualifiedRule/InvalidQualifiedRule:css.qualified-rule:valid CSS syntax:Semicolon:;/DropQualifiedRule@0:0:0>0:0:0-1:0:1:1~UnknownAtRule/UnknownAtRule:charset/DropAtRule@2:0:2>2:0:2-19:0:19:19",
+        ),
+        "focused.stylesheet-recovery.08" => (
+            "} @charset \"UTF-8\"; .after { color: blue; }",
+            "false",
+            "InvalidQualifiedRule/InvalidQualifiedRule:css.qualified-rule:valid CSS syntax:CloseCurlyBracket:}/DropQualifiedRule@0:0:0>0:0:0-1:0:1:1~InvalidEncodingDeclaration/InvalidEncodingDeclaration:a non-empty double-quoted encoding label followed by a semicolon:String:\"UTF-8\"/DropAtRule@11:0:11>2:0:2-19:0:19:19",
+            "false",
+            "InvalidQualifiedRule/InvalidQualifiedRule:css.qualified-rule:valid CSS syntax:CloseCurlyBracket:}/DropQualifiedRule@0:0:0>0:0:0-1:0:1:1~UnknownAtRule/UnknownAtRule:charset/DropAtRule@2:0:2>2:0:2-19:0:19:19",
+        ),
+        "focused.stylesheet-recovery.14" => (
+            "@charset UTF-8; .after { color: blue; }",
+            "false",
+            "InvalidEncodingDeclaration/InvalidEncodingDeclaration:a non-empty double-quoted encoding label followed by a semicolon:Ident:UTF-8/DropAtRule@9:0:9>0:0:0-15:0:15:15",
+            "false",
+            "UnknownAtRule/UnknownAtRule:charset/DropAtRule@0:0:0>0:0:0-15:0:15:15",
+        ),
+        "focused.stylesheet-recovery.15" => (
+            "@charset \"\"; .after { color: blue; }",
+            "false",
+            "InvalidEncodingDeclaration/InvalidEncodingDeclaration:a non-empty double-quoted encoding label followed by a semicolon:String:\"\"/DropAtRule@9:0:9>0:0:0-12:0:12:12",
+            "false",
+            "UnknownAtRule/UnknownAtRule:charset/DropAtRule@0:0:0>0:0:0-12:0:12:12",
+        ),
+        "focused.stylesheet-recovery.16" => (
+            "@charset \"UTF-8\" { ignored; } .after { color: blue; }",
+            "false",
+            "InvalidEncodingDeclaration/InvalidEncodingDeclaration:a non-empty double-quoted encoding label followed by a semicolon:Ident:ignored/DropAtRule@19:0:19>0:0:0-29:0:29:29",
+            "false",
+            "UnknownAtRule/UnknownAtRule:charset/DropAtRule@0:0:0>0:0:0-29:0:29:29",
+        ),
+        "focused.stylesheet-recovery.17" => (
+            "@charset UTF-8;",
+            "false",
+            "InvalidEncodingDeclaration/InvalidEncodingDeclaration:a non-empty double-quoted encoding label followed by a semicolon:Ident:UTF-8/DropAtRule@9:0:9>0:0:0-15:0:15:15",
+            "false",
+            "UnknownAtRule/UnknownAtRule:charset/DropAtRule@0:0:0>0:0:0-15:0:15:15",
+        ),
+        "focused.stylesheet-recovery.18" => (
+            "@charset \"\";",
+            "false",
+            "InvalidEncodingDeclaration/InvalidEncodingDeclaration:a non-empty double-quoted encoding label followed by a semicolon:String:\"\"/DropAtRule@9:0:9>0:0:0-12:0:12:12",
+            "false",
+            "UnknownAtRule/UnknownAtRule:charset/DropAtRule@0:0:0>0:0:0-12:0:12:12",
+        ),
+        "focused.stylesheet-recovery.19" => (
+            "@charset 'UTF-8';",
+            "false",
+            "InvalidEncodingDeclaration/InvalidEncodingDeclaration:a non-empty double-quoted encoding label followed by a semicolon:String:'UTF-8'/DropAtRule@9:0:9>0:0:0-17:0:17:17",
+            "false",
+            "UnknownAtRule/UnknownAtRule:charset/DropAtRule@0:0:0>0:0:0-17:0:17:17",
+        ),
+        "focused.stylesheet-recovery.20" => (
+            "@charset /*comment*/ 'UTF-8';",
+            "false",
+            "InvalidEncodingDeclaration/InvalidEncodingDeclaration:a non-empty double-quoted encoding label followed by a semicolon:String:'UTF-8'/DropAtRule@21:0:21>0:0:0-29:0:29:29",
+            "false",
+            "UnknownAtRule/UnknownAtRule:charset/DropAtRule@0:0:0>0:0:0-29:0:29:29",
+        ),
+        "focused.stylesheet-recovery.21" => (
+            "@charset \"UTF-8\"",
+            "false",
+            "InvalidEncodingDeclaration/InvalidEncodingDeclaration:a non-empty double-quoted encoding label followed by a semicolon:-/DropAtRule@16:0:16>0:0:0-16:0:16:16",
+            "false",
+            "UnknownAtRule/UnknownAtRule:charset/DropAtRule@0:0:0>0:0:0-16:0:16:16",
+        ),
+        "focused.stylesheet-recovery.22" => (
+            "@charset \"UTF-8\" {}",
+            "false",
+            "InvalidEncodingDeclaration/InvalidEncodingDeclaration:a non-empty double-quoted encoding label followed by a semicolon:-/DropAtRule@17:0:17>0:0:0-19:0:19:19",
+            "false",
+            "UnknownAtRule/UnknownAtRule:charset/DropAtRule@0:0:0>0:0:0-19:0:19:19",
+        ),
+        _ => return false,
+    };
+    assert_eq!(row.entry, "sheet");
+    assert_eq!(row.input, input, "{} original input", row.case_id);
+    assert_eq!(
+        row.clean, historical_clean,
+        "{} historical clean",
+        row.case_id
+    );
+    assert_eq!(
+        row.diagnostics, historical_diagnostics,
+        "{} historical diagnostics",
+        row.case_id
+    );
+    let actual = observe(row);
+    assert_eq!(actual.clean, clean, "{} selected clean", row.case_id);
+    assert_eq!(
+        actual.retained, row.retained,
+        "{} original retained syntax",
+        row.case_id
+    );
+    assert_eq!(
+        actual.diagnostics, diagnostics,
+        "{} selected diagnostics",
+        row.case_id
+    );
+    true
 }
 
 // Text 4 §5.5 admits the style-only shorthand `auto`. Preserve the archived
@@ -1532,7 +1707,7 @@ fn assert_archived_unicode_feff_rejection(row: &Row) -> bool {
     assert_eq!(row.diagnostics, "-");
     let report = parse_sheet(&row.input);
     assert!(!report.is_clean());
-    assert!(report.syntax().encoding().is_none());
+
     assert!(report.syntax().rules().is_empty());
     assert_eq!(
         diagnostics_observable(report.diagnostics()),
@@ -6765,11 +6940,6 @@ fn root_and_payload(kind: &ErrorKind) -> String {
             detail.expectation().as_str(),
             token(Some(detail.encountered()))
         ),
-        ErrorKind::InvalidEncodingDeclaration(detail) => format!(
-            "InvalidEncodingDeclaration:{}:{}",
-            detail.expectation().as_str(),
-            token(detail.encountered())
-        ),
         ErrorKind::InvalidAtRulePlacement(detail) => format!(
             "InvalidAtRulePlacement:{}:{}",
             detail.name().as_str(),
@@ -6898,7 +7068,6 @@ fn code_name(code: CssErrorCode) -> &'static str {
     match code {
         CssErrorCode::UnexpectedEnd => "UnexpectedEnd",
         CssErrorCode::UnexpectedToken => "UnexpectedToken",
-        CssErrorCode::InvalidEncodingDeclaration => "InvalidEncodingDeclaration",
         CssErrorCode::InvalidAtRulePlacement => "InvalidAtRulePlacement",
         CssErrorCode::InvalidAtRulePrelude => "InvalidAtRulePrelude",
         CssErrorCode::InvalidAtRuleBody => "InvalidAtRuleBody",
@@ -6931,7 +7100,6 @@ fn action_name(action: CssRecoveryAction) -> &'static str {
         CssRecoveryAction::DropSelectorListItem => "DropSelectorListItem",
         CssRecoveryAction::ReplaceMediaQueryWithNever => "ReplaceMediaQueryWithNever",
         CssRecoveryAction::RetainWithImplicitClosure => "RetainWithImplicitClosure",
-        CssRecoveryAction::IgnoreLegacyToken => "IgnoreLegacyToken",
         CssRecoveryAction::StopAtNestingLimit => "StopAtNestingLimit",
         _ => "Future",
     }

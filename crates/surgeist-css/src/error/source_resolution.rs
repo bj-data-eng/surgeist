@@ -43,8 +43,7 @@ impl Error {
             }
         }
 
-        if !matches!(self.kind, ErrorKind::InvalidEncodingDeclaration(_))
-            && let Some(slot) = optional_encountered_mut(&mut self.kind)
+        if let Some(slot) = optional_encountered_mut(&mut self.kind)
             && slot.is_none()
             && let Some((start, summary)) = previous_authored_token_before(source, self.position)
             && !is_boundary_token(summary.kind)
@@ -116,7 +115,7 @@ const fn is_boundary_token(kind: CssTokenKind) -> bool {
         )
 }
 
-pub(super) fn previous_authored_token_before(
+fn previous_authored_token_before(
     source: &str,
     position: CssSourcePosition,
 ) -> Option<(usize, CssTokenSummary)> {

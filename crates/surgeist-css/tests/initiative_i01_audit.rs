@@ -73,10 +73,6 @@ fn malformed_units_emit_each_recovery_action() {
             CssRecoveryAction::RetainWithImplicitClosure,
             ".x { color: red;",
         ),
-        (
-            CssRecoveryAction::IgnoreLegacyToken,
-            "<!-- .x { color: red; }",
-        ),
     ];
 
     for (expected, source) in cases {
@@ -218,32 +214,19 @@ fn named_property_metadata_lookup_is_exact() {
 }
 
 #[test]
-fn encoding_declarations_are_retained_or_diagnosed() {
-    let valid = parse_sheet("@charset \"UTF-8\"; .x { color: red; }");
-    assert!(valid.is_clean(), "valid encoding");
-    assert_eq!(
-        valid
-            .syntax()
-            .encoding()
-            .expect("encoding metadata")
-            .label(),
-        "UTF-8"
-    );
-
+fn charset_rules_are_unrecognized_and_dropped() {
     for source in [
+        "@charset \"UTF-8\"; .x { color: red; }",
         "@charset bogus; .x { color: red; }",
         "@charset \"UTF-8\" .x { color: red; }",
         ".x { color: red; } @charset \"UTF-8\";",
     ] {
         let report = parse_sheet(source);
-        assert!(
-            report
-                .diagnostics()
-                .iter()
-                .any(|diagnostic| diagnostic.error().code()
-                    == CssErrorCode::InvalidEncodingDeclaration),
-            "missing encoding diagnostic for {source}"
-        );
+        let [diagnostic] = report.diagnostics() else {
+            panic!("one unrecognized charset: {source}")
+        };
+        assert_eq!(diagnostic.error().code(), CssErrorCode::UnknownAtRule);
+        assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
     }
 }
 

@@ -13019,7 +13019,7 @@
       "id": "stylesheet/StyleSheet.json#/CDC",
       "expectation_sha256": "d884171be527446b2471b27239ea7a8de80e8048aef134d514ff4fbed0ed1789",
       "class": {
-        "kind": "strict_rejected",
+        "kind": "clean",
         "retained_syntax": {
           "extractor": {
             "kind": "sheet_rules"
@@ -13028,21 +13028,14 @@
             "relation": "exact",
             "value": 0
           }
-        },
-        "diagnostics": [
-          {
-            "code": "unexpected_token",
-            "action": "ignore_legacy_token",
-            "payload_relation": "intersects"
-          }
-        ]
+        }
       }
     },
     {
       "id": "stylesheet/StyleSheet.json#/CDO",
       "expectation_sha256": "d884171be527446b2471b27239ea7a8de80e8048aef134d514ff4fbed0ed1789",
       "class": {
-        "kind": "strict_rejected",
+        "kind": "clean",
         "retained_syntax": {
           "extractor": {
             "kind": "sheet_rules"
@@ -13051,21 +13044,14 @@
             "relation": "exact",
             "value": 0
           }
-        },
-        "diagnostics": [
-          {
-            "code": "unexpected_token",
-            "action": "ignore_legacy_token",
-            "payload_relation": "intersects"
-          }
-        ]
+        }
       }
     },
     {
       "id": "stylesheet/StyleSheet.json#/CDO~1CDC",
       "expectation_sha256": "d884171be527446b2471b27239ea7a8de80e8048aef134d514ff4fbed0ed1789",
       "class": {
-        "kind": "recovered",
+        "kind": "clean",
         "retained_syntax": {
           "extractor": {
             "kind": "sheet_rules"
@@ -13074,19 +13060,7 @@
             "relation": "exact",
             "value": 1
           }
-        },
-        "diagnostics": [
-          {
-            "code": "unexpected_token",
-            "action": "ignore_legacy_token",
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "unexpected_token",
-            "action": "ignore_legacy_token",
-            "payload_relation": "intersects"
-          }
-        ]
+        }
       }
     },
     {

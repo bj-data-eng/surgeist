@@ -562,17 +562,10 @@ pub enum CssNormalizedItem {
 /// grammar or expansion support.
 #[derive(Clone, Debug)]
 pub struct CssNormalizedSheet {
-    encoding: Option<CssEncodingDeclaration>,
     items: Vec<CssNormalizedItem>,
 }
 
 impl CssNormalizedSheet {
-    /// Returns preserved optional encoding metadata without decoding input bytes.
-    #[must_use]
-    pub const fn encoding(&self) -> Option<&CssEncodingDeclaration> {
-        self.encoding.as_ref()
-    }
-
     /// Returns the ordered rule/declaration stream, including empty rule occurrences.
     #[must_use]
     pub fn items(&self) -> &[CssNormalizedItem] {
@@ -648,7 +641,6 @@ pub fn normalize_sheet_with_limits(
     };
     builder.rules(sheet.rules())?;
     Ok(CssNormalizedSheet {
-        encoding: sheet.encoding().cloned(),
         items: builder.items,
     })
 }

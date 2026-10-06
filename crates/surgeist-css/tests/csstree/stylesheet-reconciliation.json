@@ -353,27 +353,25 @@
       "expected": {
         "ordered_rules": [],
         "top_level_rule_count": 0,
-        "is_clean": false,
-        "validation_accepts": false,
-        "ordered_recovery_actions": [
-          "IgnoreLegacyToken"
-        ],
-        "diagnostic_positions": [
-          0
-        ],
-        "diagnostic_count_status": "one per listed recovery unit"
+        "is_clean": true,
+        "validation_accepts": true,
+        "ordered_recovery_actions": [],
+        "diagnostic_positions": [],
+        "diagnostic_count_status": "zero: top-level CDO/CDC has no parse-error condition"
       },
-      "rationale": "Top-level legacy tokens are ignored normatively; the public source contract separately diagnoses each ignored token.",
+      "rationale": "CSS Syntax 3 (2021-12-24) section 5.4.1 ignores top-level CDO/CDC without a parse error; section 3 does not permit invented conformance errors.",
       "normative_sources": [
         "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-list-of-rules",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#tokenizing-and-parsing"
       ],
-      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
-      "position_status": "exact public-contract inference",
+      "diagnostic_policy_source": "Selected Syntax 3 sections 3 and 5.4.1; tests/syntax_stylesheet_source_contract.rs",
+      "position_status": "no diagnostic positions: tokens are cleanly ignored",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected",
+      "registry_kind": "clean",
       "expected_class": {
-        "kind": "strict_rejected",
+        "kind": "clean",
         "retained_syntax": {
           "extractor": {
             "kind": "sheet_rules"
@@ -382,30 +380,13 @@
             "relation": "exact",
             "value": 0
           }
-        },
-        "diagnostics": [
-          {
-            "code": "unexpected_token",
-            "action": "ignore_legacy_token",
-            "payload_relation": "intersects"
-          }
-        ]
-      },
-      "expected_raw_diagnostics": [
-        {
-          "code": "unexpected_token",
-          "action": "ignore_legacy_token",
-          "payload_relation": "intersects",
-          "byte_offset": 0,
-          "span_start": 0,
-          "span_end": 3,
-          "multiplicity": 1
         }
-      ],
-      "diagnostic_count": 1,
+      },
+      "expected_raw_diagnostics": [],
+      "diagnostic_count": 0,
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
-        "One diagnostic per authored legacy token; CSS grammar ignores token, project public policy records it."
+        "Top-level CDO/CDC is ignored without diagnostics; retained original rule order and source are preserved."
       ],
       "uncertainties": []
     },
@@ -430,27 +411,25 @@
       "expected": {
         "ordered_rules": [],
         "top_level_rule_count": 0,
-        "is_clean": false,
-        "validation_accepts": false,
-        "ordered_recovery_actions": [
-          "IgnoreLegacyToken"
-        ],
-        "diagnostic_positions": [
-          0
-        ],
-        "diagnostic_count_status": "one per listed recovery unit"
+        "is_clean": true,
+        "validation_accepts": true,
+        "ordered_recovery_actions": [],
+        "diagnostic_positions": [],
+        "diagnostic_count_status": "zero: top-level CDO/CDC has no parse-error condition"
       },
-      "rationale": "Top-level legacy tokens are ignored normatively; the public source contract separately diagnoses each ignored token.",
+      "rationale": "CSS Syntax 3 (2021-12-24) section 5.4.1 ignores top-level CDO/CDC without a parse error; section 3 does not permit invented conformance errors.",
       "normative_sources": [
         "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-list-of-rules",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#tokenizing-and-parsing"
       ],
-      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
-      "position_status": "exact public-contract inference",
+      "diagnostic_policy_source": "Selected Syntax 3 sections 3 and 5.4.1; tests/syntax_stylesheet_source_contract.rs",
+      "position_status": "no diagnostic positions: tokens are cleanly ignored",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "strict_rejected",
+      "registry_kind": "clean",
       "expected_class": {
-        "kind": "strict_rejected",
+        "kind": "clean",
         "retained_syntax": {
           "extractor": {
             "kind": "sheet_rules"
@@ -459,30 +438,13 @@
             "relation": "exact",
             "value": 0
           }
-        },
-        "diagnostics": [
-          {
-            "code": "unexpected_token",
-            "action": "ignore_legacy_token",
-            "payload_relation": "intersects"
-          }
-        ]
-      },
-      "expected_raw_diagnostics": [
-        {
-          "code": "unexpected_token",
-          "action": "ignore_legacy_token",
-          "payload_relation": "intersects",
-          "byte_offset": 0,
-          "span_start": 0,
-          "span_end": 4,
-          "multiplicity": 1
         }
-      ],
-      "diagnostic_count": 1,
+      },
+      "expected_raw_diagnostics": [],
+      "diagnostic_count": 0,
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
-        "One diagnostic per authored legacy token; CSS grammar ignores token, project public policy records it."
+        "Top-level CDO/CDC is ignored without diagnostics; retained original rule order and source are preserved."
       ],
       "uncertainties": []
     },
@@ -514,29 +476,25 @@
           }
         ],
         "top_level_rule_count": 1,
-        "is_clean": false,
-        "validation_accepts": false,
-        "ordered_recovery_actions": [
-          "IgnoreLegacyToken",
-          "IgnoreLegacyToken"
-        ],
-        "diagnostic_positions": [
-          0,
-          7
-        ],
-        "diagnostic_count_status": "one per listed recovery unit"
+        "is_clean": true,
+        "validation_accepts": true,
+        "ordered_recovery_actions": [],
+        "diagnostic_positions": [],
+        "diagnostic_count_status": "zero: top-level CDO/CDC has no parse-error condition"
       },
-      "rationale": "Top-level legacy tokens are ignored normatively; the public source contract separately diagnoses each ignored token.",
+      "rationale": "CSS Syntax 3 (2021-12-24) section 5.4.1 ignores top-level CDO/CDC without a parse error; section 3 does not permit invented conformance errors.",
       "normative_sources": [
         "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-list-of-rules",
+        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#tokenizing-and-parsing"
       ],
-      "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
-      "position_status": "exact public-contract inference",
+      "diagnostic_policy_source": "Selected Syntax 3 sections 3 and 5.4.1; tests/syntax_stylesheet_source_contract.rs",
+      "position_status": "no diagnostic positions: tokens are cleanly ignored",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "recovered",
+      "registry_kind": "clean",
       "expected_class": {
-        "kind": "recovered",
+        "kind": "clean",
         "retained_syntax": {
           "extractor": {
             "kind": "sheet_rules"
@@ -545,45 +503,13 @@
             "relation": "exact",
             "value": 1
           }
-        },
-        "diagnostics": [
-          {
-            "code": "unexpected_token",
-            "action": "ignore_legacy_token",
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "unexpected_token",
-            "action": "ignore_legacy_token",
-            "payload_relation": "intersects"
-          }
-        ]
-      },
-      "expected_raw_diagnostics": [
-        {
-          "code": "unexpected_token",
-          "action": "ignore_legacy_token",
-          "payload_relation": "intersects",
-          "byte_offset": 0,
-          "span_start": 0,
-          "span_end": 4,
-          "multiplicity": 1
-        },
-        {
-          "code": "unexpected_token",
-          "action": "ignore_legacy_token",
-          "payload_relation": "intersects",
-          "byte_offset": 7,
-          "span_start": 7,
-          "span_end": 10,
-          "multiplicity": 1
         }
-      ],
-      "diagnostic_count": 2,
+      },
+      "expected_raw_diagnostics": [],
+      "diagnostic_count": 0,
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
-        "One diagnostic per authored legacy token; CSS grammar ignores token, project public policy records it.",
-        "One diagnostic per authored legacy token; CSS grammar ignores token, project public policy records it."
+        "Top-level CDO/CDC is ignored without diagnostics; retained original rule order and source are preserved."
       ],
       "uncertainties": []
     },

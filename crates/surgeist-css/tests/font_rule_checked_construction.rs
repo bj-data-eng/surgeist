@@ -60,7 +60,6 @@ fn source_free_face_and_sheet_preserve_ordered_children_and_empty_rules() {
         CssRule::FontFace(constructed),
     ])
     .unwrap();
-    assert!(input.encoding().is_none());
     assert_eq!(
         input.to_specified_css().unwrap(),
         "@font-face { }\n@font-face { font-weight: 600; }"

@@ -138,24 +138,29 @@ fn checked_media_and_sheet_reuse_parsed_children_without_inventing_provenance() 
 }
 
 #[test]
-fn logical_utf8_output_omits_encoding_metadata_and_preserves_the_input_record() {
-    for source in [
-        "@charset \"windows-1252\";@namespace n '日本';",
-        "@charset \"UTF-8\";",
+fn logical_utf8_output_serializes_retained_rules_after_unknown_charset_recovery() {
+    for (source, expected) in [
+        (
+            "@charset \"windows-1252\";@namespace n '日本';",
+            "@namespace n url(\"日本\");",
+        ),
+        ("@charset \"UTF-8\";", ""),
     ] {
-        let parsed = sheet(source);
-        let before = parsed.clone();
-        assert!(parsed.encoding().is_some());
-        let checked = CssSheet::try_from_rules(parsed.rules().to_vec()).unwrap();
-        assert!(checked.encoding().is_none());
-        let expected = if parsed.rules().is_empty() {
-            ""
-        } else {
-            "@namespace n url(\"日本\");"
+        let report = parse_sheet(source);
+        let [diagnostic] = report.diagnostics() else {
+            panic!("one unknown charset")
         };
+        assert_eq!(
+            diagnostic.error().code(),
+            surgeist_css::CssErrorCode::UnknownAtRule
+        );
+        assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
+        let parsed = report.syntax();
+        let before = parsed.clone();
+        let checked = CssSheet::try_from_rules(parsed.rules().to_vec()).unwrap();
         assert_eq!(parsed.to_specified_css().unwrap(), expected);
         assert_eq!(checked.to_specified_css().unwrap(), expected);
-        assert_eq!(parsed, before);
+        assert_eq!(parsed, &before);
     }
 }
 

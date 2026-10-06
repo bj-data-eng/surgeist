@@ -67,43 +67,24 @@ macro_rules! numeric_fields_eq {
     };
 }
 
-/// A parser-produced authored stylesheet and optional legacy encoding metadata.
+/// A parser-produced authored stylesheet.
 ///
 /// The private fields guarantee that every retained rule is valid authored CSS
-/// syntax and that at most one valid leading encoding declaration is recorded.
-/// The metadata does not decode the already-UTF-8 Rust input, and the sheet does
-/// not apply cascade, substitution, selector matching, or resource loading.
+/// syntax. Discarded source remains in the parse report diagnostics; the sheet
+/// does not apply cascade, substitution, selector matching, or resource loading.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct CssSheet {
-    encoding: Option<CssEncodingDeclaration>,
     rules: Vec<CssRule>,
 }
 
 impl CssSheet {
     #[must_use]
     pub const fn new() -> Self {
-        Self {
-            encoding: None,
-            rules: Vec::new(),
-        }
-    }
-
-    pub(crate) fn set_encoding(&mut self, encoding: CssEncodingDeclaration) {
-        debug_assert!(self.encoding.is_none());
-        self.encoding = Some(encoding);
+        Self { rules: Vec::new() }
     }
 
     pub(crate) fn push_rule(&mut self, rule: CssRule) {
         self.rules.push(rule);
-    }
-
-    /// Returns the optional valid leading legacy encoding declaration.
-    ///
-    /// This authored metadata is recorded once and does not perform byte
-    /// decoding or change the UTF-8 source supplied to [`crate::parse_sheet`].
-    #[must_use]
-    pub const fn encoding(&self) -> Option<&CssEncodingDeclaration> {
-        self.encoding.as_ref()
     }
 
     /// Returns the valid authored rules retained in source order.
@@ -113,44 +94,6 @@ impl CssSheet {
     #[must_use]
     pub fn rules(&self) -> &[CssRule] {
         &self.rules
-    }
-}
-
-/// Metadata for one valid leading legacy `@charset` declaration.
-///
-/// The parser-owned private fields preserve a non-empty authored label and its
-/// source position. This authored metadata records legacy syntax only: Rust
-/// input is already UTF-8, so it neither detects nor decodes bytes and it does
-/// not participate in cascade, substitution, matching, or resource loading.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssEncodingDeclaration {
-    label: String,
-    position: CssSourcePosition,
-}
-
-impl CssEncodingDeclaration {
-    pub(crate) fn new(label: impl Into<String>, position: CssSourcePosition) -> Self {
-        let label = label.into();
-        debug_assert!(!label.is_empty());
-        Self { label, position }
-    }
-
-    /// Returns the non-empty authored encoding label.
-    ///
-    /// The label is metadata and is not normalized, resolved, or used to decode
-    /// the already-UTF-8 stylesheet input.
-    #[must_use]
-    pub fn label(&self) -> &str {
-        &self.label
-    }
-
-    /// Returns the semantic source position of the declaration's at-keyword.
-    ///
-    /// This parser-produced position is diagnostic provenance only and does not
-    /// load or reinterpret source bytes.
-    #[must_use]
-    pub const fn position(&self) -> CssSourcePosition {
-        self.position
     }
 }
 
@@ -9664,10 +9607,7 @@ impl CssSheet {
     /// No encoding or enclosing parsed position is invented.
     pub fn try_from_rules(rules: Vec<CssRule>) -> Result<Self, crate::CssRuleConstructionError> {
         crate::rule_construction::sheet(&rules)?;
-        Ok(Self {
-            encoding: None,
-            rules,
-        })
+        Ok(Self { rules })
     }
 }
 

@@ -1,6 +1,4 @@
-use surgeist_css::{
-    CssErrorCode, CssRecoveryAction, CssRule, CssTokenKind, ErrorKind, parse_sheet,
-};
+use surgeist_css::{CssErrorCode, CssRecoveryAction, CssRule, ErrorKind, parse_sheet};
 
 fn actions(source: &str) -> Vec<CssRecoveryAction> {
     parse_sheet(source)
@@ -285,7 +283,7 @@ fn eof_string_keeps_its_content_and_reports_string_and_rule_closures() {
 }
 
 #[test]
-fn specialized_boundary_legacy_tokens_have_exact_nonempty_spans_and_keep_rule_order() {
+fn specialized_boundary_legacy_tokens_are_clean_and_keep_rule_order() {
     let source = "<!-- .before{color:red} --> .middle{color:blue} <!-- .after{color:black}";
     let report = parse_sheet(source);
     let names = report
@@ -306,25 +304,8 @@ fn specialized_boundary_legacy_tokens_have_exact_nonempty_spans_and_keep_rule_or
         .collect::<Vec<_>>();
     assert_eq!(names, ["before", "middle", "after"]);
 
-    let expected = [
-        (0, 4, CssTokenKind::Cdo),
-        (24, 27, CssTokenKind::Cdc),
-        (48, 52, CssTokenKind::Cdo),
-    ];
-    assert_eq!(report.diagnostics().len(), expected.len());
-    for (diagnostic, (start, end, kind)) in report.diagnostics().iter().zip(expected) {
-        assert_eq!(diagnostic.action(), CssRecoveryAction::IgnoreLegacyToken);
-        assert_eq!(diagnostic.error().code(), CssErrorCode::UnexpectedToken);
-        assert_eq!(diagnostic.error().position().byte_offset().value(), start);
-        assert_eq!(diagnostic.span().start().byte_offset().value(), start);
-        assert_eq!(diagnostic.span().end().byte_offset().value(), end);
-        assert!(start < end);
-        let ErrorKind::UnexpectedToken(detail) = diagnostic.error().kind() else {
-            panic!("expected typed unexpected-token detail")
-        };
-        assert_eq!(detail.encountered().kind(), kind);
-        assert_eq!(detail.encountered().authored(), &source[start..end]);
-    }
+    assert!(report.diagnostics().is_empty());
+    assert!(report.is_clean());
 }
 
 #[test]

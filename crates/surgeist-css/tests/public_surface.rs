@@ -950,7 +950,7 @@ fn public_surface_non_bmp_coordinates_are_byte_line_and_utf16_based() {
 }
 
 #[test]
-fn public_surface_emits_all_ten_recovery_actions() {
+fn public_surface_emits_required_recovery_actions() {
     let cases = [
         (
             CssRecoveryAction::DropDeclaration,
@@ -980,10 +980,6 @@ fn public_surface_emits_all_ten_recovery_actions() {
         (
             CssRecoveryAction::RetainWithImplicitClosure,
             ".x { color: red;",
-        ),
-        (
-            CssRecoveryAction::IgnoreLegacyToken,
-            "<!-- .x { color: red; }",
         ),
     ];
 

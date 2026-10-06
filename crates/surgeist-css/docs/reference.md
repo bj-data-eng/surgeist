@@ -291,8 +291,13 @@ this operation does not validate insertion order in an existing stylesheet.
 Whitespace and comments may surround the rule. Empty input, a second rule,
 trailing nontrivia, or an invalid outer rule returns `None` with `RejectInput`
 over the complete source. This remains true when a stylesheet parser could
-recover one valid sibling. `@charset` is encoding metadata and cannot produce a
-`CssRule`. The raw parser does not strip a BOM or stylesheet CDO/CDC sentinels.
+recover one valid sibling. Apparent `@charset` rules are unrecognized and
+rejected with `UnknownAtRule`; they cannot produce a `CssRule`. The raw parser
+does not strip a BOM or stylesheet CDO/CDC sentinels. Top-level CDO/CDC tokens
+are cleanly ignored by `parse_sheet`, as required by
+[Syntax 3 §5.4.1](https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-list-of-rules).
+Nested rule lists reconsume them as qualified-rule input. Encoding fallback
+prefix recognition belongs to byte decoding and grants no parsed-rule validity.
 
 A valid outer rule survives inner declaration, selector, query and child-rule
 recovery with the original diagnostics and actions. Implicit EOF closures are
@@ -4268,7 +4273,7 @@ across the whole value or rule. The shared `CssRule` and `CssSheet` specified
 writers compose palette rules with every represented ordinary and scoped rule
 under one cumulative budget, joining top-level sheet rules with a newline.
 The [authored graph writer](#authored-rule-and-stylesheet-specified-output) omits
-transport encoding metadata and returns typed atomic resource or value errors. Palette rule brace spacing,
+discarded rules and returns typed atomic resource or value errors. Palette rule brace spacing,
 descriptor punctuation, and sheet joining are deterministic product policy:
 the selected CSSOM does not define a palette-specific `cssText` algorithm.
 Ordinary media/supports/container/layer/scope rule lists retain the authored
@@ -4774,8 +4779,8 @@ provides canonical argument serialization. Parsed names expose source origins;
 constructed names expose programmatic origins. General selector serialization
 is a separate foundation requirement.
 
-Initial layer statements may precede both imports and namespaces, after any
-encoding declaration. Imports must precede namespaces. A layer statement after
+Initial layer statements may precede both imports and namespaces. Imports must
+precede namespaces. A layer statement after
 either imports or namespaces, or a body rule, prevents subsequent imports and
 namespaces. This follows the placement extension in
 [Cascade 5 §6.4.4.2](https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/#layer-empty).
@@ -8161,10 +8166,10 @@ This output follows [Syntax 3 serialization](https://www.w3.org/TR/2021/CRD-css-
 and Surgeist's deterministic specified-output policy. It preserves symbolic
 values without cascade, substitution, query evaluation, resource loading or
 layout. It does not apply live CSSOM declaration selection or shorthand
-recombination to the immutable authored graph. The retained leading encoding
-label is transport provenance: [Syntax 3 §9.3](https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#charset-rule)
-defines it outside actual CSS rules. Returned UTF-8 text omits that label while
-the original sheet retains it.
+recombination to the immutable authored graph. [Syntax 3 §9.3](https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#charset-rule)
+defines every apparent parsed `@charset` rule as unrecognized. Ordinary parsing
+drops it with an `UnknownAtRule` diagnostic; specified output serializes only
+the retained rules while the original report keeps that recovery provenance.
 
 Media lists use the existing bounded CSSOM projection provider. Invalid
 recovered members become `not all` in place, preserving valid sibling order and

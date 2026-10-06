@@ -66,28 +66,22 @@ fn assert_root_token_drop(
     assert_eq!(encountered.authored(), authored);
 }
 
-fn assert_nonleading_encoding_drop(source: &str, diagnostic: &surgeist_css::CssRecoveryDiagnostic) {
+fn assert_charset_drop(source: &str, diagnostic: &surgeist_css::CssRecoveryDiagnostic) {
     assert_drop(
         source,
         diagnostic,
-        CssErrorCode::InvalidEncodingDeclaration,
+        CssErrorCode::UnknownAtRule,
         CssRecoveryAction::DropAtRule,
         "@charset \"UTF-8\";",
     );
     assert_eq!(
         diagnostic.error().position().byte_offset().value(),
-        source.find("\"UTF-8\"").unwrap()
+        source.find("@charset").unwrap()
     );
-    let ErrorKind::InvalidEncodingDeclaration(detail) = diagnostic.error().kind() else {
-        panic!("expected encoding declaration detail")
+    let ErrorKind::UnknownAtRule(detail) = diagnostic.error().kind() else {
+        panic!("expected unknown at-rule detail")
     };
-    assert_eq!(
-        detail.expectation().as_str(),
-        "a non-empty double-quoted encoding label followed by a semicolon"
-    );
-    let encountered = detail.encountered().expect("responsible encoding token");
-    assert_eq!(encountered.kind(), surgeist_css::CssTokenKind::String);
-    assert_eq!(encountered.authored(), "\"UTF-8\"");
+    assert_eq!(detail.name().as_str(), "charset");
 }
 
 #[test]
@@ -103,44 +97,28 @@ fn stylesheet_recovery_empty_input_returns_clean_empty_report_and_parts() {
 
     assert!(report.is_clean());
     assert!(report.syntax().rules().is_empty());
-    assert!(report.syntax().encoding().is_none());
 
     let (sheet, diagnostics) = report.into_parts();
     assert!(sheet.rules().is_empty());
-    assert!(sheet.encoding().is_none());
     assert!(diagnostics.is_empty());
 }
 
 #[test]
-fn stylesheet_recovery_top_level_cdo_is_reported_before_and_between_valid_rules() {
+fn stylesheet_recovery_top_level_cdo_is_clean_before_and_between_valid_rules() {
     let source = "<!-- .before { color: red; } <!-- .after { color: blue; }";
-
     let report = parse_sheet(source);
-
     assert_eq!(style_rule_names(&report), ["before", "after"]);
-    assert_eq!(report.diagnostics().len(), 2);
-    for (diagnostic, start) in report.diagnostics().iter().zip([0, 29]) {
-        assert_eq!(diagnostic.action(), CssRecoveryAction::IgnoreLegacyToken);
-        assert_eq!(diagnostic.error().code(), CssErrorCode::UnexpectedToken);
-        assert_eq!(diagnostic.span().start().byte_offset().value(), start);
-        assert_eq!(diagnostic.span().end().byte_offset().value(), start + 4);
-    }
+    assert!(report.diagnostics().is_empty());
+    assert!(report.is_clean());
 }
 
 #[test]
-fn stylesheet_recovery_top_level_cdc_is_reported_before_and_between_valid_rules() {
+fn stylesheet_recovery_top_level_cdc_is_clean_before_and_between_valid_rules() {
     let source = "--> .before { color: red; } --> .after { color: blue; }";
-
     let report = parse_sheet(source);
-
     assert_eq!(style_rule_names(&report), ["before", "after"]);
-    assert_eq!(report.diagnostics().len(), 2);
-    for (diagnostic, start) in report.diagnostics().iter().zip([0, 28]) {
-        assert_eq!(diagnostic.action(), CssRecoveryAction::IgnoreLegacyToken);
-        assert_eq!(diagnostic.error().code(), CssErrorCode::UnexpectedToken);
-        assert_eq!(diagnostic.span().start().byte_offset().value(), start);
-        assert_eq!(diagnostic.span().end().byte_offset().value(), start + 3);
-    }
+    assert!(report.diagnostics().is_empty());
+    assert!(report.is_clean());
 }
 
 #[test]
@@ -214,13 +192,12 @@ fn stylesheet_recovery_unmatched_root_closing_brace_between_valid_rules_is_one_e
 }
 
 #[test]
-fn stylesheet_recovery_root_semicolon_makes_following_encoding_nonleading() {
+fn stylesheet_recovery_root_semicolon_keeps_following_charset_unknown() {
     let source = "; @charset \"UTF-8\"; .after { color: blue; }";
 
     let report = parse_sheet(source);
 
     assert_eq!(style_rule_names(&report), ["after"]);
-    assert!(report.syntax().encoding().is_none());
     assert_eq!(report.diagnostics().len(), 2);
     assert_root_token_drop(
         source,
@@ -229,18 +206,17 @@ fn stylesheet_recovery_root_semicolon_makes_following_encoding_nonleading() {
         ";",
         surgeist_css::CssTokenKind::Semicolon,
     );
-    assert_nonleading_encoding_drop(source, &report.diagnostics()[1]);
+    assert_charset_drop(source, &report.diagnostics()[1]);
     assert!(report.diagnostics()[0].span() < report.diagnostics()[1].span());
 }
 
 #[test]
-fn stylesheet_recovery_unmatched_root_closing_brace_makes_following_encoding_nonleading() {
+fn stylesheet_recovery_unmatched_root_closing_brace_keeps_following_charset_unknown() {
     let source = "} @charset \"UTF-8\"; .after { color: blue; }";
 
     let report = parse_sheet(source);
 
     assert_eq!(style_rule_names(&report), ["after"]);
-    assert!(report.syntax().encoding().is_none());
     assert_eq!(report.diagnostics().len(), 2);
     assert_root_token_drop(
         source,
@@ -249,23 +225,16 @@ fn stylesheet_recovery_unmatched_root_closing_brace_makes_following_encoding_non
         "}",
         surgeist_css::CssTokenKind::CloseCurlyBracket,
     );
-    assert_nonleading_encoding_drop(source, &report.diagnostics()[1]);
+    assert_charset_drop(source, &report.diagnostics()[1]);
     assert!(report.diagnostics()[0].span() < report.diagnostics()[1].span());
 }
 
 #[test]
-fn stylesheet_recovery_trivia_and_legacy_tokens_alone_report_each_legacy_token() {
+fn stylesheet_recovery_trivia_and_legacy_tokens_alone_are_clean() {
     let report = parse_sheet(" \n/**/ <!-- --> \t");
-
-    assert_eq!(report.diagnostics().len(), 2);
-    assert!(
-        report
-            .diagnostics()
-            .iter()
-            .all(|diagnostic| diagnostic.action() == CssRecoveryAction::IgnoreLegacyToken)
-    );
+    assert!(report.diagnostics().is_empty());
+    assert!(report.is_clean());
     assert!(report.syntax().rules().is_empty());
-    assert!(report.syntax().encoding().is_none());
 }
 
 #[test]
@@ -338,26 +307,19 @@ fn stylesheet_recovery_malformed_qualified_rule_keeps_surrounding_rules() {
 }
 
 #[test]
-fn stylesheet_recovery_valid_leading_encoding_is_metadata_not_a_rule() {
+fn stylesheet_recovery_leading_charset_is_an_unknown_rule() {
     let source = " /* leading */ @charset \"UTF-8\"; .after { color: blue; }";
-
     let report = parse_sheet(source);
-
-    assert!(report.is_clean());
+    assert!(!report.is_clean());
     assert_eq!(style_rule_names(&report), ["after"]);
-    let encoding = report
-        .syntax()
-        .encoding()
-        .expect("leading encoding metadata");
-    assert_eq!(encoding.label(), "UTF-8");
-    assert_eq!(
-        encoding.position().byte_offset().value(),
-        source.find("@charset").unwrap()
-    );
+    let [diagnostic] = report.diagnostics() else {
+        panic!("one unknown charset rule")
+    };
+    assert_charset_drop(source, diagnostic);
 }
 
 #[test]
-fn stylesheet_recovery_invalid_encoding_forms_drop_once_and_resume() {
+fn stylesheet_recovery_charset_forms_drop_once_and_resume() {
     for failed in [
         "@charset UTF-8;",
         "@charset \"\";",
@@ -367,12 +329,11 @@ fn stylesheet_recovery_invalid_encoding_forms_drop_once_and_resume() {
         let report = parse_sheet(&source);
 
         assert_eq!(style_rule_names(&report), ["after"], "{failed}");
-        assert!(report.syntax().encoding().is_none(), "{failed}");
         assert_eq!(report.diagnostics().len(), 1, "{failed}");
         assert_drop(
             &source,
             &report.diagnostics()[0],
-            CssErrorCode::InvalidEncodingDeclaration,
+            CssErrorCode::UnknownAtRule,
             CssRecoveryAction::DropAtRule,
             failed,
         );
@@ -380,37 +341,36 @@ fn stylesheet_recovery_invalid_encoding_forms_drop_once_and_resume() {
 }
 
 #[test]
-fn stylesheet_recovery_duplicate_and_nonleading_encoding_are_dropped() {
-    let duplicate = "@charset \"latin1\";";
-    let source = format!(
-        "@charset \"UTF-8\"; .before {{ color: red; }} {duplicate} .after {{ color: blue; }}"
-    );
-
-    let report = parse_sheet(&source);
-
+fn stylesheet_recovery_all_duplicate_and_nonleading_charset_rules_are_dropped() {
+    let source =
+        "@charset \"UTF-8\"; .before { color: red; } @charset \"latin1\"; .after { color: blue; }";
+    let report = parse_sheet(source);
     assert_eq!(style_rule_names(&report), ["before", "after"]);
-    assert_eq!(report.syntax().encoding().unwrap().label(), "UTF-8");
-    assert_eq!(report.diagnostics().len(), 1);
-    assert_drop(
-        &source,
-        &report.diagnostics()[0],
-        CssErrorCode::InvalidEncodingDeclaration,
-        CssRecoveryAction::DropAtRule,
-        duplicate,
-    );
-
+    assert_eq!(report.diagnostics().len(), 2);
+    for (diagnostic, failed) in report
+        .diagnostics()
+        .iter()
+        .zip(["@charset \"UTF-8\";", "@charset \"latin1\";"])
+    {
+        assert_drop(
+            source,
+            diagnostic,
+            CssErrorCode::UnknownAtRule,
+            CssRecoveryAction::DropAtRule,
+            failed,
+        );
+        let ErrorKind::UnknownAtRule(detail) = diagnostic.error().kind() else {
+            panic!("unknown charset")
+        };
+        assert_eq!(detail.name().as_str(), "charset");
+    }
     let source = ".before { color: red; } @charset \"UTF-8\"; .after { color: blue; }";
     let report = parse_sheet(source);
     assert_eq!(style_rule_names(&report), ["before", "after"]);
-    assert!(report.syntax().encoding().is_none());
-    assert_eq!(report.diagnostics().len(), 1);
-    assert_drop(
-        source,
-        &report.diagnostics()[0],
-        CssErrorCode::InvalidEncodingDeclaration,
-        CssRecoveryAction::DropAtRule,
-        "@charset \"UTF-8\";",
-    );
+    let [diagnostic] = report.diagnostics() else {
+        panic!("one nonleading unknown charset")
+    };
+    assert_charset_drop(source, diagnostic);
 }
 
 #[test]
@@ -522,13 +482,22 @@ fn stylesheet_recovery_repeated_drops_remain_in_source_order() {
 }
 
 #[test]
-fn stylesheet_recovery_encoding_leading_trivia_is_not_a_recovery_unit() {
+fn stylesheet_recovery_charset_leading_trivia_is_not_a_recovery_unit() {
     for leading in ["", " \n\t", "/**/", " /* comment */ "] {
         let source = format!("{leading}@charset \"Shift_JIS\"; .after {{ color: blue; }}");
         let report = parse_sheet(&source);
 
-        assert!(report.is_clean(), "{leading:?}");
-        assert_eq!(report.syntax().encoding().unwrap().label(), "Shift_JIS");
+        assert!(!report.is_clean(), "{leading:?}");
+        let [diagnostic] = report.diagnostics() else {
+            panic!("one unknown charset")
+        };
+        assert_drop(
+            &source,
+            diagnostic,
+            CssErrorCode::UnknownAtRule,
+            CssRecoveryAction::DropAtRule,
+            "@charset \"Shift_JIS\";",
+        );
         assert_eq!(style_rule_names(&report), ["after"]);
     }
     // U+FEFF in decoded text starts a qualified rule; it is not leading trivia.
@@ -536,7 +505,6 @@ fn stylesheet_recovery_encoding_leading_trivia_is_not_a_recovery_unit() {
         let source = format!("{leading}@charset \"Shift_JIS\"; .after {{ color: blue; }}");
         let report = parse_sheet(&source);
         assert!(!report.is_clean(), "{leading:?}");
-        assert!(report.syntax().encoding().is_none());
         assert!(report.syntax().rules().is_empty());
         let [diagnostic] = report.diagnostics() else {
             panic!("expected one invalid qualified rule")
@@ -546,75 +514,31 @@ fn stylesheet_recovery_encoding_leading_trivia_is_not_a_recovery_unit() {
 }
 
 #[test]
-fn stylesheet_recovery_encoding_errors_expose_exact_payload_and_position() {
-    struct Case {
-        source: &'static str,
-        position: usize,
-        encountered: Option<surgeist_css::CssTokenKind>,
-    }
-
-    let cases = [
-        Case {
-            source: "@charset UTF-8;",
-            position: 9,
-            encountered: Some(surgeist_css::CssTokenKind::Ident),
-        },
-        Case {
-            source: "@charset \"\";",
-            position: 9,
-            encountered: Some(surgeist_css::CssTokenKind::String),
-        },
-        Case {
-            source: "@charset 'UTF-8';",
-            position: 9,
-            encountered: Some(surgeist_css::CssTokenKind::String),
-        },
-        Case {
-            source: "@charset /*comment*/ 'UTF-8';",
-            position: 21,
-            encountered: Some(surgeist_css::CssTokenKind::String),
-        },
-        Case {
-            source: "@charset \"UTF-8\"",
-            position: 16,
-            encountered: None,
-        },
-        Case {
-            source: "@charset \"UTF-8\" {}",
-            position: 17,
-            encountered: None,
-        },
-    ];
-
-    for case in cases {
-        let report = parse_sheet(case.source);
-        assert!(report.syntax().encoding().is_none(), "{}", case.source);
-        assert!(report.syntax().rules().is_empty(), "{}", case.source);
-        assert_eq!(report.diagnostics().len(), 1, "{}", case.source);
-        let diagnostic = &report.diagnostics()[0];
-        assert_drop(
-            case.source,
-            diagnostic,
-            CssErrorCode::InvalidEncodingDeclaration,
-            CssRecoveryAction::DropAtRule,
-            case.source,
-        );
-        assert_eq!(
-            diagnostic.error().position().byte_offset().value(),
-            case.position,
-            "{}",
-            case.source
-        );
-        let ErrorKind::InvalidEncodingDeclaration(detail) = diagnostic.error().kind() else {
-            panic!("expected encoding declaration detail")
+fn stylesheet_recovery_charset_errors_identify_the_unknown_at_keyword() {
+    for source in [
+        "@charset UTF-8;",
+        "@charset \"\";",
+        "@charset 'UTF-8';",
+        "@charset /*comment*/ 'UTF-8';",
+        "@charset \"UTF-8\"",
+        "@charset \"UTF-8\" {}",
+    ] {
+        let report = parse_sheet(source);
+        assert!(report.syntax().rules().is_empty(), "{source}");
+        let [diagnostic] = report.diagnostics() else {
+            panic!("one unknown charset: {source}")
         };
-        assert_eq!(
-            detail.expectation().as_str(),
-            "a non-empty double-quoted encoding label followed by a semicolon"
+        assert_drop(
+            source,
+            diagnostic,
+            CssErrorCode::UnknownAtRule,
+            CssRecoveryAction::DropAtRule,
+            source,
         );
-        assert_eq!(
-            detail.encountered().map(|token| token.kind()),
-            case.encountered
-        );
+        assert_eq!(diagnostic.error().position().byte_offset().value(), 0);
+        let ErrorKind::UnknownAtRule(detail) = diagnostic.error().kind() else {
+            panic!("expected unknown at-rule detail")
+        };
+        assert_eq!(detail.name().as_str(), "charset");
     }
 }

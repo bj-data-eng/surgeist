@@ -2249,9 +2249,6 @@ fn css_error_code_name(code: CssErrorCode) -> Result<CssErrorCodeName, String> {
     match code {
         CssErrorCode::UnexpectedEnd => Ok(CssErrorCodeName::UnexpectedEnd),
         CssErrorCode::UnexpectedToken => Ok(CssErrorCodeName::UnexpectedToken),
-        CssErrorCode::InvalidEncodingDeclaration => {
-            Ok(CssErrorCodeName::InvalidEncodingDeclaration)
-        }
         CssErrorCode::InvalidAtRulePlacement => Ok(CssErrorCodeName::InvalidAtRulePlacement),
         CssErrorCode::InvalidAtRulePrelude => Ok(CssErrorCodeName::InvalidAtRulePrelude),
         CssErrorCode::InvalidAtRuleBody => Ok(CssErrorCodeName::InvalidAtRuleBody),
@@ -2296,7 +2293,6 @@ fn css_recovery_action_name(action: CssRecoveryAction) -> Result<CssRecoveryActi
         CssRecoveryAction::IgnoreUnterminatedComment => {
             Ok(CssRecoveryActionName::IgnoreUnterminatedComment)
         }
-        CssRecoveryAction::IgnoreLegacyToken => Ok(CssRecoveryActionName::IgnoreLegacyToken),
         CssRecoveryAction::StopAtNestingLimit => Ok(CssRecoveryActionName::StopAtNestingLimit),
         _ => Err("public parser returned an unrecognized CssRecoveryAction variant".into()),
     }
@@ -2881,7 +2877,6 @@ struct RawDiagnostic {
 enum CssErrorCodeName {
     UnexpectedEnd,
     UnexpectedToken,
-    InvalidEncodingDeclaration,
     InvalidAtRulePlacement,
     InvalidAtRulePrelude,
     InvalidAtRuleBody,
@@ -2915,7 +2910,6 @@ enum CssRecoveryActionName {
     ReplaceMediaQueryWithNever,
     RetainWithImplicitClosure,
     IgnoreUnterminatedComment,
-    IgnoreLegacyToken,
     StopAtNestingLimit,
 }
 

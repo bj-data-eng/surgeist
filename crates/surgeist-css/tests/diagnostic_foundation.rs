@@ -34,7 +34,6 @@ fn classify_action(action: CssRecoveryAction) -> &'static str {
         CssRecoveryAction::DropSelectorListItem => "drop selector-list item",
         CssRecoveryAction::ReplaceMediaQueryWithNever => "replace media query",
         CssRecoveryAction::RetainWithImplicitClosure => "retain implicit closure",
-        CssRecoveryAction::IgnoreLegacyToken => "ignore legacy token",
         CssRecoveryAction::StopAtNestingLimit => "stop at nesting limit",
         _ => "future action",
     }
@@ -59,10 +58,9 @@ fn report_public_recovery_actions_support_wildcard_compatible_matching() {
         CssRecoveryAction::DropSelectorListItem,
         CssRecoveryAction::ReplaceMediaQueryWithNever,
         CssRecoveryAction::RetainWithImplicitClosure,
-        CssRecoveryAction::IgnoreLegacyToken,
         CssRecoveryAction::StopAtNestingLimit,
     ];
 
     assert_eq!(actions.map(classify_action)[0], "drop declaration");
-    assert_eq!(actions.map(classify_action)[9], "stop at nesting limit");
+    assert_eq!(actions.map(classify_action)[8], "stop at nesting limit");
 }

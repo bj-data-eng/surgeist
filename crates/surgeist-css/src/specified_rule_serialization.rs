@@ -287,8 +287,8 @@ impl CssRule {
 
 impl CssSheet {
     /// Serializes a complete stylesheet atomically in source order.
-    /// Leading encoding metadata is transport provenance, not a logical rule;
-    /// it remains retained in the input and is omitted from the UTF-8 string.
+    /// Serializes retained authored rules; discarded source and its diagnostics
+    /// remain on the original parse report.
     pub fn to_specified_css(&self) -> Result<String, CssSpecifiedRuleSerializationError> {
         self.to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::default())
     }

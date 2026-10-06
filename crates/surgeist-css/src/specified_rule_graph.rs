@@ -396,9 +396,17 @@ mod tests {
     }
 
     #[test]
-    fn encoding_only_sheet_charges_its_aggregate_without_emitting_transport_bytes() {
+    fn recovered_charset_only_sheet_charges_its_empty_retained_aggregate() {
         let report = parse_sheet("@charset \"windows-1252\";");
-        assert!(report.is_clean());
+        assert!(!report.is_clean());
+        let [diagnostic] = report.diagnostics() else {
+            panic!("one unknown charset")
+        };
+        assert_eq!(
+            diagnostic.error().code(),
+            crate::CssErrorCode::UnknownAtRule
+        );
+        assert_eq!(diagnostic.action(), crate::CssRecoveryAction::DropAtRule);
         let before = report.clone();
         assert_eq!(
             report
@@ -420,7 +428,6 @@ mod tests {
         }
         assert_eq!(report, before);
         assert!(report.syntax().rules().is_empty());
-        assert!(report.syntax().encoding().is_some());
     }
 
     #[test]
