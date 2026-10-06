@@ -1936,10 +1936,11 @@ pub use normalization::{
 };
 pub use parser::{
     CssNamespaceContext, parse_color_profile_descriptor_value, parse_cssom_media_query,
-    parse_declaration, parse_font_face_descriptor_value, parse_font_palette_descriptor_value,
-    parse_media_query, parse_media_query_list, parse_property_value_text,
-    parse_property_value_text_for_grammar, parse_relative_selector_list, parse_rule,
-    parse_selector, parse_selector_list, parse_sheet, parse_style_attribute, parse_style_block,
+    parse_declaration, parse_declaration_list_text, parse_font_face_descriptor_value,
+    parse_font_palette_descriptor_value, parse_media_query, parse_media_query_list,
+    parse_property_value_text, parse_property_value_text_for_grammar, parse_relative_selector_list,
+    parse_rule, parse_selector, parse_selector_list, parse_sheet, parse_style_attribute,
+    parse_style_block,
 };
 pub use properties::*;
 pub use property_value::{
@@ -1998,6 +1999,17 @@ pub fn validate_sheet(input: &str) -> Result<CssSheet, CssValidationFailure> {
 /// ```
 pub fn validate_style_attribute(input: &str) -> Result<CssDeclarationList, CssValidationFailure> {
     parser::parse_style_attribute(input).into_validation_result()
+}
+
+/// Validates raw declaration-list text by accepting exactly its clean parse report.
+///
+/// This uses the ordinary property grammar and raw unit synchronization of
+/// [`parse_declaration_list_text`]. Recovery returns the complete diagnostic
+/// sequence unchanged; no CSSOM projection, cascade or contextual resolution is applied.
+pub fn validate_declaration_list_text(
+    input: &str,
+) -> Result<CssDeclarationList, CssValidationFailure> {
+    parser::parse_declaration_list_text(input).into_validation_result()
 }
 
 #[cfg(test)]

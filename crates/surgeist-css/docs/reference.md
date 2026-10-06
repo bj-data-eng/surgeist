@@ -17,6 +17,7 @@ subset; it does not establish complete support for all CSS syntax.
 | `parse_decoded_stylesheet(input, location)` | Default features | `CssParseReport<CssSheet>` using the exact decoded snapshot |
 | `parse_sheet_with_options(source, options)` | Default features | Unicode stylesheet with optional symbolic location |
 | `parse_style_attribute(&str)` | Default features | `CssParseReport<CssDeclarationList>` |
+| `parse_declaration_list_text(&str)` | Default features | `CssParseReport<CssDeclarationList>` with raw Syntax list recovery |
 | `parse_style_block(source, namespace_context)` | Default features | `CssParseReport<Option<CssStyleBlock>>` |
 | `parse_rule(source, namespace_context)` | Default features | `CssParseReport<Option<CssRule>>` |
 | `parse_declaration(&str)` | Default features | `CssParseReport<Option<CssDeclaration>>` |
@@ -28,6 +29,7 @@ subset; it does not establish complete support for all CSS syntax.
 | `parse_font_face_descriptor_value(&str, CssFontFaceDescriptorKind)` | Default features | `CssParseReport<Option<CssFontFaceDescriptorValue>>` |
 | `validate_sheet(&str)` | Default features | `Result<CssSheet, CssValidationFailure>` |
 | `validate_style_attribute(&str)` | Default features | `Result<CssDeclarationList, CssValidationFailure>` |
+| `validate_declaration_list_text(&str)` | Default features | `Result<CssDeclarationList, CssValidationFailure>` |
 | `parse_component_values(&str)` | Default features | `Result<CssComponentValues, CssComponentValueError>` |
 | `parse_property_value_text(source, name, importance)` | Default features | `CssParseReport<Option<CssDeclaration>>` |
 | `parse_property_value_text_for_grammar(source, grammar, importance)` | Default features | `CssParseReport<Option<CssDeclaration>>` |
@@ -80,6 +82,36 @@ recovery diagnostic. It does not rerun a grammar or test contextual usability.
 `CssValidationFailure` exposes the complete nonempty diagnostic
 sequence through `diagnostics()`, `first()`, and `into_diagnostics()`. See the
 [report definitions](../src/report.rs) for their contracts.
+
+## Raw declaration lists
+
+`parse_declaration_list_text` consumes unwrapped ordinary-property declaration-list
+text using [selected CSS Syntax 3 §§5.3.8 and 5.4.5](../../../references/css-syntax-3--CRD-css-syntax-3-20211224--413b27acb4e1.md).
+Ident-started units extend through the next root semicolon or actual EOF and use
+the shared property/custom/substitution/importance grammar. Complete generic
+at-rules are consumed through their block or semicolon and rejected once in this
+ordinary-property consumer; nested qualified rules and descriptors are not admitted.
+Other initial tokens, including stray closing delimiters, consume one invalid
+unit through the next root semicolon or EOF. Semicolons inside components, strings
+or comments never split the unit.
+
+For example, raw `} color: red; width: 2px;` retains only Width and reports one
+`DropDeclaration` for `} color: red`. The existing style-attribute front retains
+Color and Width after discarding only the closer. Diagnostic spans for raw units
+exclude the recovery semicolon; responsible tokens and EOF diagnostics refer to
+the actual input. Tokenizer recovery and structural-limit diagnostics preserve
+the shared policies and actions. No surrounding braces or generated names are used.
+
+Retained declarations preserve duplicates, order, custom-name case, importance,
+and shared original name/value snapshots. Parsing does not perform specified-block
+winner selection or shorthand coalescing. The free function uses the default
+Standards context; `CssParserContext::parse_declaration_list_text` selects the
+existing Quirks or explicit SVG authored grammar. The parser uses existing internal
+resource policy, with no separate text-limit API. Empty input and empty slots are
+clean; discarded input is nonclean even if nothing survives.
+`validate_declaration_list_text` accepts exactly the same clean report and preserves
+all diagnostics on failure. A context-selected report has the same clean conversion
+through `into_validation_result()`.
 
 ## Selector and media query fragments
 

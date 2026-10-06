@@ -9928,6 +9928,7 @@ pub const fn surgeist_css::CssParserContext::new(mode: surgeist_css::CssParserMo
 pub fn surgeist_css::CssParserContext::parse_css_supports_condition(self, source: &str) -> core::result::Result<surgeist_css::CssSupportsCondition, surgeist_css::CssSupportsConstructionError>
 pub fn surgeist_css::CssParserContext::parse_css_supports_declaration(self, property: &str, value: &str) -> core::result::Result<surgeist_css::CssSupportsDeclaration, surgeist_css::CssSupportsConstructionError>
 pub fn surgeist_css::CssParserContext::parse_declaration(self, source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssDeclaration>>
+pub fn surgeist_css::CssParserContext::parse_declaration_list_text(self, source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssDeclarationList>
 pub fn surgeist_css::CssParserContext::parse_property_value(self, property: surgeist_css::CssPropertyNameRef<'_>, values: surgeist_css::CssComponentValues, importance: surgeist_css::CssImportance) -> core::result::Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError>
 pub fn surgeist_css::CssParserContext::parse_property_value_for_grammar(self, grammar: surgeist_css::CssPropertyGrammar, values: surgeist_css::CssComponentValues, importance: surgeist_css::CssImportance) -> core::result::Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError>
 pub fn surgeist_css::CssParserContext::parse_property_value_text(self, source: &str, property: surgeist_css::CssPropertyNameRef<'_>, importance: surgeist_css::CssImportance) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssDeclaration>>
@@ -12107,6 +12108,7 @@ pub fn surgeist_css::parse_css_supports_condition(source: &str) -> core::result:
 pub fn surgeist_css::parse_css_supports_declaration(property: &str, value: &str) -> core::result::Result<surgeist_css::CssSupportsDeclaration, surgeist_css::CssSupportsConstructionError>
 pub fn surgeist_css::parse_cssom_media_query(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssMediaQuery>>
 pub fn surgeist_css::parse_declaration(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssDeclaration>>
+pub fn surgeist_css::parse_declaration_list_text(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssDeclarationList>
 pub fn surgeist_css::parse_decoded_stylesheet(input: &surgeist_css::CssDecodedStylesheetInput, location: core::option::Option<surgeist_css::CssStylesheetLocation>) -> surgeist_css::CssParseReport<surgeist_css::CssSheet>
 pub fn surgeist_css::parse_font_face_descriptor_value(source: &str, descriptor: surgeist_css::CssFontFaceDescriptorKind) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssAuthoredFontFaceDescriptorValue>>
 pub fn surgeist_css::parse_font_palette_descriptor_value(source: &str, descriptor: surgeist_css::CssFontPaletteDescriptorKind) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssFontPaletteDescriptorValue>>
@@ -12135,6 +12137,7 @@ pub fn surgeist_css::serialize_css_whitespace_separated_list(items: &[&str]) -> 
 pub fn surgeist_css::serialize_css_whitespace_separated_list_with_limits(items: &[&str], limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::specification_source(id: &str) -> core::option::Option<&'static surgeist_css::CssSpecificationSource>
 pub const fn surgeist_css::specification_sources() -> &'static [surgeist_css::CssSpecificationSource]
+pub fn surgeist_css::validate_declaration_list_text(input: &str) -> core::result::Result<surgeist_css::CssDeclarationList, surgeist_css::CssValidationFailure>
 pub fn surgeist_css::validate_sheet(input: &str) -> core::result::Result<surgeist_css::CssSheet, surgeist_css::CssValidationFailure>
 pub fn surgeist_css::validate_style_attribute(input: &str) -> core::result::Result<surgeist_css::CssDeclarationList, surgeist_css::CssValidationFailure>
 pub type surgeist_css::CssColumnWidth = surgeist_css::CssSizeValue

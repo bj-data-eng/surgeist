@@ -107,6 +107,11 @@ impl CssParserContext {
     pub fn parse_style_attribute(self, source: &str) -> CssParseReport<CssDeclarationList> {
         crate::parser::parse_style_attribute_with_context(source, self)
     }
+    /// Parses raw declaration-list text with CSS Syntax unit recovery under this mode.
+    #[must_use]
+    pub fn parse_declaration_list_text(self, source: &str) -> CssParseReport<CssDeclarationList> {
+        crate::parser::parse_declaration_list_text_with_context(source, self)
+    }
     /// Parses one complete declaration occurrence.
     #[must_use]
     pub fn parse_declaration(self, source: &str) -> CssParseReport<Option<CssDeclaration>> {
