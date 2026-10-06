@@ -343,6 +343,16 @@
 //! are nonnegative while actual math defers range handling. Geometry, resource
 //! loading, percentage bases and computed threshold clamping remain downstream.
 //!
+//! Motion Path's five offset longhands and [`CssOffset`] compose the shared
+//! numeric, URL, position and BasicShape owners. [`CssOffsetPath::view`]
+//! distinguishes none, box-only and a path with an optional [`CssCoordBox`].
+//! [`CssRay`] retains a strict angle bearing and optional authored size,
+//! containment and physical position. [`CssOffsetRotate`] retains modifier/angle
+//! absence without applying tangent rotation. Offset's five ordered reset
+//! contributions use central normal/none/zero/auto/auto initials; its specified
+//! output emits only authored constituents. Geometry, resources and animation
+//! execution remain downstream.
+//!
 //! Clip-path is a noninherited terminal with [`CssClipPath::None`] initial and the
 //! shared ordinary, CSS-wide, pending-reentry and normalization lifecycle. It accepts
 //! all seven [`CssBoxEdgeKeyword`] alternatives alone or with one shape in either
@@ -1568,6 +1578,7 @@ mod border_color;
 mod border_image_serialization;
 mod clip_path_serialization;
 mod color_adjustment;
+mod motion_serialization;
 mod shape_outside_serialization;
 pub use color_adjustment::{
     CssColorScheme, CssColorSchemeConstructionError, CssColorSchemeKeyword, CssColorSchemeName,

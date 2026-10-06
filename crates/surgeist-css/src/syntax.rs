@@ -8651,6 +8651,8 @@ mod shape_commands;
 pub use shape_commands::*;
 mod shapes;
 pub use shapes::*;
+mod motion;
+pub use motion::*;
 mod masking;
 pub use masking::*;
 mod mask_serialization;

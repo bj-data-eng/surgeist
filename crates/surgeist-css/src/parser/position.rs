@@ -183,6 +183,47 @@ pub(super) fn parse_physical_position_prefix<'i, 't>(
         .ok_or_else(|| invalid_generic_position_atom(input, &states[invalid_atom_index(&atoms)]))
 }
 
+/// Motion's physical position uses the same greedy atom/builder owner, while an
+/// independently typed angle starts the next unordered ray constituent.
+pub(super) fn parse_physical_position_before_angle<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> std::result::Result<CssPhysicalPosition, ParseError<'i, Error>> {
+    let mut atoms = Vec::new();
+    let mut states = Vec::new();
+    while atoms.len() < 4 && next_starts_background_position(input) {
+        let state = input.state();
+        let angle = input.try_parse(|input| {
+            super::values::parse_angle_value(
+                input,
+                numeric,
+                super::values::AngleParserContext::Motion,
+            )
+        });
+        if angle.is_ok() {
+            input.reset(&state);
+            break;
+        }
+        if let Err(error) = angle
+            && crate::error::is_resource_parse_error(&error)
+        {
+            return Err(error);
+        }
+        input.reset(&state);
+        states.push(state);
+        atoms.push(parse_generic_position_atom(
+            input,
+            numeric,
+            PositionGrammar::Physical,
+        )?);
+    }
+    if atoms.is_empty() {
+        return Err(unsupported_value(input, None, "position is empty"));
+    }
+    build_physical_position(&atoms)
+        .ok_or_else(|| invalid_generic_position_atom(input, &states[invalid_atom_index(&atoms)]))
+}
+
 fn parse_position_atoms<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,

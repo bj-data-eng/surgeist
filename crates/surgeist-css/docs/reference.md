@@ -7611,6 +7611,86 @@ Functional typed-API and exact budget examples are exercised in
 existing authored front-door lifecycle suite is
 [`ui_remaining_authored_contract.rs`](../tests/ui_remaining_authored_contract.rs).
 
+## Authored Motion Path
+
+The selected [Motion WD 2024-11-05](../../../references/motion-1--WD-motion-1-20241105--5f3e94be9b12.md)
+owns authored `offset-path`, `offset-distance`, `offset-position`, `offset-anchor`,
+`offset-rotate` and `offset`. Their catalog source is `I-MOTION1`; complete support
+describes these authored grammars and their intrinsic lifecycle. All five
+longhands are noninherited, apply to transformable elements in visual media,
+and animate by computed value. CSS retains the symbolic values below; it does
+not compute them or animate them.
+
+| Property | Authored typed value | Intrinsic initial | Downstream computed/percentage contract |
+| --- | --- | --- | --- |
+| `offset-position` | `CssOffsetPosition`: normal, auto or physical position | normal | Keyword or position; containing-block dimensions |
+| `offset-path` | `CssOffsetPath`: none, box-only or one path and optional box | none | As specified; omitted box and implicit box path require context |
+| `offset-distance` | Signed `CssSpecifiedLengthPercentage` | programmatic number zero | Length-percentage; offset-path length, no effect without a path |
+| `offset-rotate` | Checked nonempty `CssOffsetRotate` modifier/angle | auto, absent angle | Angle optionally preceded by auto; tangent and reverse's 180 degrees require context |
+| `offset-anchor` | `CssOffsetAnchor`: auto or physical position | auto | Auto or position; element reference-box dimensions, auto uses transform-origin |
+
+`CssOffsetPath::view()` exposes `CssOffsetPathRef::None`, `CoordBox`, or
+`Path(&CssOffsetPathValue)`. The coupled path has exactly one `CssOffsetPathKind`
+(Ray, Url or BasicShape) and an optional explicit `CssCoordBox`. None is exclusive;
+box-only remains a branch without a fabricated shape. URL and box may occur in
+either order, including `src()` and quoted URL modifiers. Empty URLs retain the
+existing authored resource contract. All eight accepted BasicShape functions,
+including `path()` fill-rule and shape-internal position families, use their
+existing owners without another geometry engine.
+
+`CssCoordBox` admits content-box, padding-box, border-box, fill-box, stroke-box and
+view-box. The selected Motion publication normatively imports Box 3's six-name
+coord-box despite its margin-box examples; this implementation follows that
+normative import and rejects margin-box, text and no-clip. Frozen WebKit
+73aa6c89e2cb77c46184a81aec944e4ab99d114d instead uses a broader geometry box,
+records a URL/box parser limitation and restricts path fill-rule. These browser
+divergences do not enlarge or narrow the selected authored grammar. An omitted
+box remains absent; an explicit border-box remains explicit in output.
+
+`CssRay::new()` requires one already checked `CssAngleValue` and retains optional
+size, contain and physical position. The five sizes are closest-side,
+closest-corner, farthest-side, farthest-corner and sides. Its bearing is zero up
+and positive clockwise, without modulo or geometric evaluation. Ordinary angle
+units and magnitude are retained; math projection uses the existing angle owner.
+There is no unitless-zero angle exception. Omitted size denotes the specified
+closest-side default; an explicitly authored closest-side remains stored and
+charged even though canonical output suppresses that keyword. At-position
+omission remains absent. Whole ray arguments accept any order once each and
+serialize as angle, nondefault size, contain, at-position.
+
+Direct Motion positions and ray at-position use `CssPhysicalPosition`, with the
+selected greedy Values 3 one/two/four-component physical grammar. Background's
+three-component and newer logical position families are excluded here. This
+restriction does not change imported shape-internal positions. `CssOffsetRotate`
+requires modifier, angle or both and distinguishes absent modifier, auto and
+reverse, plus optional angle absence. Output orders modifier then angle; it
+does not insert auto or add reverse's contextual 180 degrees.
+
+`CssOffset::try_new()` retains five optional authored constituents. Position or
+path must be present; distance and rotate additionally require an explicitly
+authored whole path property. Anchor alone is invalid. The quoted offset-path
+reference imports its full property grammar, including none and box-only. Output
+orders position, path, distance, rotate, then `/ anchor`. Expansion contributes
+Position, Path, Distance, Rotate, Anchor in that order, resetting every omitted
+member through the intrinsic initials above. It has no reset-only members and
+does not insert those reset values into authored specified output. CSS-wide
+values, pending substitution, residual-first strict reusable reentry, original
+closure checks, occurrence/source/importance retention, all-reset inclusion and
+normalization use the common property engine.
+
+Every new aggregate exposes `serialize_specified()` and
+`serialize_specified_with_limits()`. One path/box pair, ray, rotate and offset
+each cost one input and projection node. Provided size, contain, coordinate box
+and rotate modifier each cost one; angle, length-percentage, physical positions,
+URL and BasicShape retain their existing provider tariffs. None, box-only and
+position/anchor keywords cost one. Only present authored children are visited;
+explicit suppressed closest-side still costs one. A declaration adds two nodes
+for itself and its name. Output shares one cumulative UTF-8 byte budget and
+returns no partial CSS on typed resource failure; the immutable model and every
+origin remain reusable. Bearing/path geometry, boxes, starting and anchor
+resolution, tangent rotation, resources, cascade and animation execution belong
+to downstream owners.
+
 ## Authored Masking
 
 The selected [Masking 1 CRD 2021-08-05](https://www.w3.org/TR/2021/CRD-css-masking-1-20210805/)

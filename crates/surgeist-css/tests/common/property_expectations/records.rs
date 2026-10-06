@@ -754,6 +754,56 @@ property_records! {
         dispatch: "margin-box circle(50%)",
         wrapper: yes,
     }
+    OffsetPosition, "offset-position" {
+        metadata: longhand(false, |v| assert_eq!(*v, CssOffsetPosition::Normal)),
+        catalog: complete_grammar_catalog!("official.property.offset-position", "bottom right", rejected("inline-end block-start")),
+        source: "I-MOTION1",
+        dispatch: "bottom right",
+        wrapper: yes,
+    }
+    OffsetPath, "offset-path" {
+        metadata: longhand(false, |v| assert_eq!(v.view(), CssOffsetPathRef::None)),
+        catalog: complete_grammar_catalog!("official.property.offset-path", "ray(90deg) view-box", rejected("margin-box")),
+        source: "I-MOTION1",
+        dispatch: "ray(90deg) view-box",
+        wrapper: yes,
+    }
+    OffsetDistance, "offset-distance" {
+        metadata: longhand(false, |v| {
+            let component = v.literal_component().expect("initial distance literal");
+            assert!(matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Number(value)) if value.representation() == "0"));
+            assert_eq!(v.origin(), &CssValueOrigin::Programmatic);
+            assert!(v.calculation().is_none());
+        }),
+        catalog: complete_grammar_catalog!("official.property.offset-distance", "-25%", rejected("90deg")),
+        source: "I-MOTION1",
+        dispatch: "-25%",
+        wrapper: yes,
+    }
+    OffsetRotate, "offset-rotate" {
+        metadata: longhand(false, |v| {
+            assert_eq!(v.modifier(), Some(CssOffsetRotateModifier::Auto));
+            assert!(v.angle().is_none());
+        }),
+        catalog: complete_grammar_catalog!("official.property.offset-rotate", "90deg reverse", rejected("0")),
+        source: "I-MOTION1",
+        dispatch: "90deg reverse",
+        wrapper: yes,
+    }
+    OffsetAnchor, "offset-anchor" {
+        metadata: longhand(false, |v| assert_eq!(*v, CssOffsetAnchor::Auto)),
+        catalog: complete_grammar_catalog!("official.property.offset-anchor", "left top", rejected("normal")),
+        source: "I-MOTION1",
+        dispatch: "left top",
+        wrapper: yes,
+    }
+    Offset, "offset" {
+        metadata: shorthand([OffsetPosition, OffsetPath, OffsetDistance, OffsetRotate, OffsetAnchor], []),
+        catalog: complete_grammar_catalog!("official.property.offset", "normal none -25% reverse / auto", rejected("/ center")),
+        source: "I-MOTION1",
+        dispatch: "normal none -25% reverse / auto",
+        wrapper: yes,
+    }
     ShapeImageThreshold, "shape-image-threshold" {
         metadata: longhand(false, |v| {
             let CssOpacityValue::Scalar(value) = v else { panic!("initial threshold number") };

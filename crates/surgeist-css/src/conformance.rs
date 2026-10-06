@@ -958,6 +958,14 @@ profile_source!(
     "https://www.w3.org/TR/2025/CRD-css-shapes-1-20250612/"
 );
 profile_source!(
+    I_MOTION1,
+    "I-MOTION1",
+    "Motion Path",
+    "1",
+    CssSpecificationTier::Snapshot2026Interop,
+    "https://www.w3.org/TR/2024/WD-motion-1-20241105/"
+);
+profile_source!(
     S_TEXT3,
     "S-TEXT3",
     "CSS Text",
@@ -1335,6 +1343,7 @@ static SPECIFICATION_SOURCES: &[CssSpecificationSource] = &[
     S_ALIGN3,
     S_SHAPES1,
     S_TEXT3,
+    I_MOTION1,
     S_TEXTDECOR3,
     S_MASKING1,
     I_TRANSITIONS1,
@@ -2756,6 +2765,12 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         CssKnownProperty::ShapeOutside
         | CssKnownProperty::ShapeImageThreshold
         | CssKnownProperty::ShapeMargin => S_SHAPES1,
+        CssKnownProperty::OffsetPosition
+        | CssKnownProperty::OffsetPath
+        | CssKnownProperty::OffsetDistance
+        | CssKnownProperty::OffsetRotate
+        | CssKnownProperty::OffsetAnchor
+        | CssKnownProperty::Offset => I_MOTION1,
         CssKnownProperty::BackdropFilter => X_BACKDROP_FILTER,
         CssKnownProperty::Clip
         | CssKnownProperty::ClipPath
@@ -2910,7 +2925,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 754] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 761] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -3837,6 +3852,13 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 754] = [
         "<shadow>",
         O_BACKGROUNDS3,
         "#box-shadow",
+    ),
+    CssFeatureMetadata::complete(
+        "official.value.ray",
+        CssFeatureKind::Value,
+        "ray()",
+        I_MOTION1,
+        "#ray-function",
     ),
     CssFeatureMetadata::complete(
         "ext.value.transform.matrix3d",
@@ -6345,6 +6367,36 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 754] = [
         CssKnownProperty::ShapeOutside,
         "shape-outside",
         "official.property.shape-outside"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::OffsetPosition,
+        "offset-position",
+        "official.property.offset-position"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::OffsetPath,
+        "offset-path",
+        "official.property.offset-path"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::OffsetDistance,
+        "offset-distance",
+        "official.property.offset-distance"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::OffsetRotate,
+        "offset-rotate",
+        "official.property.offset-rotate"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::OffsetAnchor,
+        "offset-anchor",
+        "official.property.offset-anchor"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::Offset,
+        "offset",
+        "official.property.offset"
     ),
     complete_property_feature!(
         CssKnownProperty::ShapeImageThreshold,

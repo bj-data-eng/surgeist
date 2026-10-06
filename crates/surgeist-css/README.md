@@ -15,6 +15,13 @@ deferred length-percentage math. Checked models preserve omitted versus explicit
 reference boxes through expansion, strict reentry and bounded specified output.
 See the [Shapes reference](docs/reference.md#authored-shapes-properties).
 
+Authored Motion Path retains the five offset longhands and `offset` shorthand,
+including ray bearings, URLs, all eight shared basic shapes and the six imported
+coordinate boxes. Checked models preserve optional constituents; expansion uses
+central initials for omissions. Positions, paths, anchors and rotation remain
+symbolic through strict reentry, normalization and bounded specified output.
+See the [Motion reference](docs/reference.md#authored-motion-path).
+
 `@font-face` types named-instance (`auto` or a string), language override
 (`normal` or a string), and ascent/descent/line-gap overrides (`normal` or a
 nonnegative percentage with checked math). Parsed occurrence order, recovery,
