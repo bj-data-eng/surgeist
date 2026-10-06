@@ -747,6 +747,37 @@ property_records! {
         dispatch: "circle(50% at center)",
         wrapper: yes,
     }
+    ShapeOutside, "shape-outside" {
+        metadata: longhand(false, |v| assert_eq!(*v, CssShapeOutside::None)),
+        catalog: complete_grammar_catalog!("official.property.shape-outside", "margin-box circle(50%)", rejected("circle() fill-box")),
+        source: "S-SHAPES1",
+        dispatch: "margin-box circle(50%)",
+        wrapper: yes,
+    }
+    ShapeImageThreshold, "shape-image-threshold" {
+        metadata: longhand(false, |v| {
+            let CssOpacityValue::Scalar(value) = v else { panic!("initial threshold number") };
+            assert_eq!(value.kind(), CssOpacityScalarKind::Number);
+            assert_eq!(value.numeric().representation(), "0");
+            assert_eq!(value.origin(), &CssValueOrigin::Programmatic);
+        }),
+        catalog: complete_grammar_catalog!("official.property.shape-image-threshold", "150%", rejected("1px")),
+        source: "S-SHAPES1",
+        dispatch: "150%",
+        wrapper: yes,
+    }
+    ShapeMargin, "shape-margin" {
+        metadata: longhand(false, |v| {
+            let component = v.literal_component().expect("initial margin literal");
+            assert!(matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Number(value)) if value.representation() == "0"));
+            assert_eq!(v.origin(), &CssValueOrigin::Programmatic);
+            assert!(v.calculation().is_none());
+        }),
+        catalog: complete_grammar_catalog!("official.property.shape-margin", "calc(1px - 2px)", rejected("-1px")),
+        source: "S-SHAPES1",
+        dispatch: "calc(1px - 2px)",
+        wrapper: yes,
+    }
     Color, "color" {
         metadata: longhand(true, |v| {
             assert_eq!(v.system(), Some(CssSystemColor::CanvasText))

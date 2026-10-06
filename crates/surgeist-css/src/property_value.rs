@@ -201,6 +201,9 @@ fn requires_closed_components(property: crate::CssKnownProperty) -> bool {
             | crate::CssKnownProperty::TextIndent
             | crate::CssKnownProperty::VerticalAlign
             | crate::CssKnownProperty::ClipPath
+            | crate::CssKnownProperty::ShapeOutside
+            | crate::CssKnownProperty::ShapeImageThreshold
+            | crate::CssKnownProperty::ShapeMargin
             | crate::CssKnownProperty::TextWrap
             | crate::CssKnownProperty::TextWrapMode
             | crate::CssKnownProperty::TextWrapStyle

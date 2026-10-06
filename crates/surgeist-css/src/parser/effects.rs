@@ -1096,7 +1096,14 @@ fn parse_geometry_box<'i, 't>(
     })
 }
 
-fn parse_clip_path_shape<'i, 't>(
+pub(super) fn is_basic_shape_function(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "inset" | "circle" | "ellipse" | "polygon" | "rect" | "xywh" | "path" | "shape"
+    )
+}
+
+pub(super) fn parse_clip_path_shape<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<CssBasicShape, ParseError<'i, Error>> {
@@ -1106,10 +1113,7 @@ fn parse_clip_path_shape<'i, 't>(
         token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
     };
     let normalized_name = name.to_ascii_lowercase();
-    if !matches!(
-        normalized_name.as_str(),
-        "inset" | "circle" | "ellipse" | "polygon" | "rect" | "xywh" | "path" | "shape"
-    ) {
+    if !is_basic_shape_function(normalized_name.as_str()) {
         return Err(unsupported_value(
             input,
             None,

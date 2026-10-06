@@ -8,6 +8,13 @@ unsupported productions; consult the [support reference](docs/reference.md#confo
 for exact boundaries. Cascade, substitution, matching, resource loading, and
 layout belong to downstream consumers.
 
+Authored Shapes 1 retains `shape-outside` with images, the eight shared basic
+shapes and four reference boxes; `shape-image-threshold` keeps unrestricted
+number/percentage values; `shape-margin` keeps exact nonnegative literals and
+deferred length-percentage math. Checked models preserve omitted versus explicit
+reference boxes through expansion, strict reentry and bounded specified output.
+See the [Shapes reference](docs/reference.md#authored-shapes-properties).
+
 `@font-face` types named-instance (`auto` or a string), language override
 (`normal` or a string), and ascent/descent/line-gap overrides (`normal` or a
 nonnegative percentage with checked math). Parsed occurrence order, recovery,

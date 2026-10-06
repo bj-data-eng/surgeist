@@ -2494,6 +2494,65 @@ input and projection node; property/name carriers add their existing two nodes.
 The Color and numeric children keep their existing tariffs without a new wrapper
 charge. Failure exposes no partial CSS or mutation and permits a fresh retry.
 
+### Authored Shapes properties
+
+The three Shapes 1 properties follow the selected
+[CRD 2025-06-12 §§6.1–6.3](https://www.w3.org/TR/2025/CRD-css-shapes-1-20250612/#declaring-shapes).
+They are independent noninherited longhands, with intrinsic initials `none`,
+number `0`, and length-percentage `0` respectively. All support CSS-wide values,
+pending substitution, strict checked construction and replacement reentry,
+ordered occurrence expansion, normalization and cumulative specified serialization.
+Checked fronts reject implicit EOF closures and unclosed comments in original
+components, including inside pending values, before serialized repair can hide them.
+
+`shape-outside.value()` exposes `CssShapeOutside`: `None`, a standalone
+`ShapeBox(CssShapeBox)`, `BasicShape(CssShapeOutsideShape)`, or `Image(CssImage)`.
+`CssShapeBox` admits only content-box, padding-box, border-box and margin-box;
+`from_keyword()` checks a decoded keyword, and `as_css_str()` emits its canonical
+spelling. It imports the direct Box 4 visual-box production plus margin-box.
+The broader SVG boxes used by clipping are excluded from this Shapes boundary.
+The image branch uses the existing Images 3 provider, including URL, gradients
+and the adopted symbolic `light-dark()` image/none branches. `CssImage::try_new`
+excludes a bare image `none`, which belongs to the outside keyword branch.
+
+`CssShapeOutsideShape::new(shape, reference_box)` composes the existing eight
+basic-shape functions with an optional narrow box. `shape()` and `reference_box()`
+expose the checked children. Parsed pairs accept either order and emit the shape
+before the box. An omitted box stays distinct from an explicit margin-box;
+the implicit margin reference geometry is assigned downstream. Duplicate shapes,
+duplicate boxes, image/box combinations and foreign shape-box keywords are invalid.
+The three new models provide `serialize_specified()` and
+`serialize_specified_with_limits()`. Box and `none` cost one semantic node;
+shape/box composition adds one aggregate plus the shared shape children and
+one node for an explicit box. Images keep the shared provider's node costs.
+
+`shape-image-threshold.value()` and its terminal view borrow the existing
+`CssOpacityValue`, retaining exact ordinary number/percentage components and
+pure Number, Percentage or hinted Number calculations. The authored range is
+unrestricted: `150%` emits `1.5` and `-25%` emits `-0.25` without clamping.
+`shape-margin.value()` and its terminal view borrow
+`CssSpecifiedNonNegativeLengthPercentage`. Exact negative ordinary values fail,
+even when too small for floating-point caches; signed zero is valid. Actual math
+retains its graph for deferred range handling, so `calc(1px - 2px)` is valid and
+emits `calc(-1px)` through the existing numeric projection owner.
+
+Shape-outside and shape-margin apply to floats and initial-letter boxes;
+shape-image-threshold applies to floats. Reference geometry, containing-block
+inline-size percentage bases, computed threshold clamping, image loading,
+pixel threshold extraction, float wrapping and interpolation execution belong
+to downstream owners.
+
+```rust
+use surgeist_css::{CssBasicShape, CssCircleRadius, CssCircleShape,
+    CssShapeBox, CssShapeOutside, CssShapeOutsideShape};
+
+let shape = CssBasicShape::Circle(CssCircleShape::new(CssCircleRadius::Default, None));
+let outside = CssShapeOutside::BasicShape(CssShapeOutsideShape::new(
+    shape, Some(CssShapeBox::MarginBox),
+));
+assert_eq!(outside.serialize_specified().unwrap(), "circle() margin-box");
+```
+
 ### Authored clipping shapes
 
 The authored `clip-path` grammar follows

@@ -60,7 +60,9 @@ mod page;
 mod position;
 mod queries;
 mod query_components;
+mod shape_outside;
 mod shapes;
+use shape_outside::parse_shape_outside;
 mod will_change;
 // Shared checked media construction uses the same private admission engine.
 pub(crate) use queries::{construct_media_condition, construct_media_query};

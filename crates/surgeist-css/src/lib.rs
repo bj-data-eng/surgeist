@@ -333,6 +333,16 @@
 //! backdrop-filter wrappers return [`CssFilter`], box-shadow returns [`CssBoxShadow`], and
 //! clip-path exposes the sole [`CssClipPath`] through `value()`.
 //!
+//! Authored Shapes 1 adds three independent noninherited longhands:
+//! `shape-outside` borrows [`CssShapeOutside`], `shape-image-threshold` borrows
+//! [`CssOpacityValue`], and `shape-margin` borrows
+//! [`CssSpecifiedNonNegativeLengthPercentage`]. [`CssShapeOutsideShape`] retains
+//! an optional [`CssShapeBox`] with only the four visual/margin boxes. Omitted
+//! boxes stay distinct from explicit margin-box, and canonical pairs emit the
+//! shape first. Threshold values remain unclamped; ordinary margin literals
+//! are nonnegative while actual math defers range handling. Geometry, resource
+//! loading, percentage bases and computed threshold clamping remain downstream.
+//!
 //! Clip-path is a noninherited terminal with [`CssClipPath::None`] initial and the
 //! shared ordinary, CSS-wide, pending-reentry and normalization lifecycle. It accepts
 //! all seven [`CssBoxEdgeKeyword`] alternatives alone or with one shape in either
@@ -1558,6 +1568,7 @@ mod border_color;
 mod border_image_serialization;
 mod clip_path_serialization;
 mod color_adjustment;
+mod shape_outside_serialization;
 pub use color_adjustment::{
     CssColorScheme, CssColorSchemeConstructionError, CssColorSchemeKeyword, CssColorSchemeName,
     CssForcedColorAdjust, CssPrintColorAdjust,

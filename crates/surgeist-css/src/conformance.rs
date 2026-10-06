@@ -2748,6 +2748,9 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::FloodOpacity
         | CssKnownProperty::LightingColor
         | CssKnownProperty::ColorInterpolationFilters => I_FILTER1,
+        CssKnownProperty::ShapeOutside
+        | CssKnownProperty::ShapeImageThreshold
+        | CssKnownProperty::ShapeMargin => S_SHAPES1,
         CssKnownProperty::BackdropFilter => X_BACKDROP_FILTER,
         CssKnownProperty::Clip
         | CssKnownProperty::ClipPath
@@ -2898,7 +2901,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 747] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 750] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -6308,6 +6311,21 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 747] = [
         "clip-path",
         "#propdef-clip-path",
         &[],
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ShapeOutside,
+        "shape-outside",
+        "official.property.shape-outside"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ShapeImageThreshold,
+        "shape-image-threshold",
+        "official.property.shape-image-threshold"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ShapeMargin,
+        "shape-margin",
+        "official.property.shape-margin"
     ),
     complete_property_feature!(CssKnownProperty::Mask, "mask", "baseline.property.mask"),
     complete_property_feature!(

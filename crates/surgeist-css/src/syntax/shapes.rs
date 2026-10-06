@@ -462,6 +462,85 @@ impl CssClipPathShape {
     }
 }
 
+/// A Shapes 1 reference box: the Box 4 visual boxes plus `margin-box`.
+/// SVG geometry boxes are outside this authored grammar.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[non_exhaustive]
+pub enum CssShapeBox {
+    ContentBox,
+    PaddingBox,
+    BorderBox,
+    MarginBox,
+}
+
+impl CssShapeBox {
+    /// Admits one decoded shape-box keyword without selecting used geometry.
+    #[must_use]
+    pub fn from_keyword(keyword: &str) -> Option<Self> {
+        Some(match keyword.to_ascii_lowercase().as_str() {
+            "content-box" => Self::ContentBox,
+            "padding-box" => Self::PaddingBox,
+            "border-box" => Self::BorderBox,
+            "margin-box" => Self::MarginBox,
+            _ => return None,
+        })
+    }
+
+    /// Returns the canonical authored box keyword.
+    #[must_use]
+    pub const fn as_css_str(self) -> &'static str {
+        match self {
+            Self::ContentBox => "content-box",
+            Self::PaddingBox => "padding-box",
+            Self::BorderBox => "border-box",
+            Self::MarginBox => "margin-box",
+        }
+    }
+}
+
+/// An authored `shape-outside` value before float geometry or resource loading.
+/// The checked image branch excludes bare `none` but retains symbolic image/none
+/// children of `light-dark()`.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub enum CssShapeOutside {
+    None,
+    ShapeBox(CssShapeBox),
+    BasicShape(CssShapeOutsideShape),
+    Image(super::CssImage),
+}
+
+/// A basic shape with an optional explicit Shapes reference box.
+/// Omission stays distinct from explicit `margin-box`; the default is downstream.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssShapeOutsideShape {
+    shape: CssBasicShape,
+    reference_box: Option<CssShapeBox>,
+}
+
+impl CssShapeOutsideShape {
+    /// Composes checked children without inferring an omitted reference box.
+    #[must_use]
+    pub const fn new(shape: CssBasicShape, reference_box: Option<CssShapeBox>) -> Self {
+        Self {
+            shape,
+            reference_box,
+        }
+    }
+
+    /// Borrows the authored basic-shape function.
+    #[must_use]
+    pub const fn shape(&self) -> &CssBasicShape {
+        &self.shape
+    }
+
+    /// Returns the explicit box, preserving authored omission.
+    #[must_use]
+    pub const fn reference_box(&self) -> Option<CssShapeBox> {
+        self.reference_box
+    }
+}
+
 /// An authored shape function with full initial position and nonempty commands.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssShapeFunction {
