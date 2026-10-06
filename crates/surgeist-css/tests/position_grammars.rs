@@ -749,6 +749,9 @@ fn mask_shorthand_preserves_valid_image_position_size_and_repeat_components() {
                 x: CssBackgroundRepeatStyle::NoRepeat,
                 y: CssBackgroundRepeatStyle::NoRepeat,
             }),
+            None,
+            None,
+            None,
         )
         .expect("nonempty mask layer"),
     ])

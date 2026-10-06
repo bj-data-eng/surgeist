@@ -1165,6 +1165,10 @@ pub(super) fn parse_mask_layer<'i, 't>(
     let mut position = None;
     let mut size = None;
     let mut repeat = None;
+    let mut boxes = Vec::new();
+    let mut no_clip = false;
+    let mut composite = None;
+    let mut mode = None;
 
     while !input.is_exhausted() && !next_is_comma(input) {
         if image.is_none() {
@@ -1196,9 +1200,58 @@ pub(super) fn parse_mask_layer<'i, 't>(
                 Err(_) => {}
             }
         }
+        if mode.is_none()
+            && let Ok(value) = input.try_parse(super::masking::parse_mask_mode)
+        {
+            mode = Some(value);
+            continue;
+        }
+        if composite.is_none()
+            && let Ok(value) = input.try_parse(super::masking::parse_mask_composite)
+        {
+            composite = Some(value);
+            continue;
+        }
+        if let Ok(value) = input.try_parse(super::masking::parse_mask_clip) {
+            match value {
+                CssMaskClip::Box(value) => boxes.push(value),
+                CssMaskClip::NoClip if !no_clip => no_clip = true,
+                CssMaskClip::NoClip => {
+                    return Err(unsupported_value(input, None, "duplicate no-clip"));
+                }
+            }
+            if boxes.len() > 2 || no_clip && boxes.len() > 1 {
+                return Err(unsupported_value(
+                    input,
+                    None,
+                    "too many mask geometry slots",
+                ));
+            }
+            continue;
+        }
         return Err(unsupported_value(input, None, "unsupported mask component"));
     }
-    CssMaskLayer::try_new(image, position, size, repeat)
+    let boxes = match (boxes.as_slice(), no_clip) {
+        ([], false) => None,
+        ([], true) => Some(CssMaskLayerBoxes::NoClip),
+        ([value], false) => Some(CssMaskLayerBoxes::Box(*value)),
+        ([origin], true) => Some(CssMaskLayerBoxes::Pair {
+            origin: *origin,
+            clip: CssMaskClip::NoClip,
+        }),
+        ([origin, clip], false) => Some(CssMaskLayerBoxes::Pair {
+            origin: *origin,
+            clip: CssMaskClip::Box(*clip),
+        }),
+        _ => {
+            return Err(unsupported_value(
+                input,
+                None,
+                "invalid mask geometry slots",
+            ));
+        }
+    };
+    CssMaskLayer::try_new(image, position, size, repeat, boxes, composite, mode)
         .ok_or_else(|| unsupported_value(input, None, "mask layer is empty"))
 }
 

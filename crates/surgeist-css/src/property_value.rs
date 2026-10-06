@@ -144,6 +144,24 @@ fn requires_closed_components(property: crate::CssKnownProperty) -> bool {
             | crate::CssKnownProperty::TextEmphasisPosition
             | crate::CssKnownProperty::TextEmphasisSkip
             | crate::CssKnownProperty::TextShadow
+            | crate::CssKnownProperty::Mask
+            | crate::CssKnownProperty::MaskImage
+            | crate::CssKnownProperty::MaskSize
+            | crate::CssKnownProperty::MaskPosition
+            | crate::CssKnownProperty::MaskRepeat
+            | crate::CssKnownProperty::MaskMode
+            | crate::CssKnownProperty::MaskOrigin
+            | crate::CssKnownProperty::MaskClip
+            | crate::CssKnownProperty::MaskComposite
+            | crate::CssKnownProperty::MaskBorder
+            | crate::CssKnownProperty::MaskBorderSource
+            | crate::CssKnownProperty::MaskBorderSlice
+            | crate::CssKnownProperty::MaskBorderWidth
+            | crate::CssKnownProperty::MaskBorderOutset
+            | crate::CssKnownProperty::MaskBorderRepeat
+            | crate::CssKnownProperty::MaskBorderMode
+            | crate::CssKnownProperty::ClipRule
+            | crate::CssKnownProperty::MaskType
             | crate::CssKnownProperty::Contain
             | crate::CssKnownProperty::ContentVisibility
             | crate::CssKnownProperty::Cursor

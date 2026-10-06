@@ -36,6 +36,11 @@ shorthands supply ordered settable and reset-only members separately. Four-side
 and universal-reset records identify their metadata kind; their detailed
 mode-dependent behavior remains in specialized tests.
 
+Grammar rows can additionally assert complete authored support with
+`complete_grammar_catalog!` while retaining their explicit rejected or accepted
+boundary stimulus. This keeps capability status and grammar evidence in the same
+independently authored record.
+
 Boundary outcomes are explicit. Most grammar boundary samples are rejected;
 three historical overflow samples now accept `auto` and retain assertions about
 their typed value and authored omissions. Preserve that evidence when revising a

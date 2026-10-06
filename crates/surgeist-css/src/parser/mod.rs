@@ -30,6 +30,7 @@ mod font_variant;
 mod fragments;
 mod gap;
 pub(crate) mod image_1d;
+mod masking;
 mod ui;
 pub use fragments::{
     parse_color_profile_descriptor_value, parse_cssom_media_query, parse_declaration,
@@ -127,6 +128,7 @@ use item_flow::*;
 use keyframes::{parse_keyframes_name, parse_keyframes_rule};
 use layout::*;
 use list_styles::*;
+use masking::*;
 use multicolumn::*;
 use nesting::{parse_style_contents, parse_style_rule_block};
 use overflow_controls::*;

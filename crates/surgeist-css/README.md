@@ -83,6 +83,15 @@ ordered longhands from authored values or schema initials. Bounded specified
 serialization compresses all four stored edges, preserves numeric branches and
 symbolic calculations, and counts every child even when its initial is omitted.
 
+Authored CSS Masking retains all eight mask layer fields, independent comma-list
+arity and the six mask-border resets. Checked `CssMaskLayer` and `CssMaskBorder`
+construction composes the shared image, position, size, repeat and nonnegative
+four-side owners. Masking supplies its own six-box domain, trailing slice fill,
+optional slash width, initials and ordered expansion. Clip-rule and mask-type
+retain their distinct SVG keyword contracts. Bounded specified serialization,
+strict replacement reentry and normalization preserve source occurrences and
+symbolic values; see [authored Masking](docs/reference.md#authored-masking).
+
 Checked `CssShadow` construction requires blur before spread; `CssBoxShadowList`
 is nonempty. Box shadows retain signed offsets and spread, optional nonnegative
 blur, optional color, and inset. `CssDropShadow` instead retains an optional

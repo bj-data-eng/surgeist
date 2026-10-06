@@ -31,6 +31,7 @@ fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
         let Some(CatalogExpectation::Grammar {
             feature_id,
             production,
+            status,
             ..
         }) = &case.catalog
         else {
@@ -56,6 +57,18 @@ fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
                 "{} exact property production",
                 feature_id
             );
+        }
+        if let Some(status) = status {
+            assert_eq!(
+                feature.status(),
+                *status,
+                "{} authored capability",
+                case.name
+            );
+            if *status == CssSupportStatus::Complete {
+                assert_eq!(feature.supported_subset(), None);
+                assert_eq!(feature.unsupported_remainder(), None);
+            }
         }
         assert_eq!(feature.recognized_unsupported_code(), None);
         assert_ne!(

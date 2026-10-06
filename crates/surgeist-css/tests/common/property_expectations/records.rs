@@ -1672,37 +1672,124 @@ property_records! {
         metadata: longhand(true, |v| assert_eq!(*v, CssMarkerSide::MatchSelf)),
     }
     Mask, "mask" {
-        metadata: unavailable(),
-        catalog: grammar_catalog!("baseline.property.mask", "url(mask.png) center / contain no-repeat", rejected("solid")),
+        metadata: shorthand([MaskImage, MaskPosition, MaskSize, MaskRepeat, MaskOrigin, MaskClip, MaskComposite, MaskMode], [MaskBorderSource, MaskBorderSlice, MaskBorderWidth, MaskBorderOutset, MaskBorderRepeat, MaskBorderMode]),
+        catalog: complete_grammar_catalog!("baseline.property.mask", "url(mask.png) center / contain no-repeat padding-box no-clip exclude alpha", rejected("margin-box")),
         source: "S-MASKING1",
         dispatch: "url(mask.png) center / contain no-repeat",
         wrapper: yes,
     }
     MaskImage, "mask-image" {
-        metadata: longhand(false, |v| {
-            assert!(matches!(v.images(), [CssImageValue::None]));
-        }),
-        catalog: grammar_catalog!("baseline.property.mask-image", "url(mask.png), none", rejected("url(foo bar)")),
+        metadata: longhand(false, |v| assert!(matches!(v.images(), [CssImageValue::None]))),
+        catalog: complete_grammar_catalog!("baseline.property.mask-image", "url(mask.png), none", rejected("url(foo bar)")),
+        source: "S-MASKING1",
         dispatch: "url(mask.png), none",
         wrapper: yes,
     }
     MaskPosition, "mask-position" {
-        metadata: unavailable(),
-        catalog: grammar_catalog!("baseline.property.mask-position", "center", rejected("left right")),
+        metadata: longhand(false, |v| {
+            let [position] = v.positions() else { panic!("one initial position") };
+            let CssHorizontalPosition::Offset(x) = position.horizontal() else { panic!("horizontal percentage") };
+            let CssVerticalPosition::Offset(y) = position.vertical() else { panic!("vertical percentage") };
+            assert_eq!(x.literal_component(), Some(&CssComponentValue::try_token("0%").unwrap()));
+            assert_eq!(y.literal_component(), Some(&CssComponentValue::try_token("0%").unwrap()));
+        }),
+        catalog: complete_grammar_catalog!("baseline.property.mask-position", "center", rejected("left right")),
+        source: "S-MASKING1",
         dispatch: "center",
         wrapper: yes,
     }
     MaskRepeat, "mask-repeat" {
-        metadata: unavailable(),
-        catalog: grammar_catalog!("baseline.property.mask-repeat", "repeat", rejected("solid")),
+        metadata: longhand(false, |v| assert!(matches!(v.repeats(), [CssBackgroundRepeat::Axes { x: CssBackgroundRepeatStyle::Repeat, y: CssBackgroundRepeatStyle::Repeat }]))),
+        catalog: complete_grammar_catalog!("baseline.property.mask-repeat", "repeat", rejected("solid")),
+        source: "S-MASKING1",
         dispatch: "repeat",
         wrapper: yes,
     }
     MaskSize, "mask-size" {
-        metadata: unavailable(),
-        catalog: grammar_catalog!("baseline.property.mask-size", "contain", rejected("solid")),
+        metadata: longhand(false, |v| assert!(matches!(v.sizes(), [CssBackgroundSize::Explicit { width: CssBackgroundSizeComponent::Auto, height: None }]))),
+        catalog: complete_grammar_catalog!("baseline.property.mask-size", "contain", rejected("solid")),
+        source: "S-MASKING1",
         dispatch: "contain",
         wrapper: yes,
+    }
+    MaskMode, "mask-mode" {
+        metadata: longhand(false, |v| assert_eq!(v.modes(), &[CssMaskMode::MatchSource])),
+        catalog: complete_grammar_catalog!("official.property.mask-mode", "alpha, luminance, match-source", rejected("auto")),
+        source: "S-MASKING1", dispatch: "alpha, luminance", wrapper: yes,
+    }
+    MaskOrigin, "mask-origin" {
+        metadata: longhand(false, |v| assert_eq!(v.boxes(), &[CssMaskBox::BorderBox])),
+        catalog: complete_grammar_catalog!("official.property.mask-origin", "padding-box, fill-box", rejected("margin-box")),
+        source: "S-MASKING1", dispatch: "padding-box, fill-box", wrapper: yes,
+    }
+    MaskClip, "mask-clip" {
+        metadata: longhand(false, |v| assert_eq!(v.clips(), &[CssMaskClip::Box(CssMaskBox::BorderBox)])),
+        catalog: complete_grammar_catalog!("official.property.mask-clip", "no-clip, stroke-box", rejected("margin-box")),
+        source: "S-MASKING1", dispatch: "no-clip, stroke-box", wrapper: yes,
+    }
+    MaskComposite, "mask-composite" {
+        metadata: longhand(false, |v| assert_eq!(v.operators(), &[CssMaskComposite::Add])),
+        catalog: complete_grammar_catalog!("official.property.mask-composite", "subtract, intersect, exclude", rejected("xor")),
+        source: "S-MASKING1", dispatch: "subtract, intersect, exclude", wrapper: yes,
+    }
+    MaskBorder, "mask-border" {
+        metadata: shorthand([MaskBorderSource, MaskBorderSlice, MaskBorderWidth, MaskBorderOutset, MaskBorderRepeat, MaskBorderMode], []),
+        catalog: complete_grammar_catalog!("official.property.mask-border", "url(a) 1 2 fill / auto / 2 round alpha", rejected("fill 1")),
+        source: "S-MASKING1", dispatch: "url(a) 1 2 fill / auto / 2 round alpha", wrapper: yes,
+    }
+    MaskBorderSource, "mask-border-source" {
+        metadata: longhand(false, |v| assert!(matches!(v, CssImageValue::None))),
+        catalog: complete_grammar_catalog!("official.property.mask-border-source", "url(a)", rejected("none, url(a)")),
+        source: "S-MASKING1", dispatch: "url(a)", wrapper: yes,
+    }
+    MaskBorderSlice, "mask-border-slice" {
+        metadata: longhand(false, |v| {
+            assert!(!v.fill());
+            for edge in v.values() {
+                let CssBorderImageSliceComponent::Number(number) = edge else { panic!("number initial slice") };
+                assert_eq!(number.literal_component(), Some(&CssComponentValue::try_number("0").unwrap()));
+            }
+        }),
+        catalog: complete_grammar_catalog!("official.property.mask-border-slice", "1 2% fill", rejected("fill 1")),
+        source: "S-MASKING1", dispatch: "1 2% fill", wrapper: yes,
+    }
+    MaskBorderWidth, "mask-border-width" {
+        metadata: longhand(false, |v| assert!(v.values().iter().all(|edge| matches!(edge, CssBorderImageWidthComponent::Auto)))),
+        catalog: complete_grammar_catalog!("official.property.mask-border-width", "auto 2 30% 4px", rejected("-1%")),
+        source: "S-MASKING1", dispatch: "auto 2 30% 4px", wrapper: yes,
+    }
+    MaskBorderOutset, "mask-border-outset" {
+        metadata: longhand(false, |v| {
+            for edge in v.values() {
+                let CssBorderImageOutsetComponent::Number(number) = edge else { panic!("number initial outset") };
+                assert_eq!(number.literal_component(), Some(&CssComponentValue::try_number("0").unwrap()));
+            }
+        }),
+        catalog: complete_grammar_catalog!("official.property.mask-border-outset", "1 2px 3 4em", rejected("1%")),
+        source: "S-MASKING1", dispatch: "1 2px 3 4em", wrapper: yes,
+    }
+    MaskBorderRepeat, "mask-border-repeat" {
+        metadata: longhand(false, |v| {
+            assert_eq!(v.horizontal(), CssBorderImageRepeatKeyword::Stretch);
+            assert_eq!(v.vertical(), CssBorderImageRepeatKeyword::Stretch);
+        }),
+        catalog: complete_grammar_catalog!("official.property.mask-border-repeat", "round space", rejected("no-repeat")),
+        source: "S-MASKING1", dispatch: "round space", wrapper: yes,
+    }
+    MaskBorderMode, "mask-border-mode" {
+        metadata: longhand(false, |v| assert_eq!(*v, CssMaskType::Alpha)),
+        catalog: complete_grammar_catalog!("official.property.mask-border-mode", "luminance", rejected("match-source")),
+        source: "S-MASKING1", dispatch: "luminance", wrapper: yes,
+    }
+    ClipRule, "clip-rule" {
+        metadata: longhand(true, |v| assert_eq!(*v, CssClipRule::Nonzero)),
+        catalog: complete_grammar_catalog!("official.property.clip-rule", "evenodd", rejected("positive")),
+        source: "S-MASKING1", dispatch: "evenodd", wrapper: yes,
+    }
+    MaskType, "mask-type" {
+        metadata: longhand(false, |v| assert_eq!(*v, CssMaskType::Luminance)),
+        catalog: complete_grammar_catalog!("official.property.mask-type", "alpha", rejected("match-source")),
+        source: "S-MASKING1", dispatch: "alpha", wrapper: yes,
     }
     MaxBlockSize, "max-block-size" {
         metadata: longhand(false, |v| assert_eq!(*v, CssMaxSizeValue::NONE)),

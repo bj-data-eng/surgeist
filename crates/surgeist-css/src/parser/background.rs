@@ -192,7 +192,7 @@ fn parse_background_layer<'i, 't>(
     ))
 }
 
-fn next_starts_background_image<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
+pub(super) fn next_starts_background_image<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
     let state = input.state();
     let starts = match input.next() {
         Ok(Token::Ident(value)) => value.eq_ignore_ascii_case("none"),
@@ -372,7 +372,7 @@ pub(super) fn parse_border_image_slice<'i, 't>(
         .ok_or_else(|| unsupported_value(input, None, "border-image-slice is missing a value"))
 }
 
-fn parse_border_image_slice_component<'i, 't>(
+pub(super) fn parse_border_image_slice_component<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorderImageSliceComponent, ParseError<'i, Error>> {
@@ -484,7 +484,7 @@ fn parse_border_image_repeat_keyword<'i, 't>(
     }
 }
 
-fn next_starts_border_image_repeat<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
+pub(super) fn next_starts_border_image_repeat<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
     let state = input.state();
     let starts = matches!(
         input.next(),
@@ -498,7 +498,7 @@ fn next_starts_border_image_repeat<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
     starts
 }
 
-fn next_starts_border_image_slice<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
+pub(super) fn next_starts_border_image_slice<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
     let state = input.state();
     let starts = match input.next() {
         Ok(Token::Number { .. } | Token::Percentage { .. }) => true,
@@ -583,7 +583,7 @@ fn parse_border_image_slice_prefix<'i, 't>(
         .ok_or_else(|| unsupported_value(input, None, "border-image-slice is missing a value"))
 }
 
-fn parse_border_image_width_prefix<'i, 't>(
+pub(super) fn parse_border_image_width_prefix<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorderImageWidth, ParseError<'i, Error>> {
@@ -598,7 +598,7 @@ fn parse_border_image_width_prefix<'i, 't>(
         .ok_or_else(|| unsupported_value(input, None, "border-image-width is missing a value"))
 }
 
-fn parse_border_image_outset_prefix<'i, 't>(
+pub(super) fn parse_border_image_outset_prefix<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorderImageOutset, ParseError<'i, Error>> {
@@ -613,7 +613,7 @@ fn parse_border_image_outset_prefix<'i, 't>(
         .ok_or_else(|| unsupported_value(input, None, "border-image-outset is missing a value"))
 }
 
-fn parse_border_image_repeat_prefix<'i, 't>(
+pub(super) fn parse_border_image_repeat_prefix<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssBorderImageRepeat, ParseError<'i, Error>> {
     let horizontal = parse_border_image_repeat_keyword(input)?;

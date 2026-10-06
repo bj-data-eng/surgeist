@@ -524,6 +524,12 @@ pub surgeist_css::CssClipPath::Url(surgeist_css::CssUrl)
 impl surgeist_css::CssClipPath
 pub fn surgeist_css::CssClipPath::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssClipPath::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssClipRule
+pub surgeist_css::CssClipRule::Evenodd
+pub surgeist_css::CssClipRule::Nonzero
+impl surgeist_css::CssClipRule
+pub fn surgeist_css::CssClipRule::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssClipRule::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssColorComponent
 pub surgeist_css::CssColorComponent::HintedNumberCalculation(surgeist_css::CssHintedNumberCalculation)
 pub surgeist_css::CssColorComponent::None
@@ -2259,6 +2265,7 @@ pub surgeist_css::CssKnownProperty::CaretShape
 pub surgeist_css::CssKnownProperty::Clear
 pub surgeist_css::CssKnownProperty::Clip
 pub surgeist_css::CssKnownProperty::ClipPath
+pub surgeist_css::CssKnownProperty::ClipRule
 pub surgeist_css::CssKnownProperty::Color
 pub surgeist_css::CssKnownProperty::ColorAdjust
 pub surgeist_css::CssKnownProperty::ColorScheme
@@ -2399,10 +2406,22 @@ pub surgeist_css::CssKnownProperty::MarginRight
 pub surgeist_css::CssKnownProperty::MarginTop
 pub surgeist_css::CssKnownProperty::MarkerSide
 pub surgeist_css::CssKnownProperty::Mask
+pub surgeist_css::CssKnownProperty::MaskBorder
+pub surgeist_css::CssKnownProperty::MaskBorderMode
+pub surgeist_css::CssKnownProperty::MaskBorderOutset
+pub surgeist_css::CssKnownProperty::MaskBorderRepeat
+pub surgeist_css::CssKnownProperty::MaskBorderSlice
+pub surgeist_css::CssKnownProperty::MaskBorderSource
+pub surgeist_css::CssKnownProperty::MaskBorderWidth
+pub surgeist_css::CssKnownProperty::MaskClip
+pub surgeist_css::CssKnownProperty::MaskComposite
 pub surgeist_css::CssKnownProperty::MaskImage
+pub surgeist_css::CssKnownProperty::MaskMode
+pub surgeist_css::CssKnownProperty::MaskOrigin
 pub surgeist_css::CssKnownProperty::MaskPosition
 pub surgeist_css::CssKnownProperty::MaskRepeat
 pub surgeist_css::CssKnownProperty::MaskSize
+pub surgeist_css::CssKnownProperty::MaskType
 pub surgeist_css::CssKnownProperty::MaxBlockSize
 pub surgeist_css::CssKnownProperty::MaxHeight
 pub surgeist_css::CssKnownProperty::MaxInlineSize
@@ -2689,6 +2708,7 @@ pub surgeist_css::CssKnownPropertyValueRef::CaretShape(&'a surgeist_css::CssCare
 pub surgeist_css::CssKnownPropertyValueRef::Clear(&'a surgeist_css::CssClearPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Clip(&'a surgeist_css::CssClipPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ClipPath(&'a surgeist_css::CssClipPathPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ClipRule(&'a surgeist_css::CssClipRulePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Color(&'a surgeist_css::CssColorPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ColorAdjust(&'a surgeist_css::CssColorAdjustPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ColorScheme(&'a surgeist_css::CssColorSchemePropertyValue)
@@ -2829,10 +2849,22 @@ pub surgeist_css::CssKnownPropertyValueRef::MarginRight(&'a surgeist_css::CssMar
 pub surgeist_css::CssKnownPropertyValueRef::MarginTop(&'a surgeist_css::CssMarginTopPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::MarkerSide(&'a surgeist_css::CssMarkerSidePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Mask(&'a surgeist_css::CssMaskPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::MaskBorder(&'a surgeist_css::CssMaskBorderPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::MaskBorderMode(&'a surgeist_css::CssMaskBorderModePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::MaskBorderOutset(&'a surgeist_css::CssMaskBorderOutsetPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::MaskBorderRepeat(&'a surgeist_css::CssMaskBorderRepeatPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::MaskBorderSlice(&'a surgeist_css::CssMaskBorderSlicePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::MaskBorderSource(&'a surgeist_css::CssMaskBorderSourcePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::MaskBorderWidth(&'a surgeist_css::CssMaskBorderWidthPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::MaskClip(&'a surgeist_css::CssMaskClipPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::MaskComposite(&'a surgeist_css::CssMaskCompositePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::MaskImage(&'a surgeist_css::CssMaskImagePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::MaskMode(&'a surgeist_css::CssMaskModePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::MaskOrigin(&'a surgeist_css::CssMaskOriginPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::MaskPosition(&'a surgeist_css::CssMaskPositionPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::MaskRepeat(&'a surgeist_css::CssMaskRepeatPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::MaskSize(&'a surgeist_css::CssMaskSizePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::MaskType(&'a surgeist_css::CssMaskTypePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::MaxBlockSize(&'a surgeist_css::CssMaxBlockSizePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::MaxHeight(&'a surgeist_css::CssMaxHeightPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::MaxInlineSize(&'a surgeist_css::CssMaxInlineSizePropertyValue)
@@ -3197,6 +3229,7 @@ pub surgeist_css::CssLonghandValueRef::CaretShape(&'a surgeist_css::CssCaretShap
 pub surgeist_css::CssLonghandValueRef::Clear(&'a surgeist_css::CssClear)
 pub surgeist_css::CssLonghandValueRef::Clip(&'a surgeist_css::CssClip)
 pub surgeist_css::CssLonghandValueRef::ClipPath(&'a surgeist_css::CssClipPath)
+pub surgeist_css::CssLonghandValueRef::ClipRule(&'a surgeist_css::CssClipRule)
 pub surgeist_css::CssLonghandValueRef::Color(&'a surgeist_css::CssColor)
 pub surgeist_css::CssLonghandValueRef::ColorScheme(&'a surgeist_css::CssColorScheme)
 pub surgeist_css::CssLonghandValueRef::ColumnCount(&'a surgeist_css::CssColumnCount)
@@ -3310,7 +3343,21 @@ pub surgeist_css::CssLonghandValueRef::MarginLeft(&'a surgeist_css::CssMarginVal
 pub surgeist_css::CssLonghandValueRef::MarginRight(&'a surgeist_css::CssMarginValue)
 pub surgeist_css::CssLonghandValueRef::MarginTop(&'a surgeist_css::CssMarginValue)
 pub surgeist_css::CssLonghandValueRef::MarkerSide(&'a surgeist_css::CssMarkerSide)
+pub surgeist_css::CssLonghandValueRef::MaskBorderMode(&'a surgeist_css::CssMaskType)
+pub surgeist_css::CssLonghandValueRef::MaskBorderOutset(&'a surgeist_css::CssBorderImageOutset)
+pub surgeist_css::CssLonghandValueRef::MaskBorderRepeat(&'a surgeist_css::CssBorderImageRepeat)
+pub surgeist_css::CssLonghandValueRef::MaskBorderSlice(&'a surgeist_css::CssBorderImageSlice)
+pub surgeist_css::CssLonghandValueRef::MaskBorderSource(&'a surgeist_css::CssImageValue)
+pub surgeist_css::CssLonghandValueRef::MaskBorderWidth(&'a surgeist_css::CssBorderImageWidth)
+pub surgeist_css::CssLonghandValueRef::MaskClip(&'a surgeist_css::CssMaskClipList)
+pub surgeist_css::CssLonghandValueRef::MaskComposite(&'a surgeist_css::CssMaskCompositeList)
 pub surgeist_css::CssLonghandValueRef::MaskImage(&'a surgeist_css::CssImageValueList)
+pub surgeist_css::CssLonghandValueRef::MaskMode(&'a surgeist_css::CssMaskModeList)
+pub surgeist_css::CssLonghandValueRef::MaskOrigin(&'a surgeist_css::CssMaskBoxList)
+pub surgeist_css::CssLonghandValueRef::MaskPosition(&'a surgeist_css::CssPhysicalPositionList)
+pub surgeist_css::CssLonghandValueRef::MaskRepeat(&'a surgeist_css::CssBackgroundRepeatList)
+pub surgeist_css::CssLonghandValueRef::MaskSize(&'a surgeist_css::CssBackgroundSizeList)
+pub surgeist_css::CssLonghandValueRef::MaskType(&'a surgeist_css::CssMaskType)
 pub surgeist_css::CssLonghandValueRef::MaxBlockSize(&'a surgeist_css::CssMaxSizeValue)
 pub surgeist_css::CssLonghandValueRef::MaxHeight(&'a surgeist_css::CssMaxSizeValue)
 pub surgeist_css::CssLonghandValueRef::MaxInlineSize(&'a surgeist_css::CssMaxSizeValue)
@@ -3472,6 +3519,58 @@ pub surgeist_css::CssMarkerSide::MatchSelf
 impl surgeist_css::CssMarkerSide
 pub fn surgeist_css::CssMarkerSide::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssMarkerSide::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssMaskBox
+pub surgeist_css::CssMaskBox::BorderBox
+pub surgeist_css::CssMaskBox::ContentBox
+pub surgeist_css::CssMaskBox::FillBox
+pub surgeist_css::CssMaskBox::PaddingBox
+pub surgeist_css::CssMaskBox::StrokeBox
+pub surgeist_css::CssMaskBox::ViewBox
+impl surgeist_css::CssMaskBox
+pub const fn surgeist_css::CssMaskBox::keyword(self) -> &'static str
+pub const fn surgeist_css::CssMaskBox::try_new(value: surgeist_css::CssBoxEdgeKeyword) -> core::option::Option<Self>
+impl surgeist_css::CssMaskBox
+pub fn surgeist_css::CssMaskBox::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssMaskBox::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssMaskClip
+pub surgeist_css::CssMaskClip::Box(surgeist_css::CssMaskBox)
+pub surgeist_css::CssMaskClip::NoClip
+impl surgeist_css::CssMaskClip
+pub fn surgeist_css::CssMaskClip::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssMaskClip::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssMaskComposite
+pub surgeist_css::CssMaskComposite::Add
+pub surgeist_css::CssMaskComposite::Exclude
+pub surgeist_css::CssMaskComposite::Intersect
+pub surgeist_css::CssMaskComposite::Subtract
+impl surgeist_css::CssMaskComposite
+pub fn surgeist_css::CssMaskComposite::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssMaskComposite::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssMaskLayerBoxes
+pub surgeist_css::CssMaskLayerBoxes::Box(surgeist_css::CssMaskBox)
+pub surgeist_css::CssMaskLayerBoxes::NoClip
+pub surgeist_css::CssMaskLayerBoxes::Pair
+pub surgeist_css::CssMaskLayerBoxes::Pair::clip: surgeist_css::CssMaskClip
+pub surgeist_css::CssMaskLayerBoxes::Pair::origin: surgeist_css::CssMaskBox
+impl surgeist_css::CssMaskLayerBoxes
+pub const fn surgeist_css::CssMaskLayerBoxes::clip(self) -> surgeist_css::CssMaskClip
+pub const fn surgeist_css::CssMaskLayerBoxes::origin(self) -> core::option::Option<surgeist_css::CssMaskBox>
+impl surgeist_css::CssMaskLayerBoxes
+pub fn surgeist_css::CssMaskLayerBoxes::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssMaskLayerBoxes::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssMaskMode
+pub surgeist_css::CssMaskMode::Alpha
+pub surgeist_css::CssMaskMode::Luminance
+pub surgeist_css::CssMaskMode::MatchSource
+impl surgeist_css::CssMaskMode
+pub fn surgeist_css::CssMaskMode::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssMaskMode::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssMaskType
+pub surgeist_css::CssMaskType::Alpha
+pub surgeist_css::CssMaskType::Luminance
+impl surgeist_css::CssMaskType
+pub fn surgeist_css::CssMaskType::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssMaskType::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub enum surgeist_css::CssMathFunction
 pub surgeist_css::CssMathFunction::Abs
 pub surgeist_css::CssMathFunction::Acos
@@ -6306,6 +6405,10 @@ pub const fn surgeist_css::CssClipRect::top(&self) -> &surgeist_css::CssClipEdge
 impl surgeist_css::CssClipRect
 pub fn surgeist_css::CssClipRect::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssClipRect::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssClipRulePropertyValue
+impl surgeist_css::CssClipRulePropertyValue
+pub fn surgeist_css::CssClipRulePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssClipRulePropertyValue::value(&self) -> &surgeist_css::CssClipRule
 pub struct surgeist_css::CssColor
 impl surgeist_css::CssColor
 pub fn surgeist_css::CssColor::absolute_eligibility(&self) -> surgeist_css::CssAbsoluteColorEligibility
@@ -8826,14 +8929,89 @@ pub struct surgeist_css::CssMarkerSidePropertyValue
 impl surgeist_css::CssMarkerSidePropertyValue
 pub fn surgeist_css::CssMarkerSidePropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssMarkerSidePropertyValue::value(&self) -> &surgeist_css::CssMarkerSide
+pub struct surgeist_css::CssMaskBorder
+impl surgeist_css::CssMaskBorder
+pub const fn surgeist_css::CssMaskBorder::mode(&self) -> core::option::Option<surgeist_css::CssMaskType>
+pub const fn surgeist_css::CssMaskBorder::outset(&self) -> core::option::Option<&surgeist_css::CssBorderImageOutset>
+pub const fn surgeist_css::CssMaskBorder::repeat(&self) -> core::option::Option<surgeist_css::CssBorderImageRepeat>
+pub const fn surgeist_css::CssMaskBorder::slice(&self) -> core::option::Option<&surgeist_css::CssBorderImageSlice>
+pub const fn surgeist_css::CssMaskBorder::source(&self) -> core::option::Option<&surgeist_css::CssImageValue>
+pub fn surgeist_css::CssMaskBorder::try_new(source: core::option::Option<surgeist_css::CssImageValue>, slice: core::option::Option<surgeist_css::CssBorderImageSlice>, width: core::option::Option<surgeist_css::CssBorderImageWidth>, outset: core::option::Option<surgeist_css::CssBorderImageOutset>, repeat: core::option::Option<surgeist_css::CssBorderImageRepeat>, mode: core::option::Option<surgeist_css::CssMaskType>) -> core::option::Option<Self>
+pub const fn surgeist_css::CssMaskBorder::width(&self) -> core::option::Option<&surgeist_css::CssBorderImageWidth>
+impl surgeist_css::CssMaskBorder
+pub fn surgeist_css::CssMaskBorder::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssMaskBorder::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssMaskBorderModePropertyValue
+impl surgeist_css::CssMaskBorderModePropertyValue
+pub fn surgeist_css::CssMaskBorderModePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssMaskBorderModePropertyValue::mode(&self) -> &surgeist_css::CssMaskType
+pub struct surgeist_css::CssMaskBorderOutsetPropertyValue
+impl surgeist_css::CssMaskBorderOutsetPropertyValue
+pub fn surgeist_css::CssMaskBorderOutsetPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssMaskBorderOutsetPropertyValue::outsets(&self) -> &surgeist_css::CssBorderImageOutset
+pub struct surgeist_css::CssMaskBorderPropertyValue
+impl surgeist_css::CssMaskBorderPropertyValue
+pub fn surgeist_css::CssMaskBorderPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssMaskBorderPropertyValue::value(&self) -> &surgeist_css::CssMaskBorder
+pub struct surgeist_css::CssMaskBorderRepeatPropertyValue
+impl surgeist_css::CssMaskBorderRepeatPropertyValue
+pub fn surgeist_css::CssMaskBorderRepeatPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssMaskBorderRepeatPropertyValue::repeat(&self) -> &surgeist_css::CssBorderImageRepeat
+pub struct surgeist_css::CssMaskBorderSlicePropertyValue
+impl surgeist_css::CssMaskBorderSlicePropertyValue
+pub fn surgeist_css::CssMaskBorderSlicePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssMaskBorderSlicePropertyValue::slice(&self) -> &surgeist_css::CssBorderImageSlice
+pub struct surgeist_css::CssMaskBorderSourcePropertyValue
+impl surgeist_css::CssMaskBorderSourcePropertyValue
+pub fn surgeist_css::CssMaskBorderSourcePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssMaskBorderSourcePropertyValue::source(&self) -> &surgeist_css::CssImageValue
+pub struct surgeist_css::CssMaskBorderWidthPropertyValue
+impl surgeist_css::CssMaskBorderWidthPropertyValue
+pub fn surgeist_css::CssMaskBorderWidthPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssMaskBorderWidthPropertyValue::widths(&self) -> &surgeist_css::CssBorderImageWidth
+pub struct surgeist_css::CssMaskBoxList
+impl surgeist_css::CssMaskBoxList
+pub fn surgeist_css::CssMaskBoxList::boxes(&self) -> &[surgeist_css::CssMaskBox]
+pub fn surgeist_css::CssMaskBoxList::try_new(values: alloc::vec::Vec<surgeist_css::CssMaskBox>) -> core::option::Option<Self>
+impl surgeist_css::CssMaskBoxList
+pub fn surgeist_css::CssMaskBoxList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssMaskBoxList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssMaskClipList
+impl surgeist_css::CssMaskClipList
+pub fn surgeist_css::CssMaskClipList::clips(&self) -> &[surgeist_css::CssMaskClip]
+pub fn surgeist_css::CssMaskClipList::try_new(values: alloc::vec::Vec<surgeist_css::CssMaskClip>) -> core::option::Option<Self>
+impl surgeist_css::CssMaskClipList
+pub fn surgeist_css::CssMaskClipList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssMaskClipList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssMaskClipPropertyValue
+impl surgeist_css::CssMaskClipPropertyValue
+pub fn surgeist_css::CssMaskClipPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssMaskClipPropertyValue::clips(&self) -> &surgeist_css::CssMaskClipList
+pub struct surgeist_css::CssMaskCompositeList
+impl surgeist_css::CssMaskCompositeList
+pub fn surgeist_css::CssMaskCompositeList::operators(&self) -> &[surgeist_css::CssMaskComposite]
+pub fn surgeist_css::CssMaskCompositeList::try_new(values: alloc::vec::Vec<surgeist_css::CssMaskComposite>) -> core::option::Option<Self>
+impl surgeist_css::CssMaskCompositeList
+pub fn surgeist_css::CssMaskCompositeList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssMaskCompositeList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssMaskCompositePropertyValue
+impl surgeist_css::CssMaskCompositePropertyValue
+pub fn surgeist_css::CssMaskCompositePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssMaskCompositePropertyValue::operators(&self) -> &surgeist_css::CssMaskCompositeList
 pub struct surgeist_css::CssMaskImagePropertyValue
 impl surgeist_css::CssMaskImagePropertyValue
 pub fn surgeist_css::CssMaskImagePropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssMaskImagePropertyValue::images(&self) -> &surgeist_css::CssImageValueList
 pub struct surgeist_css::CssMaskLayer
 impl surgeist_css::CssMaskLayer
+pub const fn surgeist_css::CssMaskLayer::boxes(&self) -> core::option::Option<surgeist_css::CssMaskLayerBoxes>
+pub const fn surgeist_css::CssMaskLayer::composite(&self) -> core::option::Option<surgeist_css::CssMaskComposite>
+pub const fn surgeist_css::CssMaskLayer::image(&self) -> core::option::Option<&surgeist_css::CssImageValue>
+pub const fn surgeist_css::CssMaskLayer::mode(&self) -> core::option::Option<surgeist_css::CssMaskMode>
 pub const fn surgeist_css::CssMaskLayer::position(&self) -> core::option::Option<&surgeist_css::CssPhysicalPosition>
-pub fn surgeist_css::CssMaskLayer::try_new(image: core::option::Option<surgeist_css::CssImageValue>, position: core::option::Option<surgeist_css::CssPhysicalPosition>, size: core::option::Option<surgeist_css::CssBackgroundSize>, repeat: core::option::Option<surgeist_css::CssBackgroundRepeat>) -> core::option::Option<Self>
+pub const fn surgeist_css::CssMaskLayer::repeat(&self) -> core::option::Option<surgeist_css::CssBackgroundRepeat>
+pub const fn surgeist_css::CssMaskLayer::size(&self) -> core::option::Option<&surgeist_css::CssBackgroundSize>
+pub fn surgeist_css::CssMaskLayer::try_new(image: core::option::Option<surgeist_css::CssImageValue>, position: core::option::Option<surgeist_css::CssPhysicalPosition>, size: core::option::Option<surgeist_css::CssBackgroundSize>, repeat: core::option::Option<surgeist_css::CssBackgroundRepeat>, boxes: core::option::Option<surgeist_css::CssMaskLayerBoxes>, composite: core::option::Option<surgeist_css::CssMaskComposite>, mode: core::option::Option<surgeist_css::CssMaskMode>) -> core::option::Option<Self>
 pub struct surgeist_css::CssMaskList
 impl surgeist_css::CssMaskList
 pub fn surgeist_css::CssMaskList::layers(&self) -> &[surgeist_css::CssMaskLayer]
@@ -8841,6 +9019,21 @@ pub fn surgeist_css::CssMaskList::try_new(layers: alloc::vec::Vec<surgeist_css::
 impl surgeist_css::CssMaskList
 pub fn surgeist_css::CssMaskList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssMaskList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssMaskModeList
+impl surgeist_css::CssMaskModeList
+pub fn surgeist_css::CssMaskModeList::modes(&self) -> &[surgeist_css::CssMaskMode]
+pub fn surgeist_css::CssMaskModeList::try_new(values: alloc::vec::Vec<surgeist_css::CssMaskMode>) -> core::option::Option<Self>
+impl surgeist_css::CssMaskModeList
+pub fn surgeist_css::CssMaskModeList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssMaskModeList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssMaskModePropertyValue
+impl surgeist_css::CssMaskModePropertyValue
+pub fn surgeist_css::CssMaskModePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssMaskModePropertyValue::modes(&self) -> &surgeist_css::CssMaskModeList
+pub struct surgeist_css::CssMaskOriginPropertyValue
+impl surgeist_css::CssMaskOriginPropertyValue
+pub fn surgeist_css::CssMaskOriginPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssMaskOriginPropertyValue::boxes(&self) -> &surgeist_css::CssMaskBoxList
 pub struct surgeist_css::CssMaskPositionPropertyValue
 impl surgeist_css::CssMaskPositionPropertyValue
 pub fn surgeist_css::CssMaskPositionPropertyValue::as_css(&self) -> &str
@@ -8857,6 +9050,10 @@ pub struct surgeist_css::CssMaskSizePropertyValue
 impl surgeist_css::CssMaskSizePropertyValue
 pub fn surgeist_css::CssMaskSizePropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssMaskSizePropertyValue::sizes(&self) -> &surgeist_css::CssBackgroundSizeList
+pub struct surgeist_css::CssMaskTypePropertyValue
+impl surgeist_css::CssMaskTypePropertyValue
+pub fn surgeist_css::CssMaskTypePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssMaskTypePropertyValue::value(&self) -> &surgeist_css::CssMaskType
 pub struct surgeist_css::CssMaxBlockSizePropertyValue
 impl surgeist_css::CssMaxBlockSizePropertyValue
 pub fn surgeist_css::CssMaxBlockSizePropertyValue::as_css(&self) -> &str

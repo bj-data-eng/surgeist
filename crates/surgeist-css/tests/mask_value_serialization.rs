@@ -1,5 +1,5 @@
 #![forbid(unsafe_code)]
-//! Represented Masking 1 §7.9 fields; full mask lifecycle remains outside this provider.
+//! Retained original Masking 1 §7.9 image/position/size/repeat provider contracts.
 //! https://www.w3.org/TR/2021/CRD-css-masking-1-20210805/#the-mask
 
 use surgeist_css::*;
@@ -83,7 +83,16 @@ fn parsed_fields_emit_in_canonical_layer_order() {
 #[test]
 fn constructed_size_synthesizes_position_without_changing_omission() {
     let value = CssMaskList::try_new(vec![
-        CssMaskLayer::try_new(None, None, Some(CssBackgroundSize::Contain), None).unwrap(),
+        CssMaskLayer::try_new(
+            None,
+            None,
+            Some(CssBackgroundSize::Contain),
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap(),
     ])
     .unwrap();
     bounds(&value, "0% 0% / contain", 3, 5);
@@ -134,7 +143,7 @@ fn programmatic_numeric_position_keeps_exact_token_and_origin_after_rounding() {
     )
     .unwrap();
     let value = CssMaskList::try_new(vec![
-        CssMaskLayer::try_new(None, Some(position), None, None).unwrap(),
+        CssMaskLayer::try_new(None, Some(position), None, None, None, None, None).unwrap(),
     ])
     .unwrap();
     bounds(&value, "0.123456px top", 6, 6);
@@ -159,11 +168,31 @@ fn constructors_preserve_order_and_omitted_image_position_size_repeat() {
             None,
             Some(CssBackgroundSize::Cover),
             None,
+            None,
+            None,
+            None,
         )
         .unwrap(),
-        CssMaskLayer::try_new(None, Some(center), None, Some(CssBackgroundRepeat::RepeatX))
-            .unwrap(),
-        CssMaskLayer::try_new(Some(CssImageValue::None), None, None, None).unwrap(),
+        CssMaskLayer::try_new(
+            None,
+            Some(center),
+            None,
+            Some(CssBackgroundRepeat::RepeatX),
+            None,
+            None,
+            None,
+        )
+        .unwrap(),
+        CssMaskLayer::try_new(
+            Some(CssImageValue::None),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap(),
     ])
     .unwrap();
     let before = value.clone();
@@ -174,7 +203,7 @@ fn constructors_preserve_order_and_omitted_image_position_size_repeat() {
     assert_eq!(value, before);
     assert!(value.layers()[0].position().is_none());
     assert!(CssMaskList::try_new(vec![]).is_none());
-    assert!(CssMaskLayer::try_new(None, None, None, None).is_none());
+    assert!(CssMaskLayer::try_new(None, None, None, None, None, None, None).is_none());
 }
 
 #[test]

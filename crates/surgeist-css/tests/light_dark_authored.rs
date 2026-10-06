@@ -407,7 +407,8 @@ fn mask_shorthand_admits_plain_and_light_dark_gradients_with_checked_layer_parit
     ] {
         let image = images(css).images()[0].clone();
         let checked = CssMaskList::try_new(vec![
-            CssMaskLayer::try_new(Some(image), None, None, None).expect("Masking admits images"),
+            CssMaskLayer::try_new(Some(image), None, None, None, None, None, None)
+                .expect("Masking admits images"),
         ])
         .unwrap();
         let source = declaration(&format!("mask:{css}"));
@@ -426,7 +427,7 @@ fn mask_shorthand_admits_plain_and_light_dark_gradients_with_checked_layer_parit
         assert_eq!(value.value().layers().len(), 1);
         assert!(value.value().layers()[0].position().is_some());
     }
-    assert!(CssMaskLayer::try_new(None, None, None, None).is_none());
+    assert!(CssMaskLayer::try_new(None, None, None, None, None, None, None).is_none());
 }
 
 #[test]

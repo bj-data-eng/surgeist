@@ -38,7 +38,7 @@ fn mask_shorthand_retains_url_none_and_gradients() {
             panic!("mask shorthand");
         };
         let expected = CssMaskList::try_new(vec![
-            CssMaskLayer::try_new(Some(image), None, None, None).unwrap(),
+            CssMaskLayer::try_new(Some(image), None, None, None, None, None, None).unwrap(),
         ])
         .unwrap();
         assert_eq!(value.value(), &expected);
@@ -58,28 +58,63 @@ fn mask_shorthand_retains_url_none_and_gradients() {
 
 #[test]
 fn mask_layer_construction_accepts_images_and_preserves_nonempty_boundary() {
-    assert!(CssMaskLayer::try_new(None, None, None, None).is_none());
-    assert!(CssMaskLayer::try_new(Some(CssImageValue::None), None, None, None).is_some());
+    assert!(CssMaskLayer::try_new(None, None, None, None, None, None, None).is_none());
+    assert!(
+        CssMaskLayer::try_new(
+            Some(CssImageValue::None),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None
+        )
+        .is_some()
+    );
     assert!(
         CssMaskLayer::try_new(
             Some(CssImageValue::Url(CssUrl::new("mask.svg"))),
             None,
             None,
             None,
+            None,
+            None,
+            None
         )
         .is_some()
     );
-    assert!(CssMaskLayer::try_new(None, None, Some(CssBackgroundSize::Contain), None).is_some());
+    assert!(
+        CssMaskLayer::try_new(
+            None,
+            None,
+            Some(CssBackgroundSize::Contain),
+            None,
+            None,
+            None,
+            None
+        )
+        .is_some()
+    );
     let source = declaration("background-image: linear-gradient(red, blue)");
     let gradient = authored(&source).images()[0].clone();
     assert!(matches!(
         gradient,
         CssImageValue::Gradient(CssGradient::Linear(_))
     ));
-    assert!(CssMaskLayer::try_new(Some(gradient.clone()), None, None, None).is_some());
     assert!(
-        CssMaskLayer::try_new(Some(gradient), None, Some(CssBackgroundSize::Contain), None)
-            .is_some()
+        CssMaskLayer::try_new(Some(gradient.clone()), None, None, None, None, None, None).is_some()
+    );
+    assert!(
+        CssMaskLayer::try_new(
+            Some(gradient),
+            None,
+            Some(CssBackgroundSize::Contain),
+            None,
+            None,
+            None,
+            None
+        )
+        .is_some()
     );
 }
 

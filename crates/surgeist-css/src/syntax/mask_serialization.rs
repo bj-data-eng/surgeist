@@ -1,4 +1,4 @@
-//! Specified serialization of the represented Masking 1 layer fields.
+//! Specified serialization of authored Masking 1 layers.
 
 use super::{CssMaskLayer, CssMaskList};
 use crate::{
@@ -9,7 +9,7 @@ use crate::{
 type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
 
 impl CssMaskList {
-    /// Serializes the represented image, position, size and repeat fields in layer order.
+    /// Serializes all eight authored fields in canonical layer order.
     /// Authored omissions, symbolic values and source origins remain unchanged.
     pub fn serialize_specified(&self) -> Result<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
@@ -74,6 +74,18 @@ fn append_layer(layer: &CssMaskLayer, writer: &mut SpecifiedRuleWriter) -> Resul
         before_field(writer, &mut emitted)?;
         repeat.append_to_rule_writer(writer)?;
     }
+    if let Some(boxes) = layer.boxes {
+        before_field(writer, &mut emitted)?;
+        boxes.append_to_rule_writer(writer)?;
+    }
+    if let Some(composite) = layer.composite {
+        before_field(writer, &mut emitted)?;
+        composite.append_to_rule_writer(writer)?;
+    }
+    if let Some(mode) = layer.mode {
+        before_field(writer, &mut emitted)?;
+        mode.append_to_rule_writer(writer)?;
+    }
     Ok(())
 }
 
@@ -87,7 +99,16 @@ mod tests {
 
     fn sized() -> CssMaskList {
         CssMaskList::try_new(vec![
-            CssMaskLayer::try_new(None, None, Some(CssBackgroundSize::Contain), None).unwrap(),
+            CssMaskLayer::try_new(
+                None,
+                None,
+                Some(CssBackgroundSize::Contain),
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap(),
         ])
         .unwrap()
     }
@@ -133,6 +154,9 @@ mod tests {
                     x: CssBackgroundRepeatStyle::Repeat,
                     y: CssBackgroundRepeatStyle::Repeat,
                 }),
+                None,
+                None,
+                None,
             )
             .unwrap(),
         ])

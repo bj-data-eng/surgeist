@@ -5011,8 +5011,9 @@ components; they do not load images or match layers with sibling properties.
 The mask shorthand uses the same shared image/`none` grammar, including selected
 gradients and LightDark images, as `mask-image`, following Masking 1 §7.1/§7.9.
 `CssMaskLayer::try_new` accepts those images and rejects wholly empty layers.
-Its existing position, size and repeat contracts remain; other mask components
-remain unfinished.
+It also retains optional physical position, size, repeat, box binding, composite
+and mode fields. See [authored Masking](#authored-masking) for their composed
+lifecycle and the mask-border domains.
 
 ```rust
 use surgeist_css::{
@@ -7439,6 +7440,88 @@ Functional typed-API and exact budget examples are exercised in
 existing authored front-door lifecycle suite is
 [`ui_remaining_authored_contract.rs`](../tests/ui_remaining_authored_contract.rs).
 
+## Authored Masking
+
+The selected [Masking 1 CRD 2021-08-05](https://www.w3.org/TR/2021/CRD-css-masking-1-20210805/)
+properties use the ordinary declaration lifecycle: authored parsing and checked
+component/text fronts, whole-value CSS-wide keywords, browser recovery with
+source spans, strict pending replacement reentry, intrinsic expansion and
+normalization, and cumulative specified serialization. Parsed numeric and image
+children keep their origins; programmatic constructors retain their original
+checked components. CSS owns these authored contracts. Contextual bases, cascade,
+resource loading, SVG geometry, used boxes, clipping and compositing execution
+belong downstream. The selected module defines no at-rule.
+
+`mask-mode`, `mask-origin`, `mask-clip` and `mask-composite` expose nonempty
+`CssMaskModeList`, `CssMaskBoxList`, `CssMaskClipList` and
+`CssMaskCompositeList`. Every comma-separated entry remains ordered; the list
+arity is independent of `mask-image`. Their noninherited initials are respectively
+one `match-source`, `border-box`, `border-box` and `add`. The existing noninherited
+position, size and repeat lists initially contain `0% 0%`, `auto` and `repeat`.
+The initial image list contains `none`.
+
+`CssMaskBox` narrows the shared geometry keyword to content, padding, border,
+fill, stroke and view boxes. `margin-box` is rejected by mask-origin and mask-clip;
+clip-path keeps its independent seven-box domain. The pin's generic geometry-box
+cross-reference imports shape-box, which includes margin-box, while its
+property-specific six value definitions and change list remove margin-box from
+these two properties. The selected property-specific domain follows those six
+values; the frozen WebKit source corroborates that domain. `no-clip` belongs only
+to `CssMaskClip`. `CssMaskLayerBoxes::Box` records one box that sets both origin
+and clip; `Pair` retains ordered origin/clip slots. A box and no-clip may be
+input in either order, and canonical output orders the box first. `NoClip` alone
+sets clip and leaves origin omitted for intrinsic border-box initialization.
+Two equal authored boxes remain distinct from one shared box.
+
+`mask` has eight settable members, in image, position, size, repeat, origin,
+clip, composite and mode order. It also resets all six mask-border longhands,
+in source, slice, width, outset, repeat and mode order. Expansion uses one scalar
+schema initial per omitted layer slot and preserves every authored layer;
+CSS-wide keywords contribute to all fourteen members. Position and slash-size
+form one contiguous grammar group. The checked layer constructor accepts all
+seven optional groups directly, including a size without a position; specified
+serialization supplies `0% 0%` for that case without changing the authored model.
+
+`CssMaskBorder` retains six optional components and requires a slice before a
+width or outset. Its shorthand has exactly six settable members and no reset-only
+members. The noninherited initials are source `none`, slice number `0`, width
+`auto`, outset number `0`, repeat `stretch` and mode `alpha`. The existing checked
+`CssBorderImageSlice`, `CssBorderImageWidth`, `CssBorderImageOutset` and
+`CssBorderImageRepeat` models provide the imported nonnegative side domains and
+one-to-four edge expansion. Slice distinguishes Number, Percentage and hinted
+Number calculations; width distinguishes Auto, Number, hinted Number math and
+LengthPercentage; outset distinguishes Number and Length. These distinctions
+remain authored, before used-value percentage bases or range handling.
+
+Masking owns the slice syntax: optional `fill` follows the entire one-to-four
+value sequence. Leading or interleaved fill is rejected here, while border-image
+keeps its independent `&& fill` policy. The first slash has an optional width,
+so `mask-border: 10 /` and `10 / / 2` are valid. A second slash requires an
+outset. The selected table's undefined `<number-percentage>` Values 3 link is
+interpreted through the imported Number-or-Percentage side production and the
+existing Values 4 hinted math owner. Numeric precision and canonical formatting
+use the [shared math policy](#authored-opacity-and-specified-serialization), including
+its existing finite binary64 projection; Masking adds no numeric engine.
+
+`clip-rule` retains `CssClipRule::Nonzero | Evenodd`, inherits and initially is
+nonzero. `mask-type` retains `CssMaskType::Luminance | Alpha`, does not inherit
+and initially is luminance. Mask-border-mode uses that two-keyword scalar domain
+with its own alpha initial. `CssMaskMode` independently adds match-source for
+referencing-element image interpretation.
+
+Specified providers compose one cumulative writer. Each scalar costs one input
+and projection node; a list adds one node before all of its ordered children.
+A box group adds one node before its one or two scalars. Mask-border adds one node
+before its retained children and writes source, slice/slash-width/slash-outset,
+repeat and mode in that order. Stored fields remain explicit; side compression
+visits all four expanded edges through the existing edge providers. For example,
+`none padding-box no-clip exclude alpha` costs eight input and eight projection
+nodes including its mask list and layer. A constructed mask-border with source
+None, slice `10 fill`, width Auto, outset `2`, repeat Round/Space and Luminance
+mode costs thirty nodes in each work budget, even though each four-edge value
+shortens to one emitted component. Final UTF-8 bytes share the same cumulative
+limit; failures return no partial string and leave the source model retryable.
+
 ## Cursor images, transform, mask and Outline output
 
 `CssCursor::Images` holds a checked nonempty image list and a required fallback.
@@ -7477,15 +7560,17 @@ representability policy. A list, individual value, origin and function each cost
 one input and projection node; retained operands are visited even when ordinary
 defaults are omitted. Synthesized rotation operands cost projection work only.
 
-`CssMaskList` emits represented fields in image, position/size and repeat order,
+`CssMaskList` emits image, position/size, repeat, origin/clip boxes, composite and
+mode in canonical order,
 preserving layer order and stored omissions. A constructed size without position
 emits `0% 0% /` before that size to satisfy the
 [Masking 1 shorthand grammar](https://www.w3.org/TR/2021/CRD-css-masking-1-20210805/#the-mask).
 The generated position costs two projection nodes and no authored input nodes;
 it does not alter the layer. The list and each layer cost one node in each work
-budget, and children retain their own costs. Geometry boxes, mode, composite,
-shorthand resets and the full property lifecycle remain outside this represented
-provider.
+budget, and children retain their own costs. Each authored box group adds one
+node and visits its one or two scalar slots. Composite and mode each cost one
+node. The [authored Masking lifecycle](#authored-masking) uses this provider
+without resolving boxes, matching layers or executing compositing.
 
 Outline has a property-specific finite style domain excluding `hidden`, plus
 `CssOutlineColor::Auto`, the shared Color owner or a reusable `CssImage1D`. The selected

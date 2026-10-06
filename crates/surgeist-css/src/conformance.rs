@@ -2751,7 +2751,20 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::MaskImage
         | CssKnownProperty::MaskSize
         | CssKnownProperty::MaskPosition
-        | CssKnownProperty::MaskRepeat => S_MASKING1,
+        | CssKnownProperty::MaskRepeat
+        | CssKnownProperty::MaskMode
+        | CssKnownProperty::MaskOrigin
+        | CssKnownProperty::MaskClip
+        | CssKnownProperty::MaskComposite
+        | CssKnownProperty::MaskBorder
+        | CssKnownProperty::MaskBorderSource
+        | CssKnownProperty::MaskBorderSlice
+        | CssKnownProperty::MaskBorderWidth
+        | CssKnownProperty::MaskBorderOutset
+        | CssKnownProperty::MaskBorderRepeat
+        | CssKnownProperty::MaskBorderMode
+        | CssKnownProperty::ClipRule
+        | CssKnownProperty::MaskType => S_MASKING1,
         CssKnownProperty::TransitionProperty
         | CssKnownProperty::TransitionDuration
         | CssKnownProperty::TransitionDelay
@@ -2881,7 +2894,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 730] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 743] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -6264,28 +6277,91 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 730] = [
         "#propdef-clip-path",
         &[],
     ),
-    property_feature!(CssKnownProperty::Mask, "mask", "baseline.property.mask"),
-    property_feature!(
+    complete_property_feature!(CssKnownProperty::Mask, "mask", "baseline.property.mask"),
+    complete_property_feature!(
         CssKnownProperty::MaskImage,
         "mask-image",
         "baseline.property.mask-image"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::MaskSize,
         "mask-size",
         "baseline.property.mask-size"
     ),
-    CssFeatureMetadata::complete_property(
-        "baseline.property.mask-position",
+    complete_property_feature!(
         CssKnownProperty::MaskPosition,
         "mask-position",
-        "#propdef-mask-position",
-        &[],
+        "baseline.property.mask-position"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::MaskRepeat,
         "mask-repeat",
         "baseline.property.mask-repeat"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::MaskMode,
+        "mask-mode",
+        "official.property.mask-mode"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::MaskOrigin,
+        "mask-origin",
+        "official.property.mask-origin"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::MaskClip,
+        "mask-clip",
+        "official.property.mask-clip"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::MaskComposite,
+        "mask-composite",
+        "official.property.mask-composite"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::MaskBorder,
+        "mask-border",
+        "official.property.mask-border"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::MaskBorderSource,
+        "mask-border-source",
+        "official.property.mask-border-source"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::MaskBorderSlice,
+        "mask-border-slice",
+        "official.property.mask-border-slice"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::MaskBorderWidth,
+        "mask-border-width",
+        "official.property.mask-border-width"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::MaskBorderOutset,
+        "mask-border-outset",
+        "official.property.mask-border-outset"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::MaskBorderRepeat,
+        "mask-border-repeat",
+        "official.property.mask-border-repeat"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::MaskBorderMode,
+        "mask-border-mode",
+        "official.property.mask-border-mode"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ClipRule,
+        "clip-rule",
+        "official.property.clip-rule"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::MaskType,
+        "mask-type",
+        "official.property.mask-type"
     ),
     complete_property_feature!(
         CssKnownProperty::TransitionProperty,

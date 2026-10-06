@@ -47,6 +47,7 @@ pub enum CatalogExpectation {
         positive: &'static str,
         boundary: BoundaryExpectation,
         production: Option<&'static str>,
+        status: Option<CssSupportStatus>,
     },
     Complete {
         feature_id: &'static str,
@@ -138,7 +139,19 @@ const fn accepted(
 
 macro_rules! grammar_catalog {
     ($id:literal, $positive:literal, $boundary:expr $(, $production:literal)?) => {
-        CatalogExpectation::Grammar { feature_id: $id, positive: $positive, boundary: $boundary, production: optional!($($production)?) }
+        CatalogExpectation::Grammar { feature_id: $id, positive: $positive, boundary: $boundary, production: optional!($($production)?), status: None }
+    };
+}
+
+macro_rules! complete_grammar_catalog {
+    ($id:literal, $positive:literal, $boundary:expr) => {
+        CatalogExpectation::Grammar {
+            feature_id: $id,
+            positive: $positive,
+            boundary: $boundary,
+            production: None,
+            status: Some(CssSupportStatus::Complete),
+        }
     };
 }
 

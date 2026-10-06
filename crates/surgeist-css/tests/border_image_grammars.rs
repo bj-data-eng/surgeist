@@ -234,6 +234,22 @@ fn border_image_source_distinguishes_none_url_and_image_values() {
 
 #[test]
 fn image_orientation_rendering_and_object_fit_retain_typed_keywords() {
+    // Selected Images 3 section5.2 includes smooth as an ordinary keyword.
+    let smooth = parse_style_attribute("image-rendering: smooth");
+    assert!(smooth.is_clean());
+    let CssKnownPropertyValueRef::ImageRendering(value) = smooth.syntax()[0]
+        .known()
+        .unwrap()
+        .property_value()
+        .unwrap()
+    else {
+        panic!("typed smooth rendering keyword")
+    };
+    assert_eq!(value.rendering(), &CssImageRendering::Smooth);
+    assert_eq!(
+        smooth.syntax()[0].to_specified_css().unwrap(),
+        "image-rendering: smooth;"
+    );
     let report = parse_style_attribute(concat!(
         "image-orientation: from-image; ",
         "image-orientation: 0deg; ",
@@ -299,6 +315,37 @@ fn image_orientation_rendering_and_object_fit_retain_typed_keywords() {
             panic!("expected object-fit");
         };
         assert_eq!(value.fit(), &expected);
+    }
+}
+
+#[test]
+fn unordered_image_orientation_keeps_typed_angle_flip_and_adjacent_declarations() {
+    // Selected Images 3 section5.1: <angle> || flip admits either order.
+    // Retain the former negative stimulus as positive behavioral evidence.
+    for value in ["flip 90deg", "90deg flip"] {
+        let css = format!("--😀: kept; image-orientation: {value}; color: red");
+        let report = parse_style_attribute(&css);
+        assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
+        let [custom, orientation, color] = report.syntax().as_slice() else {
+            panic!("orientation and both adjacent declarations survive")
+        };
+        assert!(custom.known().is_none());
+        assert_eq!(color.known().unwrap().property(), CssKnownProperty::Color);
+        let CssKnownPropertyValueRef::ImageOrientation(typed) =
+            orientation.known().unwrap().property_value().unwrap()
+        else {
+            panic!("typed image-orientation")
+        };
+        let CssImageOrientation::Flip(Some(angle)) = typed.orientation() else {
+            panic!("authored angle and flip remain distinct")
+        };
+        let literal = angle.literal().unwrap();
+        assert_eq!(literal.numeric().representation(), "90");
+        assert_eq!(literal.unit(), CssAngleUnit::Degrees);
+        assert_eq!(
+            orientation.to_specified_css().unwrap(),
+            "image-orientation: 90deg flip;"
+        );
     }
 }
 
@@ -396,8 +443,8 @@ fn invalid_border_image_domains_drop_exact_declaration_and_keep_siblings() {
         ("border-image-repeat", "round space stretch", "stretch"),
         ("border-image-source", "none, url(frame.png)", ","),
         ("image-orientation", "90", "90"),
-        ("image-orientation", "flip 90deg", "90deg"),
-        ("image-rendering", "smooth", "smooth"),
+        ("image-orientation", "flip 90deg 45deg", "45deg"),
+        ("image-rendering", "smooth pixelated", "pixelated"),
         ("object-fit", "scale-up", "scale-up"),
     ];
 

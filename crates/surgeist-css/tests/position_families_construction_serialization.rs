@@ -301,7 +301,8 @@ fn restriction_lifting_and_restricted_consumers_keep_one_physical_payload() {
     };
     assert_eq!(view.horizontal(), physical.horizontal());
     assert_eq!(view.vertical(), physical.vertical());
-    let layer = CssMaskLayer::try_new(None, Some(physical.clone()), None, None).unwrap();
+    let layer =
+        CssMaskLayer::try_new(None, Some(physical.clone()), None, None, None, None, None).unwrap();
     assert_eq!(layer.position(), Some(&physical));
     let list = CssPhysicalPositionList::try_new(vec![physical.clone()]).unwrap();
     assert_eq!(list.positions(), std::slice::from_ref(&physical));

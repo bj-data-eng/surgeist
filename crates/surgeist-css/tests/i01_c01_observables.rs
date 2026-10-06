@@ -4833,6 +4833,9 @@ fn assert_known_property_value(
                         x: CssBackgroundRepeatStyle::NoRepeat,
                         y: CssBackgroundRepeatStyle::NoRepeat,
                     }),
+                    None,
+                    None,
+                    None,
                 )
                 .unwrap(),
             ])

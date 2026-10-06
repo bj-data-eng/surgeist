@@ -1,10 +1,8 @@
 //! Intrinsic declaration expansion, before cascade or contextual resolution.
 //!
-//! The property schema selects the supported box, border, flow-tolerance, color
-//! and inherited typography slice and
-//! owns its longhand types, initial values, shorthand members and reset-only
-//! members. Custom declarations retain their symbolic specified values.
-//! Unselected known properties return an explicit capability error.
+//! The property schema owns intrinsic expansion for every recognized property:
+//! longhand types, initial values, shorthand members and reset-only members.
+//! Custom declarations retain their symbolic specified values.
 
 use std::fmt;
 use std::sync::Arc;
@@ -526,7 +524,6 @@ macro_rules! define_expansion_schema {
                     };
                     Ok(&METADATA)
                 },
-                _ => Err(CssPropertyMetadataError::Unavailable(grammar)),
             }
         }
 
@@ -550,7 +547,6 @@ macro_rules! define_expansion_schema {
                         crate::CssBoxSideKind::Logical => &[$(Longhand::$logical,)+],
                     }))
                 })*
-                _ => Err(CssExpansionError::new(CssExpansionErrorKind::UnsupportedProperty(property))),
             }
         }
 
@@ -562,7 +558,6 @@ macro_rules! define_expansion_schema {
         }
 
         fn ordinary_values(
-            property: CssKnownProperty,
             value: CssKnownPropertyValueRef<'_>,
         ) -> Result<Vec<OwnedContributionValue>, CssExpansionError> {
             match value {
@@ -590,7 +585,6 @@ macro_rules! define_expansion_schema {
                         ],
                     })
                 })*
-                _ => Err(CssExpansionError::new(CssExpansionErrorKind::UnsupportedProperty(property))),
             }
         }
     };
@@ -740,11 +734,38 @@ timing_list_projection!(
     |values| CssAnimationNameList::try_new(values).expect("admitted animations are nonempty")
 );
 
+pub(crate) fn initial_mask_positions() -> CssPhysicalPositionList {
+    let zero = crate::CssSpecifiedLengthPercentage::try_from_component(
+        crate::CssComponentValue::try_token("0%").expect("percentage token"),
+    )
+    .expect("percentage length");
+    CssPhysicalPositionList::try_new(vec![
+        CssPhysicalPosition::try_new(
+            CssHorizontalPosition::Offset(zero.clone()),
+            CssVerticalPosition::Offset(zero),
+        )
+        .expect("physical position"),
+    ])
+    .expect("one initial position")
+}
+pub(crate) fn initial_mask_border_slice() -> CssBorderImageSlice {
+    CssBorderImageSlice::try_new(
+        vec![CssBorderImageSliceComponent::Number(
+            crate::CssSpecifiedNonNegativeNumber::try_from_component(
+                crate::CssComponentValue::try_number("0").expect("number token"),
+            )
+            .expect("nonnegative zero"),
+        )],
+        false,
+    )
+    .expect("one initial slice")
+}
+
 // Sparse authored layers need one scalar default per slot, not a whole-list fallback.
 // Each projection obtains its typed initial once from the central property schema.
 macro_rules! background_list_projection {
-    ($function:ident, $property:ident, $list:ty, $items:ident, $project:expr) => {
-        pub(crate) fn $function(background: &CssBackground) -> Option<$list> {
+    ($function:ident, $source:ty, $property:ident, $list:ty, $items:ident, $project:expr) => {
+        pub(crate) fn $function(background: &$source) -> Option<$list> {
             let initial = Longhand::$property.initial_value();
             let InitialValue::Value(initial) = initial.value else {
                 unreachable!("background list has an ordinary schema initial")
@@ -765,6 +786,7 @@ macro_rules! background_list_projection {
 
 background_list_projection!(
     background_images,
+    CssBackground,
     BackgroundImage,
     CssImageValueList,
     images,
@@ -772,6 +794,7 @@ background_list_projection!(
 );
 background_list_projection!(
     background_positions,
+    CssBackground,
     BackgroundPosition,
     CssBackgroundPositionList,
     positions,
@@ -779,6 +802,7 @@ background_list_projection!(
 );
 background_list_projection!(
     background_sizes,
+    CssBackground,
     BackgroundSize,
     CssBackgroundSizeList,
     sizes,
@@ -786,6 +810,7 @@ background_list_projection!(
 );
 background_list_projection!(
     background_repeats,
+    CssBackground,
     BackgroundRepeat,
     CssBackgroundRepeatList,
     repeats,
@@ -793,6 +818,7 @@ background_list_projection!(
 );
 background_list_projection!(
     background_attachments,
+    CssBackground,
     BackgroundAttachment,
     CssBackgroundAttachmentList,
     attachments,
@@ -800,6 +826,7 @@ background_list_projection!(
 );
 background_list_projection!(
     background_origins,
+    CssBackground,
     BackgroundOrigin,
     CssBackgroundBoxList,
     boxes,
@@ -807,10 +834,76 @@ background_list_projection!(
 );
 background_list_projection!(
     background_clips,
+    CssBackground,
     BackgroundClip,
     CssBackgroundBoxList,
     boxes,
     |layer: &CssBackgroundLayer| layer.boxes().map(CssBackgroundLayerBoxes::clip)
+);
+
+background_list_projection!(
+    mask_images,
+    CssMaskList,
+    MaskImage,
+    CssImageValueList,
+    images,
+    |layer: &CssMaskLayer| layer.image().cloned()
+);
+background_list_projection!(
+    mask_positions,
+    CssMaskList,
+    MaskPosition,
+    CssPhysicalPositionList,
+    positions,
+    |layer: &CssMaskLayer| layer.position().cloned()
+);
+background_list_projection!(
+    mask_sizes,
+    CssMaskList,
+    MaskSize,
+    CssBackgroundSizeList,
+    sizes,
+    |layer: &CssMaskLayer| layer.size().cloned()
+);
+background_list_projection!(
+    mask_repeats,
+    CssMaskList,
+    MaskRepeat,
+    CssBackgroundRepeatList,
+    repeats,
+    |layer: &CssMaskLayer| layer.repeat()
+);
+background_list_projection!(
+    mask_origins,
+    CssMaskList,
+    MaskOrigin,
+    CssMaskBoxList,
+    boxes,
+    |layer: &CssMaskLayer| layer.boxes().and_then(CssMaskLayerBoxes::origin)
+);
+background_list_projection!(
+    mask_clips,
+    CssMaskList,
+    MaskClip,
+    CssMaskClipList,
+    clips,
+    |layer: &CssMaskLayer| layer.boxes().map(CssMaskLayerBoxes::clip)
+);
+background_list_projection!(
+    mask_composites,
+    CssMaskList,
+    MaskComposite,
+    CssMaskCompositeList,
+    operators,
+    |layer: &CssMaskLayer| layer.composite()
+);
+background_list_projection!(
+    mask_modes,
+    CssMaskList,
+    MaskMode,
+    CssMaskModeList,
+    modes,
+    |layer: &CssMaskLayer| layer.mode()
 );
 
 #[derive(Clone, Copy, Debug)]
@@ -1033,13 +1126,13 @@ impl CssPendingSubstitution {
     }
 }
 
-/// Expands custom declarations and the schema-selected intrinsic property slice.
+/// Expands custom declarations and every recognized property intrinsically.
 ///
 /// Ordinary shorthands contribute every member, applying intrinsic initial
 /// values to omissions. `border` also resets the five border-image longhands;
 /// CSS-wide keywords propagate to ordinary and reset-only members alike. `all`
-/// remains a symbolic reset. Substitution-dependent supported declarations
-/// return a pending handle, and unselected known properties return typed errors.
+/// remains a symbolic reset. Substitution-dependent known declarations return a
+/// pending handle for strict grammar reentry after substitution.
 /// Custom declarations return one completed symbolic contribution even when their
 /// tokens contain `var()`; their values are not substituted or computed here.
 /// This operation does not choose cascade winners, substitute variables,
@@ -1136,9 +1229,9 @@ fn complete_contributions(
                         })
                         .collect()
                 }
-                CssFontValue::Explicit(_) => ordinary_values(known.property(), value)?,
+                CssFontValue::Explicit(_) => ordinary_values(value)?,
             },
-            _ => ordinary_values(known.property(), value)?,
+            _ => ordinary_values(value)?,
         },
         CssKnownDeclaredValueRef::SubstitutionDependent(_) => {
             return Err(CssExpansionError::new(

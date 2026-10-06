@@ -199,8 +199,9 @@ fn mask_and_shape_consumers_accept_the_generic_position_without_reinterpretation
     use CssVerticalPosition as V;
 
     let position = CssPhysicalPosition::try_new(H::Right, V::Bottom).unwrap();
-    assert!(CssMaskLayer::try_new(None, None, None, None).is_none());
-    let mask = CssMaskLayer::try_new(None, Some(position.clone()), None, None).unwrap();
+    assert!(CssMaskLayer::try_new(None, None, None, None, None, None, None).is_none());
+    let mask =
+        CssMaskLayer::try_new(None, Some(position.clone()), None, None, None, None, None).unwrap();
     assert!(matches!(mask.position().unwrap().horizontal(), H::Right));
     assert!(matches!(mask.position().unwrap().vertical(), V::Bottom));
 

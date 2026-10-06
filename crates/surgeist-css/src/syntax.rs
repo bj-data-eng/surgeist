@@ -8637,7 +8637,10 @@ mod shape_commands;
 pub use shape_commands::*;
 mod shapes;
 pub use shapes::*;
+mod masking;
+pub use masking::*;
 mod mask_serialization;
+mod masking_serialization;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssMaskLayer {
@@ -8645,43 +8648,72 @@ pub struct CssMaskLayer {
     position: Option<CssPhysicalPosition>,
     size: Option<CssBackgroundSize>,
     repeat: Option<CssBackgroundRepeat>,
+    boxes: Option<CssMaskLayerBoxes>,
+    composite: Option<CssMaskComposite>,
+    mode: Option<CssMaskMode>,
 }
 
 impl CssMaskLayer {
-    /// Constructs a nonempty mask layer with a checked image/none branch.
+    /// Constructs a nonempty layer from checked authored children. A size may
+    /// omit position; specified output generates position without mutating it.
     #[must_use]
     pub fn try_new(
         image: Option<CssImageValue>,
         position: Option<CssPhysicalPosition>,
         size: Option<CssBackgroundSize>,
         repeat: Option<CssBackgroundRepeat>,
+        boxes: Option<CssMaskLayerBoxes>,
+        composite: Option<CssMaskComposite>,
+        mode: Option<CssMaskMode>,
     ) -> Option<Self> {
-        if image.is_none() && position.is_none() && size.is_none() && repeat.is_none() {
+        if image.is_none()
+            && position.is_none()
+            && size.is_none()
+            && repeat.is_none()
+            && boxes.is_none()
+            && composite.is_none()
+            && mode.is_none()
+        {
             None
         } else {
-            Some(Self::new(image, position, size, repeat))
+            Some(Self {
+                image,
+                position,
+                size,
+                repeat,
+                boxes,
+                composite,
+                mode,
+            })
         }
     }
-
     #[must_use]
-    pub(crate) const fn new(
-        image: Option<CssImageValue>,
-        position: Option<CssPhysicalPosition>,
-        size: Option<CssBackgroundSize>,
-        repeat: Option<CssBackgroundRepeat>,
-    ) -> Self {
-        Self {
-            image,
-            position,
-            size,
-            repeat,
-        }
+    pub const fn image(&self) -> Option<&CssImageValue> {
+        self.image.as_ref()
     }
-
-    /// Returns the authored generic position, when present.
     #[must_use]
     pub const fn position(&self) -> Option<&CssPhysicalPosition> {
         self.position.as_ref()
+    }
+    #[must_use]
+    pub const fn size(&self) -> Option<&CssBackgroundSize> {
+        self.size.as_ref()
+    }
+    #[must_use]
+    pub const fn repeat(&self) -> Option<CssBackgroundRepeat> {
+        self.repeat
+    }
+    #[must_use]
+    pub const fn boxes(&self) -> Option<CssMaskLayerBoxes> {
+        self.boxes
+    }
+    #[must_use]
+    pub const fn composite(&self) -> Option<CssMaskComposite> {
+        self.composite
+    }
+    #[must_use]
+    pub const fn mode(&self) -> Option<CssMaskMode> {
+        self.mode
     }
 }
 

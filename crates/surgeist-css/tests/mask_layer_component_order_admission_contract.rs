@@ -88,6 +88,9 @@ fn exact_layer(declaration: &CssDeclaration, source: &str) {
                 x: CssBackgroundRepeatStyle::NoRepeat,
                 y: CssBackgroundRepeatStyle::NoRepeat,
             }),
+            None,
+            None,
+            None,
         )
         .unwrap(),
     ])
