@@ -111,6 +111,8 @@ pub enum CssRecoveryAction {
     RetainWithImplicitClosure,
     /// The diagnostic phase retained a grammatical rule that made its stylesheet nonconforming.
     RetainNonconformingRule,
+    /// Retained an underscore-leading target as symbolic legacy navigation syntax.
+    RetainLegacyNavigationTarget,
     /// The diagnostic phase ignored one authored top-level legacy CDO or CDC token.
     IgnoreLegacyToken,
     /// The tokenizer ignored an authored comment terminated by EOF instead of `*/`.

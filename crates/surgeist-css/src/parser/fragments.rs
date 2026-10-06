@@ -117,6 +117,7 @@ pub fn parse_declaration(source: &str) -> crate::CssParseReport<Option<CssDeclar
             )?;
             input.expect_exhausted()?;
             state.retain_component_closures(openings);
+            state.retain_navigation_diagnostic(&declaration.body);
             Ok(declaration.into_declaration())
         })();
         match result {
@@ -523,6 +524,7 @@ fn property_value_text(
                 })?;
             input.expect_exhausted()?;
             state.retain_component_closures(openings);
+            state.retain_navigation_diagnostic(&body);
             Ok(CssDeclaration::new_parsed_value(
                 body, importance, components, origin,
             ))

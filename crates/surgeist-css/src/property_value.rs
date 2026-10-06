@@ -54,7 +54,7 @@ impl CssPropertyValueParseError {
         }
     }
 
-    fn from_grammar(error: Error, serialized: &CssSerializedValue) -> Self {
+    pub(crate) fn from_grammar(error: Error, serialized: &CssSerializedValue) -> Self {
         if let ErrorKind::InvalidComponentValue(detail) = error.kind()
             && crate::error::is_component_resource_error(detail)
         {
@@ -107,6 +107,24 @@ fn requires_closed_components(property: crate::CssKnownProperty) -> bool {
             | crate::CssKnownProperty::TransformStyle
             | crate::CssKnownProperty::BackfaceVisibility
             | crate::CssKnownProperty::CaretColor
+            | crate::CssKnownProperty::Outline
+            | crate::CssKnownProperty::OutlineColor
+            | crate::CssKnownProperty::OutlineStyle
+            | crate::CssKnownProperty::OutlineWidth
+            | crate::CssKnownProperty::OutlineOffset
+            | crate::CssKnownProperty::NavUp
+            | crate::CssKnownProperty::NavRight
+            | crate::CssKnownProperty::NavDown
+            | crate::CssKnownProperty::NavLeft
+            | crate::CssKnownProperty::CaretAnimation
+            | crate::CssKnownProperty::CaretShape
+            | crate::CssKnownProperty::Caret
+            | crate::CssKnownProperty::Interactivity
+            | crate::CssKnownProperty::InterestDelayStart
+            | crate::CssKnownProperty::InterestDelayEnd
+            | crate::CssKnownProperty::InterestDelay
+            | crate::CssKnownProperty::AccentColor
+            | crate::CssKnownProperty::Appearance
             | crate::CssKnownProperty::Contain
             | crate::CssKnownProperty::ContentVisibility
             | crate::CssKnownProperty::Cursor

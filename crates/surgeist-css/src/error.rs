@@ -35,6 +35,8 @@ pub enum CssErrorCode {
     InvalidAtRuleBody,
     /// A retained declaration repeated a namespace prefix or default binding.
     NamespaceRedeclaration,
+    /// A retained navigation target string begins with underscore.
+    LegacyNavigationTarget,
     /// The authored at-rule name is not recognized by the CSS catalog.
     UnknownAtRule,
     /// The authored at-rule is recognized but is outside this crate's supported subset.
@@ -442,6 +444,18 @@ impl CssNamespaceRedeclarationError {
     #[must_use]
     pub const fn previous_position(&self) -> CssSourcePosition {
         self.previous_position
+    }
+}
+
+/// A retained underscore-leading symbolic navigation target; execution remains downstream.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssLegacyNavigationTargetError {
+    target: String,
+}
+impl CssLegacyNavigationTargetError {
+    /// Returns the decoded original string without case folding or frame interpretation.
+    pub fn target(&self) -> &str {
+        &self.target
     }
 }
 
@@ -961,6 +975,8 @@ pub enum ErrorKind {
     InvalidAtRuleBody(CssAtRuleSyntaxError),
     /// A retained namespace declaration repeated a named or default binding.
     NamespaceRedeclaration(CssNamespaceRedeclarationError),
+    /// Browser parsing retained a nonconforming symbolic navigation target.
+    LegacyNavigationTarget(CssLegacyNavigationTargetError),
     /// An authored at-rule name was not recognized.
     UnknownAtRule(CssUnknownAtRuleError),
     /// An authored at-rule was recognized but unsupported.
@@ -1037,6 +1053,7 @@ impl Error {
             ErrorKind::InvalidAtRulePrelude(_) => CssErrorCode::InvalidAtRulePrelude,
             ErrorKind::InvalidAtRuleBody(_) => CssErrorCode::InvalidAtRuleBody,
             ErrorKind::NamespaceRedeclaration(_) => CssErrorCode::NamespaceRedeclaration,
+            ErrorKind::LegacyNavigationTarget(_) => CssErrorCode::LegacyNavigationTarget,
             ErrorKind::UnknownAtRule(_) => CssErrorCode::UnknownAtRule,
             ErrorKind::UnsupportedAtRule(_) => CssErrorCode::UnsupportedAtRule,
             ErrorKind::InvalidQualifiedRule(_) => CssErrorCode::InvalidQualifiedRule,
@@ -1118,6 +1135,15 @@ pub(crate) fn nesting_limit<'i>(
             position,
         }),
         location,
+    }
+}
+
+pub(crate) fn legacy_navigation_target(target: &str, position: CssSourcePosition) -> Error {
+    Error {
+        kind: ErrorKind::LegacyNavigationTarget(CssLegacyNavigationTargetError {
+            target: target.to_owned(),
+        }),
+        position,
     }
 }
 

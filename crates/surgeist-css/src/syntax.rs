@@ -7774,8 +7774,8 @@ pub enum CssOutlineStyle {
     Outset,
 }
 
-/// The represented authored UI4 outline-color domain: automatic or shared color.
-/// The inherited image-1D branch is not represented. Automatic color stays
+/// The authored UI4 outline-color domain: automatic, shared color or image-1D.
+/// Automatic color stays
 /// symbolic; accent-color and currentColor computation belong downstream.
 #[derive(Clone, Debug, Default, PartialEq)]
 #[non_exhaustive]
@@ -7783,14 +7783,22 @@ pub enum CssOutlineColor {
     #[default]
     Auto,
     Color(Box<CssColor>),
+    Image1D(Box<crate::CssImage1D>),
 }
 
 impl CssOutlineColor {
+    /// Borrows the reusable authored image-1D branch.
+    pub fn image_1d(&self) -> Option<&crate::CssImage1D> {
+        match self {
+            Self::Image1D(value) => Some(value),
+            _ => None,
+        }
+    }
     /// Borrows the shared authored color, when this is not the automatic branch.
     #[must_use]
     pub fn color(&self) -> Option<&CssColor> {
         match self {
-            Self::Auto => None,
+            Self::Auto | Self::Image1D(_) => None,
             Self::Color(color) => Some(color),
         }
     }

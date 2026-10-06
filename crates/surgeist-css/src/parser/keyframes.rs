@@ -348,6 +348,7 @@ impl<'i> DeclarationParser<'i> for KeyframeDeclarationParser<'i> {
             self.recovery.source_snapshot(),
         )?;
         self.recovery.retain_component_closures(implicit_closures);
+        self.recovery.retain_navigation_diagnostic(&parsed.body);
         Ok(parsed.into_keyframe_declaration())
     }
 }

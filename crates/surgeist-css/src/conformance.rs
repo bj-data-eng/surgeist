@@ -1211,6 +1211,23 @@ profile_source!(
     CssSpecificationTier::SurgeistExtension,
     "https://www.w3.org/TR/2026/WD-css-ui-4-20260120/"
 );
+// Narrow imports selected by UI4's dated bibliography, without expanding Images3/Backgrounds3 consumers.
+profile_source!(
+    X_IMAGES4_20250930,
+    "X-IMAGES4-20250930",
+    "CSS Images",
+    "4",
+    CssSpecificationTier::SurgeistExtension,
+    "https://www.w3.org/TR/2025/WD-css-images-4-20250930/"
+);
+profile_source!(
+    X_BORDERS4_20251216,
+    "X-BORDERS4-20251216",
+    "CSS Borders and Box Decorations",
+    "4",
+    CssSpecificationTier::SurgeistExtension,
+    "https://www.w3.org/TR/2025/WD-css-borders-4-20251216/"
+);
 profile_source!(
     X_CONTENT3,
     "X-CONTENT3",
@@ -1349,6 +1366,8 @@ static SPECIFICATION_SOURCES: &[CssSpecificationSource] = &[
     X_TEXT4,
     X_TEXTDECOR4,
     X_UI4,
+    X_IMAGES4_20250930,
+    X_BORDERS4_20251216,
     X_CONTENT3,
     X_FULLSCREEN,
     X_BACKDROP_FILTER,
@@ -1422,6 +1441,13 @@ static CONFORMANCE_EXCLUSIONS: &[CssExclusionMetadata] = &[
         "excluded.O-UI3.property.ime-mode",
         O_UI3,
         "#propdef-ime-mode",
+        CssExclusionReason::SupersededWithoutCurrentProduction,
+        ["X-UI4"]
+    ),
+    exclusion!(
+        "excluded.X-UI4.property.ime-mode",
+        X_UI4,
+        "#input-method-editor",
         CssExclusionReason::SupersededWithoutCurrentProduction
     ),
     superseded_css2_property!("margin", "box.html", "baseline.property.margin"),
@@ -2036,6 +2062,19 @@ static OFFICIAL_PROPERTY_COVERAGE_ROWS: &[CssOfficialCoverageRecord] = &[
     active_coverage!("baseline.property.flex-wrap"),
     active_coverage!("baseline.property.justify-content"),
     active_coverage!("baseline.property.box-sizing"),
+    active_coverage!("official.property.nav-up"),
+    active_coverage!("official.property.nav-right"),
+    active_coverage!("official.property.nav-down"),
+    active_coverage!("official.property.nav-left"),
+    active_coverage!("official.property.caret-animation"),
+    active_coverage!("official.property.caret-shape"),
+    active_coverage!("official.property.caret"),
+    active_coverage!("official.property.interactivity"),
+    active_coverage!("official.property.interest-delay-start"),
+    active_coverage!("official.property.interest-delay-end"),
+    active_coverage!("official.property.interest-delay"),
+    active_coverage!("official.property.accent-color"),
+    active_coverage!("official.property.appearance"),
     active_coverage!("official.property.caret-color"),
     active_coverage!("baseline.property.cursor"),
     active_coverage!("baseline.property.outline"),
@@ -2128,6 +2167,8 @@ static OFFICIAL_NON_PROPERTY_COVERAGE_ROWS: &[CssOfficialCoverageRecord] = &[
     active_coverage!("official.value.number"),
     active_coverage!("official.value.dimension"),
     active_coverage!("official.value.percentage"),
+    active_coverage!("ext.value.image-1d"),
+    active_coverage!("ext.value.stripes"),
     active_coverage!("official.value.length"),
     active_coverage!("official.value.length-percentage"),
     active_coverage!("official.value.angle"),
@@ -2376,7 +2417,7 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::Outline
         | CssKnownProperty::OutlineColor
         | CssKnownProperty::OutlineStyle
-        | CssKnownProperty::OutlineWidth => O_UI3,
+        | CssKnownProperty::OutlineWidth => X_UI4,
         CssKnownProperty::Contain => I_CONTAIN2,
         CssKnownProperty::Direction
         | CssKnownProperty::TextOrientation
@@ -2661,7 +2702,20 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::Cursor
         | CssKnownProperty::PointerEvents
         | CssKnownProperty::UserSelect
-        | CssKnownProperty::Resize => X_UI4,
+        | CssKnownProperty::Resize
+        | CssKnownProperty::NavUp
+        | CssKnownProperty::NavRight
+        | CssKnownProperty::NavDown
+        | CssKnownProperty::NavLeft
+        | CssKnownProperty::CaretAnimation
+        | CssKnownProperty::CaretShape
+        | CssKnownProperty::Caret
+        | CssKnownProperty::Interactivity
+        | CssKnownProperty::InterestDelayStart
+        | CssKnownProperty::InterestDelayEnd
+        | CssKnownProperty::InterestDelay
+        | CssKnownProperty::AccentColor
+        | CssKnownProperty::Appearance => X_UI4,
         CssKnownProperty::Transform
         | CssKnownProperty::TransformBox
         | CssKnownProperty::TransformOrigin => O_TRANSFORMS1,
@@ -2814,7 +2868,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 701] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 716] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -3140,6 +3194,20 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 701] = [
         "<percentage>",
         O_VALUES3,
         "#percentages",
+    ),
+    CssFeatureMetadata::complete(
+        "ext.value.image-1d",
+        CssFeatureKind::Value,
+        "<image-1D>",
+        X_IMAGES4_20250930,
+        "#typedef-image-1d",
+    ),
+    CssFeatureMetadata::complete(
+        "ext.value.stripes",
+        CssFeatureKind::Value,
+        "stripes()",
+        X_IMAGES4_20250930,
+        "#stripes",
     ),
     CssFeatureMetadata::complete(
         "official.value.length",
@@ -6027,22 +6095,22 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 701] = [
         "baseline.property.user-select",
         CssKnownProperty::UserSelect.aliases()
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::Outline,
         "outline",
         "baseline.property.outline"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::OutlineColor,
         "outline-color",
         "baseline.property.outline-color"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::OutlineStyle,
         "outline-style",
         "baseline.property.outline-style"
     ),
-    property_feature!(
+    complete_property_feature!(
         CssKnownProperty::OutlineWidth,
         "outline-width",
         "baseline.property.outline-width"
@@ -6468,6 +6536,68 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 701] = [
         "unicode-bidi",
         "#propdef-unicode-bidi",
         &[],
+    ),
+    complete_property_feature!(
+        CssKnownProperty::NavUp,
+        "nav-up",
+        "official.property.nav-up"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::NavRight,
+        "nav-right",
+        "official.property.nav-right"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::NavDown,
+        "nav-down",
+        "official.property.nav-down"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::NavLeft,
+        "nav-left",
+        "official.property.nav-left"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::CaretAnimation,
+        "caret-animation",
+        "official.property.caret-animation"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::CaretShape,
+        "caret-shape",
+        "official.property.caret-shape"
+    ),
+    complete_property_feature!(CssKnownProperty::Caret, "caret", "official.property.caret"),
+    complete_property_feature!(
+        CssKnownProperty::Interactivity,
+        "interactivity",
+        "official.property.interactivity"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::InterestDelayStart,
+        "interest-delay-start",
+        "official.property.interest-delay-start"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::InterestDelayEnd,
+        "interest-delay-end",
+        "official.property.interest-delay-end"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::InterestDelay,
+        "interest-delay",
+        "official.property.interest-delay"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::AccentColor,
+        "accent-color",
+        "official.property.accent-color"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::Appearance,
+        "appearance",
+        "official.property.appearance",
+        CssKnownProperty::Appearance.aliases()
     ),
     CssFeatureMetadata::complete_property(
         "official.property.caret-color",

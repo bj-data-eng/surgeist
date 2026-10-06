@@ -1,5 +1,5 @@
 //! Specified output for the represented UI4 Outline domains.
-//! Auto and shared Color are represented; inherited image-1D remains absent.
+//! Auto, shared Color and imported image-1D use their owning providers.
 
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::{
@@ -41,7 +41,7 @@ provider!(
 );
 provider!(
     CssOutlineColor,
-    "Emits symbolic auto or shared Color specified syntax. Auto charges one node in each budget; Color is a transparent carrier of the child provider. Image-1D is not represented."
+    "Emits symbolic auto or shared Color specified syntax. Auto charges one node in each budget; Color is a transparent carrier of the child provider. Image-1D delegates transparently to its reusable provider."
 );
 provider!(
     CssOutline,
@@ -81,6 +81,7 @@ impl CssOutlineColor {
         match self {
             Self::Auto => writer.keyword("auto"),
             Self::Color(color) => color.append_specified(&mut writer.context, &mut writer.css),
+            Self::Image1D(image) => image.append_to_rule_writer(writer),
         }
     }
 }

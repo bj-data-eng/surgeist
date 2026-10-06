@@ -19,6 +19,14 @@ pub surgeist_css::CssAbsoluteFontWeight::Number(surgeist_css::CssFontWeightNumbe
 impl surgeist_css::CssAbsoluteFontWeight
 pub fn surgeist_css::CssAbsoluteFontWeight::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssAbsoluteFontWeight::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssAccentColor
+pub surgeist_css::CssAccentColor::Auto
+pub surgeist_css::CssAccentColor::Color(alloc::boxed::Box<surgeist_css::CssColor>)
+impl surgeist_css::CssAccentColor
+pub fn surgeist_css::CssAccentColor::color(&self) -> core::option::Option<&surgeist_css::CssColor>
+impl surgeist_css::CssAccentColor
+pub fn surgeist_css::CssAccentColor::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssAccentColor::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssAlignmentPosition
 pub surgeist_css::CssAlignmentPosition::Center
 pub surgeist_css::CssAlignmentPosition::End
@@ -80,6 +88,25 @@ pub surgeist_css::CssAnimationName::String(surgeist_css::CssKeyframesString)
 #[non_exhaustive] pub enum surgeist_css::CssAnimationPlayState
 pub surgeist_css::CssAnimationPlayState::Paused
 pub surgeist_css::CssAnimationPlayState::Running
+#[non_exhaustive] pub enum surgeist_css::CssAppearance
+pub surgeist_css::CssAppearance::Auto
+pub surgeist_css::CssAppearance::Base
+pub surgeist_css::CssAppearance::BaseSelect
+pub surgeist_css::CssAppearance::Button
+pub surgeist_css::CssAppearance::Checkbox
+pub surgeist_css::CssAppearance::Listbox
+pub surgeist_css::CssAppearance::Menulist
+pub surgeist_css::CssAppearance::MenulistButton
+pub surgeist_css::CssAppearance::Meter
+pub surgeist_css::CssAppearance::None
+pub surgeist_css::CssAppearance::ProgressBar
+pub surgeist_css::CssAppearance::Radio
+pub surgeist_css::CssAppearance::Searchfield
+pub surgeist_css::CssAppearance::Textarea
+pub surgeist_css::CssAppearance::Textfield
+impl surgeist_css::CssAppearance
+pub fn surgeist_css::CssAppearance::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssAppearance::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssAspectRatioValue
 pub surgeist_css::CssAspectRatioValue::Auto
 pub surgeist_css::CssAspectRatioValue::AutoRatio(surgeist_css::CssSpecifiedRatio)
@@ -436,12 +463,26 @@ pub surgeist_css::CssCaptionSide::Top
 impl surgeist_css::CssCaptionSide
 pub fn surgeist_css::CssCaptionSide::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssCaptionSide::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssCaretAnimation
+pub surgeist_css::CssCaretAnimation::Auto
+pub surgeist_css::CssCaretAnimation::Manual
+impl surgeist_css::CssCaretAnimation
+pub fn surgeist_css::CssCaretAnimation::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssCaretAnimation::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssCaretColor
 pub surgeist_css::CssCaretColor::Auto
 pub surgeist_css::CssCaretColor::Color(alloc::boxed::Box<surgeist_css::CssColor>)
 impl surgeist_css::CssCaretColor
 pub fn surgeist_css::CssCaretColor::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssCaretColor::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssCaretShape
+pub surgeist_css::CssCaretShape::Auto
+pub surgeist_css::CssCaretShape::Bar
+pub surgeist_css::CssCaretShape::Block
+pub surgeist_css::CssCaretShape::Underscore
+impl surgeist_css::CssCaretShape
+pub fn surgeist_css::CssCaretShape::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssCaretShape::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssCharacterAlignmentErrorKind
 pub surgeist_css::CssCharacterAlignmentErrorKind::Component(surgeist_css::CssComponentValueErrorKind)
 pub surgeist_css::CssCharacterAlignmentErrorKind::InvalidCharacter
@@ -1161,6 +1202,7 @@ pub surgeist_css::CssErrorCode::InvalidMediaQuery
 pub surgeist_css::CssErrorCode::InvalidPropertyValue
 pub surgeist_css::CssErrorCode::InvalidQualifiedRule
 pub surgeist_css::CssErrorCode::InvalidSelector
+pub surgeist_css::CssErrorCode::LegacyNavigationTarget
 pub surgeist_css::CssErrorCode::NamespaceRedeclaration
 pub surgeist_css::CssErrorCode::NestingLimit
 pub surgeist_css::CssErrorCode::UnexpectedEnd
@@ -1901,6 +1943,24 @@ pub surgeist_css::CssHyphens::None
 impl surgeist_css::CssHyphens
 pub fn surgeist_css::CssHyphens::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssHyphens::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssImage1D
+pub surgeist_css::CssImage1D::Stripes(surgeist_css::CssStripes)
+impl surgeist_css::CssImage1D
+pub fn surgeist_css::CssImage1D::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssImage1D::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssImage1D
+pub fn surgeist_css::CssImage1D::stripes(&self) -> &surgeist_css::CssStripes
+pub fn surgeist_css::CssImage1D::try_from_components(values: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssImage1DConstructionError>
+#[non_exhaustive] pub enum surgeist_css::CssImage1DConstructionError
+pub surgeist_css::CssImage1DConstructionError::Component(surgeist_css::CssComponentValueError)
+pub surgeist_css::CssImage1DConstructionError::EmptyStripes
+pub surgeist_css::CssImage1DConstructionError::Grammar(surgeist_css::CssPropertyValueParseError)
+pub surgeist_css::CssImage1DConstructionError::NestingLimit
+pub surgeist_css::CssImage1DConstructionError::Numeric(surgeist_css::CssNumericConstructionError)
+pub surgeist_css::CssImage1DConstructionError::RecoveredComponent(surgeist_css::CssValueOrigin)
+impl core::error::Error for surgeist_css::CssImage1DConstructionError
+impl core::fmt::Display for surgeist_css::CssImage1DConstructionError
+pub fn surgeist_css::CssImage1DConstructionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_css::CssImageConstructionError
 pub surgeist_css::CssImageConstructionError::CapacityOverflow
 pub surgeist_css::CssImageConstructionError::NestingLimit
@@ -2015,6 +2075,23 @@ pub surgeist_css::CssIntegerValue::Literal(surgeist_css::CssIntegerLiteral)
 impl surgeist_css::CssIntegerValue
 pub fn surgeist_css::CssIntegerValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssIntegerValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssInteractivity
+pub surgeist_css::CssInteractivity::Auto
+pub surgeist_css::CssInteractivity::Inert
+impl surgeist_css::CssInteractivity
+pub fn surgeist_css::CssInteractivity::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssInteractivity::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssInterestDelayValue
+pub surgeist_css::CssInterestDelayValue::Normal
+pub surgeist_css::CssInterestDelayValue::Time(surgeist_css::CssTimeValue)
+impl surgeist_css::CssInterestDelayValue
+pub fn surgeist_css::CssInterestDelayValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssInterestDelayValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssInterestDelayValue
+pub fn surgeist_css::CssInterestDelayValue::time(&self) -> core::option::Option<&surgeist_css::CssTimeValue>
+impl core::cmp::Eq for surgeist_css::CssInterestDelayValue
+impl core::cmp::PartialEq for surgeist_css::CssInterestDelayValue
+pub fn surgeist_css::CssInterestDelayValue::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssIntrinsicSizeKeyword
 pub surgeist_css::CssIntrinsicSizeKeyword::Auto
 pub surgeist_css::CssIntrinsicSizeKeyword::Contain
@@ -2077,6 +2154,7 @@ pub surgeist_css::CssKnownDeclaredValueRef::Global(surgeist_css::CssGlobalKeywor
 pub surgeist_css::CssKnownDeclaredValueRef::Property(surgeist_css::CssKnownPropertyValueRef<'a>)
 pub surgeist_css::CssKnownDeclaredValueRef::SubstitutionDependent(&'a surgeist_css::CssSubstitutionDependentValue)
 #[non_exhaustive] pub enum surgeist_css::CssKnownProperty
+pub surgeist_css::CssKnownProperty::AccentColor
 pub surgeist_css::CssKnownProperty::AlignContent
 pub surgeist_css::CssKnownProperty::AlignItems
 pub surgeist_css::CssKnownProperty::AlignSelf
@@ -2090,6 +2168,7 @@ pub surgeist_css::CssKnownProperty::AnimationIterationCount
 pub surgeist_css::CssKnownProperty::AnimationName
 pub surgeist_css::CssKnownProperty::AnimationPlayState
 pub surgeist_css::CssKnownProperty::AnimationTimingFunction
+pub surgeist_css::CssKnownProperty::Appearance
 pub surgeist_css::CssKnownProperty::AspectRatio
 pub surgeist_css::CssKnownProperty::BackdropFilter
 pub surgeist_css::CssKnownProperty::BackfaceVisibility
@@ -2173,7 +2252,10 @@ pub surgeist_css::CssKnownProperty::BreakAfter
 pub surgeist_css::CssKnownProperty::BreakBefore
 pub surgeist_css::CssKnownProperty::BreakInside
 pub surgeist_css::CssKnownProperty::CaptionSide
+pub surgeist_css::CssKnownProperty::Caret
+pub surgeist_css::CssKnownProperty::CaretAnimation
 pub surgeist_css::CssKnownProperty::CaretColor
+pub surgeist_css::CssKnownProperty::CaretShape
 pub surgeist_css::CssKnownProperty::Clear
 pub surgeist_css::CssKnownProperty::Clip
 pub surgeist_css::CssKnownProperty::ClipPath
@@ -2283,6 +2365,10 @@ pub surgeist_css::CssKnownProperty::InsetBlockStart
 pub surgeist_css::CssKnownProperty::InsetInline
 pub surgeist_css::CssKnownProperty::InsetInlineEnd
 pub surgeist_css::CssKnownProperty::InsetInlineStart
+pub surgeist_css::CssKnownProperty::Interactivity
+pub surgeist_css::CssKnownProperty::InterestDelay
+pub surgeist_css::CssKnownProperty::InterestDelayEnd
+pub surgeist_css::CssKnownProperty::InterestDelayStart
 pub surgeist_css::CssKnownProperty::Isolation
 pub surgeist_css::CssKnownProperty::ItemDirection
 pub surgeist_css::CssKnownProperty::ItemFlow
@@ -2329,6 +2415,10 @@ pub surgeist_css::CssKnownProperty::MinIntrinsicSizing
 pub surgeist_css::CssKnownProperty::MinSize
 pub surgeist_css::CssKnownProperty::MinWidth
 pub surgeist_css::CssKnownProperty::MixBlendMode
+pub surgeist_css::CssKnownProperty::NavDown
+pub surgeist_css::CssKnownProperty::NavLeft
+pub surgeist_css::CssKnownProperty::NavRight
+pub surgeist_css::CssKnownProperty::NavUp
 pub surgeist_css::CssKnownProperty::ObjectFit
 pub surgeist_css::CssKnownProperty::ObjectPosition
 pub surgeist_css::CssKnownProperty::Opacity
@@ -2481,6 +2571,7 @@ pub const fn surgeist_css::CssKnownProperty::grammar(self) -> surgeist_css::CssP
 pub const fn surgeist_css::CssKnownProperty::legacy_shorthands(self) -> &'static [surgeist_css::CssPropertyGrammar]
 pub fn surgeist_css::CssKnownProperty::metadata(self) -> core::result::Result<&'static surgeist_css::CssPropertyMetadata, surgeist_css::CssPropertyMetadataError>
 #[non_exhaustive] pub enum surgeist_css::CssKnownPropertyValueRef<'a>
+pub surgeist_css::CssKnownPropertyValueRef::AccentColor(&'a surgeist_css::CssAccentColorPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::AlignContent(&'a surgeist_css::CssAlignContentPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::AlignItems(&'a surgeist_css::CssAlignItemsPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::AlignSelf(&'a surgeist_css::CssAlignSelfPropertyValue)
@@ -2493,6 +2584,7 @@ pub surgeist_css::CssKnownPropertyValueRef::AnimationIterationCount(&'a surgeist
 pub surgeist_css::CssKnownPropertyValueRef::AnimationName(&'a surgeist_css::CssAnimationNamePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::AnimationPlayState(&'a surgeist_css::CssAnimationPlayStatePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::AnimationTimingFunction(&'a surgeist_css::CssAnimationTimingFunctionPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::Appearance(&'a surgeist_css::CssAppearancePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::AspectRatio(&'a surgeist_css::CssAspectRatioPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BackdropFilter(&'a surgeist_css::CssBackdropFilterPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BackfaceVisibility(&'a surgeist_css::CssBackfaceVisibilityPropertyValue)
@@ -2576,7 +2668,10 @@ pub surgeist_css::CssKnownPropertyValueRef::BreakAfter(&'a surgeist_css::CssBrea
 pub surgeist_css::CssKnownPropertyValueRef::BreakBefore(&'a surgeist_css::CssBreakBeforePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::BreakInside(&'a surgeist_css::CssBreakInsidePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::CaptionSide(&'a surgeist_css::CssCaptionSidePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::Caret(&'a surgeist_css::CssCaretPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::CaretAnimation(&'a surgeist_css::CssCaretAnimationPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::CaretColor(&'a surgeist_css::CssCaretColorPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::CaretShape(&'a surgeist_css::CssCaretShapePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Clear(&'a surgeist_css::CssClearPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Clip(&'a surgeist_css::CssClipPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ClipPath(&'a surgeist_css::CssClipPathPropertyValue)
@@ -2686,6 +2781,10 @@ pub surgeist_css::CssKnownPropertyValueRef::InsetBlockStart(&'a surgeist_css::Cs
 pub surgeist_css::CssKnownPropertyValueRef::InsetInline(&'a surgeist_css::CssInsetInlinePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::InsetInlineEnd(&'a surgeist_css::CssInsetInlineEndPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::InsetInlineStart(&'a surgeist_css::CssInsetInlineStartPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::Interactivity(&'a surgeist_css::CssInteractivityPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::InterestDelay(&'a surgeist_css::CssInterestDelayPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::InterestDelayEnd(&'a surgeist_css::CssInterestDelayEndPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::InterestDelayStart(&'a surgeist_css::CssInterestDelayStartPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Isolation(&'a surgeist_css::CssIsolationPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ItemDirection(&'a surgeist_css::CssItemDirectionPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ItemFlow(&'a surgeist_css::CssItemFlowPropertyValue)
@@ -2732,6 +2831,10 @@ pub surgeist_css::CssKnownPropertyValueRef::MinIntrinsicSizing(&'a surgeist_css:
 pub surgeist_css::CssKnownPropertyValueRef::MinSize(&'a surgeist_css::CssMinSizePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::MinWidth(&'a surgeist_css::CssMinWidthPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::MixBlendMode(&'a surgeist_css::CssMixBlendModePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::NavDown(&'a surgeist_css::CssNavDownPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::NavLeft(&'a surgeist_css::CssNavLeftPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::NavRight(&'a surgeist_css::CssNavRightPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::NavUp(&'a surgeist_css::CssNavUpPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ObjectFit(&'a surgeist_css::CssObjectFitPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::ObjectPosition(&'a surgeist_css::CssObjectPositionPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Opacity(&'a surgeist_css::CssOpacityPropertyValue)
@@ -2987,6 +3090,7 @@ impl surgeist_css::CssListStyleTypeValue
 pub fn surgeist_css::CssListStyleTypeValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssListStyleTypeValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssLonghandValueRef<'a>
+pub surgeist_css::CssLonghandValueRef::AccentColor(&'a surgeist_css::CssAccentColor)
 pub surgeist_css::CssLonghandValueRef::AlignContent(&'a surgeist_css::CssAlignContentValue)
 pub surgeist_css::CssLonghandValueRef::AlignItems(&'a surgeist_css::CssAlignItemsValue)
 pub surgeist_css::CssLonghandValueRef::AlignSelf(&'a surgeist_css::CssAlignSelfValue)
@@ -2998,6 +3102,7 @@ pub surgeist_css::CssLonghandValueRef::AnimationIterationCount(&'a surgeist_css:
 pub surgeist_css::CssLonghandValueRef::AnimationName(&'a surgeist_css::CssAnimationNameList)
 pub surgeist_css::CssLonghandValueRef::AnimationPlayState(&'a surgeist_css::CssAnimationPlayStateList)
 pub surgeist_css::CssLonghandValueRef::AnimationTimingFunction(&'a surgeist_css::CssEasingList)
+pub surgeist_css::CssLonghandValueRef::Appearance(&'a surgeist_css::CssAppearance)
 pub surgeist_css::CssLonghandValueRef::AspectRatio(&'a surgeist_css::CssAspectRatioValue)
 pub surgeist_css::CssLonghandValueRef::BackdropFilter(&'a surgeist_css::CssFilter)
 pub surgeist_css::CssLonghandValueRef::BackfaceVisibility(&'a surgeist_css::CssBackfaceVisibility)
@@ -3058,7 +3163,9 @@ pub surgeist_css::CssLonghandValueRef::BreakAfter(&'a surgeist_css::CssBreakBetw
 pub surgeist_css::CssLonghandValueRef::BreakBefore(&'a surgeist_css::CssBreakBetween)
 pub surgeist_css::CssLonghandValueRef::BreakInside(&'a surgeist_css::CssBreakInside)
 pub surgeist_css::CssLonghandValueRef::CaptionSide(&'a surgeist_css::CssCaptionSide)
+pub surgeist_css::CssLonghandValueRef::CaretAnimation(&'a surgeist_css::CssCaretAnimation)
 pub surgeist_css::CssLonghandValueRef::CaretColor(&'a surgeist_css::CssCaretColor)
+pub surgeist_css::CssLonghandValueRef::CaretShape(&'a surgeist_css::CssCaretShape)
 pub surgeist_css::CssLonghandValueRef::Clear(&'a surgeist_css::CssClear)
 pub surgeist_css::CssLonghandValueRef::Clip(&'a surgeist_css::CssClip)
 pub surgeist_css::CssLonghandValueRef::ClipPath(&'a surgeist_css::CssClipPath)
@@ -3148,6 +3255,9 @@ pub surgeist_css::CssLonghandValueRef::InsetBlockEnd(&'a surgeist_css::CssInsetV
 pub surgeist_css::CssLonghandValueRef::InsetBlockStart(&'a surgeist_css::CssInsetValue)
 pub surgeist_css::CssLonghandValueRef::InsetInlineEnd(&'a surgeist_css::CssInsetValue)
 pub surgeist_css::CssLonghandValueRef::InsetInlineStart(&'a surgeist_css::CssInsetValue)
+pub surgeist_css::CssLonghandValueRef::Interactivity(&'a surgeist_css::CssInteractivity)
+pub surgeist_css::CssLonghandValueRef::InterestDelayEnd(&'a surgeist_css::CssInterestDelayValue)
+pub surgeist_css::CssLonghandValueRef::InterestDelayStart(&'a surgeist_css::CssInterestDelayValue)
 pub surgeist_css::CssLonghandValueRef::Isolation(&'a surgeist_css::CssIsolation)
 pub surgeist_css::CssLonghandValueRef::ItemDirection(&'a surgeist_css::CssItemDirection)
 pub surgeist_css::CssLonghandValueRef::ItemPack(&'a surgeist_css::CssItemPack)
@@ -3183,11 +3293,19 @@ pub surgeist_css::CssLonghandValueRef::MinInlineSize(&'a surgeist_css::CssSizeVa
 pub surgeist_css::CssLonghandValueRef::MinIntrinsicSizing(&'a surgeist_css::CssMinIntrinsicSizing)
 pub surgeist_css::CssLonghandValueRef::MinWidth(&'a surgeist_css::CssSizeValue)
 pub surgeist_css::CssLonghandValueRef::MixBlendMode(&'a surgeist_css::CssBlendMode)
+pub surgeist_css::CssLonghandValueRef::NavDown(&'a surgeist_css::CssNavigation)
+pub surgeist_css::CssLonghandValueRef::NavLeft(&'a surgeist_css::CssNavigation)
+pub surgeist_css::CssLonghandValueRef::NavRight(&'a surgeist_css::CssNavigation)
+pub surgeist_css::CssLonghandValueRef::NavUp(&'a surgeist_css::CssNavigation)
 pub surgeist_css::CssLonghandValueRef::ObjectFit(&'a surgeist_css::CssObjectFit)
 pub surgeist_css::CssLonghandValueRef::ObjectPosition(&'a surgeist_css::CssPhysicalPosition)
 pub surgeist_css::CssLonghandValueRef::Opacity(&'a surgeist_css::CssOpacityValue)
 pub surgeist_css::CssLonghandValueRef::Order(&'a surgeist_css::CssIntegerValue)
 pub surgeist_css::CssLonghandValueRef::Orphans(&'a surgeist_css::CssPageLineMinimum)
+pub surgeist_css::CssLonghandValueRef::OutlineColor(&'a surgeist_css::CssOutlineColor)
+pub surgeist_css::CssLonghandValueRef::OutlineOffset(&'a surgeist_css::CssSpecifiedLength)
+pub surgeist_css::CssLonghandValueRef::OutlineStyle(&'a surgeist_css::CssOutlineStyle)
+pub surgeist_css::CssLonghandValueRef::OutlineWidth(&'a surgeist_css::CssOutlineWidth)
 pub surgeist_css::CssLonghandValueRef::OverflowAnchor(&'a surgeist_css::CssOverflowAnchor)
 pub surgeist_css::CssLonghandValueRef::OverflowBlock(&'a surgeist_css::CssOverflow)
 pub surgeist_css::CssLonghandValueRef::OverflowClipMargin(&'a surgeist_css::CssOverflowClipMargin)
@@ -3611,6 +3729,19 @@ pub surgeist_css::CssNamespaceConstraint::Any
 pub surgeist_css::CssNamespaceConstraint::Default
 pub surgeist_css::CssNamespaceConstraint::ExplicitNone
 pub surgeist_css::CssNamespaceConstraint::Named(surgeist_css::CssNamespacePrefix)
+#[non_exhaustive] pub enum surgeist_css::CssNavigation
+pub surgeist_css::CssNavigation::Auto
+pub surgeist_css::CssNavigation::Id(alloc::boxed::Box<surgeist_css::CssNavigationReference>)
+impl surgeist_css::CssNavigation
+pub fn surgeist_css::CssNavigation::reference(&self) -> core::option::Option<&surgeist_css::CssNavigationReference>
+impl surgeist_css::CssNavigation
+pub fn surgeist_css::CssNavigation::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssNavigation::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssNavigationTarget
+pub surgeist_css::CssNavigationTarget::Current
+pub surgeist_css::CssNavigationTarget::LegacyName(surgeist_css::CssLegacyNavigationTargetName)
+pub surgeist_css::CssNavigationTarget::Name(surgeist_css::CssNavigationTargetName)
+pub surgeist_css::CssNavigationTarget::Root
 #[non_exhaustive] pub enum surgeist_css::CssNormalizationErrorKind
 pub surgeist_css::CssNormalizationErrorKind::LimitExceeded
 pub surgeist_css::CssNormalizationErrorKind::LimitExceeded::limit: usize
@@ -3693,8 +3824,10 @@ pub surgeist_css::CssOrientation::Portrait
 #[non_exhaustive] pub enum surgeist_css::CssOutlineColor
 pub surgeist_css::CssOutlineColor::Auto
 pub surgeist_css::CssOutlineColor::Color(alloc::boxed::Box<surgeist_css::CssColor>)
+pub surgeist_css::CssOutlineColor::Image1D(alloc::boxed::Box<surgeist_css::CssImage1D>)
 impl surgeist_css::CssOutlineColor
 pub fn surgeist_css::CssOutlineColor::color(&self) -> core::option::Option<&surgeist_css::CssColor>
+pub fn surgeist_css::CssOutlineColor::image_1d(&self) -> core::option::Option<&surgeist_css::CssImage1D>
 impl surgeist_css::CssOutlineColor
 pub fn surgeist_css::CssOutlineColor::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssOutlineColor::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
@@ -3957,6 +4090,7 @@ pub surgeist_css::CssRecoveryAction::IgnoreUnterminatedComment
 pub surgeist_css::CssRecoveryAction::RecoverEscape
 pub surgeist_css::CssRecoveryAction::RejectInput
 pub surgeist_css::CssRecoveryAction::ReplaceMediaQueryWithNever
+pub surgeist_css::CssRecoveryAction::RetainLegacyNavigationTarget
 pub surgeist_css::CssRecoveryAction::RetainNonconformingRule
 pub surgeist_css::CssRecoveryAction::RetainWithImplicitClosure
 pub surgeist_css::CssRecoveryAction::StopAtNestingLimit
@@ -4388,6 +4522,17 @@ pub surgeist_css::CssStepPosition::JumpEnd
 pub surgeist_css::CssStepPosition::JumpNone
 pub surgeist_css::CssStepPosition::JumpStart
 pub surgeist_css::CssStepPosition::Start
+#[non_exhaustive] pub enum surgeist_css::CssStripeThickness
+pub surgeist_css::CssStripeThickness::Flex(surgeist_css::CssSpecifiedFlex)
+pub surgeist_css::CssStripeThickness::LengthPercentage(surgeist_css::CssStripeLengthPercentage)
+impl surgeist_css::CssStripeThickness
+pub fn surgeist_css::CssStripeThickness::origin(&self) -> &surgeist_css::CssValueOrigin
+impl surgeist_css::CssStripeThickness
+pub fn surgeist_css::CssStripeThickness::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssStripeThickness::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl core::cmp::Eq for surgeist_css::CssStripeThickness
+impl core::cmp::PartialEq for surgeist_css::CssStripeThickness
+pub fn surgeist_css::CssStripeThickness::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssStyleSelector
 pub surgeist_css::CssStyleSelector::Relative(surgeist_css::CssRelativeSelector)
 pub surgeist_css::CssStyleSelector::Selector(surgeist_css::CssSelector)
@@ -5058,6 +5203,7 @@ pub surgeist_css::ErrorKind::InvalidMediaQuery(surgeist_css::CssMediaQueryError)
 pub surgeist_css::ErrorKind::InvalidPropertyValue(surgeist_css::CssPropertyValueError)
 pub surgeist_css::ErrorKind::InvalidQualifiedRule(surgeist_css::CssQualifiedRuleError)
 pub surgeist_css::ErrorKind::InvalidSelector(surgeist_css::CssSelectorError)
+pub surgeist_css::ErrorKind::LegacyNavigationTarget(surgeist_css::CssLegacyNavigationTargetError)
 pub surgeist_css::ErrorKind::NamespaceRedeclaration(surgeist_css::CssNamespaceRedeclarationError)
 pub surgeist_css::ErrorKind::NestingLimit(surgeist_css::CssNestingLimitError)
 pub surgeist_css::ErrorKind::UnexpectedEnd(surgeist_css::CssUnexpectedEndError)
@@ -5068,6 +5214,10 @@ pub surgeist_css::ErrorKind::UnknownProperty(surgeist_css::CssUnknownPropertyErr
 pub surgeist_css::ErrorKind::UnsupportedAtRule(surgeist_css::CssUnsupportedAtRuleError)
 pub surgeist_css::ErrorKind::UnsupportedDescriptor(surgeist_css::CssUnsupportedDescriptorError)
 pub surgeist_css::ErrorKind::UnsupportedProperty(surgeist_css::CssUnsupportedPropertyError)
+pub struct surgeist_css::CssAccentColorPropertyValue
+impl surgeist_css::CssAccentColorPropertyValue
+pub const fn surgeist_css::CssAccentColorPropertyValue::accent(&self) -> &surgeist_css::CssAccentColor
+pub fn surgeist_css::CssAccentColorPropertyValue::as_css(&self) -> &str
 pub struct surgeist_css::CssAlignContentPropertyValue
 impl surgeist_css::CssAlignContentPropertyValue
 pub fn surgeist_css::CssAlignContentPropertyValue::as_css(&self) -> &str
@@ -5233,6 +5383,10 @@ pub struct surgeist_css::CssAnimationTimingFunctionPropertyValue
 impl surgeist_css::CssAnimationTimingFunctionPropertyValue
 pub fn surgeist_css::CssAnimationTimingFunctionPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssAnimationTimingFunctionPropertyValue::timing_functions(&self) -> &surgeist_css::CssEasingList
+pub struct surgeist_css::CssAppearancePropertyValue
+impl surgeist_css::CssAppearancePropertyValue
+pub const fn surgeist_css::CssAppearancePropertyValue::appearance(&self) -> &surgeist_css::CssAppearance
+pub fn surgeist_css::CssAppearancePropertyValue::as_css(&self) -> &str
 pub struct surgeist_css::CssAspectRatioPropertyValue
 impl surgeist_css::CssAspectRatioPropertyValue
 pub fn surgeist_css::CssAspectRatioPropertyValue::as_css(&self) -> &str
@@ -5914,10 +6068,31 @@ pub struct surgeist_css::CssCaptionSidePropertyValue
 impl surgeist_css::CssCaptionSidePropertyValue
 pub fn surgeist_css::CssCaptionSidePropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssCaptionSidePropertyValue::side(&self) -> &surgeist_css::CssCaptionSide
+pub struct surgeist_css::CssCaret
+impl surgeist_css::CssCaret
+pub const fn surgeist_css::CssCaret::animation(&self) -> core::option::Option<surgeist_css::CssCaretAnimation>
+pub const fn surgeist_css::CssCaret::color(&self) -> core::option::Option<&surgeist_css::CssCaretColor>
+pub const fn surgeist_css::CssCaret::shape(&self) -> core::option::Option<surgeist_css::CssCaretShape>
+pub fn surgeist_css::CssCaret::try_new(color: core::option::Option<surgeist_css::CssCaretColor>, animation: core::option::Option<surgeist_css::CssCaretAnimation>, shape: core::option::Option<surgeist_css::CssCaretShape>) -> core::option::Option<Self>
+impl surgeist_css::CssCaret
+pub fn surgeist_css::CssCaret::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssCaret::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssCaretAnimationPropertyValue
+impl surgeist_css::CssCaretAnimationPropertyValue
+pub const fn surgeist_css::CssCaretAnimationPropertyValue::animation(&self) -> &surgeist_css::CssCaretAnimation
+pub fn surgeist_css::CssCaretAnimationPropertyValue::as_css(&self) -> &str
 pub struct surgeist_css::CssCaretColorPropertyValue
 impl surgeist_css::CssCaretColorPropertyValue
 pub fn surgeist_css::CssCaretColorPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssCaretColorPropertyValue::caret(&self) -> &surgeist_css::CssCaretColor
+pub struct surgeist_css::CssCaretPropertyValue
+impl surgeist_css::CssCaretPropertyValue
+pub fn surgeist_css::CssCaretPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssCaretPropertyValue::caret(&self) -> &surgeist_css::CssCaret
+pub struct surgeist_css::CssCaretShapePropertyValue
+impl surgeist_css::CssCaretShapePropertyValue
+pub fn surgeist_css::CssCaretShapePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssCaretShapePropertyValue::shape(&self) -> &surgeist_css::CssCaretShape
 pub struct surgeist_css::CssCartesianPosition
 impl surgeist_css::CssCartesianPosition
 pub const fn surgeist_css::CssCartesianPosition::horizontal(&self) -> &surgeist_css::CssHorizontalPosition
@@ -8116,6 +8291,31 @@ pub fn surgeist_css::CssIntegerLiteral::is_zero(&self) -> bool
 pub fn surgeist_css::CssIntegerLiteral::numeric(&self) -> surgeist_css::CssNumericTokenRef<'_>
 pub const fn surgeist_css::CssIntegerLiteral::origin(&self) -> &surgeist_css::CssValueOrigin
 pub fn surgeist_css::CssIntegerLiteral::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+pub struct surgeist_css::CssInteractivityPropertyValue
+impl surgeist_css::CssInteractivityPropertyValue
+pub fn surgeist_css::CssInteractivityPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssInteractivityPropertyValue::interactivity(&self) -> &surgeist_css::CssInteractivity
+pub struct surgeist_css::CssInterestDelay
+impl surgeist_css::CssInterestDelay
+pub const fn surgeist_css::CssInterestDelay::authored_end(&self) -> core::option::Option<&surgeist_css::CssInterestDelayValue>
+pub fn surgeist_css::CssInterestDelay::end(&self) -> &surgeist_css::CssInterestDelayValue
+pub const fn surgeist_css::CssInterestDelay::start(&self) -> &surgeist_css::CssInterestDelayValue
+pub fn surgeist_css::CssInterestDelay::try_new(start: surgeist_css::CssInterestDelayValue, end: core::option::Option<surgeist_css::CssInterestDelayValue>) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+impl surgeist_css::CssInterestDelay
+pub fn surgeist_css::CssInterestDelay::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssInterestDelay::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssInterestDelayEndPropertyValue
+impl surgeist_css::CssInterestDelayEndPropertyValue
+pub fn surgeist_css::CssInterestDelayEndPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssInterestDelayEndPropertyValue::delay(&self) -> &surgeist_css::CssInterestDelayValue
+pub struct surgeist_css::CssInterestDelayPropertyValue
+impl surgeist_css::CssInterestDelayPropertyValue
+pub fn surgeist_css::CssInterestDelayPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssInterestDelayPropertyValue::delay(&self) -> &surgeist_css::CssInterestDelay
+pub struct surgeist_css::CssInterestDelayStartPropertyValue
+impl surgeist_css::CssInterestDelayStartPropertyValue
+pub fn surgeist_css::CssInterestDelayStartPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssInterestDelayStartPropertyValue::delay(&self) -> &surgeist_css::CssInterestDelayValue
 pub struct surgeist_css::CssIsolationPropertyValue
 impl surgeist_css::CssIsolationPropertyValue
 pub fn surgeist_css::CssIsolationPropertyValue::as_css(&self) -> &str
@@ -8282,6 +8482,14 @@ pub struct surgeist_css::CssLeftPropertyValue
 impl surgeist_css::CssLeftPropertyValue
 pub fn surgeist_css::CssLeftPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssLeftPropertyValue::value(&self) -> &surgeist_css::CssInsetValue
+pub struct surgeist_css::CssLegacyNavigationTargetError
+impl surgeist_css::CssLegacyNavigationTargetError
+pub fn surgeist_css::CssLegacyNavigationTargetError::target(&self) -> &str
+pub struct surgeist_css::CssLegacyNavigationTargetName
+impl surgeist_css::CssLegacyNavigationTargetName
+pub fn surgeist_css::CssLegacyNavigationTargetName::as_str(&self) -> &str
+pub const fn surgeist_css::CssLegacyNavigationTargetName::component(&self) -> &surgeist_css::CssComponentValue
+pub const fn surgeist_css::CssLegacyNavigationTargetName::origin(&self) -> &surgeist_css::CssValueOrigin
 pub struct surgeist_css::CssLengthCalculation
 impl surgeist_css::CssLengthCalculation
 pub fn surgeist_css::CssLengthCalculation::components(&self) -> &surgeist_css::CssComponentValues
@@ -8655,6 +8863,41 @@ pub const fn surgeist_css::CssNamespaceRule::prefix(&self) -> core::option::Opti
 impl surgeist_css::CssNamespaceRule
 pub fn surgeist_css::CssNamespaceRule::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssNamespaceRule::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssNavDownPropertyValue
+impl surgeist_css::CssNavDownPropertyValue
+pub fn surgeist_css::CssNavDownPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssNavDownPropertyValue::navigation(&self) -> &surgeist_css::CssNavigation
+pub struct surgeist_css::CssNavLeftPropertyValue
+impl surgeist_css::CssNavLeftPropertyValue
+pub fn surgeist_css::CssNavLeftPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssNavLeftPropertyValue::navigation(&self) -> &surgeist_css::CssNavigation
+pub struct surgeist_css::CssNavRightPropertyValue
+impl surgeist_css::CssNavRightPropertyValue
+pub fn surgeist_css::CssNavRightPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssNavRightPropertyValue::navigation(&self) -> &surgeist_css::CssNavigation
+pub struct surgeist_css::CssNavUpPropertyValue
+impl surgeist_css::CssNavUpPropertyValue
+pub fn surgeist_css::CssNavUpPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssNavUpPropertyValue::navigation(&self) -> &surgeist_css::CssNavigation
+pub struct surgeist_css::CssNavigationId
+impl surgeist_css::CssNavigationId
+pub fn surgeist_css::CssNavigationId::as_str(&self) -> &str
+pub const fn surgeist_css::CssNavigationId::component(&self) -> &surgeist_css::CssComponentValue
+pub const fn surgeist_css::CssNavigationId::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssNavigationId::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssNavigationId::try_new(decoded: &str) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+pub struct surgeist_css::CssNavigationReference
+impl surgeist_css::CssNavigationReference
+pub const fn surgeist_css::CssNavigationReference::id(&self) -> &surgeist_css::CssNavigationId
+pub const fn surgeist_css::CssNavigationReference::target(&self) -> core::option::Option<&surgeist_css::CssNavigationTarget>
+pub fn surgeist_css::CssNavigationReference::try_new(id: surgeist_css::CssNavigationId, target: core::option::Option<surgeist_css::CssNavigationTarget>) -> core::option::Option<Self>
+pub struct surgeist_css::CssNavigationTargetName
+impl surgeist_css::CssNavigationTargetName
+pub fn surgeist_css::CssNavigationTargetName::as_str(&self) -> &str
+pub const fn surgeist_css::CssNavigationTargetName::component(&self) -> &surgeist_css::CssComponentValue
+pub const fn surgeist_css::CssNavigationTargetName::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssNavigationTargetName::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssNavigationTargetName::try_new(decoded: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
 pub struct surgeist_css::CssNestedDeclarationsRule
 impl surgeist_css::CssNestedDeclarationsRule
 pub const fn surgeist_css::CssNestedDeclarationsRule::declarations(&self) -> &surgeist_css::CssDeclarationList
@@ -9875,6 +10118,15 @@ pub const fn surgeist_css::CssSpecificationSource::url(self) -> core::option::Op
 pub struct surgeist_css::CssSpecificationSourceId(_)
 impl surgeist_css::CssSpecificationSourceId
 pub const fn surgeist_css::CssSpecificationSourceId::as_str(self) -> &'static str
+pub struct surgeist_css::CssSpecifiedFlex
+impl surgeist_css::CssSpecifiedFlex
+pub fn surgeist_css::CssSpecifiedFlex::calculation(&self) -> core::option::Option<&surgeist_css::CssFlexCalculation>
+pub fn surgeist_css::CssSpecifiedFlex::literal_component(&self) -> core::option::Option<&surgeist_css::CssComponentValue>
+pub fn surgeist_css::CssSpecifiedFlex::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssSpecifiedFlex::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssSpecifiedFlex::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssSpecifiedFlex::try_from_calculation(calculation: surgeist_css::CssFlexCalculation) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub fn surgeist_css::CssSpecifiedFlex::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 pub struct surgeist_css::CssSpecifiedLength
 impl surgeist_css::CssSpecifiedLength
 pub fn surgeist_css::CssSpecifiedLength::calculation(&self) -> core::option::Option<&surgeist_css::CssLengthCalculation>
@@ -10008,6 +10260,35 @@ pub fn surgeist_css::CssSteps::try_new(count: surgeist_css::CssPositiveIntegerVa
 impl surgeist_css::CssSteps
 pub fn surgeist_css::CssSteps::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssSteps::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssStripe
+impl surgeist_css::CssStripe
+pub const fn surgeist_css::CssStripe::color(&self) -> &surgeist_css::CssColor
+pub const fn surgeist_css::CssStripe::color_component(&self) -> &surgeist_css::CssComponentValue
+pub const fn surgeist_css::CssStripe::color_origin(&self) -> &surgeist_css::CssValueOrigin
+pub const fn surgeist_css::CssStripe::thickness(&self) -> core::option::Option<&surgeist_css::CssStripeThickness>
+pub fn surgeist_css::CssStripe::try_new(color: surgeist_css::CssComponentValue, thickness: core::option::Option<surgeist_css::CssStripeThickness>) -> core::result::Result<Self, surgeist_css::CssImage1DConstructionError>
+impl core::cmp::PartialEq for surgeist_css::CssStripe
+pub fn surgeist_css::CssStripe::eq(&self, other: &Self) -> bool
+pub struct surgeist_css::CssStripeLengthPercentage
+impl surgeist_css::CssStripeLengthPercentage
+pub fn surgeist_css::CssStripeLengthPercentage::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssStripeLengthPercentage::try_from_calculation(calculation: surgeist_css::CssLengthPercentageCalculation) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub fn surgeist_css::CssStripeLengthPercentage::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub const fn surgeist_css::CssStripeLengthPercentage::value(&self) -> &surgeist_css::CssSpecifiedNonNegativeLengthPercentage
+impl surgeist_css::CssStripeLengthPercentage
+pub fn surgeist_css::CssStripeLengthPercentage::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssStripeLengthPercentage::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub struct surgeist_css::CssStripes
+impl surgeist_css::CssStripes
+pub fn surgeist_css::CssStripes::origin(&self) -> &surgeist_css::CssValueOrigin
+pub const fn surgeist_css::CssStripes::original_component(&self) -> core::option::Option<&surgeist_css::CssComponentValue>
+pub fn surgeist_css::CssStripes::stripes(&self) -> &[surgeist_css::CssStripe]
+pub fn surgeist_css::CssStripes::try_new(stripes: alloc::vec::Vec<surgeist_css::CssStripe>) -> core::result::Result<Self, surgeist_css::CssImage1DConstructionError>
+impl surgeist_css::CssStripes
+pub fn surgeist_css::CssStripes::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssStripes::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl core::cmp::PartialEq for surgeist_css::CssStripes
+pub fn surgeist_css::CssStripes::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssStyleBlock
 impl surgeist_css::CssStyleBlock
 pub const fn surgeist_css::CssStyleBlock::declarations(&self) -> &surgeist_css::CssDeclarationList

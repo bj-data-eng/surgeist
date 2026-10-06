@@ -202,6 +202,12 @@ impl CssTimeValue {
         }
         Ok(())
     }
+    pub(crate) fn specified_value_eq(&self, other: &Self) -> bool {
+        match (self.literal(), other.literal()) {
+            (Some(left), Some(right)) => left.equivalent(right),
+            _ => self.structural_eq(other),
+        }
+    }
     pub(crate) fn structural_eq(&self, other: &Self) -> bool {
         match (&self.value, &other.value) {
             (TimeValue::Literal(left), TimeValue::Literal(right)) => left.structural_eq(right),
@@ -247,10 +253,7 @@ impl CssDuration {
         self.time.origin()
     }
     pub(crate) fn specified_value_eq(&self, other: &Self) -> bool {
-        match (self.time.literal(), other.time.literal()) {
-            (Some(left), Some(right)) => left.equivalent(right),
-            _ => self.time.structural_eq(&other.time),
-        }
+        self.time.specified_value_eq(&other.time)
     }
     pub(crate) fn is_exact_ordinary_zero(&self) -> bool {
         self.time.literal().is_some_and(|literal| {

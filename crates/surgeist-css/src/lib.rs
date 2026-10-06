@@ -1648,10 +1648,13 @@ pub use speech::{
     CssVoiceFamilyNameRef, CssVoiceGender, CssVoiceLevel, CssVoiceOffset, CssVoicePitchRange,
     CssVoiceRate, CssVoiceRateKeyword, CssVoiceStress, CssVoiceVolume, CssVoiceVolumeLevel,
 };
+mod image_1d;
 mod text_alignment;
 mod text_controls;
 mod text_spacing;
 mod time;
+mod ui;
+mod ui_serialization;
 pub use alignment::{
     CssAlignContentValue, CssAlignItemsValue, CssAlignSelfValue, CssAlignmentPosition,
     CssAlignmentValue, CssBaselinePosition, CssJustifyContentValue, CssJustifyItemsValue,
@@ -1686,8 +1689,10 @@ pub use grid_template_areas::{
     CssGridTemplateAreaCell, CssGridTemplateAreaError, CssGridTemplateAreaName,
     CssGridTemplateAreaRow, CssGridTemplateAreaRows, CssGridTemplateAreas,
 };
+pub use image_1d::*;
 pub use resolution::{CssResolutionLiteral, CssResolutionValue};
 pub use time::{CssDuration, CssTimeLiteral, CssTimeValue};
+pub use ui::*;
 mod font_width;
 pub use font_width::{CssFontFaceWidth, CssFontWidth, CssFontWidthKeyword};
 mod font_controls;
@@ -1755,10 +1760,10 @@ mod specified_serialization;
 mod writing_modes;
 pub use opacity_scalar::{CssOpacityScalar, CssOpacityScalarKind};
 pub use specified_numeric::{
-    CssSpecifiedLength, CssSpecifiedLengthPercentage, CssSpecifiedNonNegativeFlex,
-    CssSpecifiedNonNegativeLength, CssSpecifiedNonNegativeLengthPercentage,
-    CssSpecifiedNonNegativeNumber, CssSpecifiedNonNegativePercentage, CssSpecifiedNumber,
-    CssSpecifiedPercentage,
+    CssSpecifiedFlex, CssSpecifiedLength, CssSpecifiedLengthPercentage,
+    CssSpecifiedNonNegativeFlex, CssSpecifiedNonNegativeLength,
+    CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedNonNegativeNumber,
+    CssSpecifiedNonNegativePercentage, CssSpecifiedNumber, CssSpecifiedPercentage,
 };
 pub use specified_serialization::{
     CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,

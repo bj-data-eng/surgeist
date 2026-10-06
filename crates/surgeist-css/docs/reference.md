@@ -4763,7 +4763,7 @@ This property family provides the selected authored grammars for ten CSS2
 residual properties, `quotes` in CSS Generated Content 3, the deprecated `clip`
 property in Masking 1 Appendix A,
 Writing Modes 3 `text-combine-upright`,
-`text-orientation`, and `unicode-bidi`, UI3 `outline-offset`, UI4 `caret-color`
+`text-orientation`, and `unicode-bidi`, UI4 `outline-offset` and `caret-color`
 and `resize`, Containment 2 `contain`, Transforms 1 `transform-box`, and Compositing
 1 `background-blend-mode`, `isolation`, and `mix-blend-mode`. Their property
 wrappers preserve exact authored CSS and expose typed current values without
@@ -4908,7 +4908,7 @@ legacy shorthand is `Partial`. This activation does not inflate the immutable
 ledger or promote later work: it remains 162 property units (161 canonical
 properties plus the custom property family), one normative legacy shorthand,
 and 167 non-property units.
-The 130-row exclusion registry still includes exactly 50 superseded
+The exclusion registry includes exactly 50 superseded
 CSS2 property definitions, 20 informative CSS2 Appendix A properties, and the
 two current-production-less `glyph-orientation-horizontal` and `ime-mode`
 spellings; the remaining exclusions cover exact non-property or downstream
@@ -7233,7 +7233,7 @@ above; contextual containment and image processing remain downstream.
 ## Authored UI interaction values
 
 The selected [UI 4 publication](https://www.w3.org/TR/2026/WD-css-ui-4-20260120/)
-owns five independent longhands. `caret-color` admits `auto` or the complete
+owns the authored UI families described here. `caret-color` admits `auto` or the complete
 selected Color 4/5 authored domain. `cursor` admits its 36 predefined keywords
 or ordered image alternatives with a mandatory predefined fallback, as detailed
 below. `pointer-events` admits `auto` or `none`; SVG's additional keywords are
@@ -7267,7 +7267,111 @@ atomic and leaves source models reusable. Resource loading, MIME/candidate
 selection, hotspot clamping, caret appearance, hit testing, selection and resize
 execution remain downstream.
 
-## Cursor images and represented transform, mask and outline output
+## Remaining authored UI4 values
+
+The [selected UI4](https://www.w3.org/TR/2026/WD-css-ui-4-20260120/) owns four
+noninherited navigation longhands (`nav-up`, `nav-right`, `nav-down`, `nav-left`),
+with initial Auto. `CssNavigation` retains Auto or a checked ID selector plus an
+optional Current, Root or target string. `CssNavigationId` preserves case,
+escapes and original token provenance. `CssNavigationTargetName` admits the empty
+string and rejects underscore-leading strings. Browser parsing retains those
+nonconforming strings as `CssNavigationTarget::LegacyName`, emits typed
+`CssErrorCode::LegacyNavigationTarget` with `RetainLegacyNavigationTarget`, and
+keeps both the original string and its decoded case. Clean validators and checked
+property/reentry fronts reject them. Normalization retains that symbolic
+recovered occurrence and its diagnostics; CSS performs no frame navigation.
+The same retention/report contract applies in ordinary and keyframe declarations
+and raw-value fragments. Navigation computes as specified and animates discretely
+in its later owning phase.
+
+`ime-mode` remains unknown authored syntax. UI4's obsolete policy is recorded in
+`excluded.X-UI4.property.ime-mode`: user agents should not support it, authors
+must not use it, and user repair guidance does not define an authored value
+grammar. No values are inferred from examples or HTML input guidance.
+
+`CssCaretAnimation` admits Auto/Manual and `CssCaretShape` admits
+Auto/Bar/Block/Underscore. Both inherit with initial Auto. Animation's later
+animation type is discrete; shape's is by computed value. `CssCaret` retains
+optional Color/Animation/Shape roles and composes the existing complete
+`CssCaretColor`. Its expansion sets exactly those three longhands, requests
+individual Auto initials for omitted roles, and has no reset-only member.
+Canonical output uses color/animation/shape order and omits explicit Auto roles
+when a noninitial role remains; an all-Auto value emits one `auto`. Suppressed
+roles remain stored and consume cumulative provider work. The shorthand costs
+one input/projection node plus the retained child costs.
+
+`CssInteractivity` admits Auto/Inert, inherits with initial Auto, computes as
+specified and has discrete later animation. `CssInterestDelayValue` is Normal or
+the shared signed `CssTimeValue`; Normal stays symbolic and no Duration range is
+imported. `CssInterestDelay` retains a required first and optional second value.
+It sets exactly start/end, repeating the first for omitted end, with no reset-only
+member. Both longhands inherit and initially use Normal; later animation follows
+the computed value type. A repeated retained second value can be omitted from
+output only through exact ordinary s/ms equality or origin-independent structural
+Time calculation equality. No contextual timing or expression solver is added.
+Distinct values that round to the same six-place text still emit both outputs;
+for example `0.0000001s 0.0000002s` emits `0s 0s`. Original values, units, presence
+and origins remain unchanged. The aggregate costs one node and visits both
+retained children, including a suppressed second child.
+
+`CssAccentColor` admits Auto or the shared complete Color domain, inherits with
+initial Auto, and uses later computed-value animation. `CssAppearance` preserves
+all fifteen authored keywords: none, auto, base, base-select, searchfield,
+textarea, checkbox, radio, menulist, listbox, meter, progress-bar, button,
+textfield and menulist-button. Appearance is noninherited with initial None,
+computes as specified and animates discretely. Required `-webkit-appearance` is
+an authored name alias; parsed name provenance remains intact and canonical
+output uses `appearance`. Acceptance of Base does not establish host widget
+readiness or collapse the compatibility keywords into Auto.
+
+All these properties share CSS-wide/`all` handling, pending whole-value
+substitutions, strict reusable reentry, original occurrence/importance and
+normalization limits. Their metadata and generated borrowed payloads use the
+single property schema. Public specified-output failure is atomic; Color and
+numeric carriers delegate to shared providers. Focus execution, inertness,
+interest scheduling, caret painting and widget interpretation stay downstream.
+
+## Imported one-dimensional stripes
+
+UI4 Outline imports the full `border-top-color` domain through its bibliography's
+[dated Borders4](https://www.w3.org/TR/2025/WD-css-borders-4-20251216/#border-color)
+and [dated Images4](https://www.w3.org/TR/2025/WD-css-images-4-20250930/#stripes).
+`CssImage1D::Stripes` is reusable CSS-owned authored syntax, distinct from Color
+and Images3's two-dimensional `CssImageValue`. The existing Color-only
+Backgrounds3 border properties and Images3 gradients keep their selected domains.
+
+`CssStripes` owns a nonempty ordered stripe list; `CssStripe` requires one complete
+color component and optional `CssStripeThickness`. Length-percentage literals
+require nonnegative lengths and percentages in 0..100; calculations retain the
+shared deferred range phase. Flex uses shared unrestricted `CssSpecifiedFlex`,
+while Grid retains its separate `CssSpecifiedNonNegativeFlex` constraint.
+Admission of signed bare fr and Flex-root math is the explicit composed-source
+inference from Images4's unannotated flex import, Values4 math roots and Grid2's
+bare flex definition; Grid's nonnegative track-breadth annotation is not imported.
+No additional arithmetic engine, image sizing or stripe painting is added.
+
+`CssImage1D::try_from_components` checks complete original closure and the shared
+grammar. `CssStripe::try_new` checks the original color component and thickness;
+`CssStripes::try_new` checks nonemptiness, all retained children and aggregate
+depth. Parsed stripes retain the original function (including any recovered
+closure), color components and exact origins. Checked construction cannot
+certify recovered components as clean. `CssImage1DConstructionError` keeps
+component, numeric, grammar, recovered-origin and list/depth failures distinct.
+
+Canonical output uses color/thickness order and comma spacing. Omitted thickness
+means 1fr; an explicit exact ordinary 1fr is omitted only in output and still
+visits its provider. The Stripes aggregate and each stripe cost one node in both
+work budgets, with Color/numeric child costs shared cumulatively. All retained
+children are visited under outer suppression; only emitted bytes are charged.
+Failure returns no partial CSS and preserves optional thickness presence and
+original components. Outline delegates directly to this provider.
+
+Functional typed-API and exact budget examples are exercised in
+[`ui_remaining_typed_values.rs`](../tests/ui_remaining_typed_values.rs); the
+existing authored front-door lifecycle suite is
+[`ui_remaining_authored_contract.rs`](../tests/ui_remaining_authored_contract.rs).
+
+## Cursor images, transform, mask and Outline output
 
 `CssCursor::Images` holds a checked nonempty image list and a required fallback.
 Each image has an optional complete Number pair for its hotspot. URL sets hold
@@ -7316,7 +7420,7 @@ shorthand resets and the full property lifecycle remain outside this represented
 provider.
 
 Outline has a property-specific finite style domain excluding `hidden`, plus
-`CssOutlineColor::Auto` or the shared Color owner. The selected
+`CssOutlineColor::Auto`, the shared Color owner or a reusable `CssImage1D`. The selected
 [UI 4 outline grammar](https://www.w3.org/TR/2026/WD-css-ui-4-20260120/#outline)
 allows width, style and color in any order. An otherwise ambiguous single `auto`
 sets both style and color; separate explicit components determine the remaining
@@ -7327,7 +7431,9 @@ retained fields are Auto, output can use one `auto` but visits both fields.
 Width, style, color and shorthand expose bounded specified serializers without
 resolving Auto or Color against rendering context. The shorthand costs one node
 in each budget; keywords cost one, and numeric/Color variants delegate their
-child costs. The inherited image-1D color alternative remains unrepresented.
+child costs. Outline lifecycle metadata expands exactly width/style/color,
+with no reset-only member; `outline-offset` remains independent. The initials
+are medium/none/auto and signed zero offset, all noninherited.
 
 All these public providers return either complete CSS or a typed error, preserve
 the original value and origins, and share child input, projection and final

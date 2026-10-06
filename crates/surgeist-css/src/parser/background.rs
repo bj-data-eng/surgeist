@@ -1676,6 +1676,14 @@ pub(super) fn parse_outline_color<'i, 't>(
     {
         return Ok(CssOutlineColor::Auto);
     }
+    let start = input.state();
+    let stripes =
+        matches!(input.next(), Ok(Token::Function(name)) if name.eq_ignore_ascii_case("stripes"));
+    input.reset(&start);
+    if stripes {
+        return super::image_1d::parse_image_1d(input, numeric)
+            .map(|image| CssOutlineColor::Image1D(Box::new(image)));
+    }
     parse_color(input, numeric).map(|color| CssOutlineColor::Color(Box::new(color)))
 }
 

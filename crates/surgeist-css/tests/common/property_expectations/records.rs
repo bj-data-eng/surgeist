@@ -1,6 +1,99 @@
 // Independently authored facts migrated from the existing test inventories.
 // Records are maintained directly; there is no production-schema generator.
 property_records! {
+    CaretAnimation, "caret-animation" {
+        metadata: longhand(true, |v| assert_eq!(*v, CssCaretAnimation::Auto)),
+        catalog: grammar_catalog!("official.property.caret-animation", "manual", rejected("running")),
+        source: "X-UI4",
+        dispatch: "manual",
+        wrapper: yes,
+    }
+    CaretShape, "caret-shape" {
+        metadata: longhand(true, |v| assert_eq!(*v, CssCaretShape::Auto)),
+        catalog: grammar_catalog!("official.property.caret-shape", "underscore", rejected("circle")),
+        source: "X-UI4",
+        dispatch: "underscore",
+        wrapper: yes,
+    }
+    Interactivity, "interactivity" {
+        metadata: longhand(true, |v| assert_eq!(*v, CssInteractivity::Auto)),
+        catalog: grammar_catalog!("official.property.interactivity", "inert", rejected("none")),
+        source: "X-UI4",
+        dispatch: "inert",
+        wrapper: yes,
+    }
+    Appearance, "appearance" {
+        metadata: longhand(false, |v| assert_eq!(*v, CssAppearance::None)),
+        catalog: grammar_catalog!("official.property.appearance", "base-select", rejected("slider")),
+        source: "X-UI4",
+        aliases: ["-webkit-appearance"],
+        dispatch: "base-select",
+        wrapper: yes,
+    }
+    NavUp, "nav-up" {
+        metadata: longhand(false, |v| assert!(matches!(v, CssNavigation::Auto))),
+        catalog: grammar_catalog!("official.property.nav-up", "#Next root", rejected("#123")),
+        source: "X-UI4",
+        dispatch: "#Next root",
+        wrapper: yes,
+    }
+    NavRight, "nav-right" {
+        metadata: longhand(false, |v| assert!(matches!(v, CssNavigation::Auto))),
+        catalog: grammar_catalog!("official.property.nav-right", "#Next root", rejected("#123")),
+        source: "X-UI4",
+        dispatch: "#Next root",
+        wrapper: yes,
+    }
+    NavDown, "nav-down" {
+        metadata: longhand(false, |v| assert!(matches!(v, CssNavigation::Auto))),
+        catalog: grammar_catalog!("official.property.nav-down", "#Next root", rejected("#123")),
+        source: "X-UI4",
+        dispatch: "#Next root",
+        wrapper: yes,
+    }
+    NavLeft, "nav-left" {
+        metadata: longhand(false, |v| assert!(matches!(v, CssNavigation::Auto))),
+        catalog: grammar_catalog!("official.property.nav-left", "#Next root", rejected("#123")),
+        source: "X-UI4",
+        dispatch: "#Next root",
+        wrapper: yes,
+    }
+    InterestDelayStart, "interest-delay-start" {
+        metadata: longhand(true, |v| assert!(matches!(v, CssInterestDelayValue::Normal))),
+        catalog: grammar_catalog!("official.property.interest-delay-start", "-1s", rejected("1")),
+        source: "X-UI4",
+        dispatch: "-1s",
+        wrapper: yes,
+    }
+    InterestDelayEnd, "interest-delay-end" {
+        metadata: longhand(true, |v| assert!(matches!(v, CssInterestDelayValue::Normal))),
+        catalog: grammar_catalog!("official.property.interest-delay-end", "-1s", rejected("1")),
+        source: "X-UI4",
+        dispatch: "-1s",
+        wrapper: yes,
+    }
+    Caret, "caret" {
+        metadata: shorthand([CaretColor, CaretAnimation, CaretShape], []),
+        catalog: grammar_catalog!("official.property.caret", "red manual block", rejected("manual manual")),
+        source: "X-UI4",
+        dispatch: "red manual block",
+        wrapper: yes,
+    }
+    InterestDelay, "interest-delay" {
+        metadata: shorthand([InterestDelayStart, InterestDelayEnd], []),
+        catalog: grammar_catalog!("official.property.interest-delay", "normal -1s", rejected("1s 2s 3s")),
+        source: "X-UI4",
+        dispatch: "normal -1s",
+        wrapper: yes,
+    }
+    AccentColor, "accent-color" {
+        metadata: longhand(true, |v| assert!(matches!(v, CssAccentColor::Auto))),
+        catalog: grammar_catalog!("official.property.accent-color", "light-dark(red, blue)", rejected("auto auto")),
+        source: "X-UI4",
+        dispatch: "light-dark(red, blue)",
+        wrapper: yes,
+    }
+
     AlignContent, "align-content" {
         metadata: longhand(false, |v| {
             assert_eq!(v.value(), CssAlignmentValue::Normal { overflow: None })
@@ -1707,30 +1800,35 @@ property_records! {
         catalog: grammar_catalog!("official.property.orphans", "3", rejected("0")),
     }
     Outline, "outline" {
-        metadata: unavailable(),
+        metadata: shorthand([OutlineWidth, OutlineStyle, OutlineColor], []),
         catalog: grammar_catalog!("baseline.property.outline", "thick dotted white", rejected("solid dotted")),
+        source: "X-UI4",
         dispatch: "thick dotted white",
         wrapper: yes,
     }
     OutlineColor, "outline-color" {
-        metadata: unavailable(),
+        metadata: longhand(false, |v| assert!(matches!(v, CssOutlineColor::Auto))),
         catalog: grammar_catalog!("baseline.property.outline-color", "black", rejected("black white")),
+        source: "X-UI4",
         dispatch: "black",
         wrapper: yes,
     }
     OutlineOffset, "outline-offset" {
-        metadata: unavailable(),
+        metadata: longhand(false, |v| assert_eq!(v.serialize_specified().unwrap(), "0")),
         catalog: grammar_catalog!("official.property.outline-offset", "-2px", rejected("auto")),
+        source: "X-UI4",
     }
     OutlineStyle, "outline-style" {
-        metadata: unavailable(),
+        metadata: longhand(false, |v| assert_eq!(*v, CssOutlineStyle::None)),
         catalog: grammar_catalog!("baseline.property.outline-style", "auto", rejected("10px")),
+        source: "X-UI4",
         dispatch: "auto",
         wrapper: yes,
     }
     OutlineWidth, "outline-width" {
-        metadata: unavailable(),
+        metadata: longhand(false, |v| assert!(matches!(v, CssOutlineWidth::Medium))),
         catalog: grammar_catalog!("baseline.property.outline-width", "2px", rejected("10%")),
+        source: "X-UI4",
         dispatch: "2px",
         wrapper: yes,
     }

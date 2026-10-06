@@ -3807,7 +3807,7 @@ fn c12_property_metadata_is_truthful() {
         (
             "official.property.outline-offset",
             "outline-offset",
-            "O-UI3",
+            "X-UI4",
             "#propdef-outline-offset",
             "-2px",
         ),

@@ -54,6 +54,14 @@ Checked composition and cumulative serialization preserve authored omissions;
 see the [prosody reference](docs/reference.md#authored-speech-prosody) for
 canonical output and precision limits.
 
+Authored UI4 values include Outline with reusable one-dimensional stripes,
+directional navigation, caret, interactivity, interest delays, accent color and
+appearance. Typed models share intrinsic expansion and pending reentry;
+canonical providers preserve optional fields and symbolic legacy navigation
+diagnostics under cumulative limits. Focus, caret, timing and widget execution
+remain downstream. See the [UI reference](docs/reference.md#remaining-authored-ui4-values)
+and [stripe import](docs/reference.md#imported-one-dimensional-stripes).
+
 The eight four-side border, inset, spacing and scroll shorthands expand to four
 members in their authored physical or logical mode without complementary resets.
 CSS-wide values select physical sides; strict substitution reentry selects the

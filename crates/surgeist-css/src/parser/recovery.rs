@@ -278,6 +278,7 @@ pub(crate) struct RecoveryState {
     namespace_bindings: Rc<RefCell<CssNamespaceBindings>>,
     implicit_openings: Rc<Vec<usize>>,
     retained_implicit_openings: Rc<RefCell<Vec<usize>>>,
+    retained_navigation_diagnostics: Rc<RefCell<Vec<crate::CssRecoveryDiagnostic>>>,
 }
 
 impl RecoveryState {
@@ -308,6 +309,7 @@ impl RecoveryState {
             namespace_bindings,
             implicit_openings: Rc::new(unclosed_openings(source)),
             retained_implicit_openings: Rc::new(RefCell::new(Vec::new())),
+            retained_navigation_diagnostics: Rc::new(RefCell::new(Vec::new())),
         }
     }
 
@@ -319,6 +321,7 @@ impl RecoveryState {
             namespace_bindings: Rc::clone(&self.namespace_bindings),
             implicit_openings: Rc::clone(&self.implicit_openings),
             retained_implicit_openings: Rc::new(RefCell::new(Vec::new())),
+            retained_navigation_diagnostics: Rc::new(RefCell::new(Vec::new())),
         }
     }
 
@@ -475,6 +478,36 @@ impl RecoveryState {
         }
     }
 
+    // Called only after a complete declaration survived its grammar boundary.
+    pub(super) fn retain_navigation_diagnostic(&self, body: &crate::CssDeclarationBody) {
+        let crate::CssDeclarationBody::Known(known) = body else {
+            return;
+        };
+        let navigation = match known.property_value() {
+            Some(crate::CssKnownPropertyValueRef::NavUp(value)) => value.navigation(),
+            Some(crate::CssKnownPropertyValueRef::NavRight(value)) => value.navigation(),
+            Some(crate::CssKnownPropertyValueRef::NavDown(value)) => value.navigation(),
+            Some(crate::CssKnownPropertyValueRef::NavLeft(value)) => value.navigation(),
+            _ => return,
+        };
+        let Some(target) = navigation.legacy_target() else {
+            return;
+        };
+        let crate::CssValueOrigin::Parsed(origin) = target.origin() else {
+            return;
+        };
+        let span = origin.span();
+        let diagnostic = crate::CssRecoveryDiagnostic::new(
+            crate::error::legacy_navigation_target(target.as_str(), span.start()),
+            span,
+            crate::CssRecoveryAction::RetainLegacyNavigationTarget,
+        )
+        .expect("target error belongs to original string span");
+        self.retained_navigation_diagnostics
+            .borrow_mut()
+            .push(diagnostic);
+    }
+
     pub(super) fn take_implicit_closure_diagnostics(
         &self,
         source: &str,
@@ -483,7 +516,8 @@ impl RecoveryState {
         let Some(span) = crate::CssSourceSpan::new(eof, eof) else {
             return Vec::new();
         };
-        self.retained_implicit_openings
+        let mut diagnostics: Vec<_> = self
+            .retained_implicit_openings
             .borrow_mut()
             .drain(..)
             .filter_map(|_| {
@@ -493,7 +527,9 @@ impl RecoveryState {
                     crate::CssRecoveryAction::RetainWithImplicitClosure,
                 )
             })
-            .collect()
+            .collect();
+        diagnostics.extend(self.retained_navigation_diagnostics.borrow_mut().drain(..));
+        diagnostics
     }
 
     pub(super) fn check_failed_rule_block<'i>(

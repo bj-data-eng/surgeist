@@ -29,6 +29,8 @@ mod font_settings;
 mod font_variant;
 mod fragments;
 mod gap;
+pub(crate) mod image_1d;
+mod ui;
 pub use fragments::{
     parse_color_profile_descriptor_value, parse_cssom_media_query, parse_declaration,
     parse_font_face_descriptor_value, parse_font_palette_descriptor_value, parse_media_query,
@@ -149,6 +151,7 @@ use sizing_controls::*;
 use supports::{
     parse_supports_condition, parse_supports_declaration, with_supports_prelude_context,
 };
+use ui::*;
 use url::parse_url;
 use will_change::*;
 pub(crate) mod named_supports;
@@ -378,6 +381,11 @@ static ATOMIC_IMPLEMENTATION_INVENTORIES: &[CssAtomicImplementationInventory] = 
         module: "crate::parser::box_model",
         kind: CssAtomicImplementationKind::SharedValue,
         stable_ids: box_model::IMPLEMENTED_SHARED_VALUES,
+    },
+    CssAtomicImplementationInventory {
+        module: "crate::parser::image_1d",
+        kind: CssAtomicImplementationKind::SharedValue,
+        stable_ids: image_1d::IMPLEMENTED_SHARED_VALUES,
     },
     CssAtomicImplementationInventory {
         module: "crate::parser::background",
@@ -4447,6 +4455,7 @@ impl<'i> DeclarationParser<'i> for StrictDeclarationParser<'i> {
             self.recovery.source_snapshot(),
         )?;
         self.recovery.retain_component_closures(implicit_closures);
+        self.recovery.retain_navigation_diagnostic(&parsed.body);
         Ok(parsed.into_declaration())
     }
 }
