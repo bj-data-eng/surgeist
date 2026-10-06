@@ -279,11 +279,51 @@ pub(super) fn parse_background_size_prefix<'i, 't>(
     Ok(CssBackgroundSize::Explicit { width, height })
 }
 
+/// Parses one image-only value through the canonical complete graph boundary.
+pub(super) fn parse_image<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> std::result::Result<CssImage, ParseError<'i, Error>> {
+    input.skip_whitespace();
+    let location = input.current_source_location();
+    let start = input.position().byte_index();
+    let value = parse_image_value(input, numeric)?;
+    CssImage::try_new(value)
+        .map_err(|error| image_construction_error(error, location, start, numeric))
+}
+
+// All image construction entry points preserve resource failures and the
+// original image token origin; semantic None rejection remains grammar-owned.
+fn image_construction_error<'i>(
+    error: CssImageConstructionError,
+    location: cssparser::SourceLocation,
+    start: usize,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> ParseError<'i, Error> {
+    let kind = match error {
+        CssImageConstructionError::NotImage => {
+            return unsupported_value_at(location, None, "none is not an image");
+        }
+        CssImageConstructionError::NestingLimit => crate::CssComponentValueErrorKind::NestingLimit,
+        CssImageConstructionError::CapacityOverflow => {
+            crate::CssComponentValueErrorKind::CapacityOverflow
+        }
+    };
+    crate::error::invalid_component_value(
+        location,
+        crate::CssComponentValueError::new(
+            kind,
+            numeric.origin_at(start).expect("image token origin"),
+        ),
+    )
+}
+
 pub(super) fn parse_image_value<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssImageValue, ParseError<'i, Error>> {
     if next_is_light_dark(input) {
+        input.skip_whitespace();
         let location = input.current_source_location();
         let start = input.position().byte_index();
         input.next().map_err(basic)?;
@@ -294,23 +334,7 @@ pub(super) fn parse_image_value<'i, 't>(
             input.expect_exhausted().map_err(basic)?;
             CssLightDarkImage::try_new(light, dark)
                 .map(|value| CssImageValue::LightDark(Box::new(value)))
-                .map_err(|error| {
-                    let kind = match error {
-                        CssImageConstructionError::NestingLimit => {
-                            crate::CssComponentValueErrorKind::NestingLimit
-                        }
-                        CssImageConstructionError::CapacityOverflow => {
-                            crate::CssComponentValueErrorKind::CapacityOverflow
-                        }
-                    };
-                    crate::error::invalid_component_value(
-                        location,
-                        crate::CssComponentValueError::new(
-                            kind,
-                            numeric.origin_at(start).expect("image function origin"),
-                        ),
-                    )
-                })
+                .map_err(|error| image_construction_error(error, location, start, numeric))
         });
     }
     if input

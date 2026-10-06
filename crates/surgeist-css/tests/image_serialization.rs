@@ -203,7 +203,10 @@ fn image_list_url_src_none_and_transparent_image_dispatch() {
             image.serialize_specified().unwrap()
         );
     }
-    assert!(CssImage::try_new(CssImageValue::None).is_none());
+    assert_eq!(
+        CssImage::try_new(CssImageValue::None).unwrap_err(),
+        CssImageConstructionError::NotImage
+    );
 }
 
 #[test]

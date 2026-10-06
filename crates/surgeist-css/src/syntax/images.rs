@@ -14,6 +14,8 @@ use super::{
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssImageConstructionError {
+    /// A property-specific `none` keyword is not an image.
+    NotImage,
     /// The complete subtree exceeds the shared 256-level structural ceiling.
     NestingLimit,
     /// The composed structural depth cannot be represented.
@@ -22,6 +24,7 @@ pub enum CssImageConstructionError {
 impl std::fmt::Display for CssImageConstructionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
+            Self::NotImage => "none is not an image",
             Self::NestingLimit => "image nesting limit exceeded",
             Self::CapacityOverflow => "image capacity overflow",
         })
@@ -176,10 +179,17 @@ pub struct CssImage {
 }
 
 impl CssImage {
-    /// Checks the image-only grammar without loading or resolving the image.
-    #[must_use]
-    pub fn try_new(value: CssImageValue) -> Option<Self> {
-        (!matches!(value, CssImageValue::None)).then_some(Self { value })
+    /// Checks the complete image graph without loading or resolving the image.
+    ///
+    /// A bare `none` is not an image. Every retained image, color, numeric and
+    /// URL-modifier subtree must fit the shared 256-level structural ceiling.
+    /// This checked carrier adds no CSS function level of its own.
+    pub fn try_new(value: CssImageValue) -> Result<Self, CssImageConstructionError> {
+        if matches!(value, CssImageValue::None) {
+            return Err(CssImageConstructionError::NotImage);
+        }
+        image_depth(&value)?;
+        Ok(Self { value })
     }
 
     /// Returns the checked authored image payload.

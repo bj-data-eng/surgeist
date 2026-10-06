@@ -1977,6 +1977,7 @@ pub fn surgeist_css::CssImage1DConstructionError::fmt(&self, f: &mut core::fmt::
 #[non_exhaustive] pub enum surgeist_css::CssImageConstructionError
 pub surgeist_css::CssImageConstructionError::CapacityOverflow
 pub surgeist_css::CssImageConstructionError::NestingLimit
+pub surgeist_css::CssImageConstructionError::NotImage
 impl core::error::Error for surgeist_css::CssImageConstructionError
 impl core::fmt::Display for surgeist_css::CssImageConstructionError
 pub fn surgeist_css::CssImageConstructionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -8482,7 +8483,7 @@ impl surgeist_css::CssImage
 pub fn surgeist_css::CssImage::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssImage::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl surgeist_css::CssImage
-pub fn surgeist_css::CssImage::try_new(value: surgeist_css::CssImageValue) -> core::option::Option<Self>
+pub fn surgeist_css::CssImage::try_new(value: surgeist_css::CssImageValue) -> core::result::Result<Self, surgeist_css::CssImageConstructionError>
 pub const fn surgeist_css::CssImage::value(&self) -> &surgeist_css::CssImageValue
 pub struct surgeist_css::CssImageOrientationPropertyValue
 impl surgeist_css::CssImageOrientationPropertyValue

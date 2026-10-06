@@ -2,12 +2,12 @@
 
 use cssparser::{ParseError, Parser, Token};
 
-use super::background::parse_image_value;
+use super::background::parse_image;
 use super::generated_content::parse_content_string;
 use super::url::parse_url;
+use crate::CssIdent;
 use crate::content_values::*;
-use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
-use crate::{CssIdent, CssImage};
+use crate::error::{Error, basic, unsupported_value};
 
 type Result<'i, T> = std::result::Result<T, ParseError<'i, Error>>;
 
@@ -92,13 +92,8 @@ fn parse_item<'i, 't>(
     if let Ok(string) = input.try_parse(parse_content_string) {
         return Ok(CssContentValueItem::String(string));
     }
-    match input.try_parse(|input| parse_image_value(input, numeric)) {
-        Ok(image) => {
-            if let Some(image) = CssImage::try_new(image) {
-                return Ok(CssContentValueItem::Image(image));
-            }
-            return Err(unsupported_value(input, None, "none is not an image item"));
-        }
+    match input.try_parse(|input| parse_image(input, numeric)) {
+        Ok(image) => return Ok(CssContentValueItem::Image(image)),
         Err(error) if crate::error::is_resource_parse_error(&error) => return Err(error),
         Err(_) => {}
     }
@@ -239,11 +234,7 @@ fn parse_symbols<'i, 't>(
             symbols.push(CssCounterSymbolValue::String(string));
             continue;
         }
-        let location = input.current_source_location();
-        let image = parse_image_value(input, numeric)?;
-        let image = CssImage::try_new(image).ok_or_else(|| {
-            unsupported_value_at(location, None, "symbols() requires string or image")
-        })?;
+        let image = parse_image(input, numeric)?;
         symbols.push(CssCounterSymbolValue::Image(image));
     }
     CssSymbolsStyleValue::try_new(system, symbols)

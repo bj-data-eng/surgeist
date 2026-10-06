@@ -34,7 +34,10 @@ fn stops() -> CssColorStopList {
 
 #[test]
 fn image_only_boundary_rejects_property_none_and_retains_all_published_families() {
-    assert!(CssImage::try_new(CssImageValue::None).is_none());
+    assert_eq!(
+        CssImage::try_new(CssImageValue::None).unwrap_err(),
+        CssImageConstructionError::NotImage
+    );
 
     let url = CssUrl::new("figure.svg");
     let image = CssImage::try_new(CssImageValue::Url(url)).unwrap();

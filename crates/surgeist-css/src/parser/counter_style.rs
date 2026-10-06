@@ -4,7 +4,7 @@ use cssparser::{
     match_ignore_ascii_case,
 };
 
-use super::background::parse_image_value;
+use super::background::parse_image;
 use super::recovery::{RecoveryLoopOutcome, RecoveryProgress, RecoveryState};
 use super::values::parse_integer_literal;
 use super::{
@@ -532,8 +532,5 @@ fn parse_symbol_component<'i, 't>(
     // An image is selected only after the string/custom-ident alternatives.
     // In particular, `none` is a symbol identifier, not property-level no image.
     // Do not speculate and discard an image provider's typed resource failure.
-    let image = parse_image_value(input, numeric)?;
-    CssImage::try_new(image)
-        .map(CssCounterSymbol::Image)
-        .ok_or_else(|| unsupported_value_at(location, None, "counter symbol requires an image"))
+    parse_image(input, numeric).map(CssCounterSymbol::Image)
 }

@@ -176,7 +176,10 @@ fn checked_shape_composition_retains_omission_and_each_explicit_box() {
 
 #[test]
 fn image_only_composition_rejects_bare_none_but_keeps_two_none_children() {
-    assert!(CssImage::try_new(CssImageValue::None).is_none());
+    assert_eq!(
+        CssImage::try_new(CssImageValue::None).unwrap_err(),
+        CssImageConstructionError::NotImage
+    );
     let branches = CssLightDarkImage::try_new(CssImageValue::None, CssImageValue::None).unwrap();
     let image = CssImage::try_new(CssImageValue::LightDark(Box::new(branches))).unwrap();
     let owner = CssShapeOutside::Image(image.clone());

@@ -100,7 +100,10 @@ fn checked_image_pairs_preserve_url_none_identity_and_are_real_images() {
         image.serialize_specified().unwrap(),
         "light-dark(none, none)"
     );
-    assert!(CssImage::try_new(CssImageValue::None).is_none());
+    assert_eq!(
+        CssImage::try_new(CssImageValue::None).unwrap_err(),
+        CssImageConstructionError::NotImage
+    );
 }
 
 #[test]
@@ -257,6 +260,7 @@ fn checked_image_depth_includes_url_modifier_function_and_argument_trees() {
 #[test]
 fn new_image_construction_errors_implement_the_semantic_error_contract() {
     for (value, text) in [
+        (CssImageConstructionError::NotImage, "none is not an image"),
         (
             CssImageConstructionError::NestingLimit,
             "image nesting limit exceeded",

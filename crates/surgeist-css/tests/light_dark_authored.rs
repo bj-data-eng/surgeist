@@ -189,7 +189,10 @@ fn two_image_branches_preserve_none_url_src_gradients_and_nested_pairs() {
         images("light-dark(none, url(a.svg))"),
         images("light-dark(url(a.svg), none)")
     );
-    assert!(CssImage::try_new(CssImageValue::None).is_none());
+    assert_eq!(
+        CssImage::try_new(CssImageValue::None).unwrap_err(),
+        CssImageConstructionError::NotImage
+    );
 }
 
 #[test]

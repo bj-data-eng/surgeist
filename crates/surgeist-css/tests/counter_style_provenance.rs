@@ -423,7 +423,10 @@ fn normalization_retains_counter_name_reference_and_image_origin_identity() {
 
 #[test]
 fn direct_image_symbol_construction_excludes_none_and_keeps_url_identity() {
-    assert!(CssImage::try_new(CssImageValue::None).is_none());
+    assert_eq!(
+        CssImage::try_new(CssImageValue::None).unwrap_err(),
+        CssImageConstructionError::NotImage
+    );
     let image = CssImage::try_new(CssImageValue::Url(CssUrl::from_parts(
         CssUrlFunction::Src,
         "#symbol",

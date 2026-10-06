@@ -1,7 +1,7 @@
 //! Shapes 1 property composition over shared authored image and shape owners.
 
 use crate::error::{Error, basic, unsupported_value, unsupported_value_at};
-use crate::{CssImage, CssShapeBox, CssShapeOutside, CssShapeOutsideShape};
+use crate::{CssShapeBox, CssShapeOutside, CssShapeOutsideShape};
 use cssparser::{ParseError, Parser, Token};
 
 pub(super) fn parse_shape_outside<'i, 't>(
@@ -28,10 +28,7 @@ pub(super) fn parse_shape_outside<'i, 't>(
     if reference_box.is_none() && !basic_shape {
         // Select the image owner directly: an image's original syntax/resource
         // error must not be discarded by speculative shape backtracking.
-        let image = super::background::parse_image_value(input, numeric)?;
-        return CssImage::try_new(image)
-            .map(CssShapeOutside::Image)
-            .ok_or_else(|| unsupported_value(input, None, "shape-outside requires an image"));
+        return super::background::parse_image(input, numeric).map(CssShapeOutside::Image);
     }
     let shape = super::effects::parse_clip_path_shape(input, numeric)?;
     if reference_box.is_none() && !input.is_exhausted() {

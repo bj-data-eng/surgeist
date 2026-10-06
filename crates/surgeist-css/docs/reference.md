@@ -2521,7 +2521,8 @@ spelling. It imports the direct Box 4 visual-box production plus margin-box.
 The broader SVG boxes used by clipping are excluded from this Shapes boundary.
 The image branch uses the existing Images 3 provider, including URL, gradients
 and the adopted symbolic `light-dark()` image/none branches. `CssImage::try_new`
-excludes a bare image `none`, which belongs to the outside keyword branch.
+checks the complete retained graph and returns `CssImageConstructionError::NotImage`
+for a bare image `none`, which belongs to the outside keyword branch.
 
 `CssShapeOutsideShape::new(shape, reference_box)` composes the existing eight
 basic-shape functions with an optional narrow box. `shape()` and `reference_box()`
@@ -5110,11 +5111,17 @@ generic size/repeat serializers also serve their existing mask value owners.
 These are the authored semantic values, including symbolic size calculations;
 global keywords and substitution-dependent declarations remain separate branches.
 
-`CssImage::try_new` checks the image-only grammar and rejects the property
-keyword `CssImageValue::None`; its borrowed `value()` retains a URL or gradient.
+`CssImage::try_new` returns `Result<CssImage, CssImageConstructionError>` and
+checks the complete retained image graph. It rejects the property keyword
+`CssImageValue::None` with `NotImage`, and reports `NestingLimit` or
+`CapacityOverflow` for structural failures. Its borrowed `value()` retains a
+URL, gradient or checked `light-dark()` pair. Every retained color, numeric and
+URL-modifier subtree contributes to the shared 256-level function-depth ceiling;
+the checked image carrier adds no function level of its own.
 Programmatic gradients use `CssGradientColorStop::from_color`, checked
 `CssColorStopList::try_new`, and `CssLinearGradient::new` or
-`CssRadialGradient::try_new`. The radial constructor rejects incompatible
+`CssRadialGradient::try_new`, followed by `CssImage::try_new` when admitting the
+complete graph as an image. The radial constructor rejects incompatible
 explicit radius forms, permits omitted size and extents, and preserves authored
 omissions. `CssPhysicalPosition::try_new` checks the physical generic
 position grammar: explicit edge offsets occur on both axes or neither. These

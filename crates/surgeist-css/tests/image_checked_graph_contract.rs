@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 //! Complete retained Image graph admission through the public checked constructor.
 //! #328 requires complete composed image structural admission, not only None rejection.
-//! Existing CssImage::try_new -> Option already expresses the expected refusal.
+//! Typed Result admission preserves the published callable graph-rejection expectations.
 //! Color5 checked LightDark and Values4 math/URL providers remain independent controls.
 //! Independent function-depth expectations and matched provider controls.
 use surgeist_css::*;
@@ -83,10 +83,11 @@ fn preserves_rejection_and_retry(invalid: CssImageValue, valid: CssImageValue) {
     let valid_before = valid.clone();
     preserves_acceptance(&valid);
     for _ in 0..2 {
-        // The existing Option boundary is the intended behavior assertion.
-        // A successful invalid constructor is the expected source-derived RED.
-        assert!(
-            CssImage::try_new(invalid.clone()).is_none(),
+        // The graph-rejection expectation is unchanged from the published RED.
+        // Typed admission now distinguishes structural failure from non-image None.
+        assert_eq!(
+            CssImage::try_new(invalid.clone()).unwrap_err(),
+            CssImageConstructionError::NestingLimit,
             "whole graph exceeds 256 retained function levels"
         );
         assert_eq!(invalid, invalid_before);
@@ -359,7 +360,10 @@ fn image_pair_provider_control_counts_its_own_enclosing_function_and_cached_chil
 #[test]
 fn none_and_low_depth_image_controls_preserve_every_existing_family_and_payload() {
     for _ in 0..2 {
-        assert!(CssImage::try_new(CssImageValue::None).is_none());
+        assert_eq!(
+            CssImage::try_new(CssImageValue::None).unwrap_err(),
+            CssImageConstructionError::NotImage
+        );
     }
     preserves_acceptance(&CssImageValue::Url(CssUrl::new("a.svg")));
     for family in 0..4 {
@@ -392,7 +396,10 @@ fn mixed_source_numeric_components_survive_admission_and_failed_enclosing_compos
         None,
         stops(named("red"), Some(position.clone())),
     )));
-    assert!(CssImage::try_new(invalid).is_none());
+    assert_eq!(
+        CssImage::try_new(invalid).unwrap_err(),
+        CssImageConstructionError::NestingLimit
+    );
     assert_eq!(position.calculation().unwrap().components(), &before);
     assert_eq!(components, before);
     assert_eq!(parsed, parsed_before);
