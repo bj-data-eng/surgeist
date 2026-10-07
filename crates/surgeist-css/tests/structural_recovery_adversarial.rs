@@ -2,7 +2,8 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use surgeist_css::{
     CssErrorCode, CssNamespaceConstraint, CssRecoveryAction, CssRule, CssScopedRule, CssSelector,
-    CssSelectorCombinator, CssSourcePosition, CssStyleSelector, ErrorKind, parse_sheet,
+    CssSelectorCombinator, CssSourcePosition, CssStyleSelector, CssTokenKind, ErrorKind,
+    parse_sheet,
 };
 
 fn nested_layers(depth: usize, tail: &str) -> String {
@@ -872,13 +873,15 @@ fn structural_recovery_retains_empty_keyframe_parents_after_declaration_loss() {
 #[test]
 fn structural_recovery_never_unwinds_on_bounded_adversarial_text() {
     let deep = component_value(1024, "f(", ")");
-    let repeated = format!("{}{}", "@bad{};".repeat(256), ".after{color:red}");
+    let repeated = format!("{}{}", "@bad{}".repeat(256), ".after{color:red}");
+    let repeated_semicolon = format!("{}{}", "@bad{};".repeat(256), ".after{color:red}");
     let cases = [
         ("", false),
         (";;;;;}}}}\0\u{fffd}", false),
         ("🦊💥\n@unknown fn({a;b}); .after{color:red}", false),
         (deep.as_str(), true),
         (repeated.as_str(), true),
+        (repeated_semicolon.as_str(), false),
     ];
 
     for (source, expects_later_sibling) in cases {
@@ -900,6 +903,24 @@ fn structural_recovery_never_unwinds_on_bounded_adversarial_text() {
                 matches!(report.syntax().rules().last(), Some(CssRule::Style(_))),
                 "later sibling was lost for {source:?}: {report:?}"
             );
+        }
+        if source == repeated_semicolon {
+            // Syntax 3 §§5.4.1/5.4.3: each semicolon begins qualified
+            // input, so the final one includes .after and its curly block.
+            assert!(report.syntax().rules().is_empty());
+            let diagnostic = report.diagnostics().last().unwrap();
+            let start = source.find(".after").unwrap() - 1;
+            assert_eq!(diagnostic.action(), CssRecoveryAction::DropQualifiedRule);
+            assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidSelector);
+            assert_eq!(diagnostic.error().position().byte_offset().value(), start);
+            assert_eq!(diagnostic.span().start().byte_offset().value(), start);
+            assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
+            let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
+                panic!("selector grammar owns the final semicolon-prefixed unit")
+            };
+            let encountered = detail.encountered().unwrap();
+            assert_eq!(encountered.kind(), CssTokenKind::Semicolon);
+            assert_eq!(encountered.authored(), ";");
         }
     }
 }

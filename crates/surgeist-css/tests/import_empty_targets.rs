@@ -170,11 +170,37 @@ fn empty_target_imports_advance_the_import_phase_before_later_layer_statements()
 }
 
 #[test]
-fn an_empty_string_import_at_eof_gets_a_programmatic_semicolon_without_recovery() {
+fn an_empty_string_import_at_eof_gets_a_programmatic_semicolon_with_statement_recovery() {
     let source = "@import ''";
     let report = parse_sheet(source);
-    assert!(report.is_clean(), "{:?}", report.diagnostics());
-    assert_eq!(validate_sheet(source).unwrap(), *report.syntax());
+    let [statement] = report.diagnostics() else {
+        panic!("one retained statement EOF diagnostic");
+    };
+    assert_eq!(
+        statement.error().code(),
+        surgeist_css::CssErrorCode::UnexpectedEnd
+    );
+    assert_eq!(
+        statement.action(),
+        CssRecoveryAction::RetainNonconformingRule
+    );
+    assert_eq!(
+        statement.error().position().byte_offset().value(),
+        source.len()
+    );
+    assert_eq!(statement.span().start().byte_offset().value(), 0);
+    assert_eq!(statement.span().end().byte_offset().value(), source.len());
+    let surgeist_css::ErrorKind::UnexpectedEnd(detail) = statement.error().kind() else {
+        panic!("typed statement EOF");
+    };
+    assert_eq!(
+        detail.expectation().as_str(),
+        "a semicolon or block terminating an at-rule"
+    );
+    assert_eq!(
+        validate_sheet(source),
+        report.clone().into_validation_result()
+    );
     let [CssRule::Import(import)] = report.syntax().rules() else {
         panic!("one import statement ending at EOF");
     };
@@ -200,14 +226,48 @@ fn eof_unclosed_empty_urls_retain_targets_with_implicit_closure_diagnostics() {
             panic!("retained EOF import: {source}");
         };
         assert_target(import, true, "");
-        let [diagnostic] = report.diagnostics() else {
-            panic!("one missing URL delimiter: {source}");
+        let [statement, closure] = report.diagnostics() else {
+            panic!("one statement fault and one missing URL delimiter: {source}");
         };
         assert_eq!(
-            diagnostic.action(),
+            statement.error().code(),
+            surgeist_css::CssErrorCode::UnexpectedEnd
+        );
+        assert_eq!(
+            statement.action(),
+            CssRecoveryAction::RetainNonconformingRule
+        );
+        assert_eq!(
+            statement.error().position().byte_offset().value(),
+            source.len()
+        );
+        assert_eq!(statement.span().start().byte_offset().value(), 0);
+        assert_eq!(statement.span().end().byte_offset().value(), source.len());
+        let surgeist_css::ErrorKind::UnexpectedEnd(detail) = statement.error().kind() else {
+            panic!("typed statement EOF");
+        };
+        assert_eq!(
+            detail.expectation().as_str(),
+            "a semicolon or block terminating an at-rule"
+        );
+        assert_eq!(
+            closure.error().code(),
+            surgeist_css::CssErrorCode::UnexpectedEnd
+        );
+        assert_eq!(
+            closure.action(),
             CssRecoveryAction::RetainWithImplicitClosure
         );
-        assert!(validate_sheet(source).is_err(), "{source}");
+        assert_eq!(
+            closure.error().position().byte_offset().value(),
+            source.len()
+        );
+        assert_eq!(closure.span().start().byte_offset().value(), source.len());
+        assert_eq!(closure.span().end().byte_offset().value(), source.len());
+        assert_eq!(
+            validate_sheet(source),
+            report.clone().into_validation_result()
+        );
         let output = import.serialize().unwrap();
         assert_eq!(output.as_css(), expected);
         assert!(matches!(

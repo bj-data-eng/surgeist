@@ -428,23 +428,19 @@ fn ordinary_unknown_at_rule_remains_a_local_error_with_the_same_validator_report
 
 fn assert_root_token(source: &str, token: CssTokenKind, authored: &str) {
     let report = parse_sheet(source);
-    assert_styles(
-        source,
-        report.syntax().rules(),
-        &[("after", (1, 0, 1), (14, 18))],
-    );
+    assert!(report.syntax().rules().is_empty());
     let [diagnostic] = report.diagnostics() else {
         panic!("one malformed root token")
     };
-    assert_eq!(
-        diagnostic.error().code(),
-        CssErrorCode::InvalidQualifiedRule
-    );
+    assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidSelector);
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropQualifiedRule);
     assert_position(diagnostic.error().position(), (0, 0, 0));
     assert_position(diagnostic.span().start(), (0, 0, 0));
-    assert_position(diagnostic.span().end(), (1, 0, 1));
-    let ErrorKind::InvalidQualifiedRule(detail) = diagnostic.error().kind() else {
+    assert_position(
+        diagnostic.span().end(),
+        (source.len(), 0, u32::try_from(source.len()).unwrap()),
+    );
+    let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
         panic!("malformed root qualified rule")
     };
     let encountered = detail.encountered().unwrap();
@@ -454,12 +450,12 @@ fn assert_root_token(source: &str, token: CssTokenKind, authored: &str) {
 }
 
 #[test]
-fn root_semicolon_keeps_its_qualified_rule_error_and_next_original_rule() {
+fn root_semicolon_consumes_one_complete_qualified_rule() {
     assert_root_token(";.after{color:blue}", CssTokenKind::Semicolon, ";");
 }
 
 #[test]
-fn unmatched_root_brace_keeps_its_qualified_rule_error_and_next_original_rule() {
+fn unmatched_root_brace_consumes_one_complete_qualified_rule() {
     assert_root_token("}.after{color:blue}", CssTokenKind::CloseCurlyBracket, "}");
 }
 

@@ -1005,6 +1005,11 @@ pub struct Error {
 }
 
 impl Error {
+    pub(crate) fn resolve_original_coordinates(&mut self, source: &str) {
+        self.position =
+            CssSourcePosition::from_byte_offset_in(source, self.position.byte_offset().value());
+    }
+
     fn at(location: cssparser::SourceLocation, kind: ErrorKind) -> Self {
         Self {
             kind,
@@ -1148,6 +1153,15 @@ pub(crate) fn implicit_eof(source: &str) -> Error {
             expectation: EXPECT_CSS_SYNTAX,
         }),
         position: CssSourcePosition::from_byte_offset_in(source, source.len()),
+    }
+}
+
+pub(crate) fn unterminated_at_rule(source: &str, byte_offset: usize) -> Error {
+    Error {
+        kind: ErrorKind::UnexpectedEnd(CssUnexpectedEndError {
+            expectation: CssGrammarExpectation::new("a semicolon or block terminating an at-rule"),
+        }),
+        position: CssSourcePosition::from_byte_offset_in(source, byte_offset),
     }
 }
 
@@ -1377,17 +1391,6 @@ pub(crate) fn invalid_syntax<'i>(
             encountered: None,
         }),
     )
-}
-
-pub(crate) fn invalid_root_syntax(source: &str, byte_offset: usize, token: &Token<'_>) -> Error {
-    Error {
-        kind: ErrorKind::InvalidQualifiedRule(CssQualifiedRuleError {
-            production: QUALIFIED_RULE,
-            expectation: EXPECT_CSS_SYNTAX,
-            encountered: Some(CssTokenSummary::from_token(token)),
-        }),
-        position: CssSourcePosition::from_byte_offset_in(source, byte_offset),
-    }
 }
 
 pub(crate) fn invalid_when_prelude<'i>(

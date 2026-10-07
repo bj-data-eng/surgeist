@@ -371,10 +371,24 @@ impl<'i> AtRuleParser<'i> for NestedStyleRuleParser<'i> {
 
     fn rule_without_block(
         &mut self,
-        _prelude: Self::Prelude,
-        _start: &ParserState,
+        prelude: Self::Prelude,
+        start: &ParserState,
     ) -> std::result::Result<Self::AtRule, ()> {
-        Err(())
+        let NestedStyleAtRulePrelude::Layer(names) = prelude else {
+            return Err(());
+        };
+        let names = CssLayerNameList::try_new(names).ok_or(())?;
+        let rule = CssRule::LayerStatement(CssLayerStatementRule::new(
+            names,
+            self.recovery.source_position(start.position().byte_index()),
+        ));
+        super::syntax_bridge::retain_statement_eof(
+            self.source,
+            &self.recovery,
+            start,
+            &mut self.diagnostics,
+        );
+        Ok(StyleBlockItem::NestedRules(vec![rule]))
     }
 
     fn parse_block<'t>(
@@ -386,10 +400,7 @@ impl<'i> AtRuleParser<'i> for NestedStyleRuleParser<'i> {
         let mut depth = self
             .recovery
             .enter_rule_block(self.source, input, prelude.production())?;
-        let position = crate::source::CssSourcePosition::from_cssparser(
-            start.position(),
-            start.source_location(),
-        );
+        let position = self.recovery.source_position(start.position().byte_index());
         let rule = match prelude {
             NestedStyleAtRulePrelude::Media(query) => {
                 let recovered = parse_style_contents(self.source, input, self.recovery.clone())?;
@@ -516,10 +527,7 @@ impl<'i> QualifiedRuleParser<'i> for NestedStyleRuleParser<'i> {
             let recovered = parse_style_rule_block(
                 self.source,
                 CssStyleSelectorList::new(selectors),
-                crate::source::CssSourcePosition::from_cssparser(
-                    start.position(),
-                    start.source_location(),
-                ),
+                self.recovery.source_position(start.position().byte_index()),
                 input,
                 self.recovery.clone(),
             )?;

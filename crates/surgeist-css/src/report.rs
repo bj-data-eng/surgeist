@@ -161,6 +161,21 @@ impl PartialEq for CssRecoveryDiagnostic {
 }
 impl Eq for CssRecoveryDiagnostic {}
 impl CssRecoveryDiagnostic {
+    pub(crate) fn resolve_original_coordinates(&mut self, source: &str) {
+        self.error.resolve_original_coordinates(source);
+        self.span = CssSourceSpan::new(
+            crate::CssSourcePosition::from_byte_offset_in(
+                source,
+                self.span.start().byte_offset().value(),
+            ),
+            crate::CssSourcePosition::from_byte_offset_in(
+                source,
+                self.span.end().byte_offset().value(),
+            ),
+        )
+        .expect("same-length replay preserves ordered original byte boundaries");
+    }
+
     pub(crate) fn with_opening_owner(mut self, owner: usize) -> Self {
         self.opening_owner = Some(owner);
         self

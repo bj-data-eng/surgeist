@@ -910,7 +910,7 @@ fn authored_css_cases_match_selected_public_report_observables() {
         "all three archived intrinsic auto-repeat cases require current acceptance witnesses"
     );
     assert_eq!(migrated_unicode_cases, 1);
-    assert_eq!(selected_sheet_source_cases, 18);
+    assert_eq!(selected_sheet_source_cases, 24);
     assert_eq!(selected_column_source_cases, 1);
     assert_eq!(migrated_display_cases, 1);
     assert_eq!(migrated_overflow_auto_cases, 3);
@@ -1078,6 +1078,9 @@ fn assert_column_position(position: surgeist_css::CssSourcePosition, byte: usize
 // outcome: it binds each archived stimulus/diagnostic and tests the selected
 // Syntax 3 current contract through the real sheet front and normal observers.
 fn assert_archived_sheet_source_contract(row: &Row) -> bool {
+    if assert_archived_qualified_prefix_contract(row) {
+        return true;
+    }
     let (input, historical_clean, historical_diagnostics, clean, diagnostics) = match row
         .case_id
         .as_str()
@@ -1130,20 +1133,6 @@ fn assert_archived_sheet_source_contract(row: &Row) -> bool {
             "UnexpectedToken/UnexpectedToken:valid CSS syntax:Cdo:<!--/IgnoreLegacyToken@7:1:5>7:1:5-11:1:9:11~UnexpectedToken/UnexpectedToken:valid CSS syntax:Cdc:-->/IgnoreLegacyToken@12:1:10>12:1:10-15:1:13:15",
             "true",
             "-",
-        ),
-        "focused.stylesheet-recovery.07" => (
-            "; @charset \"UTF-8\"; .after { color: blue; }",
-            "false",
-            "InvalidQualifiedRule/InvalidQualifiedRule:css.qualified-rule:valid CSS syntax:Semicolon:;/DropQualifiedRule@0:0:0>0:0:0-1:0:1:1~InvalidEncodingDeclaration/InvalidEncodingDeclaration:a non-empty double-quoted encoding label followed by a semicolon:String:\"UTF-8\"/DropAtRule@11:0:11>2:0:2-19:0:19:19",
-            "false",
-            "InvalidQualifiedRule/InvalidQualifiedRule:css.qualified-rule:valid CSS syntax:Semicolon:;/DropQualifiedRule@0:0:0>0:0:0-1:0:1:1~UnknownAtRule/UnknownAtRule:charset/DropAtRule@2:0:2>2:0:2-19:0:19:19",
-        ),
-        "focused.stylesheet-recovery.08" => (
-            "} @charset \"UTF-8\"; .after { color: blue; }",
-            "false",
-            "InvalidQualifiedRule/InvalidQualifiedRule:css.qualified-rule:valid CSS syntax:CloseCurlyBracket:}/DropQualifiedRule@0:0:0>0:0:0-1:0:1:1~InvalidEncodingDeclaration/InvalidEncodingDeclaration:a non-empty double-quoted encoding label followed by a semicolon:String:\"UTF-8\"/DropAtRule@11:0:11>2:0:2-19:0:19:19",
-            "false",
-            "InvalidQualifiedRule/InvalidQualifiedRule:css.qualified-rule:valid CSS syntax:CloseCurlyBracket:}/DropQualifiedRule@0:0:0>0:0:0-1:0:1:1~UnknownAtRule/UnknownAtRule:charset/DropAtRule@2:0:2>2:0:2-19:0:19:19",
         ),
         "focused.stylesheet-recovery.14" => (
             "@charset UTF-8; .after { color: blue; }",
@@ -1231,6 +1220,191 @@ fn assert_archived_sheet_source_contract(row: &Row) -> bool {
     );
     assert_eq!(
         actual.diagnostics, diagnostics,
+        "{} selected diagnostics",
+        row.case_id
+    );
+    true
+}
+
+// Syntax 3 (2021-12-24) §§5.4.1/5.4.3 dispatch root semicolons and
+// unmatched closers into a qualified prelude. They are not standalone dropped
+// rules: the first curly body or actual EOF closes the whole recovery unit.
+// Bind these eight captures verbatim, then derive current expectations from
+// those units and the first responsible selector token. Do not rewrite TSV.
+fn assert_archived_qualified_prefix_contract(row: &Row) -> bool {
+    const STYLE_COLOR: &str = "rule:baseline.rule.style~property:baseline.property.color";
+    const RED: &str = "baseline.property.color=typed:Rgba(CssRgbaColor { red: 255, green: 0, blue: 0, alpha: 1.0 })@normal";
+    const BLUE: &str = "baseline.property.color=typed:Rgba(CssRgbaColor { red: 0, green: 0, blue: 255, alpha: 1.0 })@normal";
+    const AUTHORED_RED: &str = "baseline.property.color=deferred-i01:red@public:normal";
+    const AUTHORED_BLUE: &str = "baseline.property.color=deferred-i01:blue@public:normal";
+    let legacy_drop = |start: usize, token: &str| {
+        let end = start + 1;
+        format!(
+            "InvalidQualifiedRule/InvalidQualifiedRule:css.qualified-rule:valid CSS syntax:{token}/DropQualifiedRule@{start}:0:{start}>{start}:0:{start}-{end}:0:{end}:{end}"
+        )
+    };
+    let selected_drop = |start: usize, end: usize, token: &str| {
+        format!(
+            "InvalidSelector/InvalidSelector:baseline.selector.complex:a supported selector:{token}/DropQualifiedRule@{start}:0:{start}>{start}:0:{start}-{end}:0:{end}:{end}"
+        )
+    };
+    let mut historical = Row {
+        case_id: row.case_id.clone(),
+        entry: "sheet".to_owned(),
+        feature: "both".to_owned(),
+        input: String::new(),
+        clean: "false".to_owned(),
+        retained: "-".to_owned(),
+        values: "-".to_owned(),
+        authored_declarations: "-".to_owned(),
+        diagnostics: String::new(),
+    };
+    let (selected_diagnostics, retain_before) = match row.case_id.as_str() {
+        "focused.structural.misc.05" => {
+            historical.input = ";;;;;}}}}\0\u{fffd}".to_owned();
+            let mut captured = (0..5)
+                .map(|start| legacy_drop(start, "Semicolon:;"))
+                .chain((5..9).map(|start| legacy_drop(start, "CloseCurlyBracket:}")))
+                .collect::<Vec<_>>();
+            captured.push("InvalidQualifiedRule/InvalidQualifiedRule:css.qualified-rule:valid CSS syntax:-/DropQualifiedRule@13:0:11>9:0:9-13:0:11:13".to_owned());
+            historical.diagnostics = captured.join("~");
+            // NUL preprocesses to U+FFFD, but both original code points and
+            // original UTF-8/UTF-16 EOF coordinates remain source-owned.
+            ("InvalidQualifiedRule/InvalidQualifiedRule:css.qualified-rule:valid CSS syntax:-/DropQualifiedRule@13:0:11>0:0:0-13:0:11:13".to_owned(), false)
+        }
+        "focused.structural.misc.07" => {
+            historical.input = format!("{}.after{{color:red}}", "@bad{};".repeat(256));
+            historical.retained = STYLE_COLOR.to_owned();
+            historical.values = RED.to_owned();
+            historical.authored_declarations = AUTHORED_RED.to_owned();
+            let mut captured = Vec::new();
+            for index in 0..256 {
+                let start = index * 7;
+                let end = start + 6;
+                captured.push(format!("UnknownAtRule/UnknownAtRule:bad/DropAtRule@{start}:0:{start}>{start}:0:{start}-{end}:0:{end}:{end}"));
+                captured.push(legacy_drop(end, "Semicolon:;"));
+            }
+            historical.diagnostics = captured.join("~");
+            // Only the first @bad dispatches as an at-rule. Each subsequent
+            // semicolon owns the next curly body, including the final .after.
+            let mut selected =
+                vec!["UnknownAtRule/UnknownAtRule:bad/DropAtRule@0:0:0>0:0:0-6:0:6:6".to_owned()];
+            for index in 0..256 {
+                let start = 6 + index * 7;
+                let end = if index == 255 { 1809 } else { start + 7 };
+                selected.push(selected_drop(start, end, "Semicolon:;"));
+            }
+            (selected.join("~"), false)
+        }
+        id @ ("focused.stylesheet-recovery.03"
+        | "focused.stylesheet-recovery.04"
+        | "focused.stylesheet-recovery.05"
+        | "focused.stylesheet-recovery.06"
+        | "focused.stylesheet-recovery.07"
+        | "focused.stylesheet-recovery.08") => {
+            let (input, token, start, end, before, charset) = match id {
+                "focused.stylesheet-recovery.03" => (
+                    "; .after { color: blue; }",
+                    "Semicolon:;",
+                    0,
+                    25,
+                    false,
+                    false,
+                ),
+                "focused.stylesheet-recovery.04" => (
+                    ".before { color: red; } ; .after { color: blue; }",
+                    "Semicolon:;",
+                    24,
+                    49,
+                    true,
+                    false,
+                ),
+                "focused.stylesheet-recovery.05" => (
+                    "} .after { color: blue; }",
+                    "CloseCurlyBracket:}",
+                    0,
+                    25,
+                    false,
+                    false,
+                ),
+                "focused.stylesheet-recovery.06" => (
+                    ".before { color: red; } } .after { color: blue; }",
+                    "CloseCurlyBracket:}",
+                    24,
+                    49,
+                    true,
+                    false,
+                ),
+                "focused.stylesheet-recovery.07" => (
+                    "; @charset \"UTF-8\"; .after { color: blue; }",
+                    "Semicolon:;",
+                    0,
+                    43,
+                    false,
+                    true,
+                ),
+                "focused.stylesheet-recovery.08" => (
+                    "} @charset \"UTF-8\"; .after { color: blue; }",
+                    "CloseCurlyBracket:}",
+                    0,
+                    43,
+                    false,
+                    true,
+                ),
+                _ => unreachable!("closed root-prefix cohort"),
+            };
+            historical.input = input.to_owned();
+            historical.retained = if before {
+                format!("{STYLE_COLOR}~{STYLE_COLOR}")
+            } else {
+                STYLE_COLOR.to_owned()
+            };
+            historical.values = if before {
+                format!("{RED}~{BLUE}")
+            } else {
+                BLUE.to_owned()
+            };
+            historical.authored_declarations = if before {
+                format!("{AUTHORED_RED}~{AUTHORED_BLUE}")
+            } else {
+                AUTHORED_BLUE.to_owned()
+            };
+            historical.diagnostics = legacy_drop(start, token);
+            if charset {
+                historical.diagnostics.push_str("~InvalidEncodingDeclaration/InvalidEncodingDeclaration:a non-empty double-quoted encoding label followed by a semicolon:String:\"UTF-8\"/DropAtRule@11:0:11>2:0:2-19:0:19:19");
+            }
+            // A charset token inside this qualified prelude never dispatches
+            // as its own at-rule. Only .before, when present, remains retained.
+            (selected_drop(start, end, token), before)
+        }
+        _ => return false,
+    };
+    assert_eq!(
+        row.fields(),
+        historical.fields(),
+        "{} original capture",
+        row.case_id
+    );
+    let mut selected = historical;
+    selected.retained = if retain_before { STYLE_COLOR } else { "-" }.to_owned();
+    selected.values = if retain_before { RED } else { "-" }.to_owned();
+    selected.authored_declarations = if retain_before { AUTHORED_RED } else { "-" }.to_owned();
+    selected.diagnostics = selected_diagnostics;
+    // The normal observer checks the surviving typed declaration against its
+    // original frozen payload, without requiring now-discarded declarations.
+    let actual = observe(&selected);
+    assert_eq!(
+        actual.clean, selected.clean,
+        "{} selected clean",
+        row.case_id
+    );
+    assert_eq!(
+        actual.retained, selected.retained,
+        "{} selected retained syntax",
+        row.case_id
+    );
+    assert_eq!(
+        actual.diagnostics, selected.diagnostics,
         "{} selected diagnostics",
         row.case_id
     );

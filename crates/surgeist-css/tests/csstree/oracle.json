@@ -5,7 +5,7 @@
   "source_tree": "bfadc7a7a8d93dce59a27fa7df3bb0f6f6a623d8",
   "expectation_schema_version": 1,
   "generation_report_sha256": "ed8c70539c10effc254a8c2c4faa750396c7f3647996f5120e9e311bbe96d366",
-  "expected_class_registry_sha256": "750e7970ab4387306041e55a210028dbbcec3ece61446bd16701da15cfb1e431",
+  "expected_class_registry_sha256": "edd965cb7fa44e7853b9dbd54b810715d1a8a0bff205b095785dfaa6a050adcc",
   "records": [
     {
       "id": "atrule/atrule/container.json#/all together",
@@ -20129,7 +20129,7 @@
           {
             "code": "invalid_selector",
             "action": "reject_input",
-            "byte_offset": 0,
+            "byte_offset": 3,
             "span_start": 0,
             "span_end": 4,
             "multiplicity": 1,
@@ -29359,11 +29359,11 @@
           {
             "code": "invalid_qualified_rule",
             "action": "drop_qualified_rule",
-            "byte_offset": 0,
+            "byte_offset": 1,
             "span_start": 0,
             "span_end": 1,
             "multiplicity": 1,
-            "payload_relation": "intersects"
+            "payload_relation": "recovery_ends_at"
           }
         ]
       }

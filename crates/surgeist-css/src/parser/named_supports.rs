@@ -3,13 +3,15 @@
 use super::*;
 use crate::error::invalid_component_value;
 use crate::named_supports::*;
+use crate::syntax_consumption::{
+    self as syntax, CursorItem, GroupEnd, ListId, NodeId, SyntaxCursor, SyntaxDocument, SyntaxNode,
+    SyntaxRange, TokenKind,
+};
 use crate::{
-    CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueLimits,
-    CssComponentValueRef, CssRecoveryAction, CssRecoveryDiagnostic, CssSimpleBlock, CssValueOrigin,
-    CssValueTokenRef,
+    CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueErrorKind,
+    CssComponentValueLimits, CssRecoveryAction, CssRecoveryDiagnostic, CssValueOrigin,
 };
 use cssparser::{ParseError, Parser, ParserState};
-use std::ops::Range;
 
 enum PartitionIssue {
     Grammar(CssValueOrigin, CssRecoveryAction),
@@ -76,27 +78,17 @@ pub(super) fn parse_rule<'i, 't>(
     recovery: &RecoveryState,
 ) -> Result<CssSupportsConditionRule, ParseError<'i, Error>> {
     let body_start = input.position().byte_index();
-    let (values, lexical) = CssComponentValue::collect_recovering_named_test(
-        input,
-        recovery.source_snapshot(),
-        recovery.structural_depth(),
-    )
-    .map_err(|error| invalid_component_value(input.current_source_location(), error))?;
+    // Arena preparation may omit resource-invalid components. Actual current
+    // source admission must therefore precede checked promotion of this body.
+    recovery.check_entered_curly_contents(source, input, "ext.rule.supports-condition")?;
+    let document = recovery
+        .syntax_document(source)
+        .map_err(|error| invalid_component_value(input.current_source_location(), error))?;
+    let list = document
+        .list_at_source_start(body_start)
+        .expect("named body list");
+    while input.next_including_whitespace_and_comments().is_ok() {}
     let end = input.position().byte_index();
-    let mut issues = Vec::new();
-    let mut body = partition(values.items(), true, &mut issues, &lexical, body_start..end);
-    for issue in issues {
-        if let Some(diagnostic) = issue_diagnostic(source, issue) {
-            diagnostics.push(diagnostic);
-        }
-    }
-    let at_keyword = {
-        let mut parser_input = cssparser::ParserInput::new(source);
-        let mut parser = Parser::new(&mut parser_input);
-        parser.reset(start);
-        CssComponentValue::collect_from_parser(&mut parser, recovery.source_snapshot())
-            .map_err(|error| invalid_component_value(parser.current_source_location(), error))?
-    };
     let opening = parsed_delimiter(
         recovery.source_snapshot(),
         body_start.saturating_sub(1),
@@ -116,19 +108,61 @@ pub(super) fn parse_rule<'i, 't>(
     } else {
         CssValueOrigin::Programmatic
     };
-    if body.recovery_origin.is_none() {
-        body.recovery_origin = values.first_implicit_origin().cloned().or_else(|| {
-            matches!(closing, CssValueOrigin::ImplicitClosure { .. }).then(|| closing.clone())
-        });
+    let mut issues = Vec::new();
+    let body = partition(&document, list, Some(closing.clone()), true, &mut issues)
+        .map_err(|error| invalid_component_value(input.current_source_location(), error))?;
+    for issue in issues {
+        if let Some(diagnostic) = issue_diagnostic(source, issue) {
+            diagnostics.push(diagnostic);
+        }
     }
-    recovery.retain_component_closures(values.implicit_opening_offsets());
+    let mut at_cursor = document
+        .cursor_at_source(start.position().byte_index())
+        .expect("named at-keyword");
+    let CursorItem::Node(at_node) = at_cursor.consume() else {
+        unreachable!("named at-keyword node");
+    };
+    let at_keyword = promote(&document, &[at_node])
+        .map_err(|error| invalid_component_value(input.current_source_location(), error))?
+        .items()[0]
+        .origin()
+        .clone();
+    let mut nodes = document.lists[list].clone();
+    let mut implicit = Vec::new();
+    while let Some(node) = nodes.pop() {
+        let value = &document.nodes[node];
+        if let Some(children) = value.children() {
+            nodes.extend(&document.lists[children]);
+            if matches!(value.end(), Some(GroupEnd::Implicit { .. }))
+                && let CssValueOrigin::Parsed(origin) = value.token().origin.as_ref()
+            {
+                implicit.push(origin.span().end().byte_offset().value().saturating_sub(1));
+            }
+        } else if !matches!(value, SyntaxNode::Error { .. }) {
+            implicit.extend(
+                promote(&document, &[node])
+                    .map_err(|error| {
+                        invalid_component_value(input.current_source_location(), error)
+                    })?
+                    .implicit_opening_offsets(),
+            );
+        }
+    }
+    recovery.retain_component_closures(implicit);
     Ok(CssSupportsConditionRule::parsed(
         prelude.name,
         body,
-        at_keyword.origin().clone(),
+        at_keyword,
         opening,
         closing,
     ))
+}
+
+fn promote(
+    document: &SyntaxDocument<'_>,
+    nodes: &[NodeId],
+) -> Result<CssComponentValues, CssComponentValueError> {
+    crate::component_values::promote_nodes(document, nodes, CssComponentValueLimits::default())
 }
 
 fn parsed_delimiter(source: &CssSourceSnapshot, offset: usize, expected: u8) -> CssValueOrigin {
@@ -169,34 +203,25 @@ pub(crate) fn construct_test_body(
     limits: CssComponentValueLimits,
 ) -> Result<CssSupportsTestBody, CssNamedSupportsConstructionError> {
     values.validate_with_limits(limits)?;
+    let document = syntax::normalize(
+        syntax::SyntaxInput::CheckedComponents(values.items()),
+        syntax::SyntaxInputLimits {
+            max_depth: limits.max_nesting_depth(),
+            max_components: limits.max_components(),
+            // Public source/output byte admission remains owned by values and the
+            // checked writer. Do not reinterpret it as an input spelling metric.
+            max_known_spelling_bytes: usize::MAX,
+        },
+        0,
+    )?;
     let mut issues = Vec::new();
-    let body = partition(values.items(), false, &mut issues, &[], 0..0);
+    let body = partition(&document, document.root, None, false, &mut issues)?;
     if let Some(issue) = issues.into_iter().next() {
         return Err(CssNamedSupportsConstructionError::InvalidBodyGrammar {
             origin: issue.origin().clone(),
         });
     }
     Ok(body)
-}
-
-fn is_trivia(value: &CssComponentValue) -> bool {
-    crate::supports::trivia(value)
-}
-
-fn token(value: &CssComponentValue) -> Option<CssValueTokenRef<'_>> {
-    match value.view() {
-        CssComponentValueRef::Token(token) => Some(token),
-        _ => None,
-    }
-}
-
-fn curly(value: &CssComponentValue) -> Option<&CssSimpleBlock> {
-    match value.view() {
-        CssComponentValueRef::Block(block) if block.kind() == CssBlockKind::CurlyBracket => {
-            Some(block)
-        }
-        _ => None,
-    }
 }
 
 fn flush_run(run: &mut Vec<CssSupportsTestDeclaration>, items: &mut Vec<CssSupportsTestItem>) {
@@ -209,70 +234,68 @@ fn flush_run(run: &mut Vec<CssSupportsTestDeclaration>, items: &mut Vec<CssSuppo
     }
 }
 
-fn origin_range(origin: &CssValueOrigin) -> Option<Range<usize>> {
-    match origin {
-        CssValueOrigin::Parsed(parsed) => Some(
-            parsed.span().start().byte_offset().value()..parsed.span().end().byte_offset().value(),
-        ),
-        CssValueOrigin::ImplicitClosure { at, .. } => {
-            let offset = at.span().start().byte_offset().value();
-            Some(offset..offset)
-        }
-        _ => None,
-    }
-}
-
-fn component_end(component: &CssComponentValue) -> Option<usize> {
-    match component.view() {
-        CssComponentValueRef::Block(block) => {
-            origin_range(block.closing_origin()).map(|span| span.end)
-        }
-        CssComponentValueRef::Function(function) => {
-            origin_range(function.closing_origin()).map(|span| span.end)
-        }
-        _ => origin_range(component.origin()).map(|span| span.end),
-    }
-}
-
-fn record_faults(
-    lexical: &[CssComponentValueError],
-    range: Range<usize>,
+fn faults(
+    document: &SyntaxDocument<'_>,
+    nodes: &[NodeId],
     action: CssRecoveryAction,
     issues: &mut Vec<PartitionIssue>,
 ) -> bool {
-    let mut found = false;
-    for error in lexical {
-        let Some(span) = origin_range(error.origin()) else {
-            continue;
-        };
-        if range.contains(&span.start) {
-            found = true;
-            if !issues.iter().any(|issue| matches!(issue, PartitionIssue::Lexical(previous, _) if previous.origin() == error.origin())) {
-                issues.push(PartitionIssue::Lexical(error.clone(), action));
+    let before = issues.len();
+    let mut pending: Vec<_> = nodes.iter().rev().copied().collect();
+    while let Some(id) = pending.pop() {
+        match &document.nodes[id] {
+            SyntaxNode::Error { token, cause } => {
+                let kind = match cause {
+                    syntax::SyntaxTokenFault::BadString => CssComponentValueErrorKind::BadString,
+                    syntax::SyntaxTokenFault::BadUrl => CssComponentValueErrorKind::BadUrl,
+                    syntax::SyntaxTokenFault::UnexpectedCloser => {
+                        CssComponentValueErrorKind::UnmatchedClosingDelimiter
+                    }
+                };
+                issues.push(PartitionIssue::Lexical(
+                    CssComponentValueError::new(kind, token.origin.clone().into_owned()),
+                    action,
+                ));
+            }
+            node => {
+                if let Some(children) = node.children() {
+                    pending.extend(document.lists[children].iter().rev().copied());
+                }
             }
         }
     }
-    found
+    issues.len() != before
 }
 
-fn mark_implicit_recovery(
-    body: &mut CssSupportsTestBody,
-    values: &CssComponentValues,
-    closing: &CssValueOrigin,
-) {
-    if body.recovery_origin.is_none() {
-        body.recovery_origin = values.first_implicit_origin().cloned().or_else(|| {
-            matches!(closing, CssValueOrigin::ImplicitClosure { .. }).then(|| closing.clone())
-        });
+fn closing_origin(document: &SyntaxDocument<'_>, node: NodeId) -> CssValueOrigin {
+    match document.nodes[node].end().expect("group end") {
+        GroupEnd::Explicit(token) => token.origin.clone().into_owned(),
+        GroupEnd::Implicit { opening, at } => match (opening.as_ref(), &at.source) {
+            (CssValueOrigin::Parsed(opening), Some(at)) => CssValueOrigin::ImplicitClosure {
+                opening: opening.clone(),
+                at: CssParsedOrigin::from_range(&at.snapshot, at.offset..at.offset)
+                    .expect("actual child EOF"),
+            },
+            _ => CssValueOrigin::Programmatic,
+        },
     }
 }
 
-enum PendingChild {
-    AtRule(Box<PendingAtRule>),
-    Qualified(Box<PendingQualified>),
+fn curly(document: &SyntaxDocument<'_>, node: NodeId) -> bool {
+    matches!(
+        document.nodes[node],
+        SyntaxNode::Block {
+            kind: CssBlockKind::CurlyBracket,
+            ..
+        }
+    )
 }
 
-struct PendingAtRule {
+enum PendingChild {
+    At(Box<PendingAt>),
+    Qualified(Box<PendingQualified>),
+}
+struct PendingAt {
     name: String,
     at_keyword: CssComponentValue,
     prelude: CssComponentValues,
@@ -280,98 +303,80 @@ struct PendingAtRule {
     closing: CssValueOrigin,
     malformed: bool,
 }
-
 struct PendingQualified {
     prelude: CssComponentValues,
     opening: CssValueOrigin,
     closing: CssValueOrigin,
     malformed: bool,
 }
-
 struct PartitionFrame<'a> {
-    components: &'a [CssComponentValue],
-    values: Option<&'a CssComponentValues>,
-    closing: Option<&'a CssValueOrigin>,
-    source_range: Range<usize>,
-    index: usize,
-    cursor: usize,
+    cursor: SyntaxCursor<'a>,
+    closing: Option<CssValueOrigin>,
     initial_issues: usize,
     items: Vec<CssSupportsTestItem>,
     run: Vec<CssSupportsTestDeclaration>,
-    pending_child: Option<PendingChild>,
+    pending: Option<PendingChild>,
+    implicit: Option<CssValueOrigin>,
 }
-
 impl<'a> PartitionFrame<'a> {
     fn new(
-        components: &'a [CssComponentValue],
-        values: Option<&'a CssComponentValues>,
-        closing: Option<&'a CssValueOrigin>,
-        source_range: Range<usize>,
+        document: &'a SyntaxDocument<'a>,
+        list: ListId,
+        closing: Option<CssValueOrigin>,
         initial_issues: usize,
     ) -> Self {
         Self {
-            components,
-            values,
+            cursor: document.cursor(list),
             closing,
-            cursor: source_range.start,
-            source_range,
-            index: 0,
             initial_issues,
             items: Vec::new(),
             run: Vec::new(),
-            pending_child: None,
+            pending: None,
+            implicit: None,
+        }
+    }
+    fn retain_implicit(&mut self, values: &CssComponentValues) {
+        if self.implicit.is_none() {
+            self.implicit = values.first_implicit_origin().cloned();
         }
     }
 }
 
 fn partition(
-    components: &[CssComponentValue],
+    document: &SyntaxDocument<'_>,
+    list: ListId,
+    closing: Option<CssValueOrigin>,
     recover: bool,
     issues: &mut Vec<PartitionIssue>,
-    lexical: &[CssComponentValueError],
-    source_range: Range<usize>,
-) -> CssSupportsTestBody {
-    let mut frames = vec![PartitionFrame::new(
-        components,
-        None,
-        None,
-        source_range,
-        issues.len(),
-    )];
+) -> Result<CssSupportsTestBody, CssComponentValueError> {
+    let mut frames = vec![PartitionFrame::new(document, list, closing, issues.len())];
     loop {
-        let frame = frames
-            .last_mut()
-            .expect("root frame remains until completion");
-        while frame.index < frame.components.len() && is_trivia(&frame.components[frame.index]) {
-            frame.index += 1;
-        }
-        if frame.index == frame.components.len() {
-            record_faults(
-                lexical,
-                frame.source_range.clone(),
-                CssRecoveryAction::DropDeclaration,
-                issues,
-            );
+        let frame = frames.last_mut().expect("partition frame");
+        frame.cursor.skip_trivia();
+        let CursorItem::Node(first) = frame.cursor.peek() else {
             flush_run(&mut frame.run, &mut frame.items);
-            let mut completed = CssSupportsTestBody {
+            let completed = CssSupportsTestBody {
                 items: std::mem::take(&mut frame.items),
                 recovery_origin: issues
                     .get(frame.initial_issues)
-                    .map(|issue| issue.origin().clone()),
+                    .map(|issue| issue.origin().clone())
+                    .or_else(|| frame.implicit.clone())
+                    .or_else(|| {
+                        frame
+                            .closing
+                            .as_ref()
+                            .filter(|origin| {
+                                matches!(origin, CssValueOrigin::ImplicitClosure { .. })
+                            })
+                            .cloned()
+                    }),
             };
-            if let (Some(values), Some(closing)) = (frame.values, frame.closing) {
-                mark_implicit_recovery(&mut completed, values, closing);
-            }
             frames.pop();
             let Some(parent) = frames.last_mut() else {
-                return completed;
+                return Ok(completed);
             };
-            let pending = parent
-                .pending_child
-                .take()
-                .expect("child has parent continuation");
-            match pending {
-                PendingChild::AtRule(pending) => {
+            match parent.pending.take().expect("child continuation") {
+                PendingChild::At(pending) => {
                     if !pending.malformed {
                         parent
                             .items
@@ -399,278 +404,265 @@ fn partition(
                 }
             }
             continue;
-        }
-
-        if matches!(
-            token(&frame.components[frame.index]),
-            Some(CssValueTokenRef::Semicolon)
-        ) {
-            let end = component_end(&frame.components[frame.index]).unwrap_or(frame.cursor);
-            record_faults(
-                lexical,
-                frame.cursor..end,
-                CssRecoveryAction::DropDeclaration,
-                issues,
-            );
-            frame.cursor = end;
-            frame.index += 1;
+        };
+        if document.nodes[first].token().kind() == TokenKind::Semicolon {
+            frame.cursor.consume();
             continue;
         }
-
-        let start = frame.index;
-        if let Some(CssValueTokenRef::AtKeyword(name)) = token(&frame.components[start]) {
-            // Consuming an at-rule ends the preceding declaration run even when
-            // its prelude later fails and the at-rule itself is discarded.
-            flush_run(&mut frame.run, &mut frame.items);
+        if let TokenKind::AtKeyword(name) = document.nodes[first].token().kind() {
             let name = name.to_owned();
-            let at_keyword = frame.components[start].clone();
-            frame.index += 1;
-            while frame.index < frame.components.len()
-                && !matches!(
-                    token(&frame.components[frame.index]),
-                    Some(CssValueTokenRef::Semicolon)
-                )
-                && curly(&frame.components[frame.index]).is_none()
-            {
-                frame.index += 1;
-            }
-            let prelude =
-                CssComponentValues::try_new(frame.components[start + 1..frame.index].to_vec())
-                    .expect("validated component subsequence");
-            if let Some(block) = frame.components.get(frame.index).and_then(curly) {
-                let opening = frame.components[frame.index].origin().clone();
-                let closing = block.closing_origin().clone();
-                let opening_range = origin_range(&opening);
-                let closing_range = origin_range(&closing);
-                let child_range = opening_range
-                    .as_ref()
-                    .zip(closing_range.as_ref())
-                    .map(|(opening, closing)| opening.end..closing.start)
-                    .unwrap_or(0..0);
-                let prelude_end = opening_range.map_or(frame.cursor, |span| span.start);
-                let malformed = record_faults(
-                    lexical,
-                    frame.cursor..prelude_end,
-                    CssRecoveryAction::DropAtRule,
-                    issues,
-                );
-                frame.cursor =
-                    component_end(&frame.components[frame.index]).unwrap_or(frame.cursor);
-                frame.index += 1;
-                frame.pending_child = Some(PendingChild::AtRule(Box::new(PendingAtRule {
+            flush_run(&mut frame.run, &mut frame.items);
+            let candidate = syntax::consume_at_rule(&mut frame.cursor);
+            let malformed = faults(
+                document,
+                &candidate.prelude,
+                CssRecoveryAction::DropAtRule,
+                issues,
+            );
+            let prelude = if malformed {
+                CssComponentValues::try_new(Vec::new())?
+            } else {
+                promote(document, &candidate.prelude)?
+            };
+            frame.retain_implicit(&prelude);
+            let at_keyword = promote(document, &[candidate.name])?.items()[0].clone();
+            if let Some(block) = candidate.block {
+                let opening = document.nodes[block].token().origin.clone().into_owned();
+                let closing = closing_origin(document, block);
+                frame.pending = Some(PendingChild::At(Box::new(PendingAt {
                     name,
                     at_keyword,
                     prelude,
                     opening,
-                    closing,
+                    closing: closing.clone(),
                     malformed,
                 })));
                 frames.push(PartitionFrame::new(
-                    block.values().items(),
-                    Some(block.values()),
-                    Some(block.closing_origin()),
-                    child_range,
+                    document,
+                    document.nodes[block].children().expect("body"),
+                    Some(closing),
                     issues.len(),
                 ));
-                continue;
+            } else if !malformed {
+                let terminator = match candidate.termination {
+                    syntax::RuleTermination::Semicolon(node) => {
+                        document.nodes[node].token().origin.clone().into_owned()
+                    }
+                    _ => CssValueOrigin::Programmatic,
+                };
+                frame
+                    .items
+                    .push(CssSupportsTestItem::AtRule(CssSupportsAtRuleTest::new(
+                        name, at_keyword, prelude, None, None, terminator,
+                    )));
+            } else if !recover {
+                return Ok(CssSupportsTestBody {
+                    items: std::mem::take(&mut frame.items),
+                    recovery_origin: None,
+                });
             }
-            let closing = frame
-                .components
-                .get(frame.index)
-                .map_or(CssValueOrigin::Programmatic, |value| value.origin().clone());
-            let candidate_end = frame
-                .components
-                .get(frame.index)
-                .and_then(component_end)
-                .unwrap_or(frame.source_range.end);
-            if frame.index < frame.components.len() {
-                frame.index += 1;
-            }
-            let malformed = record_faults(
-                lexical,
-                frame.cursor..candidate_end,
-                CssRecoveryAction::DropAtRule,
-                issues,
-            );
-            frame.cursor = candidate_end;
-            if malformed {
-                if !recover {
-                    frame.index = frame.components.len();
-                }
-                continue;
-            }
-            frame
-                .items
-                .push(CssSupportsTestItem::AtRule(CssSupportsAtRuleTest::new(
-                    name, at_keyword, prelude, None, None, closing,
-                )));
             continue;
         }
-
-        // Consume a complete declaration attempt through semicolon/end. Only
-        // a failed attempt resets to the first curly for qualified-rule fallback.
-        let declaration_end = (start..frame.components.len())
-            .find(|&at| {
-                matches!(
-                    token(&frame.components[at]),
-                    Some(CssValueTokenRef::Semicolon)
-                )
-            })
-            .unwrap_or(frame.components.len());
-        let mut first_two = frame.components[start..declaration_end]
-            .iter()
-            .filter(|value| !is_trivia(value));
-        let custom_name = matches!(first_two.next().and_then(token), Some(CssValueTokenRef::Ident(name)) if name.starts_with("--"))
-            && matches!(
-                first_two.next().and_then(token),
-                Some(CssValueTokenRef::Colon)
-            );
-        let terminator = frame
-            .components
-            .get(declaration_end)
-            .map_or(CssValueOrigin::Programmatic, |value| value.origin().clone());
-        let candidate_end = frame
-            .components
-            .get(declaration_end)
-            .and_then(component_end)
-            .unwrap_or(frame.source_range.end);
-        if let Some(declaration) =
-            declaration_candidate(&frame.components[start..declaration_end], terminator)
+        let mut attempt = frame.cursor.clone();
+        let range = syntax::consume_declaration_candidate(&mut attempt);
+        let nodes = &document.lists[range.list][range.start..range.end];
+        let parsed = syntax::consume_declaration(&mut document.cursor_range(&range));
+        let custom_name = matches!(document.nodes[first].token().kind(), TokenKind::Ident(name) if name.starts_with("--"))
+            && parsed.is_ok();
+        let valid_custom_name = matches!(document.nodes[first].token().kind(), TokenKind::Ident(name) if CssCustomPropertyName::from_ident_token(name).is_some());
+        let permitted_value = parsed.as_ref().is_ok_and(|declaration| {
+            let meaningful: Vec<_> = declaration
+                .value
+                .iter()
+                .filter(|node| !document.nodes[**node].is_trivia())
+                .collect();
+            valid_custom_name
+                || !meaningful.iter().any(|node| curly(document, **node))
+                || (meaningful.len() == 1 && curly(document, *meaningful[0]))
+        });
+        if let Ok(declaration) = parsed
+            && permitted_value
         {
-            let malformed = record_faults(
-                lexical,
-                frame.cursor..candidate_end,
-                CssRecoveryAction::DropDeclaration,
-                issues,
-            );
+            let malformed = faults(document, nodes, CssRecoveryAction::DropDeclaration, issues);
+            let terminator = match attempt.peek() {
+                CursorItem::Node(node) => document.nodes[node].token().origin.clone().into_owned(),
+                _ => CssValueOrigin::Programmatic,
+            };
+            frame.cursor = attempt;
+            if matches!(frame.cursor.peek(), CursorItem::Node(_)) {
+                frame.cursor.consume();
+            }
             if !malformed {
-                frame.run.push(declaration);
-            }
-            frame.index = (declaration_end + 1).min(frame.components.len());
-            frame.cursor = candidate_end;
-            if malformed && !recover {
-                frame.index = frame.components.len();
+                let components = promote(document, nodes)?;
+                frame.retain_implicit(&components);
+                let TokenKind::Ident(name) = document.nodes[declaration.name].token().kind() else {
+                    unreachable!("declaration name");
+                };
+                frame.run.push(CssSupportsTestDeclaration {
+                    components: components.items().to_vec(),
+                    property_index: declaration.range.start - range.start,
+                    value_range: declaration.colon + 1 - range.start
+                        ..declaration.value_range.end - range.start,
+                    importance_range: if declaration.important {
+                        declaration
+                            .importance_range
+                            .map(|range_| range_.start - range.start..range_.end - range.start)
+                    } else {
+                        None
+                    },
+                    name: name.to_owned(),
+                    terminator,
+                });
+            } else if !recover {
+                return Ok(CssSupportsTestBody {
+                    items: std::mem::take(&mut frame.items),
+                    recovery_origin: None,
+                });
             }
             continue;
         }
-        let first_curly =
-            (start..declaration_end).find(|&at| curly(&frame.components[at]).is_some());
-        if let Some(block_index) = first_curly
-            && let Some(block) = curly(&frame.components[block_index])
-            && !custom_name
-        {
-            // A complete qualified-rule boundary also ends the run before
-            // validation; malformed preludes do not merge surrounding runs.
+        let candidate = if !custom_name {
+            syntax::consume_qualified_rule(&mut document.cursor_range(&range)).ok()
+        } else {
+            None
+        };
+        if let Some(candidate) = candidate {
             flush_run(&mut frame.run, &mut frame.items);
-            let prelude =
-                CssComponentValues::try_new(frame.components[start..block_index].to_vec())
-                    .expect("validated component subsequence");
-            let opening = frame.components[block_index].origin().clone();
-            let closing = block.closing_origin().clone();
-            let opening_range = origin_range(&opening);
-            let closing_range = origin_range(&closing);
-            let prelude_end = opening_range
-                .as_ref()
-                .map_or(frame.cursor, |span| span.start);
-            let malformed = record_faults(
-                lexical,
-                frame.cursor..prelude_end,
+            let malformed = faults(
+                document,
+                &candidate.prelude,
                 CssRecoveryAction::DropQualifiedRule,
                 issues,
             );
-            let child_range = opening_range
-                .as_ref()
-                .zip(closing_range.as_ref())
-                .map(|(opening, closing)| opening.end..closing.start)
-                .unwrap_or(0..0);
-            frame.cursor = component_end(&frame.components[block_index]).unwrap_or(frame.cursor);
-            frame.index = block_index + 1;
-            frame.pending_child = Some(PendingChild::Qualified(Box::new(PendingQualified {
+            let prelude = if malformed {
+                CssComponentValues::try_new(Vec::new())?
+            } else {
+                promote(document, &candidate.prelude)?
+            };
+            frame.retain_implicit(&prelude);
+            let opening = document.nodes[candidate.block]
+                .token()
+                .origin
+                .clone()
+                .into_owned();
+            let closing = closing_origin(document, candidate.block);
+            frame.cursor = document.cursor_range(&SyntaxRange {
+                list: range.list,
+                start: candidate.range.end,
+                end: document.lists[range.list].len(),
+            });
+            frame.pending = Some(PendingChild::Qualified(Box::new(PendingQualified {
                 prelude,
                 opening,
-                closing,
+                closing: closing.clone(),
                 malformed,
             })));
             frames.push(PartitionFrame::new(
-                block.values().items(),
-                Some(block.values()),
-                Some(block.closing_origin()),
-                child_range,
+                document,
+                document.nodes[candidate.block].children().expect("body"),
+                Some(closing),
                 issues.len(),
             ));
             continue;
         }
-        let malformed = record_faults(
-            lexical,
-            frame.cursor..candidate_end,
-            CssRecoveryAction::DropDeclaration,
-            issues,
-        );
-        if !malformed {
+        if !faults(document, nodes, CssRecoveryAction::DropDeclaration, issues) {
             issues.push(PartitionIssue::Grammar(
-                frame.components[start].origin().clone(),
+                document.nodes[first].token().origin.clone().into_owned(),
                 CssRecoveryAction::DropDeclaration,
             ));
         }
-        frame.index = (declaration_end + 1).min(frame.components.len());
-        frame.cursor = candidate_end;
+        frame.cursor = attempt;
+        if matches!(frame.cursor.peek(), CursorItem::Node(_)) {
+            frame.cursor.consume();
+        }
         if !recover {
-            frame.index = frame.components.len();
+            return Ok(CssSupportsTestBody {
+                items: std::mem::take(&mut frame.items),
+                recovery_origin: None,
+            });
         }
     }
 }
 
-fn declaration_candidate(
-    components: &[CssComponentValue],
-    terminator: CssValueOrigin,
-) -> Option<CssSupportsTestDeclaration> {
-    let significant: Vec<_> = components
-        .iter()
-        .enumerate()
-        .filter(|(_, component)| !is_trivia(component))
-        .map(|(index, _)| index)
-        .collect();
-    let &property_index = significant.first()?;
-    let name = match token(&components[property_index])? {
-        CssValueTokenRef::Ident(name) => name.to_owned(),
-        _ => return None,
-    };
-    let &colon = significant.get(1)?;
-    if !matches!(token(&components[colon]), Some(CssValueTokenRef::Colon)) {
-        return None;
-    }
-    let mut value_end = components.len();
-    let mut importance_range = None;
-    if significant.len() >= 4 {
-        let bang = significant[significant.len() - 2];
-        let important = significant[significant.len() - 1];
-        if matches!(token(&components[bang]), Some(CssValueTokenRef::Delim('!')))
-            && matches!(token(&components[important]), Some(CssValueTokenRef::Ident(name)) if name.eq_ignore_ascii_case("important"))
-        {
-            value_end = bang;
-            importance_range = Some(bang..components.len());
+#[cfg(test)]
+mod candidate_membership_independent_tests;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::borrow::Cow;
+
+    #[test]
+    fn ordered_fault_membership_does_not_require_monotonic_or_present_source_offsets() {
+        fn checked(component: &CssComponentValue) -> syntax::SyntaxToken<'_> {
+            syntax::SyntaxToken {
+                payload: syntax::TokenPayload::Checked {
+                    component,
+                    lexeme: syntax::CheckedLexeme::Leaf,
+                },
+                spelling: Some(Cow::Borrowed(component.structural_lexeme(false).unwrap().0)),
+                origin: Cow::Borrowed(component.origin()),
+            }
         }
-    }
-    while value_end > colon + 1 && is_trivia(&components[value_end - 1]) {
-        value_end -= 1;
-    }
-    if crate::CssCustomPropertyName::from_ident_token(&name).is_none() {
-        let meaningful_values = components[colon + 1..value_end]
+        let before = crate::parse_component_values(
+            "                                                  before:yes;",
+        )
+        .unwrap();
+        let bad = crate::parse_component_values("bad:;").unwrap();
+        let after = crate::parse_component_values("after:yes;").unwrap();
+        let mut tokens: Vec<_> = before
+            .items()
             .iter()
-            .filter(|value| !is_trivia(value))
-            .collect::<Vec<_>>();
-        if meaningful_values.iter().any(|value| curly(value).is_some())
-            && !(meaningful_values.len() == 1 && curly(meaningful_values[0]).is_some())
-        {
-            return None;
-        }
+            .filter(|value| !crate::supports::trivia(value))
+            .map(checked)
+            .collect();
+        tokens.extend(bad.items()[..2].iter().map(checked));
+        tokens.push(syntax::SyntaxToken {
+            payload: syntax::TokenPayload::Native(Token::BadUrl("a b".into())),
+            spelling: Some(Cow::Borrowed("url(a b)")),
+            origin: Cow::Owned(CssValueOrigin::Programmatic),
+        });
+        tokens.push(checked(&bad.items()[2]));
+        tokens.extend(after.items().iter().map(checked));
+        let document = syntax::normalize(
+            syntax::SyntaxInput::Tokens(&tokens),
+            syntax::SyntaxInputLimits::default(),
+            0,
+        )
+        .unwrap();
+        let mut issues = Vec::new();
+        let body = partition(&document, document.root, None, true, &mut issues).unwrap();
+        let [CssSupportsTestItem::Declarations(run)] = body.items() else {
+            panic!("one retained run");
+        };
+        assert_eq!(
+            run.declarations()
+                .iter()
+                .map(|declaration| declaration.property())
+                .collect::<Vec<_>>(),
+            ["before", "after"]
+        );
+        assert_eq!(
+            run.declarations()[0]
+                .position()
+                .unwrap()
+                .byte_offset()
+                .value(),
+            50
+        );
+        assert_eq!(
+            run.declarations()[1]
+                .position()
+                .unwrap()
+                .byte_offset()
+                .value(),
+            0
+        );
+        let [PartitionIssue::Lexical(error, action)] = issues.as_slice() else {
+            panic!("one candidate-owned lexical fault");
+        };
+        assert_eq!(error.kind(), CssComponentValueErrorKind::BadUrl);
+        assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
+        assert_eq!(*action, CssRecoveryAction::DropDeclaration);
     }
-    Some(CssSupportsTestDeclaration {
-        components: components.to_vec(),
-        property_index,
-        value_range: colon + 1..value_end,
-        importance_range,
-        name,
-        terminator,
-    })
 }

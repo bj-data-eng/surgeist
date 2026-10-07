@@ -70,121 +70,135 @@ pub(super) fn collect_one(
     })
 }
 
-/// The named supports test grammar needs local browser recovery within a valid
-/// enclosing block. Keep the ordinary public collector strict; this private
-/// path retains only valid component nodes and returns every malformed token as
-/// an explicit error marker for the owning test candidate.
-pub(super) fn collect_recovering_named_test(
-    parser: &mut Parser<'_, '_>,
-    source: &CssSourceSnapshot,
-    base_depth: u32,
-) -> Result<(CssComponentValues, Vec<CssComponentValueError>), CssComponentValueError> {
-    let start = parser.position().byte_index();
-    while parser.next_including_whitespace_and_comments().is_ok() {}
-    let end = parser.position().byte_index();
-    let mut errors = Vec::new();
-    let mut count = 0;
-    let items = consume_range_recovering(
-        source,
-        start..end,
-        CssComponentValueLimits::default(),
-        base_depth,
-        &mut count,
-        &mut errors,
-    )?;
-    let values = CssComponentValues::from_items(items, CssComponentValueLimits::default())?;
-    serialize::validate(&values, usize::MAX)?;
-    Ok((values, errors))
-}
-
-fn consume_range_recovering(
-    source: &CssSourceSnapshot,
-    range: std::ops::Range<usize>,
+// Promote only an admitted, error-free generic candidate. Provider payloads and
+// checked input values are reused directly; no serialization or tokenization is
+// needed to reconstruct these lexical owners.
+pub(crate) fn promote_nodes(
+    document: &crate::syntax_consumption::SyntaxDocument<'_>,
+    nodes: &[crate::syntax_consumption::NodeId],
     limits: CssComponentValueLimits,
-    base_depth: u32,
-    count: &mut usize,
-    errors: &mut Vec<CssComponentValueError>,
-) -> Result<Vec<CssComponentValue>, CssComponentValueError> {
-    let mut items = Vec::new();
-    let mut frames: Vec<OpenFrame> = Vec::new();
-    let mut offset = range.start;
-    while offset < range.end {
-        let (_, end, token) =
-            crate::tokenization::next_source_token(&source.as_str()[..range.end], offset)
-                .expect("nonempty token-boundary suffix");
-        let closing = match token {
-            Token::CloseParenthesis => Some(CssBlockKind::Parenthesis),
-            Token::CloseSquareBracket => Some(CssBlockKind::SquareBracket),
-            Token::CloseCurlyBracket => Some(CssBlockKind::CurlyBracket),
-            _ => None,
-        };
-        if let Some(frame) = frames.pop_if(|frame| Some(frame.kind) == closing) {
-            let value = frame.finish(source, offset..end, limits)?;
-            push_value(&mut items, &mut frames, value);
-            offset = end;
-            continue;
-        }
-        let origin = range_origin(source, offset..end);
-        let error_at_token =
-            |kind| CssComponentValueError::new(kind, CssValueOrigin::Parsed(origin.clone()));
-        let spelling = Lexeme {
-            text: source.as_str()[offset..end].into(),
-            origin: CssValueOrigin::Parsed(origin.clone()),
-        };
-        let kind = match token {
-            Token::Function(_) | Token::ParenthesisBlock => Some(CssBlockKind::Parenthesis),
-            Token::SquareBracketBlock => Some(CssBlockKind::SquareBracket),
-            Token::CurlyBracketBlock => Some(CssBlockKind::CurlyBracket),
-            _ => None,
-        };
-        if let Some(kind) = kind {
-            admit_component(count, limits, &origin)?;
-            let remaining = limits
-                .max_depth
-                .checked_sub(base_depth)
-                .ok_or_else(|| error_at_token(CssComponentValueErrorKind::NestingLimit))?;
-            if frames.len() >= remaining as usize {
-                return Err(error_at_token(CssComponentValueErrorKind::NestingLimit));
+) -> Result<CssComponentValues, CssComponentValueError> {
+    use crate::syntax_consumption::{GroupEnd, SyntaxNode, TokenPayload};
+    enum Work {
+        Node(usize),
+        Finish(usize),
+    }
+    let mut work: Vec<_> = nodes.iter().rev().copied().map(Work::Node).collect();
+    let mut frames = vec![Vec::new()];
+    while let Some(item) = work.pop() {
+        match item {
+            Work::Node(id) => {
+                let node = &document.nodes[id];
+                if let Some(error) = node.denied_error() {
+                    return Err(error);
+                }
+                if let TokenPayload::Checked { component, .. } = &node.token().payload {
+                    frames
+                        .last_mut()
+                        .expect("promotion frame")
+                        .push((*component).clone());
+                    continue;
+                }
+                if let Some(children) = node.children() {
+                    work.push(Work::Finish(id));
+                    work.extend(
+                        document.lists[children]
+                            .iter()
+                            .rev()
+                            .copied()
+                            .map(Work::Node),
+                    );
+                    frames.push(Vec::new());
+                    continue;
+                }
+                let token = node.token();
+                let CssValueOrigin::Parsed(origin) = token.origin.as_ref() else {
+                    return Err(CssComponentValueError::new(
+                        CssComponentValueErrorKind::InvalidToken,
+                        token.origin.clone().into_owned(),
+                    ));
+                };
+                let native = match &token.payload {
+                    TokenPayload::Native(token) => token.clone(),
+                    TokenPayload::Whitespace(value) => Token::WhiteSpace(value),
+                    TokenPayload::Comment(value) => Token::Comment(value),
+                    TokenPayload::Checked { .. } => unreachable!("checked input handled above"),
+                };
+                let spelling = Lexeme {
+                    text: token
+                        .spelling
+                        .as_ref()
+                        .expect("source lexeme")
+                        .as_ref()
+                        .into(),
+                    origin: token.origin.clone().into_owned(),
+                };
+                let value = leaf(
+                    origin.source(),
+                    native,
+                    spelling,
+                    origin.clone(),
+                    origin.span().end().byte_offset().value(),
+                )?;
+                frames.last_mut().expect("promotion frame").push(value);
             }
-            let name = if let Token::Function(name) = token {
-                Some(name.as_ref().into())
-            } else {
-                None
-            };
-            frames.push(OpenFrame {
-                kind,
-                name,
-                opening: spelling,
-                origin,
-                children: Vec::new(),
-            });
-        } else {
-            match normalized_leaves(source, token, offset..end, limits, count, false) {
-                Ok(values) => {
-                    for value in values.into_iter().flatten() {
-                        push_value(&mut items, &mut frames, value);
+            Work::Finish(id) => {
+                let node = &document.nodes[id];
+                let token = node.token();
+                let CssValueOrigin::Parsed(origin) = token.origin.as_ref() else {
+                    return Err(CssComponentValueError::new(
+                        CssComponentValueErrorKind::InvalidToken,
+                        token.origin.clone().into_owned(),
+                    ));
+                };
+                let (kind, name) = match node {
+                    SyntaxNode::Function { opening, .. } => {
+                        let crate::syntax_consumption::TokenKind::Function(name) = opening.kind()
+                        else {
+                            unreachable!("function opening");
+                        };
+                        (CssBlockKind::Parenthesis, Some(name.into()))
                     }
-                }
-                Err(error)
-                    if matches!(
-                        error.kind(),
-                        CssComponentValueErrorKind::BadString
-                            | CssComponentValueErrorKind::BadUrl
-                            | CssComponentValueErrorKind::UnmatchedClosingDelimiter
-                    ) =>
-                {
-                    errors.push(error)
-                }
-                Err(error) => return Err(error),
+                    SyntaxNode::Block { kind, .. } => (*kind, None),
+                    _ => unreachable!("group continuation"),
+                };
+                let closing = match node.end().expect("group end") {
+                    GroupEnd::Explicit(token) => {
+                        let CssValueOrigin::Parsed(parsed) = token.origin.as_ref() else {
+                            return Err(CssComponentValueError::new(
+                                CssComponentValueErrorKind::InvalidToken,
+                                token.origin.clone().into_owned(),
+                            ));
+                        };
+                        parsed.span().start().byte_offset().value()
+                            ..parsed.span().end().byte_offset().value()
+                    }
+                    GroupEnd::Implicit { at, .. } => {
+                        let at = at.source.as_ref().expect("source group EOF").offset;
+                        at..at
+                    }
+                };
+                let frame = OpenFrame {
+                    kind,
+                    name,
+                    opening: Lexeme {
+                        text: token
+                            .spelling
+                            .as_ref()
+                            .expect("source opening")
+                            .as_ref()
+                            .into(),
+                        origin: token.origin.clone().into_owned(),
+                    },
+                    origin: origin.clone(),
+                    children: frames.pop().expect("child promotion frame"),
+                };
+                let value = frame.finish(origin.source(), closing, limits)?;
+                frames.last_mut().expect("promotion frame").push(value);
             }
         }
-        offset = end;
     }
-    while let Some(frame) = frames.pop() {
-        let value = frame.finish(source, range.end..range.end, limits)?;
-        push_value(&mut items, &mut frames, value);
-    }
-    Ok(items)
+    CssComponentValues::from_items(frames.pop().expect("root promotion frame"), limits)
 }
 
 fn consume_values<'i, 't>(
@@ -511,62 +525,14 @@ fn normalized_leaves(
     count: &mut usize,
     single: bool,
 ) -> Result<[Option<CssComponentValue>; 2], CssComponentValueError> {
-    let text = &source.as_str()[range.clone()];
-    let numeric_end = if matches!(token, Token::Dimension { .. }) {
-        numeric_prefix_length(text)
-    } else {
-        0
-    };
-    let parts = match token {
-        Token::Ident(_) if text == "-" && !would_start_identifier(text) => {
-            [Some((Token::Delim('-'), range.clone())), None]
-        }
-        Token::AtKeyword(_) if text == "@-" && !would_start_identifier(&text[1..]) => [
-            Some((Token::Delim('@'), range.start..range.start + 1)),
-            Some((Token::Delim('-'), range.start + 1..range.end)),
-        ],
-        Token::Dimension {
-            has_sign,
-            value,
-            int_value,
-            ..
-        } if &text[numeric_end..] == "-" && !would_start_identifier(&text[numeric_end..]) => {
-            let split = range.start + numeric_end;
-            [
-                Some((
-                    Token::Number {
-                        has_sign,
-                        value,
-                        int_value,
-                    },
-                    range.start..split,
-                )),
-                Some((Token::Delim('-'), split..range.end)),
-            ]
-        }
-        Token::Hash(value) | Token::IDHash(value) => {
-            let token = if would_start_identifier(&text[1..]) {
-                Token::IDHash(value)
-            } else {
-                Token::Hash(value)
-            };
-            [Some((token, range.clone())), None]
-        }
-        token => [Some((token, range.clone())), None],
-    };
+    let parts = source_token_parts(source.as_str(), token, range.clone());
     let part_count = parts.iter().flatten().count();
     if single && part_count != 1 {
-        // The dependency has already consumed the complete captured token.
-        // Do not return its first normalized component and silently lose the
-        // second, or fabricate a foreign ParserState to rewind into the token.
         return Err(CssComponentValueError::new(
             CssComponentValueErrorKind::InvalidToken,
             CssValueOrigin::Parsed(range_origin(source, range)),
         ));
     }
-    // Admit the capture atomically, while diagnosing the first actual component
-    // exceeding the budget. A split must not leak its admitted prefix or spend
-    // that prefix's budget when the complete capture cannot be represented.
     let next = count.checked_add(part_count).ok_or_else(|| {
         let first_excess = usize::MAX - *count;
         CssComponentValueError::new(
@@ -606,6 +572,56 @@ fn normalized_leaves(
         *target = Some(leaf(source, token, spelling, origin, range.end)?);
     }
     Ok(values)
+}
+
+pub(crate) fn source_token_parts<'a>(
+    source: &str,
+    token: Token<'a>,
+    range: Range<usize>,
+) -> [Option<(Token<'a>, Range<usize>)>; 2] {
+    let text = &source[range.clone()];
+    let numeric_end = if matches!(token, Token::Dimension { .. }) {
+        numeric_prefix_length(text)
+    } else {
+        0
+    };
+    match token {
+        Token::Ident(_) if text == "-" && !would_start_identifier(text) => {
+            [Some((Token::Delim('-'), range.clone())), None]
+        }
+        Token::AtKeyword(_) if text == "@-" && !would_start_identifier(&text[1..]) => [
+            Some((Token::Delim('@'), range.start..range.start + 1)),
+            Some((Token::Delim('-'), range.start + 1..range.end)),
+        ],
+        Token::Dimension {
+            has_sign,
+            value,
+            int_value,
+            ..
+        } if &text[numeric_end..] == "-" && !would_start_identifier(&text[numeric_end..]) => {
+            let split = range.start + numeric_end;
+            [
+                Some((
+                    Token::Number {
+                        has_sign,
+                        value,
+                        int_value,
+                    },
+                    range.start..split,
+                )),
+                Some((Token::Delim('-'), split..range.end)),
+            ]
+        }
+        Token::Hash(value) | Token::IDHash(value) => {
+            let token = if would_start_identifier(&text[1..]) {
+                Token::IDHash(value)
+            } else {
+                Token::Hash(value)
+            };
+            [Some((token, range.clone())), None]
+        }
+        token => [Some((token, range.clone())), None],
+    }
 }
 
 fn leaf(

@@ -3718,7 +3718,7 @@
         "diagnostic_positions": null,
         "diagnostic_count_status": "one per listed recovery unit"
       },
-      "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
+      "rationale": "Syntax 3 section 5.4.1 dispatches the unmatched closing curly into qualified-rule consumption. With no curly body, section 5.4.3 fails at the actual EOF and discards the complete qualified unit; no valid rule remains.",
       "normative_sources": [
         "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
         "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
@@ -3744,7 +3744,7 @@
           {
             "code": "invalid_qualified_rule",
             "action": "drop_qualified_rule",
-            "payload_relation": "intersects"
+            "payload_relation": "recovery_ends_at"
           }
         ]
       },
@@ -3752,8 +3752,8 @@
         {
           "code": "invalid_qualified_rule",
           "action": "drop_qualified_rule",
-          "payload_relation": "intersects",
-          "byte_offset": 0,
+          "payload_relation": "recovery_ends_at",
+          "byte_offset": 1,
           "span_start": 0,
           "span_end": 1,
           "multiplicity": 1
@@ -3762,7 +3762,7 @@
       "diagnostic_count": 1,
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
-        "discard_malformed_top_level_token directly diagnoses unmatched closing curly at byte 0."
+        "The one-byte input is an incomplete qualified unit spanning 0..1. Its missing-block failure is responsible at EOF byte 1, so the nonempty complete recovery span has relation recovery_ends_at. This follows the selected generic consumption contract rather than the superseded top-level punctuation-discard helper."
       ],
       "uncertainties": []
     },

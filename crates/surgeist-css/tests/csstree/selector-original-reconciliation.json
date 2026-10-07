@@ -192,7 +192,7 @@
         "validation_accepts": false,
         "typed_expectation": null,
         "rationale": [
-          "Unmatched close parenthesis is invalid selector syntax. parse_selector_after_first_compound resets at byte3 and raises invalid_selector with no encountered token. Error::resolve_source refuses closing-delimiter inference, then previous_authored_token_before identifies foo and rewinds responsible offset to0. This is a static diagnostic policy prediction, not a grammar location requirement."
+          "The valid ident foo occupies bytes 0..3; the unmatched closing parenthesis at byte 3 makes the original selector invalid. The public first-responsible-source-position contract identifies that actual offending delimiter, rather than inferring the preceding valid ident. RejectInput still covers the complete original input 0..4 and intersects the payload. The former offset-0 fallback prediction is superseded; CSS grammar does not impose a numerical diagnostic coordinate."
         ]
       },
       "expected_class": {
@@ -219,7 +219,7 @@
           "code": "invalid_selector",
           "action": "reject_input",
           "payload_relation": "intersects",
-          "byte_offset": 0,
+          "byte_offset": 3,
           "span_start": 0,
           "span_end": 4,
           "multiplicity": 1

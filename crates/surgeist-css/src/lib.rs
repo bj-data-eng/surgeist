@@ -1652,6 +1652,7 @@ mod counter_changes;
 mod counter_changes_serialization;
 mod counter_style_serialization;
 mod stylesheet_input;
+mod syntax_consumption;
 pub use counter_style_serialization::CssCounterStyleDescriptorKind;
 mod cursor_serialization;
 mod cursor_values;

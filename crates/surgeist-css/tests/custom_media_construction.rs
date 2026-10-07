@@ -177,11 +177,61 @@ fn parsed_rule_grammar_tokens_and_eof_terminators_keep_honest_origins() {
     assert!(
         matches!(out.origin_at(out.as_css().len()-1),Some(CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin)))if origin.span().start().byte_offset().value()==34)
     );
-    let eof = definition("@custom-media --x true").serialize().unwrap();
+    let source = "@custom-media --x true";
+    let report = parse_sheet(source);
+    let [diagnostic] = report.diagnostics() else {
+        panic!("one retained statement EOF diagnostic");
+    };
+    assert_eq!(diagnostic.error().code(), CssErrorCode::UnexpectedEnd);
+    assert_eq!(
+        diagnostic.action(),
+        CssRecoveryAction::RetainNonconformingRule
+    );
+    assert_eq!(
+        diagnostic.error().position().byte_offset().value(),
+        source.len()
+    );
+    assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
+    assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
+    let ErrorKind::UnexpectedEnd(detail) = diagnostic.error().kind() else {
+        panic!("typed statement EOF");
+    };
+    assert_eq!(
+        detail.expectation().as_str(),
+        "a semicolon or block terminating an at-rule"
+    );
+    let [CssRule::CustomMedia(eof_rule)] = report.syntax().rules() else {
+        panic!("retained definition");
+    };
+    assert_eq!(eof_rule.name().as_str(), "--x");
+    assert!(matches!(eof_rule.body(), CssCustomMediaBody::True));
+    let CssValueOrigin::Parsed(origin) = eof_rule.origin() else {
+        panic!("original at-keyword");
+    };
+    assert_eq!(origin.source().as_str(), source);
+    assert_eq!(origin.span().start().byte_offset().value(), 0);
+    let eof = eof_rule.serialize().unwrap();
+    assert!(matches!(
+        eof.origin_at(0), Some(CssSerializedOrigin::Token(origin)) if origin == eof_rule.origin()
+    ));
     assert!(matches!(
         eof.origin_at(eof.as_css().len() - 1),
         Some(CssSerializedOrigin::Token(CssValueOrigin::Programmatic))
     ));
+    // Statement recovery does not invent a recovered body component. Checked
+    // reconstruction owns a new semicolon; canonical terminated input is clean.
+    let checked =
+        CssCustomMediaRule::try_new(eof_rule.name().clone(), eof_rule.body().clone()).unwrap();
+    assert_eq!(checked.name().origin(), eof_rule.name().origin());
+    assert_eq!(checked.serialize().unwrap().as_css(), eof.as_css());
+    assert_eq!(
+        definition(eof.as_css()).serialize().unwrap().as_css(),
+        eof.as_css()
+    );
+    assert_eq!(
+        validate_sheet(source),
+        report.clone().into_validation_result()
+    );
 }
 
 #[test]

@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
@@ -170,6 +171,12 @@ struct DelimiterScan {
     maximum: u32,
     unclosed: Vec<usize>,
     eof_limit: Option<DelimiterLimitTarget>,
+    over_limit_components: Vec<DeniedComponent>,
+}
+
+struct DeniedComponent {
+    range: std::ops::Range<usize>,
+    block: BlockKind,
 }
 
 struct DelimiterLimitTarget {
@@ -186,6 +193,8 @@ fn scan_delimiters(source: &str, base_depth: u32) -> DelimiterScan {
     let mut unit_start = None;
     let mut first_root_curly = None;
     let mut target = None;
+    let mut over_limit_components = Vec::new();
+    let mut over_limit_component = None;
 
     while let Some((token_start, token_end, token)) = next_source_token(source, offset) {
         offset = token_end;
@@ -230,6 +239,9 @@ fn scan_delimiters(source: &str, base_depth: u32) -> DelimiterScan {
                 first_root_curly = Some(token_start);
             }
             let depth = base_depth.saturating_add(blocks.len() as u32);
+            if over_limit_component.is_none() && depth >= STRUCTURAL_NESTING_LIMIT {
+                over_limit_component = Some((token_start, blocks.len(), opening));
+            }
             if target.is_none() && depth >= STRUCTURAL_NESTING_LIMIT {
                 target = Some(DelimiterLimitTarget {
                     unit_start: unit_start.unwrap_or(token_start),
@@ -246,6 +258,15 @@ fn scan_delimiters(source: &str, base_depth: u32) -> DelimiterScan {
             && blocks.last().is_some_and(|(kind, _)| *kind == closing)
         {
             blocks.pop();
+            if let Some((start, parent_depth, block)) = over_limit_component
+                && blocks.len() == parent_depth
+            {
+                over_limit_components.push(DeniedComponent {
+                    range: start..token_end,
+                    block,
+                });
+                over_limit_component = None;
+            }
             if blocks.is_empty() {
                 // A completed prelude component does not terminate its rule.
                 if closing == BlockKind::Curly {
@@ -257,6 +278,13 @@ fn scan_delimiters(source: &str, base_depth: u32) -> DelimiterScan {
         }
     }
 
+    if let Some((start, _, block)) = over_limit_component {
+        over_limit_components.push(DeniedComponent {
+            range: start..source.len(),
+            block,
+        });
+    }
+
     DelimiterScan {
         maximum,
         unclosed: blocks
@@ -265,7 +293,40 @@ fn scan_delimiters(source: &str, base_depth: u32) -> DelimiterScan {
             .chain(unclosed_token)
             .collect(),
         eof_limit: target,
+        over_limit_components,
     }
+}
+
+// The generic source arena selects the actual enclosing units before native
+// admission. Omit only components already beyond the shared depth ceiling from
+// its private recovery view. Denied Curly boundaries remain opaque structural
+// units, so their payload cannot absorb an independent following rule. Native
+// callbacks retain their unchanged source and own resource diagnosis/consumption.
+fn source_normalization_view(
+    source: &str,
+    base_depth: u32,
+) -> (Cow<'_, str>, Vec<std::ops::Range<usize>>) {
+    let ranges = scan_delimiters(source, base_depth).over_limit_components;
+    if ranges.is_empty() {
+        return (Cow::Borrowed(source), Vec::new());
+    }
+    let mut view = source.as_bytes().to_vec();
+    let mut denied_curly = Vec::new();
+    for component in ranges {
+        if component.block == BlockKind::Curly {
+            denied_curly.push(component.range);
+            continue;
+        }
+        for byte in &mut view[component.range] {
+            if !matches!(*byte, b'\n' | b'\r' | b'\x0c') {
+                *byte = b' ';
+            }
+        }
+    }
+    (
+        Cow::Owned(String::from_utf8(view).expect("ASCII masking preserves UTF-8")),
+        denied_curly,
+    )
 }
 
 /// Parser-owned algorithm state shared by structural and component-value paths.
@@ -283,6 +344,8 @@ pub(crate) struct RecoveryState {
     implicit_openings: Rc<Vec<usize>>,
     retained_implicit_openings: Rc<RefCell<Vec<usize>>>,
     retained_navigation_diagnostics: Rc<RefCell<Vec<crate::CssRecoveryDiagnostic>>>,
+    syntax_base_depth: u32,
+    syntax_document: Rc<RefCell<Option<Rc<crate::syntax_consumption::SyntaxDocument<'static>>>>>,
 }
 
 impl RecoveryState {
@@ -315,6 +378,8 @@ impl RecoveryState {
             implicit_openings: Rc::new(unclosed_openings(source)),
             retained_implicit_openings: Rc::new(RefCell::new(Vec::new())),
             retained_navigation_diagnostics: Rc::new(RefCell::new(Vec::new())),
+            syntax_base_depth: depth,
+            syntax_document: Rc::new(RefCell::new(None)),
         }
     }
 
@@ -337,6 +402,8 @@ impl RecoveryState {
             implicit_openings: Rc::clone(&self.implicit_openings),
             retained_implicit_openings: Rc::new(RefCell::new(Vec::new())),
             retained_navigation_diagnostics: Rc::new(RefCell::new(Vec::new())),
+            syntax_base_depth: self.syntax_base_depth,
+            syntax_document: Rc::clone(&self.syntax_document),
         }
     }
 
@@ -353,7 +420,29 @@ impl RecoveryState {
             implicit_openings: Rc::new(unclosed_openings(source)),
             retained_implicit_openings: Rc::new(RefCell::new(Vec::new())),
             retained_navigation_diagnostics: Rc::new(RefCell::new(Vec::new())),
+            syntax_base_depth: self.depth.get(),
+            syntax_document: Rc::new(RefCell::new(None)),
         }
+    }
+
+    pub(super) fn syntax_document(
+        &self,
+        source: &str,
+    ) -> Result<Rc<crate::syntax_consumption::SyntaxDocument<'static>>, crate::CssComponentValueError>
+    {
+        if let Some(document) = self.syntax_document.borrow().as_ref() {
+            return Ok(Rc::clone(document));
+        }
+        let (normalization_view, denied_curly) =
+            source_normalization_view(source, self.syntax_base_depth);
+        let document = Rc::new(crate::syntax_consumption::recovery_source_document(
+            &normalization_view,
+            &self.source_snapshot,
+            self.syntax_base_depth,
+            &denied_curly,
+        )?);
+        *self.syntax_document.borrow_mut() = Some(Rc::clone(&document));
+        Ok(document)
     }
 
     pub(super) fn pending_component_closures(&self) -> Vec<usize> {
@@ -362,6 +451,10 @@ impl RecoveryState {
 
     pub(super) fn source_snapshot(&self) -> &crate::CssSourceSnapshot {
         &self.source_snapshot
+    }
+
+    pub(super) fn source_position(&self, byte_offset: usize) -> crate::CssSourcePosition {
+        crate::CssSourcePosition::from_byte_offset_in(self.source_snapshot.as_str(), byte_offset)
     }
 
     pub(super) fn activate_namespace(
@@ -408,6 +501,7 @@ impl RecoveryState {
     }
 
     /// Current entered structural block depth, including the active rule body.
+    #[cfg(test)]
     pub(super) fn structural_depth(&self) -> u32 {
         self.depth.get()
     }
@@ -613,6 +707,22 @@ impl RecoveryState {
         .err()
     }
 
+    pub(super) fn check_entered_curly_contents<'i>(
+        &self,
+        source: &'i str,
+        input: &Parser<'i, '_>,
+        enclosing_production: &'static str,
+    ) -> Result<(), ParseError<'i, Error>> {
+        scan_nested_tokens(
+            source,
+            input.position().byte_index(),
+            self.depth.get(),
+            enclosing_production,
+            ScanBoundary::FailedCurlyBlock,
+        )
+        .map(|_| ())
+    }
+
     fn enter<'i>(
         &self,
         source: &str,
@@ -651,6 +761,13 @@ struct StyleContextCapture {
 }
 
 impl StyleContextCaptures {
+    pub(super) fn with_namespaces(context: &super::CssNamespaceContext) -> Self {
+        Self {
+            entries: Rc::new(RefCell::new(Vec::new())),
+            namespace_bindings: Rc::new(RefCell::new(context.0.clone())),
+        }
+    }
+
     pub(super) fn register(&self, content_start: usize) {
         let mut entries = self.entries.borrow_mut();
         if entries
@@ -683,7 +800,8 @@ impl StyleContextCaptures {
     }
 }
 
-const STRUCTURAL_PARSE_CHUNK: usize = 64;
+// Execution batching is independent of the authored 256-level admission limit.
+const STRUCTURAL_PARSE_CHUNK: usize = 32;
 
 pub(super) struct StructuralPreflight {
     pub(super) unit_start: usize,
@@ -755,6 +873,36 @@ struct StructuralGroup {
     kind: GroupKind,
     style_context_starts: Vec<usize>,
     style_ancestry_starts: Vec<usize>,
+    list_context: StructuralListContext,
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum StructuralListContext {
+    Rules { top_level: bool },
+    BlockContents,
+}
+
+impl StructuralListContext {
+    fn ignores_prefix(self, token: &Token<'_>, at_unit_start: bool) -> bool {
+        let top_level = at_unit_start && matches!(self, Self::Rules { top_level: true });
+        crate::syntax_consumption::ignored_rule_list_prefix(
+            crate::syntax_consumption::native_token_kind(token),
+            top_level,
+        )
+    }
+
+    fn semicolon_ends_unit(self, unit: Option<StructuralUnit>) -> bool {
+        matches!(self, Self::BlockContents)
+            || unit.is_some_and(|unit| {
+                crate::syntax_consumption::semicolon_terminates_rule(unit.dispatch)
+            })
+    }
+}
+
+#[derive(Clone, Copy)]
+struct StructuralUnit {
+    start: usize,
+    dispatch: crate::syntax_consumption::GenericRuleDispatch,
 }
 
 pub(super) fn preflight_structural_nesting(
@@ -762,6 +910,7 @@ pub(super) fn preflight_structural_nesting(
     base_depth: u32,
     root_style_context: bool,
     root_style_ancestor: bool,
+    root_list_context: StructuralListContext,
 ) -> Option<StructuralPreflight> {
     // Restarting cssparser at each verified token boundary exposes opening and
     // closing tokens without calling `parse_nested_block`; comments, strings,
@@ -770,16 +919,16 @@ pub(super) fn preflight_structural_nesting(
     let mut offset = 0;
     let mut frames: Vec<StructuralFrame> = Vec::new();
     let mut groups: Vec<StructuralGroup> = Vec::new();
-    let mut unit_starts = vec![None];
+    let mut unit_starts: Vec<Option<StructuralUnit>> = vec![None];
     let mut target: Option<StructuralPreflight> = None;
     let mut target_group_depth = 0;
 
     while let Some((token_start, token_end, token)) = next_source_token(source, offset) {
         offset = token_end;
-        if let Some(closing) = closing_block(&token) {
-            if let Some(frame) = frames.pop_if(|frame| frame.block == closing)
-                && frame.group.is_some()
-            {
+        if let Some(closing) = closing_block(&token)
+            && let Some(frame) = frames.pop_if(|frame| frame.block == closing)
+        {
+            if frame.group.is_some() {
                 groups.pop();
                 unit_starts.pop();
                 if let Some(parent_start) = unit_starts.last_mut() {
@@ -793,12 +942,20 @@ pub(super) fn preflight_structural_nesting(
             }
             continue;
         }
+        // An unmatched closer is an ordinary generic prelude component.
 
         let directly_in_group = frames.last().is_none_or(|frame| frame.group.is_some());
-        if directly_in_group && is_ignored_unit_prefix(&token) {
+        let list_context = groups
+            .last()
+            .map_or(root_list_context, |group| group.list_context);
+        let unit = unit_starts.last().copied().flatten();
+        if directly_in_group && list_context.ignores_prefix(&token, unit.is_none()) {
             continue;
         }
-        if directly_in_group && matches!(token, Token::Semicolon) {
+        if directly_in_group
+            && matches!(token, Token::Semicolon)
+            && list_context.semicolon_ends_unit(unit)
+        {
             if let Some(unit_start) = unit_starts.last_mut() {
                 *unit_start = None;
             }
@@ -810,7 +967,12 @@ pub(super) fn preflight_structural_nesting(
                 .is_some_and(|unit_start| unit_start.is_none())
             && let Some(unit_start) = unit_starts.last_mut()
         {
-            *unit_start = Some(token_start);
+            *unit_start = Some(StructuralUnit {
+                start: token_start,
+                dispatch: crate::syntax_consumption::rule_dispatch(
+                    crate::syntax_consumption::native_token_kind(&token),
+                ),
+            });
         }
 
         let Some(opening) = opening_block(&token) else {
@@ -826,7 +988,7 @@ pub(super) fn preflight_structural_nesting(
 
         let unit_start = unit_starts
             .last()
-            .and_then(|unit_start| *unit_start)
+            .and_then(|unit_start| unit_start.map(|unit| unit.start))
             .unwrap_or(token_start);
         let group = group_kind(source, unit_start, token_start);
         if matches!(group, GroupKind::Component) {
@@ -929,11 +1091,20 @@ pub(super) fn preflight_structural_nesting(
             }
             _ => Vec::new(),
         };
+        let child_list_context = if matches!(group, GroupKind::Style | GroupKind::Scope)
+            || !child_style_context_starts.is_empty()
+            || !child_style_ancestry_starts.is_empty()
+        {
+            StructuralListContext::BlockContents
+        } else {
+            StructuralListContext::Rules { top_level: false }
+        };
         groups.push(StructuralGroup {
             start: unit_start,
             kind: group,
             style_context_starts: child_style_context_starts,
             style_ancestry_starts: child_style_ancestry_starts,
+            list_context: child_list_context,
         });
         unit_starts.push(None);
         frames.push(StructuralFrame {
@@ -943,13 +1114,6 @@ pub(super) fn preflight_structural_nesting(
     }
 
     target
-}
-
-fn is_ignored_unit_prefix(token: &Token<'_>) -> bool {
-    matches!(
-        token,
-        Token::WhiteSpace(_) | Token::Comment(_) | Token::CDO | Token::CDC
-    )
 }
 
 fn group_kind(source: &str, unit_start: usize, opening_offset: usize) -> GroupKind {
@@ -1244,6 +1408,155 @@ mod tests {
     use cssparser::{Parser, ParserInput};
 
     use super::{RecoveryLoopOutcome, RecoveryProgress, unclosed_openings};
+
+    #[test]
+    fn denied_curly_keeps_actual_units_and_charges_only_its_opaque_boundary() {
+        use crate::syntax_consumption::{self as syntax, GenericRule, RuleTermination, SyntaxNode};
+        let source = "@page {😀\r\nnot parsed}@layer kept;";
+        let state =
+            super::RecoveryState::at_depth(source, 256, super::StyleContextCaptures::default());
+        let document = state.syntax_document(source).unwrap();
+        let selected = syntax::consume_rules(&mut document.cursor(document.root), false);
+        let [Ok(GenericRule::At(page)), Ok(GenericRule::At(layer))] = selected.as_slice() else {
+            panic!("denied Page and independent same-parent Layer units");
+        };
+        assert!(matches!(page.termination, RuleTermination::Block));
+        assert!(page.fault.is_none());
+        assert!(matches!(layer.termination, RuleTermination::Semicolon(_)));
+        assert_eq!(
+            document.nodes[layer.name].token().kind(),
+            syntax::TokenKind::AtKeyword("layer")
+        );
+        let denied = page.block.unwrap();
+        assert!(matches!(
+            document.nodes[denied],
+            SyntaxNode::DeniedCurlyBlock { .. }
+        ));
+        assert!(document.nodes[denied].children().is_none());
+        let opening = source.find('{').unwrap();
+        let next = source.find("@layer").unwrap();
+        assert_eq!(document.range(denied), Some(opening..next));
+        assert_eq!(
+            document
+                .boundary(page.range.list, page.range.end)
+                .source
+                .unwrap()
+                .offset,
+            next
+        );
+        assert_eq!(document.metrics.components, 7);
+        assert_eq!(document.metrics.maximum_depth, 256);
+        assert_eq!(document.metrics.known_spelling_bytes, source.len());
+        assert_eq!(document.metrics.unspelled_tokens, 0);
+        let crate::CssValueOrigin::Parsed(origin) = document.nodes[denied].token().origin.as_ref()
+        else {
+            panic!("actual original denied opening");
+        };
+        assert!(origin.source().same_snapshot(state.source_snapshot()));
+        assert_eq!(origin.span().start(), state.source_position(opening));
+        assert_eq!(origin.span().end(), state.source_position(opening + 1));
+        assert_eq!(origin.span().start().byte_offset().value(), 6);
+        assert_eq!(origin.span().start().line().value(), 0);
+        assert_eq!(origin.span().start().column().value(), 6);
+        assert_eq!(origin.span().end().byte_offset().value(), 7);
+        assert_eq!(origin.span().end().column().value(), 7);
+        let crate::CssValueOrigin::Parsed(layer_origin) =
+            document.nodes[layer.name].token().origin.as_ref()
+        else {
+            panic!("original Layer coordinates after Unicode and CRLF");
+        };
+        assert_eq!(layer_origin.span().start(), state.source_position(next));
+        assert_eq!(layer_origin.span().start().byte_offset().value(), 24);
+        assert_eq!(layer_origin.span().start().line().value(), 1);
+        assert_eq!(layer_origin.span().start().column().value(), 11);
+        let denied_origin = document.nodes[denied].token().origin.clone().into_owned();
+        let promoted = crate::component_values::promote_nodes(
+            &document,
+            &[denied],
+            crate::CssComponentValueLimits::default(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            promoted.kind(),
+            crate::CssComponentValueErrorKind::NestingLimit
+        );
+        assert_eq!(promoted.origin(), &denied_origin);
+        let reused = syntax::normalize(
+            syntax::SyntaxInput::Components {
+                document: &document,
+                list: document.root,
+            },
+            syntax::SyntaxInputLimits::default(),
+            0,
+        )
+        .err()
+        .expect("denied grouped input cannot be admitted");
+        assert_eq!(
+            reused.kind(),
+            crate::CssComponentValueErrorKind::NestingLimit
+        );
+        assert_eq!(reused.origin(), &denied_origin);
+        let direct = syntax::source_document(source, state.source_snapshot(), 256)
+            .err()
+            .expect("direct source has no recovery admission");
+        assert_eq!(
+            direct.kind(),
+            crate::CssComponentValueErrorKind::NestingLimit
+        );
+        assert_eq!(direct.origin(), &denied_origin);
+    }
+
+    #[test]
+    fn denied_curly_ends_qualified_units_and_preserves_true_statement_eof() {
+        use crate::syntax_consumption::{self as syntax, GenericRule, RuleTermination};
+        let source = "bad{}@layer kept;";
+        let state =
+            super::RecoveryState::at_depth(source, 256, super::StyleContextCaptures::default());
+        let document = state.syntax_document(source).unwrap();
+        let selected = syntax::consume_rules(&mut document.cursor(document.root), false);
+        let [
+            Ok(GenericRule::Qualified(qualified)),
+            Ok(GenericRule::At(layer)),
+        ] = selected.as_slice()
+        else {
+            panic!("denied qualified body and independent Layer unit");
+        };
+        assert_eq!(document.range(qualified.block), Some(3..5));
+        assert_eq!(
+            document
+                .boundary(qualified.range.list, qualified.range.end)
+                .source
+                .unwrap()
+                .offset,
+            5
+        );
+        assert!(matches!(layer.termination, RuleTermination::Semicolon(_)));
+
+        for source in ["@page{unclosed payload", "@layer kept"] {
+            let state =
+                super::RecoveryState::at_depth(source, 256, super::StyleContextCaptures::default());
+            let document = state.syntax_document(source).unwrap();
+            let selected = syntax::consume_rules(&mut document.cursor(document.root), false);
+            let [Ok(GenericRule::At(rule))] = selected.as_slice() else {
+                panic!("one selected unit");
+            };
+            assert_eq!(document.metrics.known_spelling_bytes, source.len());
+            if source.starts_with("@page") {
+                assert!(matches!(rule.termination, RuleTermination::Block));
+                assert!(rule.fault.is_none());
+                assert_eq!(document.range(rule.block.unwrap()), Some(5..source.len()));
+            } else {
+                let RuleTermination::EndOfInput(at) = &rule.termination else {
+                    panic!("actual source EOF");
+                };
+                assert_eq!(at.source.as_ref().unwrap().offset, source.len());
+                assert_eq!(
+                    rule.fault.as_ref().unwrap().kind,
+                    syntax::GenericFaultKind::AtRuleEndOfInput
+                );
+            }
+        }
+    }
 
     #[test]
     fn generated_selector_probe_shares_environment_but_owns_source_offsets() {

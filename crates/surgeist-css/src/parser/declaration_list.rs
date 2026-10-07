@@ -44,29 +44,53 @@ pub(crate) fn parse_declaration_list_text_with_context(
             let mut input = Parser::new(&mut parser_input);
             let mut declarations = Vec::new();
             let mut diagnostics = Vec::new();
-            loop {
-                let progress = RecoveryProgress::record(&input);
+            let document = match recovery.syntax_document(source) {
+                Ok(document) => document,
+                Err(error) => {
+                    return crate::CssParseReport::new(
+                        CssDeclarationList::new(declarations),
+                        vec![syntax_bridge::arena_error(source, error)],
+                    );
+                }
+            };
+            let selected = crate::syntax_consumption::consume_declaration_list(
+                &mut document.cursor(document.root),
+            );
+            for candidate in selected {
+                use crate::syntax_consumption::{GenericDeclarationListItem, RuleTermination};
+                let (range, at_rule, generic_valid) = match candidate {
+                    GenericDeclarationListItem::At(rule) => {
+                        let mut range = rule.range;
+                        if matches!(rule.termination, RuleTermination::Semicolon(_)) {
+                            range.end -= 1;
+                        }
+                        (range, true, false)
+                    }
+                    GenericDeclarationListItem::Declaration { range, parsed } => {
+                        (range, false, parsed.is_ok())
+                    }
+                };
+                let start_byte = document
+                    .boundary(range.list, range.start)
+                    .source
+                    .expect("source candidate")
+                    .offset;
+                let end_byte = document
+                    .boundary(range.list, range.end)
+                    .source
+                    .expect("source candidate end")
+                    .offset;
+                advance_to(&mut input, start_byte);
                 let start = input.state();
                 let location = input.current_source_location();
-                let Ok(token) = input.next_including_whitespace_and_comments().cloned() else {
-                    break;
-                };
-                if matches!(
-                    token,
-                    Token::WhiteSpace(_) | Token::Comment(_) | Token::Semicolon
-                ) {
-                    continue;
-                }
+                let token = input
+                    .next_including_whitespace_and_comments()
+                    .expect("selected candidate")
+                    .clone();
                 input.reset(&start);
-                let at_rule = matches!(token, Token::AtKeyword(_));
                 let components = recovery.check_declaration_list_unit(source, &input, at_rule);
                 let result = if at_rule {
-                    // Consume Syntax's generic at-rule independently of known at-rule
-                    // grammar. Its body cannot contribute ordinary declarations.
-                    input
-                        .next_including_whitespace_and_comments()
-                        .expect("peeked at-keyword");
-                    consume_at_rule(&mut input);
+                    advance_to(&mut input, end_byte);
                     components
                         .and_then(|_| Err(location.new_unexpected_token_error::<Error>(token)))
                 } else {
@@ -77,6 +101,12 @@ pub(crate) fn parse_declaration_list_text_with_context(
                         }
                         let name = unit.expect_ident_cloned()?;
                         unit.expect_colon()?;
+                        if !generic_valid {
+                            return Err(invalid_syntax(
+                                unit.current_source_location(),
+                                "a declaration",
+                            ));
+                        }
                         let declaration = parse_declaration_core(
                             DeclarationMode::Ordinary,
                             name,
@@ -89,8 +119,7 @@ pub(crate) fn parse_declaration_list_text_with_context(
                         Ok((declaration, openings))
                     })
                 };
-                let retained = result.is_ok();
-                let end = input.position().byte_index();
+                advance_to(&mut input, end_byte);
                 match result {
                     Ok((declaration, openings)) => {
                         recovery.retain_component_closures(openings);
@@ -101,16 +130,13 @@ pub(crate) fn parse_declaration_list_text_with_context(
                         if let Some(diagnostic) = block_item_diagnostic_from_start(
                             source,
                             error,
-                            start.position().byte_index(),
-                            end,
+                            start_byte,
+                            end_byte,
                             crate::CssRecoveryAction::DropDeclaration,
                         ) {
                             diagnostics.push(diagnostic);
                         }
                     }
-                }
-                if progress.finish(&mut input, retained) == RecoveryLoopOutcome::Terminated {
-                    break;
                 }
             }
             diagnostics.extend(recovery.take_implicit_closure_diagnostics(source));
@@ -119,22 +145,11 @@ pub(crate) fn parse_declaration_list_text_with_context(
     )
 }
 
-fn consume_at_rule(input: &mut Parser<'_, '_>) {
-    let _: Result<(), ParseError<'_, Error>> = input.parse_until_before(
-        Delimiter::Semicolon | Delimiter::CurlyBracketBlock,
-        |prelude| {
-            while prelude.next_including_whitespace_and_comments().is_ok() {}
-            Ok(())
-        },
-    );
-    let end = input.state();
-    if let Ok(token) = input.next_including_whitespace_and_comments().cloned() {
-        if matches!(token, Token::CurlyBracketBlock) {
-            let _ = fragments::finish_nested_component(input, &token);
-        } else {
-            // Leave a terminating semicolon to the empty-slot branch; the span
-            // describes the discarded at-rule up to its recovery delimiter.
-            input.reset(&end);
-        }
+fn advance_to(input: &mut Parser<'_, '_>, end: usize) {
+    while input.position().byte_index() < end {
+        let Ok(token) = input.next_including_whitespace_and_comments().cloned() else {
+            break;
+        };
+        let _ = fragments::finish_nested_component(input, &token);
     }
 }

@@ -6,6 +6,7 @@
 
 mod parse;
 pub(crate) use parse::{has_unescaped_final, odd_trailing_backslashes};
+pub(crate) use parse::{promote_nodes, source_token_parts};
 mod serialize;
 pub(crate) use serialize::{CssCanonicalBuilder, CssCanonicalToken};
 
@@ -710,6 +711,35 @@ impl CssComponentValue {
         }
     }
 
+    // The private structural stream borrows actual lexemes; it never serializes
+    // a component to manufacture input bytes or native token identity.
+    pub(crate) fn structural_lexeme(&self, closing: bool) -> Option<(&str, &CssValueOrigin)> {
+        match &self.data {
+            ComponentData::Token(token) => {
+                (!closing).then_some((&*token.spelling.text, &token.spelling.origin))
+            }
+            ComponentData::Comment { spelling, .. } => {
+                (!closing).then_some((&*spelling.text, &spelling.origin))
+            }
+            ComponentData::Function(function) => {
+                let lexeme = if closing {
+                    &function.closing
+                } else {
+                    &function.opening
+                };
+                Some((&lexeme.text, &lexeme.origin))
+            }
+            ComponentData::Block(block) => {
+                let lexeme = if closing {
+                    &block.closing
+                } else {
+                    &block.opening
+                };
+                Some((&lexeme.text, &lexeme.origin))
+            }
+        }
+    }
+
     /// Compares retained component structure and exact token spelling without
     /// comparing where either component was obtained. Raw `PartialEq` retains
     /// its provenance-sensitive contract.
@@ -779,14 +809,6 @@ impl CssComponentValue {
         source: &CssSourceSnapshot,
     ) -> Result<Self, CssComponentValueError> {
         parse::collect_one(input, source)
-    }
-
-    pub(crate) fn collect_recovering_named_test(
-        input: &mut cssparser::Parser<'_, '_>,
-        source: &CssSourceSnapshot,
-        base_depth: u32,
-    ) -> Result<(CssComponentValues, Vec<CssComponentValueError>), CssComponentValueError> {
-        parse::collect_recovering_named_test(input, source, base_depth)
     }
 
     pub(crate) const fn parsed_origin(&self) -> Option<&CssParsedOrigin> {

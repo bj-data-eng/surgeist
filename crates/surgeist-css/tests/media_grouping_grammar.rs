@@ -6,7 +6,7 @@
 
 use surgeist_css::{
     CssErrorCode, CssMediaConditionKind, CssMediaQuery, CssMediaType, CssRecoveryAction, CssRule,
-    parse_media_query, parse_media_query_list, parse_sheet,
+    parse_media_query, parse_media_query_list, parse_sheet, validate_sheet,
 };
 
 #[test]
@@ -275,7 +275,8 @@ fn grouped_eof_closure_is_published_only_for_retained_owners() {
     );
     assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
 
-    let import = parse_sheet("@import \"x\" ((color)");
+    let import_source = "@import \"x\" ((color)";
+    let import = parse_sheet(import_source);
     assert!(matches!(import.syntax().rules(), [CssRule::Import(_)]));
     assert_eq!(
         import
@@ -283,7 +284,61 @@ fn grouped_eof_closure_is_published_only_for_retained_owners() {
             .iter()
             .map(|d| d.action())
             .collect::<Vec<_>>(),
-        [CssRecoveryAction::RetainWithImplicitClosure]
+        [
+            CssRecoveryAction::RetainNonconformingRule,
+            CssRecoveryAction::RetainWithImplicitClosure
+        ]
+    );
+    let [statement, closure] = import.diagnostics() else {
+        panic!("one statement fault and one retained group closure");
+    };
+    assert_eq!(
+        statement.error().code(),
+        surgeist_css::CssErrorCode::UnexpectedEnd
+    );
+    assert_eq!(
+        statement.action(),
+        CssRecoveryAction::RetainNonconformingRule
+    );
+    assert_eq!(
+        statement.error().position().byte_offset().value(),
+        import_source.len()
+    );
+    assert_eq!(statement.span().start().byte_offset().value(), 0);
+    assert_eq!(
+        statement.span().end().byte_offset().value(),
+        import_source.len()
+    );
+    let surgeist_css::ErrorKind::UnexpectedEnd(detail) = statement.error().kind() else {
+        panic!("typed statement EOF");
+    };
+    assert_eq!(
+        detail.expectation().as_str(),
+        "a semicolon or block terminating an at-rule"
+    );
+    assert_eq!(
+        closure.error().code(),
+        surgeist_css::CssErrorCode::UnexpectedEnd
+    );
+    assert_eq!(
+        closure.action(),
+        CssRecoveryAction::RetainWithImplicitClosure
+    );
+    assert_eq!(
+        closure.error().position().byte_offset().value(),
+        import_source.len()
+    );
+    assert_eq!(
+        closure.span().start().byte_offset().value(),
+        import_source.len()
+    );
+    assert_eq!(
+        closure.span().end().byte_offset().value(),
+        import_source.len()
+    );
+    assert_eq!(
+        validate_sheet(import_source),
+        import.clone().into_validation_result()
     );
 
     let discarded = parse_sheet("@media ((color)");

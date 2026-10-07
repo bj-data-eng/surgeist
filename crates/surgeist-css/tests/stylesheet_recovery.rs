@@ -42,25 +42,21 @@ fn assert_root_token_drop(
     authored: &str,
     kind: surgeist_css::CssTokenKind,
 ) {
-    assert_eq!(
-        diagnostic.error().code(),
-        CssErrorCode::InvalidQualifiedRule
-    );
+    assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidSelector);
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropQualifiedRule);
     assert_eq!(diagnostic.error().position().byte_offset().value(), start);
     assert_eq!(diagnostic.span().start().byte_offset().value(), start);
-    assert_eq!(
-        diagnostic.span().end().byte_offset().value(),
-        start + authored.len()
-    );
+    assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
     assert_eq!(&source[start..start + authored.len()], authored);
     assert!(diagnostic.span().start() < diagnostic.span().end());
 
-    let ErrorKind::InvalidQualifiedRule(detail) = diagnostic.error().kind() else {
-        panic!("expected invalid qualified-rule detail")
+    let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
+        panic!("expected invalid selector detail")
     };
-    assert_eq!(detail.production().as_str(), "css.qualified-rule");
-    assert_eq!(detail.expectation().as_str(), "valid CSS syntax");
+    assert_eq!(
+        detail.production().unwrap().as_str(),
+        "baseline.selector.complex"
+    );
     let encountered = detail.encountered().expect("responsible root token");
     assert_eq!(encountered.kind(), kind);
     assert_eq!(encountered.authored(), authored);
@@ -122,12 +118,12 @@ fn stylesheet_recovery_top_level_cdc_is_clean_before_and_between_valid_rules() {
 }
 
 #[test]
-fn stylesheet_recovery_root_semicolon_before_valid_rule_is_one_exact_drop() {
+fn stylesheet_recovery_root_semicolon_prefix_consumes_following_qualified_unit() {
     let source = "; .after { color: blue; }";
 
     let report = parse_sheet(source);
 
-    assert_eq!(style_rule_names(&report), ["after"]);
+    assert!(style_rule_names(&report).is_empty());
     assert_eq!(report.diagnostics().len(), 1);
     assert_root_token_drop(
         source,
@@ -136,16 +132,20 @@ fn stylesheet_recovery_root_semicolon_before_valid_rule_is_one_exact_drop() {
         ";",
         surgeist_css::CssTokenKind::Semicolon,
     );
+    assert_eq!(
+        surgeist_css::validate_sheet(source),
+        report.clone().into_validation_result()
+    );
 }
 
 #[test]
-fn stylesheet_recovery_root_semicolon_between_valid_rules_is_one_exact_drop() {
+fn stylesheet_recovery_root_semicolon_preserves_only_preceding_rule() {
     let source = ".before { color: red; } ; .after { color: blue; }";
     let stray = source.find("} ;").unwrap() + 2;
 
     let report = parse_sheet(source);
 
-    assert_eq!(style_rule_names(&report), ["before", "after"]);
+    assert_eq!(style_rule_names(&report), ["before"]);
     assert_eq!(report.diagnostics().len(), 1);
     assert_root_token_drop(
         source,
@@ -154,15 +154,19 @@ fn stylesheet_recovery_root_semicolon_between_valid_rules_is_one_exact_drop() {
         ";",
         surgeist_css::CssTokenKind::Semicolon,
     );
+    assert_eq!(
+        surgeist_css::validate_sheet(source),
+        report.clone().into_validation_result()
+    );
 }
 
 #[test]
-fn stylesheet_recovery_unmatched_root_closing_brace_before_valid_rule_is_one_exact_drop() {
+fn stylesheet_recovery_unmatched_root_closing_brace_prefix_consumes_following_qualified_unit() {
     let source = "} .after { color: blue; }";
 
     let report = parse_sheet(source);
 
-    assert_eq!(style_rule_names(&report), ["after"]);
+    assert!(style_rule_names(&report).is_empty());
     assert_eq!(report.diagnostics().len(), 1);
     assert_root_token_drop(
         source,
@@ -171,16 +175,20 @@ fn stylesheet_recovery_unmatched_root_closing_brace_before_valid_rule_is_one_exa
         "}",
         surgeist_css::CssTokenKind::CloseCurlyBracket,
     );
+    assert_eq!(
+        surgeist_css::validate_sheet(source),
+        report.clone().into_validation_result()
+    );
 }
 
 #[test]
-fn stylesheet_recovery_unmatched_root_closing_brace_between_valid_rules_is_one_exact_drop() {
+fn stylesheet_recovery_unmatched_root_closing_brace_preserves_only_preceding_rule() {
     let source = ".before { color: red; } } .after { color: blue; }";
     let stray = source.find("} }").unwrap() + 2;
 
     let report = parse_sheet(source);
 
-    assert_eq!(style_rule_names(&report), ["before", "after"]);
+    assert_eq!(style_rule_names(&report), ["before"]);
     assert_eq!(report.diagnostics().len(), 1);
     assert_root_token_drop(
         source,
@@ -189,16 +197,20 @@ fn stylesheet_recovery_unmatched_root_closing_brace_between_valid_rules_is_one_e
         "}",
         surgeist_css::CssTokenKind::CloseCurlyBracket,
     );
+    assert_eq!(
+        surgeist_css::validate_sheet(source),
+        report.clone().into_validation_result()
+    );
 }
 
 #[test]
-fn stylesheet_recovery_root_semicolon_keeps_following_charset_unknown() {
+fn stylesheet_recovery_root_semicolon_keeps_following_charset_in_qualified_prelude() {
     let source = "; @charset \"UTF-8\"; .after { color: blue; }";
 
     let report = parse_sheet(source);
 
-    assert_eq!(style_rule_names(&report), ["after"]);
-    assert_eq!(report.diagnostics().len(), 2);
+    assert!(style_rule_names(&report).is_empty());
+    assert_eq!(report.diagnostics().len(), 1);
     assert_root_token_drop(
         source,
         &report.diagnostics()[0],
@@ -206,18 +218,20 @@ fn stylesheet_recovery_root_semicolon_keeps_following_charset_unknown() {
         ";",
         surgeist_css::CssTokenKind::Semicolon,
     );
-    assert_charset_drop(source, &report.diagnostics()[1]);
-    assert!(report.diagnostics()[0].span() < report.diagnostics()[1].span());
+    assert_eq!(
+        surgeist_css::validate_sheet(source),
+        report.clone().into_validation_result()
+    );
 }
 
 #[test]
-fn stylesheet_recovery_unmatched_root_closing_brace_keeps_following_charset_unknown() {
+fn stylesheet_recovery_unmatched_root_closing_brace_keeps_following_charset_in_qualified_prelude() {
     let source = "} @charset \"UTF-8\"; .after { color: blue; }";
 
     let report = parse_sheet(source);
 
-    assert_eq!(style_rule_names(&report), ["after"]);
-    assert_eq!(report.diagnostics().len(), 2);
+    assert!(style_rule_names(&report).is_empty());
+    assert_eq!(report.diagnostics().len(), 1);
     assert_root_token_drop(
         source,
         &report.diagnostics()[0],
@@ -225,8 +239,10 @@ fn stylesheet_recovery_unmatched_root_closing_brace_keeps_following_charset_unkn
         "}",
         surgeist_css::CssTokenKind::CloseCurlyBracket,
     );
-    assert_charset_drop(source, &report.diagnostics()[1]);
-    assert!(report.diagnostics()[0].span() < report.diagnostics()[1].span());
+    assert_eq!(
+        surgeist_css::validate_sheet(source),
+        report.clone().into_validation_result()
+    );
 }
 
 #[test]

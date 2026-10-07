@@ -466,9 +466,13 @@ fn parse_selector_after_first_compound<'i, 't>(
                 ));
             }
             Ok(token) => {
-                let message = format!("unexpected selector token `{}`", token.to_css_string());
+                let token = token.clone();
                 input.reset(&state);
-                return Err(invalid_selector(input, message));
+                return Err(selector_basic(
+                    state
+                        .source_location()
+                        .new_basic_unexpected_token_error(token),
+                ));
             }
         }
     }
@@ -724,7 +728,7 @@ fn parse_compound_selector_model_with_options<'i, 't>(
                 return Err(invalid_selector(input, "unsupported selector namespace"));
             }
             Ok(token) => {
-                let message = format!("unexpected selector token `{}`", token.to_css_string());
+                let token = token.clone();
                 input.reset(&state);
                 if type_selector.is_none()
                     && scope_anchors == 0
@@ -735,7 +739,11 @@ fn parse_compound_selector_model_with_options<'i, 't>(
                     && pseudo_classes.is_empty()
                     && pseudo_elements.is_none()
                 {
-                    return Err(invalid_selector(input, message));
+                    return Err(selector_basic(
+                        state
+                            .source_location()
+                            .new_basic_unexpected_token_error(token),
+                    ));
                 }
                 break;
             }

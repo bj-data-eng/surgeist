@@ -166,7 +166,32 @@ fn custom_media_boolean_and_empty_query_definitions_survive_comment_eof() {
             assert!(queries.queries().is_empty());
         }
         assert_comment(source, &report, source.len() - 2);
-        assert_eq!(report.diagnostics().len(), 1);
+        assert_eq!(report.diagnostics().len(), 2);
+        let statement = report
+            .diagnostics()
+            .iter()
+            .find(|diagnostic| diagnostic.action() == CssRecoveryAction::RetainNonconformingRule)
+            .expect("distinct statement EOF diagnostic");
+        let ErrorKind::UnexpectedEnd(detail) = statement.error().kind() else {
+            panic!("typed statement EOF");
+        };
+        assert_eq!(
+            detail.expectation().as_str(),
+            "a semicolon or block terminating an at-rule"
+        );
+        assert_eq!(
+            statement.error().position().byte_offset().value(),
+            source.len()
+        );
+        assert_eq!(statement.span().start().byte_offset().value(), 0);
+        assert_eq!(statement.span().end().byte_offset().value(), source.len());
+        assert!(
+            !report
+                .diagnostics()
+                .iter()
+                .any(|diagnostic| diagnostic.action()
+                    == CssRecoveryAction::RetainWithImplicitClosure)
+        );
         assert_eq!(
             validate_sheet(source).unwrap_err().diagnostics(),
             report.diagnostics()

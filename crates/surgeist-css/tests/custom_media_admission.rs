@@ -313,13 +313,36 @@ fn ambiguous_operands_keep_existing_feature_candidate_precedence() {
 }
 
 #[test]
-fn eof_closed_query_body_retains_definition_and_closure_diagnostic() {
-    let report = parse_sheet("@custom-media --x (color");
+fn eof_closed_query_body_retains_definition_and_distinct_statement_and_closure_diagnostics() {
+    let source = "@custom-media --x (color";
+    let report = parse_sheet(source);
     assert_eq!(report.syntax().rules().len(), 1);
-    assert_eq!(report.diagnostics().len(), 1);
+    assert_eq!(report.diagnostics().len(), 2);
+    let statement = report
+        .diagnostics()
+        .iter()
+        .find(|diagnostic| diagnostic.action() == CssRecoveryAction::RetainNonconformingRule)
+        .unwrap();
     assert_eq!(
-        report.diagnostics()[0].action(),
-        CssRecoveryAction::RetainWithImplicitClosure
+        statement.error().code(),
+        surgeist_css::CssErrorCode::UnexpectedEnd
+    );
+    assert_eq!(
+        statement.error().position().byte_offset().value(),
+        source.len()
+    );
+    assert_eq!(statement.span().start().byte_offset().value(), 0);
+    assert_eq!(statement.span().end().byte_offset().value(), source.len());
+    let closure = report
+        .diagnostics()
+        .iter()
+        .find(|diagnostic| diagnostic.action() == CssRecoveryAction::RetainWithImplicitClosure)
+        .unwrap();
+    assert_eq!(closure.span().start().byte_offset().value(), source.len());
+    assert_eq!(closure.span().end().byte_offset().value(), source.len());
+    assert_eq!(
+        validate_sheet(source),
+        report.clone().into_validation_result()
     );
 }
 
@@ -340,8 +363,36 @@ fn invalid_definition_media_member_preserves_definition_and_sibling() {
 }
 
 #[test]
-fn eof_statement_termination_does_not_invent_an_enclosure_diagnostic() {
-    let report = parse_sheet("@custom-media --x true");
-    assert!(report.is_clean(), "{:?}", report.diagnostics());
+fn eof_statement_reports_missing_terminator_without_inventing_enclosure() {
+    let source = "@custom-media --x true";
+    let report = parse_sheet(source);
     assert_eq!(report.syntax().rules().len(), 1);
+    let [diagnostic] = report.diagnostics() else {
+        panic!("one statement EOF diagnostic");
+    };
+    assert_eq!(
+        diagnostic.action(),
+        CssRecoveryAction::RetainNonconformingRule
+    );
+    assert_eq!(
+        diagnostic.error().code(),
+        surgeist_css::CssErrorCode::UnexpectedEnd
+    );
+    assert_eq!(
+        diagnostic.error().position().byte_offset().value(),
+        source.len()
+    );
+    assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
+    assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
+    let surgeist_css::ErrorKind::UnexpectedEnd(detail) = diagnostic.error().kind() else {
+        panic!("typed statement EOF");
+    };
+    assert_eq!(
+        detail.expectation().as_str(),
+        "a semicolon or block terminating an at-rule"
+    );
+    assert_eq!(
+        validate_sheet(source),
+        report.clone().into_validation_result()
+    );
 }

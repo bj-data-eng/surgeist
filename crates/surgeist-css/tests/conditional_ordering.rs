@@ -1,6 +1,7 @@
 use surgeist_css::{
     CssErrorCode, CssImportLayer, CssImportTarget, CssMediaConditionKind, CssMediaQuery,
-    CssRecoveryAction, CssRule, CssSupportsConditionKind, parse_sheet,
+    CssRecoveryAction, CssRule, CssSerializedOrigin, CssSupportsConditionKind, CssValueOrigin,
+    ErrorKind, parse_sheet, validate_sheet,
 };
 
 fn import_rule(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssSheet> {
@@ -103,8 +104,55 @@ fn import_supports_accepts_bare_declarations_and_full_conditions() {
     ));
     assert!(full.media().is_some());
 
-    let eof = import_rule("@import 'eof.css' supports(display: grid)");
-    assert!(eof.is_clean(), "{:?}", eof.diagnostics());
+    let source = "@import 'eof.css' supports(display: grid)";
+    let eof = import_rule(source);
+    let [diagnostic] = eof.diagnostics() else {
+        panic!("one retained statement EOF diagnostic");
+    };
+    assert_eq!(diagnostic.error().code(), CssErrorCode::UnexpectedEnd);
+    assert_eq!(
+        diagnostic.action(),
+        CssRecoveryAction::RetainNonconformingRule
+    );
+    assert_eq!(
+        diagnostic.error().position().byte_offset().value(),
+        source.len()
+    );
+    assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
+    assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
+    let ErrorKind::UnexpectedEnd(detail) = diagnostic.error().kind() else {
+        panic!("typed statement EOF");
+    };
+    assert_eq!(
+        detail.expectation().as_str(),
+        "a semicolon or block terminating an at-rule"
+    );
+    let [CssRule::Import(import)] = eof.syntax().rules() else {
+        panic!("retained complete import grammar");
+    };
+    assert!(
+        matches!(import.target(), CssImportTarget::String(value) if value.as_str() == "eof.css")
+    );
+    let CssSupportsConditionKind::Declaration(declaration) = import
+        .supports()
+        .expect("retained supports clause")
+        .condition()
+        .kind()
+    else {
+        panic!("retained bare declaration test");
+    };
+    assert_eq!(declaration.authored().unwrap(), "display: grid");
+    let CssValueOrigin::Parsed(origin) = import.origin() else {
+        panic!("original at-keyword");
+    };
+    assert_eq!(origin.source().as_str(), source);
+    let output = import.serialize().unwrap();
+    assert!(matches!(
+        output.origin_at(output.as_css().len() - 1),
+        Some(CssSerializedOrigin::Token(CssValueOrigin::Programmatic))
+    ));
+    assert!(import_rule(output.as_css()).is_clean());
+    assert_eq!(validate_sheet(source), eof.clone().into_validation_result());
 }
 
 #[test]

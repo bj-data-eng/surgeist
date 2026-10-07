@@ -7,9 +7,9 @@
 //! contents follow Nesting WD20260122 section 3.3. Conditions remain symbolic.
 
 use surgeist_css::{
-    CssDeclaration, CssNormalizedDeclaration, CssNormalizedItem, CssNormalizedSheet,
+    CssDeclaration, CssErrorCode, CssNormalizedDeclaration, CssNormalizedItem, CssNormalizedSheet,
     CssRecoveryAction, CssRule, CssRuleContext, CssRuleContextKindRef, CssSelector,
-    CssSelectorBinding, normalize_sheet, parse_sheet,
+    CssSelectorBinding, CssTokenKind, ErrorKind, normalize_sheet, parse_sheet, validate_sheet,
 };
 
 fn declaration_text(declaration: &CssDeclaration) -> (&str, &str) {
@@ -299,10 +299,9 @@ fn invalid_outer_when_condition_discards_its_whole_body_and_preserves_parent_run
 }
 
 #[test]
-fn free_else_and_original_token_separators_discard_else_without_body_promotion() {
+fn free_else_after_complete_rule_units_is_discarded_without_body_promotion() {
     for prefix in [
         ".Before{color:red}",
-        "@media all{.Before{color:red}};",
         "@media all{.Before{color:red}}@unknown;",
         "@media all{.Before{color:red}}.bad,{.Hidden{width:1px}}",
     ] {
@@ -319,10 +318,49 @@ fn free_else_and_original_token_separators_discard_else_without_body_promotion()
                 diagnostic.span().start().byte_offset().value() == start
                     && diagnostic.span().end().byte_offset().value() == start + failed.len()
             })
-            .expect("whole free else recovery unit, even after discarded separator");
+            .expect("whole free else recovery unit after a complete rule unit");
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
         assert!(report.into_validation_result().is_err());
     }
+}
+
+#[test]
+fn root_semicolon_keeps_else_in_one_failed_qualified_unit_without_body_promotion() {
+    // Syntax 3 §§5.4.1/5.4.3: the semicolon starts qualified input;
+    // an at-keyword in that prelude does not start a separate at-rule.
+    let prefix = "@media all{.Before{color:red}}";
+    let failed = ";@else{.Leak{height:1px}}";
+    let source = format!("{prefix}{failed}.After{{color:blue}}");
+    let report = parse_sheet(&source);
+    let normalized = normalize_sheet(report.syntax()).unwrap();
+    assert_declarations(&source, &normalized, &[("color", "red"), ("color", "blue")]);
+    let [diagnostic] = report.diagnostics() else {
+        panic!("one complete semicolon-prefixed qualified unit")
+    };
+    assert_eq!(diagnostic.action(), CssRecoveryAction::DropQualifiedRule);
+    assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidSelector);
+    assert_eq!(
+        diagnostic.error().position().byte_offset().value(),
+        prefix.len()
+    );
+    assert_eq!(
+        diagnostic.span().start().byte_offset().value(),
+        prefix.len()
+    );
+    assert_eq!(
+        diagnostic.span().end().byte_offset().value(),
+        prefix.len() + failed.len()
+    );
+    let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
+        panic!("selector grammar owns the semicolon-prefixed qualified prelude")
+    };
+    let encountered = detail.encountered().unwrap();
+    assert_eq!(encountered.kind(), CssTokenKind::Semicolon);
+    assert_eq!(encountered.authored(), ";");
+    assert_eq!(
+        validate_sheet(&source).unwrap_err().diagnostics(),
+        report.diagnostics()
+    );
 }
 
 #[test]

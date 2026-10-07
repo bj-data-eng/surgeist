@@ -13993,7 +13993,7 @@
           {
             "code": "invalid_qualified_rule",
             "action": "drop_qualified_rule",
-            "payload_relation": "intersects"
+            "payload_relation": "recovery_ends_at"
           }
         ]
       }

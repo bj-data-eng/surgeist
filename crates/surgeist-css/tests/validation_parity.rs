@@ -173,7 +173,6 @@ fn validation_namespace_rules_match_ordinary_retention_ordering_and_recovery() {
         "@namespace svg ident; .kept {}",
         "@layer reset; @namespace svg 'urn:late'; @import 'kept.css';",
         "@media screen { @namespace svg 'urn:nested'; .kept {} }",
-        "@namespace svg 'urn:missing-semicolon'",
     ] {
         let recovered = assert_sheet_parity(source);
         assert!(!recovered.is_clean(), "{source}");
@@ -184,6 +183,66 @@ fn validation_namespace_rules_match_ordinary_retention_ordering_and_recovery() {
                 .any(|diagnostic| diagnostic.action() == CssRecoveryAction::DropAtRule)
         );
     }
+}
+
+#[test]
+fn validation_namespace_statement_eof_retains_the_same_payload_as_terminated_input() {
+    // Keep the valid EOF specimen separate from malformed, late and nested rules.
+    let source = "@namespace svg 'urn:missing-semicolon'";
+    let recovered = assert_sheet_parity(source);
+    assert!(!recovered.is_clean());
+    let [CssRule::Namespace(namespace)] = recovered.syntax().rules() else {
+        panic!("valid namespace is retained at statement EOF")
+    };
+    assert_eq!(namespace.prefix().unwrap().as_str(), "svg");
+    assert_eq!(namespace.name().as_str(), "urn:missing-semicolon");
+    assert_eq!(namespace.position().unwrap().byte_offset().value(), 0);
+    assert_eq!(namespace.position().unwrap().line().value(), 0);
+    assert_eq!(namespace.position().unwrap().column().value() as usize, 0);
+    let [diagnostic] = recovered.diagnostics() else {
+        panic!("one missing-terminator diagnostic with strict parity")
+    };
+    assert_eq!(
+        diagnostic.error().code(),
+        surgeist_css::CssErrorCode::UnexpectedEnd
+    );
+    assert_eq!(
+        diagnostic.action(),
+        CssRecoveryAction::RetainNonconformingRule
+    );
+    let surgeist_css::ErrorKind::UnexpectedEnd(detail) = diagnostic.error().kind() else {
+        panic!("statement termination payload")
+    };
+    assert_eq!(
+        detail.expectation().as_str(),
+        "a semicolon or block terminating an at-rule"
+    );
+    assert_eq!(
+        diagnostic.error().position().byte_offset().value(),
+        source.len()
+    );
+    assert_eq!(diagnostic.error().position().line().value(), 0);
+    assert_eq!(
+        diagnostic.error().position().column().value() as usize,
+        source.len()
+    );
+    assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
+    assert_eq!(diagnostic.span().start().line().value(), 0);
+    assert_eq!(diagnostic.span().start().column().value() as usize, 0);
+    assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
+    assert_eq!(diagnostic.span().end().line().value(), 0);
+    assert_eq!(
+        diagnostic.span().end().column().value() as usize,
+        source.len()
+    );
+
+    let terminated_source = format!("{source};");
+    let terminated = assert_sheet_parity(&terminated_source);
+    assert!(terminated.is_clean());
+    let [CssRule::Namespace(terminated_namespace)] = terminated.syntax().rules() else {
+        panic!("terminated namespace control")
+    };
+    assert_eq!(terminated_namespace, namespace);
 }
 
 #[test]

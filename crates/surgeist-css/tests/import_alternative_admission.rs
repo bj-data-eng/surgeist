@@ -218,27 +218,63 @@ fn escaped_and_cased_optional_names_keep_original_media_origins() {
 #[test]
 fn failed_clause_probes_do_not_duplicate_retained_eof_closures() {
     for tail in ["layer(", "supports("] {
-        let report = parse_sheet(&format!("@import url(test) {tail}"));
+        let source = format!("@import url(test) {tail}");
+        let report = parse_sheet(&source);
         let [CssRule::Import(import)] = report.syntax().rules() else {
             panic!("retained import at EOF");
         };
         assert!(import.layer().is_none());
         assert!(import.supports().is_none());
         opaque_media(import, tail);
-        let [diagnostic] = report.diagnostics() else {
-            panic!("one real implicit closure");
+        let [statement, closure] = report.diagnostics() else {
+            panic!("one statement fault and one real implicit closure");
         };
         assert_eq!(
-            diagnostic.action(),
+            statement.error().code(),
+            surgeist_css::CssErrorCode::UnexpectedEnd
+        );
+        assert_eq!(
+            statement.action(),
+            CssRecoveryAction::RetainNonconformingRule
+        );
+        assert_eq!(
+            statement.error().position().byte_offset().value(),
+            source.len()
+        );
+        assert_eq!(statement.span().start().byte_offset().value(), 0);
+        assert_eq!(statement.span().end().byte_offset().value(), source.len());
+        let surgeist_css::ErrorKind::UnexpectedEnd(detail) = statement.error().kind() else {
+            panic!("typed statement EOF");
+        };
+        assert_eq!(
+            detail.expectation().as_str(),
+            "a semicolon or block terminating an at-rule"
+        );
+        assert_eq!(
+            closure.error().code(),
+            surgeist_css::CssErrorCode::UnexpectedEnd
+        );
+        assert_eq!(
+            closure.action(),
             CssRecoveryAction::RetainWithImplicitClosure
         );
-        assert!(validate_sheet(&format!("@import url(test) {tail}")).is_err());
+        assert_eq!(
+            closure.error().position().byte_offset().value(),
+            source.len()
+        );
+        assert_eq!(closure.span().start().byte_offset().value(), source.len());
+        assert_eq!(closure.span().end().byte_offset().value(), source.len());
+        assert_eq!(
+            validate_sheet(&source),
+            report.clone().into_validation_result()
+        );
     }
 }
 
 #[test]
 fn eof_closures_do_not_prefer_a_grammatically_incomplete_prefix_interpretation() {
-    let report = parse_sheet("@import url(test) layer(theme) and (color");
+    let source = "@import url(test) layer(theme) and (color";
+    let report = parse_sheet(source);
     let [CssRule::Import(import)] = report.syntax().rules() else {
         panic!("retained import with complete media grammar");
     };
@@ -262,12 +298,47 @@ fn eof_closures_do_not_prefer_a_grammatically_incomplete_prefix_interpretation()
             surgeist_css::CssMediaFeatureKind::Color
         ))
     ));
-    let [diagnostic] = report.diagnostics() else {
-        panic!("one actual EOF closure, no failed-probe diagnostic");
+    let [statement, closure] = report.diagnostics() else {
+        panic!("one statement fault and one actual EOF closure, no failed-probe diagnostic");
     };
     assert_eq!(
-        diagnostic.action(),
+        statement.error().code(),
+        surgeist_css::CssErrorCode::UnexpectedEnd
+    );
+    assert_eq!(
+        statement.action(),
+        CssRecoveryAction::RetainNonconformingRule
+    );
+    assert_eq!(
+        statement.error().position().byte_offset().value(),
+        source.len()
+    );
+    assert_eq!(statement.span().start().byte_offset().value(), 0);
+    assert_eq!(statement.span().end().byte_offset().value(), source.len());
+    let surgeist_css::ErrorKind::UnexpectedEnd(detail) = statement.error().kind() else {
+        panic!("typed statement EOF");
+    };
+    assert_eq!(
+        detail.expectation().as_str(),
+        "a semicolon or block terminating an at-rule"
+    );
+    assert_eq!(
+        closure.error().code(),
+        surgeist_css::CssErrorCode::UnexpectedEnd
+    );
+    assert_eq!(
+        closure.action(),
         CssRecoveryAction::RetainWithImplicitClosure
+    );
+    assert_eq!(
+        closure.error().position().byte_offset().value(),
+        source.len()
+    );
+    assert_eq!(closure.span().start().byte_offset().value(), source.len());
+    assert_eq!(closure.span().end().byte_offset().value(), source.len());
+    assert_eq!(
+        validate_sheet(source),
+        report.clone().into_validation_result()
     );
 }
 
