@@ -203,16 +203,6 @@ pub enum CssTokenKind {
     Semicolon,
     /// A comma token.
     Comma,
-    /// An include-match (`~=`) token.
-    IncludeMatch,
-    /// A dash-match (`|=`) token.
-    DashMatch,
-    /// A prefix-match (`^=`) token.
-    PrefixMatch,
-    /// A suffix-match (`$=`) token.
-    SuffixMatch,
-    /// A substring-match (`*=`) token.
-    SubstringMatch,
     /// A CSS `<!--` token.
     Cdo,
     /// A CSS `-->` token.
@@ -263,7 +253,21 @@ impl CssTokenSummary {
     fn from_token(token: &Token<'_>) -> Self {
         Self {
             kind: token_kind(token),
-            authored: token.to_css_string(),
+            authored: crate::tokenization::combined_operator_prefix(token)
+                .map_or_else(|| token.to_css_string(), |first| first.to_string()),
+        }
+    }
+
+    fn from_authored_token(token: &Token<'_>, authored: &str) -> Self {
+        let (token, range) =
+            crate::tokenization::source_token_parts(authored, token.clone(), 0..authored.len())
+                .into_iter()
+                .flatten()
+                .next()
+                .expect("an authored provider capture has a first canonical token");
+        Self {
+            kind: token_kind(&token),
+            authored: authored[range].to_owned(),
         }
     }
 
@@ -1825,10 +1829,7 @@ pub(crate) fn invalid_descriptor_token_at<'i>(
         location,
         at_rule,
         descriptor,
-        Some(CssTokenSummary {
-            kind: token_kind(token),
-            authored: authored.to_owned(),
-        }),
+        Some(CssTokenSummary::from_authored_token(token, authored)),
         DiagnosticOrigin::Token,
     )
 }
@@ -2011,7 +2012,12 @@ fn token_kind(token: &Token<'_>) -> CssTokenKind {
         Token::IDHash(_) => CssTokenKind::IdHash,
         Token::QuotedString(_) => CssTokenKind::String,
         Token::UnquotedUrl(_) => CssTokenKind::Url,
-        Token::Delim(_) => CssTokenKind::Delim,
+        Token::Delim(_)
+        | Token::IncludeMatch
+        | Token::DashMatch
+        | Token::PrefixMatch
+        | Token::SuffixMatch
+        | Token::SubstringMatch => CssTokenKind::Delim,
         Token::Number { .. } => CssTokenKind::Number,
         Token::Percentage { .. } => CssTokenKind::Percentage,
         Token::Dimension { .. } => CssTokenKind::Dimension,
@@ -2020,11 +2026,6 @@ fn token_kind(token: &Token<'_>) -> CssTokenKind {
         Token::Colon => CssTokenKind::Colon,
         Token::Semicolon => CssTokenKind::Semicolon,
         Token::Comma => CssTokenKind::Comma,
-        Token::IncludeMatch => CssTokenKind::IncludeMatch,
-        Token::DashMatch => CssTokenKind::DashMatch,
-        Token::PrefixMatch => CssTokenKind::PrefixMatch,
-        Token::SuffixMatch => CssTokenKind::SuffixMatch,
-        Token::SubstringMatch => CssTokenKind::SubstringMatch,
         Token::CDO => CssTokenKind::Cdo,
         Token::CDC => CssTokenKind::Cdc,
         Token::Function(_) => CssTokenKind::Function,
@@ -2128,6 +2129,40 @@ mod tests {
 
     fn position() -> cssparser::SourceLocation {
         cssparser::SourceLocation { line: 0, column: 1 }
+    }
+
+    #[test]
+    fn explicit_descriptor_operator_diagnostics_publish_the_first_original_delimiter() {
+        for (operator, native) in [
+            ("~=", Token::IncludeMatch),
+            ("|=", Token::DashMatch),
+            ("^=", Token::PrefixMatch),
+            ("$=", Token::SuffixMatch),
+            ("*=", Token::SubstringMatch),
+        ] {
+            let source = format!("x;\r\n😀{operator}");
+            let error = from_parse_error(
+                &source,
+                invalid_descriptor_token_at(
+                    cssparser::SourceLocation { line: 1, column: 3 },
+                    "font-face",
+                    "unicode-range",
+                    &native,
+                    operator,
+                ),
+            );
+            let ErrorKind::InvalidDescriptorValue(detail) = error.kind() else {
+                panic!("explicit descriptor error");
+            };
+            assert_eq!(detail.at_rule().as_str(), "font-face");
+            assert_eq!(detail.descriptor().as_str(), "unicode-range");
+            let token = detail.encountered().unwrap();
+            assert_eq!(token.kind(), CssTokenKind::Delim);
+            assert_eq!(token.authored(), &operator[..1]);
+            assert_eq!(error.position().byte_offset().value(), 8);
+            assert_eq!(error.position().line().value(), 1);
+            assert_eq!(error.position().column().value(), 2);
+        }
     }
 
     #[test]

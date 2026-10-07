@@ -387,6 +387,13 @@ number it leaves a number and delimiters rather than a dimension. Every split
 component owns its original source span and counts separately toward the
 component limit. A rejected split capture returns no partial component sequence.
 
+The selected [2021 CSS Syntax token vocabulary](https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#tokenization)
+represents `~=`, `|=`, `^=`, `$=` and `*=` as two delimiter tokens. Each
+delimiter retains its one-character source representation and original span;
+the pair serializes without an inserted boundary comment. `try_token` requires
+one token and rejects these two-character spellings. Attribute selectors retain
+their higher-level typed matcher semantics.
+
 ```rust
 use surgeist_css::{CssComponentValue, CssComponentValues};
 

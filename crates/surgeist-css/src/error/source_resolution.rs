@@ -142,13 +142,19 @@ fn previous_authored_token_before(
         if matches!(token, Token::WhiteSpace(_) | Token::Comment(_)) {
             continue;
         }
-        previous = Some((
-            window_start + token_start,
-            CssTokenSummary {
-                kind: token_kind(&token),
-                authored: window.get(token_start..token_end)?.to_owned(),
-            },
-        ));
+        for (part, range) in
+            crate::tokenization::source_token_parts(window, token, token_start..token_end)
+                .into_iter()
+                .flatten()
+        {
+            previous = Some((
+                window_start + range.start,
+                CssTokenSummary {
+                    kind: token_kind(&part),
+                    authored: window.get(range)?.to_owned(),
+                },
+            ));
+        }
     }
     previous
 }

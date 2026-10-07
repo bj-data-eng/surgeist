@@ -745,7 +745,7 @@ fn normalize_source<'a>(
             denied.next();
             continue;
         }
-        for (token, range) in crate::component_values::source_token_parts(text, token, offset..end)
+        for (token, range) in crate::tokenization::source_token_parts(text, token, offset..end)
             .into_iter()
             .flatten()
         {

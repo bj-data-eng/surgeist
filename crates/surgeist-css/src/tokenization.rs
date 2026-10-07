@@ -1,4 +1,4 @@
-//! Source-preserving correction of the URL/remnants boundary in cssparser.
+//! Source-preserving lexical corrections for the pinned cssparser provider.
 //!
 //! CSS Syntax 3 §4.3.6 leaves the first non-whitespace character pending for
 //! §4.3.14. cssparser 0.37 consumes that character first. Only when that character
@@ -7,6 +7,7 @@
 //! spellings and positions always come from the unmodified source snapshot.
 
 use std::borrow::Cow;
+use std::ops::Range;
 
 use cssparser::{Parser, ParserInput, Token};
 
@@ -37,7 +38,147 @@ pub(crate) fn prepare(source: &str) -> Cow<'_, str> {
 /// BadUrl keeps its provider payload semantics: original inner contents, without
 /// leading URL whitespace or an unescaped closing ')'.
 pub(crate) fn next_source_token(source: &str, offset: usize) -> Option<(usize, usize, Token<'_>)> {
-    source_token(source, offset).map(|(end, token, _)| (offset, end, token))
+    let (end, token, _) = source_token(source, offset)?;
+    let (token, range) = source_token_parts(source, token, offset..end)
+        .into_iter()
+        .flatten()
+        .next()
+        .expect("a provider capture has a first canonical token");
+    Some((range.start, range.end, token))
+}
+
+/// The selected Syntax token stream has no combined attribute-match tokens.
+/// Native selector grammar still uses the provider's semantic forms directly.
+pub(crate) const fn combined_operator_prefix(token: &Token<'_>) -> Option<char> {
+    match token {
+        Token::IncludeMatch => Some('~'),
+        Token::DashMatch => Some('|'),
+        Token::PrefixMatch => Some('^'),
+        Token::SuffixMatch => Some('$'),
+        Token::SubstringMatch => Some('*'),
+        _ => None,
+    }
+}
+
+/// Partition an actual source capture without changing decoded provider
+/// payloads. Each part owns its real consumed range in the original input.
+pub(crate) fn source_token_parts<'a>(
+    source: &str,
+    token: Token<'a>,
+    range: Range<usize>,
+) -> [Option<(Token<'a>, Range<usize>)>; 2] {
+    if let Some(first) = combined_operator_prefix(&token) {
+        return [
+            Some((Token::Delim(first), range.start..range.start + 1)),
+            Some((Token::Delim('='), range.start + 1..range.end)),
+        ];
+    }
+    let text = &source[range.clone()];
+    let numeric_end = if matches!(token, Token::Dimension { .. }) {
+        numeric_prefix_length(text)
+    } else {
+        0
+    };
+    match token {
+        Token::Ident(_) if text == "-" && !would_start_identifier(text) => {
+            [Some((Token::Delim('-'), range.clone())), None]
+        }
+        Token::AtKeyword(_) if text == "@-" && !would_start_identifier(&text[1..]) => [
+            Some((Token::Delim('@'), range.start..range.start + 1)),
+            Some((Token::Delim('-'), range.start + 1..range.end)),
+        ],
+        Token::Dimension {
+            has_sign,
+            value,
+            int_value,
+            ..
+        } if &text[numeric_end..] == "-" && !would_start_identifier(&text[numeric_end..]) => {
+            let split = range.start + numeric_end;
+            [
+                Some((
+                    Token::Number {
+                        has_sign,
+                        value,
+                        int_value,
+                    },
+                    range.start..split,
+                )),
+                Some((Token::Delim('-'), split..range.end)),
+            ]
+        }
+        Token::Hash(value) | Token::IDHash(value) => {
+            let token = if would_start_identifier(&text[1..]) {
+                Token::IDHash(value)
+            } else {
+                Token::Hash(value)
+            };
+            [Some((token, range.clone())), None]
+        }
+        token => [Some((token, range.clone())), None],
+    }
+}
+
+/// CSS Syntax 3 §4.3.9 over authored code points, including preprocessing.
+/// EOF is a valid escape second code point, and NUL becomes U+FFFD (§3.3).
+fn would_start_identifier(text: &str) -> bool {
+    fn name_start(point: char) -> bool {
+        point.is_ascii_alphabetic() || point == '_' || point == '\0' || !point.is_ascii()
+    }
+    fn valid_escape(first: Option<char>, second: Option<char>) -> bool {
+        first == Some('\\') && !matches!(second, Some('\n' | '\r' | '\u{c}'))
+    }
+    let mut points = text.chars();
+    let first = points.next();
+    let second = points.next();
+    let third = points.next();
+    match first {
+        Some('-') => {
+            second.is_some_and(|point| point == '-' || name_start(point))
+                || valid_escape(second, third)
+        }
+        Some('\\') => valid_escape(first, second),
+        Some(point) => name_start(point),
+        None => false,
+    }
+}
+
+// CSS Syntax's consume-a-number spelling boundary. The dependency supplies the
+// token category; this scan preserves the exact prefix without float conversion.
+pub(crate) fn numeric_prefix_length(representation: &str) -> usize {
+    let bytes = representation.as_bytes();
+    let mut end = usize::from(
+        bytes
+            .first()
+            .is_some_and(|byte| matches!(byte, b'+' | b'-')),
+    );
+    while bytes.get(end).is_some_and(u8::is_ascii_digit) {
+        end += 1;
+    }
+    if bytes.get(end) == Some(&b'.') && bytes.get(end + 1).is_some_and(u8::is_ascii_digit) {
+        end += 1;
+        while bytes.get(end).is_some_and(u8::is_ascii_digit) {
+            end += 1;
+        }
+    }
+    if bytes
+        .get(end)
+        .is_some_and(|byte| matches!(byte, b'e' | b'E'))
+    {
+        let mut exponent = end + 1;
+        if bytes
+            .get(exponent)
+            .is_some_and(|byte| matches!(byte, b'+' | b'-'))
+        {
+            exponent += 1;
+        }
+        if bytes.get(exponent).is_some_and(u8::is_ascii_digit) {
+            end = exponent + 1;
+            while bytes.get(end).is_some_and(u8::is_ascii_digit) {
+                end += 1;
+            }
+        }
+    }
+    end
 }
 
 fn source_token(source: &str, offset: usize) -> Option<(usize, Token<'_>, Option<usize>)> {

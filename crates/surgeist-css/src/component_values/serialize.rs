@@ -247,7 +247,16 @@ impl Emitter {
         // delimiter '<', delimiter '!', then an identifier starting with '--'.
         // The table omits CDC after these four categories: its leading '--'
         // would be consumed as part of an identifier, at-keyword, hash, or dimension.
-        if self.previous.needs_separator_when_before(kind)
+        // The dated Syntax tokenizer returns two Delims for these five pairs;
+        // the provider's combined-match vocabulary adds a false merge hazard.
+        let separate_operator_delims = kind == TokenSerializationType::DelimEquals
+            && matches!(
+                self.previous,
+                TokenSerializationType::DelimAssorted
+                    | TokenSerializationType::DelimAsterisk
+                    | TokenSerializationType::DelimBar
+            );
+        if (self.previous.needs_separator_when_before(kind) && !separate_operator_delims)
             || (kind == TokenSerializationType::CDC
                 && matches!(
                     self.previous,

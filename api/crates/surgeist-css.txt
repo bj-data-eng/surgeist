@@ -5337,23 +5337,18 @@ pub surgeist_css::CssTokenKind::Colon
 pub surgeist_css::CssTokenKind::Comma
 pub surgeist_css::CssTokenKind::Comment
 pub surgeist_css::CssTokenKind::CurlyBracketBlock
-pub surgeist_css::CssTokenKind::DashMatch
 pub surgeist_css::CssTokenKind::Delim
 pub surgeist_css::CssTokenKind::Dimension
 pub surgeist_css::CssTokenKind::Function
 pub surgeist_css::CssTokenKind::Hash
 pub surgeist_css::CssTokenKind::IdHash
 pub surgeist_css::CssTokenKind::Ident
-pub surgeist_css::CssTokenKind::IncludeMatch
 pub surgeist_css::CssTokenKind::Number
 pub surgeist_css::CssTokenKind::ParenthesisBlock
 pub surgeist_css::CssTokenKind::Percentage
-pub surgeist_css::CssTokenKind::PrefixMatch
 pub surgeist_css::CssTokenKind::Semicolon
 pub surgeist_css::CssTokenKind::SquareBracketBlock
 pub surgeist_css::CssTokenKind::String
-pub surgeist_css::CssTokenKind::SubstringMatch
-pub surgeist_css::CssTokenKind::SuffixMatch
 pub surgeist_css::CssTokenKind::Url
 pub surgeist_css::CssTokenKind::Whitespace
 #[non_exhaustive] pub enum surgeist_css::CssTransform
@@ -5497,7 +5492,6 @@ pub surgeist_css::CssValueTokenRef::Cdc
 pub surgeist_css::CssValueTokenRef::Cdo
 pub surgeist_css::CssValueTokenRef::Colon
 pub surgeist_css::CssValueTokenRef::Comma
-pub surgeist_css::CssValueTokenRef::DashMatch
 pub surgeist_css::CssValueTokenRef::Delim(char)
 pub surgeist_css::CssValueTokenRef::Dimension
 pub surgeist_css::CssValueTokenRef::Dimension::number: surgeist_css::CssNumericTokenRef<'a>
@@ -5506,14 +5500,10 @@ pub surgeist_css::CssValueTokenRef::Hash
 pub surgeist_css::CssValueTokenRef::Hash::flag: surgeist_css::CssHashFlag
 pub surgeist_css::CssValueTokenRef::Hash::value: &'a str
 pub surgeist_css::CssValueTokenRef::Ident(&'a str)
-pub surgeist_css::CssValueTokenRef::IncludeMatch
 pub surgeist_css::CssValueTokenRef::Number(surgeist_css::CssNumericTokenRef<'a>)
 pub surgeist_css::CssValueTokenRef::Percentage(surgeist_css::CssNumericTokenRef<'a>)
-pub surgeist_css::CssValueTokenRef::PrefixMatch
 pub surgeist_css::CssValueTokenRef::Semicolon
 pub surgeist_css::CssValueTokenRef::String(&'a str)
-pub surgeist_css::CssValueTokenRef::SubstringMatch
-pub surgeist_css::CssValueTokenRef::SuffixMatch
 pub surgeist_css::CssValueTokenRef::Url(&'a str)
 pub surgeist_css::CssValueTokenRef::Whitespace(&'a str)
 #[non_exhaustive] pub enum surgeist_css::CssVerticalAlign

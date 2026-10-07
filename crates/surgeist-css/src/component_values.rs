@@ -5,8 +5,8 @@
 //! independently originating replacement tokens remain available to consumers.
 
 mod parse;
+pub(crate) use parse::promote_nodes;
 pub(crate) use parse::{has_unescaped_final, odd_trailing_backslashes};
-pub(crate) use parse::{promote_nodes, source_token_parts};
 mod serialize;
 pub(crate) use serialize::{CssCanonicalBuilder, CssCanonicalToken};
 
@@ -453,16 +453,6 @@ pub enum CssValueTokenRef<'a> {
     Semicolon,
     /// A comma token.
     Comma,
-    /// An include-match token.
-    IncludeMatch,
-    /// A dash-match token.
-    DashMatch,
-    /// A prefix-match token.
-    PrefixMatch,
-    /// A suffix-match token.
-    SuffixMatch,
-    /// A substring-match token.
-    SubstringMatch,
     /// A CDO token.
     Cdo,
     /// A CDC token.
@@ -503,11 +493,6 @@ enum TokenData {
     Colon,
     Semicolon,
     Comma,
-    IncludeMatch,
-    DashMatch,
-    PrefixMatch,
-    SuffixMatch,
-    SubstringMatch,
     Cdo,
     Cdc,
 }
@@ -538,11 +523,6 @@ impl ValueToken {
             TokenData::Colon => CssValueTokenRef::Colon,
             TokenData::Semicolon => CssValueTokenRef::Semicolon,
             TokenData::Comma => CssValueTokenRef::Comma,
-            TokenData::IncludeMatch => CssValueTokenRef::IncludeMatch,
-            TokenData::DashMatch => CssValueTokenRef::DashMatch,
-            TokenData::PrefixMatch => CssValueTokenRef::PrefixMatch,
-            TokenData::SuffixMatch => CssValueTokenRef::SuffixMatch,
-            TokenData::SubstringMatch => CssValueTokenRef::SubstringMatch,
             TokenData::Cdo => CssValueTokenRef::Cdo,
             TokenData::Cdc => CssValueTokenRef::Cdc,
         }
@@ -560,16 +540,10 @@ impl ValueToken {
             TokenData::Percentage(_) => Kind::Percentage,
             TokenData::Dimension { .. } => Kind::Dimension,
             TokenData::Whitespace => Kind::WhiteSpace,
-            TokenData::DashMatch => Kind::DashMatch,
-            TokenData::SubstringMatch => Kind::SubstringMatch,
             TokenData::Cdc => Kind::CDC,
-            TokenData::Colon
-            | TokenData::Semicolon
-            | TokenData::Comma
-            | TokenData::IncludeMatch
-            | TokenData::PrefixMatch
-            | TokenData::SuffixMatch
-            | TokenData::Cdo => Kind::Other,
+            TokenData::Colon | TokenData::Semicolon | TokenData::Comma | TokenData::Cdo => {
+                Kind::Other
+            }
         }
     }
 }

@@ -3,6 +3,7 @@ use cssparser::{
 };
 
 use super::*;
+use crate::tokenization::{numeric_prefix_length, source_token_parts};
 
 pub(super) fn parse(
     source: &str,
@@ -112,6 +113,14 @@ pub(crate) fn promote_nodes(
                     continue;
                 }
                 let token = node.token();
+                if let TokenPayload::Native(native) = &token.payload
+                    && crate::tokenization::combined_operator_prefix(native).is_some()
+                {
+                    return Err(CssComponentValueError::new(
+                        CssComponentValueErrorKind::InvalidToken,
+                        token.origin.clone().into_owned(),
+                    ));
+                }
                 let CssValueOrigin::Parsed(origin) = token.origin.as_ref() else {
                     return Err(CssComponentValueError::new(
                         CssComponentValueErrorKind::InvalidToken,
@@ -488,35 +497,8 @@ fn admit_component(
     Ok(())
 }
 
-/// CSS Syntax 3 §4.3.9 over authored code points, including preprocessing.
-/// This predicate neither consumes input nor decodes a name. In particular,
-/// EOF is a valid escape second code point, and NUL becomes U+FFFD (§3.3).
-fn would_start_identifier(text: &str) -> bool {
-    fn name_start(point: char) -> bool {
-        point.is_ascii_alphabetic() || point == '_' || point == '\0' || !point.is_ascii()
-    }
-    fn valid_escape(first: Option<char>, second: Option<char>) -> bool {
-        first == Some('\\') && !matches!(second, Some('\n' | '\r' | '\u{c}'))
-    }
-    let mut points = text.chars();
-    let first = points.next();
-    let second = points.next();
-    let third = points.next();
-    match first {
-        Some('-') => {
-            second.is_some_and(|point| point == '-' || name_start(point))
-                || valid_escape(second, third)
-        }
-        Some('\\') => valid_escape(first, second),
-        Some(point) => name_start(point),
-        None => false,
-    }
-}
-
-/// Normalize the pinned provider's hyphen/escape lookahead at the component
-/// owner. cssparser 0.37.0 checks the backslash rather than its following code
-/// point in `src/tokenizer.rs::is_ident_start`. Keep its tokenizer and decoded payloads; only
-/// these leaf classifications and their genuine split ranges need correction.
+/// Apply the lexical owner's canonical source partition to this provider
+/// capture. Admission of a split capture remains atomic for this consumer.
 fn normalized_leaves(
     source: &CssSourceSnapshot,
     token: Token<'_>,
@@ -572,56 +554,6 @@ fn normalized_leaves(
         *target = Some(leaf(source, token, spelling, origin, range.end)?);
     }
     Ok(values)
-}
-
-pub(crate) fn source_token_parts<'a>(
-    source: &str,
-    token: Token<'a>,
-    range: Range<usize>,
-) -> [Option<(Token<'a>, Range<usize>)>; 2] {
-    let text = &source[range.clone()];
-    let numeric_end = if matches!(token, Token::Dimension { .. }) {
-        numeric_prefix_length(text)
-    } else {
-        0
-    };
-    match token {
-        Token::Ident(_) if text == "-" && !would_start_identifier(text) => {
-            [Some((Token::Delim('-'), range.clone())), None]
-        }
-        Token::AtKeyword(_) if text == "@-" && !would_start_identifier(&text[1..]) => [
-            Some((Token::Delim('@'), range.start..range.start + 1)),
-            Some((Token::Delim('-'), range.start + 1..range.end)),
-        ],
-        Token::Dimension {
-            has_sign,
-            value,
-            int_value,
-            ..
-        } if &text[numeric_end..] == "-" && !would_start_identifier(&text[numeric_end..]) => {
-            let split = range.start + numeric_end;
-            [
-                Some((
-                    Token::Number {
-                        has_sign,
-                        value,
-                        int_value,
-                    },
-                    range.start..split,
-                )),
-                Some((Token::Delim('-'), split..range.end)),
-            ]
-        }
-        Token::Hash(value) | Token::IDHash(value) => {
-            let token = if would_start_identifier(&text[1..]) {
-                Token::IDHash(value)
-            } else {
-                Token::Hash(value)
-            };
-            [Some((token, range.clone())), None]
-        }
-        token => [Some((token, range.clone())), None],
-    }
 }
 
 fn leaf(
@@ -718,14 +650,14 @@ fn token_data(token: &Token<'_>, representation: &str) -> Option<TokenData> {
         Token::Colon => TokenData::Colon,
         Token::Semicolon => TokenData::Semicolon,
         Token::Comma => TokenData::Comma,
-        Token::IncludeMatch => TokenData::IncludeMatch,
-        Token::DashMatch => TokenData::DashMatch,
-        Token::PrefixMatch => TokenData::PrefixMatch,
-        Token::SuffixMatch => TokenData::SuffixMatch,
-        Token::SubstringMatch => TokenData::SubstringMatch,
         Token::CDO => TokenData::Cdo,
         Token::CDC => TokenData::Cdc,
-        Token::Comment(_)
+        Token::IncludeMatch
+        | Token::DashMatch
+        | Token::PrefixMatch
+        | Token::SuffixMatch
+        | Token::SubstringMatch
+        | Token::Comment(_)
         | Token::Function(_)
         | Token::ParenthesisBlock
         | Token::SquareBracketBlock
@@ -748,45 +680,6 @@ fn numeric(representation: &str) -> NumericToken {
         },
         has_sign: representation.starts_with(['+', '-']),
     }
-}
-
-// CSS Syntax's consume-a-number spelling boundary. The dependency supplies the
-// token category; this scan preserves the exact prefix without float conversion.
-fn numeric_prefix_length(representation: &str) -> usize {
-    let bytes = representation.as_bytes();
-    let mut end = usize::from(
-        bytes
-            .first()
-            .is_some_and(|byte| matches!(byte, b'+' | b'-')),
-    );
-    while bytes.get(end).is_some_and(u8::is_ascii_digit) {
-        end += 1;
-    }
-    if bytes.get(end) == Some(&b'.') && bytes.get(end + 1).is_some_and(u8::is_ascii_digit) {
-        end += 1;
-        while bytes.get(end).is_some_and(u8::is_ascii_digit) {
-            end += 1;
-        }
-    }
-    if bytes
-        .get(end)
-        .is_some_and(|byte| matches!(byte, b'e' | b'E'))
-    {
-        let mut exponent = end + 1;
-        if bytes
-            .get(exponent)
-            .is_some_and(|byte| matches!(byte, b'+' | b'-'))
-        {
-            exponent += 1;
-        }
-        if bytes.get(exponent).is_some_and(u8::is_ascii_digit) {
-            end = exponent + 1;
-            while bytes.get(end).is_some_and(u8::is_ascii_digit) {
-                end += 1;
-            }
-        }
-    }
-    end
 }
 
 pub(crate) fn odd_trailing_backslashes(text: &str) -> bool {
@@ -870,6 +763,83 @@ pub(super) fn programmatic_token(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn single_operator_capture_rejection_preserves_the_following_native_cursor() {
+        for source in ["~= tail", "|= tail", "^= tail", "$= tail", "*= tail"] {
+            let snapshot = CssSourceSnapshot::new(source);
+            let mut storage = ParserInput::new(source);
+            let mut parser = Parser::new(&mut storage);
+            let error = collect_one(&mut parser, &snapshot).unwrap_err();
+            assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
+            let CssValueOrigin::Parsed(origin) = error.origin() else {
+                panic!("actual rejected capture origin");
+            };
+            assert!(origin.source().same_snapshot(&snapshot));
+            assert_eq!(origin.span().start().byte_offset().value(), 0);
+            assert_eq!(origin.span().end().byte_offset().value(), 2);
+            assert_eq!(parser.position().byte_index(), 2);
+            assert_eq!(parser.expect_ident().unwrap().as_ref(), "tail");
+        }
+    }
+
+    #[test]
+    fn supplied_native_operators_reject_checked_promotion_without_inventing_tokens() {
+        use crate::syntax_consumption::{
+            SyntaxInput, SyntaxInputLimits, SyntaxToken, TokenPayload, normalize,
+        };
+        use std::borrow::Cow;
+
+        for (operator, native) in [
+            ("~=", Token::IncludeMatch),
+            ("|=", Token::DashMatch),
+            ("^=", Token::PrefixMatch),
+            ("$=", Token::SuffixMatch),
+            ("*=", Token::SubstringMatch),
+        ] {
+            let snapshot = CssSourceSnapshot::new(operator);
+            for origin in [
+                CssValueOrigin::Programmatic,
+                CssValueOrigin::Parsed(CssParsedOrigin::from_range(&snapshot, 0..2).unwrap()),
+            ] {
+                for spelling in [None, Some(Cow::Borrowed(operator))] {
+                    let tokens = [SyntaxToken {
+                        payload: TokenPayload::Native(native.clone()),
+                        spelling: spelling.clone(),
+                        origin: Cow::Borrowed(&origin),
+                    }];
+                    let document = normalize(
+                        SyntaxInput::Tokens(&tokens),
+                        SyntaxInputLimits::default(),
+                        0,
+                    )
+                    .unwrap();
+                    let nodes = &document.lists[document.root];
+                    assert_eq!(nodes.len(), 1);
+                    assert_eq!(document.metrics.components, 1);
+                    assert_eq!(
+                        document.metrics.known_spelling_bytes,
+                        spelling.as_ref().map_or(0, |text| text.len())
+                    );
+                    assert_eq!(
+                        document.metrics.unspelled_tokens,
+                        usize::from(spelling.is_none())
+                    );
+                    let token = document.nodes[nodes[0]].token();
+                    let TokenPayload::Native(payload) = &token.payload else {
+                        panic!("supplied native payload remains native");
+                    };
+                    assert_eq!(payload, &native);
+                    assert_eq!(token.spelling, spelling);
+                    assert_eq!(token.origin.as_ref(), &origin);
+                    let error = promote_nodes(&document, nodes, CssComponentValueLimits::default())
+                        .unwrap_err();
+                    assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
+                    assert_eq!(error.origin(), &origin);
+                }
+            }
+        }
+    }
 
     #[test]
     fn single_collection_rejects_a_split_capture_without_losing_a_component() {

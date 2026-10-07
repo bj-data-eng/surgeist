@@ -543,6 +543,9 @@ fn validate_declaration_context(context: &str, root: &str, case_id: &str) -> Res
     Ok(())
 }
 
+// This validates archived diagnostic rows, including token names emitted by
+// their historical provider vocabulary. Runtime emission below follows the
+// selected public CssTokenKind enum; frozen capture provenance stays intact.
 const TOKEN_KINDS: &[&str] = &[
     "Ident",
     "AtKeyword",
@@ -7084,11 +7087,6 @@ fn token_kind_name(kind: surgeist_css::CssTokenKind) -> &'static str {
         surgeist_css::CssTokenKind::Colon => "Colon",
         surgeist_css::CssTokenKind::Semicolon => "Semicolon",
         surgeist_css::CssTokenKind::Comma => "Comma",
-        surgeist_css::CssTokenKind::IncludeMatch => "IncludeMatch",
-        surgeist_css::CssTokenKind::DashMatch => "DashMatch",
-        surgeist_css::CssTokenKind::PrefixMatch => "PrefixMatch",
-        surgeist_css::CssTokenKind::SuffixMatch => "SuffixMatch",
-        surgeist_css::CssTokenKind::SubstringMatch => "SubstringMatch",
         surgeist_css::CssTokenKind::Cdo => "Cdo",
         surgeist_css::CssTokenKind::Cdc => "Cdc",
         surgeist_css::CssTokenKind::Function => "Function",
