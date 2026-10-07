@@ -210,6 +210,67 @@ pub fn parse_color_profile_block(
     )
 }
 
+/// Parses exactly one genuine curly body of `@font-feature-values`.
+///
+/// The mixed body retains ordered `font-display` occurrences and the seven
+/// defined subsidiary block kinds. Empty bodies are valid; invalid declaration
+/// or child units use the same local recovery as the complete rule, retaining
+/// admitted neighbors. No font-family prelude or outer at-keyword is invented.
+///
+/// Optional outer whitespace/comments remain in the original snapshot, outside
+/// the block origin. Missing braces or trailing nontrivia reject the whole input.
+/// The genuine brace and actual child braces count toward the existing nesting
+/// limit. Retained implicit closures and lexical/unit recovery diagnostics prevent
+/// clean validation. Font feature activation and winning definitions are downstream.
+#[must_use]
+pub fn parse_font_feature_values_block(
+    source: &str,
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<Vec<crate::CssFontFeatureValuesItem>>>> {
+    descriptor_block(
+        source,
+        "later.rule.font-feature-values",
+        |source, input, diagnostics, state| {
+            let recovered = font_feature_values::parse_outer_body(source, input, state);
+            diagnostics.extend(recovered.diagnostics);
+            Ok(recovered.syntax)
+        },
+    )
+}
+
+/// Parses one genuine curly block of friendly definitions for the supplied kind.
+///
+/// Empty bodies and duplicate friendly names remain authored syntax. Integer
+/// token grammar, exact index provenance and the kind's cardinality policy use
+/// the actual subsidiary owner. Invalid named definitions and nested rules are
+/// recovered locally, retaining admitted neighbors. Names and numbers keep their
+/// actual original-source positions; the returned block's `position()` is `None`
+/// because the semantic kind supplies no authored at-keyword.
+///
+/// Optional outer whitespace/comments remain in the snapshot outside the brace
+/// origin. Missing braces or trailing nontrivia reject the whole input. The brace
+/// counts once toward the existing nesting limit; retained implicit closures,
+/// lexical faults and unit recovery diagnostics prevent clean validation.
+#[must_use]
+pub fn parse_font_feature_value_block(
+    source: &str,
+    kind: crate::CssFontFeatureValueKind,
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssFontFeatureValueBlock>>> {
+    descriptor_block(
+        source,
+        "later.rule.font-feature-values",
+        move |source, input, diagnostics, state| {
+            let recovered = font_feature_values::parse_definition_body(source, input, kind, state);
+            let block = crate::CssFontFeatureValueBlock::try_new(kind, recovered.syntax).map_err(
+                |error| {
+                    crate::error::invalid_syntax(input.current_source_location(), error.to_string())
+                },
+            )?;
+            diagnostics.extend(recovered.diagnostics);
+            Ok(block)
+        },
+    )
+}
+
 /// Parses exactly one complete, grammar-valid ordinary declaration from raw source.
 ///
 /// Surrounding whitespace and comments are accepted. The source must contain a

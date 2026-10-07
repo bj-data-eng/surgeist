@@ -12382,7 +12382,9 @@ pub fn surgeist_css::parse_decoded_stylesheet(input: &surgeist_css::CssDecodedSt
 pub fn surgeist_css::parse_font_face_block(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<surgeist_css::CssFontFaceDescriptors>>>
 pub fn surgeist_css::parse_font_face_descriptor_value(source: &str, descriptor: surgeist_css::CssFontFaceDescriptorKind) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssAuthoredFontFaceDescriptorValue>>
 pub fn surgeist_css::parse_font_feature_display_value(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssFontFeatureDisplayValue>>
+pub fn surgeist_css::parse_font_feature_value_block(source: &str, kind: surgeist_css::CssFontFeatureValueKind) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<surgeist_css::CssFontFeatureValueBlock>>>
 pub fn surgeist_css::parse_font_feature_value_indexes(source: &str, kind: surgeist_css::CssFontFeatureValueKind) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssFontFeatureValueIndexes>>
+pub fn surgeist_css::parse_font_feature_values_block(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<alloc::vec::Vec<surgeist_css::CssFontFeatureValuesItem>>>>
 pub fn surgeist_css::parse_font_palette_descriptor_value(source: &str, descriptor: surgeist_css::CssFontPaletteDescriptorKind) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssFontPaletteDescriptorValue>>
 pub fn surgeist_css::parse_font_palette_values_block(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<alloc::vec::Vec<surgeist_css::CssFontPaletteDescriptor>>>>
 pub fn surgeist_css::parse_media_query(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssMediaQuery>

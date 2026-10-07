@@ -1,5 +1,7 @@
 use super::recovery::{RecoveryLoopOutcome, RecoveryProgress, RecoveryState};
-use super::{consume_failed_rule_block, parse_descriptor_boundary, structural_rule_diagnostic};
+use super::{
+    Recovered, consume_failed_rule_block, parse_descriptor_boundary, structural_rule_diagnostic,
+};
 use crate::error::{
     Error, basic, descriptor_name_error, invalid_syntax, with_at_rule_prelude_context,
     with_descriptor_context,
@@ -44,6 +46,18 @@ pub(super) fn parse_rule<'i>(
     diagnostics: &mut Vec<CssRecoveryDiagnostic>,
     recovery: RecoveryState,
 ) -> Result<CssFontFeatureValuesRule, ParseError<'i, Error>> {
+    let recovered = parse_outer_body(source, input, recovery);
+    diagnostics.extend(recovered.diagnostics);
+    CssFontFeatureValuesRule::try_new(families, recovered.syntax)
+        .map(|rule| rule.with_position(position(start)))
+        .map_err(|error| invalid_syntax(start.source_location(), error.to_string()))
+}
+
+pub(super) fn parse_outer_body<'i>(
+    source: &'i str,
+    input: &mut Parser<'i, '_>,
+    recovery: RecoveryState,
+) -> Recovered<Vec<CssFontFeatureValuesItem>> {
     let mut parser = BodyParser {
         source,
         recovery,
@@ -51,7 +65,6 @@ pub(super) fn parse_rule<'i>(
         diagnostics: Vec::new(),
     };
     let members = parse_body(input, &mut parser);
-    diagnostics.extend(parser.diagnostics);
     let items = members
         .into_iter()
         .map(|member| match member {
@@ -59,9 +72,36 @@ pub(super) fn parse_rule<'i>(
             Member::Definition(_) => unreachable!("outer body returns only mixed rule items"),
         })
         .collect();
-    CssFontFeatureValuesRule::try_new(families, items)
-        .map(|rule| rule.with_position(position(start)))
-        .map_err(|error| invalid_syntax(start.source_location(), error.to_string()))
+    Recovered {
+        syntax: items,
+        diagnostics: parser.diagnostics,
+    }
+}
+
+pub(super) fn parse_definition_body<'i>(
+    source: &'i str,
+    input: &mut Parser<'i, '_>,
+    kind: CssFontFeatureValueKind,
+    recovery: RecoveryState,
+) -> Recovered<Vec<CssFontFeatureValueDefinition>> {
+    let mut parser = BodyParser {
+        source,
+        recovery,
+        kind: Some(kind),
+        diagnostics: Vec::new(),
+    };
+    let members = parse_body(input, &mut parser);
+    let definitions = members
+        .into_iter()
+        .map(|member| match member {
+            Member::Definition(value) => value,
+            Member::Item(_) => unreachable!("subsidiary bodies return only definitions"),
+        })
+        .collect();
+    Recovered {
+        syntax: definitions,
+        diagnostics: parser.diagnostics,
+    }
 }
 fn position(start: &ParserState) -> CssSourcePosition {
     CssSourcePosition::from_cssparser(start.position(), start.source_location())
@@ -157,24 +197,11 @@ impl<'i> AtRuleParser<'i> for BodyParser<'i> {
         let mut depth =
             self.recovery
                 .enter_rule_block(self.source, input, "later.rule.font-feature-values")?;
-        let mut parser = BodyParser {
-            source: self.source,
-            recovery: self.recovery.clone(),
-            kind: Some(kind),
-            diagnostics: Vec::new(),
-        };
-        let members = parse_body(input, &mut parser);
-        let definitions = members
-            .into_iter()
-            .map(|member| match member {
-                Member::Definition(value) => value,
-                Member::Item(_) => unreachable!("subsidiary bodies return only definitions"),
-            })
-            .collect();
-        let block = CssFontFeatureValueBlock::try_new(kind, definitions)
+        let recovered = parse_definition_body(self.source, input, kind, self.recovery.clone());
+        let block = CssFontFeatureValueBlock::try_new(kind, recovered.syntax)
             .map_err(|error| invalid_syntax(start.source_location(), error.to_string()))?
             .with_position(position(start));
-        self.diagnostics.extend(parser.diagnostics);
+        self.diagnostics.extend(recovered.diagnostics);
         depth.retain();
         Ok(Member::Item(CssFontFeatureValuesItem::Block(block)))
     }
