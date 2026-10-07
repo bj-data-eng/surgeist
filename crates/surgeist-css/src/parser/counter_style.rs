@@ -11,6 +11,8 @@ use super::{
     block_item_diagnostic, collect_declaration_value, is_declaration_recovery_unit,
     parse_descriptor_boundary, top_level_only_at_rule_placement,
 };
+use crate::CssCounterStyleDescriptorKind;
+use crate::descriptor_values::CounterStyleValueData;
 use crate::error::{
     Error, basic, descriptor_name_error, invalid_descriptor_combination, unsupported_value,
     unsupported_value_at, with_descriptor_context,
@@ -194,7 +196,6 @@ impl<'i> DeclarationParser<'i> for CounterStyleDescriptorParser<'i> {
         let implicit_closures =
             self.recovery
                 .check_component_values(self.source, input, "css.descriptor")?;
-        let numeric = crate::numeric::NumericInputContext::parsed(self.recovery.source_snapshot());
         // Revisit the original descriptor-name token, just as declarations do.
         // The semantic name may be decoded/case-folded; its source is not.
         let value_start = input.state();
@@ -206,35 +207,25 @@ impl<'i> DeclarationParser<'i> for CounterStyleDescriptorParser<'i> {
         )
         .expect("counter descriptor name belongs to the original source");
         input.reset(&value_start);
-        macro_rules! occurrence {
-            ($descriptor:literal, $parse:expr) => {
-                parse_occurrence(
-                    input,
-                    self.recovery.source_snapshot(),
-                    &name_origin,
-                    $descriptor,
-                    $parse,
-                )?
-            };
-        }
         let result = (|| {
-            Ok(match_ignore_ascii_case! { &name,
-                "system" => CssCounterStyleDescriptor::System(occurrence!("system", |input| parse_system(input, &numeric))),
-                "negative" => CssCounterStyleDescriptor::Negative(occurrence!("negative", |input| parse_negative(input, &numeric))),
-                "symbols" => CssCounterStyleDescriptor::Symbols(occurrence!("symbols", |input| parse_symbols(input, &numeric))),
-                "prefix" => CssCounterStyleDescriptor::Prefix(occurrence!("prefix", |input| parse_symbol(input, &numeric))),
-                "suffix" => CssCounterStyleDescriptor::Suffix(occurrence!("suffix", |input| parse_symbol(input, &numeric))),
-                "range" => CssCounterStyleDescriptor::Range(occurrence!("range", |input| parse_range(input, &numeric))),
-                "pad" => CssCounterStyleDescriptor::Pad(occurrence!("pad", |input| parse_pad(input, &numeric))),
-                "fallback" => CssCounterStyleDescriptor::Fallback(occurrence!("fallback", parse_fallback)),
-                "additive-symbols" => CssCounterStyleDescriptor::AdditiveSymbols(occurrence!("additive-symbols", |input| parse_additive_symbols(input, &numeric))),
-                "speak-as" => CssCounterStyleDescriptor::SpeakAs(occurrence!("speak-as", parse_speak_as)),
+            let kind = match_ignore_ascii_case! { &name,
+                "system" => CssCounterStyleDescriptorKind::System,
+                "negative" => CssCounterStyleDescriptorKind::Negative,
+                "symbols" => CssCounterStyleDescriptorKind::Symbols,
+                "prefix" => CssCounterStyleDescriptorKind::Prefix,
+                "suffix" => CssCounterStyleDescriptorKind::Suffix,
+                "range" => CssCounterStyleDescriptorKind::Range,
+                "pad" => CssCounterStyleDescriptorKind::Pad,
+                "fallback" => CssCounterStyleDescriptorKind::Fallback,
+                "additive-symbols" => CssCounterStyleDescriptorKind::AdditiveSymbols,
+                "speak-as" => CssCounterStyleDescriptorKind::SpeakAs,
                 _ => return Err(descriptor_name_error(
                     declaration_start.source_location(),
                     "counter-style",
                     name.as_ref(),
                 )),
-            })
+            };
+            parse_occurrence(input, self.recovery.source_snapshot(), &name_origin, kind)
         })()
         .map_err(|error| {
             if crate::error::is_resource_parse_error(&error) {
@@ -248,22 +239,58 @@ impl<'i> DeclarationParser<'i> for CounterStyleDescriptorParser<'i> {
     }
 }
 
-fn parse_occurrence<'i, 't, T>(
+fn parse_occurrence<'i, 't>(
     input: &mut Parser<'i, 't>,
     source_snapshot: &crate::CssSourceSnapshot,
     name_origin: &crate::CssParsedOrigin,
-    descriptor: &str,
-    parse_value: impl for<'tt> FnOnce(&mut Parser<'i, 'tt>) -> Result<T, ParseError<'i, Error>>,
-) -> Result<CssDescriptorOccurrence<T>, ParseError<'i, Error>> {
-    parse_descriptor_boundary(input, "counter-style", descriptor, |input| {
+    descriptor: CssCounterStyleDescriptorKind,
+) -> Result<CssCounterStyleDescriptor, ParseError<'i, Error>> {
+    parse_descriptor_boundary(input, "counter-style", descriptor.css_name(), |input| {
         let (value, components, value_origin) =
-            collect_declaration_value(input, source_snapshot, parse_value)?;
-        Ok(CssDescriptorOccurrence::from_parsed(
-            value,
-            name_origin.clone(),
-            value_origin,
-            components,
-        ))
+            collect_declaration_value(input, source_snapshot, |input| {
+                parse_descriptor_value(input, descriptor, source_snapshot)
+            })?;
+        Ok(value.into_occurrence(name_origin.clone(), value_origin, components))
+    })
+}
+
+pub(super) fn parse_descriptor_value<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    kind: CssCounterStyleDescriptorKind,
+    source_snapshot: &crate::CssSourceSnapshot,
+) -> Result<CounterStyleValueData, ParseError<'i, Error>> {
+    let numeric = crate::numeric::NumericInputContext::parsed(source_snapshot);
+    Ok(match kind {
+        CssCounterStyleDescriptorKind::System => {
+            CounterStyleValueData::System(parse_system(input, &numeric)?)
+        }
+        CssCounterStyleDescriptorKind::Negative => {
+            CounterStyleValueData::Negative(parse_negative(input, &numeric)?)
+        }
+        CssCounterStyleDescriptorKind::Symbols => {
+            CounterStyleValueData::Symbols(parse_symbols(input, &numeric)?)
+        }
+        CssCounterStyleDescriptorKind::Prefix => {
+            CounterStyleValueData::Prefix(parse_symbol(input, &numeric)?)
+        }
+        CssCounterStyleDescriptorKind::Suffix => {
+            CounterStyleValueData::Suffix(parse_symbol(input, &numeric)?)
+        }
+        CssCounterStyleDescriptorKind::Range => {
+            CounterStyleValueData::Range(parse_range(input, &numeric)?)
+        }
+        CssCounterStyleDescriptorKind::Pad => {
+            CounterStyleValueData::Pad(parse_pad(input, &numeric)?)
+        }
+        CssCounterStyleDescriptorKind::Fallback => {
+            CounterStyleValueData::Fallback(parse_fallback(input)?)
+        }
+        CssCounterStyleDescriptorKind::AdditiveSymbols => {
+            CounterStyleValueData::AdditiveSymbols(parse_additive_symbols(input, &numeric)?)
+        }
+        CssCounterStyleDescriptorKind::SpeakAs => {
+            CounterStyleValueData::SpeakAs(parse_speak_as(input)?)
+        }
     })
 }
 

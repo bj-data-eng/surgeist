@@ -1190,6 +1190,84 @@ pub(crate) fn unexpected_token_at(source: &str, byte_offset: usize, token: &Toke
     }
 }
 
+/// A name-free grammar failure from an actual retained source token or opener.
+pub(crate) fn unexpected_component_value<'i>(
+    component: &crate::CssComponentValue,
+    expectation: &'static str,
+) -> ParseError<'i, Error> {
+    use crate::{
+        CssBlockKind as Block, CssComponentValueRef as Component, CssValueTokenRef as Value,
+    };
+    let kind = match component.view() {
+        Component::Token(token) => match token {
+            Value::Ident(_) => CssTokenKind::Ident,
+            Value::AtKeyword(_) => CssTokenKind::AtKeyword,
+            Value::Hash {
+                flag: crate::CssHashFlag::Id,
+                ..
+            } => CssTokenKind::IdHash,
+            Value::Hash {
+                flag: crate::CssHashFlag::Unrestricted,
+                ..
+            } => CssTokenKind::Hash,
+            Value::String(_) => CssTokenKind::String,
+            Value::Url(_) => CssTokenKind::Url,
+            Value::Delim(_) => CssTokenKind::Delim,
+            Value::Number(_) => CssTokenKind::Number,
+            Value::Percentage(_) => CssTokenKind::Percentage,
+            Value::Dimension { .. } => CssTokenKind::Dimension,
+            Value::Whitespace(_) => CssTokenKind::Whitespace,
+            Value::Colon => CssTokenKind::Colon,
+            Value::Semicolon => CssTokenKind::Semicolon,
+            Value::Comma => CssTokenKind::Comma,
+            Value::Cdo => CssTokenKind::Cdo,
+            Value::Cdc => CssTokenKind::Cdc,
+        },
+        Component::Function(_) => CssTokenKind::Function,
+        Component::Block(block) => match block.kind() {
+            Block::Parenthesis => CssTokenKind::ParenthesisBlock,
+            Block::SquareBracket => CssTokenKind::SquareBracketBlock,
+            Block::CurlyBracket => CssTokenKind::CurlyBracketBlock,
+        },
+        Component::Comment(_) => CssTokenKind::Comment,
+    };
+    let (authored, origin) = component
+        .structural_lexeme(false)
+        .expect("a source component has its original leaf or opening lexeme");
+    let crate::CssValueOrigin::Parsed(origin) = origin else {
+        unreachable!("source value grammar owns parsed component origins")
+    };
+    let position = origin.span().start();
+    ParseError {
+        location: cssparser::SourceLocation {
+            line: position.line().value(),
+            column: position.column().value() + 1,
+        },
+        kind: ParseErrorKind::Custom(Error {
+            position,
+            kind: ErrorKind::UnexpectedToken(CssUnexpectedTokenError {
+                expectation: CssGrammarExpectation::new(expectation),
+                encountered: CssTokenSummary {
+                    kind,
+                    authored: authored.to_owned(),
+                },
+            }),
+        }),
+    }
+}
+
+pub(crate) fn unexpected_end_at<'i>(
+    location: cssparser::SourceLocation,
+    expectation: &'static str,
+) -> ParseError<'i, Error> {
+    error_at(
+        location,
+        ErrorKind::UnexpectedEnd(CssUnexpectedEndError {
+            expectation: CssGrammarExpectation::new(expectation),
+        }),
+    )
+}
+
 pub(crate) fn from_rule_parse_error(
     source: &str,
     failed_unit: &str,

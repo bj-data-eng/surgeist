@@ -26,6 +26,23 @@ pub enum CssCounterStyleDescriptorKind {
 }
 
 impl CssCounterStyleDescriptorKind {
+    /// Returns the literal CSS descriptor name for this grammar.
+    #[must_use]
+    pub const fn css_name(self) -> &'static str {
+        match self {
+            Self::System => "system",
+            Self::Negative => "negative",
+            Self::Prefix => "prefix",
+            Self::Suffix => "suffix",
+            Self::Range => "range",
+            Self::Pad => "pad",
+            Self::Fallback => "fallback",
+            Self::Symbols => "symbols",
+            Self::AdditiveSymbols => "additive-symbols",
+            Self::SpeakAs => "speak-as",
+        }
+    }
+
     const fn index(self) -> usize {
         match self {
             Self::System => 0,

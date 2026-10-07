@@ -219,32 +219,9 @@ impl<'i> DeclarationParser<'i> for BodyParser<'i> {
                                 error,
                             )
                         })?;
-                let mut indexes = Vec::new();
-                for value in values.items() {
-                    match value.view() {
-                        CssComponentValueRef::Comment(_)
-                        | CssComponentValueRef::Token(CssValueTokenRef::Whitespace(_)) => {}
-                        CssComponentValueRef::Token(CssValueTokenRef::Number(number))
-                            if number.kind() == CssNumericTokenKind::Integer =>
-                        {
-                            let index =
-                                CssFontFeatureValueIndex::try_from_decimal(number.representation())
-                                    .map_err(|error| {
-                                        invalid_syntax(start.source_location(), error.to_string())
-                                    })?;
-                            let CssValueOrigin::Parsed(origin) = value.origin() else {
-                                unreachable!("collected number has original source provenance")
-                            };
-                            indexes.push(index.with_origin(origin.clone()));
-                        }
-                        _ => {
-                            return Err(invalid_syntax(
-                                start.source_location(),
-                                "expected nonnegative integer tokens",
-                            ));
-                        }
-                    }
-                }
+                let indexes = indexes_from_components(&values, |_, reason| {
+                    invalid_syntax(start.source_location(), reason)
+                })?;
                 let definition = CssFontFeatureValueDefinition::try_new(friendly, indexes)
                     .map_err(|error| invalid_syntax(start.source_location(), error.to_string()))?;
                 kind.validate(&definition)
@@ -266,4 +243,36 @@ impl<'i> DeclarationParser<'i> for BodyParser<'i> {
         self.recovery.retain_component_closures(implicit);
         Ok(result)
     }
+}
+
+// The rule owner keeps its actual friendly-name error position; value fragments
+// select the responsible component origin. Both use this exact token grammar.
+pub(super) fn indexes_from_components<'i>(
+    values: &CssComponentValues,
+    error_for_component: impl Fn(&CssComponentValue, &str) -> ParseError<'i, Error>,
+) -> Result<Vec<CssFontFeatureValueIndex>, ParseError<'i, Error>> {
+    let mut indexes = Vec::new();
+    for value in values.items() {
+        match value.view() {
+            CssComponentValueRef::Comment(_)
+            | CssComponentValueRef::Token(CssValueTokenRef::Whitespace(_)) => {}
+            CssComponentValueRef::Token(CssValueTokenRef::Number(number))
+                if number.kind() == CssNumericTokenKind::Integer =>
+            {
+                let index = CssFontFeatureValueIndex::try_from_decimal(number.representation())
+                    .map_err(|error| error_for_component(value, &error.to_string()))?;
+                let CssValueOrigin::Parsed(origin) = value.origin() else {
+                    unreachable!("collected number has original source provenance")
+                };
+                indexes.push(index.with_origin(origin.clone()));
+            }
+            _ => {
+                return Err(error_for_component(
+                    value,
+                    "expected nonnegative integer tokens",
+                ));
+            }
+        }
+    }
+    Ok(indexes)
 }

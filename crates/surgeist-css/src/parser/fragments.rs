@@ -466,6 +466,197 @@ pub fn parse_font_face_descriptor_value(
     })
 }
 
+// These name-free fronts share whole-source rejection, descriptor annotation
+// policy and lexical/resource ownership; each closure uses its family provider.
+fn descriptor_value_fragment<T: Send>(
+    source: &str,
+    descriptor: Option<(&str, &str)>,
+    parse: impl for<'i, 't> FnOnce(
+        &mut Parser<'i, 't>,
+        &RecoveryState,
+    ) -> Result<T, ParseError<'i, Error>>
+    + Send,
+) -> crate::CssParseReport<Option<T>> {
+    bounded(source, || {
+        let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
+        let working_source = crate::tokenization::prepare(source);
+        let mut parser_input = ParserInput::new(&working_source);
+        let mut input = Parser::new(&mut parser_input);
+        let result = (|| {
+            let openings = state.check_component_values(source, &input, "css.descriptor")?;
+            let value = if let Some((owner, descriptor)) = descriptor {
+                parse_descriptor_boundary(&mut input, owner, descriptor, |input| {
+                    let value = parse(input, &state)?;
+                    input.expect_exhausted().map_err(basic)?;
+                    Ok(value)
+                })?
+            } else {
+                parse(&mut input, &state)?
+            };
+            input.expect_exhausted().map_err(basic)?;
+            state.retain_component_closures(openings);
+            Ok(value)
+        })()
+        .map_err(|error| {
+            if crate::error::is_resource_parse_error(&error)
+                || matches!(
+                    &error.kind,
+                    cssparser::ParseErrorKind::Custom(error)
+                        if matches!(error.kind(), crate::ErrorKind::InvalidComponentValue(_))
+                )
+            {
+                error
+            } else if let Some((owner, descriptor)) = descriptor {
+                crate::error::with_descriptor_context(error, owner, descriptor)
+            } else {
+                error
+            }
+        });
+        let (syntax, diagnostics) = match result {
+            Ok(value) => (Some(value), state.take_implicit_closure_diagnostics(source)),
+            Err(error) => (
+                None,
+                vec![reject(source, error, crate::CssRecoveryAction::RejectInput)],
+            ),
+        };
+        crate::CssParseReport::new(syntax, diagnostics)
+    })
+}
+
+/// Parses one complete raw Counter Styles 3 descriptor value.
+///
+/// The supplied kind selects the existing descriptor grammar without a rule name
+/// or descriptor-name occurrence. Components and origin cover the complete input,
+/// including trivia; exact numeric values retain their original token origins.
+/// Cross-descriptor system/symbol requirements remain with the enclosing rule.
+/// Empty, invalid, annotated or trailing input returns `None` with whole-input
+/// rejection. The fixed 256-depth ceiling retains typed resource diagnostics.
+/// Implicit lexical EOF recovery may retain a value with an unclean report;
+/// generic clean-report validation accepts exactly reports without diagnostics.
+#[must_use]
+pub fn parse_counter_style_descriptor_value(
+    source: &str,
+    descriptor: crate::CssCounterStyleDescriptorKind,
+) -> crate::CssParseReport<Option<crate::CssCounterStyleDescriptorValue>> {
+    descriptor_value_fragment(
+        source,
+        Some(("counter-style", descriptor.css_name())),
+        |input, state| {
+            let (value, components, origin) =
+                collect_declaration_value(input, state.source_snapshot(), |input| {
+                    // Keep the collector's complete source range, while an
+                    // empty grammar reports the EOF after leading trivia.
+                    input.skip_whitespace();
+                    counter_style::parse_descriptor_value(
+                        input,
+                        descriptor,
+                        state.source_snapshot(),
+                    )
+                })?;
+            Ok(crate::CssCounterStyleDescriptorValue::from_parsed(
+                value, components, origin,
+            ))
+        },
+    )
+}
+
+/// Parses the outer `@font-feature-values` font-display descriptor's complete value.
+///
+/// Only the five font-display keywords are admitted, including decoded escaped
+/// and ASCII-insensitive spellings. There is no substitution deferral or invented
+/// descriptor-name position. Components and origin retain all original trivia.
+/// Invalid or trailing input and root annotations reject the complete fragment;
+/// resource failures preserve the fixed 256-depth ceiling. Lexical EOF recovery
+/// remains visible in diagnostics and fails generic clean-report validation.
+#[must_use]
+pub fn parse_font_feature_display_value(
+    source: &str,
+) -> crate::CssParseReport<Option<crate::CssFontFeatureDisplayValue>> {
+    descriptor_value_fragment(
+        source,
+        Some(("font-feature-values", "font-display")),
+        |input, state| {
+            let (value, components, origin) =
+                collect_declaration_value(input, state.source_snapshot(), |input| {
+                    let value = font_face::parse_font_display(input)?;
+                    input.expect_exhausted().map_err(basic)?;
+                    Ok(value)
+                })?;
+            Ok(crate::CssFontFeatureDisplayValue::from_parsed(
+                value, components, origin,
+            ))
+        },
+    )
+}
+
+/// Parses complete nonnegative integer tokens for a subsidiary feature-value kind.
+///
+/// Historical-forms/styleset admit one or more indexes, character-variant one or
+/// two, and the other kinds exactly one. Integer token spelling is retained in
+/// components; normalized exact indexes have no machine-integer upper bound.
+/// No friendly definition name is created. Invalid, empty, annotated or trailing
+/// input rejects the whole fragment; token failures use their original origins.
+/// Components and carrier origin include all trivia. The fixed 256-depth ceiling
+/// and lexical EOF diagnostics retain their existing owners; clean validation
+/// accepts exactly reports without diagnostics and performs no font activation.
+/// Name-free token/EOF diagnostics describe the selected integer grammar; root
+/// `!` is rejected as its actual delimiter rather than a named annotation.
+/// An overfull list reports its first surplus integer; empty input reports EOF.
+#[must_use]
+pub fn parse_font_feature_value_indexes(
+    source: &str,
+    kind: crate::CssFontFeatureValueKind,
+) -> crate::CssParseReport<Option<crate::CssFontFeatureValueIndexes>> {
+    descriptor_value_fragment(source, None, |input, state| {
+        let start = input.position().byte_index();
+        let components =
+            crate::CssComponentValues::collect_from_parser(input, state.source_snapshot())
+                .map_err(|error| {
+                    crate::error::invalid_component_value(input.current_source_location(), error)
+                })?;
+        let indexes = font_feature_values::indexes_from_components(&components, |component, _| {
+            crate::error::unexpected_component_value(component, "nonnegative integer tokens")
+        })?;
+        kind.validate_index_count(indexes.len()).map_err(|_| {
+            // The shared provider proved every non-trivia component is an
+            // integer. Query the same count owner for the first rejected
+            // prefix, without duplicating its cardinality policy.
+            let surplus = components
+                .items()
+                .iter()
+                .filter(|component| {
+                    !matches!(
+                        component.view(),
+                        crate::CssComponentValueRef::Comment(_)
+                            | crate::CssComponentValueRef::Token(
+                                crate::CssValueTokenRef::Whitespace(_)
+                            )
+                    )
+                })
+                .enumerate()
+                .find(|(index, _)| kind.validate_index_count(index + 1).is_err());
+            match surplus {
+                Some((_, component)) => crate::error::unexpected_component_value(
+                    component,
+                    "the selected feature-value index count",
+                ),
+                None => crate::error::unexpected_end_at(
+                    input.current_source_location(),
+                    "the selected feature-value index count",
+                ),
+            }
+        })?;
+        let origin = crate::CssParsedOrigin::from_range(
+            state.source_snapshot(),
+            start..input.position().byte_index(),
+        )
+        .expect("complete index value belongs to its original source");
+        Ok(crate::CssFontFeatureValueIndexes::from_parsed(
+            kind, indexes, components, origin,
+        ))
+    })
+}
+
 /// Parses one complete raw `@font-palette-values` descriptor value.
 ///
 /// The selected descriptor grammar is checked without a surrounding rule or

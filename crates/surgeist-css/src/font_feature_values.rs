@@ -161,7 +161,13 @@ impl CssFontFeatureValueKind {
         self,
         definition: &CssFontFeatureValueDefinition,
     ) -> Result<(), CssFontFeatureValuesError> {
-        let count = definition.indexes.len();
+        self.validate_index_count(definition.indexes.len())
+    }
+
+    pub(crate) fn validate_index_count(
+        self,
+        count: usize,
+    ) -> Result<(), CssFontFeatureValuesError> {
         let valid_count = match self {
             Self::HistoricalForms | Self::Styleset => count > 0,
             Self::CharacterVariant => matches!(count, 1 | 2),
