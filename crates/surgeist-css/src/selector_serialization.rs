@@ -681,6 +681,7 @@ impl SpecifiedRuleWriter {
                         CssPseudoClass::Valid => self.append(":valid")?,
                         CssPseudoClass::Invalid => self.append(":invalid")?,
                         CssPseudoClass::PlaceholderShown => self.append(":placeholder-shown")?,
+                        CssPseudoClass::Autofill => self.append(":autofill")?,
                         CssPseudoClass::FirstChild => self.append(":first-child")?,
                         CssPseudoClass::LastChild => self.append(":last-child")?,
                         CssPseudoClass::OnlyChild => self.append(":only-child")?,
@@ -729,6 +730,10 @@ impl SpecifiedRuleWriter {
                         CssPseudoElement::Marker => self.append("::marker")?,
                         CssPseudoElement::Selection => self.append("::selection")?,
                         CssPseudoElement::Backdrop => self.append("::backdrop")?,
+                        CssPseudoElement::UnknownWebkit(name) => {
+                            self.append("::")?;
+                            self.selector_identifier(name.as_str())?;
+                        }
                     }
                 }
             }

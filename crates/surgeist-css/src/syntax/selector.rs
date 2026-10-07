@@ -221,6 +221,8 @@ pub enum CssSelectorConstructionErrorKind {
     ModifierWithoutValue,
     /// A decoded attribute operand cannot preserve its string identity.
     InvalidAttributeValue(crate::CssComponentValueError),
+    /// The decoded name is not a genuine identifier beginning with `-webkit-`.
+    InvalidUnknownWebkitPseudoElementName,
     /// Intrinsic grammar or cumulative specified-output admission failed.
     Specified(crate::CssSpecifiedValueSerializationError),
 }
@@ -285,6 +287,10 @@ impl std::fmt::Display for CssSelectorConstructionError {
             CssSelectorConstructionErrorKind::InvalidAttributeValue(error) => {
                 std::fmt::Display::fmt(error, formatter)
             }
+            CssSelectorConstructionErrorKind::InvalidUnknownWebkitPseudoElementName => formatter
+                .write_str(
+                    "an unknown WebKit pseudo-element requires a valid decoded -webkit- identifier",
+                ),
         }
     }
 }
@@ -297,7 +303,8 @@ impl std::error::Error for CssSelectorConstructionError {
             | CssSelectorConstructionErrorKind::EmptyComplexRest
             | CssSelectorConstructionErrorKind::NonTerminalPseudoElement { .. }
             | CssSelectorConstructionErrorKind::InvalidTypePosition { .. }
-            | CssSelectorConstructionErrorKind::ModifierWithoutValue => None,
+            | CssSelectorConstructionErrorKind::ModifierWithoutValue
+            | CssSelectorConstructionErrorKind::InvalidUnknownWebkitPseudoElementName => None,
             CssSelectorConstructionErrorKind::InvalidAttributeValue(error) => Some(error),
             CssSelectorConstructionErrorKind::Specified(error) => Some(error),
         }
@@ -615,6 +622,8 @@ pub enum CssPseudoClass {
     Valid,
     Invalid,
     PlaceholderShown,
+    /// The standard input autofill state; the required WebKit alias has this identity.
+    Autofill,
     FirstChild,
     LastChild,
     OnlyChild,
@@ -673,6 +682,7 @@ impl CssPseudoClass {
             | Self::Valid
             | Self::Invalid
             | Self::PlaceholderShown
+            | Self::Autofill
             | Self::FirstChild
             | Self::LastChild
             | Self::OnlyChild
@@ -984,6 +994,45 @@ impl CssPartNameList {
     }
 }
 
+/// A parse-valid, nonfunctional unknown WebKit pseudo-element name.
+///
+/// This symbolic identity matches nothing. The complete selector retains its
+/// originating compound and contextual restrictions; no matching is performed.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssUnknownWebkitPseudoElement {
+    name: String,
+}
+
+impl CssUnknownWebkitPseudoElement {
+    /// Checks decoded identifier content and preserves non-ASCII code points.
+    /// ASCII letters are canonicalized to lowercase for selector emission.
+    pub fn try_new(name: impl Into<String>) -> Result<Self, CssSelectorConstructionError> {
+        let name = name.into();
+        let invalid = || {
+            CssSelectorConstructionError::new(
+                CssSelectorConstructionErrorKind::InvalidUnknownWebkitPseudoElementName,
+            )
+        };
+        if !name
+            .as_bytes()
+            .get(..8)
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case(b"-webkit-"))
+        {
+            return Err(invalid());
+        }
+        crate::CssComponentValue::try_ident(name.clone()).map_err(|_| invalid())?;
+        Ok(Self {
+            name: name.to_ascii_lowercase(),
+        })
+    }
+
+    /// Returns the canonical decoded name, without colons or CSS escaping.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.name
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssPseudoElement {
@@ -996,6 +1045,7 @@ pub enum CssPseudoElement {
     Backdrop,
     Slotted(CssCompoundSelectorArgument),
     Part(CssPartNameList),
+    UnknownWebkit(CssUnknownWebkitPseudoElement),
 }
 
 impl CssPseudoElement {

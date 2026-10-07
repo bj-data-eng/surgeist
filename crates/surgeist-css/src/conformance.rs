@@ -2348,7 +2348,7 @@ const BASELINE_RULE_REMAINDER: &str =
     "Other valid forms of the cited rule production are outside the I01 subset.";
 const SELECTOR_REMAINDER: &str =
     "Other valid forms of the cited Selectors production are outside the I01 subset.";
-const SUPPORTS_SELECTOR_SUBSET: &str = "selector() accepts complete Selectors 3 plus the selected I01 extensions: the || column combinator; i and s attribute modifiers; :scope, :focus-visible, :focus-within, :required, :optional, :valid, :invalid, :placeholder-shown, :modal, :fullscreen, :popover-open, :default, :indeterminate, :read-only, :read-write, :in-range, and :out-of-range; :is(), :where(), :has(), selector-list :not(), and nth-child of lists; and ::marker, ::selection, ::backdrop, and generated-marker sequences. Directionality accepts one identifier and language accepts nonempty comma-separated identifier or string ranges. Required shadow definitions add :host, compound-argument :host() and :host-context(), ::slotted(), and identifier-list ::part(). Ordered pseudo-element suffixes retain contextual pseudo-classes and applicable tree-abiding transitions.";
+const SUPPORTS_SELECTOR_SUBSET: &str = "selector() accepts complete Selectors 3 plus the selected I01 extensions: the || column combinator; i and s attribute modifiers; :scope, :focus-visible, :focus-within, :required, :optional, :valid, :invalid, :placeholder-shown, :modal, :fullscreen, :popover-open, :default, :indeterminate, :read-only, :read-write, :in-range, and :out-of-range; :is(), :where(), :has(), selector-list :not(), and nth-child of lists; and ::marker, ::selection, ::backdrop, and generated-marker sequences. Directionality accepts one identifier and language accepts nonempty comma-separated identifier or string ranges. Required shadow definitions add :host, compound-argument :host() and :host-context(), ::slotted(), and identifier-list ::part(). Autofill and its required -webkit-autofill alias share the standard identity; unknown nonfunctional -webkit- pseudo-elements retain symbolic match-nothing identities with ASCII-lowercase output. Ordered pseudo-element suffixes retain contextual pseudo-classes and applicable tree-abiding transitions.";
 const SUPPORTS_SELECTOR_REMAINDER: &str = "Unselected Selectors 4 pseudo-classes and pseudo-elements, and syntax outside those atomic extension rows remain outside the typed subset; balanced content is preserved as general-enclosed authored syntax.";
 const QUERY_REMAINDER: &str =
     "Other valid forms of the cited query production are outside the I01 subset.";
@@ -2893,6 +2893,7 @@ const PSEUDO_ELEMENT_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.pseudo-element.selection"),
     CssFeatureId::new("ext.pseudo-element.backdrop"),
     CssFeatureId::new("ext.pseudo-element.generated-marker"),
+    CssFeatureId::new("ext.pseudo-element.unknown-webkit"),
 ];
 
 const MEDIA_QUERY_LIST_ALIAS_TARGETS: &[CssFeatureId] = &[
@@ -2929,7 +2930,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 770] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 772] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -7103,6 +7104,13 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 770] = [
         "#the-dir-pseudo",
     ),
     CssFeatureMetadata::complete(
+        "ext.selector.autofill",
+        CssFeatureKind::Selector,
+        ":autofill with required -webkit-autofill alias canonicalization",
+        I_SELECTORS4,
+        "#selectordef-autofill,#legacy-aliasing,#compat",
+    ),
+    CssFeatureMetadata::complete(
         "official.selector.ui-state",
         CssFeatureKind::Selector,
         ":enabled, :disabled, :checked, :indeterminate",
@@ -7206,6 +7214,13 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 770] = [
         "::before::marker, ::after::marker",
         X_PSEUDO4,
         "#marker-pseudo",
+    ),
+    CssFeatureMetadata::complete(
+        "ext.pseudo-element.unknown-webkit",
+        CssFeatureKind::Selector,
+        "nonfunctional unknown -webkit- pseudo-elements with symbolic match-nothing identity and ASCII-lowercase output",
+        I_SELECTORS4,
+        "#compat,#unknown--webkit--pseudo-elements",
     ),
     CssFeatureMetadata::complete(
         "official.media.query-list-core",

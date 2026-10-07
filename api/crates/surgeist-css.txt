@@ -4287,6 +4287,7 @@ pub surgeist_css::CssPropertyValueErrorKind::Component(surgeist_css::CssComponen
 pub surgeist_css::CssPropertyValueErrorKind::Grammar(surgeist_css::ErrorKind)
 #[non_exhaustive] pub enum surgeist_css::CssPseudoClass
 pub surgeist_css::CssPseudoClass::Active
+pub surgeist_css::CssPseudoClass::Autofill
 pub surgeist_css::CssPseudoClass::Checked
 pub surgeist_css::CssPseudoClass::Default
 pub surgeist_css::CssPseudoClass::Dir(surgeist_css::CssDirectionality)
@@ -4345,6 +4346,7 @@ pub surgeist_css::CssPseudoElement::Marker
 pub surgeist_css::CssPseudoElement::Part(surgeist_css::CssPartNameList)
 pub surgeist_css::CssPseudoElement::Selection
 pub surgeist_css::CssPseudoElement::Slotted(surgeist_css::CssCompoundSelectorArgument)
+pub surgeist_css::CssPseudoElement::UnknownWebkit(surgeist_css::CssUnknownWebkitPseudoElement)
 #[non_exhaustive] pub enum surgeist_css::CssPseudoElementSegment
 pub surgeist_css::CssPseudoElementSegment::PseudoClass(surgeist_css::CssPseudoClass)
 pub surgeist_css::CssPseudoElementSegment::PseudoElement(surgeist_css::CssPseudoElement)
@@ -4745,6 +4747,7 @@ pub surgeist_css::CssSelectorConstructionErrorKind::EmptyList
 pub surgeist_css::CssSelectorConstructionErrorKind::InvalidAttributeValue(surgeist_css::CssComponentValueError)
 pub surgeist_css::CssSelectorConstructionErrorKind::InvalidTypePosition
 pub surgeist_css::CssSelectorConstructionErrorKind::InvalidTypePosition::member_index: usize
+pub surgeist_css::CssSelectorConstructionErrorKind::InvalidUnknownWebkitPseudoElementName
 pub surgeist_css::CssSelectorConstructionErrorKind::ModifierWithoutValue
 pub surgeist_css::CssSelectorConstructionErrorKind::NonTerminalPseudoElement
 pub surgeist_css::CssSelectorConstructionErrorKind::NonTerminalPseudoElement::compound_index: usize
@@ -12027,6 +12030,10 @@ pub const fn surgeist_css::CssUnknownMediaType::reason(&self) -> surgeist_css::C
 pub struct surgeist_css::CssUnknownPropertyError
 impl surgeist_css::CssUnknownPropertyError
 pub const fn surgeist_css::CssUnknownPropertyError::name(&self) -> &surgeist_css::CssPropertyName
+pub struct surgeist_css::CssUnknownWebkitPseudoElement
+impl surgeist_css::CssUnknownWebkitPseudoElement
+pub fn surgeist_css::CssUnknownWebkitPseudoElement::as_str(&self) -> &str
+pub fn surgeist_css::CssUnknownWebkitPseudoElement::try_new(name: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, surgeist_css::CssSelectorConstructionError>
 pub struct surgeist_css::CssUnsupportedAtRuleError
 impl surgeist_css::CssUnsupportedAtRuleError
 pub const fn surgeist_css::CssUnsupportedAtRuleError::feature(&self) -> surgeist_css::CssFeatureId

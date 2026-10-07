@@ -5005,6 +5005,80 @@ scope, and the marker/selection/backdrop pseudo-element rows. Matching,
 specificity, cascade, namespace URI resolution, CSSOM serialization, and
 cross-crate lowering remain downstream exclusions.
 
+### Pseudo-element attachment and aliases
+
+The [Selectors 4 legacy alias rule](https://www.w3.org/TR/2026/WD-selectors-4-20260122/#legacy-aliasing)
+and [normative WebKit appendix](https://www.w3.org/TR/2026/WD-selectors-4-20260122/#compat)
+give `:autofill` and `:-webkit-autofill` one `CssPseudoClass::Autofill` identity.
+ASCII case and escaped names select the same identity; specified output writes
+`:autofill`. No alias state remains in the semantic model.
+
+An unrecognized nonfunctional pseudo-element whose decoded name begins with
+ASCII-insensitive `-webkit-` retains
+`CssPseudoElement::UnknownWebkit(CssUnknownWebkitPseudoElement)`. It is valid
+authored syntax with symbolic match-nothing meaning. The payload's private name
+has a checked `try_new(decoded_name)` constructor returning
+`Result<_, CssSelectorConstructionError>` and an `as_str()` accessor. Admission
+uses the shared genuine identifier boundary and rejects NUL or a wrong prefix
+with `InvalidUnknownWebkitPseudoElementName`. The prefix alone is valid; decoded
+punctuation and non-ASCII suffix characters can be preserved through CSS escaping.
+Only ASCII letters are lowercased. The shared selector writer emits the escaped
+canonical name after `::` under its existing node and byte budget; the leaf has
+no independent serializer.
+
+This exception requires an actual identifier token. A functional unknown
+`::-webkit-name()` remains invalid even with empty arguments, while an escaped
+identifier containing decoded parentheses can be valid. Unknown non-WebKit
+names and unknown single-colon vendor pseudo-classes remain invalid. The only
+single-colon pseudo-element spellings are `before`, `after`, `first-line` and
+`first-letter`; they remain pseudo-elements in receiving contexts that forbid
+them. Whitespace cannot separate colons from the name or function token.
+
+The compound before the first pseudo-element describes the originating element;
+an omitted type implies a universal within that compound's namespace context.
+`CssPseudoElementSequence::segments()` retains every pseudo-element and suffix
+pseudo-class in order. Conditions before the sequence apply to the originating
+element, while each suffix applies to the most recent pseudo-element. For
+example, `:hover::before` and `::before:hover` preserve different attachments.
+The [selected suffix and internal-structure clauses](https://www.w3.org/TR/2026/WD-selectors-4-20260122/#pseudo-element-states)
+and imported pseudo definitions establish these authored permissions:
+
+| Current pseudo-element | Pseudo-class suffixes | Following pseudo-element |
+| --- | --- | --- |
+| Before or After | Not/Is/Where and Hover/Active/Focus/FocusVisible/FocusWithin | Marker |
+| FirstLine, FirstLetter, Marker, Selection or Backdrop | The same generic suffixes | None in the admitted identity set |
+| Slotted | The same generic suffixes | Before, After, Marker, Part or Backdrop |
+| Part | Otherwise supported pseudo-class syntax under inherited argument restrictions | Otherwise admitted pseudo-element syntax |
+| UnknownWebkit | The same generic suffixes | None |
+
+After a following segment, its own permissions govern the next suffix or child.
+Part's element-backed syntax permission does not evaluate its separate matching
+prohibitions. Logical arguments inherit their receiving position's restrictions;
+an unknown WebKit pseudo does not become a real element or bypass pseudo-element
+bans in scope boundaries, Has or complex-real lists. Existing Is/Where forgiveness
+and strict Not/list admission keep their separate recovery contracts. The exact
+selected [Shadow/Has source disposition](https://github.com/bj-data-eng/surgeist/issues/297)
+remains limited to Host, HostContext and Slotted providers: their compound outer
+arguments may contain Has, while nested Has, forbidden pseudo-elements and all
+other receiving-context restrictions remain rejected.
+
+No currently admitted pseudo-element has defined internal combinator permission,
+so child, descendant, sibling and column combinators after one remain invalid.
+The draft's `::shadow` internal-structure example is hypothetical. Defined
+FirstLetter Prefix/Suffix identities from Pseudo 4 are outside the current
+admitted identity subset; this is a vocabulary boundary, not a claim that those
+sub-pseudos lack a source definition.
+
+The selected draft marks user-action suffixes on non-tree-abiding pseudo-elements
+[at risk](https://www.w3.org/TR/2026/WD-selectors-4-20260122/). Authored
+admission preserves that source status; the crate does not perform matching,
+specificity, autofill state selection or live pseudo identity. Parsed containing
+rules and lexical condition components retain their existing original provenance
+while semantic alias names and unknown WebKit names are canonicalized. Capability
+records are `ext.selector.autofill` and `ext.pseudo-element.unknown-webkit`;
+[admission tests](../tests/pseudo_legacy_alias_admission.rs) exercise selector and
+stylesheet fronts.
+
 ## Counter Styles 3 and authored page rules
 
 `CssRule::CounterStyle` retains a checked

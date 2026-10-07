@@ -1035,6 +1035,14 @@
 //! while unforgiving style, scope, nesting, `:not()`, `:has()`, and nth `of` consumers drop their
 //! established containing unit. Matching, specificity, cascade, namespace URI resolution,
 //! CSSOM serialization, and cross-crate lowering remain downstream.
+//! `:autofill` and required `:-webkit-autofill` share [`CssPseudoClass::Autofill`]
+//! and emit the standard spelling. Nonfunctional unknown `::-webkit-*` names
+//! retain checked [`CssUnknownWebkitPseudoElement`] identities with ASCII-lowercase
+//! semantic names and escaped specified output. They remain symbolic match-nothing
+//! pseudos subject to ordinary attachment, suffix and receiving-context restrictions;
+//! unknown functional forms remain invalid. User-action suffixes on non-tree-abiding
+//! pseudos retain the selected draft's at-risk status. No currently admitted pseudo
+//! has internal combinator permission.
 //!
 //! # Counter styles and page rules
 //!

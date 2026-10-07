@@ -117,6 +117,13 @@ arguments, and remain symbolic through lexical and specified output. See
 [supports predicates](docs/reference.md#font-and-at-rule-supports-predicates)
 for exact argument admission and opaque fallback.
 
+Selectors canonicalize `:-webkit-autofill` to the standard Autofill identity and
+retain nonfunctional unknown `::-webkit-*` names as checked symbolic match-nothing
+pseudos. The shared grammar preserves originating compounds, ordered suffix
+attachments, explicit child permissions and cumulative specified output. See
+[pseudo-element attachment](docs/reference.md#pseudo-element-attachment-and-aliases)
+for the admitted matrix, required aliases and the draft's at-risk suffix status.
+
 Checked `CssBackgroundLayer` and `CssBackground` construction retains authored
 omissions and enforces size/position and final-color constraints. Intrinsic
 `background` expansion supplies all eight longhands with per-layer schema

@@ -129,7 +129,7 @@ const BASELINE_RULE_REMAINDER: &str =
     "Other valid forms of the cited rule production are outside the I01 subset.";
 const SELECTOR_REMAINDER: &str =
     "Other valid forms of the cited Selectors production are outside the I01 subset.";
-const SUPPORTS_SELECTOR_SUBSET: &str = "selector() accepts complete Selectors 3 plus the selected I01 extensions: the || column combinator; i and s attribute modifiers; :scope, :focus-visible, :focus-within, :required, :optional, :valid, :invalid, :placeholder-shown, :modal, :fullscreen, :popover-open, :default, :indeterminate, :read-only, :read-write, :in-range, and :out-of-range; :is(), :where(), :has(), selector-list :not(), and nth-child of lists; and ::marker, ::selection, ::backdrop, and generated-marker sequences. Directionality accepts one identifier and language accepts nonempty comma-separated identifier or string ranges. Required shadow definitions add :host, compound-argument :host() and :host-context(), ::slotted(), and identifier-list ::part(). Ordered pseudo-element suffixes retain contextual pseudo-classes and applicable tree-abiding transitions.";
+const SUPPORTS_SELECTOR_SUBSET: &str = "selector() accepts complete Selectors 3 plus the selected I01 extensions: the || column combinator; i and s attribute modifiers; :scope, :focus-visible, :focus-within, :required, :optional, :valid, :invalid, :placeholder-shown, :modal, :fullscreen, :popover-open, :default, :indeterminate, :read-only, :read-write, :in-range, and :out-of-range; :is(), :where(), :has(), selector-list :not(), and nth-child of lists; and ::marker, ::selection, ::backdrop, and generated-marker sequences. Directionality accepts one identifier and language accepts nonempty comma-separated identifier or string ranges. Required shadow definitions add :host, compound-argument :host() and :host-context(), ::slotted(), and identifier-list ::part(). Autofill and its required -webkit-autofill alias share the standard identity; unknown nonfunctional -webkit- pseudo-elements retain symbolic match-nothing identities with ASCII-lowercase output. Ordered pseudo-element suffixes retain contextual pseudo-classes and applicable tree-abiding transitions.";
 const SUPPORTS_SELECTOR_REMAINDER: &str = "Unselected Selectors 4 pseudo-classes and pseudo-elements, and syntax outside those atomic extension rows remain outside the typed subset; balanced content is preserved as general-enclosed authored syntax.";
 const QUERY_REMAINDER: &str =
     "Other valid forms of the cited query production are outside the I01 subset.";
@@ -4314,6 +4314,7 @@ fn preserved_i01_catalog_exposes_dated_atomic_provenance_and_alias_targets() {
             "ext.pseudo-element.selection",
             "ext.pseudo-element.backdrop",
             "ext.pseudo-element.generated-marker",
+            "ext.pseudo-element.unknown-webkit",
         ]
     );
 
@@ -4342,6 +4343,7 @@ fn every_alias_atomic_target_has_declared_metadata_and_public_parser_evidence() 
                 "ext.pseudo-element.selection",
                 "ext.pseudo-element.backdrop",
                 "ext.pseudo-element.generated-marker",
+                "ext.pseudo-element.unknown-webkit",
             ],
         ),
         (
@@ -4420,6 +4422,21 @@ fn every_alias_atomic_target_has_declared_metadata_and_public_parser_evidence() 
             "ext.pseudo-element.generated-marker",
             "X-PSEUDO4",
             ".item::before::marker { color: red; }",
+        ),
+        (
+            "ext.pseudo-element.unknown-webkit",
+            "I-SELECTORS4",
+            ".x::-WebKit-ASDF { color: red; }",
+        ),
+        (
+            "ext.selector.autofill",
+            "I-SELECTORS4",
+            "input:autofill { color: red; }",
+        ),
+        (
+            "ext.selector.autofill",
+            "I-SELECTORS4",
+            "input:-webkit-autofill { color: red; }",
         ),
         (
             "official.media.query-list-core",

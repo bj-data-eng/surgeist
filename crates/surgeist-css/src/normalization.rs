@@ -1428,6 +1428,7 @@ fn pseudo_has_anchor(pseudo: &CssPseudoClass, kind: AnchorKind) -> bool {
         | CssPseudoClass::Valid
         | CssPseudoClass::Invalid
         | CssPseudoClass::PlaceholderShown
+        | CssPseudoClass::Autofill
         | CssPseudoClass::FirstChild
         | CssPseudoClass::LastChild
         | CssPseudoClass::OnlyChild

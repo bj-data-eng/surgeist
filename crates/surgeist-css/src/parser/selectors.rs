@@ -28,6 +28,7 @@ pub(super) static IMPLEMENTED_SELECTORS: &[CssFeatureId] = &[
     CssFeatureId::new("official.selector.target"),
     CssFeatureId::new("official.selector.lang"),
     CssFeatureId::new("ext.selector.dir"),
+    CssFeatureId::new("ext.selector.autofill"),
     CssFeatureId::new("official.selector.ui-state"),
     CssFeatureId::new("official.selector.structural"),
     CssFeatureId::new("official.selector.negation"),
@@ -43,6 +44,7 @@ pub(super) static IMPLEMENTED_SELECTORS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.pseudo-element.selection"),
     CssFeatureId::new("ext.pseudo-element.backdrop"),
     CssFeatureId::new("ext.pseudo-element.generated-marker"),
+    CssFeatureId::new("ext.pseudo-element.unknown-webkit"),
 ];
 
 pub(super) struct SelectorRecovery<'a> {
@@ -950,6 +952,9 @@ fn parse_pseudo_element<'i, 't>(
             "selection" => Ok(CssPseudoElement::Selection),
             "backdrop" => Ok(CssPseudoElement::Backdrop),
             _ => {
+                if let Ok(name) = CssUnknownWebkitPseudoElement::try_new(name.to_string()) {
+                    return Ok(CssPseudoElement::UnknownWebkit(name));
+                }
                 let message = format!("unsupported pseudo-element `::{name}`");
                 input.reset(&state);
                 Err(invalid_selector(input, message))
@@ -1330,6 +1335,7 @@ fn parse_named_pseudo_class<'i>(
         "valid" => Ok(CssPseudoClass::Valid),
         "invalid" => Ok(CssPseudoClass::Invalid),
         "placeholder-shown" => Ok(CssPseudoClass::PlaceholderShown),
+        "autofill" | "-webkit-autofill" => Ok(CssPseudoClass::Autofill),
         "first-child" => Ok(CssPseudoClass::FirstChild),
         "last-child" => Ok(CssPseudoClass::LastChild),
         "only-child" => Ok(CssPseudoClass::OnlyChild),
