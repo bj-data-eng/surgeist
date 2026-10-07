@@ -267,3 +267,64 @@ fn scoped_page_depth_ceiling_preserves_detached_leaf_and_later_sibling() {
         .join()
         .unwrap();
 }
+
+#[test]
+fn excess_scoped_page_preserves_statement_in_its_same_parent() {
+    std::thread::Builder::new()
+        .stack_size(2 * 1024 * 1024)
+        .spawn(|| {
+            // Scope + 255 media blocks admit depth256. Page is depth257;
+            // its rejected block cannot consume the following statement.
+            let source = format!(
+                "@scope{{{}@page{{margin:0}}@layer kept;{}}}.after{{color:red}}",
+                "@media all{".repeat(255),
+                "}".repeat(255)
+            );
+            let report = parse_sheet(&source);
+            let [diagnostic] = report.diagnostics() else {
+                panic!(
+                    "one excess Page resource diagnostic: {:?}",
+                    report.diagnostics()
+                )
+            };
+            assert_eq!(diagnostic.error().code(), CssErrorCode::NestingLimit);
+            assert_eq!(diagnostic.action(), CssRecoveryAction::StopAtNestingLimit);
+            assert_eq!(
+                diagnostic.span().start().byte_offset().value(),
+                source.find("@page").unwrap()
+            );
+            assert_eq!(
+                diagnostic.span().end().byte_offset().value(),
+                source.find("@layer").unwrap()
+            );
+            let [CssRule::Scope(scope), CssRule::Style(after)] = report.syntax().rules() else {
+                panic!("scope and original outside sibling retained")
+            };
+            assert_eq!(
+                after.position().byte_offset().value(),
+                source.find(".after").unwrap()
+            );
+            let mut rules = scope.rules().rules();
+            for _ in 0..255 {
+                let [CssScopedRule::Media(media)] = rules else {
+                    panic!("all admitted Media ancestors survive")
+                };
+                rules = media.rules().rules();
+            }
+            let [CssScopedRule::LayerStatement(layer)] = rules else {
+                panic!("same-parent Layer statement retained: {rules:?}")
+            };
+            assert_eq!(layer.names().names()[0].components(), &["kept".to_owned()]);
+            assert_eq!(
+                layer.position().byte_offset().value(),
+                source.find("@layer").unwrap()
+            );
+            assert_eq!(
+                validate_sheet(&source),
+                report.clone().into_validation_result()
+            );
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
