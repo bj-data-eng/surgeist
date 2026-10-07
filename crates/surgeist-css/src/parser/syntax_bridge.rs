@@ -232,6 +232,50 @@ pub(super) fn arena_error(
     .expect("arena failure belongs to this source")
 }
 
+// Native RuleBodyParser conflates semicolon and EOF only after admitting the
+// prelude. The callback marker preserves that phase; the shared source arena
+// supplies its actual termination without relexing or admitting another grammar.
+pub(super) fn rejected_at_rule_error<'i>(
+    source: &str,
+    recovery: &RecoveryState,
+    rejected_start: Option<usize>,
+    mut error: ParseError<'i, Error>,
+) -> ParseError<'i, Error> {
+    if !matches!(
+        &error.kind,
+        cssparser::ParseErrorKind::Basic(cssparser::BasicParseErrorKind::UnexpectedToken(
+            Token::Semicolon
+        ))
+    ) {
+        return error;
+    }
+    let Some(start) = rejected_start else {
+        return error;
+    };
+    let Ok(document) = recovery.syntax_document(source) else {
+        return error;
+    };
+    let Some(mut cursor) = document.cursor_at_source(start) else {
+        return error;
+    };
+    let syntax::CursorItem::Node(node) = cursor.peek() else {
+        return error;
+    };
+    if !matches!(
+        document.nodes[node].token().kind(),
+        syntax::TokenKind::AtKeyword(_)
+    ) {
+        return error;
+    }
+    if matches!(
+        syntax::consume_at_rule(&mut cursor).termination,
+        RuleTermination::EndOfInput(_)
+    ) {
+        error.kind = cssparser::ParseErrorKind::Basic(cssparser::BasicParseErrorKind::EndOfInput);
+    }
+    error
+}
+
 pub(super) fn retain_statement_eof(
     source: &str,
     recovery: &RecoveryState,

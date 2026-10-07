@@ -851,7 +851,7 @@
         },
         "diagnostics": [
           {
-            "code": "unexpected_token",
+            "code": "unexpected_end",
             "action": "reject_input",
             "payload_relation": "recovery_ends_at"
           }
@@ -913,7 +913,7 @@
         },
         "diagnostics": [
           {
-            "code": "unexpected_token",
+            "code": "unexpected_end",
             "action": "reject_input",
             "payload_relation": "recovery_ends_at"
           }
@@ -1193,7 +1193,7 @@
         },
         "diagnostics": [
           {
-            "code": "unexpected_token",
+            "code": "unexpected_end",
             "action": "reject_input",
             "payload_relation": "recovery_ends_at"
           }

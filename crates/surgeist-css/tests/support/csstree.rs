@@ -3483,17 +3483,17 @@ mod tests {
             (
                 "atrule/atrule/media.json#/@media with unclosed parentheses is not an error",
                 "@media (foo:1",
-                "unexpected_token",
+                "unexpected_end",
             ),
             (
                 "atrule/atrule/media.json#/error/1",
                 "@media (foo:1) ~",
-                "unexpected_token",
+                "unexpected_end",
             ),
             (
                 "atrule/atrule/supports.json#/@supports with no block",
                 "@supports (flex: 1)",
-                "unexpected_token",
+                "unexpected_end",
             ),
         ];
         let mut mismatches = Vec::new();

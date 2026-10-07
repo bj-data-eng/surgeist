@@ -55,6 +55,7 @@ pub(super) fn parse_style_contents<'i, 't>(
         diagnostics: Vec::new(),
         recovery,
         qualified_resource_error: None,
+        rejected_at_rule_start: None,
         boundary: StyleRuleBoundary::None,
     };
     let mut declarations = Vec::new();
@@ -70,9 +71,11 @@ pub(super) fn parse_style_contents<'i, 't>(
         // errors. Preserve only typed resource failures for this one item so they
         // cannot become an ordinary declaration error or leak into the next item.
         items.parser.qualified_resource_error = None;
+        items.parser.rejected_at_rule_start = None;
         items.parser.boundary = StyleRuleBoundary::None;
         let item = items.next();
         let qualified_resource_error = items.parser.qualified_resource_error.take();
+        let rejected_at_rule_start = items.parser.rejected_at_rule_start.take();
         let Some(item) = item else {
             break;
         };
@@ -125,9 +128,17 @@ pub(super) fn parse_style_contents<'i, 't>(
                 }
             }
             Err((error, failed_unit)) => {
-                let error = qualified_resource_error
-                    .or(failed_block_error)
-                    .unwrap_or(error);
+                let error = if let Some(resource) = qualified_resource_error.or(failed_block_error)
+                {
+                    resource
+                } else {
+                    super::syntax_bridge::rejected_at_rule_error(
+                        source,
+                        &items.parser.recovery,
+                        rejected_at_rule_start,
+                        error,
+                    )
+                };
                 if let Some(diagnostic) = structural_rule_diagnostic(
                     source,
                     error,
@@ -204,6 +215,7 @@ struct NestedStyleRuleParser<'s> {
     diagnostics: Vec<crate::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
     qualified_resource_error: Option<ParseError<'s, Error>>,
+    rejected_at_rule_start: Option<usize>,
     boundary: StyleRuleBoundary,
 }
 
@@ -374,10 +386,14 @@ impl<'i> AtRuleParser<'i> for NestedStyleRuleParser<'i> {
         prelude: Self::Prelude,
         start: &ParserState,
     ) -> std::result::Result<Self::AtRule, ()> {
-        let NestedStyleAtRulePrelude::Layer(names) = prelude else {
+        let names = match prelude {
+            NestedStyleAtRulePrelude::Layer(names) => CssLayerNameList::try_new(names),
+            _ => None,
+        };
+        let Some(names) = names else {
+            self.rejected_at_rule_start = Some(start.position().byte_index());
             return Err(());
         };
-        let names = CssLayerNameList::try_new(names).ok_or(())?;
         let rule = CssRule::LayerStatement(CssLayerStatementRule::new(
             names,
             self.recovery.source_position(start.position().byte_index()),

@@ -1585,7 +1585,7 @@
       "clean": false,
       "diagnostics": [
         {
-          "error_code": "UnexpectedToken",
+          "error_code": "UnexpectedEnd",
           "error_byte_offset": 13,
           "recovery_byte_span": [
             0,
@@ -1607,7 +1607,7 @@
         },
         "diagnostics": [
           {
-            "code": "unexpected_token",
+            "code": "unexpected_end",
             "action": "reject_input",
             "payload_relation": "recovery_ends_at"
           }
@@ -1706,7 +1706,7 @@
       "clean": false,
       "diagnostics": [
         {
-          "error_code": "UnexpectedToken",
+          "error_code": "UnexpectedEnd",
           "error_byte_offset": 16,
           "recovery_byte_span": [
             0,
@@ -1728,7 +1728,7 @@
         },
         "diagnostics": [
           {
-            "code": "unexpected_token",
+            "code": "unexpected_end",
             "action": "reject_input",
             "payload_relation": "recovery_ends_at"
           }
@@ -2228,7 +2228,7 @@
       "clean": false,
       "diagnostics": [
         {
-          "error_code": "UnexpectedToken",
+          "error_code": "UnexpectedEnd",
           "error_byte_offset": 19,
           "recovery_byte_span": [
             0,
@@ -2250,7 +2250,7 @@
         },
         "diagnostics": [
           {
-            "code": "unexpected_token",
+            "code": "unexpected_end",
             "action": "reject_input",
             "payload_relation": "recovery_ends_at"
           }

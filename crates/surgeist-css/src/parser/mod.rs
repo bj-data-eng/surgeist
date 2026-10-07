@@ -3695,6 +3695,7 @@ fn parse_scoped_rule_list<'i, 't>(
         body,
         boundary: nesting::StyleRuleBoundary::None,
         qualified_resource_error: None,
+        rejected_at_rule_start: None,
     };
     let mut rules = Vec::new();
     let mut declarations = Vec::new();
@@ -3713,6 +3714,7 @@ fn parse_scoped_rule_list<'i, 't>(
         let progress = RecoveryProgress::record(items.input);
         items.parser.boundary = nesting::StyleRuleBoundary::None;
         items.parser.qualified_resource_error = None;
+        items.parser.rejected_at_rule_start = None;
         let item = if let Some((document, selected, next)) = &mut generic {
             let index = *next;
             *next += 1;
@@ -3732,6 +3734,7 @@ fn parse_scoped_rule_list<'i, 't>(
                 .map(|item| item.map_err(|(error, failed_unit)| (Box::new(error), failed_unit)))
         };
         let qualified_resource_error = items.parser.qualified_resource_error.take();
+        let rejected_at_rule_start = items.parser.rejected_at_rule_start.take();
         let Some(item) = item else { break };
         let (failed_at_block, failed_block_error) = item
             .as_ref()
@@ -3771,9 +3774,17 @@ fn parse_scoped_rule_list<'i, 't>(
                 }
             }
             Err((error, failed_unit)) => {
-                let error = qualified_resource_error
-                    .or(failed_block_error)
-                    .unwrap_or(*error);
+                let error = if let Some(resource) = qualified_resource_error.or(failed_block_error)
+                {
+                    resource
+                } else {
+                    syntax_bridge::rejected_at_rule_error(
+                        source,
+                        &items.parser.recovery,
+                        rejected_at_rule_start,
+                        *error,
+                    )
+                };
                 if let Some(diagnostic) = structural_rule_diagnostic(
                     source,
                     error,
@@ -4064,6 +4075,7 @@ enum ScopedBlockItem {
 struct ScopedRuleParser<'s> {
     boundary: nesting::StyleRuleBoundary,
     qualified_resource_error: Option<ParseError<'s, Error>>,
+    rejected_at_rule_start: Option<usize>,
     has_style_ancestor: bool,
     body: ScopedBodyKind,
     source: &'s str,
@@ -4321,15 +4333,16 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
                 );
                 Ok(vec![CssScopedRule::CustomMedia(rule)])
             }
-            ScopedAtRulePrelude::Layer(names) => {
-                let names = CssLayerNameList::try_new(names).ok_or(())?;
-                Ok(vec![CssScopedRule::LayerStatement(
-                    CssScopedLayerStatementRule::new(
-                        names,
-                        self.recovery.source_position(start.position().byte_index()),
-                    ),
-                )])
-            }
+            ScopedAtRulePrelude::Layer(names) => CssLayerNameList::try_new(names)
+                .map(|names| {
+                    vec![CssScopedRule::LayerStatement(
+                        CssScopedLayerStatementRule::new(
+                            names,
+                            self.recovery.source_position(start.position().byte_index()),
+                        ),
+                    )]
+                })
+                .ok_or(()),
             ScopedAtRulePrelude::Page(_)
             | ScopedAtRulePrelude::CounterStyle(_)
             | ScopedAtRulePrelude::FontFace
@@ -4345,7 +4358,9 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
             | ScopedAtRulePrelude::Else(_, _)
             | ScopedAtRulePrelude::Scope(_) => Err(()),
         };
-        if result.is_ok() {
+        if result.is_err() {
+            self.rejected_at_rule_start = Some(start.position().byte_index());
+        } else {
             syntax_bridge::retain_statement_eof(
                 self.source,
                 &self.recovery,
