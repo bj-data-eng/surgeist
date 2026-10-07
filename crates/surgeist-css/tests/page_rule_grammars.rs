@@ -128,7 +128,7 @@ fn page_margin_declarations_accept_only_the_css2_page_domain() {
 }
 
 #[test]
-fn page_context_rejects_relative_modern_and_symbolic_margin_values_and_keeps_siblings() {
+fn page_context_keeps_inherit_and_rejects_unsupported_margin_values() {
     let source = concat!(
         "@page { ",
         "margin-top: 1em; margin-right: 2ex; margin-bottom: 3rem; ",
@@ -140,12 +140,20 @@ fn page_context_rejects_relative_modern_and_symbolic_margin_values_and_keeps_sib
     let [CssRule::Page(rule)] = report.syntax().rules() else {
         panic!("expected recovered page rule")
     };
-    assert_eq!(rule.declarations().len(), 1);
+    assert_eq!(rule.declarations().len(), 2);
     assert_eq!(
         rule.declarations()[0].known().unwrap().property(),
+        CssKnownProperty::Margin
+    );
+    assert_eq!(
+        rule.declarations()[0].known().unwrap().global(),
+        Some(surgeist_css::CssGlobalKeyword::Inherit)
+    );
+    assert_eq!(
+        rule.declarations()[1].known().unwrap().property(),
         CssKnownProperty::MarginBottom
     );
-    assert_eq!(report.diagnostics().len(), 7);
+    assert_eq!(report.diagnostics().len(), 6);
     assert!(report.diagnostics().iter().all(|diagnostic| {
         diagnostic.error().code() == CssErrorCode::InvalidPropertyValue
             && diagnostic.action() == CssRecoveryAction::DropDeclaration
