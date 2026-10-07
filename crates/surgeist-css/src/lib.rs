@@ -1199,6 +1199,11 @@
 //! general-enclosed fallback syntax. `||`, unselected Selectors 4 pseudo-classes and
 //! pseudo-elements, and syntax outside the named extension rows remain outside the typed subset.
 //! These nodes describe authored tests; the crate never evaluates whether a condition matches.
+//! `font-tech()` retains one shared [`CssFontTechHint`], `font-format()` retains
+//! the distinct keyword or string [`CssFontFormat`], and `at-rule()` retains a
+//! genuine at-keyword argument through [`CssSupportsAtRule`]. Unknown names and
+//! `@charset` remain authored predicates. Balanced invalid arguments use the
+//! general-enclosed fallback; lexical and resource failures remain terminal.
 //!
 //! ```
 //! use surgeist_css::{CssRule, CssSupportsConditionKind, parse_sheet};
@@ -1676,7 +1681,7 @@ pub use container_style::*;
 mod when;
 pub use when::*;
 mod supports;
-pub use supports::CssSupportsConstructionError;
+pub use supports::{CssSupportsAtRule, CssSupportsConstructionError};
 mod cssom_rule_serialization;
 mod media;
 mod named_supports_serialization;

@@ -683,13 +683,15 @@ fn parse_font_tech_hints<'i, 't>(
     loop {
         let location = input.current_source_location();
         let ident = input.expect_ident_cloned().map_err(basic)?;
-        hints.push(font_tech_hint_from_str(ident.as_ref()).ok_or_else(|| {
-            unsupported_value_at(
-                location,
-                None,
-                format!("unsupported font technology hint `{ident}`"),
-            )
-        })?);
+        hints.push(
+            CssFontTechHint::from_ascii_name(ident.as_bytes()).ok_or_else(|| {
+                unsupported_value_at(
+                    location,
+                    None,
+                    format!("unsupported font technology hint `{ident}`"),
+                )
+            })?,
+        );
 
         if input.is_exhausted() {
             break;
@@ -712,23 +714,6 @@ fn parse_font_tech_hints<'i, 't>(
         ))
     } else {
         Ok(hints)
-    }
-}
-
-fn font_tech_hint_from_str(value: &str) -> Option<CssFontTechHint> {
-    match value.to_ascii_lowercase().as_str() {
-        "variations" => Some(CssFontTechHint::Variations),
-        "palettes" => Some(CssFontTechHint::Palettes),
-        "color-colrv0" => Some(CssFontTechHint::ColorCOLRv0),
-        "color-colrv1" => Some(CssFontTechHint::ColorCOLRv1),
-        "color-svg" => Some(CssFontTechHint::ColorSVG),
-        "color-sbix" => Some(CssFontTechHint::ColorSbix),
-        "color-cbdt" => Some(CssFontTechHint::ColorCBDT),
-        "features-opentype" => Some(CssFontTechHint::FeaturesOpenType),
-        "features-aat" => Some(CssFontTechHint::FeaturesAAT),
-        "features-graphite" => Some(CssFontTechHint::FeaturesGraphite),
-        "incremental" => Some(CssFontTechHint::Incremental),
-        _ => None,
     }
 }
 

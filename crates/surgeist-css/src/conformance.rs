@@ -2929,7 +2929,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 767] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 770] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -7346,6 +7346,27 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 767] = [
         "named supports condition reference",
         X_CONDITIONAL5,
         "#typedef-supports-decl,#typedef-supports-condition-name",
+    ),
+    CssFeatureMetadata::complete(
+        "ext.supports.font-tech",
+        CssFeatureKind::Value,
+        "font-tech() authored single-technology support predicate",
+        X_CONDITIONAL5,
+        "#typedef-supports-font-tech-fn",
+    ),
+    CssFeatureMetadata::complete(
+        "ext.supports.font-format",
+        CssFeatureKind::Value,
+        "font-format() authored single keyword or string support predicate",
+        X_CONDITIONAL5,
+        "#typedef-supports-font-format-fn",
+    ),
+    CssFeatureMetadata::complete(
+        "ext.supports.at-rule",
+        CssFeatureKind::Value,
+        "at-rule() authored single at-keyword support predicate",
+        X_CONDITIONAL5,
+        "#typedef-supports-at-rule-fn",
     ),
     CssFeatureMetadata::partial(
         "ext.supports.selector",

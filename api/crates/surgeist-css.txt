@@ -4942,7 +4942,10 @@ pub surgeist_css::CssSupportStatus::Partial
 pub surgeist_css::CssSupportStatus::RecognizedUnsupported
 #[non_exhaustive] pub enum surgeist_css::CssSupportsConditionKind
 pub surgeist_css::CssSupportsConditionKind::And(surgeist_css::CssSupportsConditionList)
+pub surgeist_css::CssSupportsConditionKind::AtRule(surgeist_css::CssSupportsAtRule)
 pub surgeist_css::CssSupportsConditionKind::Declaration(alloc::boxed::Box<surgeist_css::CssSupportsDeclaration>)
+pub surgeist_css::CssSupportsConditionKind::FontFormat(surgeist_css::CssFontFormat)
+pub surgeist_css::CssSupportsConditionKind::FontTech(surgeist_css::CssFontTechHint)
 pub surgeist_css::CssSupportsConditionKind::GeneralEnclosed(surgeist_css::CssGeneralEnclosed)
 pub surgeist_css::CssSupportsConditionKind::Named(surgeist_css::CssSupportsConditionName)
 pub surgeist_css::CssSupportsConditionKind::Not(alloc::boxed::Box<surgeist_css::CssSupportsCondition>)
@@ -11299,6 +11302,12 @@ pub surgeist_css::CssStylesheetParseOptions::location: core::option::Option<surg
 pub struct surgeist_css::CssSubstitutionDependentValue
 impl surgeist_css::CssSubstitutionDependentValue
 pub fn surgeist_css::CssSubstitutionDependentValue::as_css(&self) -> &str
+pub struct surgeist_css::CssSupportsAtRule
+impl surgeist_css::CssSupportsAtRule
+pub const fn surgeist_css::CssSupportsAtRule::component(&self) -> &surgeist_css::CssComponentValue
+pub fn surgeist_css::CssSupportsAtRule::name(&self) -> &str
+pub const fn surgeist_css::CssSupportsAtRule::origin(&self) -> &surgeist_css::CssValueOrigin
+pub const fn surgeist_css::CssSupportsAtRule::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
 pub struct surgeist_css::CssSupportsAtRuleTest
 impl surgeist_css::CssSupportsAtRuleTest
 pub fn surgeist_css::CssSupportsAtRuleTest::at_keyword(&self) -> &surgeist_css::CssComponentValue

@@ -331,7 +331,8 @@ impl CssFontFaceUrlSource {
     }
 }
 
-/// The distinct authored keyword and string productions of a font format hint.
+/// The distinct authored keyword and string productions of a font format.
+/// Used by font source hints and `font-format()` supports predicates.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontFormat {
@@ -350,10 +351,11 @@ impl CssFontFormat {
     }
 }
 
-/// One authored string from a font source `format()` hint.
+/// One authored string from a font source hint or a `font-format()` predicate.
 ///
 /// Empty and unrecognized strings remain authored values. This type does not
-/// determine whether a resource loader recognizes or supports the format.
+/// determine whether a resource loader recognizes or a processor supports the
+/// format. Support predicates retain strings separately from keyword arguments.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssFontFormatString {
     value: String,
@@ -528,6 +530,7 @@ impl CssUnicodeRange {
     }
 }
 
+/// The finite keyword vocabulary shared by font hints and support predicates.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontFormatHint {
@@ -576,6 +579,7 @@ impl CssFontFormatHint {
     }
 }
 
+/// The finite technology vocabulary shared by font hints and support predicates.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontTechHint {
@@ -590,4 +594,33 @@ pub enum CssFontTechHint {
     FeaturesAAT,
     FeaturesGraphite,
     Incremental,
+}
+impl CssFontTechHint {
+    pub(crate) fn from_ascii_name(value: &[u8]) -> Option<Self> {
+        if value.eq_ignore_ascii_case(b"variations") {
+            Some(Self::Variations)
+        } else if value.eq_ignore_ascii_case(b"palettes") {
+            Some(Self::Palettes)
+        } else if value.eq_ignore_ascii_case(b"color-colrv0") {
+            Some(Self::ColorCOLRv0)
+        } else if value.eq_ignore_ascii_case(b"color-colrv1") {
+            Some(Self::ColorCOLRv1)
+        } else if value.eq_ignore_ascii_case(b"color-svg") {
+            Some(Self::ColorSVG)
+        } else if value.eq_ignore_ascii_case(b"color-sbix") {
+            Some(Self::ColorSbix)
+        } else if value.eq_ignore_ascii_case(b"color-cbdt") {
+            Some(Self::ColorCBDT)
+        } else if value.eq_ignore_ascii_case(b"features-opentype") {
+            Some(Self::FeaturesOpenType)
+        } else if value.eq_ignore_ascii_case(b"features-aat") {
+            Some(Self::FeaturesAAT)
+        } else if value.eq_ignore_ascii_case(b"features-graphite") {
+            Some(Self::FeaturesGraphite)
+        } else if value.eq_ignore_ascii_case(b"incremental") {
+            Some(Self::Incremental)
+        } else {
+            None
+        }
+    }
 }

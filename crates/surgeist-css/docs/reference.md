@@ -6269,6 +6269,60 @@ Bad string and URL tokens cannot enter either branch. These distinctions follow
 the selected [Conditional Rules 3 grammar](https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/#at-supports);
 they do not evaluate whether the renderer supports a declaration.
 
+#### Font and at-rule supports predicates
+
+[Conditional Rules 5](https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#at-supports-ext)
+adds three typed function operands beside declaration, named and selector tests.
+The same supports grammar serves checked condition construction, ordinary,
+scoped and style-body groups, and import `supports()` clauses. Function names and
+font keywords match without ASCII case sensitivity; original spelling, escapes,
+comments, grouping and delimiter origins remain in the condition's lexical root.
+
+`CssSupportsConditionKind::FontTech` holds one `CssFontTechHint`. The shared
+[Fonts 4 technology vocabulary](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-tech-values)
+admits `features-opentype`, `features-aat`, `features-graphite`, `color-COLRv0`,
+`color-COLRv1`, `color-SVG`, `color-sbix`, `color-CBDT`, `variations`, `palettes`
+and `incremental`. A predicate accepts exactly one technology; the comma-list
+policy of a font source's `tech()` hint remains separate.
+
+`CssSupportsConditionKind::FontFormat` holds the shared `CssFontFormat`.
+The [format grammar](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-format-values)
+admits one of `collection`, `embedded-opentype`, `opentype`, `svg`, `truetype`,
+`woff` or `woff2` as a `Keyword`, or one string as a `String`. Empty, unknown,
+known-looking and legacy-looking strings retain their decoded text and distinct
+string identity. `recognized_format()` supplies optional format recognition;
+it does not convert the predicate to a keyword or evaluate support.
+[Conditional 5's support definition](https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#support-definition-ext-fonts)
+separately prevents a string format from satisfying support. That truth rule,
+font availability and loading belong to consumers.
+
+`CssSupportsConditionKind::AtRule` holds a private-field `CssSupportsAtRule`.
+Its `component()` borrows the genuine argument token, `name()` borrows its
+decoded name without the `@`, and `origin()` and `position()` retain that token's
+provenance. Decoded authored case remains intact. Any genuine at-keyword,
+including an unknown name or `@charset`, is admitted. The
+[support definition](https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#support-definition-at-rules)
+is independent of authored admission; the crate does not consult a host or its
+own supported-rule list. The aggregate condition constructor owns admission;
+there is no separate public leaf constructor.
+
+Each function accepts exactly one significant argument token, ignoring whitespace
+and comments. Unknown font keywords, wrong token kinds, empty functions, comma
+lists and extra arguments retain validated `GeneralEnclosed` syntax. Lexical or
+resource failures cannot become opaque success, and checked construction rejects
+recovered component input. Existing boolean, named, selector and declaration
+precedence remains unchanged. The adopted `@when` grammar's `supports()` leaf
+still admits only its selected declaration production.
+
+Lexical and specified output use the existing condition provider: the retained
+function and components are charged once, and typed views add no synthetic tokens
+or graph charges. The authored capability records are `ext.supports.font-tech`,
+`ext.supports.font-format` and `ext.supports.at-rule`. The
+[classification tests](../tests/supports_predicate_classification.rs) exercise
+both checked and stylesheet fronts.
+
+#### Named supports conditions
+
 Conditional Rules 5 adds named conditions to the authored surface. A
 `@supports-condition --name { ... }` rule retains a checked
 `CssSupportsConditionName` and a `CssSupportsTestBody`; decoded names are
@@ -6316,6 +6370,8 @@ required parentheses. CSS does not activate definitions, choose a duplicate,
 evaluate support, or produce live CSSOM. The selected source is
 [Conditional Rules 5](https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#supports-condition-rule),
 with the narrow [extension-name and block-contents imports](../specs/catalog.json).
+
+#### Checked supports values
 
 Supports conditions and declarations can also be constructed from checked
 component values. `CssSupportsCondition::try_from_components` takes an explicit

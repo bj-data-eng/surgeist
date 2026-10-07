@@ -3,6 +3,52 @@ use crate::component_values::{CssCanonicalBuilder, CssCanonicalToken};
 use crate::*;
 use std::{fmt, ops::Range, sync::Arc};
 
+/// One genuine at-keyword argument admitted by an authored `at-rule()` predicate.
+///
+/// The enclosing [`CssSupportsCondition`] owns grammar admission and retains the
+/// complete function. Unknown names and `@charset` remain symbolic arguments;
+/// this type does not determine whether a processor supports an at-rule.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssSupportsAtRule {
+    component: Box<CssComponentValue>,
+}
+impl CssSupportsAtRule {
+    pub(crate) fn from_component(component: CssComponentValue) -> Option<Self> {
+        at_keyword_name(&component)?;
+        Some(Self {
+            component: Box::new(component),
+        })
+    }
+
+    /// Returns the actual argument token, with its original spelling and origin.
+    #[must_use]
+    pub const fn component(&self) -> &CssComponentValue {
+        &self.component
+    }
+
+    /// Returns the decoded authored name without ASCII case normalization.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        at_keyword_name(self.component()).expect("checked at-keyword argument")
+    }
+
+    #[must_use]
+    pub const fn origin(&self) -> &CssValueOrigin {
+        self.component().origin()
+    }
+
+    #[must_use]
+    pub const fn position(&self) -> Option<CssSourcePosition> {
+        crate::media::parsed_position(self.origin())
+    }
+}
+fn at_keyword_name(component: &CssComponentValue) -> Option<&str> {
+    match component.view() {
+        CssComponentValueRef::Token(CssValueTokenRef::AtKeyword(name)) => Some(name),
+        _ => None,
+    }
+}
+
 /// A supports grammar, recovered-input, or resource construction failure.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]

@@ -8,6 +8,9 @@ use cssparser::{ParseError, Parser};
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[crate::CssFeatureId] = &[
     crate::CssFeatureId::new("ext.supports.general-enclosed"),
     crate::CssFeatureId::new("ext.supports.named"),
+    crate::CssFeatureId::new("ext.supports.font-tech"),
+    crate::CssFeatureId::new("ext.supports.font-format"),
+    crate::CssFeatureId::new("ext.supports.at-rule"),
 ];
 
 pub(super) static IMPLEMENTED_SELECTORS: &[crate::CssFeatureId] =
@@ -334,6 +337,8 @@ fn operand(
                     }
                     _ => enclosed(value)?,
                 }
+            } else if let Some(predicate) = function_predicate(function) {
+                predicate
             } else {
                 enclosed(value)?
             }
@@ -345,6 +350,41 @@ fn operand(
         lexical,
         SupportsAuthoredForm::Condition,
     ))
+}
+// Keep leaf assembly outside the recursive operand frame. The lexical condition
+// already owns validation, delimiters and output; these are transparent views.
+#[inline(never)]
+fn function_predicate(function: &CssFunctionValue) -> Option<CssSupportsConditionKind> {
+    let mut arguments = function
+        .values()
+        .items()
+        .iter()
+        .filter(|value| !trivia(value));
+    let argument = arguments.next()?;
+    if arguments.next().is_some() {
+        return None;
+    }
+    if function.name().eq_ignore_ascii_case("font-tech") {
+        return CssFontTechHint::from_ascii_name(ident(argument)?.as_bytes())
+            .map(CssSupportsConditionKind::FontTech);
+    }
+    if function.name().eq_ignore_ascii_case("font-format") {
+        let format = match argument.view() {
+            CssComponentValueRef::Token(CssValueTokenRef::Ident(name)) => {
+                CssFontFormat::Keyword(CssFontFormatHint::from_ascii_name(name.as_bytes())?)
+            }
+            CssComponentValueRef::Token(CssValueTokenRef::String(value)) => {
+                CssFontFormat::String(CssFontFormatString::new(value))
+            }
+            _ => return None,
+        };
+        return Some(CssSupportsConditionKind::FontFormat(format));
+    }
+    if function.name().eq_ignore_ascii_case("at-rule") {
+        return CssSupportsAtRule::from_component(argument.clone())
+            .map(CssSupportsConditionKind::AtRule);
+    }
+    None
 }
 fn enclosed(
     value: &CssComponentValue,

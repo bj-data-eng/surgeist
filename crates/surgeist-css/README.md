@@ -110,6 +110,13 @@ Normalization retains branch contexts and shared specified output uses cumulativ
 limits. See [authored when and else groups](docs/reference.md#authored-when-and-else-groups)
 for the adopted source profile and literal CSSOM availability.
 
+Authored `@supports` and import conditions classify `font-tech()`,
+`font-format()` and `at-rule()` predicates through the same checked grammar.
+They reuse the font vocabulary, preserve format strings and actual at-keyword
+arguments, and remain symbolic through lexical and specified output. See
+[supports predicates](docs/reference.md#font-and-at-rule-supports-predicates)
+for exact argument admission and opaque fallback.
+
 Checked `CssBackgroundLayer` and `CssBackground` construction retains authored
 omissions and enforces size/position and final-color constraints. Intrinsic
 `background` expansion supplies all eight longhands with per-layer schema
