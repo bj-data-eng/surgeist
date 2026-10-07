@@ -838,6 +838,8 @@ pub(super) enum GroupKind {
     Scope,
     Style,
     Component,
+    // A genuine root brace with body semantics supplied by its direct front.
+    FragmentBody,
     Other,
 }
 
@@ -853,6 +855,7 @@ impl GroupKind {
             Self::Scope => "baseline.rule.scope",
             Self::Style => "baseline.rule.style",
             Self::Component => "css.declaration",
+            Self::FragmentBody => "css.block",
             Self::Other => "css.qualified-rule",
         }
     }
@@ -911,6 +914,7 @@ pub(super) fn preflight_structural_nesting(
     root_style_context: bool,
     root_style_ancestor: bool,
     root_list_context: StructuralListContext,
+    fragment_body: Option<StructuralListContext>,
 ) -> Option<StructuralPreflight> {
     // Restarting cssparser at each verified token boundary exposes opening and
     // closing tokens without calling `parse_nested_block`; comments, strings,
@@ -990,7 +994,18 @@ pub(super) fn preflight_structural_nesting(
             .last()
             .and_then(|unit_start| unit_start.map(|unit| unit.start))
             .unwrap_or(token_start);
-        let group = group_kind(source, unit_start, token_start);
+        // Only an actual prelude-free root brace can be a body
+        // fragment. Existing rule/style callers have no override. Descendants
+        // retain classification from their genuine authored preludes.
+        let is_fragment_root = fragment_body.is_some()
+            && groups.is_empty()
+            && frames.is_empty()
+            && unit_start == token_start;
+        let group = if is_fragment_root {
+            GroupKind::FragmentBody
+        } else {
+            group_kind(source, unit_start, token_start)
+        };
         if matches!(group, GroupKind::Component) {
             frames.push(StructuralFrame {
                 block: opening,
@@ -1066,6 +1081,7 @@ pub(super) fn preflight_structural_nesting(
             | GroupKind::Else
             | GroupKind::Scope
             | GroupKind::Component
+            | GroupKind::FragmentBody
             | GroupKind::Other => Vec::new(),
         };
         // Scope changes the child grammar but does not erase style ancestry.
@@ -1083,6 +1099,7 @@ pub(super) fn preflight_structural_nesting(
             | GroupKind::When
             | GroupKind::Else
             | GroupKind::Scope
+            | GroupKind::FragmentBody
                 if !style_ancestry_starts.is_empty() =>
             {
                 let mut starts = style_ancestry_starts;
@@ -1091,7 +1108,9 @@ pub(super) fn preflight_structural_nesting(
             }
             _ => Vec::new(),
         };
-        let child_list_context = if matches!(group, GroupKind::Style | GroupKind::Scope)
+        let child_list_context = if is_fragment_root {
+            fragment_body.expect("the genuine root has a supplied body role")
+        } else if matches!(group, GroupKind::Style | GroupKind::Scope)
             || !child_style_context_starts.is_empty()
             || !child_style_ancestry_starts.is_empty()
         {

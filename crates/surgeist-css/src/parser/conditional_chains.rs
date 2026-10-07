@@ -9,7 +9,7 @@ use std::ops::Range;
 
 pub(super) fn sheet(source: &str, report: CssParseReport<CssSheet>) -> CssParseReport<CssSheet> {
     let (mut sheet, mut diagnostics) = report.into_parts();
-    admit(
+    completed_list(
         source,
         CssParserRuleChildrenMut::Ordinary(sheet.rules_mut()),
         &mut diagnostics,
@@ -37,7 +37,7 @@ pub(super) fn rule(
         return CssParseReport::new(None, vec![diagnostic]);
     }
     if let Some(children) = rule.parser_children_mut() {
-        admit(source, children, &mut diagnostics);
+        completed_list(source, children, &mut diagnostics);
     }
     CssParseReport::new(Some(rule), diagnostics)
 }
@@ -46,13 +46,21 @@ pub(super) fn style_block(
     mut block: CssStyleBlock,
     mut diagnostics: Vec<CssRecoveryDiagnostic>,
 ) -> CssParseReport<Option<CssStyleBlock>> {
-    admit(
+    completed_list(
         source,
         CssParserRuleChildrenMut::Ordinary(block.rules_mut()),
         &mut diagnostics,
     );
     CssParseReport::new(Some(block), diagnostics)
 }
+pub(super) fn completed_list(
+    source: &str,
+    list: CssParserRuleChildrenMut<'_>,
+    diagnostics: &mut Vec<CssRecoveryDiagnostic>,
+) {
+    admit(source, list, diagnostics);
+}
+
 fn admit(
     source: &str,
     list: CssParserRuleChildrenMut<'_>,

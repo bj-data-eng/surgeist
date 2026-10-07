@@ -86,40 +86,278 @@ fn real_brace_block<T: Send>(
     bounded(source, || {
         let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default())
             .with_parser_context(parser_context);
-        let working_source = crate::tokenization::prepare(source);
-        let mut parser_input = ParserInput::new(&working_source);
-        let mut input = Parser::new(&mut parser_input);
-        let mut diagnostics = Vec::new();
-        let result = (|| {
-            input.skip_whitespace();
-            let start = input.position().byte_index();
-            input.expect_curly_bracket_block()?;
-            let body = input.parse_nested_block(|input| {
-                let mut depth = state.enter_rule_block(source, input, production)?;
-                // The entered native owner admits each unit before collecting its
-                // components. Whole-body component admission would erase recovery
-                // partitions and lose valid neighbors of a failed unit.
-                let body = parse_body(source, input, &mut diagnostics, state.clone())?;
-                depth.retain();
-                Ok(body)
-            })?;
-            let end = input.position().byte_index();
-            input.expect_exhausted()?;
-            let origin = CssParsedOrigin::from_range(state.source_snapshot(), start..end)
-                .expect("consumed block boundaries belong to the original source");
-            Ok(crate::CssBlockFragment::from_parsed(body, origin))
-        })();
-        match result {
-            Ok(fragment) => {
-                diagnostics.extend(state.take_implicit_closure_diagnostics(source));
-                crate::CssParseReport::new(Some(fragment), diagnostics)
-            }
-            Err(error) => crate::CssParseReport::new(
-                None,
-                vec![reject(source, error, crate::CssRecoveryAction::RejectInput)],
-            ),
-        }
+        real_brace_block_inner(source, production, state, parse_body)
     })
+}
+
+fn real_brace_block_inner<T>(
+    source: &str,
+    production: &'static str,
+    state: RecoveryState,
+    parse_body: impl for<'i, 't> FnOnce(
+        &'i str,
+        &mut Parser<'i, 't>,
+        &mut Vec<crate::CssRecoveryDiagnostic>,
+        RecoveryState,
+    ) -> Result<T, ParseError<'i, Error>>,
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<T>>> {
+    let working_source = crate::tokenization::prepare(source);
+    let mut parser_input = ParserInput::new(&working_source);
+    let mut input = Parser::new(&mut parser_input);
+    let mut diagnostics = Vec::new();
+    let result = (|| {
+        input.skip_whitespace();
+        let start = input.position().byte_index();
+        input.expect_curly_bracket_block()?;
+        let body = input.parse_nested_block(|input| {
+            let mut depth = state.enter_rule_block(source, input, production)?;
+            // The entered native owner admits each unit before collecting its
+            // components. Whole-body component admission would erase recovery
+            // partitions and lose valid neighbors of a failed unit.
+            let body = parse_body(source, input, &mut diagnostics, state.clone())?;
+            depth.retain();
+            Ok(body)
+        })?;
+        let end = input.position().byte_index();
+        input.expect_exhausted()?;
+        let origin = CssParsedOrigin::from_range(state.source_snapshot(), start..end)
+            .expect("consumed block boundaries belong to the original source");
+        Ok(crate::CssBlockFragment::from_parsed(body, origin))
+    })();
+    match result {
+        Ok(fragment) => {
+            diagnostics.extend(state.take_implicit_closure_diagnostics(source));
+            crate::CssParseReport::new(Some(fragment), diagnostics)
+        }
+        Err(error) => crate::CssParseReport::new(
+            None,
+            vec![reject(source, error, crate::CssRecoveryAction::RejectInput)],
+        ),
+    }
+}
+
+/// Parses one genuine curly block as an ordinary inner rule list.
+///
+/// Supplied namespace bindings apply to actual child selectors. Bare declarations
+/// have rule-list recovery; imports and namespace statements have no inner-list
+/// permission. No enclosing rule or selector is invented. Empty bodies are valid.
+/// Missing/wrong braces or trailing nontrivia reject the whole input. Native unit
+/// recovery retains admitted siblings; the actual outer brace counts toward the
+/// fixed 256-depth limit. Conditional adjacency is checked on original source
+/// after bounded reconstruction. Implicit closures and lexical recovery remain
+/// diagnostics and fail clean-report validation. Free parsing uses default context.
+#[must_use]
+pub fn parse_group_block(
+    source: &str,
+    namespaces: &CssNamespaceContext,
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssRuleList>>> {
+    parse_group_block_with_context(source, namespaces, crate::CssParserContext::default())
+}
+
+pub(crate) fn parse_group_block_with_context(
+    source: &str,
+    namespaces: &CssNamespaceContext,
+    parser_context: crate::CssParserContext,
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssRuleList>>> {
+    bounded(source, || {
+        let snapshot = CssSourceSnapshot::new(source);
+        let (syntax, mut diagnostics) = parse_bounded(
+            source,
+            &snapshot,
+            0,
+            BoundedParseContext::GroupBlock,
+            StyleContextCaptures::with_namespaces(namespaces),
+            parser_context,
+        )
+        .into_parts();
+        let BoundedParseSyntax::GroupBlock(block) = syntax else {
+            unreachable!("ordinary group replay preserves its genuine block carrier")
+        };
+        let block = block.map(|block| {
+            let (mut body, origin) = block.into_parts();
+            conditional_chains::completed_list(
+                source,
+                crate::syntax::CssParserRuleChildrenMut::Ordinary(body.rules_mut()),
+                &mut diagnostics,
+            );
+            crate::CssBlockFragment::from_parsed(body, origin)
+        });
+        crate::CssParseReport::new(block, diagnostics)
+    })
+}
+
+pub(super) fn parse_group_block_inner(
+    source: &str,
+    recovery: RecoveryState,
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssRuleList>>> {
+    real_brace_block_inner(
+        source,
+        "css.rule-list",
+        recovery,
+        |source, input, diagnostics, recovery| {
+            let mut parsed = parse_nested_group_rules(source, input, recovery)?;
+            diagnostics.append(&mut parsed.diagnostics);
+            Ok(crate::CssRuleList::from_parsed(parsed.syntax))
+        },
+    )
+}
+
+/// Parses one genuine scope body with explicit actual style ancestry.
+///
+/// `Present` admits direct scoped declaration runs; `Absent` does not. Scope-body
+/// placement excludes Page rules. Supplied namespaces and default parser context
+/// reach the existing scoped provider. Boundaries, original provenance, unit
+/// recovery, conditional adjacency, depth and clean validation follow
+/// [`parse_group_block`]. No scope root, limit or parent selector is invented.
+#[must_use]
+pub fn parse_scope_block(
+    source: &str,
+    namespaces: &CssNamespaceContext,
+    ancestry: crate::CssStyleAncestor,
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<CssScopedRuleList>>> {
+    parse_scope_block_with_context(
+        source,
+        namespaces,
+        ancestry,
+        crate::CssParserContext::default(),
+    )
+}
+
+pub(crate) fn parse_scope_block_with_context(
+    source: &str,
+    namespaces: &CssNamespaceContext,
+    ancestry: crate::CssStyleAncestor,
+    parser_context: crate::CssParserContext,
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<CssScopedRuleList>>> {
+    scoped_block_with_context(
+        source,
+        namespaces,
+        ancestry,
+        ScopedBodyKind::Scope,
+        parser_context,
+    )
+}
+
+/// Parses an ordinary group body within a scope, with actual style ancestry.
+///
+/// Unlike a scope body, an ordinary scoped group without a style ancestor admits
+/// Page rules. With `Present`, direct declarations inherit style permission and
+/// global-only rules retain the scoped owner's exclusions. Source boundaries,
+/// namespaces, recovery, limits and clean validation follow [`parse_scope_block`].
+/// No enclosing group, scope or parent selector is constructed.
+#[must_use]
+pub fn parse_scoped_group_block(
+    source: &str,
+    namespaces: &CssNamespaceContext,
+    ancestry: crate::CssStyleAncestor,
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<CssScopedRuleList>>> {
+    parse_scoped_group_block_with_context(
+        source,
+        namespaces,
+        ancestry,
+        crate::CssParserContext::default(),
+    )
+}
+
+pub(crate) fn parse_scoped_group_block_with_context(
+    source: &str,
+    namespaces: &CssNamespaceContext,
+    ancestry: crate::CssStyleAncestor,
+    parser_context: crate::CssParserContext,
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<CssScopedRuleList>>> {
+    scoped_block_with_context(
+        source,
+        namespaces,
+        ancestry,
+        ScopedBodyKind::OrdinaryGroup,
+        parser_context,
+    )
+}
+
+fn scoped_block_with_context(
+    source: &str,
+    namespaces: &CssNamespaceContext,
+    ancestry: crate::CssStyleAncestor,
+    body: ScopedBodyKind,
+    parser_context: crate::CssParserContext,
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<CssScopedRuleList>>> {
+    bounded(source, || {
+        let snapshot = CssSourceSnapshot::new(source);
+        let has_style_ancestor = matches!(ancestry, crate::CssStyleAncestor::Present);
+        let (syntax, mut diagnostics) = parse_bounded(
+            source,
+            &snapshot,
+            0,
+            BoundedParseContext::ScopedBlock {
+                has_style_ancestor,
+                body,
+            },
+            StyleContextCaptures::with_namespaces(namespaces),
+            parser_context,
+        )
+        .into_parts();
+        let BoundedParseSyntax::ScopedBlock(block) = syntax else {
+            unreachable!("scoped replay preserves its genuine block carrier")
+        };
+        let block = block.map(|block| {
+            let (mut body, origin) = block.into_parts();
+            conditional_chains::completed_list(
+                source,
+                crate::syntax::CssParserRuleChildrenMut::Scoped(body.rules_mut()),
+                &mut diagnostics,
+            );
+            crate::CssBlockFragment::from_parsed(body, origin)
+        });
+        crate::CssParseReport::new(block, diagnostics)
+    })
+}
+
+pub(super) fn parse_scoped_block_inner(
+    source: &str,
+    recovery: RecoveryState,
+    has_style_ancestor: bool,
+    body: ScopedBodyKind,
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<CssScopedRuleList>>> {
+    let production = match body {
+        ScopedBodyKind::Scope => "css.scope-block",
+        ScopedBodyKind::OrdinaryGroup => "css.scoped-group-block",
+    };
+    real_brace_block_inner(
+        source,
+        production,
+        recovery,
+        |source, input, diagnostics, recovery| {
+            let mut parsed =
+                parse_scoped_rule_list(source, input, recovery, has_style_ancestor, body)?;
+            diagnostics.append(&mut parsed.diagnostics);
+            Ok(parsed.syntax)
+        },
+    )
+}
+
+/// Parses a genuine curly block of recovering named-supports test candidates.
+///
+/// The original-source owner partitions declaration runs, generic qualified
+/// tests and generic at-rule tests without inventing a name or prelude. Empty
+/// bodies are valid. A statement ending at the real body close is admitted under
+/// the selected modern block-contents source; missing braces and lexical closures
+/// remain independently diagnosed. Whole-body native resource admission precedes
+/// checked promotion and counts the actual brace toward the 256-depth ceiling.
+/// Wrong/missing openers and trailing nontrivia reject the whole input. Retained
+/// recovery fails clean validation; checked reuse still rejects recovered syntax.
+#[must_use]
+pub fn parse_supports_test_block(
+    source: &str,
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssSupportsTestBody>>> {
+    real_brace_block(
+        source,
+        "ext.rule.supports-condition",
+        crate::CssParserContext::default(),
+        |source, input, diagnostics, recovery| {
+            named_supports::parse_body(source, input, diagnostics, &recovery)
+                .map(|(body, _, _)| body)
+        },
+    )
 }
 
 /// Parses exactly one genuine curly block of `@font-face` descriptors.

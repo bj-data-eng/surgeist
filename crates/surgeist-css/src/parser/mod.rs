@@ -46,16 +46,19 @@ pub use fragments::{
     parse_font_face_block, parse_font_face_descriptor_value, parse_font_feature_display_value,
     parse_font_feature_value_block, parse_font_feature_value_indexes,
     parse_font_feature_values_block, parse_font_palette_descriptor_value,
-    parse_font_palette_values_block, parse_keyframe_declaration_block, parse_keyframes_block,
-    parse_media_query, parse_media_query_list, parse_page_block, parse_property_value_text,
-    parse_property_value_text_for_grammar, parse_relative_selector_list, parse_rule,
-    parse_selector, parse_selector_list, parse_style_block,
+    parse_font_palette_values_block, parse_group_block, parse_keyframe_declaration_block,
+    parse_keyframes_block, parse_media_query, parse_media_query_list, parse_page_block,
+    parse_property_value_text, parse_property_value_text_for_grammar, parse_relative_selector_list,
+    parse_rule, parse_scope_block, parse_scoped_group_block, parse_selector, parse_selector_list,
+    parse_style_block, parse_supports_test_block,
 };
 pub(crate) use fragments::{
-    parse_declaration_with_context, parse_keyframe_declaration_block_with_context,
-    parse_keyframes_block_with_context, parse_page_block_with_context,
-    parse_property_value_text_for_grammar_with_context, parse_property_value_text_with_context,
-    parse_rule_with_context, parse_style_block_with_context,
+    parse_declaration_with_context, parse_group_block_with_context,
+    parse_keyframe_declaration_block_with_context, parse_keyframes_block_with_context,
+    parse_page_block_with_context, parse_property_value_text_for_grammar_with_context,
+    parse_property_value_text_with_context, parse_rule_with_context,
+    parse_scope_block_with_context, parse_scoped_group_block_with_context,
+    parse_style_block_with_context,
 };
 mod color;
 mod color_adjustment;
@@ -721,6 +724,11 @@ enum BoundedParseContext {
     },
     OneRule,
     StyleBlock,
+    GroupBlock,
+    ScopedBlock {
+        has_style_ancestor: bool,
+        body: ScopedBodyKind,
+    },
     Style,
     Scoped {
         has_style_ancestor: bool,
@@ -734,6 +742,8 @@ enum BoundedParseSyntax {
     Rules(CssSheet),
     OneRule(Option<CssRule>),
     StyleBlock(Option<CssStyleBlock>),
+    GroupBlock(Option<crate::CssBlockFragment<crate::CssRuleList>>),
+    ScopedBlock(Option<crate::CssBlockFragment<CssScopedRuleList>>),
 }
 
 fn bounded_report<T>(
@@ -750,8 +760,18 @@ impl BoundedParseContext {
             Self::Rules { top_level } => StructuralListContext::Rules {
                 top_level: *top_level,
             },
-            Self::OneRule | Self::StyleBlock => StructuralListContext::Rules { top_level: false },
+            Self::OneRule | Self::StyleBlock | Self::GroupBlock => {
+                StructuralListContext::Rules { top_level: false }
+            }
             Self::Style
+            | Self::ScopedBlock {
+                has_style_ancestor: true,
+                ..
+            }
+            | Self::ScopedBlock {
+                body: ScopedBodyKind::Scope,
+                ..
+            }
             | Self::Scoped {
                 has_style_ancestor: true,
                 ..
@@ -761,6 +781,10 @@ impl BoundedParseContext {
                 ..
             } => StructuralListContext::BlockContents,
             Self::Scoped {
+                has_style_ancestor: false,
+                body: ScopedBodyKind::OrdinaryGroup,
+            }
+            | Self::ScopedBlock {
                 has_style_ancestor: false,
                 body: ScopedBodyKind::OrdinaryGroup,
             } => StructuralListContext::Rules { top_level: false },
@@ -774,6 +798,10 @@ impl BoundedParseContext {
         matches!(
             self,
             Self::Style
+                | Self::ScopedBlock {
+                    has_style_ancestor: true,
+                    ..
+                }
                 | Self::Scoped {
                     has_style_ancestor: true,
                     ..
@@ -854,6 +882,10 @@ fn parse_bounded_with_captures(
         let (syntax, mut diagnostics) = match context {
             BoundedParseContext::OneRule => (BoundedParseSyntax::OneRule(None), Vec::new()),
             BoundedParseContext::StyleBlock => (BoundedParseSyntax::StyleBlock(None), Vec::new()),
+            BoundedParseContext::GroupBlock => (BoundedParseSyntax::GroupBlock(None), Vec::new()),
+            BoundedParseContext::ScopedBlock { .. } => {
+                (BoundedParseSyntax::ScopedBlock(None), Vec::new())
+            }
             _ => {
                 let masked = mask_source_span(source, limit.unit_start, source.len());
                 parse_bounded_with_captures(
@@ -904,6 +936,11 @@ fn parse_bounded_with_captures(
         context.is_style(),
         context.has_style_ancestor(),
         context.list_context(),
+        matches!(
+            context,
+            BoundedParseContext::GroupBlock | BoundedParseContext::ScopedBlock { .. }
+        )
+        .then(|| context.list_context()),
     ) else {
         let recovery = RecoveryState::at_depth_with_snapshot(
             source,
@@ -924,6 +961,17 @@ fn parse_bounded_with_captures(
             BoundedParseContext::StyleBlock => bounded_report(
                 fragments::parse_style_block_inner(source, recovery),
                 BoundedParseSyntax::StyleBlock,
+            ),
+            BoundedParseContext::GroupBlock => bounded_report(
+                fragments::parse_group_block_inner(source, recovery),
+                BoundedParseSyntax::GroupBlock,
+            ),
+            BoundedParseContext::ScopedBlock {
+                has_style_ancestor,
+                body,
+            } => bounded_report(
+                fragments::parse_scoped_block_inner(source, recovery, has_style_ancestor, body),
+                BoundedParseSyntax::ScopedBlock,
             ),
             BoundedParseContext::Style => bounded_report(
                 parse_style_context_inner(source, recovery),
@@ -952,7 +1000,8 @@ fn parse_bounded_with_captures(
     // retain original byte/line coordinates, and the completed child syntax is
     // spliced back into its parser-produced enclosing groups.
     let scoped_body = match &context {
-        BoundedParseContext::Scoped { body, .. } => Some(*body),
+        BoundedParseContext::Scoped { body, .. }
+        | BoundedParseContext::ScopedBlock { body, .. } => Some(*body),
         _ => None,
     };
     let inherited_style_ancestor = context.has_style_ancestor();
@@ -1285,7 +1334,26 @@ fn bounded_parent_admitted(syntax: &BoundedParseSyntax, parents: &[StructuralPar
                 && matches!(root.kind, GroupKind::Style)
                 && admitted_rule_path(block.rules(), parents)
         }
-        BoundedParseSyntax::OneRule(None) | BoundedParseSyntax::StyleBlock(None) => false,
+        BoundedParseSyntax::GroupBlock(Some(block)) => {
+            let Some((root, parents)) = parents.split_first() else {
+                return true;
+            };
+            root.start == block.origin().span().start().byte_offset().value()
+                && matches!(root.kind, GroupKind::FragmentBody)
+                && admitted_rule_path(block.body().rules(), parents)
+        }
+        BoundedParseSyntax::ScopedBlock(Some(block)) => {
+            let Some((root, parents)) = parents.split_first() else {
+                return true;
+            };
+            root.start == block.origin().span().start().byte_offset().value()
+                && matches!(root.kind, GroupKind::FragmentBody)
+                && admitted_scoped_path(block.body().rules(), parents)
+        }
+        BoundedParseSyntax::OneRule(None)
+        | BoundedParseSyntax::StyleBlock(None)
+        | BoundedParseSyntax::GroupBlock(None)
+        | BoundedParseSyntax::ScopedBlock(None) => false,
     }
 }
 
@@ -1362,7 +1430,31 @@ fn splice_bounded_syntax(
                 block.origin().clone(),
             )))
         }
-        BoundedParseSyntax::OneRule(None) | BoundedParseSyntax::StyleBlock(None) => {
+        BoundedParseSyntax::GroupBlock(Some(block)) => {
+            let (_, parents) = parents
+                .split_first()
+                .expect("group replay retains its genuine root brace");
+            let rules = splice_rule_list(block.body().rules(), parents, child_start, child_rules);
+            BoundedParseSyntax::GroupBlock(Some(crate::CssBlockFragment::from_parsed(
+                crate::CssRuleList::from_parsed(rules),
+                block.origin().clone(),
+            )))
+        }
+        BoundedParseSyntax::ScopedBlock(Some(block)) => {
+            let (_, parents) = parents
+                .split_first()
+                .expect("scoped replay retains its genuine root brace");
+            let rules =
+                splice_scoped_rule_list(block.body().rules(), parents, child_start, child_rules);
+            BoundedParseSyntax::ScopedBlock(Some(crate::CssBlockFragment::from_parsed(
+                CssScopedRuleList::from_rules(rules),
+                block.origin().clone(),
+            )))
+        }
+        BoundedParseSyntax::OneRule(None)
+        | BoundedParseSyntax::StyleBlock(None)
+        | BoundedParseSyntax::GroupBlock(None)
+        | BoundedParseSyntax::ScopedBlock(None) => {
             unreachable!("rejected fragment roots cannot receive replayed descendants")
         }
     }

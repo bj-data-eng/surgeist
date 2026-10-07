@@ -168,6 +168,44 @@ impl CssParserContext {
     ) -> CssParseReport<Option<CssBlockFragment<CssDeclarationList>>> {
         crate::parser::parse_page_block_with_context(source, self)
     }
+    /// Parses an ordinary inner rule block with this declaration grammar context.
+    ///
+    /// Namespace bindings remain separate; boundaries and recovery match
+    /// [`parse_group_block`]. No enclosing style ancestry is supplied.
+    #[must_use]
+    pub fn parse_group_block(
+        self,
+        source: &str,
+        namespaces: &CssNamespaceContext,
+    ) -> CssParseReport<Option<CssBlockFragment<CssRuleList>>> {
+        crate::parser::parse_group_block_with_context(source, namespaces, self)
+    }
+    /// Parses a scope body with this context and explicit actual style ancestry.
+    ///
+    /// Direct declarations and children retain `self`; source and placement
+    /// rules match [`parse_scope_block`]. No scope prelude is invented.
+    #[must_use]
+    pub fn parse_scope_block(
+        self,
+        source: &str,
+        namespaces: &CssNamespaceContext,
+        ancestry: CssStyleAncestor,
+    ) -> CssParseReport<Option<CssBlockFragment<CssScopedRuleList>>> {
+        crate::parser::parse_scope_block_with_context(source, namespaces, ancestry, self)
+    }
+    /// Parses an ordinary group inside a scope with this declaration context.
+    ///
+    /// Explicit ancestry, namespace binding and Page placement follow
+    /// [`parse_scoped_group_block`]. Actual declarations retain `self`.
+    #[must_use]
+    pub fn parse_scoped_group_block(
+        self,
+        source: &str,
+        namespaces: &CssNamespaceContext,
+        ancestry: CssStyleAncestor,
+    ) -> CssParseReport<Option<CssBlockFragment<CssScopedRuleList>>> {
+        crate::parser::parse_scoped_group_block_with_context(source, namespaces, ancestry, self)
+    }
     /// Checks owned components with the selected property-name grammar.
     pub fn parse_property_value(
         self,

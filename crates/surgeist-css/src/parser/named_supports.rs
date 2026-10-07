@@ -77,6 +77,36 @@ pub(super) fn parse_rule<'i, 't>(
     diagnostics: &mut Vec<CssRecoveryDiagnostic>,
     recovery: &RecoveryState,
 ) -> Result<CssSupportsConditionRule, ParseError<'i, Error>> {
+    let (body, opening, closing) = parse_body(source, input, diagnostics, recovery)?;
+    let document = recovery
+        .syntax_document(source)
+        .map_err(|error| invalid_component_value(input.current_source_location(), error))?;
+    let mut at_cursor = document
+        .cursor_at_source(start.position().byte_index())
+        .expect("named at-keyword");
+    let CursorItem::Node(at_node) = at_cursor.consume() else {
+        unreachable!("named at-keyword node");
+    };
+    let at_keyword = promote(&document, &[at_node])
+        .map_err(|error| invalid_component_value(input.current_source_location(), error))?
+        .items()[0]
+        .origin()
+        .clone();
+    Ok(CssSupportsConditionRule::parsed(
+        prelude.name,
+        body,
+        at_keyword,
+        opening,
+        closing,
+    ))
+}
+
+pub(super) fn parse_body<'i, 't>(
+    source: &'i str,
+    input: &mut Parser<'i, 't>,
+    diagnostics: &mut Vec<CssRecoveryDiagnostic>,
+    recovery: &RecoveryState,
+) -> Result<(CssSupportsTestBody, CssValueOrigin, CssValueOrigin), ParseError<'i, Error>> {
     let body_start = input.position().byte_index();
     // Arena preparation may omit resource-invalid components. Actual current
     // source admission must therefore precede checked promotion of this body.
@@ -116,17 +146,6 @@ pub(super) fn parse_rule<'i, 't>(
             diagnostics.push(diagnostic);
         }
     }
-    let mut at_cursor = document
-        .cursor_at_source(start.position().byte_index())
-        .expect("named at-keyword");
-    let CursorItem::Node(at_node) = at_cursor.consume() else {
-        unreachable!("named at-keyword node");
-    };
-    let at_keyword = promote(&document, &[at_node])
-        .map_err(|error| invalid_component_value(input.current_source_location(), error))?
-        .items()[0]
-        .origin()
-        .clone();
     let mut nodes = document.lists[list].clone();
     let mut implicit = Vec::new();
     while let Some(node) = nodes.pop() {
@@ -149,13 +168,7 @@ pub(super) fn parse_rule<'i, 't>(
         }
     }
     recovery.retain_component_closures(implicit);
-    Ok(CssSupportsConditionRule::parsed(
-        prelude.name,
-        body,
-        at_keyword,
-        opening,
-        closing,
-    ))
+    Ok((body, opening, closing))
 }
 
 fn promote(
