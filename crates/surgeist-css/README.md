@@ -119,8 +119,11 @@ for exact argument admission and opaque fallback.
 
 Selectors canonicalize `:-webkit-autofill` to the standard Autofill identity and
 retain nonfunctional unknown `::-webkit-*` names as checked symbolic match-nothing
-pseudos. The shared grammar preserves originating compounds, ordered suffix
-attachments, explicit child permissions and cumulative specified output. See
+pseudos. The Pseudo 4 vocabulary includes checked Highlight names, FirstLetter
+Prefix/Suffix children, SearchText's nonfunctional Current suffix and the
+Placeholder, FileSelectorButton and DetailsContent identities. The shared grammar
+preserves originating compounds, ordered suffix attachments, explicit child
+permissions and cumulative specified output. See
 [pseudo-element attachment](docs/reference.md#pseudo-element-attachment-and-aliases)
 for the admitted matrix, required aliases and the draft's at-risk suffix status.
 

@@ -1,4 +1,4 @@
-use super::{CssNamespacePrefix, CssValueOrigin};
+use super::{CssCustomIdent, CssNamespacePrefix, CssValueOrigin};
 
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
@@ -607,6 +607,8 @@ pub enum CssPseudoClass {
     Link,
     Visited,
     Target,
+    /// The current search match, admitted after SearchText and element-backed pseudos.
+    Current,
     Dir(CssDirectionality),
     Lang(CssLanguageRangeList),
     Hover,
@@ -667,6 +669,7 @@ impl CssPseudoClass {
             | Self::Link
             | Self::Visited
             | Self::Target
+            | Self::Current
             | Self::Dir(_)
             | Self::Lang(_)
             | Self::Hover
@@ -1040,27 +1043,52 @@ pub enum CssPseudoElement {
     After,
     FirstLine,
     FirstLetter,
+    Prefix,
+    Suffix,
     Marker,
     Selection,
+    SearchText,
+    TargetText,
+    SpellingError,
+    GrammarError,
+    /// A case-preserving custom highlight name, without registry lookup.
+    Highlight(CssCustomIdent),
+    Placeholder,
     Backdrop,
+    FileSelectorButton,
+    DetailsContent,
     Slotted(CssCompoundSelectorArgument),
     Part(CssPartNameList),
     UnknownWebkit(CssUnknownWebkitPseudoElement),
 }
 
 impl CssPseudoElement {
-    pub(crate) fn is_element_backed(&self) -> bool {
-        matches!(self, Self::Part(_))
+    pub(crate) fn suffix_context(&self) -> CssPseudoSuffixContext {
+        match self {
+            Self::Part(_) | Self::FileSelectorButton | Self::DetailsContent => {
+                CssPseudoSuffixContext::ElementBacked
+            }
+            Self::SearchText => CssPseudoSuffixContext::SearchText,
+            _ => CssPseudoSuffixContext::Generic,
+        }
     }
 
     fn permits_child(&self, child: &Self) -> bool {
         match self {
-            Self::Part(_) => true,
+            Self::Part(_) | Self::FileSelectorButton | Self::DetailsContent => true,
             Self::Slotted(_) => matches!(
                 child,
-                Self::Before | Self::After | Self::Marker | Self::Part(_) | Self::Backdrop
+                Self::Before
+                    | Self::After
+                    | Self::Marker
+                    | Self::Placeholder
+                    | Self::Part(_)
+                    | Self::Backdrop
+                    | Self::FileSelectorButton
+                    | Self::DetailsContent
             ),
             Self::Before | Self::After => matches!(child, Self::Marker),
+            Self::FirstLetter => matches!(child, Self::Prefix | Self::Suffix),
             _ => false,
         }
     }
@@ -1107,7 +1135,7 @@ impl CssPseudoElementSequence {
                 }
                 CssPseudoElementSegment::PseudoClass(pseudo) => {
                     let element = current?;
-                    if !pseudo_is_valid_suffix(pseudo, element.is_element_backed(), true) {
+                    if !pseudo_is_valid_suffix(pseudo, element.suffix_context(), true) {
                         return None;
                     }
                 }
@@ -1124,6 +1152,47 @@ impl CssPseudoElementSequence {
     }
 }
 
+/// The pseudo-class set available at the most recent pseudo-element segment.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum CssPseudoSuffixContext {
+    Generic,
+    SearchText,
+    ElementBacked,
+}
+
+impl CssPseudoSuffixContext {
+    fn admits(self, pseudo: &CssPseudoClass) -> bool {
+        self == Self::ElementBacked
+            || matches!(
+                pseudo,
+                CssPseudoClass::Not(_)
+                    | CssPseudoClass::Is(_)
+                    | CssPseudoClass::Where(_)
+                    | CssPseudoClass::Hover
+                    | CssPseudoClass::Active
+                    | CssPseudoClass::Focus
+                    | CssPseudoClass::FocusVisible
+                    | CssPseudoClass::FocusWithin
+            )
+            || (self == Self::SearchText && matches!(pseudo, CssPseudoClass::Current))
+    }
+
+    /// Ordinary classes exclude Current, so ordinary and SearchText permissions
+    /// are incomparable. Has and compound restrictions remain separate proofs.
+    fn is_subset_of(receiver: Option<Self>, original: Option<Self>) -> bool {
+        matches!(
+            (receiver, original),
+            (Some(Self::Generic), _)
+                | (None, None | Some(Self::ElementBacked))
+                | (
+                    Some(Self::SearchText),
+                    Some(Self::SearchText | Self::ElementBacked)
+                )
+                | (Some(Self::ElementBacked), Some(Self::ElementBacked))
+        )
+    }
+}
+
 /// Intrinsic authored grammar inherited by selector-function arguments. Matching
 /// and namespace resolution are separate from these structural restrictions.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1131,7 +1200,7 @@ pub(crate) struct CssSelectorGrammarContext {
     allow_pseudo_elements: bool,
     allow_has: bool,
     compound_only: bool,
-    pseudo_suffix: Option<bool>,
+    pseudo_suffix: Option<CssPseudoSuffixContext>,
 }
 
 impl CssSelectorGrammarContext {
@@ -1146,7 +1215,7 @@ impl CssSelectorGrammarContext {
         allow_pseudo_elements: bool,
         allow_has: bool,
         compound_only: bool,
-        pseudo_suffix: Option<bool>,
+        pseudo_suffix: Option<CssPseudoSuffixContext>,
     ) -> Self {
         Self {
             allow_pseudo_elements,
@@ -1160,11 +1229,10 @@ impl CssSelectorGrammarContext {
         (!self.allow_pseudo_elements || original.allow_pseudo_elements)
             && (!self.allow_has || original.allow_has)
             && (!original.compound_only || self.compound_only)
-            && match original.pseudo_suffix {
-                None => true,
-                Some(true) => self.pseudo_suffix.is_some(),
-                Some(false) => self.pseudo_suffix == Some(false),
-            }
+            // Every suffix also requires pseudo-class-only selector shape,
+            // independently of which pseudo-classes its receiver permits.
+            && (original.pseudo_suffix.is_none() || self.pseudo_suffix.is_some())
+            && CssPseudoSuffixContext::is_subset_of(self.pseudo_suffix, original.pseudo_suffix)
     }
 
     pub(crate) fn logical_arguments(self) -> Self {
@@ -1197,9 +1265,9 @@ impl CssSelectorGrammarContext {
         }
     }
 
-    pub(crate) fn suffix(self, element_backed: bool) -> Self {
+    pub(crate) fn suffix(self, suffix: CssPseudoSuffixContext) -> Self {
         Self {
-            pseudo_suffix: Some(element_backed),
+            pseudo_suffix: Some(suffix),
             ..self.compound_arguments()
         }
     }
@@ -1229,20 +1297,10 @@ impl CssSelectorGrammarContext {
     }
 
     pub(crate) fn admits_pseudo(self, pseudo: &CssPseudoClass) -> bool {
-        let logical = matches!(
-            pseudo,
-            CssPseudoClass::Not(_) | CssPseudoClass::Is(_) | CssPseudoClass::Where(_)
-        );
-        let suffix = self.pseudo_suffix != Some(false)
-            || logical
-            || matches!(
-                pseudo,
-                CssPseudoClass::Hover
-                    | CssPseudoClass::Active
-                    | CssPseudoClass::Focus
-                    | CssPseudoClass::FocusVisible
-                    | CssPseudoClass::FocusWithin
-            );
+        let suffix = match self.pseudo_suffix {
+            None => !matches!(pseudo, CssPseudoClass::Current),
+            Some(context) => context.admits(pseudo),
+        };
         suffix
             && match pseudo {
                 CssPseudoClass::Not(list) => !list.items().is_empty(),
@@ -1259,24 +1317,28 @@ impl CssSelectorGrammarContext {
 
 pub(crate) fn selector_is_valid_pseudo_suffix(
     selector: &CssSelector,
-    element_backed: bool,
+    suffix: CssPseudoSuffixContext,
     allow_has: bool,
 ) -> bool {
     selector_is_valid_in_context(
         selector,
         CssSelectorGrammarContext {
             allow_has,
-            ..CssSelectorGrammarContext::ORDINARY.suffix(element_backed)
+            ..CssSelectorGrammarContext::ORDINARY.suffix(suffix)
         },
     )
 }
 
-fn pseudo_is_valid_suffix(pseudo: &CssPseudoClass, element_backed: bool, allow_has: bool) -> bool {
+fn pseudo_is_valid_suffix(
+    pseudo: &CssPseudoClass,
+    suffix: CssPseudoSuffixContext,
+    allow_has: bool,
+) -> bool {
     pseudo_is_valid_in_context(
         pseudo,
         CssSelectorGrammarContext {
             allow_has,
-            ..CssSelectorGrammarContext::ORDINARY.suffix(element_backed)
+            ..CssSelectorGrammarContext::ORDINARY.suffix(suffix)
         },
     )
 }

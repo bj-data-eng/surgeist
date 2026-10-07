@@ -5001,7 +5001,7 @@ combinators, and `::first-line`/`::first-letter`. The legacy single-colon
 spellings for `before`, `after`, `first-line`, and `first-letter` map to the same
 typed pseudo-elements. Selected extensions remain separately owned: the `||`
 column combinator, attribute `i`/`s`, the existing extension-state and functional pseudo-classes, nesting and
-scope, and the marker/selection/backdrop pseudo-element rows. Matching,
+scope, and the named Pseudo 4 and imported pseudo-element rows. Matching,
 specificity, cascade, namespace URI resolution, CSSOM serialization, and
 cross-crate lowering remain downstream exclusions.
 
@@ -5046,14 +5046,43 @@ and imported pseudo definitions establish these authored permissions:
 | Current pseudo-element | Pseudo-class suffixes | Following pseudo-element |
 | --- | --- | --- |
 | Before or After | Not/Is/Where and Hover/Active/Focus/FocusVisible/FocusWithin | Marker |
-| FirstLine, FirstLetter, Marker, Selection or Backdrop | The same generic suffixes | None in the admitted identity set |
-| Slotted | The same generic suffixes | Before, After, Marker, Part or Backdrop |
-| Part | Otherwise supported pseudo-class syntax under inherited argument restrictions | Otherwise admitted pseudo-element syntax |
-| UnknownWebkit | The same generic suffixes | None |
+| FirstLetter | The same generic suffixes | Prefix or Suffix |
+| SearchText | Generic suffixes and nonfunctional Current | None |
+| FirstLine, Prefix, Suffix, Marker, Selection, TargetText, SpellingError, GrammarError, Highlight, Placeholder, Backdrop or UnknownWebkit | The same generic suffixes | None |
+| Slotted | The same generic suffixes | Before, After, Marker, Placeholder, Part, Backdrop, FileSelectorButton or DetailsContent |
+| Part, FileSelectorButton or DetailsContent | Otherwise supported pseudo-class syntax under inherited argument restrictions | Otherwise admitted pseudo-element syntax |
+
+The [selected Pseudo 4 vocabulary](https://www.w3.org/TR/2025/WD-css-pseudo-4-20250627/#highlight-selectors)
+adds the typed Prefix, Suffix, SearchText, TargetText, SpellingError, GrammarError,
+Highlight, Placeholder, FileSelectorButton and DetailsContent identities.
+`CssPseudoElement::Highlight(CssCustomIdent)` requires exactly one real identifier
+argument in a Function token. The existing checked custom identifier preserves
+decoded case and excludes CSS-wide keywords and `default`; `none`, `auto` and
+`highlight` are valid names. Whitespace and comments may surround the identifier;
+strings, multiple identifiers, comma lists and nested functions are invalid.
+Specified output escapes the case-preserving identifier through the common
+writer and charges both the pseudo-element and its argument under the cumulative
+node and byte budget. No highlight registry is consulted.
+
+[FirstLetter's defined children](https://www.w3.org/TR/2025/WD-css-pseudo-4-20250627/#first-letter-pseudo)
+are Prefix and Suffix. These recognized names also admit the initial pseudo
+grammar's implied universal origin; their authored identities do not decide
+whether a matching sub-pseudo exists. The normative name is Suffix; the draft's
+older at-risk summary does not introduce a Postfix alias. No new single-colon
+pseudo-element alias is admitted.
+
+`CssPseudoClass::Current` is the [nonfunctional SearchText suffix](https://www.w3.org/TR/2025/WD-css-pseudo-4-20250627/#selectordef-search-text).
+SearchText and the element-backed all-pseudo receiving contexts admit it, with
+the same permission inherited by Not/Is/Where arguments. Ordinary `:current`,
+generic pseudo-element `:current`, functional `:current()`, `:past` and `:future`
+remain unsupported. SearchText's optional UA implementation status is preserved
+separately from this authored admission. General time-dimensional pseudo-classes
+remain outside the adopted selector grammar.
 
 After a following segment, its own permissions govern the next suffix or child.
-Part's element-backed syntax permission does not evaluate its separate matching
-prohibitions. Logical arguments inherit their receiving position's restrictions;
+The [element-backed syntax permission](https://www.w3.org/TR/2025/WD-css-pseudo-4-20250627/#element-backed)
+for Part, FileSelectorButton and DetailsContent does not evaluate their separate
+matching prohibitions. Logical arguments inherit their receiving position's restrictions;
 an unknown WebKit pseudo does not become a real element or bypass pseudo-element
 bans in scope boundaries, Has or complex-real lists. Existing Is/Where forgiveness
 and strict Not/list admission keep their separate recovery contracts. The exact
@@ -5064,10 +5093,15 @@ other receiving-context restrictions remain rejected.
 
 No currently admitted pseudo-element has defined internal combinator permission,
 so child, descendant, sibling and column combinators after one remain invalid.
-The draft's `::shadow` internal-structure example is hypothetical. Defined
-FirstLetter Prefix/Suffix identities from Pseudo 4 are outside the current
-admitted identity subset; this is a vocabulary boundary, not a claim that those
-sub-pseudos lack a source definition.
+The draft's `::shadow` internal-structure example is hypothetical.
+
+Checked containing selectors and lists validate the same receiving sets as
+parsing and charged specified output. A retained invalid nesting member can be
+reused only when every receiving restriction is at least as narrow as its
+original proof. Ordinary classes exclude Current, making ordinary and SearchText
+sets incomparable; element-backed contexts add Current as well. The separate
+Has, compound and pseudo-element restrictions cannot be traded against one
+another. Independent function arguments retain their existing reset boundaries.
 
 The selected draft marks user-action suffixes on non-tree-abiding pseudo-elements
 [at risk](https://www.w3.org/TR/2026/WD-selectors-4-20260122/). Authored
@@ -5075,9 +5109,9 @@ admission preserves that source status; the crate does not perform matching,
 specificity, autofill state selection or live pseudo identity. Parsed containing
 rules and lexical condition components retain their existing original provenance
 while semantic alias names and unknown WebKit names are canonicalized. Capability
-records are `ext.selector.autofill` and `ext.pseudo-element.unknown-webkit`;
-[admission tests](../tests/pseudo_legacy_alias_admission.rs) exercise selector and
-stylesheet fronts.
+records use atomic `ext.pseudo-element.*` identities and the contextual
+`ext.pseudo-element.search-text-current` record, alongside `ext.selector.autofill`.
+The Current record supplies no ordinary pseudo-class capability.
 
 ## Counter Styles 3 and authored page rules
 
@@ -6322,7 +6356,8 @@ media members cause an atomic serialization error.
 
 `@supports` conditions expose declaration tests, `not`/`and`/`or` grouping,
 complete Selectors 3 plus the selected existing selector extensions, including
-the `||` column combinator, as the typed
+the `||` column combinator and the authored Pseudo 4 identities and contextual
+Current suffix described in [pseudo-element attachment](#pseudo-element-attachment-and-aliases), as the typed
 `selector()` subset, and exact balanced general-enclosed fallback syntax. The
 typed subset does not include unselected Selectors 4 pseudo-classes or
 pseudo-elements, or syntax outside the named extension rows. Declaration tests

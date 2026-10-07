@@ -2348,7 +2348,7 @@ const BASELINE_RULE_REMAINDER: &str =
     "Other valid forms of the cited rule production are outside the I01 subset.";
 const SELECTOR_REMAINDER: &str =
     "Other valid forms of the cited Selectors production are outside the I01 subset.";
-const SUPPORTS_SELECTOR_SUBSET: &str = "selector() accepts complete Selectors 3 plus the selected I01 extensions: the || column combinator; i and s attribute modifiers; :scope, :focus-visible, :focus-within, :required, :optional, :valid, :invalid, :placeholder-shown, :modal, :fullscreen, :popover-open, :default, :indeterminate, :read-only, :read-write, :in-range, and :out-of-range; :is(), :where(), :has(), selector-list :not(), and nth-child of lists; and ::marker, ::selection, ::backdrop, and generated-marker sequences. Directionality accepts one identifier and language accepts nonempty comma-separated identifier or string ranges. Required shadow definitions add :host, compound-argument :host() and :host-context(), ::slotted(), and identifier-list ::part(). Autofill and its required -webkit-autofill alias share the standard identity; unknown nonfunctional -webkit- pseudo-elements retain symbolic match-nothing identities with ASCII-lowercase output. Ordered pseudo-element suffixes retain contextual pseudo-classes and applicable tree-abiding transitions.";
+const SUPPORTS_SELECTOR_SUBSET: &str = "selector() accepts complete Selectors 3 plus the selected I01 extensions: the || column combinator; i and s attribute modifiers; :scope, :focus-visible, :focus-within, :required, :optional, :valid, :invalid, :placeholder-shown, :modal, :fullscreen, :popover-open, :default, :indeterminate, :read-only, :read-write, :in-range, and :out-of-range; :is(), :where(), :has(), selector-list :not(), and nth-child of lists; and ::marker, ::selection, ::backdrop, and generated-marker sequences. Directionality accepts one identifier and language accepts nonempty comma-separated identifier or string ranges. Required shadow definitions add :host, compound-argument :host() and :host-context(), ::slotted(), and identifier-list ::part(). Autofill and its required -webkit-autofill alias share the standard identity; unknown nonfunctional -webkit- pseudo-elements retain symbolic match-nothing identities with ASCII-lowercase output. Pseudo 4 adds Prefix, Suffix, SearchText, TargetText, SpellingError, GrammarError, Highlight with one checked custom identifier, Placeholder, FileSelectorButton and DetailsContent. Nonfunctional Current is limited to SearchText and element-backed suffix contexts and inherited logical arguments; ordinary Current and functional Current remain unsupported. Ordered pseudo-element suffixes retain contextual pseudo-classes and defined child transitions, resetting permissions at each new segment. All typed selector tests remain symbolic, including optional UA pseudo implementation and matching prohibitions.";
 const SUPPORTS_SELECTOR_REMAINDER: &str = "Unselected Selectors 4 pseudo-classes and pseudo-elements, and syntax outside those atomic extension rows remain outside the typed subset; balanced content is preserved as general-enclosed authored syntax.";
 const QUERY_REMAINDER: &str =
     "Other valid forms of the cited query production are outside the I01 subset.";
@@ -2891,6 +2891,17 @@ const PSEUDO_ELEMENT_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("official.selector.generated"),
     CssFeatureId::new("ext.pseudo-element.marker"),
     CssFeatureId::new("ext.pseudo-element.selection"),
+    CssFeatureId::new("ext.pseudo-element.prefix"),
+    CssFeatureId::new("ext.pseudo-element.suffix"),
+    CssFeatureId::new("ext.pseudo-element.search-text"),
+    CssFeatureId::new("ext.pseudo-element.target-text"),
+    CssFeatureId::new("ext.pseudo-element.spelling-error"),
+    CssFeatureId::new("ext.pseudo-element.grammar-error"),
+    CssFeatureId::new("ext.pseudo-element.highlight"),
+    CssFeatureId::new("ext.pseudo-element.placeholder"),
+    CssFeatureId::new("ext.pseudo-element.file-selector-button"),
+    CssFeatureId::new("ext.pseudo-element.details-content"),
+    CssFeatureId::new("ext.pseudo-element.search-text-current"),
     CssFeatureId::new("ext.pseudo-element.backdrop"),
     CssFeatureId::new("ext.pseudo-element.generated-marker"),
     CssFeatureId::new("ext.pseudo-element.unknown-webkit"),
@@ -2930,7 +2941,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 772] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 783] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -4528,11 +4539,11 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 772] = [
     CssFeatureMetadata::baseline_alias(
         "baseline.selector.pseudo-element",
         CssFeatureKind::Selector,
-        "::before, ::after, ::marker, ::selection, ::backdrop, and generated ::marker sequences",
+        "authored pseudo-element identities, ordered contextual suffixes and defined child sequences",
         BASELINE_SELECTORS,
         "pseudo-element selector",
         (
-            "The exact baseline-recognized pseudo-element spelling group is supported.",
+            "The referenced atomic pseudo-element identities and contextual attachment grammar are supported.",
             SELECTOR_REMAINDER,
         ),
         PSEUDO_ELEMENT_ALIAS_TARGETS,
@@ -7200,6 +7211,83 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 772] = [
         "::selection",
         X_PSEUDO4,
         "#selectordef-selection",
+    ),
+    CssFeatureMetadata::complete(
+        "ext.pseudo-element.prefix",
+        CssFeatureKind::Selector,
+        "::prefix, including the defined ::first-letter::prefix child",
+        X_PSEUDO4,
+        "#selectordef-first-letter-prefix",
+    ),
+    CssFeatureMetadata::complete(
+        "ext.pseudo-element.suffix",
+        CssFeatureKind::Selector,
+        "::suffix, including the defined ::first-letter::suffix child",
+        X_PSEUDO4,
+        "#selectordef-first-letter-suffix",
+    ),
+    CssFeatureMetadata::complete(
+        "ext.pseudo-element.search-text",
+        CssFeatureKind::Selector,
+        "::search-text authored identity, independent of optional UA implementation",
+        X_PSEUDO4,
+        "#selectordef-search-text",
+    ),
+    CssFeatureMetadata::complete(
+        "ext.pseudo-element.target-text",
+        CssFeatureKind::Selector,
+        "::target-text",
+        X_PSEUDO4,
+        "#selectordef-target-text",
+    ),
+    CssFeatureMetadata::complete(
+        "ext.pseudo-element.spelling-error",
+        CssFeatureKind::Selector,
+        "::spelling-error",
+        X_PSEUDO4,
+        "#selectordef-spelling-error",
+    ),
+    CssFeatureMetadata::complete(
+        "ext.pseudo-element.grammar-error",
+        CssFeatureKind::Selector,
+        "::grammar-error",
+        X_PSEUDO4,
+        "#selectordef-grammar-error",
+    ),
+    CssFeatureMetadata::complete(
+        "ext.pseudo-element.highlight",
+        CssFeatureKind::Selector,
+        "::highlight() with exactly one checked, case-preserving custom identifier",
+        X_PSEUDO4,
+        "#selectordef-highlight-custom-ident",
+    ),
+    CssFeatureMetadata::complete(
+        "ext.pseudo-element.placeholder",
+        CssFeatureKind::Selector,
+        "::placeholder tree-abiding authored identity",
+        X_PSEUDO4,
+        "#selectordef-placeholder",
+    ),
+    CssFeatureMetadata::complete(
+        "ext.pseudo-element.file-selector-button",
+        CssFeatureKind::Selector,
+        "::file-selector-button with element-backed pseudo syntax and tree-abiding transitions",
+        X_PSEUDO4,
+        "#selectordef-file-selector-button,#element-backed",
+    ),
+    CssFeatureMetadata::complete(
+        "ext.pseudo-element.details-content",
+        CssFeatureKind::Selector,
+        "::details-content with element-backed pseudo syntax and tree-abiding transitions",
+        X_PSEUDO4,
+        "#selectordef-details-content,#element-backed",
+    ),
+    CssFeatureMetadata::complete(
+        "ext.pseudo-element.search-text-current",
+        CssFeatureKind::Selector,
+        "nonfunctional :current in SearchText and element-backed suffix contexts, inherited by logical arguments; ordinary :current, current(), :past and :future remain unsupported",
+        X_PSEUDO4,
+        "#selectordef-search-text,#element-backed",
     ),
     CssFeatureMetadata::complete(
         "ext.pseudo-element.backdrop",

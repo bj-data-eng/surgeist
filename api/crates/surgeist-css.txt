@@ -4289,6 +4289,7 @@ pub surgeist_css::CssPropertyValueErrorKind::Grammar(surgeist_css::ErrorKind)
 pub surgeist_css::CssPseudoClass::Active
 pub surgeist_css::CssPseudoClass::Autofill
 pub surgeist_css::CssPseudoClass::Checked
+pub surgeist_css::CssPseudoClass::Current
 pub surgeist_css::CssPseudoClass::Default
 pub surgeist_css::CssPseudoClass::Dir(surgeist_css::CssDirectionality)
 pub surgeist_css::CssPseudoClass::Disabled
@@ -4340,12 +4341,22 @@ pub fn surgeist_css::CssPseudoClass::has_pseudo_elements(&self) -> bool
 pub surgeist_css::CssPseudoElement::After
 pub surgeist_css::CssPseudoElement::Backdrop
 pub surgeist_css::CssPseudoElement::Before
+pub surgeist_css::CssPseudoElement::DetailsContent
+pub surgeist_css::CssPseudoElement::FileSelectorButton
 pub surgeist_css::CssPseudoElement::FirstLetter
 pub surgeist_css::CssPseudoElement::FirstLine
+pub surgeist_css::CssPseudoElement::GrammarError
+pub surgeist_css::CssPseudoElement::Highlight(surgeist_css::CssCustomIdent)
 pub surgeist_css::CssPseudoElement::Marker
 pub surgeist_css::CssPseudoElement::Part(surgeist_css::CssPartNameList)
+pub surgeist_css::CssPseudoElement::Placeholder
+pub surgeist_css::CssPseudoElement::Prefix
+pub surgeist_css::CssPseudoElement::SearchText
 pub surgeist_css::CssPseudoElement::Selection
 pub surgeist_css::CssPseudoElement::Slotted(surgeist_css::CssCompoundSelectorArgument)
+pub surgeist_css::CssPseudoElement::SpellingError
+pub surgeist_css::CssPseudoElement::Suffix
+pub surgeist_css::CssPseudoElement::TargetText
 pub surgeist_css::CssPseudoElement::UnknownWebkit(surgeist_css::CssUnknownWebkitPseudoElement)
 #[non_exhaustive] pub enum surgeist_css::CssPseudoElementSegment
 pub surgeist_css::CssPseudoElementSegment::PseudoClass(surgeist_css::CssPseudoClass)

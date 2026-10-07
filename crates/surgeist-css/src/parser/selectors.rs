@@ -42,6 +42,17 @@ pub(super) static IMPLEMENTED_SELECTORS: &[CssFeatureId] = &[
     CssFeatureId::new("official.selector.namespace-qualified-name"),
     CssFeatureId::new("ext.pseudo-element.marker"),
     CssFeatureId::new("ext.pseudo-element.selection"),
+    CssFeatureId::new("ext.pseudo-element.prefix"),
+    CssFeatureId::new("ext.pseudo-element.suffix"),
+    CssFeatureId::new("ext.pseudo-element.search-text"),
+    CssFeatureId::new("ext.pseudo-element.target-text"),
+    CssFeatureId::new("ext.pseudo-element.spelling-error"),
+    CssFeatureId::new("ext.pseudo-element.grammar-error"),
+    CssFeatureId::new("ext.pseudo-element.highlight"),
+    CssFeatureId::new("ext.pseudo-element.placeholder"),
+    CssFeatureId::new("ext.pseudo-element.file-selector-button"),
+    CssFeatureId::new("ext.pseudo-element.details-content"),
+    CssFeatureId::new("ext.pseudo-element.search-text-current"),
     CssFeatureId::new("ext.pseudo-element.backdrop"),
     CssFeatureId::new("ext.pseudo-element.generated-marker"),
     CssFeatureId::new("ext.pseudo-element.unknown-webkit"),
@@ -298,7 +309,7 @@ struct SelectorParseOptions {
     anchors: SelectorAnchorMode,
     allow_pseudo_elements: bool,
     compound_only: bool,
-    pseudo_suffix: Option<bool>,
+    pseudo_suffix: Option<CssPseudoSuffixContext>,
 }
 
 impl SelectorParseOptions {
@@ -381,8 +392,8 @@ fn parse_rule_selector_with_options<'i, 't>(
             "this argument requires a compound selector",
         ));
     }
-    if options.pseudo_suffix.is_some_and(|element_backed| {
-        !selector_is_valid_pseudo_suffix(&selector, element_backed, options.allow_has)
+    if options.pseudo_suffix.is_some_and(|suffix| {
+        !selector_is_valid_pseudo_suffix(&selector, suffix, options.allow_has)
     }) {
         return Err(invalid_selector(
             input,
@@ -889,7 +900,7 @@ fn parse_pseudo_element_sequence_from_first<'i, 't>(
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
 ) -> std::result::Result<CssPseudoElementSequence, ParseError<'i, Error>> {
-    let mut element_backed = first.is_element_backed();
+    let mut suffix = first.suffix_context();
     let mut segments = vec![CssPseudoElementSegment::PseudoElement(first)];
     while input.try_parse(expect_adjacent_colon).is_ok() {
         let element = if input.try_parse(expect_adjacent_colon).is_ok() {
@@ -898,13 +909,13 @@ fn parse_pseudo_element_sequence_from_first<'i, 't>(
             input.try_parse(parse_legacy_pseudo_element).ok()
         };
         if let Some(element) = element {
-            element_backed = element.is_element_backed();
+            suffix = element.suffix_context();
             segments.push(CssPseudoElementSegment::PseudoElement(element));
         } else {
             let pseudo = parse_pseudo_class_with_options(
                 input,
                 SelectorParseOptions {
-                    pseudo_suffix: Some(element_backed),
+                    pseudo_suffix: Some(suffix),
                     ..options
                 },
                 recovery,
@@ -948,9 +959,18 @@ fn parse_pseudo_element<'i, 't>(
             "after" => Ok(CssPseudoElement::After),
             "first-line" => Ok(CssPseudoElement::FirstLine),
             "first-letter" => Ok(CssPseudoElement::FirstLetter),
+            "prefix" => Ok(CssPseudoElement::Prefix),
+            "suffix" => Ok(CssPseudoElement::Suffix),
             "marker" => Ok(CssPseudoElement::Marker),
             "selection" => Ok(CssPseudoElement::Selection),
+            "search-text" => Ok(CssPseudoElement::SearchText),
+            "target-text" => Ok(CssPseudoElement::TargetText),
+            "spelling-error" => Ok(CssPseudoElement::SpellingError),
+            "grammar-error" => Ok(CssPseudoElement::GrammarError),
+            "placeholder" => Ok(CssPseudoElement::Placeholder),
             "backdrop" => Ok(CssPseudoElement::Backdrop),
+            "file-selector-button" => Ok(CssPseudoElement::FileSelectorButton),
+            "details-content" => Ok(CssPseudoElement::DetailsContent),
             _ => {
                 if let Ok(name) = CssUnknownWebkitPseudoElement::try_new(name.to_string()) {
                     return Ok(CssPseudoElement::UnknownWebkit(name));
@@ -961,19 +981,23 @@ fn parse_pseudo_element<'i, 't>(
             }
         },
         Ok(Token::Function(name))
-            if name.eq_ignore_ascii_case("slotted") || name.eq_ignore_ascii_case("part") =>
+            if name.eq_ignore_ascii_case("slotted")
+                || name.eq_ignore_ascii_case("part")
+                || name.eq_ignore_ascii_case("highlight") =>
         {
-            let slotted = name.eq_ignore_ascii_case("slotted");
+            let name = name.clone();
             let mut depth = recovery.state.enter_component_block(
                 recovery.source,
                 input,
                 "baseline.selector.complex",
             )?;
             let result = input.parse_nested_block(|input| {
-                if slotted {
+                if name.eq_ignore_ascii_case("slotted") {
                     parse_compound_argument(input, options, recovery).map(CssPseudoElement::Slotted)
-                } else {
+                } else if name.eq_ignore_ascii_case("part") {
                     parse_part_names(input, recovery).map(CssPseudoElement::Part)
+                } else {
+                    parse_highlight_name(input).map(CssPseudoElement::Highlight)
                 }
             });
             if result.is_ok() {
@@ -1274,7 +1298,16 @@ fn parse_pseudo_class_with_options<'i, 't>(
     match input.next_including_whitespace() {
         Ok(Token::Ident(name)) => {
             let name = name.clone();
-            parse_named_pseudo_class(name.as_ref(), input, &state)
+            let pseudo = parse_named_pseudo_class(name.as_ref(), input, &state)?;
+            if options.grammar().admits_pseudo(&pseudo) {
+                Ok(pseudo)
+            } else {
+                input.reset(&state);
+                Err(invalid_selector(
+                    input,
+                    format!("unsupported pseudo-class `:{name}` in this receiving context"),
+                ))
+            }
         }
         Ok(Token::Function(name)) => {
             let name = name.clone();
@@ -1322,6 +1355,7 @@ fn parse_named_pseudo_class<'i>(
         "link" => Ok(CssPseudoClass::Link),
         "visited" => Ok(CssPseudoClass::Visited),
         "target" => Ok(CssPseudoClass::Target),
+        "current" => Ok(CssPseudoClass::Current),
         "hover" => Ok(CssPseudoClass::Hover),
         "active" => Ok(CssPseudoClass::Active),
         "focus" => Ok(CssPseudoClass::Focus),
@@ -1425,6 +1459,22 @@ fn parse_part_names<'i, 't>(
     }
     CssPartNameList::try_new(names)
         .ok_or_else(|| invalid_selector(input, "part requires at least one identifier"))
+}
+
+fn parse_highlight_name<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<CssCustomIdent, ParseError<'i, Error>> {
+    input.skip_whitespace();
+    let start = input.state();
+    let name = input.expect_ident().map_err(selector_basic)?.to_string();
+    let name = CssCustomIdent::try_new(name).ok_or_else(|| {
+        invalid_selector_at(
+            start.source_location(),
+            "highlight requires a custom identifier",
+        )
+    })?;
+    input.expect_exhausted().map_err(selector_basic)?;
+    Ok(name)
 }
 
 fn parse_directionality<'i, 't>(

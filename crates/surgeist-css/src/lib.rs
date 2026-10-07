@@ -1043,6 +1043,20 @@
 //! unknown functional forms remain invalid. User-action suffixes on non-tree-abiding
 //! pseudos retain the selected draft's at-risk status. No currently admitted pseudo
 //! has internal combinator permission.
+//! Pseudo 4 adds [`CssPseudoElement::Prefix`], [`CssPseudoElement::Suffix`],
+//! [`CssPseudoElement::SearchText`], [`CssPseudoElement::TargetText`],
+//! [`CssPseudoElement::SpellingError`], [`CssPseudoElement::GrammarError`],
+//! [`CssPseudoElement::Highlight`], [`CssPseudoElement::Placeholder`],
+//! [`CssPseudoElement::FileSelectorButton`] and [`CssPseudoElement::DetailsContent`].
+//! Highlight retains one checked, case-preserving [`CssCustomIdent`]. FirstLetter
+//! permits Prefix and Suffix children; recognized initial Prefix/Suffix names
+//! retain their implied universal origin. Nonfunctional [`CssPseudoClass::Current`]
+//! is admitted only in SearchText and element-backed suffix contexts, including
+//! inherited logical arguments. Ordinary `:current`, `:current()`, `:past` and
+//! `:future` remain unsupported. Part, FileSelectorButton and DetailsContent admit
+//! otherwise supported pseudo syntax, with each following segment resetting the
+//! receiving permissions. This syntax does not evaluate matching prohibitions,
+//! live highlights or optional UA implementation of SearchText.
 //!
 //! # Counter styles and page rules
 //!
@@ -1204,7 +1218,7 @@
 //!
 //! Supports rules retain declaration tests, boolean grouping, complete Selectors 3 plus the
 //! selected existing selector extensions as the typed `selector()` subset, and balanced
-//! general-enclosed fallback syntax. `||`, unselected Selectors 4 pseudo-classes and
+//! general-enclosed fallback syntax. Unselected Selectors 4 pseudo-classes and
 //! pseudo-elements, and syntax outside the named extension rows remain outside the typed subset.
 //! These nodes describe authored tests; the crate never evaluates whether a condition matches.
 //! `font-tech()` retains one shared [`CssFontTechHint`], `font-format()` retains

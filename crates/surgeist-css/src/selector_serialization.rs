@@ -1,7 +1,7 @@
 //! Authored selector emission. Symbolic nesting and scope anchors stay symbolic.
 //! This provider owns selector grammar; enclosing rule formatting has a separate owner.
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
-use crate::syntax::CssSelectorGrammarContext;
+use crate::syntax::{CssPseudoSuffixContext, CssSelectorGrammarContext};
 use crate::*;
 type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
 /// Output proof scope, independent of the existing intrinsic selector grammar.
@@ -21,7 +21,7 @@ enum Event<'a> {
         u8,
         usize,
         CssSelectorGrammarContext,
-        bool,
+        CssPseudoSuffixContext,
     ),
     ComplexParts(
         &'a [CssComplexSelectorPart],
@@ -354,7 +354,10 @@ impl SpecifiedRuleWriter {
                         self.append(".")?;
                         self.selector_identifier(class)?;
                     }
-                    push(&mut work, Event::CompoundTail(value, 0, 0, grammar, false))?;
+                    push(
+                        &mut work,
+                        Event::CompoundTail(value, 0, 0, grammar, CssPseudoSuffixContext::Generic),
+                    )?;
                 }
                 Event::ComplexParts(parts, index, grammar) => {
                     if let Some(part) = parts.get(index) {
@@ -363,7 +366,7 @@ impl SpecifiedRuleWriter {
                         push(&mut work, Event::Compound(part.selector(), grammar))?;
                     }
                 }
-                Event::CompoundTail(value, phase, index, grammar, mut element_backed) => {
+                Event::CompoundTail(value, phase, index, grammar, mut suffix) => {
                     let event = match phase {
                         0 => value.attributes().get(index).map(Event::Attribute),
                         1 => value
@@ -375,11 +378,11 @@ impl SpecifiedRuleWriter {
                             .and_then(|s| s.segments().get(index))
                             .map(|s| match s {
                                 CssPseudoElementSegment::PseudoElement(e) => {
-                                    element_backed = e.is_element_backed();
+                                    suffix = e.suffix_context();
                                     Event::Element(e, grammar)
                                 }
                                 CssPseudoElementSegment::PseudoClass(p) => {
-                                    Event::Pseudo(p, grammar.suffix(element_backed))
+                                    Event::Pseudo(p, grammar.suffix(suffix))
                                 }
                             }),
                         _ => None,
@@ -387,13 +390,13 @@ impl SpecifiedRuleWriter {
                     if let Some(event) = event {
                         push(
                             &mut work,
-                            Event::CompoundTail(value, phase, index + 1, grammar, element_backed),
+                            Event::CompoundTail(value, phase, index + 1, grammar, suffix),
                         )?;
                         push(&mut work, event)?;
                     } else if phase < 2 {
                         push(
                             &mut work,
-                            Event::CompoundTail(value, phase + 1, 0, grammar, element_backed),
+                            Event::CompoundTail(value, phase + 1, 0, grammar, suffix),
                         )?;
                     }
                 }
@@ -668,6 +671,7 @@ impl SpecifiedRuleWriter {
                         CssPseudoClass::Link => self.append(":link")?,
                         CssPseudoClass::Visited => self.append(":visited")?,
                         CssPseudoClass::Target => self.append(":target")?,
+                        CssPseudoClass::Current => self.append(":current")?,
                         CssPseudoClass::Hover => self.append(":hover")?,
                         CssPseudoClass::Active => self.append(":active")?,
                         CssPseudoClass::Focus => self.append(":focus")?,
@@ -723,13 +727,30 @@ impl SpecifiedRuleWriter {
                             }
                             self.append(")")?;
                         }
+                        CssPseudoElement::Highlight(name) => {
+                            self.append("::highlight(")?;
+                            self.node()?;
+                            self.selector_identifier(name.as_str())?;
+                            self.append(")")?;
+                        }
                         CssPseudoElement::Before => self.append("::before")?,
                         CssPseudoElement::After => self.append("::after")?,
                         CssPseudoElement::FirstLine => self.append("::first-line")?,
                         CssPseudoElement::FirstLetter => self.append("::first-letter")?,
+                        CssPseudoElement::Prefix => self.append("::prefix")?,
+                        CssPseudoElement::Suffix => self.append("::suffix")?,
                         CssPseudoElement::Marker => self.append("::marker")?,
                         CssPseudoElement::Selection => self.append("::selection")?,
+                        CssPseudoElement::SearchText => self.append("::search-text")?,
+                        CssPseudoElement::TargetText => self.append("::target-text")?,
+                        CssPseudoElement::SpellingError => self.append("::spelling-error")?,
+                        CssPseudoElement::GrammarError => self.append("::grammar-error")?,
+                        CssPseudoElement::Placeholder => self.append("::placeholder")?,
                         CssPseudoElement::Backdrop => self.append("::backdrop")?,
+                        CssPseudoElement::FileSelectorButton => {
+                            self.append("::file-selector-button")?
+                        }
+                        CssPseudoElement::DetailsContent => self.append("::details-content")?,
                         CssPseudoElement::UnknownWebkit(name) => {
                             self.append("::")?;
                             self.selector_identifier(name.as_str())?;

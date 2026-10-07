@@ -722,9 +722,9 @@ fn check_selector_with_anchors(
                                 stack
                                     .push(SelectorWork::Compound(argument.compound(), depth + 1))?;
                             }
-                            CssPseudoElementSegment::PseudoElement(CssPseudoElement::Part(_))
-                                if depth == crate::STRUCTURAL_NESTING_LIMIT =>
-                            {
+                            CssPseudoElementSegment::PseudoElement(
+                                CssPseudoElement::Part(_) | CssPseudoElement::Highlight(_),
+                            ) if depth == crate::STRUCTURAL_NESTING_LIMIT => {
                                 return Err(CssRuleConstructionErrorKind::SelectorNestingLimit);
                             }
                             _ => {}
