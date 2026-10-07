@@ -49,6 +49,20 @@ pub(super) fn parse_keyframes_rule<'i, 't>(
     diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
 ) -> std::result::Result<CssKeyframesRule, ParseError<'i, Error>> {
+    let blocks = parse_body(source, input, diagnostics, recovery);
+    Ok(CssKeyframesRule::new(
+        name,
+        blocks,
+        crate::source::CssSourcePosition::from_cssparser(start.position(), start.source_location()),
+    ))
+}
+
+pub(super) fn parse_body<'i>(
+    source: &'i str,
+    input: &mut Parser<'i, '_>,
+    diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
+    recovery: RecoveryState,
+) -> Vec<CssKeyframeBlock> {
     let mut parser = KeyframeBlockParser {
         source,
         diagnostics: Vec::new(),
@@ -100,11 +114,51 @@ pub(super) fn parse_keyframes_rule<'i, 't>(
     }
     diagnostics.append(&mut parser.diagnostics);
 
-    Ok(CssKeyframesRule::new(
-        name,
-        blocks,
-        crate::source::CssSourcePosition::from_cssparser(start.position(), start.source_location()),
-    ))
+    blocks
+}
+
+pub(super) fn parse_declarations<'i>(
+    source: &'i str,
+    input: &mut Parser<'i, '_>,
+    diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
+    recovery: RecoveryState,
+) -> Result<CssKeyframeDeclarationList, ParseError<'i, Error>> {
+    let mut declarations = Vec::new();
+    let mut declaration_parser = KeyframeDeclarationParser { source, recovery };
+    let mut items = RuleBodyParser::new(input, &mut declaration_parser);
+    loop {
+        let progress = RecoveryProgress::record(items.input);
+        let Some(item) = items.next() else {
+            break;
+        };
+        let position = items.input.position().byte_index();
+        let failed_at_block =
+            item.is_err() && position > 0 && source.as_bytes().get(position - 1) == Some(&b'{');
+        let retained = item.is_ok();
+        let progress_outcome = progress.finish(items.input, retained);
+        let unit_end = items.input.position().byte_index();
+        match item {
+            Ok(declaration) => declarations.push(declaration),
+            Err((error, failed_unit))
+                if is_declaration_recovery_unit(failed_unit) && !failed_at_block =>
+            {
+                if let Some(diagnostic) = block_item_diagnostic(
+                    source,
+                    error,
+                    failed_unit,
+                    unit_end,
+                    crate::CssRecoveryAction::DropDeclaration,
+                ) {
+                    diagnostics.push(diagnostic);
+                }
+            }
+            Err((error, _)) => return Err(error),
+        }
+        if progress_outcome == RecoveryLoopOutcome::Terminated {
+            break;
+        }
+    }
+    Ok(CssKeyframeDeclarationList::new(declarations))
 }
 
 struct KeyframeBlockParser<'s> {
@@ -143,49 +197,16 @@ impl<'i> QualifiedRuleParser<'i> for KeyframeBlockParser<'i> {
         let mut depth =
             self.recovery
                 .enter_rule_block(self.source, input, "baseline.keyframes.block")?;
-        let mut declarations = Vec::new();
-        let mut declaration_parser = KeyframeDeclarationParser {
-            source: self.source,
-            recovery: self.recovery.clone(),
-        };
-        let mut items = RuleBodyParser::new(input, &mut declaration_parser);
-        loop {
-            let progress = RecoveryProgress::record(items.input);
-            let Some(item) = items.next() else {
-                break;
-            };
-            let position = items.input.position().byte_index();
-            let failed_at_block = item.is_err()
-                && position > 0
-                && self.source.as_bytes().get(position - 1) == Some(&b'{');
-            let retained = item.is_ok();
-            let progress_outcome = progress.finish(items.input, retained);
-            let unit_end = items.input.position().byte_index();
-            match item {
-                Ok(declaration) => declarations.push(declaration),
-                Err((error, failed_unit))
-                    if is_declaration_recovery_unit(failed_unit) && !failed_at_block =>
-                {
-                    if let Some(diagnostic) = block_item_diagnostic(
-                        self.source,
-                        error,
-                        failed_unit,
-                        unit_end,
-                        crate::CssRecoveryAction::DropDeclaration,
-                    ) {
-                        self.diagnostics.push(diagnostic);
-                    }
-                }
-                Err((error, _)) => return Err(error),
-            }
-            if progress_outcome == RecoveryLoopOutcome::Terminated {
-                break;
-            }
-        }
+        let declarations = parse_declarations(
+            self.source,
+            input,
+            &mut self.diagnostics,
+            self.recovery.clone(),
+        )?;
 
         let result = CssKeyframeBlock::new(
             selectors,
-            CssKeyframeDeclarationList::new(declarations),
+            declarations,
             crate::source::CssSourcePosition::from_cssparser(
                 start.position(),
                 start.source_location(),

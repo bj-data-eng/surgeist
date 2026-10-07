@@ -46,14 +46,16 @@ pub use fragments::{
     parse_font_face_block, parse_font_face_descriptor_value, parse_font_feature_display_value,
     parse_font_feature_value_block, parse_font_feature_value_indexes,
     parse_font_feature_values_block, parse_font_palette_descriptor_value,
-    parse_font_palette_values_block, parse_media_query, parse_media_query_list,
-    parse_property_value_text, parse_property_value_text_for_grammar, parse_relative_selector_list,
-    parse_rule, parse_selector, parse_selector_list, parse_style_block,
+    parse_font_palette_values_block, parse_keyframe_declaration_block, parse_keyframes_block,
+    parse_media_query, parse_media_query_list, parse_page_block, parse_property_value_text,
+    parse_property_value_text_for_grammar, parse_relative_selector_list, parse_rule,
+    parse_selector, parse_selector_list, parse_style_block,
 };
 pub(crate) use fragments::{
-    parse_declaration_with_context, parse_property_value_text_for_grammar_with_context,
-    parse_property_value_text_with_context, parse_rule_with_context,
-    parse_style_block_with_context,
+    parse_declaration_with_context, parse_keyframe_declaration_block_with_context,
+    parse_keyframes_block_with_context, parse_page_block_with_context,
+    parse_property_value_text_for_grammar_with_context, parse_property_value_text_with_context,
+    parse_rule_with_context, parse_style_block_with_context,
 };
 mod color;
 mod color_adjustment;

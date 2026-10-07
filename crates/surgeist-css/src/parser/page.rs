@@ -53,6 +53,20 @@ pub(super) fn parse_page_rule<'i, 't>(
     diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
 ) -> Result<CssPageRule, ParseError<'i, Error>> {
+    let declarations = parse_body(source, input, diagnostics, recovery);
+    Ok(CssPageRule::new(
+        selector,
+        declarations,
+        crate::source::CssSourcePosition::from_cssparser(start.position(), start.source_location()),
+    ))
+}
+
+pub(super) fn parse_body<'i>(
+    source: &'i str,
+    input: &mut Parser<'i, '_>,
+    diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
+    recovery: RecoveryState,
+) -> CssDeclarationList {
     let mut declarations = Vec::new();
     let mut parser = PageBodyParser { source, recovery };
     let mut items = RuleBodyParser::new(input, &mut parser);
@@ -84,11 +98,7 @@ pub(super) fn parse_page_rule<'i, 't>(
         }
     }
 
-    Ok(CssPageRule::new(
-        selector,
-        CssDeclarationList::new(declarations),
-        crate::source::CssSourcePosition::from_cssparser(start.position(), start.source_location()),
-    ))
+    CssDeclarationList::new(declarations)
 }
 
 struct PageBodyParser<'s> {

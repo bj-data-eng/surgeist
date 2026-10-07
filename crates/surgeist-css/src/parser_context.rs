@@ -135,6 +135,39 @@ impl CssParserContext {
     ) -> CssParseReport<Option<CssStyleBlock>> {
         crate::parser::parse_style_block_with_context(source, namespaces, self)
     }
+    /// Parses a genuine keyframes body with this context on its declarations.
+    ///
+    /// Invalid children recover independently; no animation name is invented.
+    /// Source boundaries and clean validation match [`parse_keyframes_block`].
+    #[must_use]
+    pub fn parse_keyframes_block(
+        self,
+        source: &str,
+    ) -> CssParseReport<Option<CssBlockFragment<Vec<CssKeyframeBlock>>>> {
+        crate::parser::parse_keyframes_block_with_context(source, self)
+    }
+    /// Parses genuine keyframe declarations with this document grammar context.
+    ///
+    /// Local declaration recovery and fatal structural errors match
+    /// [`parse_keyframe_declaration_block`]. Retained occurrences preserve `self`.
+    #[must_use]
+    pub fn parse_keyframe_declaration_block(
+        self,
+        source: &str,
+    ) -> CssParseReport<Option<CssBlockFragment<CssKeyframeDeclarationList>>> {
+        crate::parser::parse_keyframe_declaration_block_with_context(source, self)
+    }
+    /// Parses a genuine Page body with this context before CSS2 value filtering.
+    ///
+    /// The physical-margin whitelist and literal value domain remain those of
+    /// [`parse_page_block`]; document mode does not bypass the Page filter.
+    #[must_use]
+    pub fn parse_page_block(
+        self,
+        source: &str,
+    ) -> CssParseReport<Option<CssBlockFragment<CssDeclarationList>>> {
+        crate::parser::parse_page_block_with_context(source, self)
+    }
     /// Checks owned components with the selected property-name grammar.
     pub fn parse_property_value(
         self,

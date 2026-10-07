@@ -71,9 +71,10 @@ pub(super) fn finish_nested_component<'i>(
     Ok(())
 }
 
-fn descriptor_block<T: Send>(
+fn real_brace_block<T: Send>(
     source: &str,
     production: &'static str,
+    parser_context: crate::CssParserContext,
     parse_body: impl for<'i, 't> FnOnce(
         &'i str,
         &mut Parser<'i, 't>,
@@ -83,7 +84,8 @@ fn descriptor_block<T: Send>(
     + Send,
 ) -> crate::CssParseReport<Option<crate::CssBlockFragment<T>>> {
     bounded(source, || {
-        let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
+        let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default())
+            .with_parser_context(parser_context);
         let working_source = crate::tokenization::prepare(source);
         let mut parser_input = ParserInput::new(&working_source);
         let mut input = Parser::new(&mut parser_input);
@@ -134,7 +136,12 @@ fn descriptor_block<T: Send>(
 pub fn parse_font_face_block(
     source: &str,
 ) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssFontFaceDescriptors>>> {
-    descriptor_block(source, "baseline.rule.font-face", font_face::parse_body)
+    real_brace_block(
+        source,
+        "baseline.rule.font-face",
+        crate::CssParserContext::default(),
+        font_face::parse_body,
+    )
 }
 
 /// Parses exactly one genuine curly block of `@counter-style` descriptors.
@@ -152,9 +159,10 @@ pub fn parse_font_face_block(
 pub fn parse_counter_style_block(
     source: &str,
 ) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssCounterStyleDescriptors>>> {
-    descriptor_block(
+    real_brace_block(
         source,
         "later.rule.counter-style",
+        crate::CssParserContext::default(),
         counter_style::parse_body,
     )
 }
@@ -174,9 +182,10 @@ pub fn parse_counter_style_block(
 pub fn parse_font_palette_values_block(
     source: &str,
 ) -> crate::CssParseReport<Option<crate::CssBlockFragment<Vec<crate::CssFontPaletteDescriptor>>>> {
-    descriptor_block(
+    real_brace_block(
         source,
         "later.rule.font-palette-values",
+        crate::CssParserContext::default(),
         |source, input, diagnostics, state| {
             let descriptors = font_palette_values::parse_body(source, input, diagnostics, state);
             crate::font_palette_values::validate_descriptors(&descriptors).map_err(|error| {
@@ -201,9 +210,10 @@ pub fn parse_font_palette_values_block(
 pub fn parse_color_profile_block(
     source: &str,
 ) -> crate::CssParseReport<Option<crate::CssBlockFragment<Vec<crate::CssColorProfileDescriptor>>>> {
-    descriptor_block(
+    real_brace_block(
         source,
         "interop.rule.color-profile",
+        crate::CssParserContext::default(),
         |source, input, diagnostics, state| {
             Ok(color_profile::parse_body(source, input, diagnostics, state))
         },
@@ -226,9 +236,10 @@ pub fn parse_color_profile_block(
 pub fn parse_font_feature_values_block(
     source: &str,
 ) -> crate::CssParseReport<Option<crate::CssBlockFragment<Vec<crate::CssFontFeatureValuesItem>>>> {
-    descriptor_block(
+    real_brace_block(
         source,
         "later.rule.font-feature-values",
+        crate::CssParserContext::default(),
         |source, input, diagnostics, state| {
             let recovered = font_feature_values::parse_outer_body(source, input, state);
             diagnostics.extend(recovered.diagnostics);
@@ -255,9 +266,10 @@ pub fn parse_font_feature_value_block(
     source: &str,
     kind: crate::CssFontFeatureValueKind,
 ) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssFontFeatureValueBlock>>> {
-    descriptor_block(
+    real_brace_block(
         source,
         "later.rule.font-feature-values",
+        crate::CssParserContext::default(),
         move |source, input, diagnostics, state| {
             let recovered = font_feature_values::parse_definition_body(source, input, kind, state);
             let block = crate::CssFontFeatureValueBlock::try_new(kind, recovered.syntax).map_err(
@@ -268,6 +280,106 @@ pub fn parse_font_feature_value_block(
             diagnostics.extend(recovered.diagnostics);
             Ok(block)
         },
+    )
+}
+
+/// Parses exactly one genuine curly body containing keyframe selector blocks.
+///
+/// Empty bodies, duplicate selectors and authored child order are retained.
+/// Invalid selector/at-rule children and children with fatal declaration-body
+/// failures are dropped as complete keyframe blocks, retaining admitted siblings.
+/// Actual child selectors and declarations share the original source snapshot;
+/// no animation name, endpoint or outer at-keyword is invented.
+///
+/// Optional outer whitespace/comments lie outside the brace origin. Missing
+/// braces and trailing nontrivia reject the whole fragment. Actual outer/child
+/// braces count toward the existing nesting limit. Implicit closures and native
+/// unit recovery diagnostics prevent clean validation. Free parsing uses the
+/// default context; [`crate::CssParserContext::parse_keyframes_block`] selects the
+/// document grammar carried by the real declaration provider.
+#[must_use]
+pub fn parse_keyframes_block(
+    source: &str,
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<Vec<crate::CssKeyframeBlock>>>> {
+    parse_keyframes_block_with_context(source, crate::CssParserContext::default())
+}
+
+pub(crate) fn parse_keyframes_block_with_context(
+    source: &str,
+    parser_context: crate::CssParserContext,
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<Vec<crate::CssKeyframeBlock>>>> {
+    real_brace_block(
+        source,
+        "baseline.rule.keyframes",
+        parser_context,
+        |source, input, diagnostics, state| {
+            Ok(keyframes::parse_body(source, input, diagnostics, state))
+        },
+    )
+}
+
+/// Parses exactly one genuine curly body of keyframe declarations.
+///
+/// Empty bodies and ordered duplicate/custom declarations are retained. The
+/// actual keyframe grammar rejects importance and defining animation properties
+/// except `animation-timing-function`, recovering those declarations locally.
+/// Structural children are fatal and reject the complete body. No keyframe
+/// selector or animation name is invented; declaration origins remain genuine.
+///
+/// Optional outer whitespace/comments lie outside the brace origin. Missing
+/// braces or trailing nontrivia reject the whole fragment. The actual brace counts
+/// toward the existing nesting limit, with per-declaration resource recovery.
+/// Implicit closures and recovery diagnostics prevent clean validation. Free
+/// parsing uses the default context; the same-named [`crate::CssParserContext`]
+/// method carries its context into the actual property provider.
+#[must_use]
+pub fn parse_keyframe_declaration_block(
+    source: &str,
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssKeyframeDeclarationList>>> {
+    parse_keyframe_declaration_block_with_context(source, crate::CssParserContext::default())
+}
+
+pub(crate) fn parse_keyframe_declaration_block_with_context(
+    source: &str,
+    parser_context: crate::CssParserContext,
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssKeyframeDeclarationList>>> {
+    real_brace_block(
+        source,
+        "baseline.keyframes.block",
+        parser_context,
+        keyframes::parse_declarations,
+    )
+}
+
+/// Parses exactly one genuine curly body in the selected CSS2 Page domain.
+///
+/// Empty bodies and ordered physical margin declarations with ordinary priority
+/// are retained. Unsupported properties/values and structural children, including
+/// margin boxes, are recovered locally while admitted neighbors survive. No page
+/// selector, at-keyword or pagination context is fabricated.
+///
+/// Optional outer whitespace/comments lie outside the original brace origin.
+/// Missing braces or trailing nontrivia reject the whole fragment. The brace
+/// counts toward the existing nesting limit. Recovery and implicit closures
+/// prevent clean validation. Free parsing uses the default document context;
+/// [`crate::CssParserContext::parse_page_block`] carries its context into ordinary
+/// property parsing before the same CSS2 Page value filter is applied.
+#[must_use]
+pub fn parse_page_block(
+    source: &str,
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssDeclarationList>>> {
+    parse_page_block_with_context(source, crate::CssParserContext::default())
+}
+
+pub(crate) fn parse_page_block_with_context(
+    source: &str,
+    parser_context: crate::CssParserContext,
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssDeclarationList>>> {
+    real_brace_block(
+        source,
+        "later.rule.page",
+        parser_context,
+        |source, input, diagnostics, state| Ok(page::parse_body(source, input, diagnostics, state)),
     )
 }
 
