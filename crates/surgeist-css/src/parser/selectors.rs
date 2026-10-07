@@ -1768,10 +1768,103 @@ fn parse_nth_pattern<'i, 't>(
         return Ok(CssNthPattern::Even);
     }
 
+    let start = input.position();
     let (a, b) = parse_nth(input).map_err(selector_basic)?;
+    let b = negative_signless_nth_offset(input.slice_from(start), b);
     if a == 0 {
         Ok(CssNthPattern::Integer(b))
     } else {
         Ok(CssNthPattern::AnPlusB(CssNthAnPlusB::new(a, b)))
+    }
+}
+
+/// Interprets an already-admitted negative signless offset from its spelling.
+/// The provider's positive integer cache may saturate before a separate minus
+/// is applied, although the final negative coefficient still fits in i32.
+fn negative_signless_nth_offset(consumed: &str, delegated: i32) -> i32 {
+    if delegated >= 0 {
+        return delegated;
+    }
+    let mut offset = 0;
+    let mut representation = None;
+    while let Some((start, end, token)) = crate::tokenization::next_source_token(consumed, offset) {
+        offset = end;
+        match token {
+            Token::WhiteSpace(_) | Token::Comment(_) => {}
+            Token::Number {
+                has_sign: false,
+                int_value: Some(_),
+                ..
+            } => representation = Some(&consumed[start..end]),
+            _ => representation = None,
+        }
+    }
+    // With grammar admission complete, a negative B ending in a signless
+    // integer is exactly the separate-minus or n- signless production. Signed
+    // B ends in a signed Number; an embedded digit suffix ends in Ident or
+    // Dimension. Those alternatives therefore keep the delegated pair.
+    // Accumulate with the selected sign already applied, without a positive
+    // i32 intermediate. Out-of-model values retain the provider's behavior.
+    representation
+        .and_then(|digits| {
+            digits.bytes().try_fold(0_i32, |value, digit| {
+                if !digit.is_ascii_digit() {
+                    return None;
+                }
+                value.checked_mul(10)?.checked_sub(i32::from(digit - b'0'))
+            })
+        })
+        .unwrap_or(delegated)
+}
+
+#[cfg(test)]
+mod nth_tests {
+    use super::*;
+    use cssparser::ParserInput;
+
+    #[test]
+    fn signless_negative_offset_interpretation_preserves_trivia_and_the_following_of_cursor() {
+        for (source, a, b) in [
+            ("n - 0002147483648 of .after", 1, i32::MIN),
+            ("n- /**/0002147483648 of .after", 1, i32::MIN),
+            ("+/**/n -/**/0002147483648 of .after", 1, i32::MIN),
+            ("-n- /**/0002147483648 of .after", -1, i32::MIN),
+            (r"2\6e -/**/0002147483648 of .after", 2, i32::MIN),
+            (r"\6e - 0002147483648 of .after", 1, i32::MIN),
+            ("n - 0002 of .after", 1, -2),
+        ] {
+            let mut storage = ParserInput::new(source);
+            let mut parser = Parser::new(&mut storage);
+            let pattern = parse_nth_pattern(&mut parser).unwrap();
+            assert_eq!(
+                pattern,
+                CssNthPattern::AnPlusB(CssNthAnPlusB::new(a, b)),
+                "{source}"
+            );
+            parser.expect_ident_matching("of").unwrap();
+            parser.expect_delim('.').unwrap();
+            parser.expect_ident_matching("after").unwrap();
+            parser.expect_exhausted().unwrap();
+        }
+    }
+
+    #[test]
+    fn source_interpretation_preserves_signed_embedded_and_out_of_model_offsets() {
+        for (source, b) in [
+            ("n -2147483648", i32::MIN),
+            ("n-2147483648", i32::MIN),
+            ("n - 2147483649", -i32::MAX),
+            ("n- 99999999999999999999999999", -i32::MAX),
+            ("n + 2147483648", i32::MAX),
+        ] {
+            let mut storage = ParserInput::new(source);
+            let mut parser = Parser::new(&mut storage);
+            assert_eq!(
+                parse_nth_pattern(&mut parser).unwrap(),
+                CssNthPattern::AnPlusB(CssNthAnPlusB::new(1, b)),
+                "{source}"
+            );
+            parser.expect_exhausted().unwrap();
+        }
     }
 }
