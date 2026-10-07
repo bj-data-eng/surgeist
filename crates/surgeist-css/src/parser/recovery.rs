@@ -28,7 +28,7 @@ pub(super) const DIRECT_PARSE_DEPTH: u32 = 128;
 /// Lexical errors are independent of whether the enclosing grammar unit survived.
 /// Internal probes and recursive parses leave this step to the caller with the
 /// original complete source.
-pub(super) fn finish_report<T>(
+pub(crate) fn finish_report<T>(
     source: &str,
     report: crate::CssParseReport<T>,
 ) -> crate::CssParseReport<T> {

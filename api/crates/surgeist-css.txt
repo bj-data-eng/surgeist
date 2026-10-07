@@ -667,6 +667,7 @@ pub surgeist_css::CssComponentValueErrorKind::BadUrl
 pub surgeist_css::CssComponentValueErrorKind::ByteLimit
 pub surgeist_css::CssComponentValueErrorKind::CapacityOverflow
 pub surgeist_css::CssComponentValueErrorKind::ComponentLimit
+pub surgeist_css::CssComponentValueErrorKind::EmptyInput
 pub surgeist_css::CssComponentValueErrorKind::InvalidDimension
 pub surgeist_css::CssComponentValueErrorKind::InvalidFunction
 pub surgeist_css::CssComponentValueErrorKind::InvalidIdentifier
@@ -674,6 +675,7 @@ pub surgeist_css::CssComponentValueErrorKind::InvalidNumber
 pub surgeist_css::CssComponentValueErrorKind::InvalidString
 pub surgeist_css::CssComponentValueErrorKind::InvalidToken
 pub surgeist_css::CssComponentValueErrorKind::NestingLimit
+pub surgeist_css::CssComponentValueErrorKind::TrailingInput
 pub surgeist_css::CssComponentValueErrorKind::UnmatchedClosingDelimiter
 pub surgeist_css::CssComponentValueErrorKind::UnserializableBoundary
 #[non_exhaustive] pub enum surgeist_css::CssComponentValueRef<'a>
@@ -12328,6 +12330,10 @@ pub fn surgeist_css::normalize_report_with_limits(report: &surgeist_css::CssPars
 pub fn surgeist_css::normalize_sheet(sheet: &surgeist_css::CssSheet) -> core::result::Result<surgeist_css::CssNormalizedSheet, surgeist_css::CssNormalizationError>
 pub fn surgeist_css::normalize_sheet_with_limits(sheet: &surgeist_css::CssSheet, limits: surgeist_css::CssNormalizationLimits) -> core::result::Result<surgeist_css::CssNormalizedSheet, surgeist_css::CssNormalizationError>
 pub fn surgeist_css::parse_color_profile_descriptor_value(source: &str, descriptor: surgeist_css::CssColorProfileDescriptorKind) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssColorProfileDescriptorValue>>
+pub fn surgeist_css::parse_comma_separated_component_values(source: &str) -> surgeist_css::CssParseReport<alloc::vec::Vec<core::option::Option<surgeist_css::CssComponentValues>>>
+pub fn surgeist_css::parse_comma_separated_component_values_with_limits(source: &str, limits: surgeist_css::CssComponentValueLimits) -> surgeist_css::CssParseReport<alloc::vec::Vec<core::option::Option<surgeist_css::CssComponentValues>>>
+pub fn surgeist_css::parse_component_value(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssComponentValue>>
+pub fn surgeist_css::parse_component_value_with_limits(source: &str, limits: surgeist_css::CssComponentValueLimits) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssComponentValue>>
 pub fn surgeist_css::parse_component_values(source: &str) -> core::result::Result<surgeist_css::CssComponentValues, surgeist_css::CssComponentValueError>
 pub fn surgeist_css::parse_component_values_with_limits(source: &str, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<surgeist_css::CssComponentValues, surgeist_css::CssComponentValueError>
 pub fn surgeist_css::parse_css_supports_condition(source: &str) -> core::result::Result<surgeist_css::CssSupportsCondition, surgeist_css::CssSupportsConstructionError>

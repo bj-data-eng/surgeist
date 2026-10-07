@@ -4,7 +4,12 @@
 //! implement CSSOM property serialization. Original token representations and
 //! independently originating replacement tokens remain available to consumers.
 
+mod entries;
 mod parse;
+pub use entries::{
+    parse_comma_separated_component_values, parse_comma_separated_component_values_with_limits,
+    parse_component_value, parse_component_value_with_limits,
+};
 pub(crate) use parse::promote_nodes;
 pub(crate) use parse::{has_unescaped_final, odd_trailing_backslashes};
 mod serialize;
@@ -293,6 +298,10 @@ pub enum CssComponentValueErrorKind {
     BadUrl,
     /// A closing delimiter had no matching opener in this component stream.
     UnmatchedClosingDelimiter,
+    /// A single-component entry had no nontrivia component before EOF.
+    EmptyInput,
+    /// A single-component entry had an extra nontrivia component.
+    TrailingInput,
     /// The spelling did not represent exactly the required token.
     InvalidToken,
     /// The decoded identifier cannot retain its identity through CSS tokenization.

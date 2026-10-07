@@ -1940,7 +1940,9 @@ pub use component_values::{
     CssComponentValueLimits, CssComponentValueRef, CssComponentValues, CssFunctionValue,
     CssHashFlag, CssNumericTokenKind, CssNumericTokenRef, CssParsedOrigin, CssSerializedOrigin,
     CssSerializedOriginSegment, CssSerializedValue, CssSimpleBlock, CssSourceSnapshot,
-    CssValueOrigin, CssValueTokenRef, parse_component_values, parse_component_values_with_limits,
+    CssValueOrigin, CssValueTokenRef, parse_comma_separated_component_values,
+    parse_comma_separated_component_values_with_limits, parse_component_value,
+    parse_component_value_with_limits, parse_component_values, parse_component_values_with_limits,
 };
 pub use conformance::*;
 pub use content_values::*;

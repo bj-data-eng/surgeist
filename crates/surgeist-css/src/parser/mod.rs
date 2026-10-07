@@ -90,6 +90,7 @@ pub(crate) use supports::{
 };
 mod conditional_chains;
 mod recovery;
+pub(crate) use recovery::finish_report;
 mod scroll_snap;
 mod scrollbar;
 mod selectors;

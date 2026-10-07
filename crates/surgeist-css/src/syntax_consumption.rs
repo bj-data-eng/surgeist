@@ -80,6 +80,7 @@ pub(crate) enum TokenKind<'a> {
     Whitespace,
     Comment,
     Semicolon,
+    Comma,
     Colon,
     Cdo,
     Cdc,
@@ -103,6 +104,7 @@ pub(crate) fn native_token_kind<'a>(token: &'a Token<'_>) -> TokenKind<'a> {
         Token::WhiteSpace(_) => TokenKind::Whitespace,
         Token::Comment(_) => TokenKind::Comment,
         Token::Semicolon => TokenKind::Semicolon,
+        Token::Comma => TokenKind::Comma,
         Token::Colon => TokenKind::Colon,
         Token::CDO => TokenKind::Cdo,
         Token::CDC => TokenKind::Cdc,
@@ -161,6 +163,7 @@ impl SyntaxToken<'_> {
                     CssValueTokenRef::AtKeyword(name) => TokenKind::AtKeyword(name),
                     CssValueTokenRef::Whitespace(_) => TokenKind::Whitespace,
                     CssValueTokenRef::Semicolon => TokenKind::Semicolon,
+                    CssValueTokenRef::Comma => TokenKind::Comma,
                     CssValueTokenRef::Colon => TokenKind::Colon,
                     CssValueTokenRef::Cdo => TokenKind::Cdo,
                     CssValueTokenRef::Cdc => TokenKind::Cdc,
@@ -1108,6 +1111,57 @@ fn fault(cursor: &SyntaxCursor<'_>, start: usize, kind: GenericFaultKind) -> Gen
         },
     }
 }
+
+/// Selects exactly one raw component within this cursor's bounded list.
+/// Lexical faults and implicit group endings remain owned by the document.
+pub(crate) fn consume_one_component(
+    cursor: &mut SyntaxCursor<'_>,
+) -> Result<NodeId, GenericSyntaxFault> {
+    cursor.skip_trivia();
+    let start = cursor.position();
+    let CursorItem::Node(node) = cursor.consume() else {
+        return Err(fault(cursor, start, GenericFaultKind::EmptyInput));
+    };
+    cursor.skip_trivia();
+    if matches!(cursor.peek(), CursorItem::Node(_)) {
+        return Err(fault(cursor, start, GenericFaultKind::TrailingInput));
+    }
+    Ok(node)
+}
+
+/// Selects same-document root ranges separated by actual comma tokens.
+/// Nested groups are single components; every empty range is retained.
+pub(crate) fn consume_comma_separated_components(
+    cursor: &mut SyntaxCursor<'_>,
+) -> Vec<SyntaxRange> {
+    let mut ranges = Vec::new();
+    let mut start = cursor.position();
+    loop {
+        let before = cursor.position();
+        match cursor.consume() {
+            CursorItem::Node(node)
+                if cursor.document.nodes[node].token().kind() == TokenKind::Comma =>
+            {
+                ranges.push(SyntaxRange {
+                    list: cursor.list,
+                    start,
+                    end: before,
+                });
+                start = cursor.position();
+            }
+            CursorItem::Node(_) => {}
+            CursorItem::EndOfInput(_) => {
+                ranges.push(SyntaxRange {
+                    list: cursor.list,
+                    start,
+                    end: before,
+                });
+                return ranges;
+            }
+        }
+    }
+}
+
 pub(crate) fn consume_at_rule(cursor: &mut SyntaxCursor<'_>) -> GenericAtRule {
     let start = cursor.position();
     let CursorItem::Node(name) = cursor.consume() else {
@@ -1386,3 +1440,6 @@ mod source_payload_tests;
 
 #[cfg(test)]
 mod declaration_boundary_tests;
+
+#[cfg(test)]
+mod raw_component_boundaries;
