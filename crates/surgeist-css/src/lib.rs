@@ -1641,6 +1641,7 @@ pub use color_adjustment::{
     CssColorScheme, CssColorSchemeConstructionError, CssColorSchemeKeyword, CssColorSchemeName,
     CssForcedColorAdjust, CssPrintColorAdjust,
 };
+mod block_fragments;
 mod color_profile;
 mod color_profile_serialization;
 mod common_serialization;
@@ -1652,6 +1653,7 @@ mod counter_changes;
 mod counter_changes_serialization;
 mod counter_style_serialization;
 mod descriptor_values;
+pub use block_fragments::CssBlockFragment;
 mod stylesheet_input;
 mod syntax_consumption;
 pub use counter_style_serialization::CssCounterStyleDescriptorKind;
@@ -1995,11 +1997,12 @@ pub use normalization::{
     normalize_sheet, normalize_sheet_with_limits,
 };
 pub use parser::{
-    CssNamespaceContext, parse_color_profile_descriptor_value,
-    parse_counter_style_descriptor_value, parse_cssom_media_query, parse_declaration,
-    parse_declaration_list_text, parse_font_face_descriptor_value,
-    parse_font_feature_display_value, parse_font_feature_value_indexes,
-    parse_font_palette_descriptor_value, parse_media_query, parse_media_query_list,
+    CssNamespaceContext, parse_color_profile_block, parse_color_profile_descriptor_value,
+    parse_counter_style_block, parse_counter_style_descriptor_value, parse_cssom_media_query,
+    parse_declaration, parse_declaration_list_text, parse_font_face_block,
+    parse_font_face_descriptor_value, parse_font_feature_display_value,
+    parse_font_feature_value_indexes, parse_font_palette_descriptor_value,
+    parse_font_palette_values_block, parse_media_query, parse_media_query_list,
     parse_property_value_text, parse_property_value_text_for_grammar, parse_relative_selector_list,
     parse_rule, parse_selector, parse_selector_list, parse_sheet, parse_style_attribute,
     parse_style_block,

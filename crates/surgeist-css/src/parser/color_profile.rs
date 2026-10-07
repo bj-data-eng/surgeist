@@ -65,6 +65,16 @@ pub(super) fn parse_rule<'i>(
     diagnostics: &mut Vec<CssRecoveryDiagnostic>,
     recovery: RecoveryState,
 ) -> Result<CssColorProfileRule, ParseError<'i, Error>> {
+    let descriptors = parse_body(source, input, diagnostics, recovery);
+    Ok(CssColorProfileRule::new(name, descriptors).with_position(position(start)))
+}
+
+pub(super) fn parse_body<'i>(
+    source: &'i str,
+    input: &mut Parser<'i, '_>,
+    diagnostics: &mut Vec<CssRecoveryDiagnostic>,
+    recovery: RecoveryState,
+) -> Vec<CssColorProfileDescriptor> {
     let mut parser = BodyParser {
         source,
         recovery,
@@ -116,7 +126,7 @@ pub(super) fn parse_rule<'i>(
         }
     }
     diagnostics.extend(parser.diagnostics);
-    Ok(CssColorProfileRule::new(name, descriptors).with_position(position(start)))
+    descriptors
 }
 
 fn position(start: &ParserState) -> CssSourcePosition {

@@ -58,6 +58,18 @@ pub(super) fn parse_rule<'i>(
     diagnostics: &mut Vec<CssRecoveryDiagnostic>,
     recovery: RecoveryState,
 ) -> Result<CssFontPaletteValuesRule, ParseError<'i, Error>> {
+    let descriptors = parse_body(source, input, diagnostics, recovery);
+    CssFontPaletteValuesRule::try_new(name, descriptors)
+        .map(|rule| rule.with_position(position(start)))
+        .map_err(|error| invalid_syntax(start.source_location(), error.to_string()))
+}
+
+pub(super) fn parse_body<'i>(
+    source: &'i str,
+    input: &mut Parser<'i, '_>,
+    diagnostics: &mut Vec<CssRecoveryDiagnostic>,
+    recovery: RecoveryState,
+) -> Vec<CssFontPaletteDescriptor> {
     let mut parser = BodyParser {
         source,
         recovery,
@@ -109,9 +121,7 @@ pub(super) fn parse_rule<'i>(
         }
     }
     diagnostics.extend(parser.diagnostics);
-    CssFontPaletteValuesRule::try_new(name, descriptors)
-        .map(|rule| rule.with_position(position(start)))
-        .map_err(|error| invalid_syntax(start.source_location(), error.to_string()))
+    descriptors
 }
 
 fn position(start: &ParserState) -> CssSourcePosition {

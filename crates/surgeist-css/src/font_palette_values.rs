@@ -414,12 +414,7 @@ impl CssFontPaletteValuesRule {
         name: CssFontPaletteName,
         descriptors: Vec<CssFontPaletteDescriptor>,
     ) -> Result<Self, CssFontPaletteConstructionError> {
-        if !descriptors
-            .iter()
-            .any(|descriptor| descriptor.value.kind() == CssFontPaletteDescriptorKind::FontFamily)
-        {
-            return Err(CssFontPaletteConstructionError::MissingFontFamily);
-        }
+        validate_descriptors(&descriptors)?;
         Ok(Self {
             name,
             descriptors,
@@ -445,5 +440,18 @@ impl CssFontPaletteValuesRule {
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
         self.position
+    }
+}
+
+pub(crate) fn validate_descriptors(
+    descriptors: &[CssFontPaletteDescriptor],
+) -> Result<(), CssFontPaletteConstructionError> {
+    if descriptors
+        .iter()
+        .any(|descriptor| descriptor.value.kind() == CssFontPaletteDescriptorKind::FontFamily)
+    {
+        Ok(())
+    } else {
+        Err(CssFontPaletteConstructionError::MissingFontFamily)
     }
 }

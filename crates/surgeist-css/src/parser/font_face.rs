@@ -65,6 +65,18 @@ pub(super) fn parse_font_face_rule<'i, 't>(
     diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
 ) -> std::result::Result<CssFontFaceRule, ParseError<'i, Error>> {
+    let descriptors = parse_body(source, input, diagnostics, recovery)?;
+    Ok(CssFontFaceRule::new(descriptors).with_position(
+        crate::source::CssSourcePosition::from_cssparser(start.position(), start.source_location()),
+    ))
+}
+
+pub(super) fn parse_body<'i>(
+    source: &'i str,
+    input: &mut Parser<'i, '_>,
+    diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
+    recovery: RecoveryState,
+) -> std::result::Result<CssFontFaceDescriptors, ParseError<'i, Error>> {
     let mut descriptors = Vec::new();
     let mut descriptor_parser = FontFaceDescriptorParser {
         source,
@@ -104,11 +116,7 @@ pub(super) fn parse_font_face_rule<'i, 't>(
     }
 
     diagnostics.extend(descriptor_parser.diagnostics);
-    let descriptors = CssFontFaceDescriptors::new(descriptors);
-
-    Ok(CssFontFaceRule::new(descriptors).with_position(
-        crate::source::CssSourcePosition::from_cssparser(start.position(), start.source_location()),
-    ))
+    Ok(CssFontFaceDescriptors::new(descriptors))
 }
 
 struct FontFaceDescriptorParser<'s> {

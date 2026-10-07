@@ -71,6 +71,145 @@ pub(super) fn finish_nested_component<'i>(
     Ok(())
 }
 
+fn descriptor_block<T: Send>(
+    source: &str,
+    production: &'static str,
+    parse_body: impl for<'i, 't> FnOnce(
+        &'i str,
+        &mut Parser<'i, 't>,
+        &mut Vec<crate::CssRecoveryDiagnostic>,
+        RecoveryState,
+    ) -> Result<T, ParseError<'i, Error>>
+    + Send,
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<T>>> {
+    bounded(source, || {
+        let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
+        let working_source = crate::tokenization::prepare(source);
+        let mut parser_input = ParserInput::new(&working_source);
+        let mut input = Parser::new(&mut parser_input);
+        let mut diagnostics = Vec::new();
+        let result = (|| {
+            input.skip_whitespace();
+            let start = input.position().byte_index();
+            input.expect_curly_bracket_block()?;
+            let body = input.parse_nested_block(|input| {
+                let mut depth = state.enter_rule_block(source, input, production)?;
+                // The entered native owner admits each unit before collecting its
+                // components. Whole-body component admission would erase recovery
+                // partitions and lose valid neighbors of a failed unit.
+                let body = parse_body(source, input, &mut diagnostics, state.clone())?;
+                depth.retain();
+                Ok(body)
+            })?;
+            let end = input.position().byte_index();
+            input.expect_exhausted()?;
+            let origin = CssParsedOrigin::from_range(state.source_snapshot(), start..end)
+                .expect("consumed block boundaries belong to the original source");
+            Ok(crate::CssBlockFragment::from_parsed(body, origin))
+        })();
+        match result {
+            Ok(fragment) => {
+                diagnostics.extend(state.take_implicit_closure_diagnostics(source));
+                crate::CssParseReport::new(Some(fragment), diagnostics)
+            }
+            Err(error) => crate::CssParseReport::new(
+                None,
+                vec![reject(source, error, crate::CssRecoveryAction::RejectInput)],
+            ),
+        }
+    })
+}
+
+/// Parses exactly one genuine curly block of `@font-face` descriptors.
+///
+/// Outer whitespace/comments are accepted; missing braces and trailing nontrivia
+/// reject the complete input. Empty bodies are valid. Descriptor-local failures
+/// retain admitted neighbors, while non-declaration structural failures reject
+/// the complete body. Occurrence order and effective values use the same owner
+/// as a complete rule. No family, source URL or at-keyword is invented.
+///
+/// The brace counts toward the existing nesting limit. Retained implicit closures
+/// and lexical recovery use original-source diagnostics and fail clean validation.
+#[must_use]
+pub fn parse_font_face_block(
+    source: &str,
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssFontFaceDescriptors>>> {
+    descriptor_block(source, "baseline.rule.font-face", font_face::parse_body)
+}
+
+/// Parses exactly one genuine curly block of `@counter-style` descriptors.
+///
+/// Outer whitespace/comments are accepted; missing braces and trailing nontrivia
+/// reject the complete input. Empty bodies retain no fabricated defaults. Native
+/// descriptor/child recovery preserves occurrence order and valid neighbors;
+/// intrinsic descriptor combinations, including `extends` with symbols, reject
+/// the complete body. Counter activation and symbol usability remain downstream.
+///
+/// The origin covers the actual braces or original implicit EOF and shares the
+/// descriptor snapshot. The brace counts toward the existing nesting limit;
+/// recovery and implicit closure diagnostics prevent clean validation.
+#[must_use]
+pub fn parse_counter_style_block(
+    source: &str,
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssCounterStyleDescriptors>>> {
+    descriptor_block(
+        source,
+        "later.rule.counter-style",
+        counter_style::parse_body,
+    )
+}
+
+/// Parses exactly one genuine curly block of `@font-palette-values` descriptors.
+///
+/// Outer whitespace/comments are accepted; missing braces and trailing nontrivia
+/// reject the complete input. A retained body requires an admitted `font-family`,
+/// using the same predicate as complete-rule construction. Native descriptor and
+/// child recovery retains valid neighbors and ordered duplicates; missing family
+/// rejects the complete body. No palette name or font resource is fabricated.
+///
+/// Origins and diagnostics use the original source. The brace counts toward the
+/// existing nesting limit, including failed child admission. Retained implicit
+/// closures and recovery diagnostics prevent clean validation.
+#[must_use]
+pub fn parse_font_palette_values_block(
+    source: &str,
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<Vec<crate::CssFontPaletteDescriptor>>>> {
+    descriptor_block(
+        source,
+        "later.rule.font-palette-values",
+        |source, input, diagnostics, state| {
+            let descriptors = font_palette_values::parse_body(source, input, diagnostics, state);
+            crate::font_palette_values::validate_descriptors(&descriptors).map_err(|error| {
+                crate::error::invalid_syntax(input.current_source_location(), error.to_string())
+            })?;
+            Ok(descriptors)
+        },
+    )
+}
+
+/// Parses exactly one genuine curly block of `@color-profile` descriptors.
+///
+/// Outer whitespace/comments are accepted; missing braces and trailing nontrivia
+/// reject the complete input. Empty and incomplete authored bodies are retained;
+/// profile completeness and resource loading remain downstream. Native descriptor
+/// and child recovery preserves ordered admitted neighbors without a profile name.
+///
+/// The origin covers actual braces or original implicit EOF and shares descriptor
+/// provenance. The brace counts toward the existing nesting limit, including
+/// failed children. Recovery and implicit closure diagnostics fail clean validation.
+#[must_use]
+pub fn parse_color_profile_block(
+    source: &str,
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<Vec<crate::CssColorProfileDescriptor>>>> {
+    descriptor_block(
+        source,
+        "interop.rule.color-profile",
+        |source, input, diagnostics, state| {
+            Ok(color_profile::parse_body(source, input, diagnostics, state))
+        },
+    )
+}
+
 /// Parses exactly one complete, grammar-valid ordinary declaration from raw source.
 ///
 /// Surrounding whitespace and comments are accepted. The source must contain a

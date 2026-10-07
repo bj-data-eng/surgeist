@@ -68,6 +68,21 @@ pub(super) fn parse_counter_style_rule<'i, 't>(
     diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
 ) -> Result<CssCounterStyleRule, ParseError<'i, Error>> {
+    let descriptors = parse_body(source, input, diagnostics, recovery)?;
+    Ok(CssCounterStyleRule::from_parsed(
+        prelude.name,
+        descriptors,
+        crate::CssSourcePosition::from_cssparser(start.position(), start.source_location()),
+        prelude.origin,
+    ))
+}
+
+pub(super) fn parse_body<'i>(
+    source: &'i str,
+    input: &mut Parser<'i, '_>,
+    diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
+    recovery: RecoveryState,
+) -> Result<CssCounterStyleDescriptors, ParseError<'i, Error>> {
     let mut occurrences = Vec::new();
     let mut descriptor_parser = CounterStyleDescriptorParser { source, recovery };
     let mut items = RuleBodyParser::new(input, &mut descriptor_parser);
@@ -111,12 +126,7 @@ pub(super) fn parse_counter_style_rule<'i, 't>(
             )
         })?;
 
-    Ok(CssCounterStyleRule::from_parsed(
-        prelude.name,
-        descriptors,
-        crate::CssSourcePosition::from_cssparser(start.position(), start.source_location()),
-        prelude.origin,
-    ))
+    Ok(descriptors)
 }
 
 struct CounterStyleDescriptorParser<'s> {
