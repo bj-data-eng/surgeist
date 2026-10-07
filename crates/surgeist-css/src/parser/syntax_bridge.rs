@@ -167,7 +167,7 @@ where
         }
         RuleTermination::EndOfInput(_) => parser
             .rule_without_block(prelude?, start)
-            .map_err(|()| input.new_unexpected_token_error(Token::Semicolon)),
+            .map_err(|()| input.new_error(cssparser::BasicParseErrorKind::EndOfInput)),
     }
 }
 
