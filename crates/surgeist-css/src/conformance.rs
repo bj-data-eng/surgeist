@@ -2929,7 +2929,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 765] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 767] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -4108,6 +4108,24 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 765] = [
         "@supports",
         O_CONDITIONAL3,
         "#at-supports",
+    ),
+    CssFeatureMetadata::partial(
+        "ext.rule.when",
+        CssFeatureKind::Rule,
+        "@when",
+        X_CONDITIONAL5,
+        "#when-rule",
+        "Complete adopted authored profile: exact media-feature and supports-declaration leaves, opaque fallback, homogeneous algebra, checked ordinary/scoped/style bodies and shared specified output; https://github.com/bj-data-eng/surgeist/issues/647",
+        "The selected Conditional5 source supplies no fully normative generic when production or literal When/Else CSSOM algorithm. This adopted authored profile is complete within its bound; condition evaluation remains downstream.",
+    ),
+    CssFeatureMetadata::partial(
+        "ext.rule.else",
+        CssFeatureKind::Rule,
+        "@else",
+        X_CONDITIONAL5,
+        "#else-rule",
+        "Complete adopted authored profile: optional adopted condition, original-token adjacent conditional chains, checked complete-list assembly and shared specified output; https://github.com/bj-data-eng/surgeist/issues/647",
+        "The selected Conditional5 source supplies no fully normative generic when production or literal When/Else CSSOM algorithm. This adopted authored profile is complete within its bound; condition evaluation remains downstream.",
     ),
     CssFeatureMetadata::complete(
         "ext.rule.supports-condition",

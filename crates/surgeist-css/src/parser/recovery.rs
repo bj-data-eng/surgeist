@@ -32,6 +32,9 @@ pub(super) fn finish_report<T>(
     report: crate::CssParseReport<T>,
 ) -> crate::CssParseReport<T> {
     let (syntax, mut diagnostics) = report.into_parts();
+    for diagnostic in &mut diagnostics {
+        diagnostic.clear_opening_owner();
+    }
     let mut offset = 0;
     while let Some((token_start, token_end, token)) = next_source_token(source, offset) {
         offset = token_end;
@@ -571,12 +574,13 @@ impl RecoveryState {
             .retained_implicit_openings
             .borrow_mut()
             .drain(..)
-            .filter_map(|_| {
+            .filter_map(|opening| {
                 crate::CssRecoveryDiagnostic::new(
                     crate::error::implicit_eof(source),
                     span,
                     crate::CssRecoveryAction::RetainWithImplicitClosure,
                 )
+                .map(|diagnostic| diagnostic.with_opening_owner(opening))
             })
             .collect();
         diagnostics.extend(self.retained_navigation_diagnostics.borrow_mut().drain(..));
@@ -711,6 +715,8 @@ pub(super) enum GroupKind {
     Media,
     Supports,
     Container,
+    When,
+    Else,
     Scope,
     Style,
     Component,
@@ -724,6 +730,8 @@ impl GroupKind {
             Self::Media => "baseline.rule.media",
             Self::Supports => "baseline.rule.supports",
             Self::Container => "baseline.rule.container",
+            Self::When => "ext.rule.when",
+            Self::Else => "ext.rule.else",
             Self::Scope => "baseline.rule.scope",
             Self::Style => "baseline.rule.style",
             Self::Component => "css.declaration",
@@ -876,7 +884,12 @@ pub(super) fn preflight_structural_nesting(
                 starts.push(token_end);
                 starts
             }
-            GroupKind::Layer | GroupKind::Media | GroupKind::Supports | GroupKind::Container
+            GroupKind::Layer
+            | GroupKind::Media
+            | GroupKind::Supports
+            | GroupKind::Container
+            | GroupKind::When
+            | GroupKind::Else
                 if !style_context_starts.is_empty() =>
             {
                 let mut starts = style_context_starts;
@@ -887,6 +900,8 @@ pub(super) fn preflight_structural_nesting(
             | GroupKind::Media
             | GroupKind::Supports
             | GroupKind::Container
+            | GroupKind::When
+            | GroupKind::Else
             | GroupKind::Scope
             | GroupKind::Component
             | GroupKind::Other => Vec::new(),
@@ -903,6 +918,8 @@ pub(super) fn preflight_structural_nesting(
             | GroupKind::Media
             | GroupKind::Supports
             | GroupKind::Container
+            | GroupKind::When
+            | GroupKind::Else
             | GroupKind::Scope
                 if !style_ancestry_starts.is_empty() =>
             {
@@ -939,27 +956,20 @@ fn group_kind(source: &str, unit_start: usize, opening_offset: usize) -> GroupKi
     let Some(prelude) = source.get(unit_start..opening_offset) else {
         return GroupKind::Other;
     };
-    let trimmed = prelude.trim_start();
-    let Some(after_at) = trimmed.strip_prefix('@') else {
-        return if looks_like_custom_declaration(trimmed) {
+    let Some((_, _, Token::AtKeyword(name))) = next_source_token(source, unit_start) else {
+        return if looks_like_custom_declaration(prelude.trim_start()) {
             GroupKind::Component
         } else {
             GroupKind::Style
         };
     };
-    let name_end = after_at
-        .find(|character: char| !character.is_alphanumeric() && character != '-')
-        .unwrap_or(after_at.len());
-    match after_at
-        .get(..name_end)
-        .unwrap_or_default()
-        .to_ascii_lowercase()
-        .as_str()
-    {
+    match name.to_ascii_lowercase().as_str() {
         "layer" => GroupKind::Layer,
         "media" => GroupKind::Media,
         "supports" => GroupKind::Supports,
         "container" => GroupKind::Container,
+        "when" => GroupKind::When,
+        "else" => GroupKind::Else,
         "scope" => GroupKind::Scope,
         _ => GroupKind::Other,
     }
@@ -1078,7 +1088,10 @@ fn unclosed_openings(source: &str) -> Vec<usize> {
     scan_delimiters(source, 0).unclosed
 }
 
-fn next_source_token<'i>(source: &'i str, offset: usize) -> Option<(usize, usize, Token<'i>)> {
+pub(super) fn next_source_token<'i>(
+    source: &'i str,
+    offset: usize,
+) -> Option<(usize, usize, Token<'i>)> {
     crate::tokenization::next_source_token(source, offset)
 }
 

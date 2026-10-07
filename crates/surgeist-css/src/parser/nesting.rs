@@ -19,6 +19,7 @@ use crate::error::{
     is_nesting_limit_error, with_at_rule_prelude_context, with_media_query_context,
 };
 use crate::syntax::*;
+use crate::{CssElseRule, CssWhenCondition, CssWhenRule};
 
 pub(super) static IMPLEMENTED_SELECTORS: &[CssFeatureId] =
     &[CssFeatureId::new("baseline.selector.nesting")];
@@ -216,6 +217,8 @@ enum NestedStyleAtRulePrelude {
     Supports(CssSupportsCondition),
     SupportsCondition(super::named_supports::NamedSupportsPrelude),
     Container(CssContainerPrelude),
+    When(CssWhenCondition, Vec<usize>),
+    Else(Option<CssWhenCondition>, Vec<usize>),
     Layer(Vec<CssLayerName>),
     Scope(CssScopePrelude),
 }
@@ -227,6 +230,8 @@ impl NestedStyleAtRulePrelude {
             Self::Supports(_) => "baseline.rule.supports",
             Self::SupportsCondition(_) => "ext.rule.supports-condition",
             Self::Container(_) => "baseline.rule.container",
+            Self::When(_, _) => "ext.rule.when",
+            Self::Else(_, _) => "ext.rule.else",
             Self::Layer(_) => "baseline.rule.layer-block",
             Self::Scope(_) => "baseline.rule.scope",
         }
@@ -275,6 +280,14 @@ impl<'i> AtRuleParser<'i> for NestedStyleRuleParser<'i> {
             "supports-condition" => Ok(NestedStyleAtRulePrelude::SupportsCondition(
                 super::named_supports::parse_prelude(input, &self.recovery)?,
             )),
+            "when" => {
+                let (condition, implicit) = super::when::parse_prelude(self.source, input, &self.recovery, name.as_ref(), false)?;
+                Ok(NestedStyleAtRulePrelude::When(condition.expect("required condition"), implicit))
+            },
+            "else" => {
+                let (condition, implicit) = super::when::parse_prelude(self.source, input, &self.recovery, name.as_ref(), true)?;
+                Ok(NestedStyleAtRulePrelude::Else(condition, implicit))
+            },
             "container" => {
                 let prelude = parse_container_prelude(self.source, input, &self.recovery)
                     .map_err(with_container_prelude_context)?;
@@ -400,6 +413,26 @@ impl<'i> AtRuleParser<'i> for NestedStyleRuleParser<'i> {
                     &self.recovery,
                 )?;
                 CssRule::SupportsCondition(rule)
+            }
+            NestedStyleAtRulePrelude::When(condition, implicit) => {
+                let recovered = parse_style_contents(self.source, input, self.recovery.clone())?;
+                self.recovery.retain_component_closures(implicit);
+                self.diagnostics.extend(recovered.diagnostics);
+                CssRule::When(CssWhenRule::new(
+                    condition,
+                    recovered.syntax.into_nested_rules(),
+                    position,
+                ))
+            }
+            NestedStyleAtRulePrelude::Else(condition, implicit) => {
+                let recovered = parse_style_contents(self.source, input, self.recovery.clone())?;
+                self.recovery.retain_component_closures(implicit);
+                self.diagnostics.extend(recovered.diagnostics);
+                CssRule::Else(CssElseRule::new(
+                    condition,
+                    recovered.syntax.into_nested_rules(),
+                    position,
+                ))
             }
             NestedStyleAtRulePrelude::Container(prelude) => {
                 let recovered = parse_style_contents(self.source, input, self.recovery.clone())?;

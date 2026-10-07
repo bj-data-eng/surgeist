@@ -342,6 +342,11 @@ pub struct CssAtRulePlacementError {
 }
 
 impl CssAtRulePlacementError {
+    /// Returns the rule production associated with its decoded name.
+    #[must_use]
+    pub fn production(&self) -> CssProductionId {
+        production_for_at_rule(self.name.as_str())
+    }
     #[must_use]
     /// Returns the decoded authored at-rule name.
     pub const fn name(&self) -> &CssAtRuleName {
@@ -1174,6 +1179,27 @@ pub(crate) fn from_rule_parse_error(
 ) -> Error {
     let mut error = from_parse_error(source, error);
     let unit = failed_unit.trim_start();
+    // The adopted conditional grammar owns its prelude and terminal component
+    // failures. Only a valid prelude's basic missing-body failure is contextualized.
+    // Use decoded token identity so escaped at-keywords keep the same ownership.
+    if let Some((_, _, Token::AtKeyword(name))) = crate::tokenization::next_source_token(unit, 0)
+        && (name.eq_ignore_ascii_case("when") || name.eq_ignore_ascii_case("else"))
+    {
+        if matches!(
+            error.kind,
+            ErrorKind::UnexpectedEnd(_)
+                | ErrorKind::UnexpectedToken(_)
+                | ErrorKind::InvalidAtRuleBody(_)
+        ) {
+            error.kind = ErrorKind::InvalidAtRuleBody(CssAtRuleSyntaxError {
+                name: CssAtRuleName::new(name.as_ref()),
+                production: production_for_at_rule(&name),
+                expectation: CssGrammarExpectation::new("a block body for this at-rule"),
+                encountered: None,
+            });
+        }
+        return error;
+    }
     if let Some(after_at) = unit.strip_prefix('@') {
         let name_end = after_at
             .find(|character: char| !character.is_alphanumeric() && character != '-')
@@ -1364,6 +1390,45 @@ pub(crate) fn invalid_root_syntax(source: &str, byte_offset: usize, token: &Toke
     }
 }
 
+pub(crate) fn invalid_when_prelude<'i>(
+    position: CssSourcePosition,
+    name: &str,
+    token: Option<&Token<'_>>,
+) -> ParseError<'i, Error> {
+    let location = cssparser::SourceLocation {
+        line: position.line().value(),
+        column: position.column().value() + 1,
+    };
+    ParseError {
+        location,
+        kind: ParseErrorKind::Custom(Error {
+            position,
+            kind: ErrorKind::InvalidAtRulePrelude(CssAtRuleSyntaxError {
+                name: CssAtRuleName::new(name),
+                production: production_for_at_rule(name),
+                expectation: CssGrammarExpectation::new("a condition in the adopted when grammar"),
+                encountered: token.map(CssTokenSummary::from_token),
+            }),
+        }),
+    }
+}
+pub(crate) fn invalid_free_else(source: &str, position: CssSourcePosition) -> Error {
+    let name = crate::tokenization::next_source_token(source, position.byte_offset().value())
+        .and_then(|(_, _, token)| match token {
+            Token::AtKeyword(name) => Some(name),
+            _ => None,
+        })
+        .expect("parsed Else starts at its original at-keyword");
+    Error {
+        position,
+        kind: ErrorKind::InvalidAtRulePlacement(CssAtRulePlacementError {
+            name: CssAtRuleName::new(name.as_ref()),
+            expected_context: CssGrammarExpectation::new(
+                "after a conditional group separated only by whitespace or comments",
+            ),
+        }),
+    }
+}
 pub(crate) fn invalid_at_rule_placement<'i>(
     location: cssparser::SourceLocation,
     name: &str,
@@ -1972,6 +2037,12 @@ fn token_kind(token: &Token<'_>) -> CssTokenKind {
 }
 
 fn production_for_at_rule(name: &str) -> CssProductionId {
+    if name.eq_ignore_ascii_case("when") {
+        return CssProductionId::new("ext.rule.when");
+    }
+    if name.eq_ignore_ascii_case("else") {
+        return CssProductionId::new("ext.rule.else");
+    }
     if name.eq_ignore_ascii_case("import") {
         CssProductionId::new("baseline.rule.import")
     } else if name.eq_ignore_ascii_case("layer") {

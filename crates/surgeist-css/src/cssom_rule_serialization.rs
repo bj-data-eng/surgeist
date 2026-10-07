@@ -12,6 +12,10 @@ use crate::{
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssRuleCssomKind {
+    /// No selected literal CSSOM algorithm defines this adopted authored profile.
+    When,
+    /// No selected literal CSSOM algorithm defines this adopted authored profile.
+    Else,
     Page,
 }
 

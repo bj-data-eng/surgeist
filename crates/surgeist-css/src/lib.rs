@@ -1144,6 +1144,21 @@
 //! assert_eq!(alias.status(), CssSupportStatus::Partial);
 //! ```
 //!
+//! # Authored when and else groups
+//!
+//! [`CssWhenCondition`] owns the adopted symbolic grammar: homogeneous boolean
+//! terms, explicit groups, single media-feature and supports-declaration leaves,
+//! and valid opaque enclosures. [`parse_when_condition`] returns checked syntax
+//! without evaluation. [`CssWhenRule`] and [`CssElseRule`] retain ordinary children;
+//! their scoped counterparts retain the separate scoped grammar. Parsed Else
+//! chains require original-token adjacency after complete recovery reconstruction.
+//! Checked enclosing assembly instead validates actual supplied sibling order.
+//! Normalization retains immutable branch headers and nearest style contexts.
+//! Shared specified output composes the graph under cumulative limits; ordinary
+//! literal CSSOM returns [`CssRuleCssomKind::When`] or [`CssRuleCssomKind::Else`]
+//! as source-undefined. The current Scope literal front remains format-unavailable.
+//! See the [adopted authored profile](https://github.com/bj-data-eng/surgeist/issues/647).
+//!
 //! # Media, supports, imports, and prelude recovery
 //!
 //! Media syntax preserves unknown conditions separately from malformed-member recovery.
@@ -1658,6 +1673,8 @@ pub use container_scroll::*;
 mod container_style;
 pub use container_features::*;
 pub use container_style::*;
+mod when;
+pub use when::*;
 mod supports;
 pub use supports::CssSupportsConstructionError;
 mod cssom_rule_serialization;

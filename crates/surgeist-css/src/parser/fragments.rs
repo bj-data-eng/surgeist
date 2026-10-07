@@ -772,7 +772,7 @@ pub(crate) fn parse_rule_with_context(
                     .expect("a successful isolated ordinary rule emits one outer node");
                 let mut diagnostics = parser.grammar.diagnostics;
                 diagnostics.extend(state.take_implicit_closure_diagnostics(source));
-                crate::CssParseReport::new(Some(rule), diagnostics)
+                conditional_chains::rule(source, rule, diagnostics)
             }
             Err(error) => {
                 let action =
@@ -850,7 +850,7 @@ pub(crate) fn parse_style_block_with_context(
         match result {
             Ok((block, mut diagnostics)) => {
                 diagnostics.extend(state.take_implicit_closure_diagnostics(source));
-                crate::CssParseReport::new(Some(block), diagnostics)
+                conditional_chains::style_block(source, block, diagnostics)
             }
             Err(error) => crate::CssParseReport::new(
                 None,

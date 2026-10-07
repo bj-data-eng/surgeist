@@ -146,14 +146,32 @@ pub enum CssRecoveryAction {
 ///     }
 /// }
 /// ```
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct CssRecoveryDiagnostic {
     error: Error,
     span: CssSourceSpan,
     action: CssRecoveryAction,
+    opening_owner: Option<usize>,
 }
 
+impl PartialEq for CssRecoveryDiagnostic {
+    fn eq(&self, other: &Self) -> bool {
+        self.error == other.error && self.span == other.span && self.action == other.action
+    }
+}
+impl Eq for CssRecoveryDiagnostic {}
 impl CssRecoveryDiagnostic {
+    pub(crate) fn with_opening_owner(mut self, owner: usize) -> Self {
+        self.opening_owner = Some(owner);
+        self
+    }
+    pub(crate) fn opening_owner(&self) -> Option<usize> {
+        self.opening_owner
+    }
+    pub(crate) fn clear_opening_owner(&mut self) {
+        self.opening_owner = None;
+    }
+
     #[must_use]
     pub(crate) fn new(
         error: Error,
@@ -169,6 +187,7 @@ impl CssRecoveryDiagnostic {
             error,
             span,
             action,
+            opening_owner: None,
         })
     }
 

@@ -659,10 +659,20 @@ fn emit_feature(
     keyword: Option<&str>,
     mode: MediaOutput,
 ) -> Result<(), CssComponentValueError> {
-    let CssComponentValueRef::Block(block) = syntax.component.view() else {
-        unreachable!("feature parenthesis")
+    let closing = match syntax.component.view() {
+        CssComponentValueRef::Block(block) => {
+            out.push_grammar(CssCanonicalToken::OpenParen, syntax.component.origin())?;
+            block.closing_origin()
+        }
+        CssComponentValueRef::Function(function) => {
+            out.push_grammar(
+                CssCanonicalToken::Function(function.name()),
+                syntax.component.origin(),
+            )?;
+            function.closing_origin()
+        }
+        _ => unreachable!("checked feature enclosure"),
     };
-    out.push_grammar(CssCanonicalToken::OpenParen, syntax.component.origin())?;
     let default = |index| defaults.get(index).copied().unwrap_or(false);
     match &syntax.shape {
         MediaFeatureShape::Boolean => emit_name(out, syntax, mode)?,
@@ -727,7 +737,7 @@ fn emit_feature(
             }
         },
     }
-    out.push_grammar(CssCanonicalToken::CloseParen, block.closing_origin())
+    out.push_grammar(CssCanonicalToken::CloseParen, closing)
 }
 
 fn resource(

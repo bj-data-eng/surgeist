@@ -6041,6 +6041,80 @@ Whole-rule serialization still needs CSS support.
 Container selection, condition evaluation and mutable CSSOM objects belong
 to downstream owners.
 
+### Authored when and else groups
+
+`@when` and `@else` implement the complete bounded authored profile adopted in
+[the source decision](https://github.com/bj-data-eng/surgeist/issues/647), using the
+selected [Conditional 5 when clause](https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#when-rule)
+and [separate else-chain clause](https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#else-rule).
+Their feature IDs are `ext.rule.when` and `ext.rule.else`. Metadata reports partial
+coverage relative to that cited edition: its generic when production is not fully
+normative, while the adopted profile defines an explicit bounded grammar. No
+selected source defines a literal When/Else CSSOM algorithm. Evaluation belongs
+downstream.
+
+`parse_when_condition` and `parse_when_condition_with_limits` return a checked
+`CssWhenCondition` or `CssWhenConstructionError`; the matching parser-context
+methods preserve the selected property context. `try_from_components` and
+`try_from_components_with_limits` validate the actual complete components. The
+private condition owns its lexical spelling and origin; inspecting or constructing
+`CssWhenConditionKind` does not permit forging a checked condition.
+
+The grammar admits one `not` term, or terms joined by homogeneous `and` or `or`.
+A term is a parenthesized condition, `media()` containing exactly one media
+feature, `supports()` containing exactly one declaration, or MQ4 general-enclosed
+syntax. `CssWhenConditionKind` exposes explicit grouping, negation, ordered
+conjunction/disjunction lists, typed media features, supports declarations and
+opaque enclosures. `media(--name)` is an unknown boolean feature. It does not
+reference a custom-media definition. The media leaf shares the media feature and
+numeric owners; the supports leaf shares checked declaration admission.
+
+Defined probes precede opaque fallback. Valid `media()`, `supports()`, `()`, and
+broader failed probes can therefore remain general-enclosed. Outer mixed
+operators, bare identifiers and unconsumed tokens reject the condition. Bad
+lexical tokens, unmatched delimiters and resource exhaustion stay terminal;
+checked construction also rejects recovered implicit closures. Construction
+errors expose the responsible original `origin()`, with a component error as
+the typed error source when applicable. Lexical `serialize` preserves trivia,
+spelling and grouping; `serialize_with_limit` separately bounds output bytes.
+
+`CssWhenRule`, `CssElseRule`, `CssScopedWhenRule` and `CssScopedElseRule` are checked
+group fragments with immutable condition and ordered children. When requires a
+condition; Else accepts `Option<CssWhenCondition>`. Their `try_new` and
+`try_new_in_style` take the condition, an ordinary or scoped child vector, and
+`&CssNamespaceContext`. The latter checks descendants under an explicit style
+ancestor. Enclosing sheet/group assembly rechecks actual sibling placement,
+style ancestry and namespace context atomically. Programmatic at-keywords have
+no source position; retained parsed conditions and children keep their origins.
+An Else fragment becomes placed only when its complete enclosing list validates.
+
+Each parsed sibling list admits Else only after Media, Supports, Container, When,
+or another admitted Else, with only original CSS whitespace/comments between
+that preceding complete unit and the Else keyword. Omitted conditions do not end
+a chain. Dropped constructs, semicolons, qualified rules and other at-rules break
+adjacency even when recovery removes them from the retained list. This check runs
+after structural reconstruction over the original source. A free Else drops its
+whole unit with `InvalidAtRulePlacement` and `DropAtRule`; rejected bodies produce
+no retained children or child-parser diagnostics. Independently published lexical
+escape/comment diagnostics survive. An isolated `parse_rule` free Else rejects
+the requested input with `RejectInput`. An invalid condition uses
+`InvalidAtRulePrelude`; both diagnostic details expose the owning production.
+Checked assembly instead uses actual supplied adjacency, so mixed-source nodes
+can form a new valid list without inheriting old source-gap constraints.
+
+Shared specified graph output emits compact `@when CONDITION { CHILDREN }`,
+`@else CONDITION { CHILDREN }`, or `@else { CHILDREN }`. Condition and child work
+share one cumulative input/projection/UTF-8 budget, including retained components
+whose surrounding whitespace is omitted. Normalization preserves ordered `When`
+and `Else` contexts and the nearest complete style-selector context without
+choosing a branch. Direct or composed ordinary literal CSSOM output returns
+`SourceUndefined(When)` or `SourceUndefined(Else)`: no selected literal algorithm
+is claimed. A scoped group reached through the current Scope literal front
+reports the earlier `FormatUnavailable(Scope)` boundary; scoped specified output
+and normalization remain available through the enclosing authored graph.
+
+### Media, supports and imports
+
 Media support metadata cites the selected published MQ5 edition as the effective
 source for query grammar and all 37 feature definitions. Historical feature IDs
 and baseline alias memberships remain stable; they do not select superseded
@@ -8348,9 +8422,11 @@ recovered members become `not all` in place, preserving valid sibling order and
 the original reports and origins. The generic Import and CustomMedia bridges
 use this projection; their direct authored `serialize` methods keep their
 existing rejection of recovered members. Import optional-clause interpretation
-uses the same owning protection grammar. Supports and Container use their
+uses the same owning protection grammar. Supports, Container and When/Else conditions use their
 lexical owners, preserving authored operator spelling, grouping, case and
-internal trivia while omitting root-edge whitespace.
+internal trivia while omitting root-edge whitespace. The
+[adopted When/Else profile](#authored-when-and-else-groups) retains every ordered
+branch body without evaluating which branch applies.
 
 Keyframe `from` and `to` selectors emit `0%` and `100%`. Percentage output uses
 the existing selected numeric policy of at most six fractional decimal places.
@@ -8444,8 +8520,10 @@ therefore provides the selected safe canonicalization, rather than a general
 shortest-selector search. Standalone selector and compact rule output preserve
 the authored explicit universals.
 
-The pinned CSSOM source has no Page rule format. Literal Page output reports
-`SourceUndefined` at its actual rule path. Other represented modern wrappers
+The pinned CSSOM source has no Page rule format. The adopted When/Else profile
+also has no selected literal algorithm. Ordinary literal output for these kinds
+reports `SourceUndefined` at its actual rule path. A scoped When/Else inside the
+current Scope front encounters `FormatUnavailable(Scope)` before descendants. Other represented modern wrappers
 without a selected literal byte format report `FormatUnavailable`; their defined
 name/value providers and compact authored output remain usable. These limits
 preserve the source boundary explicitly. The eight unresolved mode-dependent
@@ -8464,6 +8542,8 @@ with its downstream owner.
 Evidence is in [`cssom_literal_rules.rs`](../tests/cssom_literal_rules.rs),
 which exercises literal formats, parse recovery, retained declaration runs,
 selector scope, typed capabilities, original error causes and cumulative limits.
+The adopted conditional profile is also covered by
+[`when_else_public_contract.rs`](../tests/when_else_public_contract.rs).
 
 The compact `to_specified_css` operations preserve authored duplicates and their
 existing rule/provider behavior. The literal operation's selected formats and

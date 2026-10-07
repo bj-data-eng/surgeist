@@ -316,6 +316,45 @@ impl SpecifiedRuleWriter {
                                         ),
                                     )?;
                                 }
+                                CssRule::When(rule) => {
+                                    self.node()?;
+                                    if format == Format::Cssom {
+                                        return Err(RuleCssomSource::SourceUndefined(
+                                            CssRuleCssomKind::When,
+                                        ));
+                                    }
+                                    self.append("@when ")?;
+                                    rule.condition()
+                                        .append_specified(&mut self.context, &mut self.css)?;
+                                    self.open_block(
+                                        &mut work,
+                                        format,
+                                        (!rule.rules().is_empty()).then_some(
+                                            Event::OrdinaryChildren(rule.rules(), 0, false),
+                                        ),
+                                    )?;
+                                }
+                                CssRule::Else(rule) => {
+                                    self.node()?;
+                                    if format == Format::Cssom {
+                                        return Err(RuleCssomSource::SourceUndefined(
+                                            CssRuleCssomKind::Else,
+                                        ));
+                                    }
+                                    self.append("@else")?;
+                                    if let Some(condition) = rule.condition() {
+                                        self.append(" ")?;
+                                        condition
+                                            .append_specified(&mut self.context, &mut self.css)?;
+                                    }
+                                    self.open_block(
+                                        &mut work,
+                                        format,
+                                        (!rule.rules().is_empty()).then_some(
+                                            Event::OrdinaryChildren(rule.rules(), 0, false),
+                                        ),
+                                    )?;
+                                }
                                 CssRule::Scope(rule) => {
                                     if format == Format::Cssom {
                                         self.node()?;
@@ -504,6 +543,45 @@ impl SpecifiedRuleWriter {
                                     self.append("@container ")?;
                                     rule.prelude()
                                         .append_specified(&mut self.context, &mut self.css)?;
+                                    self.open_block(
+                                        &mut work,
+                                        format,
+                                        (!rule.rules().rules().is_empty()).then_some(
+                                            Event::ScopedChildren(rule.rules().rules(), 0, false),
+                                        ),
+                                    )?;
+                                }
+                                CssScopedRule::When(rule) => {
+                                    self.node()?;
+                                    if format == Format::Cssom {
+                                        return Err(RuleCssomSource::SourceUndefined(
+                                            CssRuleCssomKind::When,
+                                        ));
+                                    }
+                                    self.append("@when ")?;
+                                    rule.condition()
+                                        .append_specified(&mut self.context, &mut self.css)?;
+                                    self.open_block(
+                                        &mut work,
+                                        format,
+                                        (!rule.rules().rules().is_empty()).then_some(
+                                            Event::ScopedChildren(rule.rules().rules(), 0, false),
+                                        ),
+                                    )?;
+                                }
+                                CssScopedRule::Else(rule) => {
+                                    self.node()?;
+                                    if format == Format::Cssom {
+                                        return Err(RuleCssomSource::SourceUndefined(
+                                            CssRuleCssomKind::Else,
+                                        ));
+                                    }
+                                    self.append("@else")?;
+                                    if let Some(condition) = rule.condition() {
+                                        self.append(" ")?;
+                                        condition
+                                            .append_specified(&mut self.context, &mut self.css)?;
+                                    }
                                     self.open_block(
                                         &mut work,
                                         format,

@@ -353,7 +353,7 @@ fn enclosed(
         CssGeneralEnclosed::try_from_component(value.clone()).expect("function or parenthesis"),
     ))
 }
-fn declaration(
+pub(super) fn declaration(
     lexical: SupportsLexical,
     authored: bool,
     limits: CssComponentValueLimits,

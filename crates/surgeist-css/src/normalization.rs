@@ -7,7 +7,7 @@ use crate::syntax::*;
 use crate::{
     CssColorProfileRule, CssCustomMediaRule, CssExpansion, CssExpansionError,
     CssFontFeatureValuesRule, CssFontPaletteValuesRule, CssParseReport, CssRecoveryDiagnostic,
-    CssSourcePosition, CssSupportsConditionRule, expand_declaration,
+    CssSourcePosition, CssSupportsConditionRule, CssWhenCondition, expand_declaration,
 };
 
 /// Traversal and output budgets for one atomic stylesheet normalization.
@@ -373,6 +373,8 @@ pub enum CssRuleContextKindRef<'a> {
     Media(&'a CssMediaQueryList),
     Supports(&'a CssSupportsCondition),
     SupportsCondition(&'a CssSupportsConditionRule),
+    When(&'a CssWhenCondition),
+    Else(Option<&'a CssWhenCondition>),
     Container {
         prelude: &'a CssContainerPrelude,
     },
@@ -402,6 +404,8 @@ enum RuleContextKind {
     Media(CssMediaQueryList),
     Supports(CssSupportsCondition),
     SupportsCondition(CssSupportsConditionRule),
+    When(CssWhenCondition),
+    Else(Option<CssWhenCondition>),
     Container {
         prelude: CssContainerPrelude,
     },
@@ -456,6 +460,8 @@ impl CssRuleContext {
             RuleContextKind::SupportsCondition(value) => {
                 CssRuleContextKindRef::SupportsCondition(value)
             }
+            RuleContextKind::When(value) => CssRuleContextKindRef::When(value),
+            RuleContextKind::Else(value) => CssRuleContextKindRef::Else(value.as_ref()),
             RuleContextKind::Container { prelude } => CssRuleContextKindRef::Container { prelude },
             RuleContextKind::LayerBlock(value) => CssRuleContextKindRef::LayerBlock(value.as_ref()),
             RuleContextKind::Scope { root, limit } => CssRuleContextKindRef::Scope {
@@ -955,6 +961,30 @@ impl Normalizer {
                     depth + 1,
                 )));
             }
+            CssRule::When(conditional) => {
+                let rule = self.record_rule(
+                    RuleContextKind::When(conditional.condition().clone()),
+                    position,
+                    context.rule,
+                );
+                return Ok(Some(RuleFrame::new(
+                    RuleList::Ordinary(conditional.rules()),
+                    OwnedTraversalContext::within_rule(context, rule),
+                    depth + 1,
+                )));
+            }
+            CssRule::Else(conditional) => {
+                let rule = self.record_rule(
+                    RuleContextKind::Else(conditional.condition().cloned()),
+                    position,
+                    context.rule,
+                );
+                return Ok(Some(RuleFrame::new(
+                    RuleList::Ordinary(conditional.rules()),
+                    OwnedTraversalContext::within_rule(context, rule),
+                    depth + 1,
+                )));
+            }
             CssRule::LayerBlock(layer) => {
                 let rule = self.record_rule(
                     RuleContextKind::LayerBlock(layer.name().cloned()),
@@ -1148,6 +1178,30 @@ impl Normalizer {
                     depth + 1,
                 )));
             }
+            CssScopedRule::When(conditional) => {
+                let rule = self.record_rule(
+                    RuleContextKind::When(conditional.condition().clone()),
+                    position,
+                    context.rule,
+                );
+                return Ok(Some(RuleFrame::new(
+                    RuleList::Scoped(conditional.rules().rules()),
+                    OwnedTraversalContext::within_rule(context, rule),
+                    depth + 1,
+                )));
+            }
+            CssScopedRule::Else(conditional) => {
+                let rule = self.record_rule(
+                    RuleContextKind::Else(conditional.condition().cloned()),
+                    position,
+                    context.rule,
+                );
+                return Ok(Some(RuleFrame::new(
+                    RuleList::Scoped(conditional.rules().rules()),
+                    OwnedTraversalContext::within_rule(context, rule),
+                    depth + 1,
+                )));
+            }
             CssScopedRule::LayerBlock(layer) => {
                 let rule = self.record_rule(
                     RuleContextKind::LayerBlock(layer.name().cloned()),
@@ -1252,6 +1306,8 @@ fn ordinary_position(rule: &CssRule) -> Option<CssSourcePosition> {
         CssRule::Supports(value) => return value.position(),
         CssRule::SupportsCondition(value) => return value.position(),
         CssRule::Container(value) => return value.position(),
+        CssRule::When(value) => return value.position(),
+        CssRule::Else(value) => return value.position(),
         CssRule::Scope(value) => return value.position(),
     })
 }
@@ -1272,6 +1328,8 @@ fn scoped_position(rule: &CssScopedRule) -> Option<CssSourcePosition> {
         CssScopedRule::Supports(value) => return value.position(),
         CssScopedRule::SupportsCondition(value) => return value.position(),
         CssScopedRule::Container(value) => return value.position(),
+        CssScopedRule::When(value) => return value.position(),
+        CssScopedRule::Else(value) => return value.position(),
         CssScopedRule::LayerStatement(value) => value.position(),
         CssScopedRule::LayerBlock(value) => return value.position(),
         CssScopedRule::Scope(value) => return value.position(),

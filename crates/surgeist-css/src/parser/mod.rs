@@ -83,6 +83,7 @@ pub(crate) use supports::{
     construct_supports_condition, construct_supports_condition_with_context,
     construct_supports_declaration, construct_supports_declaration_with_context,
 };
+mod conditional_chains;
 mod recovery;
 mod scroll_snap;
 mod scrollbar;
@@ -91,6 +92,10 @@ mod sizing;
 mod sizing_controls;
 mod speech;
 mod supports;
+mod when;
+use crate::{CssElseRule, CssScopedElseRule, CssScopedWhenRule, CssWhenCondition, CssWhenRule};
+pub(crate) use queries::construct_when_media_feature;
+pub(crate) use when::construct_when_condition;
 mod text_alignment;
 mod timing;
 mod typography;
@@ -266,6 +271,11 @@ static IMPLEMENTED_CONTAINER_EXTENSIONS: &[CssFeatureId] =
     &[CssFeatureId::new("baseline.rule.container")];
 
 static ATOMIC_IMPLEMENTATION_INVENTORIES: &[CssAtomicImplementationInventory] = &[
+    CssAtomicImplementationInventory {
+        module: "crate::parser::when",
+        kind: CssAtomicImplementationKind::Rule,
+        stable_ids: when::IMPLEMENTED_RULES,
+    },
     CssAtomicImplementationInventory {
         module: "crate::parser::quirky_length",
         kind: CssAtomicImplementationKind::SharedValue,
@@ -606,7 +616,7 @@ pub(crate) fn parse_sheet_snapshot(
                 ),
             }
         });
-        return recovery::finish_report(source, report);
+        return recovery::finish_report(source, conditional_chains::sheet(source, report));
     }
     let report = parse_sheet_bounded(
         source,
@@ -616,7 +626,7 @@ pub(crate) fn parse_sheet_snapshot(
         StyleContextCaptures::default(),
         parser_context,
     );
-    recovery::finish_report(source, report)
+    recovery::finish_report(source, conditional_chains::sheet(source, report))
 }
 
 /// Parses a UTF-8 style attribute into valid ordinary declarations and recovery diagnostics.
@@ -869,7 +879,9 @@ fn parse_sheet_bounded_with_captures(
                         GroupKind::Media
                         | GroupKind::Supports
                         | GroupKind::Layer
-                        | GroupKind::Container,
+                        | GroupKind::Container
+                        | GroupKind::When
+                        | GroupKind::Else,
                     ) => ScopedBodyKind::OrdinaryGroup,
                     _ => scoped_body.unwrap_or(ScopedBodyKind::Scope),
                 };
@@ -1056,6 +1068,28 @@ fn scoped_rule_into_chunk_rule(rule: CssScopedRule) -> CssRule {
             rule.position().expect("parser-produced group position"),
         )),
         CssScopedRule::SupportsCondition(rule) => CssRule::SupportsCondition(rule),
+        CssScopedRule::When(rule) => CssRule::When(CssWhenRule::new(
+            rule.condition().clone(),
+            rule.rules()
+                .rules()
+                .iter()
+                .cloned()
+                .map(scoped_rule_into_chunk_rule)
+                .collect(),
+            rule.position()
+                .expect("parser-produced conditional position"),
+        )),
+        CssScopedRule::Else(rule) => CssRule::Else(CssElseRule::new(
+            rule.condition().cloned(),
+            rule.rules()
+                .rules()
+                .iter()
+                .cloned()
+                .map(scoped_rule_into_chunk_rule)
+                .collect(),
+            rule.position()
+                .expect("parser-produced conditional position"),
+        )),
         CssScopedRule::Container(rule) => CssRule::Container(CssContainerRule::new(
             rule.prelude().clone(),
             rule.rules()
@@ -1329,6 +1363,8 @@ fn scoped_group_rules(rule: &CssScopedRule) -> Option<&[CssScopedRule]> {
         CssScopedRule::Container(rule) => Some(rule.rules().rules()),
         CssScopedRule::LayerBlock(rule) => Some(rule.rules().rules()),
         CssScopedRule::Scope(rule) => Some(rule.rules().rules()),
+        CssScopedRule::When(rule) => Some(rule.rules().rules()),
+        CssScopedRule::Else(rule) => Some(rule.rules().rules()),
         _ => None,
     }
 }
@@ -1345,6 +1381,18 @@ fn rebuild_scoped_group_rule(rule: CssScopedRule, rules: Vec<CssScopedRule>) -> 
             rule.condition().clone(),
             rules,
             rule.position().expect("parser-produced group position"),
+        )),
+        CssScopedRule::When(rule) => CssScopedRule::When(CssScopedWhenRule::new(
+            rule.condition().clone(),
+            rules,
+            rule.position()
+                .expect("parser-produced conditional position"),
+        )),
+        CssScopedRule::Else(rule) => CssScopedRule::Else(CssScopedElseRule::new(
+            rule.condition().cloned(),
+            rules,
+            rule.position()
+                .expect("parser-produced conditional position"),
         )),
         CssScopedRule::Container(rule) => CssScopedRule::Container(CssScopedContainerRule::new(
             rule.prelude().clone(),
@@ -1428,6 +1476,30 @@ fn into_scoped_rule(rule: CssRule) -> Option<CssScopedRule> {
             rule.position().expect("parser-produced group position"),
         ))),
         CssRule::SupportsCondition(rule) => Some(CssScopedRule::SupportsCondition(rule)),
+        CssRule::When(rule) => Some(CssScopedRule::When(CssScopedWhenRule::new(
+            rule.condition().clone(),
+            CssScopedRuleList::from_rules(
+                rule.rules()
+                    .iter()
+                    .cloned()
+                    .filter_map(into_scoped_rule)
+                    .collect(),
+            ),
+            rule.position()
+                .expect("parser-produced conditional position"),
+        ))),
+        CssRule::Else(rule) => Some(CssScopedRule::Else(CssScopedElseRule::new(
+            rule.condition().cloned(),
+            CssScopedRuleList::from_rules(
+                rule.rules()
+                    .iter()
+                    .cloned()
+                    .filter_map(into_scoped_rule)
+                    .collect(),
+            ),
+            rule.position()
+                .expect("parser-produced conditional position"),
+        ))),
         CssRule::Container(rule) => Some(CssScopedRule::Container(CssScopedContainerRule::new(
             rule.prelude().clone(),
             CssScopedRuleList::from_rules(
@@ -1498,6 +1570,12 @@ fn scoped_rule_start(rule: &CssScopedRule) -> usize {
                 .value();
         }
         CssScopedRule::Container(rule) => rule.position().expect("parser-produced rule position"),
+        CssScopedRule::When(rule) => rule
+            .position()
+            .expect("parser-produced conditional position"),
+        CssScopedRule::Else(rule) => rule
+            .position()
+            .expect("parser-produced conditional position"),
         CssScopedRule::LayerStatement(rule) => rule.position(),
         CssScopedRule::LayerBlock(rule) => rule.position().expect("parser-produced rule position"),
         CssScopedRule::Scope(rule) => rule.position().expect("parser-produced rule position"),
@@ -1512,6 +1590,8 @@ fn group_rules(rule: &CssRule) -> Option<&[CssRule]> {
         CssRule::Media(rule) => Some(rule.rules()),
         CssRule::Supports(rule) => Some(rule.rules()),
         CssRule::Container(rule) => Some(rule.rules()),
+        CssRule::When(rule) => Some(rule.rules()),
+        CssRule::Else(rule) => Some(rule.rules()),
         _ => None,
     }
 }
@@ -1532,6 +1612,18 @@ fn rebuild_group_rule(rule: CssRule, rules: Vec<CssRule>) -> CssRule {
             rule.condition().clone(),
             rules,
             rule.position().expect("parser-produced group position"),
+        )),
+        CssRule::When(rule) => CssRule::When(CssWhenRule::new(
+            rule.condition().clone(),
+            rules,
+            rule.position()
+                .expect("parser-produced conditional position"),
+        )),
+        CssRule::Else(rule) => CssRule::Else(CssElseRule::new(
+            rule.condition().cloned(),
+            rules,
+            rule.position()
+                .expect("parser-produced conditional position"),
         )),
         CssRule::Container(rule) => CssRule::Container(CssContainerRule::new(
             rule.prelude().clone(),
@@ -1592,6 +1684,12 @@ fn rule_start(rule: &CssRule) -> usize {
                 .value();
         }
         CssRule::Container(rule) => rule.position().expect("parser-produced rule position"),
+        CssRule::When(rule) => rule
+            .position()
+            .expect("parser-produced conditional position"),
+        CssRule::Else(rule) => rule
+            .position()
+            .expect("parser-produced conditional position"),
         CssRule::Scope(rule) => rule.position().expect("parser-produced rule position"),
     }
     .byte_offset()
@@ -2121,6 +2219,8 @@ enum StrictAtRulePrelude {
     Supports(CssSupportsCondition),
     SupportsCondition(named_supports::NamedSupportsPrelude),
     Container(CssContainerPrelude),
+    When(CssWhenCondition, Vec<usize>),
+    Else(Option<CssWhenCondition>, Vec<usize>),
     Scope(CssScopePrelude),
 }
 
@@ -2142,6 +2242,8 @@ impl StrictAtRulePrelude {
             Self::Supports(_) => "baseline.rule.supports",
             Self::SupportsCondition(_) => "ext.rule.supports-condition",
             Self::Container(_) => "baseline.rule.container",
+            Self::When(_, _) => "ext.rule.when",
+            Self::Else(_, _) => "ext.rule.else",
             Self::Scope(_) => "baseline.rule.scope",
         }
     }
@@ -2290,6 +2392,14 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
             "supports-condition" => Ok(StrictAtRulePrelude::SupportsCondition(
                 named_supports::parse_prelude(input, &self.recovery)?,
             )),
+            "when" => {
+                let (condition, implicit) = when::parse_prelude(self.source, input, &self.recovery, name.as_ref(), false)?;
+                Ok(StrictAtRulePrelude::When(condition.expect("required condition"), implicit))
+            },
+            "else" => {
+                let (condition, implicit) = when::parse_prelude(self.source, input, &self.recovery, name.as_ref(), true)?;
+                Ok(StrictAtRulePrelude::Else(condition, implicit))
+            },
             "container" => {
                 let prelude = parse_container_prelude(self.source, input, &self.recovery)
                     .map_err(with_container_prelude_context)?;
@@ -2396,7 +2506,9 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
             StrictAtRulePrelude::Supports(_) => Err(()),
             StrictAtRulePrelude::SupportsCondition(_) => Err(()),
             StrictAtRulePrelude::Container(_) => Err(()),
-            StrictAtRulePrelude::Scope(_) => Err(()),
+            StrictAtRulePrelude::When(_, _)
+            | StrictAtRulePrelude::Else(_, _)
+            | StrictAtRulePrelude::Scope(_) => Err(()),
         }
     }
 
@@ -2575,6 +2687,35 @@ impl<'i> AtRuleParser<'i> for StrictRuleParser<'i> {
                     &self.recovery,
                 )?;
                 Ok(vec![CssRule::SupportsCondition(rule)])
+            }
+            StrictAtRulePrelude::When(condition, implicit) => {
+                let recovered =
+                    parse_nested_group_rules(self.source, input, self.recovery.clone())?;
+                self.recovery.retain_component_closures(implicit);
+                self.diagnostics.extend(recovered.diagnostics);
+                self.mark_successful_body_rule();
+                Ok(when::assemble_when_rule(
+                    condition,
+                    recovered.syntax,
+                    crate::CssSourcePosition::from_cssparser(
+                        start.position(),
+                        start.source_location(),
+                    ),
+                ))
+            }
+            StrictAtRulePrelude::Else(condition, implicit) => {
+                let recovered =
+                    parse_nested_group_rules(self.source, input, self.recovery.clone())?;
+                self.recovery.retain_component_closures(implicit);
+                self.diagnostics.extend(recovered.diagnostics);
+                Ok(when::assemble_else_rule(
+                    condition,
+                    recovered.syntax,
+                    crate::CssSourcePosition::from_cssparser(
+                        start.position(),
+                        start.source_location(),
+                    ),
+                ))
             }
             StrictAtRulePrelude::Container(prelude) => {
                 let recovered =
@@ -3821,6 +3962,8 @@ enum ScopedAtRulePrelude {
     Supports(CssSupportsCondition),
     SupportsCondition(named_supports::NamedSupportsPrelude),
     Container(CssContainerPrelude),
+    When(CssWhenCondition, Vec<usize>),
+    Else(Option<CssWhenCondition>, Vec<usize>),
     Layer(Vec<CssLayerName>),
     Scope(CssScopePrelude),
 }
@@ -3840,6 +3983,8 @@ impl ScopedAtRulePrelude {
             Self::Supports(_) => "baseline.rule.supports",
             Self::SupportsCondition(_) => "ext.rule.supports-condition",
             Self::Container(_) => "baseline.rule.container",
+            Self::When(_, _) => "ext.rule.when",
+            Self::Else(_, _) => "ext.rule.else",
             Self::Layer(_) => "baseline.rule.layer-block",
             Self::Scope(_) => "baseline.rule.scope",
         }
@@ -3888,6 +4033,14 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
             "supports-condition" => Ok(ScopedAtRulePrelude::SupportsCondition(
                 named_supports::parse_prelude(input, &self.recovery)?,
             )),
+            "when" => {
+                let (condition, implicit) = when::parse_prelude(self.source, input, &self.recovery, name.as_ref(), false)?;
+                Ok(ScopedAtRulePrelude::When(condition.expect("required condition"), implicit))
+            },
+            "else" => {
+                let (condition, implicit) = when::parse_prelude(self.source, input, &self.recovery, name.as_ref(), true)?;
+                Ok(ScopedAtRulePrelude::Else(condition, implicit))
+            },
             "container" => {
                 let prelude = parse_container_prelude(self.source, input, &self.recovery)
                     .map_err(with_container_prelude_context)?;
@@ -4030,6 +4183,8 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
             | ScopedAtRulePrelude::Supports(_)
             | ScopedAtRulePrelude::SupportsCondition(_)
             | ScopedAtRulePrelude::Container(_)
+            | ScopedAtRulePrelude::When(_, _)
+            | ScopedAtRulePrelude::Else(_, _)
             | ScopedAtRulePrelude::Scope(_) => Err(()),
         };
         result.map(ScopedBlockItem::Rules)
@@ -4154,6 +4309,38 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
                     &self.recovery,
                 )?;
                 Ok(vec![CssScopedRule::SupportsCondition(rule)])
+            }
+            ScopedAtRulePrelude::When(condition, implicit) => {
+                let recovered = parse_scoped_rule_list(
+                    self.source,
+                    input,
+                    self.recovery.clone(),
+                    self.has_style_ancestor,
+                    ScopedBodyKind::OrdinaryGroup,
+                )?;
+                self.recovery.retain_component_closures(implicit);
+                self.diagnostics.extend(recovered.diagnostics);
+                Ok(vec![CssScopedRule::When(CssScopedWhenRule::new(
+                    condition,
+                    recovered.syntax,
+                    position,
+                ))])
+            }
+            ScopedAtRulePrelude::Else(condition, implicit) => {
+                let recovered = parse_scoped_rule_list(
+                    self.source,
+                    input,
+                    self.recovery.clone(),
+                    self.has_style_ancestor,
+                    ScopedBodyKind::OrdinaryGroup,
+                )?;
+                self.recovery.retain_component_closures(implicit);
+                self.diagnostics.extend(recovered.diagnostics);
+                Ok(vec![CssScopedRule::Else(CssScopedElseRule::new(
+                    condition,
+                    recovered.syntax,
+                    position,
+                ))])
             }
             ScopedAtRulePrelude::Container(prelude) => {
                 let recovered = parse_scoped_rule_list(

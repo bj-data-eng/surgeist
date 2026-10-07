@@ -103,6 +103,13 @@ identity and cumulative limits. See the
 [membership policy](docs/reference.md#four-side-shorthand-membership) for the
 selected draft's source limit and the bounded compatibility decision.
 
+Authored `@when` and `@else` retain checked symbolic conditions and ordered ordinary,
+scoped and style-body children. Original-token gaps govern parsed Else chains;
+complete checked assembly validates supplied adjacency and style ancestry.
+Normalization retains branch contexts and shared specified output uses cumulative
+limits. See [authored when and else groups](docs/reference.md#authored-when-and-else-groups)
+for the adopted source profile and literal CSSOM availability.
+
 Checked `CssBackgroundLayer` and `CssBackground` construction retains authored
 omissions and enforces size/position and final-color constraints. Intrinsic
 `background` expansion supplies all eight longhands with per-layer schema

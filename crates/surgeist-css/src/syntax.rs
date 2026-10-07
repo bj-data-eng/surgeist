@@ -139,6 +139,8 @@ pub enum CssRule {
     Supports(CssSupportsRule),
     SupportsCondition(crate::CssSupportsConditionRule),
     Container(CssContainerRule),
+    When(crate::CssWhenRule),
+    Else(crate::CssElseRule),
     Scope(CssScopeRule),
 }
 
@@ -2180,6 +2182,8 @@ pub enum CssScopedRule {
     Supports(CssScopedSupportsRule),
     SupportsCondition(crate::CssSupportsConditionRule),
     Container(CssScopedContainerRule),
+    When(crate::CssScopedWhenRule),
+    Else(crate::CssScopedElseRule),
     LayerStatement(CssScopedLayerStatementRule),
     LayerBlock(CssScopedLayerBlockRule),
     Scope(CssScopeRule),
@@ -9851,5 +9855,58 @@ impl CssScopeRule {
             rules: CssScopedRuleList::from_rules(rules),
             position: None,
         })
+    }
+}
+
+// Parser-only sibling mutation, after complete structural reconstruction.
+pub(crate) enum CssParserRuleChildrenMut<'a> {
+    Ordinary(&'a mut Vec<CssRule>),
+    Scoped(&'a mut Vec<CssScopedRule>),
+}
+impl CssSheet {
+    pub(crate) fn rules_mut(&mut self) -> &mut Vec<CssRule> {
+        &mut self.rules
+    }
+}
+impl CssStyleBlock {
+    pub(crate) fn rules_mut(&mut self) -> &mut Vec<CssRule> {
+        &mut self.contents.rules
+    }
+}
+impl CssScopedRuleList {
+    pub(crate) fn rules_mut(&mut self) -> &mut Vec<CssScopedRule> {
+        &mut self.rules
+    }
+}
+impl CssRule {
+    pub(crate) fn parser_children_mut(&mut self) -> Option<CssParserRuleChildrenMut<'_>> {
+        use CssParserRuleChildrenMut::{Ordinary, Scoped};
+        match self {
+            Self::Style(rule) => Some(Ordinary(&mut rule.contents.rules)),
+            Self::Media(rule) => Some(Ordinary(&mut rule.rules)),
+            Self::Supports(rule) => Some(Ordinary(&mut rule.rules)),
+            Self::Container(rule) => Some(Ordinary(&mut rule.rules)),
+            Self::LayerBlock(rule) => Some(Ordinary(&mut rule.rules)),
+            Self::Scope(rule) => Some(Scoped(rule.rules.rules_mut())),
+            Self::When(rule) => Some(Ordinary(rule.rules_mut())),
+            Self::Else(rule) => Some(Ordinary(rule.rules_mut())),
+            _ => None,
+        }
+    }
+}
+impl CssScopedRule {
+    pub(crate) fn parser_children_mut(&mut self) -> Option<CssParserRuleChildrenMut<'_>> {
+        use CssParserRuleChildrenMut::{Ordinary, Scoped};
+        match self {
+            Self::Style(rule) => Some(Ordinary(&mut rule.rules)),
+            Self::Media(rule) => Some(Scoped(rule.rules.rules_mut())),
+            Self::Supports(rule) => Some(Scoped(rule.rules.rules_mut())),
+            Self::Container(rule) => Some(Scoped(rule.rules.rules_mut())),
+            Self::LayerBlock(rule) => Some(Scoped(rule.rules.rules_mut())),
+            Self::Scope(rule) => Some(Scoped(rule.rules.rules_mut())),
+            Self::When(rule) => Some(Scoped(rule.rules_mut().rules_mut())),
+            Self::Else(rule) => Some(Scoped(rule.rules_mut().rules_mut())),
+            _ => None,
+        }
     }
 }

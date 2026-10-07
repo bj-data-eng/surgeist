@@ -136,8 +136,16 @@ struct Frame<'a> {
     role: Role,
     style: bool,
     depth: u32,
+    previous_conditional: bool,
 }
 
+pub(crate) fn conditional_group(
+    list: List<'_>,
+    context: &CssNamespaceContext,
+    style: bool,
+) -> Result<(), CssRuleConstructionError> {
+    validate(list, context, Role::Group, style, 1, None)
+}
 pub(crate) fn ordinary_group(
     rules: &[CssRule],
     context: &CssNamespaceContext,
@@ -197,6 +205,7 @@ fn validate(
         role,
         style,
         depth,
+        previous_conditional: false,
     });
     while let Some(frame) = frames.last_mut() {
         if frame.next == frame.list.len() {
@@ -210,6 +219,8 @@ fn validate(
             List::Ordinary(rules) => Node::Ordinary(&rules[index]),
             List::Scoped(rules) => Node::Scoped(&rules[index]),
         };
+        let free_else = node.is_else() && !frame.previous_conditional;
+        frame.previous_conditional = node.is_conditional();
         let path = || {
             frames
                 .iter()
@@ -221,6 +232,9 @@ fn validate(
             && let Some(error) = prelude_error.filter(|error| error.path.first() == Some(&index))
         {
             return Err(error.clone());
+        }
+        if free_else {
+            return Err(fail(CssRuleConstructionErrorKind::InvalidPlacement));
         }
         let depth = parent_depth + u32::from(node.block());
         if depth > crate::STRUCTURAL_NESTING_LIMIT {
@@ -243,6 +257,7 @@ fn validate(
                 role,
                 style,
                 depth,
+                previous_conditional: false,
             });
         }
     }
@@ -254,6 +269,31 @@ enum Node<'a> {
     Scoped(&'a CssScopedRule),
 }
 impl<'a> Node<'a> {
+    fn is_else(self) -> bool {
+        matches!(
+            self,
+            Self::Ordinary(CssRule::Else(_)) | Self::Scoped(CssScopedRule::Else(_))
+        )
+    }
+    fn is_conditional(self) -> bool {
+        matches!(
+            self,
+            Self::Ordinary(
+                CssRule::Media(_)
+                    | CssRule::Supports(_)
+                    | CssRule::Container(_)
+                    | CssRule::When(_)
+                    | CssRule::Else(_)
+            ) | Self::Scoped(
+                CssScopedRule::Media(_)
+                    | CssScopedRule::Supports(_)
+                    | CssScopedRule::Container(_)
+                    | CssScopedRule::When(_)
+                    | CssScopedRule::Else(_)
+            )
+        )
+    }
+
     fn block(self) -> bool {
         !matches!(
             self,
@@ -338,6 +378,12 @@ impl<'a> Node<'a> {
                 CssRule::Container(rule) => {
                     return Ok(Some((List::Ordinary(rule.rules()), Role::Group, style)));
                 }
+                CssRule::When(rule) => {
+                    return Ok(Some((List::Ordinary(rule.rules()), Role::Group, style)));
+                }
+                CssRule::Else(rule) => {
+                    return Ok(Some((List::Ordinary(rule.rules()), Role::Group, style)));
+                }
                 CssRule::LayerBlock(rule) => {
                     return Ok(Some((List::Ordinary(rule.rules()), Role::Group, style)));
                 }
@@ -390,6 +436,20 @@ impl<'a> Node<'a> {
                     )));
                 }
                 CssScopedRule::Container(rule) => {
+                    return Ok(Some((
+                        List::Scoped(rule.rules().rules()),
+                        Role::Group,
+                        style,
+                    )));
+                }
+                CssScopedRule::When(rule) => {
+                    return Ok(Some((
+                        List::Scoped(rule.rules().rules()),
+                        Role::Group,
+                        style,
+                    )));
+                }
+                CssScopedRule::Else(rule) => {
                     return Ok(Some((
                         List::Scoped(rule.rules().rules()),
                         Role::Group,
@@ -469,6 +529,8 @@ fn ordinary_position(rule: &CssRule) -> Option<CssSourcePosition> {
         CssRule::Media(value) => value.position(),
         CssRule::Supports(value) => value.position(),
         CssRule::Container(value) => value.position(),
+        CssRule::When(value) => value.position(),
+        CssRule::Else(value) => value.position(),
         CssRule::LayerBlock(value) => value.position(),
         CssRule::Scope(value) => value.position(),
         CssRule::Style(value) => Some(value.position()),
@@ -490,6 +552,8 @@ fn scoped_position(rule: &CssScopedRule) -> Option<CssSourcePosition> {
         CssScopedRule::Media(value) => value.position(),
         CssScopedRule::Supports(value) => value.position(),
         CssScopedRule::Container(value) => value.position(),
+        CssScopedRule::When(value) => value.position(),
+        CssScopedRule::Else(value) => value.position(),
         CssScopedRule::LayerBlock(value) => value.position(),
         CssScopedRule::Scope(value) => value.position(),
         CssScopedRule::Style(value) => Some(value.position()),

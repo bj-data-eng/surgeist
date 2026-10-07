@@ -496,17 +496,16 @@ fn parse_media_in_parens<'i, 't>(
                 Err(_) => {}
             }
             p.reset(&initial);
-            let mut syntax =
-                match parse_generic_media_feature(source, p, numeric, component.clone()) {
-                    Ok(value) => value,
-                    Err(e) if media_committed_error(&e) => return Err(e),
-                    Err(_) => {
-                        // The original complete component was validated above. Consume this
-                        // speculative parser before retaining that component as opaque syntax.
-                        while p.next_including_whitespace_and_comments().is_ok() {}
-                        return Ok(None);
-                    }
-                };
+            let syntax = match parse_generic_media_feature(source, p, numeric, component.clone()) {
+                Ok(value) => value,
+                Err(e) if media_committed_error(&e) => return Err(e),
+                Err(_) => {
+                    // The original complete component was validated above. Consume this
+                    // speculative parser before retaining that component as opaque syntax.
+                    while p.next_including_whitespace_and_comments().is_ok() {}
+                    return Ok(None);
+                }
+            };
             if syntax.name_text.starts_with("--") {
                 if !matches!(syntax.shape, MediaFeatureShape::Boolean) {
                     return Err(crate::error::custom_media_context_error(
@@ -523,53 +522,17 @@ fn parse_media_in_parens<'i, 't>(
                     MediaConditionSyntax::Enclosed,
                 )));
             }
-            let known = known_generic_name(&syntax);
-            if let Some(name) = known {
-                syntax.canonical_name = Some(syntax.name_text.to_ascii_lowercase());
-                let discrete_range = name.id.family() == MediaValueFamily::Discrete
-                    && match &syntax.shape {
-                        MediaFeatureShape::Boolean => false,
-                        MediaFeatureShape::Range(r) => {
-                            !matches!(r.view(), CssMediaRangeRef::Plain { .. })
-                        }
-                    };
-                if discrete_range {
-                    return Ok(Some((
-                        CssMediaConditionKind::UnknownFeature(CssUnknownMediaFeature::new(
-                            syntax,
-                            CssUnknownMediaFeatureReason::InvalidOperation,
-                        )),
-                        MediaConditionSyntax::Enclosed,
-                    )));
-                }
-                p.reset(&initial);
-                match parse_media_feature_query(source, p, numeric) {
-                    Ok(feature) if p.is_exhausted() => {
-                        return Ok(Some((
-                            CssMediaConditionKind::Feature(feature),
-                            MediaConditionSyntax::Feature(Box::new(syntax)),
-                        )));
-                    }
-                    Err(e) if media_committed_error(&e) => return Err(e),
-                    _ => {}
-                }
-                while p.next_including_whitespace_and_comments().is_ok() {}
-                Ok(Some((
-                    CssMediaConditionKind::UnknownFeature(CssUnknownMediaFeature::new(
-                        syntax,
-                        CssUnknownMediaFeatureReason::InvalidValue,
-                    )),
+            let admitted = classify_generic_media_feature(source, p, numeric, &initial, syntax)?;
+            Ok(Some(match admitted {
+                AdmittedMediaFeature::Feature(feature, syntax) => (
+                    CssMediaConditionKind::Feature(feature),
+                    MediaConditionSyntax::Feature(syntax),
+                ),
+                AdmittedMediaFeature::Unknown(feature) => (
+                    CssMediaConditionKind::UnknownFeature(feature),
                     MediaConditionSyntax::Enclosed,
-                )))
-            } else {
-                Ok(Some((
-                    CssMediaConditionKind::UnknownFeature(CssUnknownMediaFeature::new(
-                        syntax,
-                        CssUnknownMediaFeatureReason::UnknownName,
-                    )),
-                    MediaConditionSyntax::Enclosed,
-                )))
-            }
+                ),
+            }))
         })?;
         input.reset(&end);
         if let Some((kind, syntax)) = candidate {
@@ -584,6 +547,90 @@ fn parse_media_in_parens<'i, 't>(
         origin,
         MediaConditionSyntax::Enclosed,
     ))
+}
+enum AdmittedMediaFeature {
+    Feature(CssMediaFeatureQuery, Box<MediaFeatureSyntax>),
+    Unknown(CssUnknownMediaFeature),
+}
+fn classify_generic_media_feature<'i>(
+    source: &str,
+    input: &mut Parser<'i, '_>,
+    numeric: &MediaInput<'_>,
+    initial: &cssparser::ParserState,
+    mut syntax: MediaFeatureSyntax,
+) -> Result<AdmittedMediaFeature, ParseError<'i, Error>> {
+    let reason = if let Some(name) = known_generic_name(&syntax) {
+        syntax.canonical_name = Some(syntax.name_text.to_ascii_lowercase());
+        let discrete_range = name.id.family() == MediaValueFamily::Discrete
+            && matches!(&syntax.shape, MediaFeatureShape::Range(range)
+                if !matches!(range.view(), CssMediaRangeRef::Plain { .. }));
+        if discrete_range {
+            CssUnknownMediaFeatureReason::InvalidOperation
+        } else {
+            input.reset(initial);
+            match parse_media_feature_query(source, input, numeric) {
+                Ok(feature) if input.is_exhausted() => {
+                    return Ok(AdmittedMediaFeature::Feature(feature, Box::new(syntax)));
+                }
+                Err(error) if media_committed_error(&error) => return Err(error),
+                _ => {}
+            }
+            CssUnknownMediaFeatureReason::InvalidValue
+        }
+    } else {
+        CssUnknownMediaFeatureReason::UnknownName
+    };
+    while input.next_including_whitespace_and_comments().is_ok() {}
+    Ok(AdmittedMediaFeature::Unknown(CssUnknownMediaFeature::new(
+        syntax, reason,
+    )))
+}
+/// Exact single-feature admission over the actual media() enclosure. Unlike
+/// media-in-parens, an extension identifier is an unknown boolean feature.
+pub(crate) fn construct_when_media_feature(
+    component: CssComponentValue,
+    limits: CssComponentValueLimits,
+) -> Result<crate::CssWhenMediaFeature, crate::CssWhenConstructionError> {
+    use crate::{CssWhenConstructionError, CssWhenMediaFeatureKind};
+    let invalid = || CssWhenConstructionError::InvalidMediaFeatureGrammar {
+        origin: component.origin().clone(),
+    };
+    if !matches!(component.view(), CssComponentValueRef::Function(function) if function.name().eq_ignore_ascii_case("media"))
+    {
+        return Err(invalid());
+    }
+    let values = CssComponentValues::try_new_with_limits(vec![component.clone()], limits)?;
+    let serialized = values.serialize_with_limit(limits.max_css_bytes())?;
+    let numeric = NumericInputContext::components(&values, &serialized);
+    let numeric = MediaInput {
+        numeric: &numeric,
+        limits,
+    };
+    let source = serialized.as_css();
+    let working_source = crate::tokenization::prepare(source);
+    let mut parser_input = cssparser::ParserInput::new(&working_source);
+    let mut input = Parser::new(&mut parser_input);
+    let result: Result<_, ParseError<'_, Error>> = (|| {
+        input.expect_function_matching("media")?;
+        input.parse_nested_block(|input| {
+            let initial = input.state();
+            let syntax = parse_generic_media_feature(source, input, &numeric, component.clone())?;
+            classify_generic_media_feature(source, input, &numeric, &initial, syntax)
+        })
+    })();
+    let admitted = result.map_err(|error| {
+        if let cssparser::ParseErrorKind::Custom(error) = &error.kind
+            && let crate::ErrorKind::InvalidComponentValue(component) = error.kind()
+        {
+            return CssWhenConstructionError::Component(component.as_ref().clone());
+        }
+        invalid()
+    })?;
+    let kind = match admitted {
+        AdmittedMediaFeature::Feature(feature, _) => CssWhenMediaFeatureKind::Feature(feature),
+        AdmittedMediaFeature::Unknown(feature) => CssWhenMediaFeatureKind::UnknownFeature(feature),
+    };
+    Ok(crate::CssWhenMediaFeature::new(kind, component))
 }
 fn known_generic_name(syntax: &MediaFeatureSyntax) -> Option<MediaFeatureName> {
     if let Some(id) = CssMediaFeatureKind::from_name(&syntax.name_text) {
