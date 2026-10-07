@@ -1380,3 +1380,6 @@ mod independent_tests;
 
 #[cfg(test)]
 mod finer_recovery_independent_tests;
+
+#[cfg(test)]
+mod source_payload_tests;

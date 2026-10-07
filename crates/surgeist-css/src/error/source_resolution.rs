@@ -183,3 +183,6 @@ fn authored_at_rule_before(source: &str, position: CssSourcePosition) -> Option<
     }
     None
 }
+
+#[cfg(test)]
+mod operator_tests;
