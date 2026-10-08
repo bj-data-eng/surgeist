@@ -303,11 +303,7 @@ fn malformed_env_family_and_var_only_do_not_gain_descriptor_permission() {
 
 #[test]
 fn root_annotations_and_outer_exhaustion_are_checked_before_env_deferral() {
-    for source in [
-        "env(choice)!important",
-        "env(choice);",
-        "env(choice)}",
-    ] {
+    for source in ["env(choice)!important", "env(choice);", "env(choice)}"] {
         rejected(parse_counter_style_descriptor_value(
             source,
             Counter::Prefix,
