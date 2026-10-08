@@ -11,8 +11,8 @@ use surgeist_css::{
     CssFontFeatureValueKind as Feature, CssFontFeatureValuesItem as Item, CssParseReport,
     CssParsedOrigin, CssRecoveryAction as Action, CssRule, CssValueOrigin,
     parse_counter_style_block, parse_counter_style_descriptor_value,
-    parse_font_feature_display_value, parse_font_feature_value_block,
-    parse_font_feature_value_indexes, parse_font_feature_values_block, parse_sheet,
+    parse_font_feature_display_value, parse_font_feature_value, parse_font_feature_value_block,
+    parse_font_feature_values_block, parse_sheet,
 };
 
 const COUNTERS: [Counter; 10] = [
@@ -153,7 +153,7 @@ fn every_counter_descriptor_admits_env_and_keeps_its_value_window() {
         admitted(&report);
         let value = report.syntax().as_ref().unwrap();
         assert_eq!(value.kind(), kind);
-        whole(value.origin(), "env(choice, 7)");
+        whole(value.origin().unwrap(), "env(choice, 7)");
         simple_env(value.components(), "env(choice, 7)");
     }
 }
@@ -163,18 +163,18 @@ fn outer_font_display_admits_env_without_an_ordinary_keyword() {
     let report = parse_font_feature_display_value("env(choice, 7)");
     admitted(&report);
     let value = report.syntax().as_ref().unwrap();
-    whole(value.origin(), "env(choice, 7)");
+    whole(value.origin().unwrap(), "env(choice, 7)");
     simple_env(value.components(), "env(choice, 7)");
 }
 
 #[test]
 fn every_subsidiary_value_admits_env_without_completed_indexes() {
     for kind in FEATURES {
-        let report = parse_font_feature_value_indexes("env(choice, 7)", kind);
+        let report = parse_font_feature_value("env(choice, 7)", kind);
         admitted(&report);
         let value = report.syntax().as_ref().unwrap();
         assert_eq!(value.kind(), kind);
-        whole(value.origin(), "env(choice, 7)");
+        whole(value.origin().unwrap(), "env(choice, 7)");
         simple_env(value.components(), "env(choice, 7)");
     }
 }
@@ -285,10 +285,7 @@ fn valid_env_defers_the_whole_value_including_nested_and_residual_var_tokens() {
             Counter::Range,
         ));
         admitted(&parse_font_feature_display_value(source));
-        admitted(&parse_font_feature_value_indexes(
-            source,
-            Feature::Stylistic,
-        ));
+        admitted(&parse_font_feature_value(source, Feature::Stylistic));
     }
 }
 
@@ -297,7 +294,7 @@ fn malformed_env_family_and_var_only_do_not_gain_descriptor_permission() {
     for source in ["env()", "env(123)", "env(choice) env()", "var(--later)"] {
         rejected(parse_counter_style_descriptor_value(source, Counter::Range));
         rejected(parse_font_feature_display_value(source));
-        rejected(parse_font_feature_value_indexes(source, Feature::Stylistic));
+        rejected(parse_font_feature_value(source, Feature::Stylistic));
     }
 }
 
@@ -309,7 +306,7 @@ fn root_annotations_and_outer_exhaustion_are_checked_before_env_deferral() {
             Counter::Prefix,
         ));
         rejected(parse_font_feature_display_value(source));
-        rejected(parse_font_feature_value_indexes(source, Feature::Styleset));
+        rejected(parse_font_feature_value(source, Feature::Styleset));
     }
     // Fallback itself is declaration-value: its root bang is forbidden, whereas
     // a bang inside a nested function is neither root importance nor that ban.
@@ -318,7 +315,7 @@ fn root_annotations_and_outer_exhaustion_are_checked_before_env_deferral() {
         Counter::Prefix,
     ));
     rejected(parse_font_feature_display_value("env(choice, !important)"));
-    rejected(parse_font_feature_value_indexes(
+    rejected(parse_font_feature_value(
         "env(choice, !important)",
         Feature::Styleset,
     ));
@@ -329,7 +326,7 @@ fn root_annotations_and_outer_exhaustion_are_checked_before_env_deferral() {
     admitted(&parse_font_feature_display_value(
         "env(choice, f(!important))",
     ));
-    admitted(&parse_font_feature_value_indexes(
+    admitted(&parse_font_feature_value(
         "env(choice, f(!important))",
         Feature::Styleset,
     ));
@@ -424,17 +421,17 @@ fn implicit_source_env_closure_retains_the_candidate_but_fails_clean_validation(
     let counter = parse_counter_style_descriptor_value("env(choice", Counter::Prefix);
     assert!(counter.syntax().is_some(), "{counter:?}");
     let value = counter.syntax().as_ref().unwrap();
-    check(value.components(), value.origin());
+    check(value.components(), value.origin().unwrap());
     implicit(counter);
     let display = parse_font_feature_display_value("env(choice");
     assert!(display.syntax().is_some(), "{display:?}");
     let value = display.syntax().as_ref().unwrap();
-    check(value.components(), value.origin());
+    check(value.components(), value.origin().unwrap());
     implicit(display);
-    let indexes = parse_font_feature_value_indexes("env(choice", Feature::Styleset);
+    let indexes = parse_font_feature_value("env(choice", Feature::Styleset);
     assert!(indexes.syntax().is_some(), "{indexes:?}");
     let value = indexes.syntax().as_ref().unwrap();
-    check(value.components(), value.origin());
+    check(value.components(), value.origin().unwrap());
     implicit(indexes);
 }
 
@@ -468,15 +465,15 @@ fn unicode_trivia_keeps_the_whole_window_and_real_env_utf16_coordinates() {
     let counter = parse_counter_style_descriptor_value(source, Counter::Prefix);
     admitted(&counter);
     let value = counter.syntax().as_ref().unwrap();
-    check(value.components(), value.origin(), source);
+    check(value.components(), value.origin().unwrap(), source);
     let display = parse_font_feature_display_value(source);
     admitted(&display);
     let value = display.syntax().as_ref().unwrap();
-    check(value.components(), value.origin(), source);
-    let indexes = parse_font_feature_value_indexes(source, Feature::Styleset);
+    check(value.components(), value.origin().unwrap(), source);
+    let indexes = parse_font_feature_value(source, Feature::Styleset);
     admitted(&indexes);
     let value = indexes.syntax().as_ref().unwrap();
-    check(value.components(), value.origin(), source);
+    check(value.components(), value.origin().unwrap(), source);
 }
 
 #[test]
@@ -507,10 +504,7 @@ fn actual_256_openers_admit_env_and_257_preserves_resource_precedence() {
             depth,
         );
         check(parse_font_feature_display_value(&source), depth);
-        check(
-            parse_font_feature_value_indexes(&source, Feature::Styleset),
-            depth,
-        );
+        check(parse_font_feature_value(&source, Feature::Styleset), depth);
     }
 }
 

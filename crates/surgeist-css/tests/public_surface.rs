@@ -1,3 +1,7 @@
+#[path = "support/descriptor_phases.rs"]
+mod descriptor_phases;
+use descriptor_phases::*;
+
 use surgeist_css::{
     CssAnimationDirection, CssAuthoredFontFeature, CssAuthoredFontFeatureList,
     CssAuthoredFontFeatureSettings, CssAuthoredFontFeatureValue, CssCalculationSumOperator,
@@ -62,32 +66,46 @@ fn public_surface_exposes_checked_counter_style_descriptor_models() {
 
     let negative = rule.descriptors().negative().unwrap();
     assert!(matches!(
-        negative.prefix(),
+        negative.ordinary_negative().prefix(),
         CssCounterSymbol::String(value) if value.as_str() == "("
     ));
     assert!(matches!(
-        rule.descriptors().range().map(|value| value.value()),
+        rule.descriptors().range().map(|value| value.ordinary_range()),
         Some(CssCounterStyleRange::Ranges(ranges)) if ranges.ranges().len() == 2
     ));
     assert_eq!(
         rule.descriptors()
             .pad()
             .unwrap()
+            .ordinary_pad()
             .minimum_length()
             .numeric()
             .representation(),
         "3"
     );
-    assert_eq!(rule.descriptors().fallback().unwrap().as_str(), "decimal");
     assert_eq!(
-        rule.descriptors().additive_symbols().unwrap().tuples()[0]
+        rule.descriptors()
+            .fallback()
+            .unwrap()
+            .ordinary_fallback()
+            .as_str(),
+        "decimal"
+    );
+    assert_eq!(
+        rule.descriptors()
+            .additive_symbols()
+            .unwrap()
+            .ordinary_additive_symbols()
+            .tuples()[0]
             .weight()
             .numeric()
             .representation(),
         "100"
     );
     assert!(matches!(
-        rule.descriptors().speak_as().map(|value| value.value()),
+        rule.descriptors()
+            .speak_as()
+            .map(|value| value.ordinary_speak_as()),
         Some(CssCounterStyleSpeakAs::SpellOut)
     ));
 }

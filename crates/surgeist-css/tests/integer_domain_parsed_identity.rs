@@ -6,6 +6,10 @@
 //! equivalence does not erase these authored distinctions. These tests use no
 //! newly added integer type, constructor or accessor.
 
+#[path = "support/descriptor_phases.rs"]
+mod descriptor_phases;
+use descriptor_phases::*;
+
 use std::fmt::Debug;
 use surgeist_css::*;
 
@@ -87,7 +91,7 @@ fn parsed_fixed_start_preserves_spelling_and_numeric_origin_in_identity() {
             .descriptors()
             .system()
             .unwrap()
-            .value()
+            .ordinary_system()
             .clone()
     };
     let source = "@counter-style eq { system: fixed 1; symbols: \"x\"; }";
@@ -109,7 +113,7 @@ fn parsed_finite_range_preserves_spelling_and_numeric_origins_in_identity() {
             .descriptors()
             .range()
             .unwrap()
-            .value()
+            .ordinary_range()
             .clone()
     };
     let source = "@counter-style eq { symbols: \"x\"; range: 7 9; }";
@@ -126,7 +130,14 @@ fn parsed_finite_range_preserves_spelling_and_numeric_origins_in_identity() {
 
 #[test]
 fn parsed_pad_minimum_preserves_spelling_and_numeric_origin_in_identity() {
-    let parse = |source: &str| counter(source).descriptors().pad().unwrap().value().clone();
+    let parse = |source: &str| {
+        counter(source)
+            .descriptors()
+            .pad()
+            .unwrap()
+            .ordinary_pad()
+            .clone()
+    };
     let source = "@counter-style eq { symbols: \"x\"; pad: 7 \"_\"; }";
     lexical_identity(
         parse,
@@ -146,7 +157,7 @@ fn parsed_additive_weights_preserve_spelling_and_numeric_origins_in_identity() {
             .descriptors()
             .additive_symbols()
             .unwrap()
-            .value()
+            .ordinary_additive_symbols()
             .clone()
     };
     let source = "@counter-style eq { system: additive; additive-symbols: 7 \"x\", 0 \"z\"; }";
@@ -170,7 +181,7 @@ fn parsed_fixed_default_and_steps_position_omission_remain_authored_distinctions
             .descriptors()
             .system()
             .unwrap()
-            .value()
+            .ordinary_system()
             .clone()
     };
     assert_ne!(

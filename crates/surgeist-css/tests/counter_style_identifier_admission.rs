@@ -5,6 +5,10 @@
 //! CSS Syntax 3 (2021-12-24) §4.3.9 and §4.3.11 establish that valid escapes
 //! contribute decoded code points to one identifier token.
 
+#[path = "support/descriptor_phases.rs"]
+mod descriptor_phases;
+use descriptor_phases::*;
+
 use surgeist_css::{
     CssComponentValueRef, CssCounterStyleName, CssCounterStyleRule, CssCounterStyleSpeakAs,
     CssCounterStyleSystem, CssCounterStyleValue, CssCounterSymbol, CssCounterSymbolIdent,
@@ -164,7 +168,7 @@ fn escaped_counter_symbols_retain_decoded_identity_and_descriptor_positions() {
         let rule = parsed_counter(&source);
         let symbols = rule.descriptors().symbols().unwrap();
         assert!(matches!(
-            symbols.symbols(),
+            symbols.ordinary_symbols().symbols(),
             [CssCounterSymbol::Ident(symbol)] if symbol.as_str() == decoded
         ));
         assert_eq!(
@@ -182,15 +186,19 @@ fn escaped_counter_name_references_retain_decoded_identity() {
         );
         let rule = parsed_counter(&source);
         assert!(matches!(
-            rule.descriptors().system().unwrap().value(),
+            rule.descriptors().system().unwrap().ordinary_system(),
             CssCounterStyleSystem::Extends(name) if name.as_str() == decoded
         ));
         assert_eq!(
-            rule.descriptors().fallback().unwrap().value().as_str(),
+            rule.descriptors()
+                .fallback()
+                .unwrap()
+                .ordinary_fallback()
+                .as_str(),
             decoded
         );
         assert!(matches!(
-            rule.descriptors().speak_as().unwrap().value(),
+            rule.descriptors().speak_as().unwrap().ordinary_speak_as(),
             CssCounterStyleSpeakAs::CounterStyle(name) if name.as_str() == decoded
         ));
     }
@@ -266,7 +274,12 @@ fn parsed_counter_symbols_allow_none_auto_and_span_without_case_folding() {
     let rule = parsed_counter(
         r"@counter-style custom { system: cyclic; symbols: none AuTo SpAn \6e one; }",
     );
-    let symbols = rule.descriptors().symbols().unwrap().symbols();
+    let symbols = rule
+        .descriptors()
+        .symbols()
+        .unwrap()
+        .ordinary_symbols()
+        .symbols();
     let decoded: Vec<_> = symbols
         .iter()
         .map(|symbol| {
@@ -305,7 +318,7 @@ fn reserved_identifier_symbols_drop_only_the_responsible_descriptor() {
         };
         assert!(rule.descriptors().prefix().is_none(), "{source}");
         assert!(matches!(
-            rule.descriptors().symbols().unwrap().symbols(),
+            rule.descriptors().symbols().unwrap().ordinary_symbols().symbols(),
             [CssCounterSymbol::Ident(symbol)] if symbol.as_str() == "a"
         ));
         assert_eq!(report.diagnostics().len(), 1, "{source}");
@@ -329,7 +342,7 @@ fn arbitrary_counter_names_and_symbols_preserve_case() {
         let rule = parsed_counter(&source);
         assert_eq!(rule.name().as_str(), custom);
         assert!(matches!(
-            rule.descriptors().symbols().unwrap().symbols(),
+            rule.descriptors().symbols().unwrap().ordinary_symbols().symbols(),
             [CssCounterSymbol::Ident(symbol)] if symbol.as_str() == "MiXeD"
         ));
     }
@@ -342,15 +355,19 @@ fn arbitrary_counter_name_references_preserve_case() {
     );
     assert_eq!(rule.name().as_str(), "Child");
     assert!(matches!(
-        rule.descriptors().system().unwrap().value(),
+        rule.descriptors().system().unwrap().ordinary_system(),
         CssCounterStyleSystem::Extends(name) if name.as_str() == "MyStyle"
     ));
     assert_eq!(
-        rule.descriptors().fallback().unwrap().value().as_str(),
+        rule.descriptors()
+            .fallback()
+            .unwrap()
+            .ordinary_fallback()
+            .as_str(),
         "MyFallback"
     );
     assert!(matches!(
-        rule.descriptors().speak_as().unwrap().value(),
+        rule.descriptors().speak_as().unwrap().ordinary_speak_as(),
         CssCounterStyleSpeakAs::CounterStyle(name) if name.as_str() == "MyVoice"
     ));
 }
@@ -379,7 +396,11 @@ fn predefined_fallback_names_are_lowercased_on_parse() {
         );
         let rule = parsed_counter(&source);
         assert_eq!(
-            rule.descriptors().fallback().unwrap().value().as_str(),
+            rule.descriptors()
+                .fallback()
+                .unwrap()
+                .ordinary_fallback()
+                .as_str(),
             canonical,
             "{source}"
         );
@@ -396,7 +417,7 @@ fn predefined_extended_names_are_lowercased_on_parse() {
         let rule = parsed_counter(&source);
         assert!(
             matches!(
-                rule.descriptors().system().unwrap().value(),
+                rule.descriptors().system().unwrap().ordinary_system(),
                 CssCounterStyleSystem::Extends(name) if name.as_str() == canonical
             ),
             "{source}"
@@ -414,7 +435,7 @@ fn predefined_spoken_names_are_lowercased_on_parse() {
         let rule = parsed_counter(&source);
         assert!(
             matches!(
-                rule.descriptors().speak_as().unwrap().value(),
+                rule.descriptors().speak_as().unwrap().ordinary_speak_as(),
                 CssCounterStyleSpeakAs::CounterStyle(name) if name.as_str() == canonical
             ),
             "{source}"

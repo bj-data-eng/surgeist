@@ -2,8 +2,9 @@
 use crate::{
     CssAuthoredFontFaceDescriptorValue, CssComponentValue, CssComponentValueRef, CssFontDisplay,
     CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue, CssFontFaceRule,
-    CssFontFeatureValueDefinition, CssFontFeatureValuesItem, CssFontFeatureValuesRule,
-    CssSpecifiedValueSerializationError as Error,
+    CssFontFeatureDisplayValue, CssFontFeatureDisplayValueRef, CssFontFeatureValue,
+    CssFontFeatureValueDefinition, CssFontFeatureValueRef, CssFontFeatureValuesItem,
+    CssFontFeatureValuesRule, CssSpecifiedValueSerializationError as Error,
     CssSpecifiedValueSerializationErrorKind as ErrorKind,
     CssSpecifiedValueSerializationLimits as Limits, CssValueTokenRef,
     specified_rule_serialization::SpecifiedRuleWriter,
@@ -192,7 +193,7 @@ impl SpecifiedRuleWriter {
             match item {
                 CssFontFeatureValuesItem::FontDisplay(value) => {
                     if Some(index) != last_display {
-                        self.without_output(|writer| display(writer, value.value()))?;
+                        self.without_output(|writer| value.value().append_to_rule_writer(writer))?;
                     }
                 }
                 CssFontFeatureValuesItem::Block(block) => {
@@ -210,7 +211,7 @@ impl SpecifiedRuleWriter {
                 unreachable!()
             };
             self.append(" font-display: ")?;
-            display(self, value.value())?;
+            value.value().append_to_rule_writer(self)?;
             self.append(";")?;
         }
         for kind in kinds {
@@ -223,8 +224,6 @@ impl SpecifiedRuleWriter {
                     for definition in block.definitions() {
                         node(self)?;
                         node(self)?;
-                        self.context.charge_input(definition.indexes().len())?;
-                        self.context.charge_projection(definition.indexes().len())?;
                         definitions
                             .try_reserve(1)
                             .map_err(|_| Error::new(ErrorKind::CapacityOverflow))?;
@@ -255,11 +254,8 @@ impl SpecifiedRuleWriter {
         definition: &CssFontFeatureValueDefinition,
     ) -> Result<()> {
         self.append_identifier(definition.name().as_str())?;
-        self.append(":")?;
-        for value in definition.indexes() {
-            self.append(" ")?;
-            self.append(value.as_decimal_str())?;
-        }
+        self.append(": ")?;
+        definition.value().append_to_rule_writer(self)?;
         self.append(";")
     }
 }
@@ -277,4 +273,61 @@ pub(crate) fn literal_equals(component: Option<&CssComponentValue>, magnitude: &
     };
     crate::exact_decimal::LexicalDecimal::new(number.representation())
         .value_eq(&crate::exact_decimal::LexicalDecimal::new(magnitude))
+}
+
+impl CssFontFeatureDisplayValue {
+    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        match self.view() {
+            CssFontFeatureDisplayValueRef::Ordinary(value) => display(writer, value),
+            CssFontFeatureDisplayValueRef::Pending(_) => {
+                crate::pending_serialization::append_pending_specified(
+                    self.components(),
+                    &mut writer.context,
+                    &mut writer.css,
+                )
+            }
+        }
+    }
+    /// Serializes the value without manufacturing a declaration occurrence.
+    pub fn to_specified_css(&self) -> Result<String> {
+        self.to_specified_css_with_limits(Limits::default())
+    }
+    pub fn to_specified_css_with_limits(&self, limits: Limits) -> Result<String> {
+        let mut writer = SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+}
+impl CssFontFeatureValue {
+    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        match self.view() {
+            CssFontFeatureValueRef::Indexes(values) => {
+                writer.context.charge_input(values.len())?;
+                writer.context.charge_projection(values.len())?;
+                for (index, value) in values.iter().enumerate() {
+                    if index != 0 {
+                        writer.append(" ")?;
+                    }
+                    writer.append(value.as_decimal_str())?;
+                }
+                Ok(())
+            }
+            CssFontFeatureValueRef::Pending(_) => {
+                crate::pending_serialization::append_pending_specified(
+                    self.components(),
+                    &mut writer.context,
+                    &mut writer.css,
+                )
+            }
+        }
+    }
+    /// Serializes completed exact indexes or the pending whole component stream.
+    pub fn to_specified_css(&self) -> Result<String> {
+        self.to_specified_css_with_limits(Limits::default())
+    }
+    pub fn to_specified_css_with_limits(&self, limits: Limits) -> Result<String> {
+        let mut writer = SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
 }

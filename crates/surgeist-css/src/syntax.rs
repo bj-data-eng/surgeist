@@ -324,16 +324,16 @@ impl CssCounterStyleRule {
 /// forged source occurrence.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssCounterStyleDescriptors {
-    system: Option<CssDescriptorOccurrence<CssCounterStyleSystem>>,
-    negative: Option<CssDescriptorOccurrence<CssCounterStyleNegative>>,
-    symbols: Option<CssDescriptorOccurrence<CssCounterSymbols>>,
-    prefix: Option<CssDescriptorOccurrence<CssCounterSymbol>>,
-    suffix: Option<CssDescriptorOccurrence<CssCounterSymbol>>,
-    range: Option<CssDescriptorOccurrence<CssCounterStyleRange>>,
-    pad: Option<CssDescriptorOccurrence<CssCounterStylePad>>,
-    fallback: Option<CssDescriptorOccurrence<CssCounterStyleName>>,
-    additive_symbols: Option<CssDescriptorOccurrence<CssCounterAdditiveSymbols>>,
-    speak_as: Option<CssDescriptorOccurrence<CssCounterStyleSpeakAs>>,
+    system: Option<CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>>,
+    negative: Option<CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>>,
+    symbols: Option<CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>>,
+    prefix: Option<CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>>,
+    suffix: Option<CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>>,
+    range: Option<CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>>,
+    pad: Option<CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>>,
+    fallback: Option<CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>>,
+    additive_symbols: Option<CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>>,
+    speak_as: Option<CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>>,
     occurrences: Vec<CssCounterStyleDescriptor>,
 }
 
@@ -375,7 +375,10 @@ impl CssCounterStyleDescriptors {
         // and integer-to-representation execution belong downstream. §3.1.7
         // alone invalidates a rule that combines extends with symbol descriptors.
         if let Some(system) = &system
-            && matches!(system.value(), CssCounterStyleSystem::Extends(_))
+            && matches!(
+                system.value().view(),
+                crate::CssCounterStyleDescriptorValueRef::System(CssCounterStyleSystem::Extends(_))
+            )
             && (symbols.is_some() || additive_symbols.is_some())
         {
             let mut conflicting = Vec::new();
@@ -409,49 +412,65 @@ impl CssCounterStyleDescriptors {
 
     /// Returns the effective last valid authored `system` occurrence.
     #[must_use]
-    pub const fn system(&self) -> Option<&CssDescriptorOccurrence<CssCounterStyleSystem>> {
+    pub const fn system(
+        &self,
+    ) -> Option<&CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>> {
         self.system.as_ref()
     }
 
     /// Returns the effective last valid authored `negative` occurrence.
     #[must_use]
-    pub const fn negative(&self) -> Option<&CssDescriptorOccurrence<CssCounterStyleNegative>> {
+    pub const fn negative(
+        &self,
+    ) -> Option<&CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>> {
         self.negative.as_ref()
     }
 
     /// Returns the effective last valid authored `symbols` occurrence.
     #[must_use]
-    pub const fn symbols(&self) -> Option<&CssDescriptorOccurrence<CssCounterSymbols>> {
+    pub const fn symbols(
+        &self,
+    ) -> Option<&CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>> {
         self.symbols.as_ref()
     }
 
     /// Returns the effective last valid authored `prefix` occurrence.
     #[must_use]
-    pub const fn prefix(&self) -> Option<&CssDescriptorOccurrence<CssCounterSymbol>> {
+    pub const fn prefix(
+        &self,
+    ) -> Option<&CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>> {
         self.prefix.as_ref()
     }
 
     /// Returns the effective last valid authored `suffix` occurrence.
     #[must_use]
-    pub const fn suffix(&self) -> Option<&CssDescriptorOccurrence<CssCounterSymbol>> {
+    pub const fn suffix(
+        &self,
+    ) -> Option<&CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>> {
         self.suffix.as_ref()
     }
 
     /// Returns the effective last valid authored `range` occurrence.
     #[must_use]
-    pub const fn range(&self) -> Option<&CssDescriptorOccurrence<CssCounterStyleRange>> {
+    pub const fn range(
+        &self,
+    ) -> Option<&CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>> {
         self.range.as_ref()
     }
 
     /// Returns the effective last valid authored `pad` occurrence.
     #[must_use]
-    pub const fn pad(&self) -> Option<&CssDescriptorOccurrence<CssCounterStylePad>> {
+    pub const fn pad(
+        &self,
+    ) -> Option<&CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>> {
         self.pad.as_ref()
     }
 
     /// Returns the effective last valid authored `fallback` occurrence.
     #[must_use]
-    pub const fn fallback(&self) -> Option<&CssDescriptorOccurrence<CssCounterStyleName>> {
+    pub const fn fallback(
+        &self,
+    ) -> Option<&CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>> {
         self.fallback.as_ref()
     }
 
@@ -459,13 +478,15 @@ impl CssCounterStyleDescriptors {
     #[must_use]
     pub const fn additive_symbols(
         &self,
-    ) -> Option<&CssDescriptorOccurrence<CssCounterAdditiveSymbols>> {
+    ) -> Option<&CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>> {
         self.additive_symbols.as_ref()
     }
 
     /// Returns the effective last valid authored `speak-as` occurrence.
     #[must_use]
-    pub const fn speak_as(&self) -> Option<&CssDescriptorOccurrence<CssCounterStyleSpeakAs>> {
+    pub const fn speak_as(
+        &self,
+    ) -> Option<&CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>> {
         self.speak_as.as_ref()
     }
 
@@ -479,16 +500,16 @@ impl CssCounterStyleDescriptors {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum CssCounterStyleDescriptor {
-    System(CssDescriptorOccurrence<CssCounterStyleSystem>),
-    Negative(CssDescriptorOccurrence<CssCounterStyleNegative>),
-    Symbols(CssDescriptorOccurrence<CssCounterSymbols>),
-    Prefix(CssDescriptorOccurrence<CssCounterSymbol>),
-    Suffix(CssDescriptorOccurrence<CssCounterSymbol>),
-    Range(CssDescriptorOccurrence<CssCounterStyleRange>),
-    Pad(CssDescriptorOccurrence<CssCounterStylePad>),
-    Fallback(CssDescriptorOccurrence<CssCounterStyleName>),
-    AdditiveSymbols(CssDescriptorOccurrence<CssCounterAdditiveSymbols>),
-    SpeakAs(CssDescriptorOccurrence<CssCounterStyleSpeakAs>),
+    System(CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>),
+    Negative(CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>),
+    Symbols(CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>),
+    Prefix(CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>),
+    Suffix(CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>),
+    Range(CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>),
+    Pad(CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>),
+    Fallback(CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>),
+    AdditiveSymbols(CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>),
+    SpeakAs(CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>),
 }
 
 impl CssCounterStyleDescriptor {
@@ -512,16 +533,16 @@ impl CssCounterStyleDescriptor {
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssCounterStyleDescriptorRef<'a> {
-    System(&'a CssDescriptorOccurrence<CssCounterStyleSystem>),
-    Negative(&'a CssDescriptorOccurrence<CssCounterStyleNegative>),
-    Symbols(&'a CssDescriptorOccurrence<CssCounterSymbols>),
-    Prefix(&'a CssDescriptorOccurrence<CssCounterSymbol>),
-    Suffix(&'a CssDescriptorOccurrence<CssCounterSymbol>),
-    Range(&'a CssDescriptorOccurrence<CssCounterStyleRange>),
-    Pad(&'a CssDescriptorOccurrence<CssCounterStylePad>),
-    Fallback(&'a CssDescriptorOccurrence<CssCounterStyleName>),
-    AdditiveSymbols(&'a CssDescriptorOccurrence<CssCounterAdditiveSymbols>),
-    SpeakAs(&'a CssDescriptorOccurrence<CssCounterStyleSpeakAs>),
+    System(&'a CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>),
+    Negative(&'a CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>),
+    Symbols(&'a CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>),
+    Prefix(&'a CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>),
+    Suffix(&'a CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>),
+    Range(&'a CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>),
+    Pad(&'a CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>),
+    Fallback(&'a CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>),
+    AdditiveSymbols(&'a CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>),
+    SpeakAs(&'a CssDescriptorOccurrence<crate::CssCounterStyleDescriptorValue>),
 }
 
 /// One authored Counter Styles 3 system choice.

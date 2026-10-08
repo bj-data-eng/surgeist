@@ -1580,6 +1580,51 @@ record remains partial for other Env1 contexts and execution; the selected
 font-palette descriptor consumer is included. This does not add Env1 as a
 selected whole module.
 
+The selected descriptor contexts also defer the whole authored declaration for a
+qualifying `env()` family: all ten Counter Styles descriptors, outer
+`@font-feature-values` `font-display`, and named values in all seven subsidiary
+blocks. Every `env()` in the value must qualify; one malformed `env()` is not
+rescued by another valid `env()`. An independently invalid `var()` does not veto
+a valid `env()`, while `var()` alone supplies no exception in these contexts.
+Root annotations and declaration boundaries are checked before admission.
+Matched nested blocks remain data. A root bang in an `env()` fallback is invalid,
+while a bang inside a nested function is retained as nested content.
+
+`CssCounterStyleDescriptorValue::view`, `CssFontFeatureDisplayValue::view`, and
+`CssFontFeatureValue::view` expose the ordinary or pending phase. Direct raw
+fronts and actual body declarations use the same providers. Counter effective
+getters select a later pending occurrence as the owning slot. An ordinary
+`system: extends` still conflicts with any authored symbols/additive-symbols
+occurrence, including a pending one; a pending system makes no ordinary system
+claim. Font definitions join a decoded name to a checked value of their actual
+subsidiary kind, and blocks reject mismatched kinds.
+
+The three value carriers accept `try_from_components[_with_limits]` and
+`reparse_after_substitution[_with_limits]`. Checked construction preserves mixed
+or programmatic component origins and rejects recovered closures. Reentry requires
+a pending receiver and rejects any residual decoded `var()` or `env()` before
+checking the completed ordinary grammar, including the selected index count.
+Each operation uses cumulative component and byte limits and returns a new value
+atomically; the pending receiver remains reusable. Raw-source `origin()` is
+`Some` for its complete actual value window. Checked construction and reentry
+return `None` for that whole window while retaining each supplied token origin.
+The family errors distinguish component limits, recovered components, grammar,
+residual substitution, and ordinary-receiver `NotPending` failures.
+
+`to_specified_css[_with_limits]` uses the same bounded providers as real rule
+output. Pending output retains the component stream. Suppressed earlier pending
+occurrences still consume work under the shared rule budget, and failure returns
+no partial text. Source recovery and specified closure repair do not establish
+clean original validity.
+
+Environment names denote document-global host associations whose token sequence
+can be empty. Authored CSS retains each reference's case-sensitive name, indexes,
+and fallback; the host supplies lookup and substitution. Custom declarations
+remain element-scoped authored inputs and do not define environment variables.
+An empty component replacement is representable, but a required completed
+descriptor grammar can still reject it. No environment definition API or store
+is introduced by these authored contracts.
+
 ## Authored attribute substitutions
 
 The required [Values 5 `attr()` and `<syntax>` definitions](https://www.w3.org/TR/2024/WD-css-values-5-20241111/#attr-notation),
@@ -4367,9 +4412,11 @@ valid. Invalid descriptors/definitions and unknown or malformed subsidiary
 blocks recover locally, while an invalid family prelude drops the outer rule.
 
 `CssFontFeatureValuesRule::try_new`, `CssFontFeatureValueBlock::try_new`, and
-`CssFontFeatureValueDefinition::try_new` enforce the same grammar as parsing.
-A standalone definition validates its nonempty list; the block constructor also
-validates kind-specific cardinality constraints. `CssFontFeatureValueIndex`
+`CssFontFeatureValue::try_from_components` enforce the same grammar as parsing.
+A standalone value owns its selected kind and completed index cardinality;
+`CssFontFeatureValueDefinition::new` joins that checked value to a decoded name.
+The block constructor rejects a definition whose value kind differs from its
+block. `CssFontFeatureValueIndex`
 stores exact normalized decimal digits without a machine-integer maximum.
 `try_from_decimal` accepts only an optional ASCII sign and digits, rejects
 negative nonzero values, and normalizes leading zeros and negative zero.
@@ -5294,8 +5341,8 @@ let [CssRule::CounterStyle(counter), CssRule::Page(page)] = report.syntax().rule
 };
 assert_eq!(counter.name().as_str(), "digits");
 assert!(matches!(
-    counter.descriptors().system().map(|value| value.value()),
-    Some(CssCounterStyleSystem::Numeric)
+    counter.descriptors().system().map(|value| value.value().view()),
+    Some(surgeist_css::CssCounterStyleDescriptorValueRef::System(&CssCounterStyleSystem::Numeric))
 ));
 assert_eq!(counter.descriptors().occurrences().count(), 3);
 assert_eq!(page.selector(), Some(CssPageSelector::Left));

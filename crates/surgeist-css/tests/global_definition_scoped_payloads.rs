@@ -6,6 +6,10 @@
 #[path = "support/font_face.rs"]
 mod font_face_support;
 
+#[path = "support/descriptor_phases.rs"]
+mod descriptor_phases;
+use descriptor_phases::*;
+
 use surgeist_css::*;
 
 const DEFINITIONS: &str = concat!(
@@ -25,11 +29,11 @@ fn assert_leaves(rules: &[CssScopedRule]) {
     };
     assert_eq!(counter.name().as_str(), "Tick");
     assert!(matches!(
-        counter.descriptors().system().unwrap().value(),
+        counter.descriptors().system().unwrap().ordinary_system(),
         CssCounterStyleSystem::Cyclic
     ));
     assert!(
-        matches!(counter.descriptors().symbols().unwrap().symbols(), [CssCounterSymbol::String(value)] if value.as_str() == "x")
+        matches!(counter.descriptors().symbols().unwrap().ordinary_symbols().symbols(), [CssCounterSymbol::String(value)] if value.as_str() == "x")
     );
     assert_eq!(
         ordinary_face!(font.descriptors(), FontFamily)

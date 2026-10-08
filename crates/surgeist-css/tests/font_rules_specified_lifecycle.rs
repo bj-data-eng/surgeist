@@ -3,6 +3,10 @@
 //! Existing-API regression for Fonts 4 sections 4.1, 6.9 and 13.2.
 //! Fixtures use only descriptors and feature-index forms admitted before #759.
 
+#[path = "support/descriptor_phases.rs"]
+mod descriptor_phases;
+use descriptor_phases::*;
+
 use surgeist_css::{
     CssAuthoredFontFaceDescriptorValue as Authored, CssFontDisplay,
     CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Value,
@@ -41,7 +45,7 @@ fn blocks(rule: &CssFontFeatureValuesRule) -> Vec<BlockSnapshot> {
                         (
                             definition.name().as_str().to_owned(),
                             definition
-                                .indexes()
+                                .ordinary_indexes()
                                 .iter()
                                 .map(|index| index.as_decimal_str().to_owned())
                                 .collect(),
@@ -141,7 +145,7 @@ fn all_seven_feature_blocks_and_outer_display_round_trip() {
         .items()
         .iter()
         .filter_map(|item| match item {
-            Item::FontDisplay(display) => Some(display.value()),
+            Item::FontDisplay(display) => Some(display.value().ordinary_display()),
             _ => None,
         })
         .collect::<Vec<_>>();
@@ -185,7 +189,7 @@ fn feature_blocks_merge_last_names_in_last_occurrence_order() {
         .items()
         .iter()
         .filter_map(|item| match item {
-            Item::FontDisplay(display) => Some(display.value()),
+            Item::FontDisplay(display) => Some(display.value().ordinary_display()),
             _ => None,
         })
         .collect::<Vec<_>>();

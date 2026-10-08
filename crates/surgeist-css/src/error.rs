@@ -1195,6 +1195,17 @@ pub(crate) fn unexpected_component_value<'i>(
     component: &crate::CssComponentValue,
     expectation: &'static str,
 ) -> ParseError<'i, Error> {
+    let crate::CssValueOrigin::Parsed(origin) = component.origin() else {
+        unreachable!("source value grammar owns parsed component origins")
+    };
+    unexpected_component_value_at(component, expectation, origin.span().start())
+}
+
+pub(crate) fn unexpected_component_value_at<'i>(
+    component: &crate::CssComponentValue,
+    expectation: &'static str,
+    position: CssSourcePosition,
+) -> ParseError<'i, Error> {
     use crate::{
         CssBlockKind as Block, CssComponentValueRef as Component, CssValueTokenRef as Value,
     };
@@ -1231,13 +1242,9 @@ pub(crate) fn unexpected_component_value<'i>(
         },
         Component::Comment(_) => CssTokenKind::Comment,
     };
-    let (authored, origin) = component
+    let (authored, _) = component
         .structural_lexeme(false)
-        .expect("a source component has its original leaf or opening lexeme");
-    let crate::CssValueOrigin::Parsed(origin) = origin else {
-        unreachable!("source value grammar owns parsed component origins")
-    };
-    let position = origin.span().start();
+        .expect("a component owns its leaf or opening lexeme");
     ParseError {
         location: cssparser::SourceLocation {
             line: position.line().value(),

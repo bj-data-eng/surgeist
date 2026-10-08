@@ -5,6 +5,10 @@
 //! inclusive counter bounds and descending additive weights follow their selected
 //! CSS contracts. Constructors do not impose downstream implementation ranges.
 
+#[path = "support/descriptor_phases.rs"]
+mod descriptor_phases;
+use descriptor_phases::*;
+
 use std::cmp::Ordering;
 use surgeist_css::*;
 
@@ -347,14 +351,15 @@ fn parsed_counter_fields_retain_huge_lexemes_exact_origins_and_descriptor_order(
         panic!("counter rule");
     };
     let descriptors = rule.descriptors();
-    let Some(CssCounterStyleSystem::Fixed(fixed)) = descriptors.system().map(|value| value.value())
+    let Some(CssCounterStyleSystem::Fixed(fixed)) =
+        descriptors.system().map(|value| value.ordinary_system())
     else {
         panic!("fixed system");
     };
     let start = fixed.first_symbol_value().unwrap();
     assert_eq!(start.numeric().representation(), "-0002147483649");
     parsed_origin(start.origin(), source, "-0002147483649");
-    let CssCounterStyleRange::Ranges(ranges) = descriptors.range().unwrap().value() else {
+    let CssCounterStyleRange::Ranges(ranges) = descriptors.range().unwrap().ordinary_range() else {
         panic!("finite range");
     };
     let CssCounterStyleRangeBound::Integer(lower) = ranges.ranges()[0].lower() else {
@@ -366,6 +371,7 @@ fn parsed_counter_fields_retain_huge_lexemes_exact_origins_and_descriptor_order(
         descriptors
             .pad()
             .unwrap()
+            .ordinary_pad()
             .minimum_length()
             .numeric()
             .representation(),
@@ -375,6 +381,7 @@ fn parsed_counter_fields_retain_huge_lexemes_exact_origins_and_descriptor_order(
         descriptors
             .additive_symbols()
             .unwrap()
+            .ordinary_additive_symbols()
             .tuples()
             .iter()
             .map(|value| value.weight().numeric().representation())

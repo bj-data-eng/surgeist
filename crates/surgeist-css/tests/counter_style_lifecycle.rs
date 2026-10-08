@@ -3,6 +3,10 @@
 //! Ordinary initials remain implicit; extends omissions stay distinguishable
 //! from explicit values. Definition selection, target lookup, marker generation,
 //! grapheme padding and speech execution belong downstream.
+#[path = "support/descriptor_phases.rs"]
+mod descriptor_phases;
+use descriptor_phases::*;
+
 use surgeist_css::*;
 
 fn counter(body: &str) -> CssCounterStyleRule {
@@ -65,35 +69,50 @@ fn explicit_initial_values_remain_distinct_from_omission() {
         r#"system:symbolic; negative:"-"; prefix:""; suffix:". "; range:auto; pad:0 ""; fallback:decimal; symbols:a; speak-as:auto;"#,
     );
     assert!(matches!(
-        rule.descriptors().system().unwrap().value(),
+        rule.descriptors().system().unwrap().ordinary_system(),
         CssCounterStyleSystem::Symbolic
     ));
     assert!(
-        matches!(rule.descriptors().negative().unwrap().prefix(), CssCounterSymbol::String(value) if value.as_str() == "-")
-    );
-    assert!(rule.descriptors().negative().unwrap().suffix().is_none());
-    assert!(
-        matches!(rule.descriptors().prefix().unwrap().value(), CssCounterSymbol::String(value) if value.as_str().is_empty())
+        matches!(rule.descriptors().negative().unwrap().ordinary_negative().prefix(), CssCounterSymbol::String(value) if value.as_str() == "-")
     );
     assert!(
-        matches!(rule.descriptors().suffix().unwrap().value(), CssCounterSymbol::String(value) if value.as_str() == ". ")
+        rule.descriptors()
+            .negative()
+            .unwrap()
+            .ordinary_negative()
+            .suffix()
+            .is_none()
+    );
+    assert!(
+        matches!(rule.descriptors().prefix().unwrap().ordinary_prefix(), CssCounterSymbol::String(value) if value.as_str().is_empty())
+    );
+    assert!(
+        matches!(rule.descriptors().suffix().unwrap().ordinary_suffix(), CssCounterSymbol::String(value) if value.as_str() == ". ")
     );
     assert!(matches!(
-        rule.descriptors().range().unwrap().value(),
+        rule.descriptors().range().unwrap().ordinary_range(),
         CssCounterStyleRange::Auto
     ));
     assert_eq!(
         rule.descriptors()
             .pad()
             .unwrap()
+            .ordinary_pad()
             .minimum_length()
             .numeric()
             .representation(),
         "0"
     );
-    assert_eq!(rule.descriptors().fallback().unwrap().as_str(), "decimal");
+    assert_eq!(
+        rule.descriptors()
+            .fallback()
+            .unwrap()
+            .ordinary_fallback()
+            .as_str(),
+        "decimal"
+    );
     assert!(matches!(
-        rule.descriptors().speak_as().unwrap().value(),
+        rule.descriptors().speak_as().unwrap().ordinary_speak_as(),
         CssCounterStyleSpeakAs::Auto
     ));
     assert_eq!(
@@ -122,7 +141,10 @@ fn every_system_retains_its_valid_minimum_symbol_boundary() {
                 .unwrap(),
             expected
         );
-        match (expected, rule.descriptors().system().unwrap().value()) {
+        match (
+            expected,
+            rule.descriptors().system().unwrap().ordinary_system(),
+        ) {
             ("cyclic", CssCounterStyleSystem::Cyclic)
             | ("numeric", CssCounterStyleSystem::Numeric)
             | ("alphabetic", CssCounterStyleSystem::Alphabetic)
@@ -331,7 +353,7 @@ fn extends_omission_and_explicit_range_auto_remain_distinct() {
     let explicit = counter("system:extends Missing; range:auto;");
     assert!(omitted.descriptors().range().is_none());
     assert!(matches!(
-        explicit.descriptors().range().unwrap().value(),
+        explicit.descriptors().range().unwrap().ordinary_range(),
         CssCounterStyleRange::Auto
     ));
     assert_eq!(
@@ -395,14 +417,18 @@ fn forbidden_extends_symbol_descriptors_drop_the_rule_but_invalid_descriptors_do
 fn unknown_named_targets_and_speech_choices_remain_symbolic() {
     let rule = counter("system:extends MyStyle; fallback:MyFallback; speak-as:MyVoice;");
     assert!(
-        matches!(rule.descriptors().system().unwrap().value(), CssCounterStyleSystem::Extends(name) if name.as_str() == "MyStyle")
+        matches!(rule.descriptors().system().unwrap().ordinary_system(), CssCounterStyleSystem::Extends(name) if name.as_str() == "MyStyle")
     );
     assert_eq!(
-        rule.descriptors().fallback().unwrap().as_str(),
+        rule.descriptors()
+            .fallback()
+            .unwrap()
+            .ordinary_fallback()
+            .as_str(),
         "MyFallback"
     );
     assert!(
-        matches!(rule.descriptors().speak_as().unwrap().value(), CssCounterStyleSpeakAs::CounterStyle(name) if name.as_str() == "MyVoice")
+        matches!(rule.descriptors().speak_as().unwrap().ordinary_speak_as(), CssCounterStyleSpeakAs::CounterStyle(name) if name.as_str() == "MyVoice")
     );
     for (body, expected) in [
         ("AUTO", "auto"),
@@ -462,7 +488,9 @@ fn huge_integer_fields_and_signed_zero_keep_authored_tokens_without_range_clampi
     let rule = counter(&format!(
         "system:fixed -{huge}; symbols:a; range:-{huge} {huge}, infinite -1, -000 infinite; pad:-000 '_'; additive-symbols:{huge} X, -000 N;"
     ));
-    let CssCounterStyleSystem::Fixed(fixed) = rule.descriptors().system().unwrap().value() else {
+    let CssCounterStyleSystem::Fixed(fixed) =
+        rule.descriptors().system().unwrap().ordinary_system()
+    else {
         panic!("fixed");
     };
     assert_eq!(
@@ -473,7 +501,8 @@ fn huge_integer_fields_and_signed_zero_keep_authored_tokens_without_range_clampi
             .representation(),
         format!("-{huge}")
     );
-    let CssCounterStyleRange::Ranges(ranges) = rule.descriptors().range().unwrap().value() else {
+    let CssCounterStyleRange::Ranges(ranges) = rule.descriptors().range().unwrap().ordinary_range()
+    else {
         panic!("ranges");
     };
     assert_eq!(
@@ -488,13 +517,18 @@ fn huge_integer_fields_and_signed_zero_keep_authored_tokens_without_range_clampi
         rule.descriptors()
             .pad()
             .unwrap()
+            .ordinary_pad()
             .minimum_length()
             .numeric()
             .representation(),
         "-000"
     );
     assert_eq!(
-        rule.descriptors().additive_symbols().unwrap().tuples()[1]
+        rule.descriptors()
+            .additive_symbols()
+            .unwrap()
+            .ordinary_additive_symbols()
+            .tuples()[1]
             .weight()
             .numeric()
             .representation(),
@@ -521,9 +555,16 @@ fn inside_and_case_sensitive_names_remain_valid_unresolved_rule_and_reference_na
         panic!("inside is a valid rule name");
     };
     assert_eq!(rule.name().as_str(), "inside");
-    assert_eq!(rule.descriptors().fallback().unwrap().as_str(), "Inside");
+    assert_eq!(
+        rule.descriptors()
+            .fallback()
+            .unwrap()
+            .ordinary_fallback()
+            .as_str(),
+        "Inside"
+    );
     assert!(
-        matches!(rule.descriptors().symbols().unwrap().symbols(), [CssCounterSymbol::Ident(value)] if value.as_str() == "MiXeD")
+        matches!(rule.descriptors().symbols().unwrap().ordinary_symbols().symbols(), [CssCounterSymbol::Ident(value)] if value.as_str() == "MiXeD")
     );
 }
 

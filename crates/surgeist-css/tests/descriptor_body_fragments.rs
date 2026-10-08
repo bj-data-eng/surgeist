@@ -3,6 +3,10 @@
 //! Fonts 4 (2026-09-07) §§4, 9.2; Counter Styles 3 (2021-07-27) §3;
 //! Color 5 (2026-09-08) §5.3; Syntax 3 (2021) component/declaration recovery.
 
+#[path = "support/descriptor_phases.rs"]
+mod descriptor_phases;
+use descriptor_phases::*;
+
 use surgeist_css::*;
 
 fn body<T>(report: &CssParseReport<Option<CssBlockFragment<T>>>) -> &CssBlockFragment<T> {
@@ -139,7 +143,7 @@ fn counter_body_retains_all_symbols_occurrences_and_last_valid_symbols() {
     clean(&report);
     let descriptors = body(&report).body();
     assert!(matches!(
-        descriptors.system().unwrap().value(),
+        descriptors.system().unwrap().ordinary_system(),
         CssCounterStyleSystem::Numeric
     ));
     let occurrences = descriptors.occurrences().collect::<Vec<_>>();
@@ -151,11 +155,11 @@ fn counter_body_retains_all_symbols_occurrences_and_last_valid_symbols() {
     else {
         panic!("system and both symbols occurrences")
     };
-    assert_eq!(first.value().symbols().len(), 2);
-    symbol(&first.value().symbols()[0], "0", true);
-    symbol(&first.value().symbols()[1], "1", true);
-    symbol(&last.value().symbols()[0], "a", false);
-    symbol(&last.value().symbols()[1], "b", false);
+    assert_eq!(first.ordinary_symbols().symbols().len(), 2);
+    symbol(&first.ordinary_symbols().symbols()[0], "0", true);
+    symbol(&first.ordinary_symbols().symbols()[1], "1", true);
+    symbol(&last.ordinary_symbols().symbols()[0], "a", false);
+    symbol(&last.ordinary_symbols().symbols()[1], "b", false);
     assert_eq!(descriptors.symbols().unwrap(), *last);
     origin(body(&report).origin(), source, 0, source.len());
 }
@@ -254,7 +258,12 @@ fn real_empty_bodies_do_not_fabricate_defaults_or_required_descriptors() {
     clean(&counter);
     assert!(body(&counter).body().system().is_none());
     symbol(
-        &body(&counter).body().symbols().unwrap().value().symbols()[0],
+        &body(&counter)
+            .body()
+            .symbols()
+            .unwrap()
+            .ordinary_symbols()
+            .symbols()[0],
         "x",
         false,
     );
@@ -321,8 +330,16 @@ fn unknown_descriptor_units_preserve_valid_neighbors_and_fail_clean_validation()
     );
     let counter = parse_counter_style_block("{prefix:\"a\";bogus:1;suffix:\"b\"}");
     assert_eq!(body(&counter).body().occurrences().len(), 2);
-    symbol(body(&counter).body().prefix().unwrap().value(), "a", true);
-    symbol(body(&counter).body().suffix().unwrap().value(), "b", true);
+    symbol(
+        body(&counter).body().prefix().unwrap().ordinary_prefix(),
+        "a",
+        true,
+    );
+    symbol(
+        body(&counter).body().suffix().unwrap().ordinary_suffix(),
+        "b",
+        true,
+    );
     let palette = parse_font_palette_values_block("{font-family:A;bogus:1;base-palette:dark}");
     assert_eq!(
         palette_kinds(body(&palette).body()),
@@ -413,7 +430,11 @@ fn structural_child_is_fatal_for_font_face_and_recoverable_for_other_families() 
     rejected(&parse_font_face_block(source), source);
     let counter = parse_counter_style_block("{prefix:\"a\";@unknown{}suffix:\"b\"}");
     assert_eq!(body(&counter).body().occurrences().len(), 2);
-    symbol(body(&counter).body().suffix().unwrap().value(), "b", true);
+    symbol(
+        body(&counter).body().suffix().unwrap().ordinary_suffix(),
+        "b",
+        true,
+    );
     recovered(&counter, CssRecoveryAction::DropAtRule);
     let palette = parse_font_palette_values_block("{font-family:A;@unknown{}base-palette:dark}");
     assert_eq!(
@@ -486,7 +507,7 @@ fn original_utf8_and_utf16_coordinates_exclude_outer_trivia_but_share_its_snapsh
     origin(prefix.parsed_value().unwrap(), source, 17, 23);
     point(prefix.parsed_value().unwrap().span().start(), 17, 1, 8);
     point(prefix.parsed_value().unwrap().span().end(), 23, 1, 12);
-    symbol(prefix.value(), "💡", true);
+    symbol(prefix.ordinary_prefix(), "💡", true);
     assert!(
         prefix
             .parsed_value()
@@ -549,7 +570,11 @@ fn implicit_outer_braces_retain_valid_payloads_at_original_eof() {
     let source = "{prefix:\"a";
     let counter = parse_counter_style_block(source);
     implicit(&counter, source);
-    symbol(body(&counter).body().prefix().unwrap().value(), "a", true);
+    symbol(
+        body(&counter).body().prefix().unwrap().ordinary_prefix(),
+        "a",
+        true,
+    );
     let source = "{src:url(a)";
     let profile = parse_color_profile_block(source);
     implicit(&profile, source);
@@ -645,7 +670,11 @@ fn unterminated_comments_and_outer_braces_report_original_eof_without_losing_des
     let source = "{prefix:\"a\";/* unfinished";
     let counter = parse_counter_style_block(source);
     implicit(&counter, source);
-    symbol(body(&counter).body().prefix().unwrap().value(), "a", true);
+    symbol(
+        body(&counter).body().prefix().unwrap().ordinary_prefix(),
+        "a",
+        true,
+    );
     recovered(&counter, CssRecoveryAction::IgnoreUnterminatedComment);
     let source = "{src:url(a);/* unfinished";
     let profile = parse_color_profile_block(source);
@@ -722,8 +751,16 @@ fn real_outer_brace_counts_once_and_excessive_descriptor_units_retain_both_neigh
         let counter_source = format!("{{prefix:\"a\";bad:{value};suffix:\"b\"}}");
         let counter = parse_counter_style_block(&counter_source);
         assert_eq!(body(&counter).body().occurrences().len(), 2);
-        symbol(body(&counter).body().prefix().unwrap().value(), "a", true);
-        symbol(body(&counter).body().suffix().unwrap().value(), "b", true);
+        symbol(
+            body(&counter).body().prefix().unwrap().ordinary_prefix(),
+            "a",
+            true,
+        );
+        symbol(
+            body(&counter).body().suffix().unwrap().ordinary_suffix(),
+            "b",
+            true,
+        );
         let palette_source = format!("{{font-family:A;bad:{value};base-palette:dark}}");
         let palette = parse_font_palette_values_block(&palette_source);
         assert_eq!(

@@ -258,8 +258,14 @@ fn parse_occurrence<'i, 't>(
     parse_descriptor_boundary(input, "counter-style", descriptor.css_name(), |input| {
         let (value, components, value_origin) =
             collect_declaration_value(input, source_snapshot, |input| {
-                parse_descriptor_value(input, descriptor, source_snapshot)
+                parse_authored_value(input, descriptor, source_snapshot)
             })?;
+        let value = crate::CssCounterStyleDescriptorValue::from_parsed(
+            descriptor,
+            value,
+            components.clone(),
+            value_origin.clone(),
+        );
         Ok(value.into_occurrence(name_origin.clone(), value_origin, components))
     })
 }
@@ -267,36 +273,35 @@ fn parse_occurrence<'i, 't>(
 pub(super) fn parse_descriptor_value<'i, 't>(
     input: &mut Parser<'i, 't>,
     kind: CssCounterStyleDescriptorKind,
-    source_snapshot: &crate::CssSourceSnapshot,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<CounterStyleValueData, ParseError<'i, Error>> {
-    let numeric = crate::numeric::NumericInputContext::parsed(source_snapshot);
     Ok(match kind {
         CssCounterStyleDescriptorKind::System => {
-            CounterStyleValueData::System(parse_system(input, &numeric)?)
+            CounterStyleValueData::System(parse_system(input, numeric)?)
         }
         CssCounterStyleDescriptorKind::Negative => {
-            CounterStyleValueData::Negative(parse_negative(input, &numeric)?)
+            CounterStyleValueData::Negative(parse_negative(input, numeric)?)
         }
         CssCounterStyleDescriptorKind::Symbols => {
-            CounterStyleValueData::Symbols(parse_symbols(input, &numeric)?)
+            CounterStyleValueData::Symbols(parse_symbols(input, numeric)?)
         }
         CssCounterStyleDescriptorKind::Prefix => {
-            CounterStyleValueData::Prefix(parse_symbol(input, &numeric)?)
+            CounterStyleValueData::Prefix(parse_symbol(input, numeric)?)
         }
         CssCounterStyleDescriptorKind::Suffix => {
-            CounterStyleValueData::Suffix(parse_symbol(input, &numeric)?)
+            CounterStyleValueData::Suffix(parse_symbol(input, numeric)?)
         }
         CssCounterStyleDescriptorKind::Range => {
-            CounterStyleValueData::Range(parse_range(input, &numeric)?)
+            CounterStyleValueData::Range(parse_range(input, numeric)?)
         }
         CssCounterStyleDescriptorKind::Pad => {
-            CounterStyleValueData::Pad(parse_pad(input, &numeric)?)
+            CounterStyleValueData::Pad(parse_pad(input, numeric)?)
         }
         CssCounterStyleDescriptorKind::Fallback => {
             CounterStyleValueData::Fallback(parse_fallback(input)?)
         }
         CssCounterStyleDescriptorKind::AdditiveSymbols => {
-            CounterStyleValueData::AdditiveSymbols(parse_additive_symbols(input, &numeric)?)
+            CounterStyleValueData::AdditiveSymbols(parse_additive_symbols(input, numeric)?)
         }
         CssCounterStyleDescriptorKind::SpeakAs => {
             CounterStyleValueData::SpeakAs(parse_speak_as(input)?)
@@ -570,4 +575,59 @@ fn parse_symbol_component<'i, 't>(
     // In particular, `none` is a symbol identifier, not property-level no image.
     // Do not speculate and discard an image provider's typed resource failure.
     parse_image(input, numeric).map(CssCounterSymbol::Image)
+}
+
+pub(super) fn parse_authored_value<'i>(
+    input: &mut Parser<'i, '_>,
+    kind: CssCounterStyleDescriptorKind,
+    snapshot: &crate::CssSourceSnapshot,
+) -> Result<CounterStyleValueData, ParseError<'i, Error>> {
+    super::descriptor_values::validate_root(input, "counter-style", kind.css_name())?;
+    let start = input.state();
+    let components =
+        crate::CssComponentValues::collect_from_parser(input, snapshot).map_err(|error| {
+            crate::error::invalid_component_value(input.current_source_location(), error)
+        })?;
+    input.reset(&start);
+    let numeric = crate::numeric::NumericInputContext::parsed(snapshot);
+    parse_value_data(input, kind, &components, &numeric)
+}
+fn parse_value_data<'i>(
+    input: &mut Parser<'i, '_>,
+    kind: CssCounterStyleDescriptorKind,
+    components: &crate::CssComponentValues,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Result<CounterStyleValueData, ParseError<'i, Error>> {
+    if super::variables::descriptor_environment_qualifies(components.items(), numeric).map_err(
+        |error| crate::error::invalid_component_value(input.current_source_location(), error),
+    )? {
+        let start = input.position();
+        super::descriptor_values::consume_remaining_components(input)?;
+        return Ok(CounterStyleValueData::Pending(
+            crate::CssSubstitutionDependentValue::new(crate::CssAuthoredDeclarationValue::new(
+                input.slice_from(start),
+            )),
+        ));
+    }
+    input.skip_whitespace();
+    let value = parse_descriptor_value(input, kind, numeric)?;
+    input.expect_exhausted().map_err(basic)?;
+    Ok(value)
+}
+pub(crate) fn construct_descriptor_value(
+    kind: CssCounterStyleDescriptorKind,
+    components: &crate::CssComponentValues,
+    serialized: &crate::CssSerializedValue,
+) -> Result<CounterStyleValueData, Error> {
+    let source = crate::tokenization::prepare(serialized.as_css());
+    let mut parser_input = cssparser::ParserInput::new(&source);
+    let mut input = Parser::new(&mut parser_input);
+    let numeric = crate::numeric::NumericInputContext::components(components, serialized);
+    let result = (|| {
+        super::descriptor_values::validate_root(&mut input, "counter-style", kind.css_name())?;
+        parse_descriptor_boundary(&mut input, "counter-style", kind.css_name(), |input| {
+            parse_value_data(input, kind, components, &numeric)
+        })
+    })();
+    result.map_err(|error| crate::error::from_parse_error(serialized.as_css(), error))
 }

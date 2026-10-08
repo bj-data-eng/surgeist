@@ -1,3 +1,7 @@
+#[path = "support/descriptor_phases.rs"]
+mod descriptor_phases;
+use descriptor_phases::*;
+
 use surgeist_css::{CssNamespaceContext, parse_rule, parse_sheet, validate_sheet};
 
 // Fonts 4 (7 September 2026), section 6.9.2 and frozen WebKit select the
@@ -72,13 +76,15 @@ fn block(item: &CssFontFeatureValuesItem) -> &Block {
     };
     block
 }
-fn definition(indexes: &[u32]) -> Definition {
-    Definition::try_new(
+fn definition(kind: Kind, indexes: &[u32]) -> Definition {
+    let spellings: Vec<_> = indexes.iter().map(u32::to_string).collect();
+    let values: Vec<_> = spellings.iter().map(String::as_str).collect();
+    Definition::new(
         Name::try_new("Fancy").unwrap(),
-        indexes.iter().copied().map(Index::from).collect(),
+        checked_feature_value(kind, &values).unwrap(),
     )
-    .unwrap()
 }
+
 #[test]
 fn typed_body_retains_order_duplicates_case_and_escaped_names() {
     let rule = authored(
@@ -106,11 +112,11 @@ fn typed_body_retains_order_duplicates_case_and_escaped_names() {
     let CssFontFeatureValuesItem::FontDisplay(display) = &rule.items()[0] else {
         panic!()
     };
-    assert_eq!(display.value(), CssFontDisplay::Swap);
+    assert_eq!(display.value().ordinary_display(), CssFontDisplay::Swap);
     let CssFontFeatureValuesItem::FontDisplay(display) = &rule.items()[2] else {
         panic!()
     };
-    assert_eq!(display.value(), CssFontDisplay::Optional);
+    assert_eq!(display.value().ordinary_display(), CssFontDisplay::Optional);
     let definitions = block(&rule.items()[1]).definitions();
     assert_eq!(
         definitions
@@ -119,8 +125,8 @@ fn typed_body_retains_order_duplicates_case_and_escaped_names() {
             .collect::<Vec<_>>(),
         ["Fancy", "fancy", "Fancy", "inherit", "a+b"]
     );
-    assert_eq!(definitions[0].indexes()[0].as_decimal_str(), "2");
-    assert_eq!(definitions[1].indexes()[0].as_decimal_str(), "0");
+    assert_eq!(definitions[0].ordinary_indexes()[0].as_decimal_str(), "2");
+    assert_eq!(definitions[1].ordinary_indexes()[0].as_decimal_str(), "0");
     let kinds = rule
         .items()
         .iter()
@@ -152,7 +158,7 @@ fn exact_indices_have_no_machine_bound_and_preserve_numeric_origins() {
     );
     let rule = authored(&source);
     let first = &block(&rule.items()[0]).definitions()[0];
-    let index = &first.indexes()[0];
+    let index = &first.ordinary_indexes()[0];
     assert_eq!(index.as_decimal_str(), huge);
     assert_eq!(index.to_u32(), None);
     let origin = index.origin().unwrap();
@@ -170,7 +176,7 @@ fn exact_indices_have_no_machine_bound_and_preserve_numeric_origins() {
         rule.position().unwrap().byte_offset().value(),
         source.find("@font").unwrap()
     );
-    let other = &block(&rule.items()[1]).definitions()[0].indexes();
+    let other = &block(&rule.items()[1]).definitions()[0].ordinary_indexes();
     assert_eq!(other[0].to_u32(), Some(u32::MAX));
     assert_eq!(other[1].to_u32(), None);
     assert!(
@@ -211,23 +217,31 @@ fn checked_construction_normalizes_decimal_syntax_without_inventing_source() {
             ConstructionError::InvalidIdentifier
         );
     }
-    assert_eq!(
-        Definition::try_new(Name::try_new("a").unwrap(), vec![])
-            .unwrap_err()
-            .kind(),
-        ConstructionError::EmptyIndexes
-    );
+    assert!(matches!(
+        checked_feature_value(Kind::Swash, &[]).unwrap_err().kind(),
+        surgeist_css::CssFontFeatureValueErrorKind::Grammar(
+            surgeist_css::ErrorKind::UnexpectedEnd(_)
+        )
+    ));
     assert_eq!(
         CssFontFeatureValuesRule::try_new(vec![], vec![])
             .unwrap_err()
             .kind(),
         ConstructionError::EmptyFamilies
     );
-    let definition = definition(&[1]);
+    let definition = definition(Kind::Swash, &[1]);
     assert!(definition.position().is_none());
     let block = Block::try_new(Kind::Swash, vec![definition]).unwrap();
     assert!(block.position().is_none());
-    let display = CssFontFeatureDisplayOccurrence::new(CssFontDisplay::Swap);
+    let display = CssFontFeatureDisplayOccurrence::new(
+        surgeist_css::CssFontFeatureDisplayValue::try_from_components(
+            surgeist_css::CssComponentValues::try_new(vec![
+                surgeist_css::CssComponentValue::try_ident("swap").unwrap(),
+            ])
+            .unwrap(),
+        )
+        .unwrap(),
+    );
     assert!(display.position().is_none());
     let rule = CssFontFeatureValuesRule::try_new(
         vec![CssFontFaceFamily::try_new("serif").unwrap()],
@@ -242,28 +256,47 @@ fn checked_construction_normalizes_decimal_syntax_without_inventing_source() {
 }
 #[test]
 fn character_variant_accepts_one_or_two_indexes_and_rejects_three() {
-    assert!(Block::try_new(Kind::CharacterVariant, vec![definition(&[1])]).is_ok());
-    let error = Block::try_new(
-        Kind::CharacterVariant,
-        vec![definition(&[1, 2]), definition(&[1, 2, 3])],
-    )
-    .unwrap_err();
-    assert_eq!(error.kind(), ConstructionError::InvalidIndexCount);
-    assert_eq!(error.block(), Some(Kind::CharacterVariant));
-    assert_eq!(error.definition_index(), Some(1));
-    for value in ["", "1 2 3"] {
-        assert_invalid_value("character-variant", value);
-    }
+    assert!(
+        Block::try_new(
+            Kind::CharacterVariant,
+            vec![definition(Kind::CharacterVariant, &[1])]
+        )
+        .is_ok()
+    );
+    assert!(
+        Block::try_new(
+            Kind::CharacterVariant,
+            vec![definition(Kind::CharacterVariant, &[1, 2])]
+        )
+        .is_ok()
+    );
+    assert!(matches!(
+        checked_feature_value(Kind::CharacterVariant, &["1", "2", "3"])
+            .unwrap_err()
+            .kind(),
+        surgeist_css::CssFontFeatureValueErrorKind::Grammar(
+            surgeist_css::ErrorKind::UnexpectedToken(_)
+        )
+    ));
 }
 #[test]
 fn character_variant_first_index_has_no_font_feature_upper_bound() {
     let value = Block::try_new(
         Kind::CharacterVariant,
-        vec![definition(&[100]), definition(&[100, u32::MAX])],
+        vec![
+            definition(Kind::CharacterVariant, &[100]),
+            definition(Kind::CharacterVariant, &[100, u32::MAX]),
+        ],
     )
     .unwrap();
-    assert_eq!(value.definitions()[0].indexes()[0].as_decimal_str(), "100");
-    assert_eq!(value.definitions()[1].indexes()[0].as_decimal_str(), "100");
+    assert_eq!(
+        value.definitions()[0].ordinary_indexes()[0].as_decimal_str(),
+        "100"
+    );
+    assert_eq!(
+        value.definitions()[1].ordinary_indexes()[0].as_decimal_str(),
+        "100"
+    );
     let parsed =
         authored("@font-feature-values Demo { @character-variant { one: 100; two: 100 1; } }");
     assert_eq!(block(&parsed.items()[0]).definitions().len(), 2);
@@ -272,10 +305,10 @@ fn character_variant_first_index_has_no_font_feature_upper_bound() {
 fn styleset_indexes_have_no_font_feature_upper_bound() {
     let value = Block::try_new(
         Kind::Styleset,
-        vec![definition(&[0, 20, 21, 100, u32::MAX])],
+        vec![definition(Kind::Styleset, &[0, 20, 21, 100, u32::MAX])],
     )
     .unwrap();
-    assert_eq!(value.definitions()[0].indexes().len(), 5);
+    assert_eq!(value.definitions()[0].ordinary_indexes().len(), 5);
     let parsed =
         authored("@font-feature-values Demo { @styleset { one: 21; many: 0 20 21 100; } }");
     assert_eq!(block(&parsed.items()[0]).definitions().len(), 2);
@@ -318,19 +351,25 @@ fn invalid_values_recover_only_the_definition() {
     ] {
         assert_invalid_value("swash", value);
     }
-    assert!(Block::try_new(Kind::HistoricalForms, vec![definition(&[0, 1, u32::MAX])]).is_ok());
+    assert!(
+        Block::try_new(
+            Kind::HistoricalForms,
+            vec![definition(Kind::HistoricalForms, &[0, 1, u32::MAX])]
+        )
+        .is_ok()
+    );
     for kind in [
         Kind::Stylistic,
         Kind::Swash,
         Kind::Ornaments,
         Kind::Annotation,
     ] {
-        assert_eq!(
-            Block::try_new(kind, vec![definition(&[1, 2])])
-                .unwrap_err()
-                .kind(),
-            ConstructionError::InvalidIndexCount
-        );
+        assert!(matches!(
+            checked_feature_value(kind, &["1", "2"]).unwrap_err().kind(),
+            surgeist_css::CssFontFeatureValueErrorKind::Grammar(
+                surgeist_css::ErrorKind::UnexpectedToken(_)
+            )
+        ));
     }
 }
 #[test]
@@ -450,7 +489,7 @@ fn eof_retains_accepted_rules_with_real_closure_diagnostics() {
         panic!("{:?}", report.diagnostics())
     };
     assert_eq!(
-        block(&rule.items()[0]).definitions()[0].indexes()[0].as_decimal_str(),
+        block(&rule.items()[0]).definitions()[0].ordinary_indexes()[0].as_decimal_str(),
         "1"
     );
     assert!(!report.is_clean());
@@ -504,7 +543,7 @@ fn scoped_chunk_conversion_preserves_font_payload_at_the_structural_ceiling() {
         })
         .collect::<Vec<_>>();
     assert_eq!(fonts.len(), 1);
-    let index = &block(&fonts[0].items()[0]).definitions()[0].indexes()[0];
+    let index = &block(&fonts[0].items()[0]).definitions()[0].ordinary_indexes()[0];
     assert_eq!(index.as_decimal_str(), "2");
     assert_eq!(index.origin().unwrap().source().as_str(), source);
     assert_eq!(

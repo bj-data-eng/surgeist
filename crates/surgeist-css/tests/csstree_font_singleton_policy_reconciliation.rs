@@ -2,6 +2,10 @@
 //! The normative section 6.9.1 / 6.9.2 conflict remains unresolved.
 #![forbid(unsafe_code)]
 
+#[path = "support/descriptor_phases.rs"]
+mod descriptor_phases;
+use descriptor_phases::*;
+
 use serde_json::{Value, json};
 use std::{fs, path::Path};
 use surgeist_css::{
@@ -59,7 +63,7 @@ fn original_singleton_retains_all_typed_definitions_without_recovery() {
                 .iter()
                 .map(|definition| {
                     let indexes: Vec<_> = definition
-                        .indexes()
+                        .ordinary_indexes()
                         .iter()
                         .map(|index| {
                             let origin = index.origin().expect("authored integer origin");

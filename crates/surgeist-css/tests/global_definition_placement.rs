@@ -12,6 +12,10 @@
 #[path = "support/font_face.rs"]
 mod font_face_support;
 
+#[path = "support/descriptor_phases.rs"]
+mod descriptor_phases;
+use descriptor_phases::*;
+
 use surgeist_css::*;
 
 const COUNTER: &str = "@counter-style Tick { system: cyclic; symbols: \"x\"; }";
@@ -64,11 +68,11 @@ fn assert_payload(context: &CssRuleContext, source: &str, expected: &str) {
         CssRuleContextKindRef::CounterStyle(rule) => {
             assert_eq!(rule.name().as_str(), "Tick");
             assert!(matches!(
-                rule.descriptors().system().unwrap().value(),
+                rule.descriptors().system().unwrap().ordinary_system(),
                 CssCounterStyleSystem::Cyclic
             ));
             assert!(
-                matches!(rule.descriptors().symbols().unwrap().symbols(), [CssCounterSymbol::String(symbol)] if symbol.as_str() == "x")
+                matches!(rule.descriptors().symbols().unwrap().ordinary_symbols().symbols(), [CssCounterSymbol::String(symbol)] if symbol.as_str() == "x")
             );
             assert_position(
                 source,

@@ -1,7 +1,8 @@
 //! Bounded specified text for represented Counter Styles 3 rules.
 
 use crate::{
-    CssCounterStyleDescriptorRef as Descriptor, CssCounterStyleRange, CssCounterStyleRangeBound,
+    CssCounterStyleDescriptorRef as Descriptor, CssCounterStyleDescriptorValue,
+    CssCounterStyleDescriptorValueRef as Value, CssCounterStyleRange, CssCounterStyleRangeBound,
     CssCounterStyleRule, CssCounterStyleSpeakAs, CssCounterStyleSystem, CssCounterSymbol,
     CssSpecifiedValueSerializationError as Error, CssSpecifiedValueSerializationLimits as Limits,
     specified_rule_serialization::SpecifiedRuleWriter,
@@ -115,113 +116,145 @@ fn slot(value: Descriptor<'_>) -> (usize, &'static str) {
     }
 }
 
-fn descriptor(writer: &mut SpecifiedRuleWriter, value: Descriptor<'_>) -> Result<()> {
-    match value {
-        Descriptor::System(value) => match value.value() {
-            CssCounterStyleSystem::Cyclic => keyword(writer, "cyclic"),
-            CssCounterStyleSystem::Numeric => keyword(writer, "numeric"),
-            CssCounterStyleSystem::Alphabetic => keyword(writer, "alphabetic"),
-            CssCounterStyleSystem::Symbolic => keyword(writer, "symbolic"),
-            CssCounterStyleSystem::Additive => keyword(writer, "additive"),
-            CssCounterStyleSystem::Fixed(value) => {
-                keyword(writer, "fixed")?;
-                if let Some(first) = value.first_symbol_value() {
-                    // §3.1.2's omitted starting value is exactly 1. CSSOM §6.7.2
-                    // omits optional components when their meaning is unchanged.
-                    if crate::integer_value::exact_i32(first.numeric().representation()) == Some(1)
+impl CssCounterStyleDescriptorValue {
+    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        match self.view() {
+            Value::System(value) => match value {
+                CssCounterStyleSystem::Cyclic => keyword(writer, "cyclic"),
+                CssCounterStyleSystem::Numeric => keyword(writer, "numeric"),
+                CssCounterStyleSystem::Alphabetic => keyword(writer, "alphabetic"),
+                CssCounterStyleSystem::Symbolic => keyword(writer, "symbolic"),
+                CssCounterStyleSystem::Additive => keyword(writer, "additive"),
+                CssCounterStyleSystem::Fixed(value) => {
+                    keyword(writer, "fixed")?;
+                    if let Some(first) = value.first_symbol_value() {
+                        // §3.1.2's omitted starting value is exactly 1. CSSOM §6.7.2
+                        // omits optional components when their meaning is unchanged.
+                        if crate::integer_value::exact_i32(first.numeric().representation())
+                            == Some(1)
+                        {
+                            writer.without_output(|writer| {
+                                first.append_specified(&mut writer.context, &mut writer.css)
+                            })?;
+                        } else {
+                            writer.append(" ")?;
+                            first.append_specified(&mut writer.context, &mut writer.css)?;
+                        }
+                    }
+                    Ok(())
+                }
+                CssCounterStyleSystem::Extends(value) => {
+                    keyword(writer, "extends")?;
+                    writer.append(" ")?;
+                    name(writer, value.as_str())
+                }
+            },
+            Value::Negative(value) => {
+                node(writer)?;
+                symbol(writer, value.prefix())?;
+                if let Some(suffix) = value.suffix() {
+                    // §3.2's optional suffix adds nothing when it is the empty
+                    // string; traverse it even when CSSOM omission removes bytes.
+                    if matches!(suffix, CssCounterSymbol::String(value) if value.as_str().is_empty())
                     {
-                        writer.without_output(|writer| {
-                            first.append_specified(&mut writer.context, &mut writer.css)
-                        })?;
+                        writer.without_output(|writer| symbol(writer, suffix))?;
                     } else {
                         writer.append(" ")?;
-                        first.append_specified(&mut writer.context, &mut writer.css)?;
+                        symbol(writer, suffix)?;
                     }
                 }
                 Ok(())
             }
-            CssCounterStyleSystem::Extends(value) => {
-                keyword(writer, "extends")?;
-                writer.append(" ")?;
-                name(writer, value.as_str())
-            }
-        },
-        Descriptor::Negative(value) => {
-            node(writer)?;
-            symbol(writer, value.prefix())?;
-            if let Some(suffix) = value.suffix() {
-                // §3.2's optional suffix adds nothing when it is the empty
-                // string; traverse it even when CSSOM omission removes bytes.
-                if matches!(suffix, CssCounterSymbol::String(value) if value.as_str().is_empty()) {
-                    writer.without_output(|writer| symbol(writer, suffix))?;
-                } else {
-                    writer.append(" ")?;
-                    symbol(writer, suffix)?;
+            Value::Prefix(value) | Value::Suffix(value) => symbol(writer, value),
+            Value::Range(value) => match value {
+                CssCounterStyleRange::Auto => keyword(writer, "auto"),
+                CssCounterStyleRange::Ranges(value) => {
+                    node(writer)?;
+                    for (index, interval) in value.ranges().iter().enumerate() {
+                        node(writer)?;
+                        if index != 0 {
+                            writer.append(", ")?;
+                        }
+                        // Both bounds are required even when equal (§3.5).
+                        bound(writer, interval.lower())?;
+                        writer.append(" ")?;
+                        bound(writer, interval.upper())?;
+                    }
+                    Ok(())
                 }
-            }
-            Ok(())
-        }
-        Descriptor::Prefix(value) | Descriptor::Suffix(value) => symbol(writer, value.value()),
-        Descriptor::Range(value) => match value.value() {
-            CssCounterStyleRange::Auto => keyword(writer, "auto"),
-            CssCounterStyleRange::Ranges(value) => {
+            },
+            Value::Pad(value) => {
                 node(writer)?;
-                for (index, interval) in value.ranges().iter().enumerate() {
+                value
+                    .minimum_length()
+                    .append_specified(&mut writer.context, &mut writer.css)?;
+                writer.append(" ")?;
+                symbol(writer, value.symbol())
+            }
+            Value::Fallback(value) => name(writer, value.as_str()),
+            Value::Symbols(value) => {
+                node(writer)?;
+                for (index, value) in value.symbols().iter().enumerate() {
+                    if index != 0 {
+                        writer.append(" ")?;
+                    }
+                    symbol(writer, value)?;
+                }
+                Ok(())
+            }
+            Value::AdditiveSymbols(value) => {
+                node(writer)?;
+                for (index, tuple) in value.tuples().iter().enumerate() {
                     node(writer)?;
                     if index != 0 {
                         writer.append(", ")?;
                     }
-                    // Both bounds are required even when equal (§3.5).
-                    bound(writer, interval.lower())?;
+                    // §3.8's double-ampersand grammar takes its canonical integer-first order.
+                    tuple
+                        .weight()
+                        .append_specified(&mut writer.context, &mut writer.css)?;
                     writer.append(" ")?;
-                    bound(writer, interval.upper())?;
+                    symbol(writer, tuple.symbol())?;
                 }
                 Ok(())
             }
-        },
-        Descriptor::Pad(value) => {
-            node(writer)?;
-            value
-                .minimum_length()
-                .append_specified(&mut writer.context, &mut writer.css)?;
-            writer.append(" ")?;
-            symbol(writer, value.symbol())
+            Value::SpeakAs(value) => match value {
+                CssCounterStyleSpeakAs::Auto => keyword(writer, "auto"),
+                CssCounterStyleSpeakAs::Bullets => keyword(writer, "bullets"),
+                CssCounterStyleSpeakAs::Numbers => keyword(writer, "numbers"),
+                CssCounterStyleSpeakAs::Words => keyword(writer, "words"),
+                CssCounterStyleSpeakAs::SpellOut => keyword(writer, "spell-out"),
+                CssCounterStyleSpeakAs::CounterStyle(value) => name(writer, value.as_str()),
+            },
+            Value::Pending(_) => crate::pending_serialization::append_pending_specified(
+                self.components(),
+                &mut writer.context,
+                &mut writer.css,
+            ),
         }
-        Descriptor::Fallback(value) => name(writer, value.as_str()),
-        Descriptor::Symbols(value) => {
-            node(writer)?;
-            for (index, value) in value.symbols().iter().enumerate() {
-                if index != 0 {
-                    writer.append(" ")?;
-                }
-                symbol(writer, value)?;
-            }
-            Ok(())
-        }
-        Descriptor::AdditiveSymbols(value) => {
-            node(writer)?;
-            for (index, tuple) in value.tuples().iter().enumerate() {
-                node(writer)?;
-                if index != 0 {
-                    writer.append(", ")?;
-                }
-                // §3.8's double-ampersand grammar takes its canonical integer-first order.
-                tuple
-                    .weight()
-                    .append_specified(&mut writer.context, &mut writer.css)?;
-                writer.append(" ")?;
-                symbol(writer, tuple.symbol())?;
-            }
-            Ok(())
-        }
-        Descriptor::SpeakAs(value) => match value.value() {
-            CssCounterStyleSpeakAs::Auto => keyword(writer, "auto"),
-            CssCounterStyleSpeakAs::Bullets => keyword(writer, "bullets"),
-            CssCounterStyleSpeakAs::Numbers => keyword(writer, "numbers"),
-            CssCounterStyleSpeakAs::Words => keyword(writer, "words"),
-            CssCounterStyleSpeakAs::SpellOut => keyword(writer, "spell-out"),
-            CssCounterStyleSpeakAs::CounterStyle(value) => name(writer, value.as_str()),
-        },
+    }
+    /// Serializes the value alone with the same provider and cumulative budget as a rule.
+    pub fn to_specified_css(&self) -> Result<String> {
+        self.to_specified_css_with_limits(Limits::default())
+    }
+    pub fn to_specified_css_with_limits(&self, limits: Limits) -> Result<String> {
+        let mut writer = SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+}
+fn descriptor(writer: &mut SpecifiedRuleWriter, value: Descriptor<'_>) -> Result<()> {
+    match value {
+        Descriptor::System(value) => value.value().append_to_rule_writer(writer),
+        Descriptor::Negative(value) => value.value().append_to_rule_writer(writer),
+        Descriptor::Prefix(value) => value.value().append_to_rule_writer(writer),
+        Descriptor::Suffix(value) => value.value().append_to_rule_writer(writer),
+        Descriptor::Range(value) => value.value().append_to_rule_writer(writer),
+        Descriptor::Pad(value) => value.value().append_to_rule_writer(writer),
+        Descriptor::Fallback(value) => value.value().append_to_rule_writer(writer),
+        Descriptor::Symbols(value) => value.value().append_to_rule_writer(writer),
+        Descriptor::AdditiveSymbols(value) => value.value().append_to_rule_writer(writer),
+        Descriptor::SpeakAs(value) => value.value().append_to_rule_writer(writer),
     }
 }
 
@@ -418,15 +451,27 @@ mod tests {
             crate::CssCounterStyleName::try_new("Constructed").unwrap(),
             CssCounterStyleDescriptors::from_occurrences(vec![
                 CssCounterStyleDescriptor::System(crate::CssDescriptorOccurrence::new(
-                    CssCounterStyleSystem::Extends(
-                        crate::CssCounterStyleName::try_new("Unknown").unwrap(),
-                    ),
+                    CssCounterStyleDescriptorValue::try_from_components(
+                        CssCounterStyleDescriptorKind::System,
+                        crate::CssComponentValues::try_new(vec![
+                            crate::CssComponentValue::try_ident("extends").unwrap(),
+                            crate::CssComponentValue::try_token(" ").unwrap(),
+                            crate::CssComponentValue::try_ident("Unknown").unwrap(),
+                        ])
+                        .unwrap(),
+                    )
+                    .unwrap(),
                     position,
                 )),
                 CssCounterStyleDescriptor::Pad(crate::CssDescriptorOccurrence::new(
-                    crate::CssCounterStylePad::try_new(
-                        crate::CssIntegerLiteral::from_i32(3),
-                        CssCounterSymbol::String(crate::CssContentString::try_new("_").unwrap()),
+                    CssCounterStyleDescriptorValue::try_from_components(
+                        CssCounterStyleDescriptorKind::Pad,
+                        crate::CssComponentValues::try_new(vec![
+                            crate::CssComponentValue::try_number("3").unwrap(),
+                            crate::CssComponentValue::try_token(" ").unwrap(),
+                            crate::CssComponentValue::try_token("\"_\"").unwrap(),
+                        ])
+                        .unwrap(),
                     )
                     .unwrap(),
                     position,

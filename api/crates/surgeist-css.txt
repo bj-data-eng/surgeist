@@ -978,21 +978,22 @@ pub surgeist_css::CssCounterStyleDescriptorKind::System
 impl surgeist_css::CssCounterStyleDescriptorKind
 pub const fn surgeist_css::CssCounterStyleDescriptorKind::css_name(self) -> &'static str
 #[non_exhaustive] pub enum surgeist_css::CssCounterStyleDescriptorRef<'a>
-pub surgeist_css::CssCounterStyleDescriptorRef::AdditiveSymbols(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterAdditiveSymbols>)
-pub surgeist_css::CssCounterStyleDescriptorRef::Fallback(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleName>)
-pub surgeist_css::CssCounterStyleDescriptorRef::Negative(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleNegative>)
-pub surgeist_css::CssCounterStyleDescriptorRef::Pad(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStylePad>)
-pub surgeist_css::CssCounterStyleDescriptorRef::Prefix(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterSymbol>)
-pub surgeist_css::CssCounterStyleDescriptorRef::Range(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleRange>)
-pub surgeist_css::CssCounterStyleDescriptorRef::SpeakAs(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleSpeakAs>)
-pub surgeist_css::CssCounterStyleDescriptorRef::Suffix(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterSymbol>)
-pub surgeist_css::CssCounterStyleDescriptorRef::Symbols(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterSymbols>)
-pub surgeist_css::CssCounterStyleDescriptorRef::System(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleSystem>)
+pub surgeist_css::CssCounterStyleDescriptorRef::AdditiveSymbols(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleDescriptorValue>)
+pub surgeist_css::CssCounterStyleDescriptorRef::Fallback(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleDescriptorValue>)
+pub surgeist_css::CssCounterStyleDescriptorRef::Negative(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleDescriptorValue>)
+pub surgeist_css::CssCounterStyleDescriptorRef::Pad(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleDescriptorValue>)
+pub surgeist_css::CssCounterStyleDescriptorRef::Prefix(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleDescriptorValue>)
+pub surgeist_css::CssCounterStyleDescriptorRef::Range(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleDescriptorValue>)
+pub surgeist_css::CssCounterStyleDescriptorRef::SpeakAs(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleDescriptorValue>)
+pub surgeist_css::CssCounterStyleDescriptorRef::Suffix(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleDescriptorValue>)
+pub surgeist_css::CssCounterStyleDescriptorRef::Symbols(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleDescriptorValue>)
+pub surgeist_css::CssCounterStyleDescriptorRef::System(&'a surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleDescriptorValue>)
 #[non_exhaustive] pub enum surgeist_css::CssCounterStyleDescriptorValueRef<'a>
 pub surgeist_css::CssCounterStyleDescriptorValueRef::AdditiveSymbols(&'a surgeist_css::CssCounterAdditiveSymbols)
 pub surgeist_css::CssCounterStyleDescriptorValueRef::Fallback(&'a surgeist_css::CssCounterStyleName)
 pub surgeist_css::CssCounterStyleDescriptorValueRef::Negative(&'a surgeist_css::CssCounterStyleNegative)
 pub surgeist_css::CssCounterStyleDescriptorValueRef::Pad(&'a surgeist_css::CssCounterStylePad)
+pub surgeist_css::CssCounterStyleDescriptorValueRef::Pending(&'a surgeist_css::CssSubstitutionDependentValue)
 pub surgeist_css::CssCounterStyleDescriptorValueRef::Prefix(&'a surgeist_css::CssCounterSymbol)
 pub surgeist_css::CssCounterStyleDescriptorValueRef::Range(&'a surgeist_css::CssCounterStyleRange)
 pub surgeist_css::CssCounterStyleDescriptorValueRef::SpeakAs(&'a surgeist_css::CssCounterStyleSpeakAs)
@@ -1029,6 +1030,12 @@ pub fn surgeist_css::CssCounterStyleValue::try_named(name: surgeist_css::CssIden
 impl surgeist_css::CssCounterStyleValue
 pub fn surgeist_css::CssCounterStyleValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssCounterStyleValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssCounterStyleValueErrorKind
+pub surgeist_css::CssCounterStyleValueErrorKind::Component(surgeist_css::CssComponentValueErrorKind)
+pub surgeist_css::CssCounterStyleValueErrorKind::Grammar(surgeist_css::ErrorKind)
+pub surgeist_css::CssCounterStyleValueErrorKind::NotPending
+pub surgeist_css::CssCounterStyleValueErrorKind::RecoveredComponent
+pub surgeist_css::CssCounterStyleValueErrorKind::ResidualSubstitution
 #[non_exhaustive] pub enum surgeist_css::CssCounterSymbol
 pub surgeist_css::CssCounterSymbol::Ident(surgeist_css::CssCounterSymbolIdent)
 pub surgeist_css::CssCounterSymbol::Image(surgeist_css::CssImage)
@@ -1469,6 +1476,15 @@ pub fn surgeist_css::CssFontFaceWidth::serialize_specified_with_limits(&self, li
 pub surgeist_css::CssFontFamilyNameKind::Generic
 pub surgeist_css::CssFontFamilyNameKind::IdentSequence
 pub surgeist_css::CssFontFamilyNameKind::Quoted
+#[non_exhaustive] pub enum surgeist_css::CssFontFeatureDisplayValueRef<'a>
+pub surgeist_css::CssFontFeatureDisplayValueRef::Ordinary(surgeist_css::CssFontDisplay)
+pub surgeist_css::CssFontFeatureDisplayValueRef::Pending(&'a surgeist_css::CssSubstitutionDependentValue)
+#[non_exhaustive] pub enum surgeist_css::CssFontFeatureValueErrorKind
+pub surgeist_css::CssFontFeatureValueErrorKind::Component(surgeist_css::CssComponentValueErrorKind)
+pub surgeist_css::CssFontFeatureValueErrorKind::Grammar(surgeist_css::ErrorKind)
+pub surgeist_css::CssFontFeatureValueErrorKind::NotPending
+pub surgeist_css::CssFontFeatureValueErrorKind::RecoveredComponent
+pub surgeist_css::CssFontFeatureValueErrorKind::ResidualSubstitution
 #[non_exhaustive] pub enum surgeist_css::CssFontFeatureValueKind
 pub surgeist_css::CssFontFeatureValueKind::Annotation
 pub surgeist_css::CssFontFeatureValueKind::CharacterVariant
@@ -1479,12 +1495,16 @@ pub surgeist_css::CssFontFeatureValueKind::Stylistic
 pub surgeist_css::CssFontFeatureValueKind::Swash
 impl surgeist_css::CssFontFeatureValueKind
 pub const fn surgeist_css::CssFontFeatureValueKind::css_name(self) -> &'static str
+#[non_exhaustive] pub enum surgeist_css::CssFontFeatureValueRef<'a>
+pub surgeist_css::CssFontFeatureValueRef::Indexes(&'a [surgeist_css::CssFontFeatureValueIndex])
+pub surgeist_css::CssFontFeatureValueRef::Pending(&'a surgeist_css::CssSubstitutionDependentValue)
 #[non_exhaustive] pub enum surgeist_css::CssFontFeatureValuesErrorKind
 pub surgeist_css::CssFontFeatureValuesErrorKind::EmptyFamilies
 pub surgeist_css::CssFontFeatureValuesErrorKind::EmptyIndexes
 pub surgeist_css::CssFontFeatureValuesErrorKind::InvalidIdentifier
 pub surgeist_css::CssFontFeatureValuesErrorKind::InvalidIndexCount
 pub surgeist_css::CssFontFeatureValuesErrorKind::InvalidIntegerSyntax
+pub surgeist_css::CssFontFeatureValuesErrorKind::KindMismatch
 pub surgeist_css::CssFontFeatureValuesErrorKind::NegativeIndex
 #[non_exhaustive] pub enum surgeist_css::CssFontFeatureValuesItem
 pub surgeist_css::CssFontFeatureValuesItem::Block(surgeist_css::CssFontFeatureValueBlock)
@@ -7401,21 +7421,29 @@ pub struct surgeist_css::CssCounterStyleDescriptorValue
 impl surgeist_css::CssCounterStyleDescriptorValue
 pub const fn surgeist_css::CssCounterStyleDescriptorValue::components(&self) -> &surgeist_css::CssComponentValues
 pub const fn surgeist_css::CssCounterStyleDescriptorValue::kind(&self) -> surgeist_css::CssCounterStyleDescriptorKind
-pub const fn surgeist_css::CssCounterStyleDescriptorValue::origin(&self) -> &surgeist_css::CssParsedOrigin
+pub const fn surgeist_css::CssCounterStyleDescriptorValue::origin(&self) -> core::option::Option<&surgeist_css::CssParsedOrigin>
 pub const fn surgeist_css::CssCounterStyleDescriptorValue::view(&self) -> surgeist_css::CssCounterStyleDescriptorValueRef<'_>
+impl surgeist_css::CssCounterStyleDescriptorValue
+pub fn surgeist_css::CssCounterStyleDescriptorValue::reparse_after_substitution(&self, replacement: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssCounterStyleValueError>
+pub fn surgeist_css::CssCounterStyleDescriptorValue::reparse_after_substitution_with_limits(&self, replacement: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssCounterStyleValueError>
+pub fn surgeist_css::CssCounterStyleDescriptorValue::try_from_components(kind: surgeist_css::CssCounterStyleDescriptorKind, components: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssCounterStyleValueError>
+pub fn surgeist_css::CssCounterStyleDescriptorValue::try_from_components_with_limits(kind: surgeist_css::CssCounterStyleDescriptorKind, components: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssCounterStyleValueError>
+impl surgeist_css::CssCounterStyleDescriptorValue
+pub fn surgeist_css::CssCounterStyleDescriptorValue::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssCounterStyleDescriptorValue::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssCounterStyleDescriptors
 impl surgeist_css::CssCounterStyleDescriptors
-pub const fn surgeist_css::CssCounterStyleDescriptors::additive_symbols(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterAdditiveSymbols>>
-pub const fn surgeist_css::CssCounterStyleDescriptors::fallback(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleName>>
-pub const fn surgeist_css::CssCounterStyleDescriptors::negative(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleNegative>>
+pub const fn surgeist_css::CssCounterStyleDescriptors::additive_symbols(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleDescriptorValue>>
+pub const fn surgeist_css::CssCounterStyleDescriptors::fallback(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleDescriptorValue>>
+pub const fn surgeist_css::CssCounterStyleDescriptors::negative(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleDescriptorValue>>
 pub fn surgeist_css::CssCounterStyleDescriptors::occurrences(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_css::CssCounterStyleDescriptorRef<'_>>
-pub const fn surgeist_css::CssCounterStyleDescriptors::pad(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStylePad>>
-pub const fn surgeist_css::CssCounterStyleDescriptors::prefix(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterSymbol>>
-pub const fn surgeist_css::CssCounterStyleDescriptors::range(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleRange>>
-pub const fn surgeist_css::CssCounterStyleDescriptors::speak_as(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleSpeakAs>>
-pub const fn surgeist_css::CssCounterStyleDescriptors::suffix(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterSymbol>>
-pub const fn surgeist_css::CssCounterStyleDescriptors::symbols(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterSymbols>>
-pub const fn surgeist_css::CssCounterStyleDescriptors::system(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleSystem>>
+pub const fn surgeist_css::CssCounterStyleDescriptors::pad(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleDescriptorValue>>
+pub const fn surgeist_css::CssCounterStyleDescriptors::prefix(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleDescriptorValue>>
+pub const fn surgeist_css::CssCounterStyleDescriptors::range(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleDescriptorValue>>
+pub const fn surgeist_css::CssCounterStyleDescriptors::speak_as(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleDescriptorValue>>
+pub const fn surgeist_css::CssCounterStyleDescriptors::suffix(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleDescriptorValue>>
+pub const fn surgeist_css::CssCounterStyleDescriptors::symbols(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleDescriptorValue>>
+pub const fn surgeist_css::CssCounterStyleDescriptors::system(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleDescriptorValue>>
 pub struct surgeist_css::CssCounterStyleFixedSystem
 impl surgeist_css::CssCounterStyleFixedSystem
 pub const fn surgeist_css::CssCounterStyleFixedSystem::first_symbol_value(&self) -> core::option::Option<&surgeist_css::CssIntegerLiteral>
@@ -7460,6 +7488,14 @@ pub const fn surgeist_css::CssCounterStyleRule::descriptors(&self) -> &surgeist_
 pub const fn surgeist_css::CssCounterStyleRule::name(&self) -> &surgeist_css::CssCounterStyleName
 pub const fn surgeist_css::CssCounterStyleRule::parsed_name(&self) -> core::option::Option<&surgeist_css::CssParsedOrigin>
 pub const fn surgeist_css::CssCounterStyleRule::position(&self) -> surgeist_css::CssSourcePosition
+pub struct surgeist_css::CssCounterStyleValueError
+impl surgeist_css::CssCounterStyleValueError
+pub fn surgeist_css::CssCounterStyleValueError::kind(&self) -> &surgeist_css::CssCounterStyleValueErrorKind
+pub fn surgeist_css::CssCounterStyleValueError::origin(&self) -> &surgeist_css::CssSerializedOrigin
+impl core::error::Error for surgeist_css::CssCounterStyleValueError
+pub fn surgeist_css::CssCounterStyleValueError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_css::CssCounterStyleValueError
+pub fn surgeist_css::CssCounterStyleValueError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css::CssCounterSymbolIdent
 impl surgeist_css::CssCounterSymbolIdent
 pub fn surgeist_css::CssCounterSymbolIdent::as_str(&self) -> &str
@@ -8066,14 +8102,23 @@ pub fn surgeist_css::CssFontFamilyPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssFontFamilyPropertyValue::families(&self) -> &surgeist_css::CssFontFamilyList
 pub struct surgeist_css::CssFontFeatureDisplayOccurrence
 impl surgeist_css::CssFontFeatureDisplayOccurrence
-pub const fn surgeist_css::CssFontFeatureDisplayOccurrence::new(value: surgeist_css::CssFontDisplay) -> Self
+pub const fn surgeist_css::CssFontFeatureDisplayOccurrence::new(value: surgeist_css::CssFontFeatureDisplayValue) -> Self
+pub const fn surgeist_css::CssFontFeatureDisplayOccurrence::parsed_name(&self) -> core::option::Option<&surgeist_css::CssParsedOrigin>
 pub const fn surgeist_css::CssFontFeatureDisplayOccurrence::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
-pub const fn surgeist_css::CssFontFeatureDisplayOccurrence::value(&self) -> surgeist_css::CssFontDisplay
+pub const fn surgeist_css::CssFontFeatureDisplayOccurrence::value(&self) -> &surgeist_css::CssFontFeatureDisplayValue
 pub struct surgeist_css::CssFontFeatureDisplayValue
 impl surgeist_css::CssFontFeatureDisplayValue
 pub const fn surgeist_css::CssFontFeatureDisplayValue::components(&self) -> &surgeist_css::CssComponentValues
-pub const fn surgeist_css::CssFontFeatureDisplayValue::origin(&self) -> &surgeist_css::CssParsedOrigin
-pub const fn surgeist_css::CssFontFeatureDisplayValue::value(&self) -> surgeist_css::CssFontDisplay
+pub const fn surgeist_css::CssFontFeatureDisplayValue::origin(&self) -> core::option::Option<&surgeist_css::CssParsedOrigin>
+pub const fn surgeist_css::CssFontFeatureDisplayValue::view(&self) -> surgeist_css::CssFontFeatureDisplayValueRef<'_>
+impl surgeist_css::CssFontFeatureDisplayValue
+pub fn surgeist_css::CssFontFeatureDisplayValue::reparse_after_substitution(&self, replacement: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssFontFeatureValueError>
+pub fn surgeist_css::CssFontFeatureDisplayValue::reparse_after_substitution_with_limits(&self, replacement: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssFontFeatureValueError>
+pub fn surgeist_css::CssFontFeatureDisplayValue::try_from_components(components: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssFontFeatureValueError>
+pub fn surgeist_css::CssFontFeatureDisplayValue::try_from_components_with_limits(components: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssFontFeatureValueError>
+impl surgeist_css::CssFontFeatureDisplayValue
+pub fn surgeist_css::CssFontFeatureDisplayValue::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontFeatureDisplayValue::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssFontFeatureIndex
 impl surgeist_css::CssFontFeatureIndex
 pub fn surgeist_css::CssFontFeatureIndex::calculation(&self) -> core::option::Option<&surgeist_css::CssIntegerCalculation>
@@ -8092,6 +8137,20 @@ pub struct surgeist_css::CssFontFeatureSettingsPropertyValue
 impl surgeist_css::CssFontFeatureSettingsPropertyValue
 pub fn surgeist_css::CssFontFeatureSettingsPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssFontFeatureSettingsPropertyValue::settings(&self) -> &surgeist_css::CssAuthoredFontFeatureSettings
+pub struct surgeist_css::CssFontFeatureValue
+impl surgeist_css::CssFontFeatureValue
+pub const fn surgeist_css::CssFontFeatureValue::components(&self) -> &surgeist_css::CssComponentValues
+pub const fn surgeist_css::CssFontFeatureValue::kind(&self) -> surgeist_css::CssFontFeatureValueKind
+pub const fn surgeist_css::CssFontFeatureValue::origin(&self) -> core::option::Option<&surgeist_css::CssParsedOrigin>
+pub fn surgeist_css::CssFontFeatureValue::view(&self) -> surgeist_css::CssFontFeatureValueRef<'_>
+impl surgeist_css::CssFontFeatureValue
+pub fn surgeist_css::CssFontFeatureValue::reparse_after_substitution(&self, replacement: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssFontFeatureValueError>
+pub fn surgeist_css::CssFontFeatureValue::reparse_after_substitution_with_limits(&self, replacement: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssFontFeatureValueError>
+pub fn surgeist_css::CssFontFeatureValue::try_from_components(kind: surgeist_css::CssFontFeatureValueKind, components: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssFontFeatureValueError>
+pub fn surgeist_css::CssFontFeatureValue::try_from_components_with_limits(kind: surgeist_css::CssFontFeatureValueKind, components: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssFontFeatureValueError>
+impl surgeist_css::CssFontFeatureValue
+pub fn surgeist_css::CssFontFeatureValue::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontFeatureValue::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssFontFeatureValueBlock
 impl surgeist_css::CssFontFeatureValueBlock
 pub fn surgeist_css::CssFontFeatureValueBlock::definitions(&self) -> &[surgeist_css::CssFontFeatureValueDefinition]
@@ -8100,10 +8159,19 @@ pub const fn surgeist_css::CssFontFeatureValueBlock::position(&self) -> core::op
 pub fn surgeist_css::CssFontFeatureValueBlock::try_new(kind: surgeist_css::CssFontFeatureValueKind, definitions: alloc::vec::Vec<surgeist_css::CssFontFeatureValueDefinition>) -> core::result::Result<Self, surgeist_css::CssFontFeatureValuesError>
 pub struct surgeist_css::CssFontFeatureValueDefinition
 impl surgeist_css::CssFontFeatureValueDefinition
-pub fn surgeist_css::CssFontFeatureValueDefinition::indexes(&self) -> &[surgeist_css::CssFontFeatureValueIndex]
 pub const fn surgeist_css::CssFontFeatureValueDefinition::name(&self) -> &surgeist_css::CssFontFeatureValueName
+pub const fn surgeist_css::CssFontFeatureValueDefinition::new(name: surgeist_css::CssFontFeatureValueName, value: surgeist_css::CssFontFeatureValue) -> Self
+pub const fn surgeist_css::CssFontFeatureValueDefinition::parsed_name(&self) -> core::option::Option<&surgeist_css::CssParsedOrigin>
 pub const fn surgeist_css::CssFontFeatureValueDefinition::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
-pub fn surgeist_css::CssFontFeatureValueDefinition::try_new(name: surgeist_css::CssFontFeatureValueName, indexes: alloc::vec::Vec<surgeist_css::CssFontFeatureValueIndex>) -> core::result::Result<Self, surgeist_css::CssFontFeatureValuesError>
+pub const fn surgeist_css::CssFontFeatureValueDefinition::value(&self) -> &surgeist_css::CssFontFeatureValue
+pub struct surgeist_css::CssFontFeatureValueError
+impl surgeist_css::CssFontFeatureValueError
+pub fn surgeist_css::CssFontFeatureValueError::kind(&self) -> &surgeist_css::CssFontFeatureValueErrorKind
+pub fn surgeist_css::CssFontFeatureValueError::origin(&self) -> &surgeist_css::CssSerializedOrigin
+impl core::error::Error for surgeist_css::CssFontFeatureValueError
+pub fn surgeist_css::CssFontFeatureValueError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_css::CssFontFeatureValueError
+pub fn surgeist_css::CssFontFeatureValueError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css::CssFontFeatureValueIndex
 impl surgeist_css::CssFontFeatureValueIndex
 pub fn surgeist_css::CssFontFeatureValueIndex::as_decimal_str(&self) -> &str
@@ -8112,12 +8180,6 @@ pub fn surgeist_css::CssFontFeatureValueIndex::to_u32(&self) -> core::option::Op
 pub fn surgeist_css::CssFontFeatureValueIndex::try_from_decimal(value: &str) -> core::result::Result<Self, surgeist_css::CssFontFeatureValuesError>
 impl core::convert::From<u32> for surgeist_css::CssFontFeatureValueIndex
 pub fn surgeist_css::CssFontFeatureValueIndex::from(value: u32) -> Self
-pub struct surgeist_css::CssFontFeatureValueIndexes
-impl surgeist_css::CssFontFeatureValueIndexes
-pub const fn surgeist_css::CssFontFeatureValueIndexes::components(&self) -> &surgeist_css::CssComponentValues
-pub fn surgeist_css::CssFontFeatureValueIndexes::indexes(&self) -> &[surgeist_css::CssFontFeatureValueIndex]
-pub const fn surgeist_css::CssFontFeatureValueIndexes::kind(&self) -> surgeist_css::CssFontFeatureValueKind
-pub const fn surgeist_css::CssFontFeatureValueIndexes::origin(&self) -> &surgeist_css::CssParsedOrigin
 pub struct surgeist_css::CssFontFeatureValueName(_)
 impl surgeist_css::CssFontFeatureValueName
 pub fn surgeist_css::CssFontFeatureValueName::as_str(&self) -> &str
@@ -12414,8 +12476,8 @@ pub fn surgeist_css::parse_decoded_stylesheet(input: &surgeist_css::CssDecodedSt
 pub fn surgeist_css::parse_font_face_block(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<surgeist_css::CssFontFaceDescriptors>>>
 pub fn surgeist_css::parse_font_face_descriptor_value(source: &str, descriptor: surgeist_css::CssFontFaceDescriptorKind) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssAuthoredFontFaceDescriptorValue>>
 pub fn surgeist_css::parse_font_feature_display_value(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssFontFeatureDisplayValue>>
+pub fn surgeist_css::parse_font_feature_value(source: &str, kind: surgeist_css::CssFontFeatureValueKind) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssFontFeatureValue>>
 pub fn surgeist_css::parse_font_feature_value_block(source: &str, kind: surgeist_css::CssFontFeatureValueKind) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<surgeist_css::CssFontFeatureValueBlock>>>
-pub fn surgeist_css::parse_font_feature_value_indexes(source: &str, kind: surgeist_css::CssFontFeatureValueKind) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssFontFeatureValueIndexes>>
 pub fn surgeist_css::parse_font_feature_values_block(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<alloc::vec::Vec<surgeist_css::CssFontFeatureValuesItem>>>>
 pub fn surgeist_css::parse_font_palette_descriptor_value(source: &str, descriptor: surgeist_css::CssFontPaletteDescriptorKind) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssFontPaletteDescriptorValue>>
 pub fn surgeist_css::parse_font_palette_values_block(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<alloc::vec::Vec<surgeist_css::CssFontPaletteDescriptor>>>>

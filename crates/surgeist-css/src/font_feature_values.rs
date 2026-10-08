@@ -1,6 +1,7 @@
 //! Checked authored font-feature-values data; no font lookup or cascade.
 use crate::{
-    CssComponentValue, CssFontDisplay, CssFontFaceFamily, CssParsedOrigin, CssSourcePosition,
+    CssComponentValue, CssFontFaceFamily, CssFontFeatureDisplayValue, CssFontFeatureValue,
+    CssParsedOrigin, CssSourcePosition,
 };
 
 /// A semantic construction failure for font-feature-values.
@@ -13,6 +14,7 @@ pub enum CssFontFeatureValuesErrorKind {
     InvalidIntegerSyntax,
     NegativeIndex,
     InvalidIndexCount,
+    KindMismatch,
 }
 /// A checked-construction failure, with the affected block and member when known.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -157,13 +159,6 @@ impl CssFontFeatureValueKind {
     // 73aa6c89e2cb77c46184a81aec944e4ab99d114d CSSParser.cpp:800–885 policy.
     // Section 6.9.1 conflicts on CV cardinality and CV/styleset feature ranges;
     // font activation ranges do not constrain these exact authored integers.
-    pub(crate) fn validate(
-        self,
-        definition: &CssFontFeatureValueDefinition,
-    ) -> Result<(), CssFontFeatureValuesError> {
-        self.validate_index_count(definition.indexes.len())
-    }
-
     pub(crate) fn validate_index_count(
         self,
         count: usize,
@@ -183,34 +178,32 @@ impl CssFontFeatureValueKind {
         }
     }
 }
-/// A generic nonempty index definition. A block additionally validates its kind's constraints.
-#[derive(Clone, Debug, Eq, PartialEq)]
+/// A named authored subsidiary value. Its carrier owns kind and phase validity.
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssFontFeatureValueDefinition {
     name: CssFontFeatureValueName,
-    indexes: Vec<CssFontFeatureValueIndex>,
+    value: CssFontFeatureValue,
+    parsed_name: Option<CssParsedOrigin>,
     position: Option<CssSourcePosition>,
 }
 impl CssFontFeatureValueDefinition {
-    pub fn try_new(
-        name: CssFontFeatureValueName,
-        indexes: Vec<CssFontFeatureValueIndex>,
-    ) -> Result<Self, CssFontFeatureValuesError> {
-        if indexes.is_empty() {
-            return Err(CssFontFeatureValuesError::new(
-                CssFontFeatureValuesErrorKind::EmptyIndexes,
-            ));
-        }
-        Ok(Self {
+    #[must_use]
+    pub const fn new(name: CssFontFeatureValueName, value: CssFontFeatureValue) -> Self {
+        Self {
             name,
-            indexes,
+            value,
+            parsed_name: None,
             position: None,
-        })
+        }
     }
     pub const fn name(&self) -> &CssFontFeatureValueName {
         &self.name
     }
-    pub fn indexes(&self) -> &[CssFontFeatureValueIndex] {
-        &self.indexes
+    pub const fn value(&self) -> &CssFontFeatureValue {
+        &self.value
+    }
+    pub const fn parsed_name(&self) -> Option<&CssParsedOrigin> {
+        self.parsed_name.as_ref()
     }
     pub const fn position(&self) -> Option<CssSourcePosition> {
         self.position
@@ -219,9 +212,13 @@ impl CssFontFeatureValueDefinition {
         self.position = Some(position);
         self
     }
+    pub(crate) fn with_parsed_name(mut self, origin: CssParsedOrigin) -> Self {
+        self.parsed_name = Some(origin);
+        self
+    }
 }
 /// An ordered context-validated block. Empty blocks and duplicate definitions remain authored syntax.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssFontFeatureValueBlock {
     kind: CssFontFeatureValueKind,
     definitions: Vec<CssFontFeatureValueDefinition>,
@@ -233,10 +230,13 @@ impl CssFontFeatureValueBlock {
         definitions: Vec<CssFontFeatureValueDefinition>,
     ) -> Result<Self, CssFontFeatureValuesError> {
         for (index, definition) in definitions.iter().enumerate() {
-            kind.validate(definition).map_err(|mut error| {
+            if definition.value().kind() != kind {
+                let mut error =
+                    CssFontFeatureValuesError::new(CssFontFeatureValuesErrorKind::KindMismatch);
+                error.block = Some(kind);
                 error.definition_index = Some(index);
-                error
-            })?;
+                return Err(error);
+            }
         }
         Ok(Self {
             kind,
@@ -261,18 +261,27 @@ impl CssFontFeatureValueBlock {
 /// One ordered font-display descriptor occurrence.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssFontFeatureDisplayOccurrence {
-    value: CssFontDisplay,
+    value: CssFontFeatureDisplayValue,
+    parsed_name: Option<CssParsedOrigin>,
     position: Option<CssSourcePosition>,
 }
 impl CssFontFeatureDisplayOccurrence {
-    pub const fn new(value: CssFontDisplay) -> Self {
+    pub const fn new(value: CssFontFeatureDisplayValue) -> Self {
         Self {
             value,
+            parsed_name: None,
             position: None,
         }
     }
-    pub const fn value(&self) -> CssFontDisplay {
-        self.value
+    pub const fn value(&self) -> &CssFontFeatureDisplayValue {
+        &self.value
+    }
+    pub const fn parsed_name(&self) -> Option<&CssParsedOrigin> {
+        self.parsed_name.as_ref()
+    }
+    pub(crate) fn with_parsed_name(mut self, origin: CssParsedOrigin) -> Self {
+        self.parsed_name = Some(origin);
+        self
     }
     pub const fn position(&self) -> Option<CssSourcePosition> {
         self.position

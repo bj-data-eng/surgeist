@@ -1,3 +1,7 @@
+#[path = "support/descriptor_phases.rs"]
+mod descriptor_phases;
+use descriptor_phases::*;
+
 use surgeist_css::{
     CssCounterStyleDescriptorKind as DescriptorKind, CssCounterStyleDescriptorRef,
     CssCounterStyleRule, CssCounterStyleSystem, CssRule,
@@ -264,7 +268,9 @@ fn fixed_default_is_omitted_but_its_authored_spelling_remains() {
         value.to_specified_css().unwrap(),
         "@counter-style x { system: fixed; symbols: a; }"
     );
-    let CssCounterStyleSystem::Fixed(fixed) = value.descriptors().system().unwrap().value() else {
+    let CssCounterStyleSystem::Fixed(fixed) =
+        value.descriptors().system().unwrap().ordinary_system()
+    else {
         panic!("expected fixed")
     };
     assert_eq!(
@@ -366,14 +372,22 @@ fn discarded_duplicates_keep_occurrence_positions_and_numeric_origins() {
         first.position().byte_offset().value(),
         source.find("pad:").unwrap()
     );
-    assert_eq!(first.minimum_length().numeric().representation(), "+0002");
     assert_eq!(
-        first.minimum_length().origin(),
+        first
+            .ordinary_pad()
+            .minimum_length()
+            .numeric()
+            .representation(),
+        "+0002"
+    );
+    assert_eq!(
+        first.ordinary_pad().minimum_length().origin(),
         before
             .descriptors()
             .occurrences()
             .find_map(|value| match value {
-                CssCounterStyleDescriptorRef::Pad(value) => Some(value.minimum_length().origin()),
+                CssCounterStyleDescriptorRef::Pad(value) =>
+                    Some(value.ordinary_pad().minimum_length().origin()),
                 _ => None,
             })
             .unwrap()

@@ -3,6 +3,10 @@
 //! Counter Styles 3 (2021-07-27) §3; Fonts 4 (2026-09-07) §§4.9.1, 6.9.2,
 //! with the repository's selected exact-integer/cardinality policy.
 
+#[path = "support/descriptor_phases.rs"]
+mod descriptor_phases;
+use descriptor_phases::*;
+
 use surgeist_css::{
     CssComponentValue, CssComponentValueRef, CssComponentValues,
     CssCounterStyleDescriptorKind as CounterKind, CssCounterStyleDescriptorValue as CounterValue,
@@ -12,7 +16,7 @@ use surgeist_css::{
     CssFontFeatureValuesItem, CssImageValue, CssNumericTokenKind, CssParseReport, CssParsedOrigin,
     CssRecoveryAction, CssRule, CssSourcePosition, CssValueOrigin, CssValueTokenRef, ErrorKind,
     parse_counter_style_descriptor_value, parse_font_feature_display_value,
-    parse_font_feature_value_indexes, parse_sheet,
+    parse_font_feature_value, parse_sheet,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -387,12 +391,21 @@ fn ten_counter_descriptor_grammars_return_literal_semantics() {
         let actual = report.syntax().as_ref().expect("typed counter value");
         assert_eq!(actual.kind(), kind);
         counter_semantics(actual, &expected);
-        assert_eq!(actual.origin().span().start().byte_offset().value(), 0);
         assert_eq!(
-            actual.origin().span().end().byte_offset().value(),
+            actual
+                .origin()
+                .unwrap()
+                .span()
+                .start()
+                .byte_offset()
+                .value(),
+            0
+        );
+        assert_eq!(
+            actual.origin().unwrap().span().end().byte_offset().value(),
             source.len()
         );
-        assert_eq!(actual.origin().source().as_str(), source);
+        assert_eq!(actual.origin().unwrap().source().as_str(), source);
         assert!(report.into_validation_result().unwrap().is_some());
     }
     for (kind, css_name, _) in COUNTERS {
@@ -511,11 +524,20 @@ fn five_display_values_and_decoded_keyword_spellings_have_literal_enum_values() 
         let report = parse_font_feature_display_value(source);
         assert!(report.is_clean(), "{source}: {report:?}");
         let actual = report.syntax().as_ref().unwrap();
-        assert_eq!(actual.value(), expected);
-        complete_components(actual.components(), actual.origin(), source);
-        assert_eq!(actual.origin().span().start().byte_offset().value(), 0);
+        assert_eq!(actual.ordinary_display(), expected);
+        complete_components(actual.components(), actual.origin().unwrap(), source);
         assert_eq!(
-            actual.origin().span().end().byte_offset().value(),
+            actual
+                .origin()
+                .unwrap()
+                .span()
+                .start()
+                .byte_offset()
+                .value(),
+            0
+        );
+        assert_eq!(
+            actual.origin().unwrap().span().end().byte_offset().value(),
             source.len()
         );
         assert!(report.into_validation_result().unwrap().is_some());
@@ -531,10 +553,15 @@ fn five_display_values_and_decoded_keyword_spellings_have_literal_enum_values() 
         "swap block",
         "swap,block",
         "var(--x)",
-        "env(x)",
     ] {
         rejected(parse_font_feature_display_value(source), source);
     }
+    let report = parse_font_feature_display_value("env(x)");
+    assert!(report.is_clean());
+    assert!(matches!(
+        report.syntax().as_ref().unwrap().view(),
+        surgeist_css::CssFontFeatureDisplayValueRef::Pending(_)
+    ));
 }
 
 #[test]
@@ -553,19 +580,19 @@ fn seven_feature_kinds_enforce_their_selected_cardinalities() {
         (FeatureKind::Annotation, "4", &["4"]),
     ];
     for (kind, source, expected) in cases {
-        let report = parse_font_feature_value_indexes(source, *kind);
+        let report = parse_font_feature_value(source, *kind);
         assert!(report.is_clean(), "{kind:?} {source}: {report:?}");
         let actual = report.syntax().as_ref().unwrap();
         assert_eq!(actual.kind(), *kind);
         assert_eq!(
             actual
-                .indexes()
+                .ordinary_indexes()
                 .iter()
                 .map(|n| n.as_decimal_str())
                 .collect::<Vec<_>>(),
             *expected
         );
-        complete_components(actual.components(), actual.origin(), source);
+        complete_components(actual.components(), actual.origin().unwrap(), source);
         assert!(report.into_validation_result().unwrap().is_some());
     }
     for kind in [
@@ -574,10 +601,10 @@ fn seven_feature_kinds_enforce_their_selected_cardinalities() {
         FeatureKind::Ornaments,
         FeatureKind::Annotation,
     ] {
-        rejected(parse_font_feature_value_indexes("1 2", kind), "1 2");
+        rejected(parse_font_feature_value("1 2", kind), "1 2");
     }
     rejected(
-        parse_font_feature_value_indexes("1 2 3", FeatureKind::CharacterVariant),
+        parse_font_feature_value("1 2 3", FeatureKind::CharacterVariant),
         "1 2 3",
     );
 }
@@ -590,10 +617,10 @@ fn index_normalization_preserves_exact_integer_token_spellings_for_every_kind() 
             ("-0000", "0", Some(0)),
             ("18446744073709551616", "18446744073709551616", None),
         ] {
-            let report = parse_font_feature_value_indexes(source, kind);
+            let report = parse_font_feature_value(source, kind);
             assert!(report.is_clean(), "{kind:?} {source}: {report:?}");
             let actual = report.syntax().as_ref().unwrap();
-            let [index] = actual.indexes() else {
+            let [index] = actual.ordinary_indexes() else {
                 panic!("one index")
             };
             assert_eq!(index.as_decimal_str(), digits);
@@ -612,15 +639,22 @@ fn index_normalization_preserves_exact_integer_token_spellings_for_every_kind() 
             assert!(
                 actual
                     .origin()
+                    .unwrap()
                     .source()
                     .same_snapshot(index.origin().unwrap().source())
             );
         }
         for source in [
-            "-1", "1.0", "1e0", "1px", "1%", "\"1\"", "one", "var(--x)", "env(x)", "calc(1)", "1,2",
+            "-1", "1.0", "1e0", "1px", "1%", "\"1\"", "one", "var(--x)", "calc(1)", "1,2",
         ] {
-            rejected(parse_font_feature_value_indexes(source, kind), source);
+            rejected(parse_font_feature_value(source, kind), source);
         }
+        let report = parse_font_feature_value("env(x)", kind);
+        assert!(report.is_clean());
+        assert!(matches!(
+            report.syntax().as_ref().unwrap().view(),
+            surgeist_css::CssFontFeatureValueRef::Pending(_)
+        ));
     }
 }
 
@@ -630,7 +664,7 @@ fn surplus_indexes_reject_at_the_first_authored_token_beyond_the_kind_cardinalit
         ("1 2", FeatureKind::Stylistic, 2, "2"),
         ("1 2 3", FeatureKind::CharacterVariant, 4, "3"),
     ] {
-        let report = parse_font_feature_value_indexes(source, kind);
+        let report = parse_font_feature_value(source, kind);
         let diagnostic = report
             .diagnostics()
             .iter()
@@ -651,9 +685,9 @@ fn original_unicode_trivia_belongs_to_full_carriers_and_precise_semantic_tokens(
     let report = parse_font_feature_display_value(source);
     assert!(report.is_clean(), "{report:?}");
     let actual = report.syntax().as_ref().unwrap();
-    assert_eq!(actual.value(), CssFontDisplay::Swap);
-    origin(actual.origin(), source, (0, 0, 0), (23, 1, 12));
-    complete_components(actual.components(), actual.origin(), source);
+    assert_eq!(actual.ordinary_display(), CssFontDisplay::Swap);
+    origin(actual.origin().unwrap(), source, (0, 0, 0), (23, 1, 12));
+    complete_components(actual.components(), actual.origin().unwrap(), source);
     let ident = actual
         .components()
         .items()
@@ -680,12 +714,12 @@ fn original_unicode_trivia_belongs_to_full_carriers_and_precise_semantic_tokens(
     );
 
     let source = " /*é*/\r\n+0002 /*💡*/ ";
-    let report = parse_font_feature_value_indexes(source, FeatureKind::Stylistic);
+    let report = parse_font_feature_value(source, FeatureKind::Stylistic);
     assert!(report.is_clean(), "{report:?}");
     let actual = report.syntax().as_ref().unwrap();
-    origin(actual.origin(), source, (0, 0, 0), (24, 1, 13));
-    complete_components(actual.components(), actual.origin(), source);
-    let [index] = actual.indexes() else {
+    origin(actual.origin().unwrap(), source, (0, 0, 0), (24, 1, 13));
+    complete_components(actual.components(), actual.origin().unwrap(), source);
+    let [index] = actual.ordinary_indexes() else {
         panic!("one index")
     };
     assert_eq!(index.as_decimal_str(), "2");
@@ -708,8 +742,8 @@ fn original_unicode_trivia_belongs_to_full_carriers_and_precise_semantic_tokens(
     assert!(report.is_clean(), "{report:?}");
     let actual = report.syntax().as_ref().unwrap();
     counter_semantics(actual, &Expected::Prefix(Symbol::String("💡")));
-    origin(actual.origin(), source, (0, 0, 0), (6, 0, 4));
-    complete_components(actual.components(), actual.origin(), source);
+    origin(actual.origin().unwrap(), source, (0, 0, 0), (6, 0, 4));
+    complete_components(actual.components(), actual.origin().unwrap(), source);
     let [component] = actual.components().items() else {
         panic!("one string")
     };
@@ -720,8 +754,8 @@ fn original_unicode_trivia_belongs_to_full_carriers_and_precise_semantic_tokens(
     assert!(report.is_clean(), "{report:?}");
     let actual = report.syntax().as_ref().unwrap();
     counter_semantics(actual, &Expected::System(CssCounterStyleSystem::Cyclic));
-    origin(actual.origin(), source, (0, 0, 0), (25, 1, 14));
-    complete_components(actual.components(), actual.origin(), source);
+    origin(actual.origin().unwrap(), source, (0, 0, 0), (25, 1, 14));
+    complete_components(actual.components(), actual.origin().unwrap(), source);
     let ident = actual
         .components()
         .items()
@@ -742,8 +776,8 @@ fn counter_numeric_semantic_origins_keep_order_separate_from_whole_value_origin(
     let report = parse_counter_style_descriptor_value(source, CounterKind::Pad);
     assert!(report.is_clean(), "{report:?}");
     let actual = report.syntax().as_ref().unwrap();
-    origin(actual.origin(), source, (0, 0, 0), (17, 0, 16));
-    complete_components(actual.components(), actual.origin(), source);
+    origin(actual.origin().unwrap(), source, (0, 0, 0), (17, 0, 16));
+    complete_components(actual.components(), actual.origin().unwrap(), source);
     let CounterRef::Pad(pad) = actual.view() else {
         panic!("pad")
     };
@@ -755,6 +789,7 @@ fn counter_numeric_semantic_origins_keep_order_separate_from_whole_value_origin(
     assert!(
         actual
             .origin()
+            .unwrap()
             .source()
             .same_snapshot(number_origin.source())
     );
@@ -771,7 +806,7 @@ fn punctuation_inside_an_admitted_url_is_data_with_original_group_origins() {
     assert!(report.is_clean(), "{report:?}");
     let actual = report.syntax().as_ref().unwrap();
     counter_semantics(actual, &Expected::Prefix(Symbol::Url("x;y!z")));
-    origin(actual.origin(), source, (0, 0, 0), (12, 0, 12));
+    origin(actual.origin().unwrap(), source, (0, 0, 0), (12, 0, 12));
     let [component] = actual.components().items() else {
         panic!("one original function")
     };
@@ -795,10 +830,17 @@ fn punctuation_inside_an_admitted_url_is_data_with_original_group_origins() {
     assert!(
         actual
             .origin()
+            .unwrap()
             .source()
             .same_snapshot(parsed(quoted).source())
     );
-    assert!(actual.origin().source().same_snapshot(closing.source()));
+    assert!(
+        actual
+            .origin()
+            .unwrap()
+            .source()
+            .same_snapshot(closing.source())
+    );
 }
 
 #[test]
@@ -809,7 +851,7 @@ fn every_required_value_rejects_empty_source_and_trivia_without_inventing_empty_
         }
         empty(parse_font_feature_display_value(source), source);
         for kind in FEATURES {
-            let report = parse_font_feature_value_indexes(source, kind);
+            let report = parse_font_feature_value(source, kind);
             let diagnostic = report
                 .diagnostics()
                 .iter()
@@ -886,7 +928,7 @@ fn root_delimiters_and_importance_reject_the_complete_value_at_the_actual_bounda
             suffix == "!important",
         );
         let source = format!("1{suffix}");
-        let report = parse_font_feature_value_indexes(&source, FeatureKind::Stylistic);
+        let report = parse_font_feature_value(&source, FeatureKind::Stylistic);
         if suffix == "!important" {
             let diagnostic = report
                 .diagnostics()
@@ -911,7 +953,7 @@ fn root_delimiters_and_importance_reject_the_complete_value_at_the_actual_bounda
         "x; suffix:y",
     );
     rejected(
-        parse_font_feature_value_indexes("1; next:2", FeatureKind::Styleset),
+        parse_font_feature_value("1; next:2", FeatureKind::Styleset),
         "1; next:2",
     );
 }
@@ -935,7 +977,7 @@ fn invalid_tokens_have_literal_unicode_positions_and_family_diagnostics() {
     rejected(report, source);
 
     let source = " /*é*/\r\n1.0";
-    let report = parse_font_feature_value_indexes(source, FeatureKind::Stylistic);
+    let report = parse_font_feature_value(source, FeatureKind::Stylistic);
     let diagnostic = report
         .diagnostics()
         .iter()
@@ -983,7 +1025,7 @@ fn lexical_eof_recovery_retains_values_and_fails_clean_only_validation() {
     position(closure.span().start(), 2, 0, 2);
     position(closure.span().end(), 2, 0, 2);
     origin(
-        report.syntax().as_ref().unwrap().origin(),
+        report.syntax().as_ref().unwrap().origin().unwrap(),
         source,
         (0, 0, 0),
         (2, 0, 2),
@@ -993,8 +1035,8 @@ fn lexical_eof_recovery_retains_values_and_fails_clean_only_validation() {
     let source = "swap/*x";
     let report = parse_font_feature_display_value(source);
     let actual = report.syntax().as_ref().unwrap();
-    assert_eq!(actual.value(), CssFontDisplay::Swap);
-    origin(actual.origin(), source, (0, 0, 0), (7, 0, 7));
+    assert_eq!(actual.ordinary_display(), CssFontDisplay::Swap);
+    origin(actual.origin().unwrap(), source, (0, 0, 0), (7, 0, 7));
     assert!(matches!(
         actual.components().items().last().unwrap().view(),
         CssComponentValueRef::Comment("x")
@@ -1011,12 +1053,12 @@ fn lexical_eof_recovery_retains_values_and_fails_clean_only_validation() {
     assert!(report.into_validation_result().is_err());
 
     let source = "1/*x";
-    let report = parse_font_feature_value_indexes(source, FeatureKind::Stylistic);
+    let report = parse_font_feature_value(source, FeatureKind::Stylistic);
     let actual = report.syntax().as_ref().unwrap();
-    assert_eq!(actual.indexes()[0].as_decimal_str(), "1");
-    origin(actual.origin(), source, (0, 0, 0), (4, 0, 4));
+    assert_eq!(actual.ordinary_indexes()[0].as_decimal_str(), "1");
+    origin(actual.origin().unwrap(), source, (0, 0, 0), (4, 0, 4));
     origin(
-        actual.indexes()[0].origin().unwrap(),
+        actual.ordinary_indexes()[0].origin().unwrap(),
         source,
         (0, 0, 0),
         (1, 0, 1),
@@ -1074,7 +1116,7 @@ fn lexical_escape_eof_is_reported_independently_of_grammar_retention() {
     let report = parse_font_feature_display_value("swap\\");
     assert!(report.syntax().is_none());
     eof_escape(report, 5);
-    let report = parse_font_feature_value_indexes("1\\", FeatureKind::Stylistic);
+    let report = parse_font_feature_value("1\\", FeatureKind::Stylistic);
     assert!(report.syntax().is_none());
     eof_escape(report, 2);
 }
@@ -1134,7 +1176,7 @@ fn the_257th_actual_component_opener_preserves_resource_precedence() {
         );
         depth(parse_font_feature_display_value(&source), exceeded);
         depth(
-            parse_font_feature_value_indexes(&source, FeatureKind::Stylistic),
+            parse_font_feature_value(&source, FeatureKind::Stylistic),
             exceeded,
         );
     }
@@ -1149,16 +1191,21 @@ fn real_counter_rule_owns_names_combination_checks_and_sibling_recovery() {
     };
     assert_eq!(rule.name().as_str(), "demo");
     assert_eq!(
-        rule.descriptors().system().unwrap().value(),
+        rule.descriptors().system().unwrap().ordinary_system(),
         &CssCounterStyleSystem::Cyclic
     );
     symbol(
-        &rule.descriptors().symbols().unwrap().value().symbols()[0],
+        &rule
+            .descriptors()
+            .symbols()
+            .unwrap()
+            .ordinary_symbols()
+            .symbols()[0],
         Symbol::Ident("x"),
     );
     assert!(rule.descriptors().prefix().is_none());
     symbol(
-        rule.descriptors().suffix().unwrap().value(),
+        rule.descriptors().suffix().unwrap().ordinary_suffix(),
         Symbol::String("!"),
     );
     position(rule.descriptors().system().unwrap().position(), 20, 0, 20);
@@ -1173,7 +1220,10 @@ fn real_counter_rule_owns_names_combination_checks_and_sibling_recovery() {
     let CounterRef::System(system) = direct.syntax().as_ref().unwrap().view() else {
         panic!("system")
     };
-    assert_eq!(system, rule.descriptors().system().unwrap().value());
+    assert_eq!(
+        system,
+        rule.descriptors().system().unwrap().ordinary_system()
+    );
     rejected(
         parse_counter_style_descriptor_value("1", CounterKind::Prefix),
         "1",
@@ -1213,8 +1263,8 @@ fn real_mixed_font_rule_keeps_actual_names_positions_and_later_valid_definitions
     else {
         panic!("interleaved real body")
     };
-    assert_eq!(first.value(), CssFontDisplay::Swap);
-    assert_eq!(last.value(), CssFontDisplay::Optional);
+    assert_eq!(first.value().ordinary_display(), CssFontDisplay::Swap);
+    assert_eq!(last.value().ordinary_display(), CssFontDisplay::Optional);
     position(first.position().unwrap(), 26, 0, 26);
     position(last.position().unwrap(), 75, 0, 75);
     assert_eq!(stylistic.kind(), FeatureKind::Stylistic);
@@ -1223,9 +1273,9 @@ fn real_mixed_font_rule_keeps_actual_names_positions_and_later_valid_definitions
     };
     assert_eq!(definition.name().as_str(), "Good");
     position(definition.position().unwrap(), 63, 0, 63);
-    assert_eq!(definition.indexes()[0].as_decimal_str(), "2");
+    assert_eq!(definition.ordinary_indexes()[0].as_decimal_str(), "2");
     origin(
-        definition.indexes()[0].origin().unwrap(),
+        definition.ordinary_indexes()[0].origin().unwrap(),
         source,
         (68, 0, 68),
         (73, 0, 73),
@@ -1234,7 +1284,7 @@ fn real_mixed_font_rule_keeps_actual_names_positions_and_later_valid_definitions
     assert_eq!(styleset.definitions()[0].name().as_str(), "Wide");
     assert_eq!(
         styleset.definitions()[0]
-            .indexes()
+            .ordinary_indexes()
             .iter()
             .map(|n| n.as_decimal_str())
             .collect::<Vec<_>>(),
@@ -1246,17 +1296,20 @@ fn real_mixed_font_rule_keeps_actual_names_positions_and_later_valid_definitions
             .iter()
             .any(|d| d.action() == CssRecoveryAction::DropDescriptor)
     );
-    let direct = parse_font_feature_value_indexes("+0002", FeatureKind::Stylistic);
+    let direct = parse_font_feature_value("+0002", FeatureKind::Stylistic);
     assert!(direct.is_clean());
     assert_eq!(
-        direct.syntax().as_ref().unwrap().indexes()[0].as_decimal_str(),
-        definition.indexes()[0].as_decimal_str()
+        direct.syntax().as_ref().unwrap().ordinary_indexes()[0].as_decimal_str(),
+        definition.ordinary_indexes()[0].as_decimal_str()
     );
     let direct = parse_font_feature_display_value("swap");
     assert!(direct.is_clean());
-    assert_eq!(direct.syntax().as_ref().unwrap().value(), first.value());
+    assert_eq!(
+        direct.syntax().as_ref().unwrap().ordinary_display(),
+        first.value().ordinary_display()
+    );
     rejected(
-        parse_font_feature_value_indexes("1.0", FeatureKind::Stylistic),
+        parse_font_feature_value("1.0", FeatureKind::Stylistic),
         "1.0",
     );
 }

@@ -1092,8 +1092,8 @@
 //! };
 //! assert_eq!(counter.name().as_str(), "digits");
 //! assert!(matches!(
-//!     counter.descriptors().system().map(|value| value.value()),
-//!     Some(CssCounterStyleSystem::Numeric)
+//!     counter.descriptors().system().map(|value| value.value().view()),
+//!     Some(surgeist_css::CssCounterStyleDescriptorValueRef::System(&CssCounterStyleSystem::Numeric))
 //! ));
 //! assert_eq!(counter.descriptors().occurrences().count(), 3);
 //! assert_eq!(page.selector(), Some(CssPageSelector::Left));
@@ -1658,8 +1658,10 @@ mod stylesheet_input;
 mod syntax_consumption;
 pub use counter_style_serialization::CssCounterStyleDescriptorKind;
 pub use descriptor_values::{
-    CssCounterStyleDescriptorValue, CssCounterStyleDescriptorValueRef, CssFontFeatureDisplayValue,
-    CssFontFeatureValueIndexes,
+    CssCounterStyleDescriptorValue, CssCounterStyleDescriptorValueRef, CssCounterStyleValueError,
+    CssCounterStyleValueErrorKind, CssFontFeatureDisplayValue, CssFontFeatureDisplayValueRef,
+    CssFontFeatureValue, CssFontFeatureValueError, CssFontFeatureValueErrorKind,
+    CssFontFeatureValueRef,
 };
 mod cursor_serialization;
 mod cursor_values;
@@ -2000,14 +2002,14 @@ pub use parser::{
     CssNamespaceContext, parse_color_profile_block, parse_color_profile_descriptor_value,
     parse_counter_style_block, parse_counter_style_descriptor_value, parse_cssom_media_query,
     parse_declaration, parse_declaration_list_text, parse_font_face_block,
-    parse_font_face_descriptor_value, parse_font_feature_display_value,
-    parse_font_feature_value_block, parse_font_feature_value_indexes,
-    parse_font_feature_values_block, parse_font_palette_descriptor_value,
-    parse_font_palette_values_block, parse_group_block, parse_keyframe_declaration_block,
-    parse_keyframes_block, parse_media_query, parse_media_query_list, parse_page_block,
-    parse_property_value_text, parse_property_value_text_for_grammar, parse_relative_selector_list,
-    parse_rule, parse_scope_block, parse_scoped_group_block, parse_selector, parse_selector_list,
-    parse_sheet, parse_style_attribute, parse_style_block, parse_supports_test_block,
+    parse_font_face_descriptor_value, parse_font_feature_display_value, parse_font_feature_value,
+    parse_font_feature_value_block, parse_font_feature_values_block,
+    parse_font_palette_descriptor_value, parse_font_palette_values_block, parse_group_block,
+    parse_keyframe_declaration_block, parse_keyframes_block, parse_media_query,
+    parse_media_query_list, parse_page_block, parse_property_value_text,
+    parse_property_value_text_for_grammar, parse_relative_selector_list, parse_rule,
+    parse_scope_block, parse_scoped_group_block, parse_selector, parse_selector_list, parse_sheet,
+    parse_style_attribute, parse_style_block, parse_supports_test_block,
 };
 pub use properties::*;
 pub use property_value::{

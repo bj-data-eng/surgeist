@@ -3,6 +3,10 @@
 //! String execution interpretation remains undefined by the selected draft.
 //! Independent structural limits and adopted provider tariffs are authored contracts.
 
+#[path = "support/descriptor_phases.rs"]
+mod descriptor_phases;
+use descriptor_phases::*;
+
 use surgeist_css::{
     CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
 };
@@ -318,7 +322,8 @@ fn typed_importing_views_content_symbols_shapes_and_counter_styles_retain_filter
     let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
         panic!("counter-style rule")
     };
-    let CssCounterSymbol::Image(image) = rule.descriptors().prefix().unwrap().value() else {
+    let CssCounterSymbol::Image(image) = rule.descriptors().prefix().unwrap().ordinary_prefix()
+    else {
         panic!("checked counter Image")
     };
     assert_string_filter(image.value());

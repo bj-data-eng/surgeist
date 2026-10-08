@@ -5,6 +5,10 @@
 //! Conditional 3 CRD20240815 §3; Animations 1 WD20230302 §3;
 //! CSS2 REC20110607 §13.2; Fonts 4 WD20260907 §6.9.1.
 //! Shared exhaustive property authority remains common/property_expectations/records.rs.
+#[path = "support/descriptor_phases.rs"]
+mod descriptor_phases;
+use descriptor_phases::*;
+
 use surgeist_css::{
     CssDeclarationContextRef, CssDeclarationList, CssErrorCode, CssFontDisplay,
     CssFontFaceDescriptorKind, CssFontFeatureValueKind, CssFontFeatureValuesItem, CssImportance,
@@ -283,7 +287,7 @@ fn font_feature_values_mixed_body_retains_defined_blocks_and_display_while_remov
     else {
         panic!("display descriptor and two defined subsidiary blocks")
     };
-    assert_eq!(display.value(), CssFontDisplay::Swap);
+    assert_eq!(display.value().ordinary_display(), CssFontDisplay::Swap);
     assert_eq!(stylistic.kind(), CssFontFeatureValueKind::Stylistic);
     assert_eq!(swash.kind(), CssFontFeatureValueKind::Swash);
     assert_eq!(
@@ -303,10 +307,13 @@ fn font_feature_values_mixed_body_retains_defined_blocks_and_display_while_remov
         ["last"]
     );
     assert_eq!(
-        stylistic.definitions()[0].indexes()[0].as_decimal_str(),
+        stylistic.definitions()[0].ordinary_indexes()[0].as_decimal_str(),
         "1"
     );
-    assert_eq!(swash.definitions()[0].indexes()[0].as_decimal_str(), "3");
+    assert_eq!(
+        swash.definitions()[0].ordinary_indexes()[0].as_decimal_str(),
+        "3"
+    );
     assert_eq!(properties(after.declarations()), [CssKnownProperty::Width]);
     assert_eq!(
         report
@@ -338,13 +345,13 @@ fn malformed_font_mixed_list_unit_consumes_an_unseparated_tail_only_to_child_eof
     else {
         panic!("only the two members before the malformed unit")
     };
-    assert_eq!(display.value(), CssFontDisplay::Swap);
+    assert_eq!(display.value().ordinary_display(), CssFontDisplay::Swap);
     assert_eq!(stylistic.kind(), CssFontFeatureValueKind::Stylistic);
     let [first] = stylistic.definitions() else {
         panic!("retained stylistic definition")
     };
     assert_eq!(first.name().as_str(), "first");
-    assert_eq!(first.indexes()[0].as_decimal_str(), "1");
+    assert_eq!(first.ordinary_indexes()[0].as_decimal_str(), "1");
     assert_eq!(properties(after.declarations()), [CssKnownProperty::Width]);
     let [unknown, malformed] = report.diagnostics() else {
         panic!("one unknown child and one complete malformed unit")

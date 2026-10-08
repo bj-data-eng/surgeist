@@ -1097,14 +1097,10 @@ pub fn parse_counter_style_descriptor_value(
                     // Keep the collector's complete source range, while an
                     // empty grammar reports the EOF after leading trivia.
                     input.skip_whitespace();
-                    counter_style::parse_descriptor_value(
-                        input,
-                        descriptor,
-                        state.source_snapshot(),
-                    )
+                    counter_style::parse_authored_value(input, descriptor, state.source_snapshot())
                 })?;
             Ok(crate::CssCounterStyleDescriptorValue::from_parsed(
-                value, components, origin,
+                descriptor, value, components, origin,
             ))
         },
     )
@@ -1112,8 +1108,8 @@ pub fn parse_counter_style_descriptor_value(
 
 /// Parses the outer `@font-feature-values` font-display descriptor's complete value.
 ///
-/// Only the five font-display keywords are admitted, including decoded escaped
-/// and ASCII-insensitive spellings. There is no substitution deferral or invented
+/// The five font-display keywords admit decoded escaped and ASCII-insensitive
+/// spellings; valid env defers the whole value. There is no invented
 /// descriptor-name position. Components and origin retain all original trivia.
 /// Invalid or trailing input and root annotations reject the complete fragment;
 /// resource failures preserve the fixed 256-depth ceiling. Lexical EOF recovery
@@ -1128,7 +1124,8 @@ pub fn parse_font_feature_display_value(
         |input, state| {
             let (value, components, origin) =
                 collect_declaration_value(input, state.source_snapshot(), |input| {
-                    let value = font_face::parse_font_display(input)?;
+                    let value =
+                        font_feature_values::parse_display_value(input, state.source_snapshot())?;
                     input.expect_exhausted().map_err(basic)?;
                     Ok(value)
                 })?;
@@ -1139,11 +1136,12 @@ pub fn parse_font_feature_display_value(
     )
 }
 
-/// Parses complete nonnegative integer tokens for a subsidiary feature-value kind.
+/// Parses one authored subsidiary feature value, including whole-value env deferral.
 ///
 /// Historical-forms/styleset admit one or more indexes, character-variant one or
 /// two, and the other kinds exactly one. Integer token spelling is retained in
 /// components; normalized exact indexes have no machine-integer upper bound.
+/// Valid env defers the completed index grammar; plain var grants no exception.
 /// No friendly definition name is created. Invalid, empty, annotated or trailing
 /// input rejects the whole fragment; token failures use their original origins.
 /// Components and carrier origin include all trivia. The fixed 256-depth ceiling
@@ -1153,56 +1151,17 @@ pub fn parse_font_feature_display_value(
 /// `!` is rejected as its actual delimiter rather than a named annotation.
 /// An overfull list reports its first surplus integer; empty input reports EOF.
 #[must_use]
-pub fn parse_font_feature_value_indexes(
+pub fn parse_font_feature_value(
     source: &str,
     kind: crate::CssFontFeatureValueKind,
-) -> crate::CssParseReport<Option<crate::CssFontFeatureValueIndexes>> {
+) -> crate::CssParseReport<Option<crate::CssFontFeatureValue>> {
     descriptor_value_fragment(source, None, |input, state| {
-        let start = input.position().byte_index();
-        let components =
-            crate::CssComponentValues::collect_from_parser(input, state.source_snapshot())
-                .map_err(|error| {
-                    crate::error::invalid_component_value(input.current_source_location(), error)
-                })?;
-        let indexes = font_feature_values::indexes_from_components(&components, |component, _| {
-            crate::error::unexpected_component_value(component, "nonnegative integer tokens")
-        })?;
-        kind.validate_index_count(indexes.len()).map_err(|_| {
-            // The shared provider proved every non-trivia component is an
-            // integer. Query the same count owner for the first rejected
-            // prefix, without duplicating its cardinality policy.
-            let surplus = components
-                .items()
-                .iter()
-                .filter(|component| {
-                    !matches!(
-                        component.view(),
-                        crate::CssComponentValueRef::Comment(_)
-                            | crate::CssComponentValueRef::Token(
-                                crate::CssValueTokenRef::Whitespace(_)
-                            )
-                    )
-                })
-                .enumerate()
-                .find(|(index, _)| kind.validate_index_count(index + 1).is_err());
-            match surplus {
-                Some((_, component)) => crate::error::unexpected_component_value(
-                    component,
-                    "the selected feature-value index count",
-                ),
-                None => crate::error::unexpected_end_at(
-                    input.current_source_location(),
-                    "the selected feature-value index count",
-                ),
-            }
-        })?;
-        let origin = crate::CssParsedOrigin::from_range(
-            state.source_snapshot(),
-            start..input.position().byte_index(),
-        )
-        .expect("complete index value belongs to its original source");
-        Ok(crate::CssFontFeatureValueIndexes::from_parsed(
-            kind, indexes, components, origin,
+        let (value, components, origin) =
+            collect_declaration_value(input, state.source_snapshot(), |input| {
+                font_feature_values::parse_feature_value(input, kind, state.source_snapshot())
+            })?;
+        Ok(crate::CssFontFeatureValue::from_parsed(
+            kind, value, components, origin,
         ))
     })
 }

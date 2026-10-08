@@ -9,6 +9,10 @@
 //! that the selected edition is internally consistent.
 //! https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#multi-value-features
 
+#[path = "support/descriptor_phases.rs"]
+mod descriptor_phases;
+use descriptor_phases::*;
+
 use surgeist_css::*;
 
 type Block = CssFontFeatureValueBlock;
@@ -17,15 +21,11 @@ type Index = CssFontFeatureValueIndex;
 type Kind = CssFontFeatureValueKind;
 type ConstructionError = CssFontFeatureValuesErrorKind;
 
-fn definition(name: &str, values: &[&str]) -> Definition {
-    Definition::try_new(
+fn definition(kind: Kind, name: &str, values: &[&str]) -> Definition {
+    Definition::new(
         CssFontFeatureValueName::try_new(name).unwrap(),
-        values
-            .iter()
-            .map(|value| Index::try_from_decimal(value).unwrap())
-            .collect(),
+        checked_feature_value(kind, values).unwrap(),
     )
-    .unwrap()
 }
 
 fn block(item: &CssFontFeatureValuesItem) -> &Block {
@@ -36,11 +36,15 @@ fn block(item: &CssFontFeatureValuesItem) -> &Block {
 }
 
 fn indexes(value: &Definition) -> Vec<&str> {
-    value.indexes().iter().map(Index::as_decimal_str).collect()
+    value
+        .ordinary_indexes()
+        .iter()
+        .map(Index::as_decimal_str)
+        .collect()
 }
 
 fn assert_checked(kind: Kind, authored: &[&str], expected: &[&str]) {
-    let definition = definition("Case", authored);
+    let definition = definition(kind, "Case", authored);
     let before = definition.clone();
     let value = Block::try_new(kind, vec![definition]).unwrap();
     assert_eq!(value.kind(), kind);
@@ -50,7 +54,7 @@ fn assert_checked(kind: Kind, authored: &[&str], expected: &[&str]) {
     assert!(value.definitions()[0].position().is_none());
     assert!(
         value.definitions()[0]
-            .indexes()
+            .ordinary_indexes()
             .iter()
             .all(|index| index.origin().is_none())
     );
@@ -86,7 +90,7 @@ fn assert_parsed(kind: Kind, authored: &[&str], expected: &[&str]) {
         rule.position().unwrap().byte_offset().value(),
         source.find("@font-feature-values").unwrap()
     );
-    for (index, spelling) in definition.indexes().iter().zip(authored) {
+    for (index, spelling) in definition.ordinary_indexes().iter().zip(authored) {
         let origin = index.origin().unwrap();
         assert_eq!(origin.source().as_str(), source);
         let span = origin.span();
@@ -229,9 +233,11 @@ fn invalid_definitions_recover_locally_without_discarding_newly_admitted_sibling
             source.find(needle).unwrap()
         );
     }
-    let first = character.definitions()[0].indexes()[0].origin().unwrap();
+    let first = character.definitions()[0].ordinary_indexes()[0]
+        .origin()
+        .unwrap();
     for definition in character.definitions().iter().chain(styleset.definitions()) {
-        for index in definition.indexes() {
+        for index in definition.ordinary_indexes() {
             let origin = index.origin().unwrap();
             assert!(first.source().same_snapshot(origin.source()));
             assert_eq!(origin.source().as_str(), source);
@@ -251,15 +257,12 @@ fn rejected_integer_syntax_and_index_counts_remain_intrinsic_errors() {
         Index::try_from_decimal("-1").unwrap_err().kind(),
         ConstructionError::NegativeIndex
     );
-    assert_eq!(
-        Definition::try_new(
-            CssFontFeatureValueName::try_new("empty").unwrap(),
-            Vec::new()
-        )
-        .unwrap_err()
-        .kind(),
-        ConstructionError::EmptyIndexes
-    );
+    assert!(matches!(
+        checked_feature_value(Kind::Styleset, &[])
+            .unwrap_err()
+            .kind(),
+        CssFontFeatureValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
+    ));
     for (kind, values) in [
         (Kind::CharacterVariant, &["1", "2", "3"][..]),
         (Kind::Stylistic, &["1", "2"][..]),
@@ -267,17 +270,12 @@ fn rejected_integer_syntax_and_index_counts_remain_intrinsic_errors() {
         (Kind::Ornaments, &["1", "2"][..]),
         (Kind::Annotation, &["1", "2"][..]),
     ] {
-        let error = Block::try_new(
-            kind,
-            vec![
-                definition("good", &["1", "2"][..kind_count(kind)]),
-                definition("bad", values),
-            ],
-        )
-        .unwrap_err();
-        assert_eq!(error.kind(), ConstructionError::InvalidIndexCount);
-        assert_eq!(error.block(), Some(kind));
-        assert_eq!(error.definition_index(), Some(1));
+        let good = definition(kind, "good", &["1", "2"][..kind_count(kind)]);
+        assert!(Block::try_new(kind, vec![good]).is_ok());
+        assert!(matches!(
+            checked_feature_value(kind, values).unwrap_err().kind(),
+            CssFontFeatureValueErrorKind::Grammar(ErrorKind::UnexpectedToken(_))
+        ));
     }
     for (kind, invalid) in [
         ("character-variant", "1 2 3"),

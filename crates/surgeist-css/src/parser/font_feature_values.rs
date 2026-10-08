@@ -2,10 +2,12 @@ use super::recovery::{RecoveryLoopOutcome, RecoveryProgress, RecoveryState};
 use super::{
     Recovered, consume_failed_rule_block, parse_descriptor_boundary, structural_rule_diagnostic,
 };
+use crate::descriptor_values::{FontFeatureDisplayData, FontFeatureValueData};
 use crate::error::{
     Error, basic, descriptor_name_error, invalid_syntax, with_at_rule_prelude_context,
     with_descriptor_context,
 };
+use crate::numeric::NumericInputContext;
 use crate::*;
 use cssparser::{
     AtRuleParser, CowRcStr, DeclarationParser, ParseError, Parser, ParserState,
@@ -234,35 +236,51 @@ impl<'i> DeclarationParser<'i> for BodyParser<'i> {
         let owner = self
             .kind
             .map_or("font-feature-values", CssFontFeatureValueKind::css_name);
+        let value_start = input.state();
+        input.reset(start);
+        input.expect_ident().map_err(basic)?;
+        let name_origin = CssParsedOrigin::from_range(
+            self.recovery.source_snapshot(),
+            start.position().byte_index()..input.position().byte_index(),
+        )
+        .expect("actual declaration name");
+        input.reset(&value_start);
         let result = parse_descriptor_boundary(input, owner, &name, |input| {
             if let Some(kind) = self.kind {
                 let friendly = CssFontFeatureValueName::try_new(name.to_string())
                     .map_err(|error| invalid_syntax(start.source_location(), error.to_string()))?;
-                let values =
-                    CssComponentValues::collect_from_parser(input, self.recovery.source_snapshot())
-                        .map_err(|error| {
-                            crate::error::invalid_component_value(
-                                input.current_source_location(),
-                                error,
-                            )
-                        })?;
-                let indexes = indexes_from_components(&values, |_, reason| {
-                    invalid_syntax(start.source_location(), reason)
-                })?;
-                let definition = CssFontFeatureValueDefinition::try_new(friendly, indexes)
-                    .map_err(|error| invalid_syntax(start.source_location(), error.to_string()))?;
-                kind.validate(&definition)
-                    .map_err(|error| invalid_syntax(start.source_location(), error.to_string()))?;
+                let (data, components, origin) = super::collect_declaration_value(
+                    input,
+                    self.recovery.source_snapshot(),
+                    |input| {
+                        parse_feature_value_with_name(
+                            input,
+                            kind,
+                            self.recovery.source_snapshot(),
+                            Some(start.source_location()),
+                        )
+                    },
+                )?;
+                let value = CssFontFeatureValue::from_parsed(kind, data, components, origin);
                 Ok(Member::Definition(
-                    definition.with_position(position(start)),
+                    CssFontFeatureValueDefinition::new(friendly, value)
+                        .with_parsed_name(name_origin.clone())
+                        .with_position(position(start)),
                 ))
             } else {
                 if !name.eq_ignore_ascii_case("font-display") {
                     return Err(descriptor_name_error(start.source_location(), owner, &name));
                 }
-                let value = super::font_face::parse_font_display(input)?;
+                let (data, components, origin) = super::collect_declaration_value(
+                    input,
+                    self.recovery.source_snapshot(),
+                    |input| parse_display_value(input, self.recovery.source_snapshot()),
+                )?;
+                let value = CssFontFeatureDisplayValue::from_parsed(data, components, origin);
                 Ok(Member::Item(CssFontFeatureValuesItem::FontDisplay(
-                    CssFontFeatureDisplayOccurrence::new(value).with_position(position(start)),
+                    CssFontFeatureDisplayOccurrence::new(value)
+                        .with_parsed_name(name_origin.clone())
+                        .with_position(position(start)),
                 )))
             }
         })
@@ -288,10 +306,10 @@ pub(super) fn indexes_from_components<'i>(
             {
                 let index = CssFontFeatureValueIndex::try_from_decimal(number.representation())
                     .map_err(|error| error_for_component(value, &error.to_string()))?;
-                let CssValueOrigin::Parsed(origin) = value.origin() else {
-                    unreachable!("collected number has original source provenance")
-                };
-                indexes.push(index.with_origin(origin.clone()));
+                indexes.push(match value.origin() {
+                    CssValueOrigin::Parsed(origin) => index.with_origin(origin.clone()),
+                    _ => index,
+                });
             }
             _ => {
                 return Err(error_for_component(
@@ -302,4 +320,177 @@ pub(super) fn indexes_from_components<'i>(
         }
     }
     Ok(indexes)
+}
+
+fn qualifies(
+    components: &CssComponentValues,
+    numeric: &NumericInputContext<'_>,
+    location: cssparser::SourceLocation,
+) -> Result<bool, ParseError<'static, Error>> {
+    super::variables::descriptor_environment_qualifies(components.items(), numeric)
+        .map_err(|error| crate::error::invalid_component_value(location, error))
+}
+fn pending<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<CssSubstitutionDependentValue, ParseError<'i, Error>> {
+    let start = input.position();
+    super::descriptor_values::consume_remaining_components(input)?;
+    Ok(CssSubstitutionDependentValue::new(
+        CssAuthoredDeclarationValue::new(input.slice_from(start)),
+    ))
+}
+pub(super) fn parse_display_value<'i>(
+    input: &mut Parser<'i, '_>,
+    snapshot: &CssSourceSnapshot,
+) -> Result<FontFeatureDisplayData, ParseError<'i, Error>> {
+    super::descriptor_values::validate_root(input, "font-feature-values", "font-display")?;
+    let start = input.state();
+    let components = CssComponentValues::collect_from_parser(input, snapshot).map_err(|error| {
+        crate::error::invalid_component_value(input.current_source_location(), error)
+    })?;
+    input.reset(&start);
+    display_data(input, &components, &NumericInputContext::parsed(snapshot))
+}
+fn display_data<'i>(
+    input: &mut Parser<'i, '_>,
+    components: &CssComponentValues,
+    numeric: &NumericInputContext<'_>,
+) -> Result<FontFeatureDisplayData, ParseError<'i, Error>> {
+    if qualifies(components, numeric, input.current_source_location())? {
+        return Ok(FontFeatureDisplayData::Pending(pending(input)?));
+    }
+    let value = super::font_face::parse_font_display(input)?;
+    input.expect_exhausted().map_err(basic)?;
+    Ok(FontFeatureDisplayData::Ordinary(value))
+}
+pub(crate) fn construct_display_value(
+    components: &CssComponentValues,
+    serialized: &CssSerializedValue,
+) -> Result<FontFeatureDisplayData, Error> {
+    let source = crate::tokenization::prepare(serialized.as_css());
+    let mut parser_input = cssparser::ParserInput::new(&source);
+    let mut input = Parser::new(&mut parser_input);
+    let numeric = NumericInputContext::components(components, serialized);
+    let result = (|| {
+        super::descriptor_values::validate_root(&mut input, "font-feature-values", "font-display")?;
+        parse_descriptor_boundary(&mut input, "font-feature-values", "font-display", |input| {
+            display_data(input, components, &numeric)
+        })
+    })();
+    result.map_err(|error| crate::error::from_parse_error(serialized.as_css(), error))
+}
+
+pub(super) fn parse_feature_value<'i>(
+    input: &mut Parser<'i, '_>,
+    kind: CssFontFeatureValueKind,
+    snapshot: &CssSourceSnapshot,
+) -> Result<FontFeatureValueData, ParseError<'i, Error>> {
+    parse_feature_value_with_name(input, kind, snapshot, None)
+}
+fn parse_feature_value_with_name<'i>(
+    input: &mut Parser<'i, '_>,
+    kind: CssFontFeatureValueKind,
+    snapshot: &CssSourceSnapshot,
+    name_location: Option<cssparser::SourceLocation>,
+) -> Result<FontFeatureValueData, ParseError<'i, Error>> {
+    let start = input.state();
+    let components = CssComponentValues::collect_from_parser(input, snapshot).map_err(|error| {
+        crate::error::invalid_component_value(input.current_source_location(), error)
+    })?;
+    input.reset(&start);
+    feature_data(
+        input,
+        kind,
+        &components,
+        &NumericInputContext::parsed(snapshot),
+        name_location,
+        crate::error::unexpected_component_value,
+    )
+}
+fn feature_data<'i>(
+    input: &mut Parser<'i, '_>,
+    kind: CssFontFeatureValueKind,
+    components: &CssComponentValues,
+    numeric: &NumericInputContext<'_>,
+    name_location: Option<cssparser::SourceLocation>,
+    error: impl Fn(&CssComponentValue, &'static str) -> ParseError<'i, Error>,
+) -> Result<FontFeatureValueData, ParseError<'i, Error>> {
+    // Annotation/boundary tokens are disallowed before whole-value qualification.
+    for component in components.items() {
+        if matches!(
+            component.view(),
+            CssComponentValueRef::Token(CssValueTokenRef::Semicolon | CssValueTokenRef::Delim('!'))
+        ) {
+            return Err(error(component, "nonnegative integer tokens"));
+        }
+    }
+    if qualifies(components, numeric, input.current_source_location())? {
+        return Ok(FontFeatureValueData::Pending(pending(input)?));
+    }
+    let indexes = indexes_from_components(components, |component, reason| {
+        if let Some(location) = name_location {
+            invalid_syntax(location, reason)
+        } else {
+            error(component, "nonnegative integer tokens")
+        }
+    })?;
+    super::descriptor_values::consume_remaining_components(input)?;
+    kind.validate_index_count(indexes.len()).map_err(|issue| {
+        if let Some(location) = name_location {
+            return invalid_syntax(location, issue.to_string());
+        }
+        let surplus = components
+            .items()
+            .iter()
+            .filter(|component| {
+                !matches!(
+                    component.view(),
+                    CssComponentValueRef::Comment(_)
+                        | CssComponentValueRef::Token(CssValueTokenRef::Whitespace(_))
+                )
+            })
+            .enumerate()
+            .find(|(index, _)| kind.validate_index_count(index + 1).is_err());
+        match surplus {
+            Some((_, component)) => error(component, "the selected feature-value index count"),
+            None => crate::error::unexpected_end_at(
+                input.current_source_location(),
+                "the selected feature-value index count",
+            ),
+        }
+    })?;
+    Ok(FontFeatureValueData::Indexes(indexes))
+}
+pub(crate) fn construct_feature_value(
+    kind: CssFontFeatureValueKind,
+    components: &CssComponentValues,
+    serialized: &CssSerializedValue,
+) -> Result<FontFeatureValueData, Error> {
+    let source = crate::tokenization::prepare(serialized.as_css());
+    let mut parser_input = cssparser::ParserInput::new(&source);
+    let mut input = Parser::new(&mut parser_input);
+    let numeric = NumericInputContext::components(components, serialized);
+    feature_data(
+        &mut input,
+        kind,
+        components,
+        &numeric,
+        None,
+        |component, expectation| {
+            let index = components
+                .items()
+                .iter()
+                .position(|item| std::ptr::eq(item, component))
+                .expect("root grammar component");
+            let offset = serialized
+                .component_offset_for_path(&[index])
+                .expect("serialized root component");
+            crate::error::unexpected_component_value_at(
+                component,
+                expectation,
+                CssSourcePosition::from_byte_offset_in(serialized.as_css(), offset),
+            )
+        },
+    )
+    .map_err(|error| crate::error::from_parse_error(serialized.as_css(), error))
 }

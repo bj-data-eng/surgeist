@@ -9,6 +9,10 @@
 //! this is a project serialization policy, not a claimed CSSOM rule ordering.
 //! No test depends on an Image counter-symbol variant or new provenance API.
 
+#[path = "support/descriptor_phases.rs"]
+mod descriptor_phases;
+use descriptor_phases::*;
+
 use surgeist_css::{
     CssCounterStyleDescriptorKind as Descriptor, CssCounterStyleRule, CssCounterStyleSpeakAs,
     CssCounterStyleSystem, CssCounterSymbol, CssErrorCode, CssNormalizedItem, CssRecoveryAction,
@@ -85,7 +89,7 @@ macro_rules! gradient_case {
                 concat!($gradient, " \")\""),
                 concat!("negative: ", $gradient, " \")\"; symbols: a;"),
             );
-            assert!(matches!(rule.descriptors().negative().unwrap().suffix(),
+            assert!(matches!(rule.descriptors().negative().unwrap().ordinary_negative().suffix(),
                 Some(CssCounterSymbol::String(value)) if value.as_str() == ")"));
         }
     };
@@ -111,7 +115,7 @@ macro_rules! gradient_case {
             let rule = clean_rule(concat!("symbols: a; pad: 3 ", $gradient, ";"));
             assert_output(&rule, Descriptor::Pad, concat!("3 ", $gradient),
                 concat!("pad: 3 ", $gradient, "; symbols: a;"));
-            assert_eq!(rule.descriptors().pad().unwrap().minimum_length().numeric().representation(), "3");
+            assert_eq!(rule.descriptors().pad().unwrap().ordinary_pad().minimum_length().numeric().representation(), "3");
         }
     };
     ($name:ident, additive, $gradient:literal) => {
@@ -120,7 +124,7 @@ macro_rules! gradient_case {
             let rule = clean_rule(concat!("system: additive; additive-symbols: ", $gradient, " 10, N 0;"));
             assert_output(&rule, Descriptor::AdditiveSymbols, concat!("10 ", $gradient, ", 0 N"),
                 concat!("system: additive; additive-symbols: 10 ", $gradient, ", 0 N;"));
-            assert_eq!(rule.descriptors().additive_symbols().unwrap().tuples()[0].weight().numeric().representation(), "10");
+            assert_eq!(rule.descriptors().additive_symbols().unwrap().ordinary_additive_symbols().tuples()[0].weight().numeric().representation(), "10");
         }
     };
 }
@@ -247,7 +251,12 @@ fn mixed_symbols_preserve_strings_escaped_identifiers_urls_and_gradients() {
         r#""text" \31 Name url("mark.svg") linear-gradient(red, blue)"#,
         r#"symbols: "text" \31 Name url("mark.svg") linear-gradient(red, blue);"#,
     );
-    let values = rule.descriptors().symbols().unwrap().symbols();
+    let values = rule
+        .descriptors()
+        .symbols()
+        .unwrap()
+        .ordinary_symbols()
+        .symbols();
     assert!(matches!(&values[0], CssCounterSymbol::String(value) if value.as_str() == "text"));
     assert!(matches!(&values[1], CssCounterSymbol::Ident(value) if value.as_str() == "1Name"));
 }
@@ -269,6 +278,7 @@ fn gradient_pad_accepts_both_component_orders_without_changing_the_integer() {
             rule.descriptors()
                 .pad()
                 .unwrap()
+                .ordinary_pad()
                 .minimum_length()
                 .numeric()
                 .representation(),
@@ -291,7 +301,11 @@ fn additive_gradient_tuples_accept_both_orders_without_reordering_weights() {
             "system: additive; additive-symbols: 10 linear-gradient(red, blue), 0 N;",
         );
         assert_eq!(
-            rule.descriptors().additive_symbols().unwrap().tuples()[0]
+            rule.descriptors()
+                .additive_symbols()
+                .unwrap()
+                .ordinary_additive_symbols()
+                .tuples()[0]
                 .weight()
                 .numeric()
                 .representation(),
@@ -311,8 +325,10 @@ fn light_dark_image_symbols_keep_both_branches_and_identifier_none() {
         "light-dark(url(\"light.svg\"), linear-gradient(red, blue))",
         "prefix: light-dark(url(\"light.svg\"), linear-gradient(red, blue)); symbols: none;",
     );
-    assert!(matches!(rule.descriptors().symbols().unwrap().symbols(),
-        [CssCounterSymbol::Ident(value)] if value.as_str() == "none"));
+    assert!(
+        matches!(rule.descriptors().symbols().unwrap().ordinary_symbols().symbols(),
+        [CssCounterSymbol::Ident(value)] if value.as_str() == "none")
+    );
 }
 
 #[test]
@@ -445,11 +461,22 @@ fn image_descriptors_do_not_resolve_extended_fallback_or_spoken_names() {
     let rule = clean_rule(
         "system:extends Missing; prefix:linear-gradient(red, blue); fallback:Unknown; speak-as:Voice;",
     );
-    assert!(matches!(rule.descriptors().system().unwrap().value(),
-        CssCounterStyleSystem::Extends(name) if name.as_str() == "Missing"));
-    assert_eq!(rule.descriptors().fallback().unwrap().as_str(), "Unknown");
-    assert!(matches!(rule.descriptors().speak_as().unwrap().value(),
-        CssCounterStyleSpeakAs::CounterStyle(name) if name.as_str() == "Voice"));
+    assert!(
+        matches!(rule.descriptors().system().unwrap().ordinary_system(),
+        CssCounterStyleSystem::Extends(name) if name.as_str() == "Missing")
+    );
+    assert_eq!(
+        rule.descriptors()
+            .fallback()
+            .unwrap()
+            .ordinary_fallback()
+            .as_str(),
+        "Unknown"
+    );
+    assert!(
+        matches!(rule.descriptors().speak_as().unwrap().ordinary_speak_as(),
+        CssCounterStyleSpeakAs::CounterStyle(name) if name.as_str() == "Voice")
+    );
     assert!(rule.descriptors().range().is_none());
     assert_output(
         &rule,
@@ -557,6 +584,7 @@ fn none_auto_span_and_custom_case_remain_identifier_symbols() {
         .descriptors()
         .symbols()
         .unwrap()
+        .ordinary_symbols()
         .symbols()
         .iter()
         .map(|value| {
@@ -578,9 +606,11 @@ fn escaped_identifier_and_string_symbols_preserve_decoded_content_and_case() {
         r#""a\a b" \31 Name MiXeD"#,
         r#"symbols: "a\a b" \31 Name MiXeD;"#,
     );
-    assert!(matches!(rule.descriptors().symbols().unwrap().symbols(),
+    assert!(
+        matches!(rule.descriptors().symbols().unwrap().ordinary_symbols().symbols(),
         [CssCounterSymbol::String(text), CssCounterSymbol::Ident(name), CssCounterSymbol::Ident(case)]
-            if text.as_str() == "a\nb" && name.as_str() == "1Name" && case.as_str() == "MiXeD"));
+            if text.as_str() == "a\nb" && name.as_str() == "1Name" && case.as_str() == "MiXeD")
+    );
 }
 
 #[test]

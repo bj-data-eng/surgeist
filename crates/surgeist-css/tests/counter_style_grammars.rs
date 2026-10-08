@@ -1,3 +1,7 @@
+#[path = "support/descriptor_phases.rs"]
+mod descriptor_phases;
+use descriptor_phases::*;
+
 use surgeist_css::{
     CssCounterStyleDescriptorRef, CssCounterStyleName, CssCounterStyleRange,
     CssCounterStyleRangeBound, CssCounterStyleSpeakAs, CssCounterStyleSystem, CssCounterSymbol,
@@ -34,21 +38,24 @@ fn counter_style_rules_retain_valid_core_definitions() {
     assert_eq!(cycle.name().as_str(), "cycle");
     assert_eq!(cycle.position().byte_offset().value(), 24);
     assert!(matches!(
-        cycle.descriptors().system().map(|value| value.value()),
+        cycle
+            .descriptors()
+            .system()
+            .map(|value| value.ordinary_system()),
         Some(CssCounterStyleSystem::Cyclic)
     ));
     let symbols = cycle.descriptors().symbols().expect("cyclic symbols");
     assert!(matches!(
-        symbols.symbols(),
+        symbols.ordinary_symbols().symbols(),
         [CssCounterSymbol::Ident(first), CssCounterSymbol::Ident(second)]
             if first.as_str() == "●" && second.as_str() == "○"
     ));
     assert!(matches!(
-        cycle.descriptors().prefix().map(|value| value.value()),
+        cycle.descriptors().prefix().map(|value| value.ordinary_prefix()),
         Some(CssCounterSymbol::Ident(value)) if value.as_str() == "👍"
     ));
     assert!(matches!(
-        cycle.descriptors().suffix().map(|value| value.value()),
+        cycle.descriptors().suffix().map(|value| value.ordinary_suffix()),
         Some(CssCounterSymbol::String(value)) if value.as_str() == " "
     ));
     assert_eq!(cycle.descriptors().occurrences().count(), 4);
@@ -57,10 +64,22 @@ fn counter_style_rules_retain_valid_core_definitions() {
         panic!("expected numeric counter style")
     };
     assert!(matches!(
-        digits.descriptors().system().map(|value| value.value()),
+        digits
+            .descriptors()
+            .system()
+            .map(|value| value.ordinary_system()),
         Some(CssCounterStyleSystem::Numeric)
     ));
-    assert_eq!(digits.descriptors().symbols().unwrap().symbols().len(), 2);
+    assert_eq!(
+        digits
+            .descriptors()
+            .symbols()
+            .unwrap()
+            .ordinary_symbols()
+            .symbols()
+            .len(),
+        2
+    );
 
     let CssRule::CounterStyle(letters) = &report.syntax().rules()[3] else {
         panic!("expected alphabetic counter style")
@@ -75,7 +94,7 @@ fn counter_style_rules_retain_valid_core_definitions() {
         ]
     ));
     assert!(matches!(
-        letters.descriptors().symbols().unwrap().symbols(),
+        letters.descriptors().symbols().unwrap().ordinary_symbols().symbols(),
         [CssCounterSymbol::Ident(first), CssCounterSymbol::Ident(second)]
             if first.as_str() == "x" && second.as_str() == "y"
     ));
@@ -130,14 +149,15 @@ fn counter_style_descriptor_models_preserve_authored_duplicates_and_effective_la
 
     let negative = rule.descriptors().negative().unwrap();
     assert!(matches!(
-        negative.prefix(),
+        negative.ordinary_negative().prefix(),
         CssCounterSymbol::String(value) if value.as_str() == "("
     ));
     assert!(matches!(
-        negative.suffix(),
+        negative.ordinary_negative().suffix(),
         Some(CssCounterSymbol::String(value)) if value.as_str() == " )"
     ));
-    let CssCounterStyleRange::Ranges(ranges) = rule.descriptors().range().unwrap().value() else {
+    let CssCounterStyleRange::Ranges(ranges) = rule.descriptors().range().unwrap().ordinary_range()
+    else {
         panic!("expected explicit effective ranges")
     };
     assert_eq!(ranges.ranges().len(), 2);
@@ -159,13 +179,31 @@ fn counter_style_descriptor_models_preserve_authored_duplicates_and_effective_la
     );
 
     let pad = rule.descriptors().pad().unwrap();
-    assert_eq!(pad.minimum_length().numeric().representation(), "3");
+    assert_eq!(
+        pad.ordinary_pad()
+            .minimum_length()
+            .numeric()
+            .representation(),
+        "3"
+    );
     assert!(matches!(
-        pad.symbol(),
+        pad.ordinary_pad().symbol(),
         CssCounterSymbol::String(value) if value.as_str() == "_"
     ));
-    assert_eq!(rule.descriptors().fallback().unwrap().as_str(), "base");
-    let tuples = rule.descriptors().additive_symbols().unwrap().tuples();
+    assert_eq!(
+        rule.descriptors()
+            .fallback()
+            .unwrap()
+            .ordinary_fallback()
+            .as_str(),
+        "base"
+    );
+    let tuples = rule
+        .descriptors()
+        .additive_symbols()
+        .unwrap()
+        .ordinary_additive_symbols()
+        .tuples();
     assert_eq!(
         tuples
             .iter()
@@ -174,7 +212,7 @@ fn counter_style_descriptor_models_preserve_authored_duplicates_and_effective_la
         vec!["100", "10", "1", "0"]
     );
     assert!(matches!(
-        rule.descriptors().speak_as().map(|value| value.value()),
+        rule.descriptors().speak_as().map(|value| value.ordinary_speak_as()),
         Some(CssCounterStyleSpeakAs::CounterStyle(name)) if name.as_str() == "base"
     ));
     assert_eq!(rule.descriptors().occurrences().count(), 13);
@@ -207,20 +245,30 @@ fn invalid_counter_style_descriptor_values_drop_only_the_descriptor_and_keep_eff
     };
     assert_eq!(rule.descriptors().occurrences().count(), 7);
     assert!(
-        matches!(rule.descriptors().range().unwrap().value(), CssCounterStyleRange::Ranges(ranges) if ranges.ranges().len() == 1)
+        matches!(rule.descriptors().range().unwrap().ordinary_range(), CssCounterStyleRange::Ranges(ranges) if ranges.ranges().len() == 1)
     );
     assert_eq!(
         rule.descriptors()
             .pad()
             .unwrap()
+            .ordinary_pad()
             .minimum_length()
             .numeric()
             .representation(),
         "2"
     );
-    assert_eq!(rule.descriptors().fallback().unwrap().as_str(), "decimal");
+    assert_eq!(
+        rule.descriptors()
+            .fallback()
+            .unwrap()
+            .ordinary_fallback()
+            .as_str(),
+        "decimal"
+    );
     assert!(matches!(
-        rule.descriptors().speak_as().map(|value| value.value()),
+        rule.descriptors()
+            .speak_as()
+            .map(|value| value.ordinary_speak_as()),
         Some(CssCounterStyleSpeakAs::Numbers)
     ));
 
@@ -302,11 +350,11 @@ fn counter_style_system_model_retains_fixed_and_extends_forms() {
         panic!("expected two counter styles")
     };
     assert!(matches!(
-        fixed.descriptors().system().map(|value| value.value()),
+        fixed.descriptors().system().map(|value| value.ordinary_system()),
         Some(CssCounterStyleSystem::Fixed(value)) if value.first_symbol_value().is_some_and(|integer| integer.numeric().representation() == "-2")
     ));
     assert!(matches!(
-        extended.descriptors().system().map(|value| value.value()),
+        extended.descriptors().system().map(|value| value.ordinary_system()),
         Some(CssCounterStyleSystem::Extends(name)) if name.as_str() == "fixedish"
     ));
     assert!(extended.descriptors().symbols().is_none());
@@ -339,7 +387,7 @@ fn counter_style_descriptor_recovery_keeps_valid_occurrences_and_siblings() {
     };
     assert!(kept.descriptors().prefix().is_none());
     assert!(matches!(
-        kept.descriptors().suffix().map(|value| value.value()),
+        kept.descriptors().suffix().map(|value| value.ordinary_suffix()),
         Some(CssCounterSymbol::String(value)) if value.as_str() == "ok"
     ));
     assert_eq!(

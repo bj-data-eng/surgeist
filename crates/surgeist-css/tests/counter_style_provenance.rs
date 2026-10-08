@@ -2,6 +2,10 @@
 //! Counter Styles 3 §§3 and 3.8 retain decoded identity separately from genuine
 //! lexical origins. Parsing, normalization and projection never fabricate a
 //! stylesheet host or resolve counter names/images.
+#[path = "support/descriptor_phases.rs"]
+mod descriptor_phases;
+use descriptor_phases::*;
+
 use surgeist_css::*;
 
 fn counter(source: &str) -> CssCounterStyleRule {
@@ -135,19 +139,19 @@ fn predefined_normalization_does_not_replace_original_name_or_reference_tokens()
     assert_eq!(text(rule.parsed_name().unwrap()), "UPPER-ROMAN");
     let system = rule.descriptors().system().unwrap();
     assert!(
-        matches!(system.value(), CssCounterStyleSystem::Extends(name) if name.as_str() == "disc")
+        matches!(system.ordinary_system(), CssCounterStyleSystem::Extends(name) if name.as_str() == "disc")
     );
     assert_descriptor(system, &rule, source, "system", r"extends \44 ISC");
     let names = identifiers(system);
     assert_eq!(names[1].0, "DISC");
     assert_eq!(text(names[1].1), r"\44 ISC");
     let fallback = rule.descriptors().fallback().unwrap();
-    assert_eq!(fallback.as_str(), "upper-roman");
+    assert_eq!(fallback.ordinary_fallback().as_str(), "upper-roman");
     assert_descriptor(fallback, &rule, source, "fallback", r"\55 PPER-ROMAN");
     assert_eq!(identifiers(fallback)[0].0, "UPPER-ROMAN");
     let spoken = rule.descriptors().speak_as().unwrap();
     assert!(
-        matches!(spoken.value(), CssCounterStyleSpeakAs::CounterStyle(name) if name.as_str() == "lower-greek")
+        matches!(spoken.ordinary_speak_as(), CssCounterStyleSpeakAs::CounterStyle(name) if name.as_str() == "lower-greek")
     );
     assert_descriptor(spoken, &rule, source, "speak-as", r"\4c OWER-GREEK");
     assert_eq!(identifiers(spoken)[0].0, "LOWER-GREEK");
@@ -233,7 +237,7 @@ fn all_descriptor_kinds_retain_original_regions_and_component_origins() {
         "speak-as",
         "Voice",
     );
-    let CssCounterStyleRange::Ranges(ranges) = descriptors.range().unwrap().value() else {
+    let CssCounterStyleRange::Ranges(ranges) = descriptors.range().unwrap().ordinary_range() else {
         panic!("ranges");
     };
     let CssCounterStyleRangeBound::Integer(integer) = ranges.ranges()[0].upper() else {

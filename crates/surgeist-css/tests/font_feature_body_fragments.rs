@@ -3,6 +3,10 @@
 //! Fonts 4 (2026-09-07) §§4.9.1, 6.9.1 and 6.9.2, with the selected exact
 //! integer/cardinality policy. Literal payload/origin assertions are primary.
 
+#[path = "support/descriptor_phases.rs"]
+mod descriptor_phases;
+use descriptor_phases::*;
+
 use surgeist_css::{
     CssBlockFragment, CssErrorCode, CssEscapeError, CssFontDisplay, CssFontFeatureValueBlock,
     CssFontFeatureValueDefinition, CssFontFeatureValueKind as Kind,
@@ -42,14 +46,14 @@ fn display(item: &Item, expected: CssFontDisplay) {
     let Item::FontDisplay(display) = item else {
         panic!("actual outer descriptor")
     };
-    assert_eq!(display.value(), expected);
+    assert_eq!(display.value().ordinary_display(), expected);
 }
 
 fn definition(actual: &CssFontFeatureValueDefinition, name: &str, digits: &[&str]) {
     assert_eq!(actual.name().as_str(), name);
     assert_eq!(
         actual
-            .indexes()
+            .ordinary_indexes()
             .iter()
             .map(|n| n.as_decimal_str())
             .collect::<Vec<_>>(),
@@ -110,7 +114,7 @@ fn rejected<T: Clone + PartialEq + std::fmt::Debug>(
 fn real_index_sources(block: &CssFontFeatureValueBlock, carrier: &CssParsedOrigin) {
     for definition in block.definitions() {
         assert!(definition.position().is_some());
-        for index in definition.indexes() {
+        for index in definition.ordinary_indexes() {
             let actual = index.origin().expect("actual Number token origin");
             assert!(carrier.source().same_snapshot(actual.source()));
             assert_eq!(actual.source().as_str(), carrier.source().as_str());
@@ -314,19 +318,19 @@ fn exact_indexes_preserve_number_origins_and_normalize_above_u64_for_every_kind(
         position(other.position().unwrap(), 21, 1, 10);
         position(huge.position().unwrap(), 33, 1, 22);
         origin(
-            light.indexes()[0].origin().unwrap(),
+            light.ordinary_indexes()[0].origin().unwrap(),
             source,
             (15, 1, 4),
             (20, 1, 9),
         );
         origin(
-            other.indexes()[0].origin().unwrap(),
+            other.ordinary_indexes()[0].origin().unwrap(),
             source,
             (27, 1, 16),
             (32, 1, 21),
         );
         origin(
-            huge.indexes()[0].origin().unwrap(),
+            huge.ordinary_indexes()[0].origin().unwrap(),
             source,
             (38, 1, 27),
             (58, 1, 47),
@@ -334,9 +338,9 @@ fn exact_indexes_preserve_number_origins_and_normalize_above_u64_for_every_kind(
         assert_eq!(&source[15..20], "+0002");
         assert_eq!(&source[27..32], "-0000");
         assert_eq!(&source[38..58], "18446744073709551616");
-        assert_eq!(light.indexes()[0].to_u32(), Some(2));
-        assert_eq!(other.indexes()[0].to_u32(), Some(0));
-        assert_eq!(huge.indexes()[0].to_u32(), None);
+        assert_eq!(light.ordinary_indexes()[0].to_u32(), Some(2));
+        assert_eq!(other.ordinary_indexes()[0].to_u32(), Some(0));
+        assert_eq!(huge.ordinary_indexes()[0].to_u32(), None);
         real_index_sources(actual.body(), actual.origin());
     }
 }
@@ -351,7 +355,7 @@ fn mixed_unicode_body_retains_real_descriptor_at_keyword_name_and_number_positio
     let [Item::FontDisplay(display), Item::Block(child)] = actual.body().as_slice() else {
         panic!("mixed original body")
     };
-    assert_eq!(display.value(), CssFontDisplay::Swap);
+    assert_eq!(display.value().ordinary_display(), CssFontDisplay::Swap);
     position(display.position().unwrap(), 10, 1, 1);
     assert_eq!(child.kind(), Kind::Swash);
     position(child.position().unwrap(), 28, 1, 19);
@@ -361,7 +365,7 @@ fn mixed_unicode_body_retains_real_descriptor_at_keyword_name_and_number_positio
     definition(named, "💡", &["2"]);
     position(named.position().unwrap(), 35, 1, 26);
     origin(
-        named.indexes()[0].origin().unwrap(),
+        named.ordinary_indexes()[0].origin().unwrap(),
         source,
         (40, 1, 29),
         (45, 1, 34),
@@ -517,7 +521,7 @@ fn invalid_outer_members_preserve_later_displays_and_subsidiary_blocks() {
 fn subsidiary_value_failures_and_nested_rules_recover_at_named_units() {
     for kind in KINDS {
         for value in [
-            "", "-1", "1.0", "1e0", "1px", "1%", "\"1\"", "1,2", "var(--x)", "env(x)", "calc(1)",
+            "", "-1", "1.0", "1e0", "1px", "1%", "\"1\"", "1,2", "var(--x)", "calc(1)",
         ] {
             let source = format!("{{bad:{value};last:2}}");
             let report = subsidiary(&source, kind);
@@ -553,6 +557,19 @@ fn subsidiary_value_failures_and_nested_rules_recover_at_named_units() {
         .unwrap();
     position(diagnostic.span().start(), 1, 0, 1);
     position(diagnostic.span().end(), 15, 0, 15);
+    for kind in KINDS {
+        let report = subsidiary("{bad:env(x);last:2}", kind);
+        validation(&report, true);
+        let [pending, last] = report.syntax().as_ref().unwrap().body().definitions() else {
+            panic!("both declarations retained")
+        };
+        assert_eq!(pending.name().as_str(), "bad");
+        assert!(matches!(
+            pending.value().view(),
+            surgeist_css::CssFontFeatureValueRef::Pending(_)
+        ));
+        definition(last, "last", &["2"]);
+    }
 }
 
 #[test]
@@ -655,7 +672,9 @@ fn implicit_outer_and_child_braces_close_at_actual_source_eof() {
     definition(&child.definitions()[0], "Good", &["1"]);
     position(child.definitions()[0].position().unwrap(), 8, 0, 8);
     origin(
-        child.definitions()[0].indexes()[0].origin().unwrap(),
+        child.definitions()[0].ordinary_indexes()[0]
+            .origin()
+            .unwrap(),
         source,
         (13, 0, 13),
         (14, 0, 14),
@@ -669,7 +688,7 @@ fn implicit_outer_and_child_braces_close_at_actual_source_eof() {
     assert!(actual.body().position().is_none());
     origin(actual.origin(), source, (0, 0, 0), (7, 0, 7));
     origin(
-        actual.body().definitions()[0].indexes()[0]
+        actual.body().definitions()[0].ordinary_indexes()[0]
             .origin()
             .unwrap(),
         source,
@@ -735,7 +754,7 @@ fn lexical_comment_eof_preserves_explicit_or_implicit_brace_provenance() {
     definition(&actual.body().definitions()[0], "Good", &["1"]);
     origin(actual.origin(), source, (0, 0, 0), (10, 0, 10));
     origin(
-        actual.body().definitions()[0].indexes()[0]
+        actual.body().definitions()[0].ordinary_indexes()[0]
             .origin()
             .unwrap(),
         source,
@@ -918,7 +937,7 @@ fn outer_brace_counts_once_and_failed_definitions_preserve_later_siblings_at_dep
             0,
             (7 + 3 * groups) as u32,
         );
-        let number = last.indexes()[0].origin().unwrap();
+        let number = last.ordinary_indexes()[0].origin().unwrap();
         assert!(actual.origin().source().same_snapshot(number.source()));
         assert_eq!(number.source().as_str(), source);
         resource(&report, &source, exceeded, 515, 1, 7 + 3 * groups);
@@ -1055,12 +1074,12 @@ fn genuine_rule_controls_confirm_provider_semantics_without_fabricating_fragment
     display(direct_last, CssFontDisplay::Optional);
     assert_eq!(
         block(direct_styleset).definitions()[0]
-            .indexes()
+            .ordinary_indexes()
             .iter()
             .map(|n| n.as_decimal_str())
             .collect::<Vec<_>>(),
         block(styleset).definitions()[0]
-            .indexes()
+            .ordinary_indexes()
             .iter()
             .map(|n| n.as_decimal_str())
             .collect::<Vec<_>>()
@@ -1075,7 +1094,7 @@ fn genuine_rule_controls_confirm_provider_semantics_without_fabricating_fragment
     assert!(actual.body().position().is_none());
     definition(&actual.body().definitions()[0], "Good", &["2"]);
     assert_eq!(
-        actual.body().definitions()[0].indexes()[0].as_decimal_str(),
-        good.indexes()[0].as_decimal_str()
+        actual.body().definitions()[0].ordinary_indexes()[0].as_decimal_str(),
+        good.ordinary_indexes()[0].as_decimal_str()
     );
 }

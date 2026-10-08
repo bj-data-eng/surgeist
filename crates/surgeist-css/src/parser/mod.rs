@@ -17,13 +17,14 @@ mod box_model;
 mod box_spacing;
 pub(crate) mod color_profile;
 mod contain_intrinsic_size;
-mod counter_style;
+pub(crate) mod counter_style;
 mod declaration_list;
+mod descriptor_values;
 mod effects;
 mod flex;
 mod font_controls;
 pub(crate) mod font_face;
-mod font_feature_values;
+pub(crate) mod font_feature_values;
 mod font_palette;
 pub(crate) mod font_palette_values;
 mod font_settings;
@@ -44,12 +45,12 @@ pub use fragments::{
     parse_color_profile_block, parse_color_profile_descriptor_value, parse_counter_style_block,
     parse_counter_style_descriptor_value, parse_cssom_media_query, parse_declaration,
     parse_font_face_block, parse_font_face_descriptor_value, parse_font_feature_display_value,
-    parse_font_feature_value_block, parse_font_feature_value_indexes,
-    parse_font_feature_values_block, parse_font_palette_descriptor_value,
-    parse_font_palette_values_block, parse_group_block, parse_keyframe_declaration_block,
-    parse_keyframes_block, parse_media_query, parse_media_query_list, parse_page_block,
-    parse_property_value_text, parse_property_value_text_for_grammar, parse_relative_selector_list,
-    parse_rule, parse_scope_block, parse_scoped_group_block, parse_selector, parse_selector_list,
+    parse_font_feature_value, parse_font_feature_value_block, parse_font_feature_values_block,
+    parse_font_palette_descriptor_value, parse_font_palette_values_block, parse_group_block,
+    parse_keyframe_declaration_block, parse_keyframes_block, parse_media_query,
+    parse_media_query_list, parse_page_block, parse_property_value_text,
+    parse_property_value_text_for_grammar, parse_relative_selector_list, parse_rule,
+    parse_scope_block, parse_scoped_group_block, parse_selector, parse_selector_list,
     parse_style_block, parse_supports_test_block,
 };
 pub(crate) use fragments::{
