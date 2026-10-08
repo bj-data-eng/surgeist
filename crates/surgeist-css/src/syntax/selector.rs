@@ -1,4 +1,5 @@
 use super::{CssCustomIdent, CssNamespacePrefix, CssValueOrigin};
+use crate::CssViewTransitionNameSelector;
 
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
@@ -1057,6 +1058,12 @@ pub enum CssPseudoElement {
     Backdrop,
     FileSelectorButton,
     DetailsContent,
+    /// The tree-abiding root of an authored view transition pseudo tree.
+    ViewTransition,
+    ViewTransitionGroup(CssViewTransitionNameSelector),
+    ViewTransitionImagePair(CssViewTransitionNameSelector),
+    ViewTransitionOld(CssViewTransitionNameSelector),
+    ViewTransitionNew(CssViewTransitionNameSelector),
     Slotted(CssCompoundSelectorArgument),
     Part(CssPartNameList),
     UnknownWebkit(CssUnknownWebkitPseudoElement),
@@ -1069,6 +1076,10 @@ impl CssPseudoElement {
                 CssPseudoSuffixContext::ElementBacked
             }
             Self::SearchText => CssPseudoSuffixContext::SearchText,
+            Self::ViewTransitionGroup(_)
+            | Self::ViewTransitionImagePair(_)
+            | Self::ViewTransitionOld(_)
+            | Self::ViewTransitionNew(_) => CssPseudoSuffixContext::ViewTransitionDescendant,
             _ => CssPseudoSuffixContext::Generic,
         }
     }
@@ -1086,9 +1097,22 @@ impl CssPseudoElement {
                     | Self::Backdrop
                     | Self::FileSelectorButton
                     | Self::DetailsContent
+                    | Self::ViewTransition
+                    | Self::ViewTransitionGroup(_)
+                    | Self::ViewTransitionImagePair(_)
+                    | Self::ViewTransitionOld(_)
+                    | Self::ViewTransitionNew(_)
             ),
             Self::Before | Self::After => matches!(child, Self::Marker),
             Self::FirstLetter => matches!(child, Self::Prefix | Self::Suffix),
+            Self::ViewTransition => matches!(child, Self::ViewTransitionGroup(_)),
+            Self::ViewTransitionGroup(_) => matches!(child, Self::ViewTransitionImagePair(_)),
+            Self::ViewTransitionImagePair(_) => {
+                matches!(
+                    child,
+                    Self::ViewTransitionOld(_) | Self::ViewTransitionNew(_)
+                )
+            }
             _ => false,
         }
     }
@@ -1157,6 +1181,7 @@ impl CssPseudoElementSequence {
 pub(crate) enum CssPseudoSuffixContext {
     Generic,
     SearchText,
+    ViewTransitionDescendant,
     ElementBacked,
 }
 
@@ -1175,10 +1200,13 @@ impl CssPseudoSuffixContext {
                     | CssPseudoClass::FocusWithin
             )
             || (self == Self::SearchText && matches!(pseudo, CssPseudoClass::Current))
+            || (self == Self::ViewTransitionDescendant
+                && matches!(pseudo, CssPseudoClass::OnlyChild))
     }
 
     /// Ordinary classes exclude Current, so ordinary and SearchText permissions
-    /// are incomparable. Has and compound restrictions remain separate proofs.
+    /// are incomparable. View-transition descendants add OnlyChild independently
+    /// of SearchText's Current. Has and compound restrictions remain separate proofs.
     fn is_subset_of(receiver: Option<Self>, original: Option<Self>) -> bool {
         matches!(
             (receiver, original),
@@ -1187,6 +1215,10 @@ impl CssPseudoSuffixContext {
                 | (
                     Some(Self::SearchText),
                     Some(Self::SearchText | Self::ElementBacked)
+                )
+                | (
+                    Some(Self::ViewTransitionDescendant),
+                    None | Some(Self::ViewTransitionDescendant | Self::ElementBacked)
                 )
                 | (Some(Self::ElementBacked), Some(Self::ElementBacked))
         )

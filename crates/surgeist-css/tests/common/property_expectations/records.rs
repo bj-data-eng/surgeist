@@ -3107,6 +3107,12 @@ property_records! {
         wrapper: yes,
         mapping: physical("size"),
     }
+    ViewTransitionName, "view-transition-name" {
+        metadata: longhand(false, |v| assert_eq!(*v, CssViewTransitionName::None)),
+        catalog: grammar_catalog!("official.property.view-transition-name", "Card", rejected("auto")),
+        dispatch: "Card",
+        wrapper: yes,
+    }
     WillChange, "will-change" {
         metadata: longhand(false, |v| assert_eq!(*v, CssWillChange::Auto)),
         catalog: grammar_catalog!("ext.property.will-change", "span, contents, --custom", rejected("opacity, none")),

@@ -90,6 +90,8 @@ mod shape_outside;
 use motion::*;
 mod shapes;
 use shape_outside::parse_shape_outside;
+mod view_transitions;
+use view_transitions::parse_view_transition_name;
 mod will_change;
 // Shared checked media construction uses the same private admission engine.
 pub(crate) use queries::{construct_media_condition, construct_media_query};

@@ -4,6 +4,7 @@ use cssparser::{
 };
 
 use super::recovery::{RecoveryState, comma_member_span, recovery_action_for_error};
+use crate::CssViewTransitionNameSelector;
 use crate::error::{
     CssFeatureId, Error, from_parse_error, invalid_selector, invalid_selector_at, selector_basic,
     selector_component_error,
@@ -53,6 +54,11 @@ pub(super) static IMPLEMENTED_SELECTORS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.pseudo-element.file-selector-button"),
     CssFeatureId::new("ext.pseudo-element.details-content"),
     CssFeatureId::new("ext.pseudo-element.search-text-current"),
+    CssFeatureId::new("official.pseudo-element.view-transition"),
+    CssFeatureId::new("official.pseudo-element.view-transition-group"),
+    CssFeatureId::new("official.pseudo-element.view-transition-image-pair"),
+    CssFeatureId::new("official.pseudo-element.view-transition-old"),
+    CssFeatureId::new("official.pseudo-element.view-transition-new"),
     CssFeatureId::new("ext.pseudo-element.backdrop"),
     CssFeatureId::new("ext.pseudo-element.generated-marker"),
     CssFeatureId::new("ext.pseudo-element.unknown-webkit"),
@@ -979,6 +985,7 @@ fn parse_pseudo_element<'i, 't>(
             "backdrop" => Ok(CssPseudoElement::Backdrop),
             "file-selector-button" => Ok(CssPseudoElement::FileSelectorButton),
             "details-content" => Ok(CssPseudoElement::DetailsContent),
+            "view-transition" => Ok(CssPseudoElement::ViewTransition),
             _ => {
                 if let Ok(name) = CssUnknownWebkitPseudoElement::try_new(name.to_string()) {
                     return Ok(CssPseudoElement::UnknownWebkit(name));
@@ -991,7 +998,11 @@ fn parse_pseudo_element<'i, 't>(
         Ok(Token::Function(name))
             if name.eq_ignore_ascii_case("slotted")
                 || name.eq_ignore_ascii_case("part")
-                || name.eq_ignore_ascii_case("highlight") =>
+                || name.eq_ignore_ascii_case("highlight")
+                || name.eq_ignore_ascii_case("view-transition-group")
+                || name.eq_ignore_ascii_case("view-transition-image-pair")
+                || name.eq_ignore_ascii_case("view-transition-old")
+                || name.eq_ignore_ascii_case("view-transition-new") =>
         {
             let name = name.clone();
             let mut depth = recovery.state.enter_component_block(
@@ -1004,8 +1015,17 @@ fn parse_pseudo_element<'i, 't>(
                     parse_compound_argument(input, options, recovery).map(CssPseudoElement::Slotted)
                 } else if name.eq_ignore_ascii_case("part") {
                     parse_part_names(input, recovery).map(CssPseudoElement::Part)
-                } else {
+                } else if name.eq_ignore_ascii_case("highlight") {
                     parse_highlight_name(input).map(CssPseudoElement::Highlight)
+                } else {
+                    let argument = parse_view_transition_name_selector(input)?;
+                    match_ignore_ascii_case! { &name,
+                        "view-transition-group" => Ok(CssPseudoElement::ViewTransitionGroup(argument)),
+                        "view-transition-image-pair" => Ok(CssPseudoElement::ViewTransitionImagePair(argument)),
+                        "view-transition-old" => Ok(CssPseudoElement::ViewTransitionOld(argument)),
+                        "view-transition-new" => Ok(CssPseudoElement::ViewTransitionNew(argument)),
+                        _ => unreachable!("guard admits only named transition pseudos"),
+                    }
                 }
             });
             if result.is_ok() {
@@ -1467,6 +1487,32 @@ fn parse_part_names<'i, 't>(
     }
     CssPartNameList::try_new(names)
         .ok_or_else(|| invalid_selector(input, "part requires at least one identifier"))
+}
+
+fn parse_view_transition_name_selector<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<CssViewTransitionNameSelector, ParseError<'i, Error>> {
+    input.skip_whitespace();
+    let start = input.state();
+    let argument = match input.next().map_err(selector_basic)? {
+        Token::Delim('*') => CssViewTransitionNameSelector::Wildcard,
+        Token::Ident(name) => CssViewTransitionNameSelector::Name(
+            CssCustomIdent::try_new(name.to_string()).ok_or_else(|| {
+                invalid_selector_at(
+                    start.source_location(),
+                    "view transition requires a custom identifier or wildcard",
+                )
+            })?,
+        ),
+        token => {
+            return Err(start
+                .source_location()
+                .new_basic_unexpected_token_error(token.clone())
+                .into());
+        }
+    };
+    input.expect_exhausted().map_err(selector_basic)?;
+    Ok(argument)
 }
 
 fn parse_highlight_name<'i>(

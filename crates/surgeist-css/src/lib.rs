@@ -1057,6 +1057,14 @@
 //! otherwise supported pseudo syntax, with each following segment resetting the
 //! receiving permissions. This syntax does not evaluate matching prohibitions,
 //! live highlights or optional UA implementation of SearchText.
+//! View Transitions 1 retains [`CssViewTransitionName`] as `none` or a checked,
+//! case-sensitive [`CssViewTransitionIdent`], excluding `none` and `auto` from
+//! the custom-name branch. [`CssPseudoElement::ViewTransition`] and its Group,
+//! ImagePair, Old and New functional variants retain wildcard or custom-ident
+//! [`CssViewTransitionNameSelector`] arguments. Named descendants add OnlyChild
+//! to generic suffix permission, inherited by Not/Is/Where. Exact compounds follow
+//! root → group → image-pair → old/new, and Slotted admits all five tree-abiding
+//! identities. Participant discovery, matching and live transitions belong downstream.
 //!
 //! # Counter styles and page rules
 //!
@@ -1866,6 +1874,10 @@ pub use item_flow::{
 pub use overflow::CssOverflowValue;
 pub use overflow_controls::{
     CssOverflowAnchor, CssOverflowClipMargin, CssScrollBehavior, CssScrollbarGutter,
+};
+mod view_transitions;
+pub use view_transitions::{
+    CssViewTransitionIdent, CssViewTransitionName, CssViewTransitionNameSelector,
 };
 mod will_change;
 pub use scroll_snap::{

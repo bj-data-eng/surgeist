@@ -918,6 +918,14 @@ profile_source!(
     "https://www.w3.org/TR/2019/CR-css-writing-modes-4-20190730/"
 );
 profile_source!(
+    S_VIEWTRANSITIONS1,
+    "S-VIEWTRANSITIONS1",
+    "CSS View Transitions",
+    "1",
+    CssSpecificationTier::Snapshot2026Stable,
+    "https://www.w3.org/TR/2024/CRD-css-view-transitions-1-20240328/"
+);
+profile_source!(
     I_WILLCHANGE1,
     "I-WILLCHANGE1",
     "CSS Will Change",
@@ -1346,6 +1354,7 @@ static SPECIFICATION_SOURCES: &[CssSpecificationSource] = &[
     S_SPEECH1,
     S_WRITING4,
     S_BREAK3,
+    S_VIEWTRANSITIONS1,
     I_WILLCHANGE1,
     I_SCROLLANCHORING1,
     S_ALIGN3,
@@ -2348,7 +2357,7 @@ const BASELINE_RULE_REMAINDER: &str =
     "Other valid forms of the cited rule production are outside the I01 subset.";
 const SELECTOR_REMAINDER: &str =
     "Other valid forms of the cited Selectors production are outside the I01 subset.";
-const SUPPORTS_SELECTOR_SUBSET: &str = "selector() accepts complete Selectors 3 plus the selected I01 extensions: the || column combinator; i and s attribute modifiers; :scope, :focus-visible, :focus-within, :required, :optional, :valid, :invalid, :placeholder-shown, :modal, :fullscreen, :popover-open, :default, :indeterminate, :read-only, :read-write, :in-range, and :out-of-range; :is(), :where(), :has(), selector-list :not(), and nth-child of lists; and ::marker, ::selection, ::backdrop, and generated-marker sequences. Directionality accepts one identifier and language accepts nonempty comma-separated identifier or string ranges. Required shadow definitions add :host, compound-argument :host() and :host-context(), ::slotted(), and identifier-list ::part(). Autofill and its required -webkit-autofill alias share the standard identity; unknown nonfunctional -webkit- pseudo-elements retain symbolic match-nothing identities with ASCII-lowercase output. Pseudo 4 adds Prefix, Suffix, SearchText, TargetText, SpellingError, GrammarError, Highlight with one checked custom identifier, Placeholder, FileSelectorButton and DetailsContent. Nonfunctional Current is limited to SearchText and element-backed suffix contexts and inherited logical arguments; ordinary Current and functional Current remain unsupported. Ordered pseudo-element suffixes retain contextual pseudo-classes and defined child transitions, resetting permissions at each new segment. All typed selector tests remain symbolic, including optional UA pseudo implementation and matching prohibitions.";
+const SUPPORTS_SELECTOR_SUBSET: &str = "selector() accepts complete Selectors 3 plus the selected I01 extensions: the || column combinator; i and s attribute modifiers; :scope, :focus-visible, :focus-within, :required, :optional, :valid, :invalid, :placeholder-shown, :modal, :fullscreen, :popover-open, :default, :indeterminate, :read-only, :read-write, :in-range, and :out-of-range; :is(), :where(), :has(), selector-list :not(), and nth-child of lists; and ::marker, ::selection, ::backdrop, and generated-marker sequences. Directionality accepts one identifier and language accepts nonempty comma-separated identifier or string ranges. Required shadow definitions add :host, compound-argument :host() and :host-context(), ::slotted(), and identifier-list ::part(). Autofill and its required -webkit-autofill alias share the standard identity; unknown nonfunctional -webkit- pseudo-elements retain symbolic match-nothing identities with ASCII-lowercase output. Pseudo 4 adds Prefix, Suffix, SearchText, TargetText, SpellingError, GrammarError, Highlight with one checked custom identifier, Placeholder, FileSelectorButton and DetailsContent. Nonfunctional Current is limited to SearchText and element-backed suffix contexts and inherited logical arguments; ordinary Current and functional Current remain unsupported. View Transitions 1 adds its tree-abiding root and Group, ImagePair, Old and New functional pseudos with wildcard or custom-ident arguments, named-descendant OnlyChild suffixes and exact root-to-group-to-image-pair-to-old/new compounds. Ordered pseudo-element suffixes retain contextual pseudo-classes and defined child transitions, resetting permissions at each new segment. All typed selector tests remain symbolic, including optional UA pseudo implementation and matching prohibitions.";
 const SUPPORTS_SELECTOR_REMAINDER: &str = "Unselected Selectors 4 pseudo-classes and pseudo-elements, and syntax outside those atomic extension rows remain outside the typed subset; balanced content is preserved as general-enclosed authored syntax.";
 const QUERY_REMAINDER: &str =
     "Other valid forms of the cited query production are outside the I01 subset.";
@@ -2695,6 +2704,7 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::InsetInlineEnd
         | CssKnownProperty::InsetBlock
         | CssKnownProperty::InsetInline => I_POSITION3,
+        CssKnownProperty::ViewTransitionName => S_VIEWTRANSITIONS1,
         CssKnownProperty::WillChange => I_WILLCHANGE1,
         CssKnownProperty::OverflowAnchor => I_SCROLLANCHORING1,
         CssKnownProperty::BoxDecorationBreak => S_BREAK3,
@@ -2941,7 +2951,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 783] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 789] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -4668,6 +4678,11 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 783] = [
         CssKnownProperty::OverflowClipMargin,
         "overflow-clip-margin",
         "ext.property.overflow-clip-margin"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::ViewTransitionName,
+        "view-transition-name",
+        "official.property.view-transition-name"
     ),
     complete_property_feature!(
         CssKnownProperty::WillChange,
@@ -7288,6 +7303,41 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 783] = [
         "nonfunctional :current in SearchText and element-backed suffix contexts, inherited by logical arguments; ordinary :current, current(), :past and :future remain unsupported",
         X_PSEUDO4,
         "#selectordef-search-text,#element-backed",
+    ),
+    CssFeatureMetadata::complete(
+        "official.pseudo-element.view-transition",
+        CssFeatureKind::Selector,
+        "::view-transition root with generic suffix permissions and group children",
+        S_VIEWTRANSITIONS1,
+        "#selectordef-view-transition,#pseudo-root",
+    ),
+    CssFeatureMetadata::complete(
+        "official.pseudo-element.view-transition-group",
+        CssFeatureKind::Selector,
+        "::view-transition-group(* | <custom-ident>), OnlyChild suffix and image-pair children",
+        S_VIEWTRANSITIONS1,
+        "#selectordef-view-transition-group,#pseudo-root",
+    ),
+    CssFeatureMetadata::complete(
+        "official.pseudo-element.view-transition-image-pair",
+        CssFeatureKind::Selector,
+        "::view-transition-image-pair(* | <custom-ident>), OnlyChild suffix and old/new children",
+        S_VIEWTRANSITIONS1,
+        "#selectordef-view-transition-image-pair,#pseudo-root",
+    ),
+    CssFeatureMetadata::complete(
+        "official.pseudo-element.view-transition-old",
+        CssFeatureKind::Selector,
+        "::view-transition-old(* | <custom-ident>) with OnlyChild suffix",
+        S_VIEWTRANSITIONS1,
+        "#selectordef-view-transition-old,#pseudo-root",
+    ),
+    CssFeatureMetadata::complete(
+        "official.pseudo-element.view-transition-new",
+        CssFeatureKind::Selector,
+        "::view-transition-new(* | <custom-ident>) with OnlyChild suffix",
+        S_VIEWTRANSITIONS1,
+        "#selectordef-view-transition-new,#pseudo-root",
     ),
     CssFeatureMetadata::complete(
         "ext.pseudo-element.backdrop",

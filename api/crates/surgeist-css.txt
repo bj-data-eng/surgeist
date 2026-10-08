@@ -2688,6 +2688,7 @@ pub surgeist_css::CssKnownProperty::Translate
 pub surgeist_css::CssKnownProperty::UnicodeBidi
 pub surgeist_css::CssKnownProperty::UserSelect
 pub surgeist_css::CssKnownProperty::VerticalAlign
+pub surgeist_css::CssKnownProperty::ViewTransitionName
 pub surgeist_css::CssKnownProperty::Visibility
 pub surgeist_css::CssKnownProperty::VoiceBalance
 pub surgeist_css::CssKnownProperty::VoiceDuration
@@ -3148,6 +3149,7 @@ pub surgeist_css::CssKnownPropertyValueRef::Translate(&'a surgeist_css::CssTrans
 pub surgeist_css::CssKnownPropertyValueRef::UnicodeBidi(&'a surgeist_css::CssUnicodeBidiPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::UserSelect(&'a surgeist_css::CssUserSelectPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::VerticalAlign(&'a surgeist_css::CssVerticalAlignPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::ViewTransitionName(&'a surgeist_css::CssViewTransitionNamePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::Visibility(&'a surgeist_css::CssVisibilityPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::VoiceBalance(&'a surgeist_css::CssVoiceBalancePropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::VoiceDuration(&'a surgeist_css::CssVoiceDurationPropertyValue)
@@ -3631,6 +3633,7 @@ pub surgeist_css::CssLonghandValueRef::Translate(&'a surgeist_css::CssTranslate)
 pub surgeist_css::CssLonghandValueRef::UnicodeBidi(&'a surgeist_css::CssUnicodeBidi)
 pub surgeist_css::CssLonghandValueRef::UserSelect(&'a surgeist_css::CssUserSelect)
 pub surgeist_css::CssLonghandValueRef::VerticalAlign(&'a surgeist_css::CssVerticalAlign)
+pub surgeist_css::CssLonghandValueRef::ViewTransitionName(&'a surgeist_css::CssViewTransitionName)
 pub surgeist_css::CssLonghandValueRef::Visibility(&'a surgeist_css::CssVisibility)
 pub surgeist_css::CssLonghandValueRef::VoiceBalance(&'a surgeist_css::CssVoiceBalance)
 pub surgeist_css::CssLonghandValueRef::VoiceDuration(&'a surgeist_css::CssVoiceDuration)
@@ -4393,6 +4396,11 @@ pub surgeist_css::CssPseudoElement::SpellingError
 pub surgeist_css::CssPseudoElement::Suffix
 pub surgeist_css::CssPseudoElement::TargetText
 pub surgeist_css::CssPseudoElement::UnknownWebkit(surgeist_css::CssUnknownWebkitPseudoElement)
+pub surgeist_css::CssPseudoElement::ViewTransition
+pub surgeist_css::CssPseudoElement::ViewTransitionGroup(surgeist_css::CssViewTransitionNameSelector)
+pub surgeist_css::CssPseudoElement::ViewTransitionImagePair(surgeist_css::CssViewTransitionNameSelector)
+pub surgeist_css::CssPseudoElement::ViewTransitionNew(surgeist_css::CssViewTransitionNameSelector)
+pub surgeist_css::CssPseudoElement::ViewTransitionOld(surgeist_css::CssViewTransitionNameSelector)
 #[non_exhaustive] pub enum surgeist_css::CssPseudoElementSegment
 pub surgeist_css::CssPseudoElementSegment::PseudoClass(surgeist_css::CssPseudoClass)
 pub surgeist_css::CssPseudoElementSegment::PseudoElement(surgeist_css::CssPseudoElement)
@@ -5581,6 +5589,15 @@ pub surgeist_css::CssVerticalPositionKeyword::Center
 pub surgeist_css::CssVerticalPositionKeyword::Top
 pub surgeist_css::CssVerticalPositionKeyword::YEnd
 pub surgeist_css::CssVerticalPositionKeyword::YStart
+#[non_exhaustive] pub enum surgeist_css::CssViewTransitionName
+pub surgeist_css::CssViewTransitionName::Custom(surgeist_css::CssViewTransitionIdent)
+pub surgeist_css::CssViewTransitionName::None
+impl surgeist_css::CssViewTransitionName
+pub fn surgeist_css::CssViewTransitionName::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssViewTransitionName::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssViewTransitionNameSelector
+pub surgeist_css::CssViewTransitionNameSelector::Name(surgeist_css::CssCustomIdent)
+pub surgeist_css::CssViewTransitionNameSelector::Wildcard
 #[non_exhaustive] pub enum surgeist_css::CssVisibility
 pub surgeist_css::CssVisibility::Collapse
 pub surgeist_css::CssVisibility::Hidden
@@ -12224,6 +12241,14 @@ pub struct surgeist_css::CssVerticalAlignPropertyValue
 impl surgeist_css::CssVerticalAlignPropertyValue
 pub fn surgeist_css::CssVerticalAlignPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssVerticalAlignPropertyValue::value(&self) -> &surgeist_css::CssVerticalAlign
+pub struct surgeist_css::CssViewTransitionIdent(_)
+impl surgeist_css::CssViewTransitionIdent
+pub fn surgeist_css::CssViewTransitionIdent::as_str(&self) -> &str
+pub fn surgeist_css::CssViewTransitionIdent::try_new(value: surgeist_css::CssCustomIdent) -> core::option::Option<Self>
+pub struct surgeist_css::CssViewTransitionNamePropertyValue
+impl surgeist_css::CssViewTransitionNamePropertyValue
+pub fn surgeist_css::CssViewTransitionNamePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssViewTransitionNamePropertyValue::name(&self) -> &surgeist_css::CssViewTransitionName
 pub struct surgeist_css::CssVisibilityPropertyValue
 impl surgeist_css::CssVisibilityPropertyValue
 pub fn surgeist_css::CssVisibilityPropertyValue::as_css(&self) -> &str

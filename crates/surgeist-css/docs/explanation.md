@@ -84,6 +84,14 @@ This preserves the different attachments in `:hover::part(label)` and
 same contextual suffix grammar. The Selectors 3 legacy single-colon spellings
 map to the same typed before, after, first-line and first-letter values.
 
+View Transitions 1 contributes authored names and five tree-abiding pseudo
+identities to those shared owners. The property and selector arguments have
+different exclusions: participant names reject `auto` and reserve `none` as a
+keyword; selector arguments admit those custom names. Named descendants inherit
+generic suffix permission and add `:only-child`. Authored compound sequences
+follow the defined pseudo tree edges. These checks preserve syntax before any
+participant discovery, matching, generated transition tree or lifecycle execution.
+
 The imported `:host()` and `:host-context()` arguments and `::slotted()` argument
 retain one checked compound selector. Logical functions inherit that compound
 restriction; `:has()` retains its separate relative-selector grammar. `::part()`

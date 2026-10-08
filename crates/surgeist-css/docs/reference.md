@@ -5103,7 +5103,11 @@ and imported pseudo definitions establish these authored permissions:
 | FirstLetter | The same generic suffixes | Prefix or Suffix |
 | SearchText | Generic suffixes and nonfunctional Current | None |
 | FirstLine, Prefix, Suffix, Marker, Selection, TargetText, SpellingError, GrammarError, Highlight, Placeholder, Backdrop or UnknownWebkit | The same generic suffixes | None |
-| Slotted | The same generic suffixes | Before, After, Marker, Placeholder, Part, Backdrop, FileSelectorButton or DetailsContent |
+| ViewTransition | The same generic suffixes | ViewTransitionGroup |
+| ViewTransitionGroup | Generic suffixes and OnlyChild | ViewTransitionImagePair |
+| ViewTransitionImagePair | Generic suffixes and OnlyChild | ViewTransitionOld or ViewTransitionNew |
+| ViewTransitionOld or ViewTransitionNew | Generic suffixes and OnlyChild | None |
+| Slotted | The same generic suffixes | Before, After, Marker, Placeholder, Part, Backdrop, FileSelectorButton, DetailsContent or any of the five View Transitions identities |
 | Part, FileSelectorButton or DetailsContent | Otherwise supported pseudo-class syntax under inherited argument restrictions | Otherwise admitted pseudo-element syntax |
 
 The [selected Pseudo 4 vocabulary](https://www.w3.org/TR/2025/WD-css-pseudo-4-20250627/#highlight-selectors)
@@ -5153,7 +5157,8 @@ Checked containing selectors and lists validate the same receiving sets as
 parsing and charged specified output. A retained invalid nesting member can be
 reused only when every receiving restriction is at least as narrow as its
 original proof. Ordinary classes exclude Current, making ordinary and SearchText
-sets incomparable; element-backed contexts add Current as well. The separate
+sets incomparable. Named View Transitions descendants add OnlyChild, so their
+set is incomparable with SearchText; element-backed contexts admit both. The separate
 Has, compound and pseudo-element restrictions cannot be traded against one
 another. Independent function arguments retain their existing reset boundaries.
 
@@ -5166,6 +5171,45 @@ while semantic alias names and unknown WebKit names are canonicalized. Capabilit
 records use atomic `ext.pseudo-element.*` identities and the contextual
 `ext.pseudo-element.search-text-current` record, alongside `ext.selector.autofill`.
 The Current record supplies no ordinary pseudo-class capability.
+
+### Authored View Transitions
+
+The selected [View Transitions 1 CRD, March 28, 2024](../../../references/css-view-transitions-1--CRD-css-view-transitions-1-20240328--7f8e537956b6.md)
+defines `view-transition-name: none | <custom-ident>`. `CssViewTransitionName`
+retains the None or Custom branch; `CssViewTransitionIdent::try_new` checks a
+`CssCustomIdent` and excludes decoded `none` and `auto` in every ASCII case.
+Generic custom identifiers already exclude CSS-wide keywords and `default`.
+Names preserve decoded case and symbolic identity. The schema owns the ordinary
+`CssViewTransitionNamePropertyValue::name()` wrapper, global and pending
+alternatives, initial None and noninheritance. Component construction, strict
+pending reentry, longhand expansion, normalization and specified declaration/rule
+output share the existing property lifecycle. The source additionally specifies
+all elements, no percentage basis, computed as specified, per-grammar order and
+discrete animation; those later phases remain with their downstream owners.
+
+`CssPseudoElement::ViewTransition` is the nonfunctional root. Group, ImagePair,
+Old and New retain `CssViewTransitionNameSelector::{Wildcard, Name}`. Each
+functional argument is exactly `*` or one `CssCustomIdent`, including `none` or
+`auto`; it does not inherit the property's extra exclusions. Escaped names and
+Unicode retain decoded identity and emit canonical escaped identifiers. Class
+arguments from later drafts, root function syntax and single-colon aliases are
+not admitted. All five identities are tree abiding. Named descendants add
+OnlyChild to Generic's logical and user-action suffix set, with the same
+permission propagated into Not/Is/Where. Each following pseudo resets permission.
+Exact compounds follow root → group → image-pair → old/new without requiring
+equal name arguments. Other edges and post-pseudo combinators remain rejected.
+
+The scalar specified writer charges one input and one projection node for either
+branch, with no extra domain-wrapper charge. A functional pseudo charges its
+pseudo and argument, in addition to the containing compound; the root charges
+its pseudo and compound. Lists add their aggregate node. All output uses the
+shared cumulative UTF-8 byte budget and typed serialization errors, and failed
+serialization returns no partial CSS. Original declarations, selectors and
+Supports components retain lexical provenance; semantic names have no invented
+origin. The catalog's `official.property.view-transition-name` and five
+`official.pseudo-element.view-transition*` records cite `S-VIEWTRANSITIONS1`.
+Participant discovery, duplicate-name validity in a live document, matching,
+specificity, generated UA styles and transition execution remain downstream.
 
 ## Counter Styles 3 and authored page rules
 

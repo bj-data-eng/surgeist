@@ -733,6 +733,31 @@ impl SpecifiedRuleWriter {
                             self.selector_identifier(name.as_str())?;
                             self.append(")")?;
                         }
+                        CssPseudoElement::ViewTransition => self.append("::view-transition")?,
+                        CssPseudoElement::ViewTransitionGroup(argument)
+                        | CssPseudoElement::ViewTransitionImagePair(argument)
+                        | CssPseudoElement::ViewTransitionOld(argument)
+                        | CssPseudoElement::ViewTransitionNew(argument) => {
+                            self.append(match value {
+                                CssPseudoElement::ViewTransitionGroup(_) => {
+                                    "::view-transition-group("
+                                }
+                                CssPseudoElement::ViewTransitionImagePair(_) => {
+                                    "::view-transition-image-pair("
+                                }
+                                CssPseudoElement::ViewTransitionOld(_) => "::view-transition-old(",
+                                CssPseudoElement::ViewTransitionNew(_) => "::view-transition-new(",
+                                _ => unreachable!("named transition arm"),
+                            })?;
+                            self.node()?;
+                            match argument {
+                                CssViewTransitionNameSelector::Wildcard => self.append("*")?,
+                                CssViewTransitionNameSelector::Name(name) => {
+                                    self.selector_identifier(name.as_str())?
+                                }
+                            }
+                            self.append(")")?;
+                        }
                         CssPseudoElement::Before => self.append("::before")?,
                         CssPseudoElement::After => self.append("::after")?,
                         CssPseudoElement::FirstLine => self.append("::first-line")?,
