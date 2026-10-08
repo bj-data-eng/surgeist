@@ -278,6 +278,7 @@ fn valid_env_defers_the_whole_value_including_nested_and_residual_var_tokens() {
         "f(env(choice, 7))",
         "env(choice) var(--later)",
         "env(choice) var()",
+        "env(choice){}", // Matched blocks remain declaration-value data.
     ] {
         admitted(&parse_counter_style_descriptor_value(
             source,
@@ -305,7 +306,6 @@ fn root_annotations_and_outer_exhaustion_are_checked_before_env_deferral() {
     for source in [
         "env(choice)!important",
         "env(choice);",
-        "env(choice){}",
         "env(choice)}",
     ] {
         rejected(parse_counter_style_descriptor_value(
