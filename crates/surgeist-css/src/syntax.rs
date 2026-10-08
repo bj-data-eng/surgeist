@@ -3604,11 +3604,13 @@ impl CssNestedDeclarationsRule {
     }
 }
 
-/// An ordered parser-produced collection of ordinary authored declarations.
+/// An ordered collection of parsed or checked ordinary authored declarations.
 ///
-/// Private construction ensures every element has passed the ordinary declaration boundary and
-/// carries semantic source provenance. The collection is read-only and performs no cascade,
-/// substitution, selector matching, or contextual resolution.
+/// Members retain their immutable occurrences, importance, component origins and
+/// individual parser contexts. Checked assembly requires complete specified output
+/// under its operation's limits; parser production retains its own recovery policy
+/// and does not guarantee that later serialization succeeds. The collection is
+/// read-only and performs no cascade, substitution or contextual resolution.
 ///
 /// ```compile_fail
 /// use surgeist_css::CssDeclarationList;
@@ -3622,6 +3624,42 @@ pub struct CssDeclarationList {
 impl CssDeclarationList {
     pub(crate) const fn new(declarations: Vec<CssDeclaration>) -> Self {
         Self { declarations }
+    }
+
+    /// Assembles ordered declarations after complete specified-output admission.
+    ///
+    /// Uses the existing default serialization limits. Empty membership is valid;
+    /// duplicates, repeated handles and symbolic values remain ordered occurrences.
+    /// The supplied vector is consumed on success or failure. Retain independent
+    /// declaration clones before calling if a failed construction must be retried.
+    /// No grammar is reparsed and no aggregate source or parser context is invented.
+    pub fn try_new(
+        declarations: Vec<CssDeclaration>,
+    ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
+        Self::try_new_with_limits(
+            declarations,
+            crate::CssSpecifiedValueSerializationLimits::default(),
+        )
+    }
+
+    /// Admits the complete list through its actual occurrence writer under limits.
+    ///
+    /// One fresh cumulative input, projection and UTF-8 byte budget covers the
+    /// aggregate, every occurrence, semantic provider and output punctuation.
+    /// Repeated handles are charged again. The full bounded temporary output is
+    /// discarded after admission; neither text nor limits are stored in the list.
+    /// A later output request applies its own policy and can therefore fail.
+    ///
+    /// Failure returns the existing provider/resource error and no partial list.
+    /// The moved vector is consumed even on failure; independently retained clones
+    /// remain usable with the same occurrences, components, origins and contexts.
+    pub fn try_new_with_limits(
+        declarations: Vec<CssDeclaration>,
+        limits: crate::CssSpecifiedValueSerializationLimits,
+    ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
+        let list = Self::new(declarations);
+        list.to_specified_css_with_limits(limits)?;
+        Ok(list)
     }
 
     /// Returns the declarations in authored order.

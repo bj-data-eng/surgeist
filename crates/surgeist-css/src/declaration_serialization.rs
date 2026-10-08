@@ -1,4 +1,4 @@
-//! Canonical text for one authored declaration and private occurrence composition.
+//! Canonical text for authored declarations and ordered occurrence lists.
 //!
 //! This owner preserves the declaration's grammar identity and visits semantic
 //! value providers. Occurrence lists retain every duplicate and importance flag;
@@ -280,6 +280,42 @@ pub(crate) fn append_authored_declaration(
         writer.append(" !important")?;
     }
     writer.append(";")
+}
+
+impl CssDeclarationList {
+    /// Emits every authored occurrence as canonical specified attribute text.
+    ///
+    /// Uses the existing default limits. Empty lists emit an empty string. Each
+    /// declaration has its canonical grammar name, `: `, owning specified value,
+    /// optional ` !important` and `;`; adjacent occurrences have one space.
+    /// Duplicates, repeated handles and priority remain in authored order.
+    /// Custom names retain case and symbolic token values keep their retained
+    /// spelling, comments and internal trivia under the existing value writer.
+    /// No braces, enclosing rule, cascade selection or substitution is emitted.
+    /// For terminal winner output, use [`Self::serialize_cssom`] instead.
+    pub fn to_specified_css(&self) -> Result<String> {
+        self.to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+
+    /// Emits the complete ordered list atomically under one fresh cumulative budget.
+    ///
+    /// The aggregate costs one input and projection node; declarations, names
+    /// and semantic providers retain their existing costs. Repeated occurrences
+    /// are visited again, and punctuation, separators and importance cost bytes.
+    /// Output and retained-value boundary failures use the actual provider writer.
+    ///
+    /// Failure returns no partial text. This borrowed operation leaves the list,
+    /// every immutable occurrence, components, origins and individual context
+    /// unchanged on success or failure. A retry uses its newly supplied limits;
+    /// construction limits are not persistent list policy or a text cache.
+    pub fn to_specified_css_with_limits(
+        &self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String> {
+        let mut writer = SpecifiedRuleWriter::new(limits);
+        writer.append_authored_declaration_list(self)?;
+        Ok(writer.css)
+    }
 }
 
 impl SpecifiedRuleWriter {
