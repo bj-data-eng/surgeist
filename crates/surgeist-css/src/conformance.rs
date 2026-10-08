@@ -701,7 +701,7 @@ const O_VALUES3: CssSpecificationSource = dated_source!(
     CssSpecificationTier::Snapshot2026Official,
     "https://www.w3.org/TR/2024/CRD-css-values-3-20240322/"
 );
-const O_VARIABLES1: CssSpecificationSource = dated_source!(
+pub(crate) const O_VARIABLES1: CssSpecificationSource = dated_source!(
     "O-VARIABLES1",
     "CSS Custom Properties for Cascading Variables",
     "1",

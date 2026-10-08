@@ -8510,6 +8510,17 @@ work limits without spending output bytes. Punctuation costs bytes only.
 
 ## Authored declaration specified output
 
+`CssCustomPropertyName::metadata()` returns the same immutable
+`CssCustomPropertyMetadata` for every validated name in the open custom-property
+family. Its typed accessors expose the selected Variables 1 source and all nine
+intrinsic definition facts, including optional declaration values, applicability
+to all elements and pseudo-elements, inheritance, no percentage basis, the
+post-substitution computed-value contract, grammar order, discrete animation and
+all media. `initial_value()` returns a `CssGuaranteedInvalidInitial` marker;
+valid empty authored tokens remain distinct from an authored `initial` keyword.
+The metadata does not perform substitution or contextual resolution, and custom
+names remain outside the built-in `property_support_metadata` inventory.
+
 `CssDeclaration::to_specified_css` and `to_specified_css_with_limits` serialize
 one retained occurrence as `name: value[ !important];`. Ordinary values dispatch
 directly from the property schema into their owning semantic providers, under

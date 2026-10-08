@@ -7573,9 +7573,23 @@ pub struct surgeist_css::CssCustomPropertyContribution
 impl surgeist_css::CssCustomPropertyContribution
 pub fn surgeist_css::CssCustomPropertyContribution::declaration(&self) -> &surgeist_css::CssCustomDeclaration
 pub const fn surgeist_css::CssCustomPropertyContribution::source(&self) -> &surgeist_css::CssDeclaration
+pub struct surgeist_css::CssCustomPropertyMetadata
+impl surgeist_css::CssCustomPropertyMetadata
+pub const fn surgeist_css::CssCustomPropertyMetadata::accepts_declaration_values(&self) -> bool
+pub const fn surgeist_css::CssCustomPropertyMetadata::allows_empty_value(&self) -> bool
+pub const fn surgeist_css::CssCustomPropertyMetadata::animation_is_discrete(&self) -> bool
+pub const fn surgeist_css::CssCustomPropertyMetadata::applies_to_all_elements_and_pseudo_elements(&self) -> bool
+pub const fn surgeist_css::CssCustomPropertyMetadata::canonical_order_is_grammar_order(&self) -> bool
+pub const fn surgeist_css::CssCustomPropertyMetadata::computed_value_is_tokens_or_guaranteed_invalid(&self) -> bool
+pub const fn surgeist_css::CssCustomPropertyMetadata::has_percentage_basis(&self) -> bool
+pub const fn surgeist_css::CssCustomPropertyMetadata::inherited_by_default(&self) -> bool
+pub const fn surgeist_css::CssCustomPropertyMetadata::initial_value(&self) -> surgeist_css::CssGuaranteedInvalidInitial
+pub const fn surgeist_css::CssCustomPropertyMetadata::source(&self) -> surgeist_css::CssSpecificationSource
+pub const fn surgeist_css::CssCustomPropertyMetadata::supports_all_media(&self) -> bool
 pub struct surgeist_css::CssCustomPropertyName
 impl surgeist_css::CssCustomPropertyName
 pub fn surgeist_css::CssCustomPropertyName::as_str(&self) -> &str
+pub fn surgeist_css::CssCustomPropertyName::metadata(&self) -> &'static surgeist_css::CssCustomPropertyMetadata
 pub fn surgeist_css::CssCustomPropertyName::try_new(name: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
 pub struct surgeist_css::CssCustomPropertyValue
 impl surgeist_css::CssCustomPropertyValue
@@ -8742,6 +8756,7 @@ pub fn surgeist_css::CssGridTrackSizeList::serialize_specified_with_limits(&self
 impl surgeist_css::CssGridTrackSizeList
 pub fn surgeist_css::CssGridTrackSizeList::sizes(&self) -> &[surgeist_css::CssGridTrackSize]
 pub fn surgeist_css::CssGridTrackSizeList::try_new(sizes: alloc::vec::Vec<surgeist_css::CssGridTrackSize>) -> core::option::Option<Self>
+pub struct surgeist_css::CssGuaranteedInvalidInitial
 pub struct surgeist_css::CssHangingPunctuationPropertyValue
 impl surgeist_css::CssHangingPunctuationPropertyValue
 pub fn surgeist_css::CssHangingPunctuationPropertyValue::as_css(&self) -> &str
