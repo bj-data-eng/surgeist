@@ -4238,8 +4238,8 @@ pub enum CssPropertyNameRef<'a> {
 
 /// A case-sensitive custom-property name in the authored CSS syntax phase.
 ///
-/// [`Self::try_new`] accepts one complete authored CSS identifier token beginning with `--`,
-/// including non-ASCII characters and escapes. [`Self::as_str`] returns its decoded semantic
+/// [`Self::try_new`] accepts one complete authored CSS identifier token whose decoded name begins
+/// with `--`, including non-ASCII characters and escapes. [`Self::as_str`] returns its decoded semantic
 /// identity, matching names produced by the stylesheet parser; it does not retain the name's
 /// source escape spelling.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -4252,10 +4252,14 @@ impl CssCustomPropertyName {
     #[must_use]
     pub fn try_new(name: impl Into<String>) -> Option<Self> {
         let authored = name.into();
-        authored.strip_prefix("--")?;
         let mut input = cssparser::ParserInput::new(&authored);
         let mut parser = cssparser::Parser::new(&mut input);
-        let decoded = parser.expect_ident_cloned().ok()?;
+        let cssparser::Token::Ident(decoded) =
+            parser.next_including_whitespace_and_comments().ok()?
+        else {
+            return None;
+        };
+        let decoded = decoded.clone();
         let token_end = parser.position();
         parser.expect_exhausted().ok()?;
         if token_end.byte_index() != authored.len() {
