@@ -5237,7 +5237,9 @@ editions.
 `CssPageSelector::{Left, Right, First, Recto, Verso}` choices, valid declarations in authored
 order, and the parser-produced position. Page bodies accept only `margin` and
 the four margin longhands with CSS2 lengths other than `em` and `ex`,
-percentages, `auto`, zero, and negative values. Known non-margin, unknown, and
+percentages, `auto`, zero, negative values, and symbolic `inherit`. The selected
+CSS2 Page grammar imports this keyword from the physical margin definitions;
+the crate retains it without resolving inheritance. Known non-margin, unknown, and
 invalid margin declarations receive their existing typed declaration
 diagnostics and are dropped individually. Block-form page rules are accepted at
 the stylesheet top level and inside ordinary conditional and layer rule lists.

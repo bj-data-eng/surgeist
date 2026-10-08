@@ -252,6 +252,10 @@ fn is_css2_page_margin_value(parsed: &ParsedDeclaration) -> bool {
     let CssDeclarationBody::Known(known) = &parsed.body else {
         return false;
     };
+    // CSS2 Page imports the physical margin grammars, including inherit.
+    if known.global() == Some(CssGlobalKeyword::Inherit) {
+        return is_page_margin_property(known.property());
+    }
     match known.property_value() {
         Some(CssKnownPropertyValueRef::Margin(value)) => {
             value.value().kind() == CssBoxSideKind::Physical
