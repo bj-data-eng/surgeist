@@ -242,7 +242,6 @@ fn validate_descriptor_root<'i>(
         if matches!(
             token,
             Token::Semicolon
-                | Token::CurlyBracketBlock
                 | Token::CloseCurlyBracket
                 | Token::CloseParenthesis
                 | Token::CloseSquareBracket

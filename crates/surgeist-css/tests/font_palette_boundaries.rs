@@ -1,13 +1,13 @@
-//! The accepted palette contract forbids root descriptor delimiters before
-//! whole-value substitution admission, while nested fallback blocks remain data.
+//! Matched blocks remain declaration-value data under whole-value substitution
+//! admission, including the palette owner's independent var permission.
 use surgeist_css::{
     CssFontPaletteDescriptorKind as Kind, CssFontPaletteDescriptorValue,
-    CssFontPaletteDescriptorValueRef, CssRecoveryAction, CssRule, parse_component_values,
+    CssFontPaletteDescriptorValueRef, CssRule, parse_component_values,
     parse_font_palette_descriptor_value, parse_sheet,
 };
 
 #[test]
-fn root_blocks_are_rejected_before_pending_admission_in_every_descriptor() {
+fn root_matched_blocks_remain_pending_in_every_descriptor() {
     for kind in [Kind::FontFamily, Kind::BasePalette, Kind::OverrideColors] {
         for value in ["{} var(--x)", "env(x) {}", "{var(--x)}"] {
             let source = format!(
@@ -15,37 +15,41 @@ fn root_blocks_are_rejected_before_pending_admission_in_every_descriptor() {
                 kind.css_name()
             );
             let report = parse_sheet(&source);
-            assert!(!report.is_clean(), "{}: {value}", kind.css_name());
+            assert!(
+                report.is_clean(),
+                "{}: {value}: {report:?}",
+                kind.css_name()
+            );
             let [CssRule::FontPaletteValues(rule), CssRule::Style(_)] = report.syntax().rules()
             else {
                 panic!("valid sibling descriptors and following rule must survive");
             };
-            assert_eq!(rule.descriptors().len(), 2);
-            assert_eq!(report.diagnostics().len(), 1);
-            assert_eq!(
-                report.diagnostics()[0].action(),
-                CssRecoveryAction::DropDescriptor
-            );
-            assert_eq!(
-                report.diagnostics()[0]
-                    .error()
-                    .position()
-                    .byte_offset()
-                    .value(),
-                source.find(value).unwrap() + value.find('{').unwrap()
-            );
+            assert_eq!(rule.descriptors().len(), 3);
+            let fragment = parse_font_palette_descriptor_value(value, kind);
             assert!(
-                parse_font_palette_descriptor_value(value, kind)
-                    .syntax()
-                    .is_none()
+                fragment.is_clean(),
+                "{}: {value}: {fragment:?}",
+                kind.css_name()
             );
-            assert!(
-                CssFontPaletteDescriptorValue::try_new(
-                    kind,
-                    parse_component_values(value).unwrap()
-                )
-                .is_err()
-            );
+            let components = parse_component_values(value).unwrap();
+            let constructed =
+                CssFontPaletteDescriptorValue::try_new(kind, components.clone()).unwrap();
+            assert_eq!(constructed.components(), &components);
+            for admitted in [
+                rule.descriptors()[1].value(),
+                fragment.syntax().as_ref().unwrap(),
+                &constructed,
+            ] {
+                assert_eq!(admitted.kind(), kind);
+                assert!(matches!(
+                    admitted.view(),
+                    CssFontPaletteDescriptorValueRef::Pending(_)
+                ));
+                assert_eq!(
+                    admitted.components().serialize().unwrap().as_css().trim(),
+                    value
+                );
+            }
         }
     }
 }

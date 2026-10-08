@@ -205,7 +205,6 @@ fn raw_descriptor_boundaries_reject_annotations_and_delimiters_before_src_recove
     for source in [
         "local(X);",
         "local(X),bad();",
-        "local(X),{}",
         "local(X),}",
         "local(X),)",
         "local(X),]",
@@ -231,7 +230,9 @@ fn raw_descriptor_boundaries_reject_annotations_and_delimiters_before_src_recove
 
 #[test]
 fn src_member_recovery_and_implicit_closures_commit_only_retained_components() {
-    for source in ["local(X),bad()", "local(X),bad("] {
+    // Fonts 4 §4.3.1 validates comma-separated members independently. The
+    // matched block is invalid font-src data, so it is discarded as a member.
+    for source in ["local(X),bad()", "local(X),bad(", "local(X),{}"] {
         let report = parse_font_face_descriptor_value(source, Kind::Src);
         assert_eq!(
             report.syntax(),
@@ -252,6 +253,24 @@ fn src_member_recovery_and_implicit_closures_commit_only_retained_components() {
         );
         assert!(report.into_validation_result().is_err());
     }
+    // Checked construction cannot silently recover that same original input.
+    let source = "local(X),{}";
+    let error = surgeist_css::CssAuthoredFontFaceDescriptorValue::try_from_components(
+        Kind::Src,
+        surgeist_css::parse_component_values(source).unwrap(),
+    )
+    .unwrap_err();
+    assert!(matches!(
+        error.kind(),
+        surgeist_css::CssFontFaceValueErrorKind::Grammar(_)
+    ));
+    let surgeist_css::CssSerializedOrigin::Token(surgeist_css::CssValueOrigin::Parsed(origin)) =
+        error.origin()
+    else {
+        panic!("the failed source member retains its real token origin");
+    };
+    assert_eq!(origin.source().as_str(), source);
+    assert_eq!(origin.span().start().byte_offset().value(), 9);
     for source in ["bad()", "bad("] {
         let report = parse_font_face_descriptor_value(source, Kind::Src);
         assert!(report.syntax().is_none());

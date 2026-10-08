@@ -144,7 +144,7 @@ fn malformed_env_and_mixed_valid_invalid_env_family_do_not_qualify() {
 
 #[test]
 fn importance_and_raw_root_boundaries_are_not_rescued_by_env() {
-    for value in ["env(width)!important", "env(width);", "env(width){}"] {
+    for value in ["env(width)!important", "env(width);"] {
         let raw = parse_font_face_descriptor_value(value, Kind::FontWidth);
         assert!(raw.syntax().is_none(), "{value}: {raw:?}");
         assert!(
@@ -153,6 +153,17 @@ fn importance_and_raw_root_boundaries_are_not_rescued_by_env() {
                 .any(|diagnostic| { diagnostic.action() == CssRecoveryAction::RejectInput })
         );
     }
+    // Matched blocks are declaration-value data under whole env deferral.
+    let raw = parse_font_face_descriptor_value("env(width){}", Kind::FontWidth);
+    assert!(raw.is_clean(), "{raw:?}");
+    let Some(surgeist_css::CssAuthoredFontFaceDescriptorValue::Pending(pending)) = raw.syntax()
+    else {
+        panic!("valid env defers font-width including its matched block");
+    };
+    assert_eq!(
+        pending.components().serialize().unwrap().as_css(),
+        "env(width){}"
+    );
     let source = "@font-face{font-width:env(width)!important;font-display:swap}";
     let sheet = one_font_face(source);
     assert!(!sheet.is_clean());

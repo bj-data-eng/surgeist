@@ -343,7 +343,6 @@ pub(super) fn validate_font_face_descriptor_root<'i>(
         if matches!(
             token,
             Token::Semicolon
-                | Token::CurlyBracketBlock
                 | Token::CloseCurlyBracket
                 | Token::CloseParenthesis
                 | Token::CloseSquareBracket
