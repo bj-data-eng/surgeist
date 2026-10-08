@@ -3186,10 +3186,10 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 789] = [
     CssFeatureMetadata::partial(
         "required.value.environment-substitution",
         CssFeatureKind::Value,
-        "env() in authored property, font-palette and font-face descriptor values",
+        "env() in authored property and selected font-palette, font-face, counter-style, font-feature-values and color-profile descriptor values",
         D_ENV1,
         "#funcdef-env,#env-function,#env-in-shorthands",
-        "Known-property, font-palette and recognized font-face descriptor values qualify for pending substitution through valid env() functions, including exact integer indices, symbolic integer calculations and token-preserving fallbacks. Strict replacement reentry rejects residual env().",
+        "Known-property values, selected font-palette and recognized font-face descriptors, all ten counter-style descriptors, font-feature-values font-display and named values in all seven subsidiary blocks, and color-profile descriptors qualify for pending substitution through valid env() functions, including exact integer indices, symbolic integer calculations and token-preserving fallbacks. Strict replacement reentry rejects residual env().",
         "Other Env1 contexts and environment lookup/substitution execution remain outside this authored subset; this record does not select the complete Env1 module.",
     ),
     CssFeatureMetadata::partial(

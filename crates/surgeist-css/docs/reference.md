@@ -1576,9 +1576,9 @@ Parsed and checked construction preserve the same token boundaries, origins and
 importance. Size and scroll-state query operands retain their existing admission
 rules. The public `D-ENV1` source uses `LaterStandard`, whose catalog meaning is a
 standards-track source outside the selected whole-module profile. Its shared-value
-record remains partial for other Env1 contexts and execution; the selected
-font-palette descriptor consumer is included. This does not add Env1 as a
-selected whole module.
+record includes the selected font-palette, font-face, counter-style,
+font-feature-values and color-profile descriptor consumers. It remains partial
+for other Env1 contexts and execution; Env1 is not a selected whole module.
 
 The selected descriptor contexts also defer the whole authored declaration for a
 qualifying `env()` family: all ten Counter Styles descriptors, outer
