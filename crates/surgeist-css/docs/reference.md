@@ -1828,8 +1828,9 @@ invalidation; cross-crate composition remains root-owned.
 
 The [how-to guide](how-to.md#inspect-a-known-declaration) shows property/value
 inspection and exact authored text. Each ordinary wrapper exposes its sole
-checked semantic value through one intentional accessor. `CssImportance` and `CssSupportStatus` are closed public enums;
-other public enums are non-exhaustive, so downstream matches require a wildcard.
+checked semantic value through one intentional accessor. Downstream matches of
+enums marked `#[non_exhaustive]` require a wildcard arm. Closed enums such as
+`CssImportance` and `CssSupportStatus` remain exhaustively matchable.
 The [authored-value explanation](explanation.md#symbolic-values-and-compatibility)
 describes these symbolic boundaries.
 

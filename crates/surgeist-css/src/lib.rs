@@ -189,10 +189,10 @@
 //! [`CssOverflowPropertyValue::value`] exposes [`CssOverflowValue`], retaining
 //! the authored one- or two-axis form.
 //!
-//! [`CssImportance`] and [`CssSupportStatus`] are exactly the two closed public
-//! enums. All other public enums are non-exhaustive and downstream matches must
-//! include a wildcard. This inspection model does not change parsing, recovery,
-//! or diagnostics.
+//! Public enums marked `#[non_exhaustive]` require a wildcard arm in downstream
+//! matches. Closed enums, including [`CssImportance`] and [`CssSupportStatus`],
+//! remain exhaustively matchable. This inspection model does not change parsing,
+//! recovery, or diagnostics.
 //!
 //! # Typed authored calculations
 //!
@@ -1292,8 +1292,8 @@
 //! Byte offsets index the original UTF-8 input. Lines and columns are zero-based,
 //! and columns count UTF-16 code units. Display and debug prose are for people;
 //! control flow should match typed variants and include a wildcard for every
-//! non-exhaustive enum. [`CssImportance`] and [`CssSupportStatus`] are the two
-//! deliberately closed enums and remain exhaustively matchable.
+//! non-exhaustive enum. Closed enums such as [`CssImportance`] and
+//! [`CssSupportStatus`] remain exhaustively matchable.
 //!
 //! Evolving authored-syntax enums intentionally require a wildcard in external
 //! matches. These representative exhaustive matches therefore do not compile:
