@@ -310,25 +310,32 @@ fn media_uses_literal_lfs_empty_two_lfs_and_prefix_only_multilevel_indentation()
 
 #[test]
 fn import_retains_selected_url_layer_supports_media_and_namespace_escape() {
-    for (source, expected) in [
-        ("@import 'theme.css';", "@import 'theme.css';"),
+    for (source, expected, compact) in [
+        (
+            "@import 'theme.css';",
+            "@import url(\"theme.css\");",
+            "@import 'theme.css';",
+        ),
         (
             "@import url(theme.css) layer(theme) supports(display:grid) PRINT;",
             "@import url(theme.css) layer(theme) supports(display:grid) print;",
+            "@import url(theme.css) layer(theme) supports(display:grid) print;",
         ),
         (
+            "@import 'x' layer supports(display:grid) print;",
             "@import 'x' layer supports(display:grid) print;",
             "@import 'x' layer supports(display:grid) print;",
         ),
         (
             r#"@namespace \31  'urn:x';"#,
             r#"@namespace \31  url("urn:x");"#,
+            r#"@namespace \31  url("urn:x");"#,
         ),
     ] {
         let value = rule(source);
         let before = value.clone();
         assert_eq!(value.serialize_cssom().unwrap(), expected);
-        assert_eq!(value.to_specified_css().unwrap(), expected);
+        assert_eq!(value.to_specified_css().unwrap(), compact);
         assert_eq!(value, before);
     }
 }

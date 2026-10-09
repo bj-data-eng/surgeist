@@ -227,6 +227,61 @@ impl CssImportRule {
         Ok(())
     }
 
+    /// CSSOM WD20210826 defines plain import locations as serialized URLs.
+    /// Modern clauses and extended URL forms keep their retained-output contract
+    /// until their complete literal wrapper has an independently selected source.
+    pub(crate) fn append_cssom(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> Result<(), crate::query_rule_serialization::QueryRuleSerializationError> {
+        let location = match self.target() {
+            CssImportTarget::String(value) => value.as_str(),
+            CssImportTarget::Url(value)
+                if value.url().function() == CssUrlFunction::Url
+                    && value.url().modifiers().is_empty() =>
+            {
+                value.as_str()
+            }
+            _ => return self.append_specified(&mut writer.context, &mut writer.css),
+        };
+        if self.layer().is_some() || self.supports().is_some() {
+            return self.append_specified(&mut writer.context, &mut writer.css);
+        }
+        // Charge retained syntax rather than a newly manufactured URL graph.
+        crate::component_values::charge_specified_components(
+            &mut writer.context,
+            std::slice::from_ref(&self.syntax.prelude.target),
+        )?;
+        if let Some(media) = self.media() {
+            media.charge_cssom(&mut writer.context)?;
+        }
+        if writer.context.output_suppressed() {
+            return Ok(());
+        }
+        let deep = self
+            .media()
+            .is_some_and(|media| media.queries().iter().any(crate::media::query_is_deep));
+        crate::media::with_media_stack(deep, || {
+            // Reuse clause/media interpretation probes even when the URL target
+            // itself has been normalized. Scratch stays within remaining bytes.
+            let protect = self.import_protection(
+                writer.context.remaining_bytes(),
+                crate::media::emit_query_cssom,
+            )?;
+            writer.append("@import url(")?;
+            writer.append_string(location)?;
+            writer.append(")")?;
+            let (tail, _) = self.import_tail(
+                protect,
+                writer.context.remaining_bytes(),
+                crate::media::emit_query_cssom,
+            )?;
+            writer.append(tail.as_css())?;
+            writer.append(";")?;
+            Ok(())
+        })
+    }
+
     fn serialize_import(
         &self,
         max_css_bytes: usize,

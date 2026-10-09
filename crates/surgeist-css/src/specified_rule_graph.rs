@@ -222,7 +222,11 @@ impl SpecifiedRuleWriter {
                                 }
                                 CssRule::Import(rule) => {
                                     self.node()?;
-                                    rule.append_specified(&mut self.context, &mut self.css)?;
+                                    if format == Format::Cssom {
+                                        rule.append_cssom(self)?;
+                                    } else {
+                                        rule.append_specified(&mut self.context, &mut self.css)?;
+                                    }
                                 }
                                 CssRule::LayerStatement(rule) => {
                                     if format == Format::Cssom {
