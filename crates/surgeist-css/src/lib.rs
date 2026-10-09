@@ -1791,6 +1791,7 @@ pub use speech::{
 };
 mod image_1d;
 mod text_alignment;
+mod text_box;
 mod text_controls;
 mod text_decoration;
 mod text_spacing;

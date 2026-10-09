@@ -105,6 +105,9 @@ pub enum CssSpecificationTier {
     Snapshot2026Stable,
     /// An interoperability source preserved by the Snapshot 2026 profile.
     Snapshot2026Interop,
+    /// A named feature selected by Snapshot 2026 section 4, without selecting
+    /// its containing pre-CR module as a whole.
+    Snapshot2026PreCrException,
     /// A deliberately selected Surgeist extension or repository baseline.
     SurgeistExtension,
     /// A standards-track source outside the selected profile.
@@ -1211,6 +1214,16 @@ profile_source!(
     CssSpecificationTier::SurgeistExtension,
     "https://www.w3.org/TR/2026/WD-css-sizing-4-20260904/"
 );
+// Snapshot §4 selects only the text-box family. Imported <text-edge> grammar
+// does not select line-fit-edge or the whole Inline Layout module.
+profile_source!(
+    F_INLINE3_20241218,
+    "F-INLINE3-20241218",
+    "CSS Inline Layout",
+    "3",
+    CssSpecificationTier::Snapshot2026PreCrException,
+    "https://www.w3.org/TR/2024/WD-css-inline-3-20241218/"
+);
 profile_source!(
     X_TEXT4,
     "X-TEXT4",
@@ -1399,6 +1412,7 @@ static SPECIFICATION_SOURCES: &[CssSpecificationSource] = &[
     X_SIZING4,
     X_SIZING4_20260904,
     X_TEXT4,
+    F_INLINE3_20241218,
     X_TEXTDECOR4,
     X_UI4,
     X_IMAGES4_20250930,
@@ -2685,6 +2699,11 @@ const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
         | CssKnownProperty::TextSpacingTrim
         | CssKnownProperty::TextSpacing
         | CssKnownProperty::HangingPunctuation => X_TEXT4,
+        // §6.3's normative inheritance table/index prevails over its note;
+        // §6.1 omitted trim follows editorial correction 97441f74 / PR12765.
+        CssKnownProperty::TextBox
+        | CssKnownProperty::TextBoxTrim
+        | CssKnownProperty::TextBoxEdge => F_INLINE3_20241218,
         CssKnownProperty::TextDecoration
         | CssKnownProperty::TextDecorationLine
         | CssKnownProperty::TextDecorationColor
@@ -2963,7 +2982,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 790] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 793] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -5511,6 +5530,21 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 790] = [
         CssKnownProperty::TextSpacingTrim,
         "text-spacing-trim",
         "ext.property.text-spacing-trim"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::TextBoxTrim,
+        "text-box-trim",
+        "official.property.text-box-trim"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::TextBoxEdge,
+        "text-box-edge",
+        "official.property.text-box-edge"
+    ),
+    complete_property_feature!(
+        CssKnownProperty::TextBox,
+        "text-box",
+        "official.property.text-box"
     ),
     complete_property_feature!(
         CssKnownProperty::TextSpacing,

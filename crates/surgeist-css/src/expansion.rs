@@ -85,6 +85,21 @@ pub(crate) fn white_space_trim(value: &CssWhiteSpace) -> Option<CssWhiteSpaceTri
     }
 }
 
+// Inline3 §6.1's noninitial omitted trim is explicitly projected, rather than
+// requesting the longhand's `none` initial. PR12765 corrects its printed name.
+pub(crate) fn text_box_trim(value: &CssTextBox) -> Option<CssTextBoxTrim> {
+    Some(match value {
+        CssTextBox::Normal => CssTextBoxTrim::None,
+        CssTextBox::Components(value) => value.trim().unwrap_or(CssTextBoxTrim::TrimBoth),
+    })
+}
+pub(crate) fn text_box_edge(value: &CssTextBox) -> Option<CssTextBoxEdge> {
+    match value {
+        CssTextBox::Normal => Some(CssTextBoxEdge::Auto),
+        CssTextBox::Components(value) => value.edge(),
+    }
+}
+
 // Text4 spacing has exactly two settable terminals; whole-member omissions
 // request the terminal's shared intrinsic normal initial.
 pub(crate) fn text_spacing_trim(value: &CssTextSpacing) -> Option<CssTextSpacingTrim> {

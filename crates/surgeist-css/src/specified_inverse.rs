@@ -1536,6 +1536,17 @@ pub(crate) fn reconstruct(
                     CssTextDecorationSkipSelf::Objects => CssTextDecorationSkip::Auto,
                 })
             }
+            CssKnownProperty::TextBox => {
+                let trim = val!(values, TextBoxTrim);
+                let edge = val!(values, TextBoxEdge);
+                Inverse::TextBox(
+                    if trim == CssTextBoxTrim::None && edge == CssTextBoxEdge::Auto {
+                        CssTextBox::Normal
+                    } else {
+                        CssTextBox::Components(CssTextBoxValues::try_new(Some(trim), Some(edge))?)
+                    },
+                )
+            }
             CssKnownProperty::TextSpacing => {
                 let trim = val!(values, TextSpacingTrim);
                 let autospace = val!(values, TextAutospace);

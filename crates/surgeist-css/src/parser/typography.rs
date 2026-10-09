@@ -1701,6 +1701,73 @@ pub(super) fn parse_text_autospace<'i, 't>(
     }
     parse_autospace(input).map(CssTextAutospace::Autospace)
 }
+pub(super) fn parse_text_box_trim<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> std::result::Result<CssTextBoxTrim, ParseError<'i, Error>> {
+    let ident = input.expect_ident_cloned().map_err(basic)?;
+    match_ignore_ascii_case! { &ident,
+        "none" => Ok(CssTextBoxTrim::None),
+        "trim-start" => Ok(CssTextBoxTrim::TrimStart),
+        "trim-end" => Ok(CssTextBoxTrim::TrimEnd),
+        "trim-both" => Ok(CssTextBoxTrim::TrimBoth),
+        _ => Err(unsupported_value(input, None, "a text-box-trim keyword")),
+    }
+}
+fn parse_text_under_edge<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> std::result::Result<CssTextUnderEdge, ParseError<'i, Error>> {
+    let ident = input.expect_ident_cloned().map_err(basic)?;
+    match_ignore_ascii_case! { &ident,
+        "text" => Ok(CssTextUnderEdge::Text),
+        "ideographic" => Ok(CssTextUnderEdge::Ideographic),
+        "ideographic-ink" => Ok(CssTextUnderEdge::IdeographicInk),
+        "alphabetic" => Ok(CssTextUnderEdge::Alphabetic),
+        _ => Err(unsupported_value(input, None, "an under text edge")),
+    }
+}
+pub(super) fn parse_text_box_edge<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> std::result::Result<CssTextBoxEdge, ParseError<'i, Error>> {
+    let ident = input.expect_ident_cloned().map_err(basic)?;
+    if ident.eq_ignore_ascii_case("auto") {
+        return Ok(CssTextBoxEdge::Auto);
+    }
+    let (over, single) = match_ignore_ascii_case! { &ident,
+        "text" => (CssTextOverEdge::Text, Some(CssTextEdgeMetric::Text)),
+        "ideographic" => (CssTextOverEdge::Ideographic, Some(CssTextEdgeMetric::Ideographic)),
+        "ideographic-ink" => (CssTextOverEdge::IdeographicInk, Some(CssTextEdgeMetric::IdeographicInk)),
+        "cap" => (CssTextOverEdge::Cap, None),
+        "ex" => (CssTextOverEdge::Ex, None),
+        _ => return Err(unsupported_value(input, None, "an over text edge or auto")),
+    };
+    if let Ok(under) = input.try_parse(parse_text_under_edge) {
+        return Ok(CssTextBoxEdge::Edge(CssTextEdge::Pair { over, under }));
+    }
+    single
+        .map(|metric| CssTextBoxEdge::Edge(CssTextEdge::Single(metric)))
+        .ok_or_else(|| {
+            unsupported_value(input, None, "an explicit under text edge after cap or ex")
+        })
+}
+pub(super) fn parse_text_box<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> std::result::Result<CssTextBox, ParseError<'i, Error>> {
+    if input
+        .try_parse(|input| input.expect_ident_matching("normal"))
+        .is_ok()
+    {
+        return Ok(CssTextBox::Normal);
+    }
+    let mut trim = input.try_parse(parse_text_box_trim).ok();
+    let edge = input.try_parse(parse_text_box_edge).ok();
+    if trim.is_none() {
+        trim = input.try_parse(parse_text_box_trim).ok();
+    }
+    CssTextBoxValues::try_new(trim, edge)
+        .map(CssTextBox::Components)
+        .ok_or_else(|| unsupported_value(input, None, "a nonempty text-box value"))
+}
+
 pub(super) fn parse_text_spacing_trim<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssTextSpacingTrim, ParseError<'i, Error>> {

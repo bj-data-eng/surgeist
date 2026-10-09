@@ -2644,6 +2644,9 @@ pub surgeist_css::CssKnownProperty::TextAlign
 pub surgeist_css::CssKnownProperty::TextAlignAll
 pub surgeist_css::CssKnownProperty::TextAlignLast
 pub surgeist_css::CssKnownProperty::TextAutospace
+pub surgeist_css::CssKnownProperty::TextBox
+pub surgeist_css::CssKnownProperty::TextBoxEdge
+pub surgeist_css::CssKnownProperty::TextBoxTrim
 pub surgeist_css::CssKnownProperty::TextCombineUpright
 pub surgeist_css::CssKnownProperty::TextDecoration
 pub surgeist_css::CssKnownProperty::TextDecorationColor
@@ -3105,6 +3108,9 @@ pub surgeist_css::CssKnownPropertyValueRef::TextAlign(&'a surgeist_css::CssTextA
 pub surgeist_css::CssKnownPropertyValueRef::TextAlignAll(&'a surgeist_css::CssTextAlignAllPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextAlignLast(&'a surgeist_css::CssTextAlignLastPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextAutospace(&'a surgeist_css::CssTextAutospacePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::TextBox(&'a surgeist_css::CssTextBoxPropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::TextBoxEdge(&'a surgeist_css::CssTextBoxEdgePropertyValue)
+pub surgeist_css::CssKnownPropertyValueRef::TextBoxTrim(&'a surgeist_css::CssTextBoxTrimPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextCombineUpright(&'a surgeist_css::CssTextCombineUprightPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextDecoration(&'a surgeist_css::CssTextDecorationPropertyValue)
 pub surgeist_css::CssKnownPropertyValueRef::TextDecorationColor(&'a surgeist_css::CssTextDecorationColorPropertyValue)
@@ -3595,6 +3601,8 @@ pub surgeist_css::CssLonghandValueRef::TableLayout(&'a surgeist_css::CssTableLay
 pub surgeist_css::CssLonghandValueRef::TextAlignAll(&'a surgeist_css::CssTextAlignAllValue)
 pub surgeist_css::CssLonghandValueRef::TextAlignLast(&'a surgeist_css::CssTextAlignLastValue)
 pub surgeist_css::CssLonghandValueRef::TextAutospace(&'a surgeist_css::CssTextAutospace)
+pub surgeist_css::CssLonghandValueRef::TextBoxEdge(&'a surgeist_css::CssTextBoxEdge)
+pub surgeist_css::CssLonghandValueRef::TextBoxTrim(&'a surgeist_css::CssTextBoxTrim)
 pub surgeist_css::CssLonghandValueRef::TextCombineUpright(&'a surgeist_css::CssTextCombineUpright)
 pub surgeist_css::CssLonghandValueRef::TextDecorationColor(&'a surgeist_css::CssColor)
 pub surgeist_css::CssLonghandValueRef::TextDecorationLine(&'a surgeist_css::CssTextDecorationLine)
@@ -4952,6 +4960,7 @@ pub surgeist_css::CssSpeakAsPunctuation::None
 pub surgeist_css::CssSpecificationTier::LaterStandard
 pub surgeist_css::CssSpecificationTier::Snapshot2026Interop
 pub surgeist_css::CssSpecificationTier::Snapshot2026Official
+pub surgeist_css::CssSpecificationTier::Snapshot2026PreCrException
 pub surgeist_css::CssSpecificationTier::Snapshot2026Reliable
 pub surgeist_css::CssSpecificationTier::Snapshot2026Stable
 pub surgeist_css::CssSpecificationTier::SurgeistExtension
@@ -5166,6 +5175,26 @@ pub surgeist_css::CssTextAutospace::Normal
 impl surgeist_css::CssTextAutospace
 pub fn surgeist_css::CssTextAutospace::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssTextAutospace::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssTextBox
+pub surgeist_css::CssTextBox::Components(surgeist_css::CssTextBoxValues)
+pub surgeist_css::CssTextBox::Normal
+impl surgeist_css::CssTextBox
+pub fn surgeist_css::CssTextBox::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextBox::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssTextBoxEdge
+pub surgeist_css::CssTextBoxEdge::Auto
+pub surgeist_css::CssTextBoxEdge::Edge(surgeist_css::CssTextEdge)
+impl surgeist_css::CssTextBoxEdge
+pub fn surgeist_css::CssTextBoxEdge::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextBoxEdge::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssTextBoxTrim
+pub surgeist_css::CssTextBoxTrim::None
+pub surgeist_css::CssTextBoxTrim::TrimBoth
+pub surgeist_css::CssTextBoxTrim::TrimEnd
+pub surgeist_css::CssTextBoxTrim::TrimStart
+impl surgeist_css::CssTextBoxTrim
+pub fn surgeist_css::CssTextBoxTrim::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextBoxTrim::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssTextCombineUpright
 pub surgeist_css::CssTextCombineUpright::All
 pub surgeist_css::CssTextCombineUpright::Digits(core::option::Option<surgeist_css::CssTextCombineDigitCount>)
@@ -5245,6 +5274,24 @@ pub fn surgeist_css::CssTextDecorationThickness::serialize_specified(&self) -> c
 pub fn surgeist_css::CssTextDecorationThickness::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl core::cmp::PartialEq for surgeist_css::CssTextDecorationThickness
 pub fn surgeist_css::CssTextDecorationThickness::eq(&self, other: &Self) -> bool
+#[non_exhaustive] pub enum surgeist_css::CssTextEdge
+pub surgeist_css::CssTextEdge::Pair
+pub surgeist_css::CssTextEdge::Pair::over: surgeist_css::CssTextOverEdge
+pub surgeist_css::CssTextEdge::Pair::under: surgeist_css::CssTextUnderEdge
+pub surgeist_css::CssTextEdge::Single(surgeist_css::CssTextEdgeMetric)
+impl surgeist_css::CssTextEdge
+pub const fn surgeist_css::CssTextEdge::over(&self) -> surgeist_css::CssTextOverEdge
+pub const fn surgeist_css::CssTextEdge::under(&self) -> surgeist_css::CssTextUnderEdge
+impl surgeist_css::CssTextEdge
+pub fn surgeist_css::CssTextEdge::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextEdge::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssTextEdgeMetric
+pub surgeist_css::CssTextEdgeMetric::Ideographic
+pub surgeist_css::CssTextEdgeMetric::IdeographicInk
+pub surgeist_css::CssTextEdgeMetric::Text
+impl surgeist_css::CssTextEdgeMetric
+pub fn surgeist_css::CssTextEdgeMetric::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextEdgeMetric::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssTextEmphasisFill
 pub surgeist_css::CssTextEmphasisFill::Filled
 pub surgeist_css::CssTextEmphasisFill::Open
@@ -5302,6 +5349,15 @@ pub surgeist_css::CssTextOrientation::Upright
 impl surgeist_css::CssTextOrientation
 pub fn surgeist_css::CssTextOrientation::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssTextOrientation::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssTextOverEdge
+pub surgeist_css::CssTextOverEdge::Cap
+pub surgeist_css::CssTextOverEdge::Ex
+pub surgeist_css::CssTextOverEdge::Ideographic
+pub surgeist_css::CssTextOverEdge::IdeographicInk
+pub surgeist_css::CssTextOverEdge::Text
+impl surgeist_css::CssTextOverEdge
+pub fn surgeist_css::CssTextOverEdge::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextOverEdge::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssTextOverflow
 pub surgeist_css::CssTextOverflow::Clip
 pub surgeist_css::CssTextOverflow::Ellipsis
@@ -5355,6 +5411,14 @@ pub fn surgeist_css::CssTextTransform::serialize_specified_with_limits(&self, li
 pub surgeist_css::CssTextTransformCase::Capitalize
 pub surgeist_css::CssTextTransformCase::Lowercase
 pub surgeist_css::CssTextTransformCase::Uppercase
+#[non_exhaustive] pub enum surgeist_css::CssTextUnderEdge
+pub surgeist_css::CssTextUnderEdge::Alphabetic
+pub surgeist_css::CssTextUnderEdge::Ideographic
+pub surgeist_css::CssTextUnderEdge::IdeographicInk
+pub surgeist_css::CssTextUnderEdge::Text
+impl surgeist_css::CssTextUnderEdge
+pub fn surgeist_css::CssTextUnderEdge::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextUnderEdge::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssTextUnderlineOffset
 pub surgeist_css::CssTextUnderlineOffset::Auto
 pub surgeist_css::CssTextUnderlineOffset::Length(surgeist_css::CssTextUnderlineOffsetLength)
@@ -11670,6 +11734,26 @@ pub struct surgeist_css::CssTextAutospacePropertyValue
 impl surgeist_css::CssTextAutospacePropertyValue
 pub fn surgeist_css::CssTextAutospacePropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssTextAutospacePropertyValue::value(&self) -> &surgeist_css::CssTextAutospace
+pub struct surgeist_css::CssTextBoxEdgePropertyValue
+impl surgeist_css::CssTextBoxEdgePropertyValue
+pub fn surgeist_css::CssTextBoxEdgePropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssTextBoxEdgePropertyValue::value(&self) -> &surgeist_css::CssTextBoxEdge
+pub struct surgeist_css::CssTextBoxPropertyValue
+impl surgeist_css::CssTextBoxPropertyValue
+pub fn surgeist_css::CssTextBoxPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssTextBoxPropertyValue::value(&self) -> &surgeist_css::CssTextBox
+pub struct surgeist_css::CssTextBoxTrimPropertyValue
+impl surgeist_css::CssTextBoxTrimPropertyValue
+pub fn surgeist_css::CssTextBoxTrimPropertyValue::as_css(&self) -> &str
+pub const fn surgeist_css::CssTextBoxTrimPropertyValue::value(&self) -> &surgeist_css::CssTextBoxTrim
+pub struct surgeist_css::CssTextBoxValues
+impl surgeist_css::CssTextBoxValues
+pub const fn surgeist_css::CssTextBoxValues::edge(&self) -> core::option::Option<surgeist_css::CssTextBoxEdge>
+pub const fn surgeist_css::CssTextBoxValues::trim(&self) -> core::option::Option<surgeist_css::CssTextBoxTrim>
+pub const fn surgeist_css::CssTextBoxValues::try_new(trim: core::option::Option<surgeist_css::CssTextBoxTrim>, edge: core::option::Option<surgeist_css::CssTextBoxEdge>) -> core::option::Option<Self>
+impl surgeist_css::CssTextBoxValues
+pub fn surgeist_css::CssTextBoxValues::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssTextBoxValues::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssTextCombineDigitCount
 impl surgeist_css::CssTextCombineDigitCount
 pub const fn surgeist_css::CssTextCombineDigitCount::calculation(&self) -> core::option::Option<&surgeist_css::CssIntegerCalculation>

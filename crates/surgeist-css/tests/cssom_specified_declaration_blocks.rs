@@ -535,7 +535,7 @@ fn every_supported_finite_shorthand_uses_its_own_independent_inverse_literal() {
         }
     }
     assert_eq!(
-        checked, 81,
+        checked, 82,
         "complete independently authored finite family inventory"
     );
     assert!(

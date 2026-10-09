@@ -7779,6 +7779,56 @@ Behavioral evidence is in
 and the crate-private `specified_provider_composition_tests` module, alongside
 the existing owning providers' public serialization suites.
 
+## Authored text-box trimming values
+
+Surgeist implements the three text-box properties selected by
+[CSS Snapshot 2026 §4](https://www.w3.org/TR/2026/NOTE-css-2026-20260622/#CR-exceptions)
+from [Inline Layout 3, 2024-12-18](https://www.w3.org/TR/2024/WD-css-inline-3-20241218/#text-box-shorthand).
+The source catalog records this bounded selection as `F-INLINE3-20241218`, with
+the `Snapshot2026PreCrException` tier. This selects the authored family and its
+imported `<text-edge>` grammar; it does not select the entire Inline module.
+
+`text-box-trim` accepts none, trim-start, trim-end and trim-both, with initial
+none and no default inheritance. `text-box-edge` accepts symbolic auto or a
+text-edge metric, with initial auto and default inheritance. Inheritance follows
+the pinned §6.3 normative property table, property index and change log. The
+contrary noninheritance note is informative and remains visible in the
+[original local source](../../../references/css-inline-3--WD-css-inline-3-20241218--a73a73a45bf5.md#text-box-edge).
+
+`CssTextEdge::Single` admits only text, ideographic or ideographic-ink through
+`CssTextEdgeMetric`. `CssTextEdge::Pair` uses distinct `CssTextOverEdge` and
+`CssTextUnderEdge` roles: the over role additionally permits cap/ex, and the
+under role additionally permits alphabetic. Single cap, ex or alphabetic
+values reject. An explicit equal pair keeps its two authored tokens.
+`CssTextBoxEdge::Auto` stays unresolved; its eventual line-fit-edge reference,
+font metrics, trimming and fragmentation belong downstream.
+
+`text-box` accepts exclusive normal or complete trim/edge constituents in
+either order. `CssTextBox::Components` wraps private `CssTextBoxValues` fields;
+`try_new(trim, edge)` rejects two absent slots and preserves either omission.
+Canonical specified output puts trim before edge, without filling omitted
+slots or collapsing an explicit pair. A trim keyword cannot split an edge pair.
+Expansion contributes TextBoxTrim then TextBoxEdge, with no reset-only members:
+normal contributes none/auto, omitted edge contributes auto, and omitted trim
+contributes trim-both. The omitted-trim value applies the documented
+[CSSWG editorial correction 97441f74 / PR12765](https://github.com/w3c/csswg-drafts/commit/97441f74beb997a89accfc42832399311d40d79a)
+to the historical printed “both”; `both` is not an authored alias.
+
+The generic parser/check fronts share the same owner. Whole CSS-wide values
+project to both shorthand members. Pending substitutions retain one original
+occurrence until strict whole-value reentry succeeds, preserving importance
+and the replacement's origins; residual substitutions and invalid replacements
+fail atomically and can be retried. Normalization preserves order and diagnostic
+provenance. Specified providers share cumulative node/byte budgets, charging
+one node per emitted keyword. CSSOM inversion reconstructs exact typed roles
+and preserves metric arity, using normal for the none/auto pair.
+
+Behavioral evidence is in
+[`text_box_authored_contract.rs`](../tests/text_box_authored_contract.rs) and
+[`text_box_models.rs`](../tests/text_box_models.rs). The shared handwritten
+[property records](../tests/common/property_expectations/records.rs) provide
+the three catalog, metadata, wrapper and inverse expectations.
+
 ## Authored wrapping and whitespace
 
 The selected [Text 4 draft (2026-08-14)](https://www.w3.org/TR/2026/WD-css-text-4-20260814/)

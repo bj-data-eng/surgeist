@@ -2675,6 +2675,30 @@ property_records! {
         dispatch: "replace punctuation ideograph-alpha",
         wrapper: yes,
     }
+    // Snapshot2026 §4 selects Inline3 WD20241218 §6.1–6.3 only; §5.2
+    // contributes exact <text-edge> grammar. Normative edge inheritance is yes.
+    TextBox, "text-box" {
+        metadata: shorthand([TextBoxTrim, TextBoxEdge], []),
+        catalog: complete_grammar_catalog!("official.property.text-box", "cap alphabetic trim-end", rejected("both")),
+        source: "F-INLINE3-20241218",
+        dispatch: "cap alphabetic trim-end",
+        wrapper: yes,
+        inverse: ("normal", "normal"),
+    }
+    TextBoxEdge, "text-box-edge" {
+        metadata: longhand(true, |v| assert_eq!(*v, CssTextBoxEdge::Auto)),
+        catalog: complete_grammar_catalog!("official.property.text-box-edge", "cap alphabetic", rejected("cap")),
+        source: "F-INLINE3-20241218",
+        dispatch: "cap alphabetic",
+        wrapper: yes,
+    }
+    TextBoxTrim, "text-box-trim" {
+        metadata: longhand(false, |v| assert_eq!(*v, CssTextBoxTrim::None)),
+        catalog: complete_grammar_catalog!("official.property.text-box-trim", "trim-both", rejected("both")),
+        source: "F-INLINE3-20241218",
+        dispatch: "trim-both",
+        wrapper: yes,
+    }
     TextCombineUpright, "text-combine-upright" {
         metadata: longhand(true, |v| assert_eq!(v, &CssTextCombineUpright::None)),
         catalog: grammar_catalog!("official.property.text-combine-upright", "all", rejected("sideways")),

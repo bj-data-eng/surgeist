@@ -16,6 +16,7 @@ pub(crate) use crate::media_features::*;
 pub(crate) use crate::numeric::*;
 pub use crate::page_line_minimum::CssPageLineMinimum;
 pub use crate::rotate::{CssRotate, CssRotateAxis, CssRotateValues};
+pub use crate::text_box::*;
 pub use crate::text_controls::*;
 pub use crate::text_decoration::*;
 use crate::{
