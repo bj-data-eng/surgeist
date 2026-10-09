@@ -410,17 +410,12 @@ pub(super) fn parse_border_image_slice<'i, 't>(
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorderImageSlice, ParseError<'i, Error>> {
     let mut values = Vec::new();
-    let mut fill = false;
+    let mut fill = input
+        .try_parse(|input| input.expect_ident_matching("fill"))
+        .is_ok();
 
+    // The repeated numeric group is one && component; fill cannot divide it.
     while !input.is_exhausted() && values.len() < 4 {
-        if !fill
-            && input
-                .try_parse(|input| input.expect_ident_matching("fill"))
-                .is_ok()
-        {
-            fill = true;
-            continue;
-        }
         match input.try_parse(|input| parse_border_image_slice_component(input, numeric)) {
             Ok(value) => values.push(value),
             Err(_) => break,
@@ -592,7 +587,7 @@ pub(super) fn parse_border_image<'i, 't>(
             continue;
         }
         if slice.is_none() && next_starts_border_image_slice(input) {
-            slice = Some(parse_border_image_slice_prefix(input, numeric)?);
+            slice = Some(parse_border_image_slice(input, numeric)?);
             if input.try_parse(|input| input.expect_delim('/')).is_ok() {
                 if input.try_parse(|input| input.expect_delim('/')).is_ok() {
                     outset = Some(parse_border_image_outset_prefix(input, numeric)?);
@@ -619,34 +614,6 @@ pub(super) fn parse_border_image<'i, 't>(
     CssBorderImage::try_new(source, slice, width, outset, repeat).ok_or_else(|| {
         unsupported_value(input, None, "border-image shorthand is missing a component")
     })
-}
-
-fn parse_border_image_slice_prefix<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssBorderImageSlice, ParseError<'i, Error>> {
-    let mut values = Vec::new();
-    let mut fill = false;
-    while values.len() < 4 && next_starts_border_image_slice(input) {
-        if !fill
-            && input
-                .try_parse(|input| input.expect_ident_matching("fill"))
-                .is_ok()
-        {
-            fill = true;
-        } else {
-            values.push(parse_border_image_slice_component(input, numeric)?);
-        }
-    }
-    if !fill
-        && input
-            .try_parse(|input| input.expect_ident_matching("fill"))
-            .is_ok()
-    {
-        fill = true;
-    }
-    CssBorderImageSlice::try_new(values, fill)
-        .ok_or_else(|| unsupported_value(input, None, "border-image-slice is missing a value"))
 }
 
 pub(super) fn parse_border_image_width_prefix<'i, 't>(
