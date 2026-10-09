@@ -79,6 +79,7 @@ fn public_surface_exposes_checked_counter_style_descriptor_models() {
             .unwrap()
             .ordinary_pad()
             .minimum_length()
+            .literal()
             .numeric()
             .representation(),
         "3"
@@ -98,6 +99,7 @@ fn public_surface_exposes_checked_counter_style_descriptor_models() {
             .ordinary_additive_symbols()
             .tuples()[0]
             .weight()
+            .literal()
             .numeric()
             .representation(),
         "100"

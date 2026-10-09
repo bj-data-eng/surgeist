@@ -325,7 +325,10 @@ fn programmatic_ordinary_values_and_mixed_index_replacements_do_not_fabricate_ra
     let CounterView::Pad(pad) = value.view() else {
         panic!("checked pad")
     };
-    let CssValueOrigin::Parsed(number) = pad.minimum_length().origin() else {
+    let surgeist_css::CssIntegerValue::Literal(minimum) = pad.minimum_length() else {
+        panic!("ordinary literal pad length")
+    };
+    let CssValueOrigin::Parsed(number) = minimum.origin() else {
         panic!("actual parsed integer")
     };
     point(number, "2 ", 0, 1);

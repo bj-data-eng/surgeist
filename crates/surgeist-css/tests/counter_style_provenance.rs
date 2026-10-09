@@ -243,7 +243,7 @@ fn all_descriptor_kinds_retain_original_regions_and_component_origins() {
     let CssCounterStyleRangeBound::Integer(integer) = ranges.ranges()[0].upper() else {
         panic!("integer bound");
     };
-    let CssValueOrigin::Parsed(origin) = integer.origin() else {
+    let CssValueOrigin::Parsed(origin) = integer.literal().origin() else {
         panic!("integer parsed origin");
     };
     assert_eq!(text(origin), "-0001");

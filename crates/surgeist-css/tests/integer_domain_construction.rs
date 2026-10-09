@@ -25,7 +25,7 @@ fn symbol(text: &str) -> CssCounterSymbol {
 }
 
 fn bound(text: &str) -> CssCounterStyleRangeBound {
-    CssCounterStyleRangeBound::Integer(integer(text))
+    CssCounterStyleRangeBound::Integer(CssIntegerValue::Literal(integer(text)))
 }
 
 fn parsed_origin(origin: &CssValueOrigin, source: &str, token: &str) {
@@ -244,13 +244,14 @@ fn fixed_system_keeps_omission_distinct_from_explicit_default_and_huge_signed_st
         "-2147483649",
         "999999999999999999999999999999",
     ] {
-        let start = integer(text);
+        let start = CssIntegerValue::Literal(integer(text));
         let fixed = CssCounterStyleFixedSystem::new(Some(start.clone()));
         assert_eq!(fixed.first_symbol_value(), Some(&start));
         assert_eq!(
             fixed
                 .first_symbol_value()
                 .unwrap()
+                .literal()
                 .numeric()
                 .representation(),
             text
@@ -258,8 +259,8 @@ fn fixed_system_keeps_omission_distinct_from_explicit_default_and_huge_signed_st
         assert_ne!(fixed, omitted);
     }
     assert_ne!(
-        CssCounterStyleFixedSystem::new(Some(integer("1"))),
-        CssCounterStyleFixedSystem::new(Some(integer("+0001"))),
+        CssCounterStyleFixedSystem::new(Some(CssIntegerValue::Literal(integer("1")))),
+        CssCounterStyleFixedSystem::new(Some(CssIntegerValue::Literal(integer("+0001")))),
     );
 }
 
@@ -281,7 +282,7 @@ fn counter_ranges_validate_mathematical_order_and_preserve_interval_order_and_in
         .unwrap();
     assert_eq!(list.ranges(), [equal, first, infinite]);
     assert!(
-        matches!(list.ranges()[0].lower(), CssCounterStyleRangeBound::Integer(value) if value.numeric().representation() == "+0007")
+        matches!(list.ranges()[0].lower(), CssCounterStyleRangeBound::Integer(value) if value.literal().numeric().representation() == "+0007")
     );
     assert_eq!(
         list.ranges()[2].lower(),
@@ -299,26 +300,38 @@ fn pad_and_additive_tuples_keep_nonnegative_exact_tokens_including_signed_zero()
     for text in ["-0000", "+0", "+0007", "2147483648"] {
         let component = parse_component_values(text).unwrap().items()[0].clone();
         let literal = CssIntegerLiteral::try_from_component(component.clone()).unwrap();
-        let pad = CssCounterStylePad::try_new(literal.clone(), symbol("_")).unwrap();
-        let tuple = CssCounterAdditiveTuple::try_new(literal, symbol("x")).unwrap();
+        let pad =
+            CssCounterStylePad::try_new(CssIntegerValue::Literal(literal.clone()), symbol("_"))
+                .unwrap();
+        let tuple =
+            CssCounterAdditiveTuple::try_new(CssIntegerValue::Literal(literal), symbol("x"))
+                .unwrap();
         for value in [pad.minimum_length(), tuple.weight()] {
-            assert_eq!(value.component(), &component);
-            assert_eq!(value.numeric().representation(), text);
-            assert_eq!(value.origin(), component.origin());
+            assert_eq!(value.literal().component(), &component);
+            assert_eq!(value.literal().numeric().representation(), text);
+            assert_eq!(value.literal().origin(), component.origin());
         }
         assert!(matches!(pad.symbol(), CssCounterSymbol::String(value) if value.as_str() == "_"));
         assert!(matches!(tuple.symbol(), CssCounterSymbol::String(value) if value.as_str() == "x"));
     }
     for text in ["-1", "-2147483649"] {
-        assert!(CssCounterStylePad::try_new(integer(text), symbol("_")).is_none());
-        assert!(CssCounterAdditiveTuple::try_new(integer(text), symbol("x")).is_none());
+        assert!(
+            CssCounterStylePad::try_new(CssIntegerValue::Literal(integer(text)), symbol("_"))
+                .is_none()
+        );
+        assert!(
+            CssCounterAdditiveTuple::try_new(CssIntegerValue::Literal(integer(text)), symbol("x"))
+                .is_none()
+        );
     }
 }
 
 #[test]
 fn additive_lists_require_strict_mathematical_descent_without_sorting_or_deduplication() {
-    let tuple =
-        |weight, text| CssCounterAdditiveTuple::try_new(integer(weight), symbol(text)).unwrap();
+    let tuple = |weight, text| {
+        CssCounterAdditiveTuple::try_new(CssIntegerValue::Literal(integer(weight)), symbol(text))
+            .unwrap()
+    };
     let input = vec![
         tuple("2147483649", "a"),
         tuple("2147483648", "b"),
@@ -357,22 +370,23 @@ fn parsed_counter_fields_retain_huge_lexemes_exact_origins_and_descriptor_order(
         panic!("fixed system");
     };
     let start = fixed.first_symbol_value().unwrap();
-    assert_eq!(start.numeric().representation(), "-0002147483649");
-    parsed_origin(start.origin(), source, "-0002147483649");
+    assert_eq!(start.literal().numeric().representation(), "-0002147483649");
+    parsed_origin(start.literal().origin(), source, "-0002147483649");
     let CssCounterStyleRange::Ranges(ranges) = descriptors.range().unwrap().ordinary_range() else {
         panic!("finite range");
     };
     let CssCounterStyleRangeBound::Integer(lower) = ranges.ranges()[0].lower() else {
         panic!("finite lower bound");
     };
-    parsed_origin(lower.origin(), source, "+0002147483648");
-    assert_eq!(lower.numeric().representation(), "+0002147483648");
+    parsed_origin(lower.literal().origin(), source, "+0002147483648");
+    assert_eq!(lower.literal().numeric().representation(), "+0002147483648");
     assert_eq!(
         descriptors
             .pad()
             .unwrap()
             .ordinary_pad()
             .minimum_length()
+            .literal()
             .numeric()
             .representation(),
         "2147483648"
@@ -384,7 +398,7 @@ fn parsed_counter_fields_retain_huge_lexemes_exact_origins_and_descriptor_order(
             .ordinary_additive_symbols()
             .tuples()
             .iter()
-            .map(|value| value.weight().numeric().representation())
+            .map(|value| value.weight().literal().numeric().representation())
             .collect::<Vec<_>>(),
         ["2147483649", "2147483648"],
     );

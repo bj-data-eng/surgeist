@@ -1005,7 +1005,7 @@ pub surgeist_css::CssCounterStyleRange::Auto
 pub surgeist_css::CssCounterStyleRange::Ranges(surgeist_css::CssCounterStyleRanges)
 #[non_exhaustive] pub enum surgeist_css::CssCounterStyleRangeBound
 pub surgeist_css::CssCounterStyleRangeBound::Infinite
-pub surgeist_css::CssCounterStyleRangeBound::Integer(surgeist_css::CssIntegerLiteral)
+pub surgeist_css::CssCounterStyleRangeBound::Integer(surgeist_css::CssIntegerValue)
 #[non_exhaustive] pub enum surgeist_css::CssCounterStyleSpeakAs
 pub surgeist_css::CssCounterStyleSpeakAs::Auto
 pub surgeist_css::CssCounterStyleSpeakAs::Bullets
@@ -7422,8 +7422,8 @@ pub fn surgeist_css::CssCounterAdditiveSymbols::tuples(&self) -> &[surgeist_css:
 pub struct surgeist_css::CssCounterAdditiveTuple
 impl surgeist_css::CssCounterAdditiveTuple
 pub const fn surgeist_css::CssCounterAdditiveTuple::symbol(&self) -> &surgeist_css::CssCounterSymbol
-pub fn surgeist_css::CssCounterAdditiveTuple::try_new(weight: surgeist_css::CssIntegerLiteral, symbol: surgeist_css::CssCounterSymbol) -> core::option::Option<Self>
-pub const fn surgeist_css::CssCounterAdditiveTuple::weight(&self) -> &surgeist_css::CssIntegerLiteral
+pub fn surgeist_css::CssCounterAdditiveTuple::try_new(weight: surgeist_css::CssIntegerValue, symbol: surgeist_css::CssCounterSymbol) -> core::option::Option<Self>
+pub const fn surgeist_css::CssCounterAdditiveTuple::weight(&self) -> &surgeist_css::CssIntegerValue
 pub struct surgeist_css::CssCounterChangeValue
 impl surgeist_css::CssCounterChangeValue
 pub const fn surgeist_css::CssCounterChangeValue::name(&self) -> &surgeist_css::CssContentCounterName
@@ -7478,8 +7478,8 @@ pub const fn surgeist_css::CssCounterStyleDescriptors::symbols(&self) -> core::o
 pub const fn surgeist_css::CssCounterStyleDescriptors::system(&self) -> core::option::Option<&surgeist_css::CssDescriptorOccurrence<surgeist_css::CssCounterStyleDescriptorValue>>
 pub struct surgeist_css::CssCounterStyleFixedSystem
 impl surgeist_css::CssCounterStyleFixedSystem
-pub const fn surgeist_css::CssCounterStyleFixedSystem::first_symbol_value(&self) -> core::option::Option<&surgeist_css::CssIntegerLiteral>
-pub const fn surgeist_css::CssCounterStyleFixedSystem::new(first_symbol_value: core::option::Option<surgeist_css::CssIntegerLiteral>) -> Self
+pub const fn surgeist_css::CssCounterStyleFixedSystem::first_symbol_value(&self) -> core::option::Option<&surgeist_css::CssIntegerValue>
+pub const fn surgeist_css::CssCounterStyleFixedSystem::new(first_symbol_value: core::option::Option<surgeist_css::CssIntegerValue>) -> Self
 pub struct surgeist_css::CssCounterStyleName
 impl surgeist_css::CssCounterStyleName
 pub fn surgeist_css::CssCounterStyleName::as_str(&self) -> &str
@@ -7491,9 +7491,9 @@ pub const fn surgeist_css::CssCounterStyleNegative::prefix(&self) -> &surgeist_c
 pub const fn surgeist_css::CssCounterStyleNegative::suffix(&self) -> core::option::Option<&surgeist_css::CssCounterSymbol>
 pub struct surgeist_css::CssCounterStylePad
 impl surgeist_css::CssCounterStylePad
-pub const fn surgeist_css::CssCounterStylePad::minimum_length(&self) -> &surgeist_css::CssIntegerLiteral
+pub const fn surgeist_css::CssCounterStylePad::minimum_length(&self) -> &surgeist_css::CssIntegerValue
 pub const fn surgeist_css::CssCounterStylePad::symbol(&self) -> &surgeist_css::CssCounterSymbol
-pub fn surgeist_css::CssCounterStylePad::try_new(minimum_length: surgeist_css::CssIntegerLiteral, symbol: surgeist_css::CssCounterSymbol) -> core::option::Option<Self>
+pub fn surgeist_css::CssCounterStylePad::try_new(minimum_length: surgeist_css::CssIntegerValue, symbol: surgeist_css::CssCounterSymbol) -> core::option::Option<Self>
 pub struct surgeist_css::CssCounterStyleRangeInterval
 impl surgeist_css::CssCounterStyleRangeInterval
 pub const fn surgeist_css::CssCounterStyleRangeInterval::lower(&self) -> &surgeist_css::CssCounterStyleRangeBound

@@ -6,7 +6,7 @@ use cssparser::{
 
 use super::background::parse_image;
 use super::recovery::{RecoveryLoopOutcome, RecoveryProgress, RecoveryState};
-use super::values::parse_integer_literal;
+use super::values::parse_integer_value;
 use super::{
     block_item_diagnostic, collect_declaration_value, is_declaration_recovery_unit,
     parse_descriptor_boundary, top_level_only_at_rule_placement,
@@ -324,7 +324,7 @@ fn parse_system<'i, 't>(
             let first_symbol_value = if input.is_exhausted() {
                 None
             } else {
-                Some(parse_integer_literal(input, numeric)?)
+                Some(parse_integer_value(input, numeric)?)
             };
             CssCounterStyleSystem::Fixed(CssCounterStyleFixedSystem::new(first_symbol_value))
         },
@@ -416,7 +416,7 @@ fn parse_range_bound<'i, 't>(
     {
         Ok(CssCounterStyleRangeBound::Infinite)
     } else {
-        parse_integer_literal(input, numeric).map(CssCounterStyleRangeBound::Integer)
+        parse_integer_value(input, numeric).map(CssCounterStyleRangeBound::Integer)
     }
 }
 
@@ -522,10 +522,10 @@ fn parse_speak_as<'i, 't>(
 fn parse_nonnegative_integer<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> Result<crate::CssIntegerLiteral, ParseError<'i, Error>> {
+) -> Result<CssIntegerValue, ParseError<'i, Error>> {
     let location = input.current_source_location();
-    let value = parse_integer_literal(input, numeric)?;
-    if value.is_negative() {
+    let value = parse_integer_value(input, numeric)?;
+    if matches!(&value, CssIntegerValue::Literal(literal) if literal.is_negative()) {
         Err(unsupported_value_at(
             location,
             None,

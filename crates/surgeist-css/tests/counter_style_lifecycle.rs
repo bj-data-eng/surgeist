@@ -19,8 +19,11 @@ fn counter(body: &str) -> CssCounterStyleRule {
     rule.clone()
 }
 
-fn integer(value: &str) -> CssIntegerLiteral {
-    CssIntegerLiteral::try_from_component(CssComponentValue::try_number(value).unwrap()).unwrap()
+fn integer(value: &str) -> CssIntegerValue {
+    CssIntegerValue::Literal(
+        CssIntegerLiteral::try_from_component(CssComponentValue::try_number(value).unwrap())
+            .unwrap(),
+    )
 }
 
 fn string(value: &str) -> CssCounterSymbol {
@@ -99,6 +102,7 @@ fn explicit_initial_values_remain_distinct_from_omission() {
             .unwrap()
             .ordinary_pad()
             .minimum_length()
+            .literal()
             .numeric()
             .representation(),
         "0"
@@ -168,7 +172,7 @@ fn every_descriptor_selects_last_valid_duplicate_after_whole_value_recovery() {
         (
             Kind::System,
             "system:fixed -2",
-            "system:fixed calc(1)",
+            "system:fixed calc(1px)",
             "system:CYCLIC",
             "cyclic",
         ),
@@ -465,14 +469,24 @@ fn checked_negative_construction_preserves_required_and_optional_symbol_order() 
 fn checked_pad_and_additive_construction_keep_exact_integer_and_image_semantics() {
     let image = url("symbol.svg");
     let pad = CssCounterStylePad::try_new(integer("-000"), image.clone()).unwrap();
-    assert_eq!(pad.minimum_length().numeric().representation(), "-000");
+    assert_eq!(
+        pad.minimum_length().literal().numeric().representation(),
+        "-000"
+    );
     assert_eq!(pad.symbol(), &image);
     assert!(CssCounterStylePad::try_new(integer("-1"), image.clone()).is_none());
     let huge = "999999999999999999999999999999999999999999999999999";
     let upper = CssCounterAdditiveTuple::try_new(integer(huge), image.clone()).unwrap();
     let zero = CssCounterAdditiveTuple::try_new(integer("-000"), string("zero")).unwrap();
     let list = CssCounterAdditiveSymbols::try_new(vec![upper.clone(), zero.clone()]).unwrap();
-    assert_eq!(list.tuples()[0].weight().numeric().representation(), huge);
+    assert_eq!(
+        list.tuples()[0]
+            .weight()
+            .literal()
+            .numeric()
+            .representation(),
+        huge
+    );
     assert_eq!(list.tuples()[0].symbol(), &image);
     assert_eq!(list.tuples()[1], zero);
     assert!(CssCounterAdditiveSymbols::try_new(vec![zero.clone(), upper]).is_none());
@@ -497,6 +511,7 @@ fn huge_integer_fields_and_signed_zero_keep_authored_tokens_without_range_clampi
         fixed
             .first_symbol_value()
             .unwrap()
+            .literal()
             .numeric()
             .representation(),
         format!("-{huge}")
@@ -519,6 +534,7 @@ fn huge_integer_fields_and_signed_zero_keep_authored_tokens_without_range_clampi
             .unwrap()
             .ordinary_pad()
             .minimum_length()
+            .literal()
             .numeric()
             .representation(),
         "-000"
@@ -530,6 +546,7 @@ fn huge_integer_fields_and_signed_zero_keep_authored_tokens_without_range_clampi
             .ordinary_additive_symbols()
             .tuples()[1]
             .weight()
+            .literal()
             .numeric()
             .representation(),
         "-000"

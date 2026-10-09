@@ -130,8 +130,8 @@ impl CssCounterStyleDescriptorValue {
                     if let Some(first) = value.first_symbol_value() {
                         // §3.1.2's omitted starting value is exactly 1. CSSOM §6.7.2
                         // omits optional components when their meaning is unchanged.
-                        if crate::integer_value::exact_i32(first.numeric().representation())
-                            == Some(1)
+                        if matches!(first, crate::CssIntegerValue::Literal(literal)
+                            if crate::integer_value::exact_i32(literal.numeric().representation()) == Some(1))
                         {
                             writer.without_output(|writer| {
                                 first.append_specified(&mut writer.context, &mut writer.css)

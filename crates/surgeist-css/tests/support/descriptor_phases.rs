@@ -116,3 +116,16 @@ pub fn checked_feature_value(
     }
     CssFontFeatureValue::try_from_components(kind, CssComponentValues::try_new(components).unwrap())
 }
+
+/// Assert that an ordinary-integer regression still retains its exact literal variant.
+pub trait LiteralIntegerValue {
+    fn literal(&self) -> &CssIntegerLiteral;
+}
+impl LiteralIntegerValue for CssIntegerValue {
+    fn literal(&self) -> &CssIntegerLiteral {
+        let CssIntegerValue::Literal(value) = self else {
+            panic!("exact ordinary integer literal expected")
+        };
+        value
+    }
+}

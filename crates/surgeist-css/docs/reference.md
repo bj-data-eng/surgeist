@@ -5305,19 +5305,36 @@ Descriptor admission, duplicate recovery, unresolved references and checked
 construction are exercised in
 [`counter_style_lifecycle.rs`](../tests/counter_style_lifecycle.rs).
 
-The optional `fixed` starting value is `Option<CssIntegerLiteral>`, preserving
-omission separately from explicit `1` and `+0001`. Finite range bounds retain
-`CssIntegerLiteral` beside contextual `Infinite`. `CssCounterStyleRangeInterval::try_new`
-rejects mathematically reversed finite bounds, and `CssCounterStyleRanges::try_new`
-requires a nonempty list while preserving authored interval order.
-`CssCounterStylePad::try_new` and `CssCounterAdditiveTuple::try_new` accept checked
-nonnegative integer tokens, including signed zero, without machine-sized limits.
-`CssCounterAdditiveSymbols::try_new` requires a nonempty list with strictly
-descending mathematical weights, rejecting equal alternate spellings without
-sorting or deduplication. These owners retain exact token components and origins.
-The selected Counter Styles standard permits supported-range clamping; this
-specified-value model preserves exact authored bounds and leaves any implementation
-range policy downstream. Counter integer fields remain literal-only.
+The optional `fixed` starting value is `Option<CssIntegerValue>`, preserving
+omission separately from explicit literals and calculations. Finite range bounds,
+pad lengths and additive weights use the same shared integer owner. Its `Literal`
+variant retains exact tokens such as `+0009007199254740993`; `Calculation` retains
+a checked Number-result graph, including fractional and negative values. Parsed
+and checked descriptor fronts admit these same branches and preserve original
+components and origins.
+
+`CssCounterStyleRangeInterval::try_new` rejects reversed literal bounds, and
+`CssCounterStyleRanges::try_new` requires a nonempty list in authored order.
+`CssCounterStylePad::try_new` and `CssCounterAdditiveTuple::try_new` reject negative
+ordinary literals while accepting signed zero and deferred calculations.
+`CssCounterAdditiveSymbols::try_new` requires a nonempty list and strictly
+descending adjacent literal weights, rejecting equal alternate spellings without
+sorting or deduplication. Any comparison involving a calculation remains deferred,
+including literal neighbors separated by a calculation. The complete range and
+additive ordering rules must be checked downstream after integer computation.
+
+The imported [Values4 math type checking](https://www.w3.org/TR/2021/WD-css-values-4-20210715/#calc-type-checking)
+admits Number-result calculations in integer slots. Its
+[range checking](https://www.w3.org/TR/2021/WD-css-values-4-20210715/#calc-range)
+defers range clamping and nearest-integer rounding, with half ties toward positive
+infinity, to computed/used values. Specified serialization uses the shared numeric
+projection without that clamping or rounding: `calc(-1.5)` remains `calc(-1.5)`.
+The frozen [WebKit counter parser](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/parser/CSSPropertyParserConsumer%2BCounterStyles.cpp#L231-L299)
+resolves integer values before comparing range bounds and additive weights; that
+combined browser phase does not supply an authored calculation evaluator here.
+Evidence is in
+[`counter_style_integer_math_contract.rs`](../tests/counter_style_integer_math_contract.rs)
+and [`counter_style_integer_math_lifecycle.rs`](../tests/counter_style_integer_math_lifecycle.rs).
 [Bounded rule and descriptor output](#counter-style-specified-output-and-descriptor-getters)
 reuses these retained values.
 
@@ -8702,9 +8719,10 @@ chooses the last valid occurrence of each descriptor. Its CSSOM interface and
 the selected CSSOM snapshot do not specify complete counter-style `cssText`
 ordering. Surgeist selects the descriptor section order: system, negative,
 prefix, suffix, range, pad, fallback, symbols, additive-symbols, speak-as.
-Children reuse CSS identifier, string, image and exact integer providers. Optional
-`fixed` starting value 1 and an empty negative suffix can be omitted without
-changing meaning; the retained values remain unchanged and charged.
+Children reuse CSS identifier, string, image and shared integer/math providers.
+An optional literal `fixed` starting value 1 and an empty negative suffix can be
+omitted without changing meaning; the retained values remain unchanged and charged.
+A calculated `fixed` start retains its wrapper, including `fixed calc(1)`.
 
 The complete rule charges one node in each work budget for the rule, name,
 descriptor occurrences, and their typed aggregates and leaves. Ineffective

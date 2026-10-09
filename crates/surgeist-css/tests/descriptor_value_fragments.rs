@@ -67,8 +67,11 @@ fn bound(actual: &CssCounterStyleRangeBound, expected: Option<&str>) {
     match (actual, expected) {
         (CssCounterStyleRangeBound::Infinite, None) => {}
         (CssCounterStyleRangeBound::Integer(actual), Some(expected)) => {
-            assert_eq!(actual.numeric().representation(), expected);
-            assert_eq!(actual.numeric().kind(), CssNumericTokenKind::Integer);
+            assert_eq!(actual.literal().numeric().representation(), expected);
+            assert_eq!(
+                actual.literal().numeric().kind(),
+                CssNumericTokenKind::Integer
+            );
         }
         _ => panic!("wrong bound: {actual:?}, expected {expected:?}"),
     }
@@ -81,12 +84,18 @@ fn counter_semantics(actual: &CounterValue, expected: &Expected) {
             assert_eq!(
                 actual
                     .first_symbol_value()
-                    .map(|n| n.numeric().representation()),
+                    .map(|n| n.literal().numeric().representation()),
                 *expected
             );
             if let Some(number) = actual.first_symbol_value() {
-                assert_eq!(number.numeric().kind(), CssNumericTokenKind::Integer);
-                assert!(matches!(number.origin(), CssValueOrigin::Parsed(_)));
+                assert_eq!(
+                    number.literal().numeric().kind(),
+                    CssNumericTokenKind::Integer
+                );
+                assert!(matches!(
+                    number.literal().origin(),
+                    CssValueOrigin::Parsed(_)
+                ));
             }
         }
         (
@@ -120,8 +129,11 @@ fn counter_semantics(actual: &CounterValue, expected: &Expected) {
             }
         }
         (CounterRef::Pad(actual), Expected::Pad(minimum, expected_symbol)) => {
-            assert_eq!(actual.minimum_length().numeric().representation(), *minimum);
-            assert!(!actual.minimum_length().is_negative());
+            assert_eq!(
+                actual.minimum_length().literal().numeric().representation(),
+                *minimum
+            );
+            assert!(!actual.minimum_length().literal().is_negative());
             symbol(actual.symbol(), *expected_symbol);
         }
         (CounterRef::Fallback(actual), Expected::Fallback(expected)) => {
@@ -130,8 +142,11 @@ fn counter_semantics(actual: &CounterValue, expected: &Expected) {
         (CounterRef::AdditiveSymbols(actual), Expected::Additive(expected)) => {
             assert_eq!(actual.tuples().len(), expected.len());
             for (actual, (weight, expected_symbol)) in actual.tuples().iter().zip(expected) {
-                assert_eq!(actual.weight().numeric().representation(), *weight);
-                assert!(!actual.weight().is_negative());
+                assert_eq!(
+                    actual.weight().literal().numeric().representation(),
+                    *weight
+                );
+                assert!(!actual.weight().literal().is_negative());
                 symbol(actual.symbol(), *expected_symbol);
             }
         }
@@ -781,8 +796,11 @@ fn counter_numeric_semantic_origins_keep_order_separate_from_whole_value_origin(
     let CounterRef::Pad(pad) = actual.view() else {
         panic!("pad")
     };
-    assert_eq!(pad.minimum_length().numeric().representation(), "+0002");
-    let CssValueOrigin::Parsed(number_origin) = pad.minimum_length().origin() else {
+    assert_eq!(
+        pad.minimum_length().literal().numeric().representation(),
+        "+0002"
+    );
+    let CssValueOrigin::Parsed(number_origin) = pad.minimum_length().literal().origin() else {
         panic!("number origin")
     };
     origin(number_origin, source, (11, 0, 10), (16, 0, 15));
