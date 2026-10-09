@@ -651,18 +651,18 @@ fn selected_line_height_record_keeps_css2_identity_and_complete_authored_grammar
 }
 
 #[test]
-fn environment_metadata_includes_font_face_without_claiming_execution() {
+fn environment_metadata_names_selected_descriptor_consumers_without_claiming_execution() {
     let record = feature_metadata("required.value.environment-substitution").unwrap();
     assert_eq!(record.source().id().as_str(), "D-ENV1");
     assert_eq!(record.status(), CssSupportStatus::Partial);
     assert_eq!(
         record.spelling(),
-        "env() in authored property, font-palette and font-face descriptor values"
+        "env() in authored property and selected font-palette, font-face, counter-style, font-feature-values and color-profile descriptor values"
     );
     assert_eq!(
         record.supported_subset(),
         Some(
-            "Known-property, font-palette and recognized font-face descriptor values qualify for pending substitution through valid env() functions, including exact integer indices, symbolic integer calculations and token-preserving fallbacks. Strict replacement reentry rejects residual env()."
+            "Known-property values, selected font-palette and recognized font-face descriptors, all ten counter-style descriptors, font-feature-values font-display and named values in all seven subsidiary blocks, and color-profile descriptors qualify for pending substitution through valid env() functions, including exact integer indices, symbolic integer calculations and token-preserving fallbacks. Strict replacement reentry rejects residual env()."
         )
     );
     assert_eq!(
