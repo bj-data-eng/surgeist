@@ -284,8 +284,8 @@ positions!(
             "block-start 10% inline-end -2px"
         ),
         (
-            "block-end -1e-999px inline-start 2em",
-            "block-end -1e-999px inline-start 2em"
+            "block-end -2px inline-start 2em",
+            "block-end -2px inline-start 2em"
         ),
         (
             "block-end calc(10% - 2px) inline-start -3px",
