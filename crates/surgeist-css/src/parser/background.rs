@@ -1,11 +1,11 @@
-use super::color::parse_color;
+use super::color::{parse_color, parse_color_interpolation_method};
 use super::values::{
     parse_length_percentage, parse_nonnegative_length, parse_nonnegative_length_percentage,
 };
 use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
 use super::position::{
-    next_starts_background_position, parse_background_position_prefix, parse_physical_position,
+    next_starts_background_position, parse_background_position_prefix, parse_full_position_bounded,
 };
 use super::url::parse_url;
 use super::values::{
@@ -33,6 +33,10 @@ pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
     CssFeatureId::new("official.value.radial-gradient"),
     CssFeatureId::new("official.value.repeating-linear-gradient"),
     CssFeatureId::new("official.value.repeating-radial-gradient"),
+    CssFeatureId::new("ext.value.conic-gradient"),
+    CssFeatureId::new("ext.value.gradient-interpolation"),
+    CssFeatureId::new("ext.value.gradient-stop-list"),
+    CssFeatureId::new("required.value.gradient-position"),
     CssFeatureId::new("official.value.color-stop-list"),
     CssFeatureId::new("official.value.side-or-corner"),
     CssFeatureId::new("official.value.radial-shape"),
@@ -209,6 +213,7 @@ pub(super) fn next_starts_background_image<'i, 't>(input: &mut Parser<'i, 't>) -
                         | "repeating-linear-gradient"
                         | "radial-gradient"
                         | "repeating-radial-gradient"
+                        | "conic-gradient"
                 )
         }
         Ok(_) | Err(_) => false,
@@ -751,6 +756,7 @@ fn next_is_gradient<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
                     | "repeating-linear-gradient"
                     | "radial-gradient"
                     | "repeating-radial-gradient"
+                    | "conic-gradient"
             )
     );
     input.reset(&state);
@@ -776,6 +782,9 @@ fn parse_gradient<'i, 't>(
         "repeating-radial-gradient" => input
             .parse_nested_block(|input| parse_radial_gradient(input, numeric))
             .map(CssGradient::RepeatingRadial),
+        "conic-gradient" => input
+            .parse_nested_block(|input| parse_conic_gradient(input, numeric))
+            .map(CssGradient::Conic),
         _ => Err(unsupported_value_at(
             location,
             None,
@@ -788,15 +797,31 @@ fn parse_linear_gradient<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssLinearGradient, ParseError<'i, Error>> {
-    let direction = if next_starts_linear_gradient_direction(input) {
-        let direction = parse_linear_gradient_direction(input, numeric)?;
+    let mut interpolation = parse_optional_gradient_interpolation(input)?;
+    let direction = next_starts_linear_gradient_direction(input)
+        .then(|| parse_linear_gradient_direction(input, numeric))
+        .transpose()?;
+    if interpolation.is_none() {
+        interpolation = parse_optional_gradient_interpolation(input)?;
+    }
+    if direction.is_some() || interpolation.is_some() {
         input.expect_comma().map_err(basic)?;
-        Some(direction)
-    } else {
-        None
-    };
+    }
     let stops = parse_color_stop_list(input, numeric)?;
-    Ok(CssLinearGradient::new(direction, stops))
+    Ok(CssLinearGradient::new(direction, stops).with_interpolation(interpolation))
+}
+
+fn parse_optional_gradient_interpolation<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> Result<Option<CssColorInterpolation>, ParseError<'i, Error>> {
+    if input
+        .try_parse(|input| input.expect_ident_matching("in"))
+        .is_ok()
+    {
+        parse_color_interpolation_method(input).map(Some)
+    } else {
+        Ok(None)
+    }
 }
 
 fn next_starts_linear_gradient_direction<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
@@ -832,6 +857,9 @@ fn parse_side_or_corner<'i, 't>(
     let mut horizontal = None;
     let mut vertical = None;
     for _ in 0..2 {
+        if super::values::next_is_ident(input, "in") {
+            break;
+        }
         let location = input.current_source_location();
         let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) else {
             break;
@@ -888,8 +916,13 @@ fn parse_color_stop_list<'i, 't>(
             parse_gradient_color_stop(input, numeric)?,
         )));
     }
-    CssColorStopList::try_new(items)
-        .ok_or_else(|| unsupported_value(input, None, "gradient requires at least two color stops"))
+    CssColorStopList::try_new(items).ok_or_else(|| {
+        unsupported_value(
+            input,
+            None,
+            "gradient requires a nonempty ordered color-stop list",
+        )
+    })
 }
 
 fn parse_gradient_color_stop<'i, 't>(
@@ -897,10 +930,17 @@ fn parse_gradient_color_stop<'i, 't>(
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssGradientColorStop, ParseError<'i, Error>> {
     let color = parse_color(input, numeric)?;
-    let position = input
-        .try_parse(|input| parse_gradient_line_position(input, numeric))
-        .ok();
-    Ok(CssGradientColorStop::from_color(color, position))
+    let mut positions = Vec::new();
+    for _ in 0..2 {
+        if let Ok(position) = input.try_parse(|input| parse_gradient_line_position(input, numeric))
+        {
+            positions.push(position);
+        } else {
+            break;
+        }
+    }
+    Ok(CssGradientColorStop::try_from_positions(color, positions)
+        .expect("at most two parsed positions"))
 }
 
 fn parse_gradient_line_position<'i, 't>(
@@ -923,22 +963,30 @@ fn parse_radial_gradient<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssRadialGradient, ParseError<'i, Error>> {
+    let mut interpolation = parse_optional_gradient_interpolation(input)?;
     let prelude = if next_starts_radial_prelude(input) {
         let prelude = parse_radial_gradient_prelude(input, numeric)?;
-        input.expect_comma().map_err(basic)?;
         Some(prelude)
     } else {
         None
     };
+    if interpolation.is_none() {
+        interpolation = parse_optional_gradient_interpolation(input)?;
+    }
+    if prelude.is_some() || interpolation.is_some() {
+        input.expect_comma().map_err(basic)?;
+    }
     let (shape, size, position) = prelude.unwrap_or((None, None, None));
     let stops = parse_color_stop_list(input, numeric)?;
-    CssRadialGradient::try_new(shape, size, position, stops).ok_or_else(|| {
-        unsupported_value(
-            input,
-            None,
-            "radial-gradient shape and size are incompatible",
-        )
-    })
+    CssRadialGradient::try_new(shape, size, position, stops)
+        .map(|gradient| gradient.with_interpolation(interpolation))
+        .ok_or_else(|| {
+            unsupported_value(
+                input,
+                None,
+                "radial-gradient shape and size are incompatible",
+            )
+        })
 }
 
 fn next_starts_radial_prelude<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
@@ -966,7 +1014,7 @@ fn next_starts_radial_prelude<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
 type RadialPrelude = (
     Option<CssRadialShape>,
     Option<CssRadialSize>,
-    Option<CssPhysicalPosition>,
+    Option<CssPosition>,
 );
 
 fn parse_radial_gradient_prelude<'i, 't>(
@@ -979,13 +1027,16 @@ fn parse_radial_gradient_prelude<'i, 't>(
     let mut position = None;
     let mut consumed = false;
 
-    while !input.is_exhausted() && !next_is_comma(input) {
+    while !input.is_exhausted()
+        && !next_is_comma(input)
+        && !super::values::next_is_ident(input, "in")
+    {
         if position.is_none()
             && input
                 .try_parse(|input| input.expect_ident_matching("at"))
                 .is_ok()
         {
-            position = Some(parse_physical_position(input, numeric)?);
+            position = Some(parse_full_position_bounded(input, numeric, &["in"])?);
             consumed = true;
             break;
         }
@@ -1022,6 +1073,96 @@ fn parse_radial_gradient_prelude<'i, 't>(
         .map(|size| validate_radial_size(shape, size, numeric))
         .transpose()?;
     Ok((shape, size, position))
+}
+
+fn parse_conic_gradient<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Result<CssConicGradient, ParseError<'i, Error>> {
+    let mut interpolation = parse_optional_gradient_interpolation(input)?;
+    let from = if input
+        .try_parse(|input| input.expect_ident_matching("from"))
+        .is_ok()
+    {
+        Some(super::values::parse_angle_or_zero(
+            input,
+            numeric,
+            super::values::AngleParserContext::Gradient,
+        )?)
+    } else {
+        None
+    };
+    let position = if input
+        .try_parse(|input| input.expect_ident_matching("at"))
+        .is_ok()
+    {
+        Some(parse_full_position_bounded(input, numeric, &["in"])?)
+    } else {
+        None
+    };
+    if interpolation.is_none() {
+        interpolation = parse_optional_gradient_interpolation(input)?;
+    }
+    if from.is_some() || position.is_some() || interpolation.is_some() {
+        input.expect_comma().map_err(basic)?;
+    }
+    let mut items = vec![CssAngularColorStopListItem::Stop(Box::new(
+        parse_angular_color_stop(input, numeric)?,
+    ))];
+    while input.try_parse(Parser::expect_comma).is_ok() {
+        if input.is_exhausted() {
+            return Err(unsupported_value(
+                input,
+                None,
+                "angular stop list has an empty item",
+            ));
+        }
+        if let Ok(hint) = input.try_parse(|input| -> Result<_, ParseError<'i, Error>> {
+            let hint = parse_angular_position(input, numeric)?;
+            input.expect_comma().map_err(basic)?;
+            Ok(hint)
+        }) {
+            items.push(CssAngularColorStopListItem::Hint(hint));
+        }
+        items.push(CssAngularColorStopListItem::Stop(Box::new(
+            parse_angular_color_stop(input, numeric)?,
+        )));
+    }
+    let stops = CssAngularColorStopList::try_new(items)
+        .expect("parsed nonempty interleaved angular stop list");
+    Ok(CssConicGradient::new(from, position, interpolation, stops))
+}
+
+fn parse_angular_color_stop<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Result<CssAngularColorStop, ParseError<'i, Error>> {
+    let color = parse_color(input, numeric)?;
+    let mut positions = Vec::new();
+    for _ in 0..2 {
+        if let Ok(position) = input.try_parse(|input| parse_angular_position(input, numeric)) {
+            positions.push(position);
+        } else {
+            break;
+        }
+    }
+    Ok(CssAngularColorStop::try_new(color, positions)
+        .expect("at most two parsed angular positions"))
+}
+
+fn parse_angular_position<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Result<CssAngularColorStopPosition, ParseError<'i, Error>> {
+    input.skip_whitespace();
+    let location = input.current_source_location();
+    let offset = input.position().byte_index();
+    let context = super::values::AngleParserContext::Gradient;
+    let component = numeric
+        .collect(input)
+        .map_err(|error| super::values::angle_error(numeric, &error, location, offset, context))?;
+    CssAngularColorStopPosition::from_parser_component(component, numeric)
+        .map_err(|error| super::values::angle_error(numeric, &error, location, offset, context))
 }
 
 fn parse_radial_shape<'i, 't>(
@@ -1743,6 +1884,7 @@ pub(super) fn parse_outline_width<'i, 't>(
 mod tests {
     use cssparser::{Parser, ParserInput};
 
+    use super::super::position::parse_physical_position;
     use super::*;
 
     fn parse_position(source: &str) -> CssPhysicalPosition {

@@ -301,7 +301,7 @@ fn radial_siblings_keep_unordered_shape_size_and_omitted_authored_defaults() {
 }
 
 #[test]
-fn every_gradient_sibling_rejects_bad_stop_hint_order_and_unselected_double_positions() {
+fn every_gradient_sibling_rejects_bad_stop_hint_order_and_excess_positions() {
     for function in [
         "linear-gradient",
         "repeating-linear-gradient",
@@ -309,12 +309,12 @@ fn every_gradient_sibling_rejects_bad_stop_hint_order_and_unselected_double_posi
         "repeating-radial-gradient",
     ] {
         for stops in [
-            "red",
+            "red,",
             "20%, red, blue",
             "red, 20%",
             "red, 20%, 30%, blue",
             "red,, blue",
-            "red 10% 20%, blue",
+            "red 10% 20% 30%, blue",
             "red 20% blue",
         ] {
             rejects_background(&format!("{function}({stops})"));
@@ -385,7 +385,7 @@ fn image_reentry_keeps_nested_numeric_origins_and_retries_after_invalid_whole_re
     let replacement = parse_component_values(text).unwrap();
     let before = replacement.clone();
     for invalid in [
-        "light-dark(src(\"#art\"), repeating-radial-gradient(red))",
+        "light-dark(src(\"#art\"), repeating-radial-gradient(red,))",
         "light-dark(src(\"#art\"), repeating-radial-gradient(red, blue)) trailing",
     ] {
         assert!(matches!(

@@ -736,6 +736,15 @@ const I_VALUES5_REQUEST: CssSpecificationSource = dated_source!(
     CssSpecificationTier::Snapshot2026PreCrException,
     "https://www.w3.org/TR/2024/WD-css-values-5-20241111/"
 );
+// Specific Images4 at-position hyperlinks supersede its general Values3 prose.
+// This imports the complete position production, not the whole Values5 module.
+const D_VALUES5_GRADIENT_POSITION: CssSpecificationSource = dated_source!(
+    "D-VALUES5-GRADIENT-POSITION",
+    "CSS Values and Units",
+    "5",
+    CssSpecificationTier::LaterStandard,
+    "https://www.w3.org/TR/2024/WD-css-values-5-20241111/"
+);
 const O_BOX3: CssSpecificationSource = dated_source!(
     "O-BOX3",
     "CSS Box Model",
@@ -1257,13 +1266,22 @@ profile_source!(
     CssSpecificationTier::SurgeistExtension,
     "https://www.w3.org/TR/2026/WD-css-ui-4-20260120/"
 );
-// Narrow imports selected by UI4's dated bibliography, without expanding Images3/Backgrounds3 consumers.
+// Dated imports for UI4 image-1D definitions.
 profile_source!(
     X_IMAGES4_20250930,
     "X-IMAGES4-20250930",
     "CSS Images",
     "4",
     CssSpecificationTier::SurgeistExtension,
+    "https://www.w3.org/TR/2025/WD-css-images-4-20250930/"
+);
+// Snapshot 2026 section 4 selects conic gradients and gradient interpolation.
+// Their reachable stop-list grammar is selected without the whole Images4 module.
+const F_IMAGES4_GRADIENTS_20250930: CssSpecificationSource = dated_source!(
+    "F-IMAGES4-GRADIENTS-20250930",
+    "CSS Images",
+    "4",
+    CssSpecificationTier::Snapshot2026PreCrException,
     "https://www.w3.org/TR/2025/WD-css-images-4-20250930/"
 );
 profile_source!(
@@ -1359,6 +1377,7 @@ static SPECIFICATION_SOURCES: &[CssSpecificationSource] = &[
     D_ENV1,
     D_VALUES5_ATTR,
     I_VALUES5_REQUEST,
+    D_VALUES5_GRADIENT_POSITION,
     O_BOX3,
     O_COLOR4,
     O_BACKGROUNDS3,
@@ -1426,6 +1445,7 @@ static SPECIFICATION_SOURCES: &[CssSpecificationSource] = &[
     X_TEXTDECOR4,
     X_UI4,
     X_IMAGES4_20250930,
+    F_IMAGES4_GRADIENTS_20250930,
     X_BORDERS4_20251216,
     X_CONTENT3,
     X_FULLSCREEN,
@@ -2275,6 +2295,10 @@ static OFFICIAL_NON_PROPERTY_COVERAGE_ROWS: &[CssOfficialCoverageRecord] = &[
     active_coverage!("official.value.repeating-linear-gradient"),
     active_coverage!("official.value.repeating-radial-gradient"),
     active_coverage!("official.value.color-stop-list"),
+    active_coverage!("ext.value.conic-gradient"),
+    active_coverage!("ext.value.gradient-interpolation"),
+    active_coverage!("ext.value.gradient-stop-list"),
+    active_coverage!("required.value.gradient-position"),
     active_coverage!("official.value.side-or-corner"),
     active_coverage!("official.value.radial-shape"),
     active_coverage!("official.value.radial-size"),
@@ -2993,7 +3017,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 794] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 798] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -3782,6 +3806,34 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 794] = [
         "<color-stop-list>",
         O_IMAGES3,
         "#color-stop-syntax",
+    ),
+    CssFeatureMetadata::complete(
+        "ext.value.conic-gradient",
+        CssFeatureKind::Value,
+        "conic-gradient()",
+        F_IMAGES4_GRADIENTS_20250930,
+        "#conic-gradient-syntax",
+    ),
+    CssFeatureMetadata::complete(
+        "ext.value.gradient-interpolation",
+        CssFeatureKind::Value,
+        "selected gradient color interpolation",
+        F_IMAGES4_GRADIENTS_20250930,
+        "#linear-gradients",
+    ),
+    CssFeatureMetadata::complete(
+        "ext.value.gradient-stop-list",
+        CssFeatureKind::Value,
+        "selected linear and angular color-stop lists",
+        F_IMAGES4_GRADIENTS_20250930,
+        "#color-stop-syntax",
+    ),
+    CssFeatureMetadata::complete(
+        "required.value.gradient-position",
+        CssFeatureKind::Value,
+        "<position> in selected radial and conic gradient at productions",
+        D_VALUES5_GRADIENT_POSITION,
+        "#typedef-position",
     ),
     CssFeatureMetadata::complete(
         "official.value.side-or-corner",

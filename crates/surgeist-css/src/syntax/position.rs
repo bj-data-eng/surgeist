@@ -388,6 +388,54 @@ pub struct CssPosition {
     family: PositionFamily,
 }
 impl CssPosition {
+    /// Shared intrinsic numeric depth for enclosing shape/image graph admission.
+    pub(crate) fn numeric_nesting_depth(&self) -> u32 {
+        fn depth(value: &CssSpecifiedLengthPercentage) -> u32 {
+            value
+                .calculation()
+                .map_or(0, |v| v.components().nesting_depth())
+        }
+        match self.view() {
+            CssPositionRef::Cartesian(value) => {
+                let horizontal = match value.horizontal() {
+                    CssHorizontalPosition::Offset(v)
+                    | CssHorizontalPosition::LeftOffset(v)
+                    | CssHorizontalPosition::RightOffset(v)
+                    | CssHorizontalPosition::XStartOffset(v)
+                    | CssHorizontalPosition::XEndOffset(v) => depth(v),
+                    _ => 0,
+                };
+                let vertical = match value.vertical() {
+                    CssVerticalPosition::Offset(v)
+                    | CssVerticalPosition::TopOffset(v)
+                    | CssVerticalPosition::BottomOffset(v)
+                    | CssVerticalPosition::YStartOffset(v)
+                    | CssVerticalPosition::YEndOffset(v) => depth(v),
+                    _ => 0,
+                };
+                horizontal.max(vertical)
+            }
+            CssPositionRef::NamedFlow(value) => {
+                let block = match value.block() {
+                    CssBlockPosition::StartOffset(v) | CssBlockPosition::EndOffset(v) => depth(v),
+                    _ => 0,
+                };
+                let inline = match value.inline() {
+                    CssInlinePosition::StartOffset(v) | CssInlinePosition::EndOffset(v) => depth(v),
+                    _ => 0,
+                };
+                block.max(inline)
+            }
+            CssPositionRef::RelativeFlow(value) => {
+                let axis = |v: &CssRelativeAxisPosition| match v {
+                    CssRelativeAxisPosition::StartOffset(v)
+                    | CssRelativeAxisPosition::EndOffset(v) => depth(v),
+                    _ => 0,
+                };
+                axis(value.block()).max(axis(value.inline()))
+            }
+        }
+    }
     /// Lifts an already checked Cartesian position without changing its axes.
     #[must_use]
     pub const fn from_cartesian(position: CssCartesianPosition) -> Self {

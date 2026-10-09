@@ -2314,8 +2314,9 @@ relative flow has two or four components. Named axis pairs can reorder, while
 unqualified relative pairs keep block/inline order. Bare `start` or `end`, mixed
 coordinate families, duplicate axes and generic three-component positions are
 invalid. Background's three-component form remains its own physical grammar.
-Older gradients, object and mask positions use the checked physical restriction
-in both parsing and Rust construction.
+Selected radial and conic gradient `at` productions reuse this full position
+owner: their specific Images 4 hyperlinks import Values 5 WD 2024-11-11.
+Object and mask positions retain their checked physical restriction.
 
 Specified serialization emits Cartesian horizontal/vertical order and symbolic
 flow block/inline order, preserving keyword families and offsets. An implied
@@ -2838,7 +2839,7 @@ components, including inside pending values, before serialized repair can hide t
 `from_keyword()` checks a decoded keyword, and `as_css_str()` emits its canonical
 spelling. It imports the direct Box 4 visual-box production plus margin-box.
 The broader SVG boxes used by clipping are excluded from this Shapes boundary.
-The image branch uses the existing Images 3 provider, including URL, gradients
+The image branch uses the shared Images 3/selected Images 4 provider, including URL, gradients
 and the adopted symbolic `light-dark()` image/none branches. `CssImage::try_new`
 checks the complete retained graph and returns `CssImageConstructionError::NotImage`
 for a bare image `none`, which belongs to the outside keyword branch.
@@ -5292,7 +5293,8 @@ and recovery evidence is in
 
 `CssCounterSymbol` carries a checked string, identifier or `CssImage`. Image
 symbols reuse the selected shared image grammar: URLs, the four Images 3
-gradient forms, and the selected Color 5 `light-dark()` extension. A bare
+gradient forms with selected Images 4 additions, conic gradients, and the
+selected Color 5 `light-dark()` extension. A bare
 `none` remains an identifier symbol; image branches may retain the shared
 image grammar's `none`. URLs preserve `url()`/`src()` identity and symbolic
 modifiers, while gradients keep unresolved colors and contextual calculations.
@@ -5806,7 +5808,7 @@ painting remain downstream responsibilities.
 Backgrounds 3 and Images 3 values remain authored and symbolic. Background
 shorthands preserve layer order, per-layer position/size coupling, repeats,
 attachments, boxes, and a final-layer color. Image values distinguish `none`,
-URLs, and typed linear, radial, and repeating gradients. Border-image values
+URLs, and typed linear, radial, repeating linear/radial, and conic gradients. Border-image values
 preserve their source, slice, width, outset, and repeat components without
 loading an image or resolving any geometry.
 
@@ -5858,10 +5860,47 @@ Programmatic gradients use `CssGradientColorStop::from_color`, checked
 `CssRadialGradient::try_new`, followed by `CssImage::try_new` when admitting the
 complete graph as an image. The radial constructor rejects incompatible
 explicit radius forms, permits omitted size and extents, and preserves authored
-omissions. `CssPhysicalPosition::try_new` checks the physical generic
-position grammar: explicit edge offsets occur on both axes or neither. These
+omissions. Radial and conic `at` fields retain the shared `CssPosition` owner. These
 constructors retain authored symbolic values without resolving colors,
 percentages, URLs, or positions.
+
+The selected [Images 4 gradient additions](https://www.w3.org/TR/2025/WD-css-images-4-20250930/#gradients)
+admit an explicit `CssColorInterpolation` before or after a complete prelude
+group, a nonempty stop list, and zero, one, or two positions on each stop.
+`CssGradientColorStop::try_from_positions` and `positions()` retain both linear
+positions; `CssAngularColorStop` and `CssAngularColorStopList` check conic stop
+cardinality and hint order. Angular positions use `CssAngularColorStopPosition`
+with checked angle, percentage, exact bare zero, or
+`CssAnglePercentageCalculation`; its percentage basis remains symbolic.
+`CssConicGradient::new` retains optional `from`, full `at`, interpolation, and
+stops. Linear and radial `with_interpolation` retain an explicitly selected
+method separately from omission, using the existing Color 4/5 owner.
+Specified output omits intrinsic conic zero rotation, ordinary center, and
+eligible single-position endpoints while retaining the authored fields. Both
+positions on a double-position stop remain explicit. A matching interpolation
+method is omitted only through a bounded proof from the shared Color owner:
+ordinary legacy stops default to sRGB, while a retained nonlegacy stop establishes
+Oklab even with legacy or unresolved siblings. Explicit Oklab over wholly legacy
+stops remains an opt-in. Declared relative RGB/HSL/HWB carriers use the selected
+frozen nonkeyword/Oklab default qualification; current and system keywords use
+the keyword/sRGB qualification. New distinct Color functions retain their
+nonlegacy family without executing relative origins or color results. The selected
+[Color 4 legacy-format exception](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#interpolation-space)
+qualifies the Images 4 Oklab-default prose. Omitted authored methods still count
+against input and projection node limits. The shared Color owner's mandated
+[missing-RGB serialization](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#serializing-sRGB-values)
+uses nonlegacy `color(srgb ...)`. When that projection changes an otherwise
+implicit sRGB default, gradient output adds `in srgb` to preserve its original
+meaning. This generated method adds one projection node without inventing an
+authored input node; an explicitly authored method retains its ordinary tariff.
+Source and emitted format proofs compose during the same charged stop traversal,
+and bounded scratch output permits grammar-ordered emission without reparsing
+colors or visiting their graphs a second time.
+Repeating-conic, stop fixup, color interpolation execution, and painting are
+outside this selected boundary. The older Images 3 feature records retain their
+baseline source; named Snapshot gradient records identify the feature-scoped
+Images 4 additions, while the required Values 5 position import retains its
+separate LaterStandard provenance.
 
 The selected [Images 3 specified serialization](https://www.w3.org/TR/2023/CRD-css-images-3-20231218/#serialization)
 is available on `CssImage`, `CssImageValue`, `CssGradient`, and
@@ -5869,8 +5908,9 @@ is available on `CssImage`, `CssImageValue`, `CssGradient`, and
 They write lowercase gradient function names, checked colors, symbolic numeric
 values, and URL functions without loading resources or resolving layout.
 Only context-independent defaults are omitted: a linear direction of `to bottom`
-or a directly authored exact half-turn, an initial direct numeric zero stop,
-a final direct `100%` stop, and the corresponding radial default shape, size,
+or a directly authored exact half-turn, an initial direct numeric zero stop and
+a final direct `100%` stop in a list with multiple stops and one position on
+the corresponding stop, and the corresponding radial default shape, size,
 and ordinary center position. Calculations and four-component positions remain
 explicit. Nested images share one input-node, projection-node, and output-byte
 budget; an exhausted budget returns an error without a partial CSS result.
@@ -8505,7 +8545,8 @@ UI4 Outline imports the full `border-top-color` domain through its bibliography'
 and [dated Images4](https://www.w3.org/TR/2025/WD-css-images-4-20250930/#stripes).
 `CssImage1D::Stripes` is reusable CSS-owned authored syntax, distinct from Color
 and Images3's two-dimensional `CssImageValue`. The existing Color-only
-Backgrounds3 border properties and Images3 gradients keep their selected domains.
+Backgrounds3 border properties retain their selected domain; gradients compose
+the Images3 baseline with the selected Images4 authored additions.
 
 `CssStripes` owns a nonempty ordered stripe list; `CssStripe` requires one complete
 color component and optional `CssStripeThickness`. Length-percentage literals

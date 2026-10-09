@@ -79,6 +79,7 @@ macro_rules! numeric_equality {
 }
 numeric_equality!(
     CssSpecifiedNumber,
+    CssSpecifiedPercentage,
     CssSpecifiedNonNegativeNumber,
     CssSpecifiedNonNegativePercentage,
     CssSpecifiedNonNegativeFlex,
@@ -557,7 +558,7 @@ impl BoundedStructuralEquality for CssFilterImageInput {
         }
     }
 }
-branch_equality!(CssGradient; Linear, Radial, RepeatingLinear, RepeatingRadial);
+branch_equality!(CssGradient; Linear, Radial, RepeatingLinear, RepeatingRadial, Conic);
 branch_equality!(CssLinearGradientDirection; Angle);
 impl BoundedStructuralEquality for CssColor {
     fn bounded_eq(
@@ -568,13 +569,34 @@ impl BoundedStructuralEquality for CssColor {
         self.specified_inverse_eq(other, context)
     }
 }
-getter_equality!(CssGradientColorStop; position: bounded, color: bounded);
+getter_equality!(CssGradientColorStop; positions: bounded, color: bounded);
 branch_equality!(CssColorStopListItem; Stop, Hint);
 getter_equality!(CssColorStopList; items: bounded);
-getter_equality!(CssLinearGradient; direction: bounded, stops: bounded);
+getter_equality!(CssLinearGradient; direction: bounded, interpolation: raw, stops: bounded);
 getter_equality!(CssRadialEllipseSize; horizontal: bounded, vertical: bounded);
 branch_equality!(CssRadialSize; Circle, Ellipse);
-getter_equality!(CssRadialGradient; shape: raw, size: bounded, position: bounded, stops: bounded);
+getter_equality!(CssRadialGradient; shape: raw, size: bounded, position: bounded, interpolation: raw, stops: bounded);
+getter_equality!(CssConicGradient; from: bounded, position: bounded, interpolation: raw, stops: bounded);
+getter_equality!(CssAngularColorStop; color: bounded, positions: bounded);
+getter_equality!(CssAngularColorStopList; items: bounded);
+branch_equality!(CssAngularColorStopListItem; Stop, Hint);
+impl BoundedStructuralEquality for CssAngularColorStopPosition {
+    fn bounded_eq(
+        &self,
+        other: &Self,
+        context: &mut SpecifiedSerializationContext,
+    ) -> EqualityResult {
+        match (self, other) {
+            (Self::Angle(a), Self::Angle(b)) => a.bounded_eq(b, context),
+            (Self::Percentage(a), Self::Percentage(b)) => a.bounded_eq(b, context),
+            (Self::Zero(a), Self::Zero(b)) => Ok(token_equal(a.component(), b.component())),
+            (Self::Calculation(a), Self::Calculation(b)) => {
+                a.expression.specified_inverse_eq(&b.expression, context)
+            }
+            _ => Ok(false),
+        }
+    }
+}
 branch_equality!(CssFilterAmount; Number, HintedNumberCalculation, Percentage);
 impl BoundedStructuralEquality for CssFilterBlur {
     fn bounded_eq(

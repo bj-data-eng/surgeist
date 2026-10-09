@@ -107,7 +107,7 @@ fn c13_radial_extent_rules_accept_only_shape_compatible_sizes() {
 #[test]
 fn c13_color_stop_hints_require_interleaved_stop_order() {
     for invalid in [
-        "linear-gradient(red)",
+        "linear-gradient(red,)",
         "linear-gradient(20%, red, blue)",
         "linear-gradient(red, 20%)",
         "linear-gradient(red, 20%, 30%, blue)",

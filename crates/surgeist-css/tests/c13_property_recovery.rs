@@ -118,11 +118,11 @@ const C13_RECOVERY_CASES: &[InvalidDeclaration] = &[
         "url(one.png), image(two.png)",
         "image(two.png)",
     ),
-    case(
+    last_case(
         "official.value.gradient",
         "background-image",
-        "linear-gradient(red)",
-        "red",
+        "linear-gradient(red,)",
+        ")",
     ),
     case(
         "official.value.linear-gradient",
@@ -148,11 +148,11 @@ const C13_RECOVERY_CASES: &[InvalidDeclaration] = &[
         "repeating-radial-gradient(red, blue,)",
         ")",
     ),
-    case(
+    last_case(
         "official.value.color-stop-list",
         "background-image",
-        "linear-gradient(red)",
-        "red",
+        "linear-gradient(red,)",
+        ")",
     ),
     case(
         "official.value.side-or-corner",
@@ -508,7 +508,7 @@ fn c13_layer_separator_recovery_preserves_siblings_and_boundaries() {
 
     let repeated = concat!(
         "background: red, url(hero.png); ",
-        "background-image: linear-gradient(red); ",
+        "background-image: linear-gradient(red,); ",
         "border-image: 10 // 1 2 3 4 5; ",
         "color: red",
     );

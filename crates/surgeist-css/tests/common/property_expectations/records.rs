@@ -276,7 +276,7 @@ property_records! {
             assert!(matches!(v.images(), [CssImageValue::None]));
         }),
         catalog: grammar_catalog!("baseline.property.background-image", "url(\"hero.png\"), none", rejected("url(foo bar)")),
-        dispatch: "url(\"hero.png\"), none",
+        dispatch: "url(\"hero.png\"), none, conic-gradient(in lab, red 0 50%, blue)",
         wrapper: yes,
     }
     BackgroundOrigin, "background-origin" {
@@ -1935,7 +1935,7 @@ property_records! {
         metadata: longhand(false, |v| assert!(matches!(v.images(), [CssImageValue::None]))),
         catalog: complete_grammar_catalog!("baseline.property.mask-image", "url(mask.png), none", rejected("url(foo bar)")),
         source: "S-MASKING1",
-        dispatch: "url(mask.png), none",
+        dispatch: "url(mask.png), none, linear-gradient(in lab, red 10% 20%, blue)",
         wrapper: yes,
     }
     MaskPosition, "mask-position" {

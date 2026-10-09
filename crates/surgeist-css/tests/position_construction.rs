@@ -225,9 +225,12 @@ fn mask_and_shape_consumers_accept_the_generic_position_without_reinterpretation
         CssColorStopListItem::Stop(Box::new(CssGradientColorStop::from_color(blue, None))),
     ])
     .unwrap();
-    let radial = CssRadialGradient::try_new(None, None, Some(position), stops).unwrap();
-    assert!(matches!(radial.position().unwrap().horizontal(), H::Right));
-    assert!(matches!(radial.position().unwrap().vertical(), V::Bottom));
+    let radial = CssRadialGradient::try_new(None, None, Some(position.into()), stops).unwrap();
+    let CssPositionRef::Cartesian(position) = radial.position().unwrap().view() else {
+        panic!("Cartesian radial center")
+    };
+    assert!(matches!(position.horizontal(), H::Right));
+    assert!(matches!(position.vertical(), V::Bottom));
 }
 
 fn exact_dimension(

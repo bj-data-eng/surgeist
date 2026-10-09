@@ -356,7 +356,7 @@ fn pending_image_list_reentry_is_strict_repeatable_and_provenanced() {
     assert!(pending.source().same_occurrence(&source));
     for invalid in [
         "url(\"ok.svg\"),",
-        "none, linear-gradient(red)",
+        "none, linear-gradient(red,)",
         "none, url(\"ok.svg\" 1)",
         "inherit none",
     ] {
@@ -421,7 +421,7 @@ fn pending_mask_sources_reenter_strictly_and_retain_replacement_provenance() {
     for invalid in [
         "none,",
         "url(\"#mask\" 1)",
-        "radial-gradient(red)",
+        "radial-gradient(red,)",
         "inherit none",
     ] {
         assert!(

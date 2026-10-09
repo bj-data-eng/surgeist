@@ -342,6 +342,9 @@ impl CssCalculationType {
         if t.hint == Some(CssNumericDimension::Frequency) && t.is(CssNumericDimension::Frequency) {
             return Self::FrequencyPercentage;
         }
+        if t.hint == Some(CssNumericDimension::Angle) && t.is(CssNumericDimension::Angle) {
+            return Self::AnglePercentage;
+        }
         Self::Algebra(t)
     }
     pub(crate) fn numeric(self) -> CssNumericType {
@@ -1558,6 +1561,7 @@ pub(crate) enum CalculationRoot {
     LengthPercentage,
     Flex,
     Angle,
+    AnglePercentage,
     Time,
     Frequency,
     FrequencyPercentage,
@@ -1571,6 +1575,7 @@ impl CalculationRoot {
     fn hint(self) -> Option<CssNumericDimension> {
         match self {
             Self::LengthPercentage => Some(CssNumericDimension::Length),
+            Self::AnglePercentage => Some(CssNumericDimension::Angle),
             Self::FrequencyPercentage => Some(CssNumericDimension::Frequency),
             _ => None,
         }
@@ -1588,6 +1593,10 @@ impl CalculationRoot {
             Self::LengthPercentage => t.is(CssNumericDimension::Length),
             Self::Flex => t.is(CssNumericDimension::Flex) && t.hint.is_none(),
             Self::Angle => t.is(CssNumericDimension::Angle) && t.hint.is_none(),
+            Self::AnglePercentage => {
+                t.is(CssNumericDimension::Angle)
+                    && (t.hint.is_none() || t.hint == Some(CssNumericDimension::Angle))
+            }
             Self::Time => t.is(CssNumericDimension::Time) && t.hint.is_none(),
             Self::Frequency => t.is(CssNumericDimension::Frequency) && t.hint.is_none(),
             Self::FrequencyPercentage => {
@@ -2655,6 +2664,8 @@ root!(CssLengthCalculation, Length);
 root!(CssLengthPercentageCalculation, LengthPercentage);
 root!(CssFlexCalculation, Flex);
 root!(CssAngleCalculation, Angle);
+// Images 4 angular positions retain an unresolved angle percentage basis.
+root!(CssAnglePercentageCalculation, AnglePercentage);
 root!(CssTimeCalculation, Time);
 root!(CssFrequencyCalculation, Frequency);
 // Values 4 §5.6: percentages use the host's unresolved frequency basis.

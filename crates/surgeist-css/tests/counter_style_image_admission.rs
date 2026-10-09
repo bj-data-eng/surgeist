@@ -357,7 +357,7 @@ fn image_symbols_keep_currentcolor_and_percentage_dependent_math_unresolved() {
 
 #[test]
 fn malformed_image_duplicate_keeps_the_previous_image_and_following_siblings() {
-    let source = "/*😀*/\n.before{} @counter-style ImageCase { symbols:a; prefix:linear-gradient(red, blue); prefix:linear-gradient(red); suffix:'.'; } .after{}";
+    let source = "/*😀*/\n.before{} @counter-style ImageCase { symbols:a; prefix:linear-gradient(red, blue); prefix:linear-gradient(red,); suffix:'.'; } .after{}";
     let report = parse_sheet(source);
     let retained = report.syntax().clone();
     let [
@@ -379,11 +379,11 @@ fn malformed_image_duplicate_keeps_the_previous_image_and_following_siblings() {
         CssErrorCode::InvalidDescriptorValue
     );
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDescriptor);
-    let start = source.find("prefix:linear-gradient(red);").unwrap();
+    let start = source.find("prefix:linear-gradient(red,);").unwrap();
     assert_eq!(diagnostic.span().start().byte_offset().value(), start);
     assert_eq!(
         diagnostic.span().end().byte_offset().value(),
-        start + "prefix:linear-gradient(red);".len()
+        start + "prefix:linear-gradient(red,);".len()
     );
     assert_output(
         rule,
@@ -653,7 +653,7 @@ fn unselected_image_functions_are_not_reinterpreted_as_identifiers() {
         "image-set(url(a.svg) 1x)",
         "cross-fade(url(a.svg), url(b.svg), 50%)",
         "element(#marker)",
-        "conic-gradient(red, blue)",
+        "repeating-conic-gradient(red, blue)",
         "future-image(red)",
     ] {
         let source = format!(
@@ -700,7 +700,7 @@ fn unselected_image_functions_are_not_reinterpreted_as_identifiers() {
 #[test]
 fn malformed_images_drop_the_whole_value_instead_of_keeping_a_partial_list() {
     for value in [
-        "url(good.svg) linear-gradient(red)",
+        "url(good.svg) linear-gradient(red,)",
         "url(good.svg) future-image(red)",
     ] {
         let source = format!(

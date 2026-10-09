@@ -199,7 +199,7 @@ fn invalid_longhand_domains_and_shorthand_duplicates_drop_only_their_declaration
         (TYPE, "symbols(numeric \"0\")"),
         (TYPE, "symbols(cyclic none)"),
         (IMAGE, "red"),
-        (IMAGE, "linear-gradient(red)"),
+        (IMAGE, "linear-gradient(red,)"),
         (IMAGE, "none url(\"a\")"),
         (POSITION, "center"),
         (POSITION, "inside outside"),
@@ -210,7 +210,7 @@ fn invalid_longhand_domains_and_shorthand_duplicates_drop_only_their_declaration
         (SHORTHAND, "none none url(\"a\")"),
         (SHORTHAND, "none square url(\"a\")"),
         (SHORTHAND, "inside outside inside"),
-        (SHORTHAND, "linear-gradient(red)"),
+        (SHORTHAND, "linear-gradient(red,)"),
     ] {
         rejected(property, value);
     }
@@ -334,7 +334,7 @@ fn pending_shorthand_reentry_is_strict_atomic_and_preserves_source_identity() {
     for invalid in [
         "none none square",
         "inside outside square",
-        "linear-gradient(red)",
+        "linear-gradient(red,)",
     ] {
         assert!(matches!(
             pending

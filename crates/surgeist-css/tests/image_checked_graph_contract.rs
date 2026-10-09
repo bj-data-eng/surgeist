@@ -216,7 +216,8 @@ fn numeric_gradient(functions: usize, role: NumericRole, repeating: bool) -> Css
             };
             let position = CssPhysicalPosition::try_new(x, y).unwrap();
             CssGradient::Radial(
-                CssRadialGradient::try_new(None, None, Some(position), plain_stops()).unwrap(),
+                CssRadialGradient::try_new(None, None, Some(position.into()), plain_stops())
+                    .unwrap(),
             )
         }
     };

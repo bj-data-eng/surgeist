@@ -66,6 +66,23 @@ pub surgeist_css::CssAngleUnit::Degrees
 pub surgeist_css::CssAngleUnit::Gradians
 pub surgeist_css::CssAngleUnit::Radians
 pub surgeist_css::CssAngleUnit::Turns
+#[non_exhaustive] pub enum surgeist_css::CssAngularColorStopListItem
+pub surgeist_css::CssAngularColorStopListItem::Hint(surgeist_css::CssAngularColorStopPosition)
+pub surgeist_css::CssAngularColorStopListItem::Stop(alloc::boxed::Box<surgeist_css::CssAngularColorStop>)
+#[non_exhaustive] pub enum surgeist_css::CssAngularColorStopPosition
+pub surgeist_css::CssAngularColorStopPosition::Angle(surgeist_css::CssAngleValue)
+pub surgeist_css::CssAngularColorStopPosition::Calculation(surgeist_css::CssAnglePercentageCalculation)
+pub surgeist_css::CssAngularColorStopPosition::Percentage(surgeist_css::CssSpecifiedPercentage)
+pub surgeist_css::CssAngularColorStopPosition::Zero(surgeist_css::CssZeroLiteral)
+impl surgeist_css::CssAngularColorStopPosition
+pub fn surgeist_css::CssAngularColorStopPosition::from_calculation(value: surgeist_css::CssAnglePercentageCalculation) -> Self
+pub fn surgeist_css::CssAngularColorStopPosition::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssAngularColorStopPosition::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+impl surgeist_css::CssAngularColorStopPosition
+pub fn surgeist_css::CssAngularColorStopPosition::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssAngularColorStopPosition::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl core::cmp::PartialEq for surgeist_css::CssAngularColorStopPosition
+pub fn surgeist_css::CssAngularColorStopPosition::eq(&self, other: &Self) -> bool
 #[non_exhaustive] pub enum surgeist_css::CssAnimationDirection
 pub surgeist_css::CssAnimationDirection::Alternate
 pub surgeist_css::CssAnimationDirection::AlternateReverse
@@ -1870,6 +1887,7 @@ pub surgeist_css::CssGlobalKeyword::Revert
 pub surgeist_css::CssGlobalKeyword::RevertLayer
 pub surgeist_css::CssGlobalKeyword::Unset
 #[non_exhaustive] pub enum surgeist_css::CssGradient
+pub surgeist_css::CssGradient::Conic(surgeist_css::CssConicGradient)
 pub surgeist_css::CssGradient::Linear(surgeist_css::CssLinearGradient)
 pub surgeist_css::CssGradient::Radial(surgeist_css::CssRadialGradient)
 pub surgeist_css::CssGradient::RepeatingLinear(surgeist_css::CssLinearGradient)
@@ -1877,6 +1895,11 @@ pub surgeist_css::CssGradient::RepeatingRadial(surgeist_css::CssRadialGradient)
 impl surgeist_css::CssGradient
 pub fn surgeist_css::CssGradient::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssGradient::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+#[non_exhaustive] pub enum surgeist_css::CssGradientStopConstructionError
+pub surgeist_css::CssGradientStopConstructionError::TooManyPositions
+impl core::error::Error for surgeist_css::CssGradientStopConstructionError
+impl core::fmt::Display for surgeist_css::CssGradientStopConstructionError
+pub fn surgeist_css::CssGradientStopConstructionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_css::CssGridAutoFlow
 pub surgeist_css::CssGridAutoFlow::Dense
 pub surgeist_css::CssGridAutoFlow::ExplicitAxis(surgeist_css::CssGridAutoFlowMode)
@@ -5966,6 +5989,17 @@ pub const fn surgeist_css::CssAngleLiteral::origin(&self) -> &surgeist_css::CssV
 pub fn surgeist_css::CssAngleLiteral::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
 pub fn surgeist_css::CssAngleLiteral::try_new(number: &str, unit: surgeist_css::CssAngleUnit) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
 pub const fn surgeist_css::CssAngleLiteral::unit(&self) -> surgeist_css::CssAngleUnit
+pub struct surgeist_css::CssAnglePercentageCalculation
+impl surgeist_css::CssAnglePercentageCalculation
+pub fn surgeist_css::CssAnglePercentageCalculation::components(&self) -> &surgeist_css::CssComponentValues
+pub fn surgeist_css::CssAnglePercentageCalculation::expression(&self) -> surgeist_css::CssCalculationExpressionRef<'_>
+pub fn surgeist_css::CssAnglePercentageCalculation::numeric_type(&self) -> surgeist_css::CssNumericType
+pub fn surgeist_css::CssAnglePercentageCalculation::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssAnglePercentageCalculation::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
+pub fn surgeist_css::CssAnglePercentageCalculation::result_type(&self) -> surgeist_css::CssCalculationType
+pub fn surgeist_css::CssAnglePercentageCalculation::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
+pub fn surgeist_css::CssAnglePercentageCalculation::try_from_components(values: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub fn surgeist_css::CssAnglePercentageCalculation::try_from_components_with_limits(values: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 pub struct surgeist_css::CssAngleValue
 impl surgeist_css::CssAngleValue
 pub fn surgeist_css::CssAngleValue::calculation(&self) -> core::option::Option<&surgeist_css::CssAngleCalculation>
@@ -5973,6 +6007,15 @@ pub fn surgeist_css::CssAngleValue::from_literal(literal: surgeist_css::CssAngle
 pub fn surgeist_css::CssAngleValue::literal(&self) -> core::option::Option<&surgeist_css::CssAngleLiteral>
 pub fn surgeist_css::CssAngleValue::origin(&self) -> &surgeist_css::CssValueOrigin
 pub fn surgeist_css::CssAngleValue::try_from_calculation(calculation: surgeist_css::CssAngleCalculation) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub struct surgeist_css::CssAngularColorStop
+impl surgeist_css::CssAngularColorStop
+pub const fn surgeist_css::CssAngularColorStop::color(&self) -> &surgeist_css::CssColor
+pub fn surgeist_css::CssAngularColorStop::positions(&self) -> &[surgeist_css::CssAngularColorStopPosition]
+pub fn surgeist_css::CssAngularColorStop::try_new(color: surgeist_css::CssColor, positions: alloc::vec::Vec<surgeist_css::CssAngularColorStopPosition>) -> core::result::Result<Self, surgeist_css::CssGradientStopConstructionError>
+pub struct surgeist_css::CssAngularColorStopList
+impl surgeist_css::CssAngularColorStopList
+pub fn surgeist_css::CssAngularColorStopList::items(&self) -> &[surgeist_css::CssAngularColorStopListItem]
+pub fn surgeist_css::CssAngularColorStopList::try_new(items: alloc::vec::Vec<surgeist_css::CssAngularColorStopListItem>) -> core::option::Option<Self>
 pub struct surgeist_css::CssAnimation
 impl surgeist_css::CssAnimation
 pub const fn surgeist_css::CssAnimation::delay(&self) -> core::option::Option<&surgeist_css::CssTimeValue>
@@ -7230,6 +7273,15 @@ pub const fn surgeist_css::CssConformanceExclusionId::as_str(self) -> &'static s
 pub struct surgeist_css::CssConformanceSupersedingId(_)
 impl surgeist_css::CssConformanceSupersedingId
 pub const fn surgeist_css::CssConformanceSupersedingId::as_str(self) -> &'static str
+pub struct surgeist_css::CssConicGradient
+impl surgeist_css::CssConicGradient
+pub const fn surgeist_css::CssConicGradient::from(&self) -> core::option::Option<&surgeist_css::CssAngleOrZero>
+pub const fn surgeist_css::CssConicGradient::interpolation(&self) -> core::option::Option<&surgeist_css::CssColorInterpolation>
+pub const fn surgeist_css::CssConicGradient::new(from: core::option::Option<surgeist_css::CssAngleOrZero>, position: core::option::Option<surgeist_css::CssPosition>, interpolation: core::option::Option<surgeist_css::CssColorInterpolation>, stops: surgeist_css::CssAngularColorStopList) -> Self
+pub const fn surgeist_css::CssConicGradient::position(&self) -> core::option::Option<&surgeist_css::CssPosition>
+pub const fn surgeist_css::CssConicGradient::stops(&self) -> &surgeist_css::CssAngularColorStopList
+impl core::cmp::PartialEq for surgeist_css::CssConicGradient
+pub fn surgeist_css::CssConicGradient::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssContainComponentList
 impl surgeist_css::CssContainComponentList
 pub fn surgeist_css::CssContainComponentList::components(&self) -> &[surgeist_css::CssContainComponent]
@@ -8687,9 +8739,11 @@ pub const fn surgeist_css::CssGenericVoice::variant(&self) -> core::option::Opti
 pub struct surgeist_css::CssGradientColorStop
 impl surgeist_css::CssGradientColorStop
 pub const fn surgeist_css::CssGradientColorStop::color(&self) -> &surgeist_css::CssColor
-pub const fn surgeist_css::CssGradientColorStop::position(&self) -> core::option::Option<&surgeist_css::CssSpecifiedLengthPercentage>
+pub fn surgeist_css::CssGradientColorStop::position(&self) -> core::option::Option<&surgeist_css::CssSpecifiedLengthPercentage>
+pub fn surgeist_css::CssGradientColorStop::positions(&self) -> &[surgeist_css::CssSpecifiedLengthPercentage]
 impl surgeist_css::CssGradientColorStop
 pub fn surgeist_css::CssGradientColorStop::from_color(color: surgeist_css::CssColor, position: core::option::Option<surgeist_css::CssSpecifiedLengthPercentage>) -> Self
+pub fn surgeist_css::CssGradientColorStop::try_from_positions(color: surgeist_css::CssColor, positions: alloc::vec::Vec<surgeist_css::CssSpecifiedLengthPercentage>) -> core::result::Result<Self, surgeist_css::CssGradientStopConstructionError>
 impl core::cmp::PartialEq for surgeist_css::CssGradientColorStop
 pub fn surgeist_css::CssGradientColorStop::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssGrammarExpectation(_)
@@ -9467,7 +9521,9 @@ pub fn surgeist_css::CssLinearEasing::try_new(stops: alloc::vec::Vec<surgeist_cs
 pub struct surgeist_css::CssLinearGradient
 impl surgeist_css::CssLinearGradient
 pub const fn surgeist_css::CssLinearGradient::direction(&self) -> core::option::Option<&surgeist_css::CssLinearGradientDirection>
+pub const fn surgeist_css::CssLinearGradient::interpolation(&self) -> core::option::Option<&surgeist_css::CssColorInterpolation>
 pub const fn surgeist_css::CssLinearGradient::stops(&self) -> &surgeist_css::CssColorStopList
+pub fn surgeist_css::CssLinearGradient::with_interpolation(self, interpolation: core::option::Option<surgeist_css::CssColorInterpolation>) -> Self
 impl surgeist_css::CssLinearGradient
 pub const fn surgeist_css::CssLinearGradient::new(direction: core::option::Option<surgeist_css::CssLinearGradientDirection>, stops: surgeist_css::CssColorStopList) -> Self
 pub struct surgeist_css::CssLinearStop
@@ -10646,12 +10702,14 @@ impl core::cmp::PartialEq for surgeist_css::CssRadialEllipseSize
 pub fn surgeist_css::CssRadialEllipseSize::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssRadialGradient
 impl surgeist_css::CssRadialGradient
-pub const fn surgeist_css::CssRadialGradient::position(&self) -> core::option::Option<&surgeist_css::CssPhysicalPosition>
+pub const fn surgeist_css::CssRadialGradient::interpolation(&self) -> core::option::Option<&surgeist_css::CssColorInterpolation>
+pub const fn surgeist_css::CssRadialGradient::position(&self) -> core::option::Option<&surgeist_css::CssPosition>
 pub const fn surgeist_css::CssRadialGradient::shape(&self) -> core::option::Option<surgeist_css::CssRadialShape>
 pub const fn surgeist_css::CssRadialGradient::size(&self) -> core::option::Option<&surgeist_css::CssRadialSize>
 pub const fn surgeist_css::CssRadialGradient::stops(&self) -> &surgeist_css::CssColorStopList
+pub fn surgeist_css::CssRadialGradient::with_interpolation(self, interpolation: core::option::Option<surgeist_css::CssColorInterpolation>) -> Self
 impl surgeist_css::CssRadialGradient
-pub fn surgeist_css::CssRadialGradient::try_new(shape: core::option::Option<surgeist_css::CssRadialShape>, size: core::option::Option<surgeist_css::CssRadialSize>, position: core::option::Option<surgeist_css::CssPhysicalPosition>, stops: surgeist_css::CssColorStopList) -> core::option::Option<Self>
+pub fn surgeist_css::CssRadialGradient::try_new(shape: core::option::Option<surgeist_css::CssRadialShape>, size: core::option::Option<surgeist_css::CssRadialSize>, position: core::option::Option<surgeist_css::CssPosition>, stops: surgeist_css::CssColorStopList) -> core::option::Option<Self>
 pub struct surgeist_css::CssRangeFeature<T>
 impl<T> surgeist_css::CssRangeFeature<T>
 pub const fn surgeist_css::CssRangeFeature<T>::comparison(&self) -> core::option::Option<surgeist_css::CssQueryComparison>

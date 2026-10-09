@@ -1,7 +1,7 @@
 use cssparser::{ParseError, ParseErrorKind, Parser, Token, match_ignore_ascii_case};
 
 use super::color::{
-    next_is_mix_weight, parse_authored_mix_interpolation_method, parse_authored_mix_weight,
+    next_is_mix_weight, parse_authored_mix_weight, parse_color_interpolation_method,
 };
 use crate::error::{Error, basic};
 use crate::numeric::NumericInputContext;
@@ -41,7 +41,7 @@ fn parse_mix<'i, 't>(
         .try_parse(|input| input.expect_ident_matching("in"))
         .is_ok()
     {
-        let value = parse_authored_mix_interpolation_method(input).map_err(palette_mix_error)?;
+        let value = parse_color_interpolation_method(input).map_err(palette_mix_error)?;
         input.expect_comma().map_err(basic)?;
         Some(value)
     } else {

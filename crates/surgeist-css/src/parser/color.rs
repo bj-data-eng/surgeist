@@ -912,7 +912,7 @@ fn parse_authored_color_mix_arguments<'i, 't>(
         .try_parse(|input| input.expect_ident_matching("in"))
         .is_ok()
     {
-        let value = parse_authored_mix_interpolation_method(input)?;
+        let value = parse_color_interpolation_method(input)?;
         input.expect_comma().map_err(basic)?;
         Some(value)
     } else {
@@ -945,7 +945,7 @@ fn parse_authored_color_mix_arguments<'i, 't>(
     })
 }
 
-pub(super) fn parse_authored_mix_interpolation_method<'i, 't>(
+pub(super) fn parse_color_interpolation_method<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssColorInterpolation, ParseError<'i, Error>> {
     let state = input.state();
@@ -955,9 +955,9 @@ pub(super) fn parse_authored_mix_interpolation_method<'i, 't>(
         return Ok(CssColorInterpolation::custom(profile));
     }
     input.reset(&state);
-    let space = parse_color_mix_interpolation_space(input)?;
+    let space = parse_color_interpolation_space(input)?;
     let hue_location = input.current_source_location();
-    let hue = input.try_parse(parse_color_mix_hue_interpolation).ok();
+    let hue = input.try_parse(parse_hue_interpolation).ok();
     let method = CssColorInterpolationMethod::try_new(space, hue)
         .map_err(|_| invalid_color(hue_location, Some("hue interpolation")))?;
     Ok(CssColorInterpolation::from_predefined(method))
@@ -1038,7 +1038,7 @@ fn collect_color_scalar<'i, 't>(
     })
 }
 
-fn parse_color_mix_interpolation_space<'i, 't>(
+fn parse_color_interpolation_space<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssColorInterpolationSpace, ParseError<'i, Error>> {
     let location = input.current_source_location();
@@ -1063,13 +1063,13 @@ fn parse_color_mix_interpolation_space<'i, 't>(
         _ => return Err(unsupported_value_at(
             location,
             None,
-            format!("unsupported color-mix interpolation space `{ident}`"),
+            format!("unsupported color interpolation space `{ident}`"),
         )),
     };
     Ok(space)
 }
 
-fn parse_color_mix_hue_interpolation<'i, 't>(
+fn parse_hue_interpolation<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssHueInterpolationMethod, ParseError<'i, Error>> {
     let location = input.current_source_location();

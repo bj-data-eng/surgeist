@@ -5,7 +5,7 @@ use crate::{
     CssAngleOrZero, CssColorStopList, CssColorStopListItem, CssFilterImage, CssFilterImageInput,
     CssFilterImageInputRef, CssFilterImageString, CssGradient, CssHorizontalGradientSide,
     CssHorizontalPosition, CssImage, CssImageValue, CssImageValueList, CssLinearGradient,
-    CssLinearGradientDirection, CssPhysicalPosition, CssRadialExtent, CssRadialGradient,
+    CssLinearGradientDirection, CssPosition, CssPositionRef, CssRadialExtent, CssRadialGradient,
     CssRadialShape, CssRadialSize, CssSpecifiedLengthPercentage,
     CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
     CssVerticalGradientSide, CssVerticalPosition,
@@ -251,19 +251,105 @@ impl CssGradient {
                 writer.append("repeating-radial-gradient(")?;
                 append_radial(value, writer)?;
             }
+            Self::Conic(value) => {
+                writer.append("conic-gradient(")?;
+                append_conic(value, writer)?;
+            }
         }
         writer.append(")")
     }
 }
 
 fn append_linear(value: &CssLinearGradient, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+    let mut emitted = false;
     if let Some(direction) = value.direction() {
-        let emitted = append_direction(direction, writer)?;
-        if emitted {
-            writer.append(", ")?;
+        emitted = append_direction(direction, writer)?;
+    }
+    let (default, stops) = writer.capture_value(|writer| append_stops(value.stops(), writer))?;
+    append_interpolation(value.interpolation(), default, &mut emitted, writer)?;
+    if emitted {
+        writer.append(", ")?;
+    }
+    writer.append(&stops)
+}
+
+/// Defaults compose during the real charged stop traversal. A nonlegacy
+/// stop suffices to establish Oklab, independently on each side of projection.
+#[derive(Clone, Copy)]
+struct GradientDefault {
+    original: crate::syntax::color::serialization::GradientColorDefault,
+    emitted: crate::syntax::color::serialization::GradientColorDefault,
+}
+impl GradientDefault {
+    fn new() -> Self {
+        use crate::syntax::color::serialization::GradientColorDefault as D;
+        Self {
+            original: D::Srgb,
+            emitted: D::Srgb,
         }
     }
-    append_stops(value.stops(), writer)
+    fn observe(&mut self, color: &crate::CssColor) {
+        use crate::syntax::color::serialization::GradientColorDefault as D;
+        let proof = color.gradient_color_defaults();
+        if proof.original == D::Oklab {
+            self.original = D::Oklab;
+        }
+        if proof.emitted == D::Oklab {
+            self.emitted = D::Oklab;
+        }
+    }
+    fn matches_emitted(self, space: crate::CssColorInterpolationSpace) -> bool {
+        use crate::syntax::color::serialization::GradientColorDefault as D;
+        match self.emitted {
+            D::Oklab => space == crate::CssColorInterpolationSpace::Oklab,
+            D::Srgb => {
+                space
+                    == crate::CssColorInterpolationSpace::Predefined(
+                        crate::CssPredefinedColorSpace::Srgb,
+                    )
+            }
+        }
+    }
+}
+
+fn append_interpolation(
+    value: Option<&crate::CssColorInterpolation>,
+    default: GradientDefault,
+    emitted: &mut bool,
+    writer: &mut SpecifiedRuleWriter,
+) -> Result<()> {
+    if let Some(value) = value {
+        charge(writer, 1)?;
+        if value
+            .predefined()
+            .is_some_and(|method| default.matches_emitted(method.space()))
+        {
+            // Omitted authored methods still consume their ordinary node tariff.
+            return Ok(());
+        }
+        if *emitted {
+            writer.append(" ")?;
+        }
+        writer.append("in ")?;
+        let css =
+            crate::syntax::color::serialization::serialize_interpolation(value, &writer.context)?;
+        writer.append(&css)?;
+        *emitted = true;
+    } else if default.original != default.emitted {
+        // A mandated Color projection can change the implicit default. Emit
+        // its original method without inventing an authored input node.
+        writer.context.charge_projection(1)?;
+        if *emitted {
+            writer.append(" ")?;
+        }
+        writer.append("in ")?;
+        writer.append(match default.original {
+            crate::syntax::color::serialization::GradientColorDefault::Oklab => "oklab",
+            crate::syntax::color::serialization::GradientColorDefault::Srgb => "srgb",
+        })?;
+        *emitted = true;
+    }
+    Ok(())
 }
 
 fn append_direction(
@@ -371,7 +457,7 @@ fn append_radial(value: &CssRadialGradient, writer: &mut SpecifiedRuleWriter) ->
         if radial_position_is_center(position) {
             // The checked position writer charges one aggregate and each axis,
             // plus one numeric leaf for each authored 50% offset.
-            charge(writer, 3 + radial_center_offset_count(position))?;
+            writer.without_output(|writer| position.append_specified(writer))?;
         } else {
             if emitted {
                 writer.append(" ")?;
@@ -381,10 +467,12 @@ fn append_radial(value: &CssRadialGradient, writer: &mut SpecifiedRuleWriter) ->
             emitted = true;
         }
     }
+    let (default, stops) = writer.capture_value(|writer| append_stops(value.stops(), writer))?;
+    append_interpolation(value.interpolation(), default, &mut emitted, writer)?;
     if emitted {
         writer.append(", ")?;
     }
-    append_stops(value.stops(), writer)
+    writer.append(&stops)
 }
 
 fn radial_extent(extent: CssRadialExtent) -> &'static str {
@@ -396,17 +484,10 @@ fn radial_extent(extent: CssRadialExtent) -> &'static str {
     }
 }
 
-fn radial_center_offset_count(position: &CssPhysicalPosition) -> usize {
-    usize::from(matches!(
-        position.horizontal(),
-        CssHorizontalPosition::Offset(_)
-    )) + usize::from(matches!(
-        position.vertical(),
-        CssVerticalPosition::Offset(_)
-    ))
-}
-
-fn radial_position_is_center(position: &CssPhysicalPosition) -> bool {
+fn radial_position_is_center(position: &CssPosition) -> bool {
+    let CssPositionRef::Cartesian(position) = position.view() else {
+        return false;
+    };
     let horizontal = match position.horizontal() {
         CssHorizontalPosition::Center => true,
         CssHorizontalPosition::Offset(offset) => literal_percentage_is(offset, 5, 1),
@@ -420,7 +501,11 @@ fn radial_position_is_center(position: &CssPhysicalPosition) -> bool {
     horizontal && vertical
 }
 
-fn append_stops(stops: &CssColorStopList, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+fn append_stops(
+    stops: &CssColorStopList,
+    writer: &mut SpecifiedRuleWriter,
+) -> Result<GradientDefault> {
+    let mut default = GradientDefault::new();
     charge(writer, 1)?;
     let last = stops.items().len() - 1;
     for (index, item) in stops.items().iter().enumerate() {
@@ -432,9 +517,11 @@ fn append_stops(stops: &CssColorStopList, writer: &mut SpecifiedRuleWriter) -> R
             CssColorStopListItem::Stop(stop) => {
                 stop.color()
                     .append_specified(&mut writer.context, &mut writer.css)?;
-                if let Some(position) = stop.position() {
-                    let omit = (index == 0 && is_direct_zero(position))
-                        || (index == last && is_direct_hundred_percent(position));
+                default.observe(stop.color());
+                for position in stop.positions() {
+                    let omit = stop.positions().len() == 1
+                        && ((index == 0 && is_direct_zero(position))
+                            || (last > 0 && index == last && is_direct_hundred_percent(position)));
                     if omit {
                         charge(writer, 1)?;
                     } else {
@@ -446,7 +533,151 @@ fn append_stops(stops: &CssColorStopList, writer: &mut SpecifiedRuleWriter) -> R
             CssColorStopListItem::Hint(position) => append_line_position(position, writer)?,
         }
     }
-    Ok(())
+    Ok(default)
+}
+
+fn append_conic(value: &crate::CssConicGradient, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+    let mut emitted = false;
+    if let Some(from) = value.from() {
+        let omitted = match from {
+            CssAngleOrZero::Zero(_) => true,
+            CssAngleOrZero::Angle(angle) => angle.literal().is_some_and(|literal| {
+                crate::exact_decimal::LexicalDecimal::new(literal.numeric().representation()).len
+                    == 0
+            }),
+        };
+        if omitted {
+            writer.without_output(|writer| {
+                from.append_specified(&mut writer.context, &mut writer.css)
+            })?;
+        } else {
+            writer.append("from ")?;
+            from.append_specified(&mut writer.context, &mut writer.css)?;
+            emitted = true;
+        }
+    }
+    if let Some(position) = value.position() {
+        if radial_position_is_center(position) {
+            writer.without_output(|writer| position.append_specified(writer))?;
+        } else {
+            if emitted {
+                writer.append(" ")?;
+            }
+            writer.append("at ")?;
+            position.append_specified(writer)?;
+            emitted = true;
+        }
+    }
+    let (default, stops) =
+        writer.capture_value(|writer| append_angular_stops(value.stops(), writer))?;
+    append_interpolation(value.interpolation(), default, &mut emitted, writer)?;
+    if emitted {
+        writer.append(", ")?;
+    }
+    writer.append(&stops)
+}
+
+fn append_angular_stops(
+    stops: &crate::CssAngularColorStopList,
+    writer: &mut SpecifiedRuleWriter,
+) -> Result<GradientDefault> {
+    let mut default = GradientDefault::new();
+    charge(writer, 1)?;
+    let last = stops.items().len() - 1;
+    for (index, item) in stops.items().iter().enumerate() {
+        if index != 0 {
+            writer.append(", ")?;
+        }
+        charge(writer, 1)?;
+        match item {
+            crate::CssAngularColorStopListItem::Stop(stop) => {
+                stop.color()
+                    .append_specified(&mut writer.context, &mut writer.css)?;
+                default.observe(stop.color());
+                for position in stop.positions() {
+                    let omit = stop.positions().len() == 1
+                        && ((index == 0 && angular_endpoint_is(position, false))
+                            || (last > 0 && index == last && angular_endpoint_is(position, true)));
+                    if omit {
+                        writer.without_output(|writer| position.append_specified(writer))?;
+                    } else {
+                        writer.append(" ")?;
+                        position.append_specified(writer)?;
+                    }
+                }
+            }
+            crate::CssAngularColorStopListItem::Hint(hint) => hint.append_specified(writer)?,
+        }
+    }
+    Ok(default)
+}
+
+fn angular_endpoint_is(value: &crate::CssAngularColorStopPosition, end: bool) -> bool {
+    use crate::{CssAngleUnit as U, CssAngularColorStopPosition as P};
+    match value {
+        P::Zero(_) => !end,
+        P::Angle(value) => value.literal().is_some_and(|literal| {
+            let decimal =
+                crate::exact_decimal::LexicalDecimal::new(literal.numeric().representation());
+            if !end {
+                return decimal.len == 0;
+            }
+            let (digits, exponent): (&[u8], i128) = match literal.unit() {
+                U::Degrees => (&[3, 6], 1),
+                U::Gradians => (&[4], 2),
+                U::Turns => (&[1], 0),
+                U::Radians => return false,
+            };
+            !decimal.negative
+                && decimal.exponent == Some(exponent)
+                && decimal.digits().eq(digits.iter().copied())
+        }),
+        P::Percentage(value) => value.literal_component().is_some_and(|component| {
+            let crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Percentage(number)) =
+                component.view()
+            else {
+                return false;
+            };
+            let decimal = crate::exact_decimal::LexicalDecimal::new(number.representation());
+            if !end {
+                return decimal.len == 0;
+            }
+            !decimal.negative
+                && decimal.len == 1
+                && decimal.exponent == Some(2)
+                && decimal.digits().next() == Some(1)
+        }),
+        P::Calculation(_) => false,
+    }
+}
+
+impl crate::CssAngularColorStopPosition {
+    /// Serializes a checked angular position without resolving its percentage basis.
+    pub fn serialize_specified(&self) -> Result<String> {
+        self.serialize_specified_with_limits(crate::CssSpecifiedValueSerializationLimits::default())
+    }
+    /// Charges all numeric work to one cumulative writer; errors return no partial output.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: crate::CssSpecifiedValueSerializationLimits,
+    ) -> Result<String> {
+        let mut writer = SpecifiedRuleWriter::new(limits);
+        self.append_specified(&mut writer)?;
+        Ok(writer.css)
+    }
+    pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        match self {
+            Self::Angle(value) => value.append_specified(&mut writer.context, &mut writer.css),
+            Self::Percentage(value) => value.append_specified(&mut writer.context, &mut writer.css),
+            Self::Zero(value) => value.append_specified(&mut writer.context, &mut writer.css),
+            Self::Calculation(value) => crate::numeric::project_specified_into(
+                &value.expression,
+                &mut writer.context,
+                &mut writer.css,
+            )
+            .map(|_| ()),
+        }
+    }
 }
 
 fn is_direct_zero(value: &CssSpecifiedLengthPercentage) -> bool {

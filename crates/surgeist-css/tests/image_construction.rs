@@ -128,12 +128,12 @@ fn parsed_gradient_stop_equals_checked_reconstruction() {
 }
 
 #[test]
-fn stop_list_requires_two_stops_and_separates_hints() {
+fn stop_list_requires_one_stop_and_separates_hints() {
     let red = || CssColorStopListItem::Stop(Box::new(stop("red", None)));
     let blue = || CssColorStopListItem::Stop(Box::new(stop("blue", None)));
     let hint = || CssColorStopListItem::Hint(signed_length_percentage("40%"));
 
-    assert!(CssColorStopList::try_new(vec![red()]).is_none());
+    assert!(CssColorStopList::try_new(vec![red()]).is_some());
     assert!(CssColorStopList::try_new(vec![hint(), red(), blue()]).is_none());
     assert!(CssColorStopList::try_new(vec![red(), blue(), hint()]).is_none());
     assert!(CssColorStopList::try_new(vec![red(), hint(), hint(), blue()]).is_none());
@@ -255,11 +255,11 @@ fn radial_constructor_checks_shape_size_matrix_without_inventing_defaults() {
     let constructed = CssRadialGradient::try_new(
         Some(CssRadialShape::Circle),
         Some(CssRadialSize::Circle(radius)),
-        Some(position.clone()),
+        Some(position.clone().into()),
         stops(),
     )
     .unwrap();
-    assert_eq!(constructed.position(), Some(&position));
+    assert_eq!(constructed.position(), Some(&position.into()));
     assert!(
         matches!(constructed.size(), Some(CssRadialSize::Circle(radius)) if radius.calculation().is_some_and(|value| value.components() == symbolic_radius.components()))
     );

@@ -30,6 +30,67 @@ pub(super) fn serialize(value: &CssColor, limits: Limits) -> Result<String> {
     Ok(output)
 }
 
+/// The specified format family's intrinsic gradient default. This is not a
+/// used color or a result of interpolation, profile resolution, or evaluation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum GradientColorDefault {
+    Srgb,
+    Oklab,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct GradientColorDefaults {
+    pub(crate) original: GradientColorDefault,
+    pub(crate) emitted: GradientColorDefault,
+}
+
+impl CssColor {
+    pub(crate) fn gradient_color_defaults(&self) -> GradientColorDefaults {
+        use CssColorRepresentation as R;
+        use GradientColorDefault as D;
+        // Color4 §13.2 qualifies Images4's default by format family, including
+        // ordinary RGB/HSL/HWB with missing or mathematical channels. Keyword
+        // colors use the selected frozen keyword/SRGB default. Relative legacy
+        // functions use the separately qualified frozen nonkeyword/Oklab
+        // fallback; Color5's comma-free syntax alone does not prove that rule.
+        // The declared writer preserves every other new outer function family,
+        // outside Color4's normative legacy list. No child or numeric result is
+        // inspected, and no used-color or relative origin is evaluated here.
+        let original = match &self.representation {
+            R::CurrentColor
+            | R::Transparent
+            | R::Hex(_)
+            | R::Named(_)
+            | R::System(_)
+            | R::Rgb(_)
+            | R::Hsl(_)
+            | R::Hwb(_) => D::Srgb,
+            R::Lab(_)
+            | R::Lch(_)
+            | R::Oklab(_)
+            | R::Oklch(_)
+            | R::Predefined(_)
+            | R::Custom(_)
+            | R::RelativeCustom(_)
+            | R::Alpha(_)
+            | R::Relative(_)
+            | R::ColorMix(_)
+            | R::LightDark(_)
+            | R::ContrastColor(_)
+            | R::DeviceCmyk(_) => D::Oklab,
+        };
+        // Color4 §16.2.2 mandates nonlegacy color(srgb) output for missing RGB.
+        // This typed branch is the only outer-family change in this owner.
+        let missing_rgb = matches!(&self.representation, R::Rgb(value)
+            if value.channels().iter().any(CssColorComponent::is_none)
+                || value.alpha().is_some_and(CssColorComponent::is_none));
+        GradientColorDefaults {
+            original,
+            emitted: if missing_rgb { D::Oklab } else { original },
+        }
+    }
+}
+
 impl CssColor {
     /// Appends one checked color to a caller's cumulative specified-CSS budget.
     /// The caller owns the output and context for its entire composed value.

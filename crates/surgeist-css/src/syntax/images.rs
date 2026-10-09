@@ -1,13 +1,10 @@
 //! Checked Image graphs, including the imported Filter Effects 1 §12 image function.
 
-use super::{
-    CssAngleOrZero, CssColorStopListItem, CssGradient, CssHorizontalPosition, CssUrlModifier,
-    CssVerticalPosition,
-};
+use super::{CssAngleOrZero, CssColorStopListItem, CssGradient, CssUrlModifier};
 use super::{
     CssColor, CssColorStopList, CssGradientColorStop, CssImageValue, CssLinearGradient,
-    CssLinearGradientDirection, CssPhysicalPosition, CssRadialGradient, CssRadialShape,
-    CssRadialSize, CssSpecifiedLengthPercentage,
+    CssLinearGradientDirection, CssRadialGradient, CssRadialShape, CssRadialSize,
+    CssSpecifiedLengthPercentage,
 };
 use super::{CssFilterAmount, CssFilterFunction, CssFilterFunctionList};
 use crate::{
@@ -268,31 +265,18 @@ fn stops_depth(stops: &CssColorStopList) -> Result<u32, CssImageConstructionErro
             CssColorStopListItem::Hint(value) => length_percentage_depth(value),
             CssColorStopListItem::Stop(value) => {
                 let color = color_depth(value.color())?;
-                color.max(value.position().map_or(0, length_percentage_depth))
+                color.max(
+                    value
+                        .positions()
+                        .iter()
+                        .map(length_percentage_depth)
+                        .max()
+                        .unwrap_or(0),
+                )
             }
         });
     }
     Ok(depth)
-}
-
-fn position_depth(position: &CssPhysicalPosition) -> u32 {
-    let horizontal = match position.horizontal() {
-        CssHorizontalPosition::Offset(v)
-        | CssHorizontalPosition::LeftOffset(v)
-        | CssHorizontalPosition::RightOffset(v)
-        | CssHorizontalPosition::XStartOffset(v)
-        | CssHorizontalPosition::XEndOffset(v) => length_percentage_depth(v),
-        _ => 0,
-    };
-    let vertical = match position.vertical() {
-        CssVerticalPosition::Offset(v)
-        | CssVerticalPosition::TopOffset(v)
-        | CssVerticalPosition::BottomOffset(v)
-        | CssVerticalPosition::YStartOffset(v)
-        | CssVerticalPosition::YEndOffset(v) => length_percentage_depth(v),
-        _ => 0,
-    };
-    horizontal.max(vertical)
 }
 
 fn image_depth(image: &CssImageValue) -> Result<u32, CssImageConstructionError> {
@@ -330,9 +314,39 @@ fn image_depth(image: &CssImageValue) -> Result<u32, CssImageConstructionError> 
                             ),
                         _ => 0,
                     };
-                    stops_depth(value.stops())?
-                        .max(size)
-                        .max(value.position().map_or(0, position_depth))
+                    stops_depth(value.stops())?.max(size).max(
+                        value
+                            .position()
+                            .map_or(0, super::CssPosition::numeric_nesting_depth),
+                    )
+                }
+                CssGradient::Conic(value) => {
+                    let mut depth = value.from().map_or(0, |from| match from {
+                        CssAngleOrZero::Angle(angle) => angle
+                            .calculation()
+                            .map_or(0, |v| v.components().nesting_depth()),
+                        CssAngleOrZero::Zero(_) => 0,
+                    });
+                    depth = depth.max(
+                        value
+                            .position()
+                            .map_or(0, super::CssPosition::numeric_nesting_depth),
+                    );
+                    for item in value.stops().items() {
+                        depth = depth.max(match item {
+                            super::CssAngularColorStopListItem::Hint(hint) => hint.nesting_depth(),
+                            super::CssAngularColorStopListItem::Stop(stop) => {
+                                color_depth(stop.color())?.max(
+                                    stop.positions()
+                                        .iter()
+                                        .map(super::CssAngularColorStopPosition::nesting_depth)
+                                        .max()
+                                        .unwrap_or(0),
+                                )
+                            }
+                        });
+                    }
+                    depth
                 }
             };
             enclosing_depth(depth)
@@ -440,19 +454,37 @@ impl CssGradientColorStop {
     /// The authored color stays symbolic; no legacy color projection is invented.
     #[must_use]
     pub fn from_color(color: CssColor, position: Option<CssSpecifiedLengthPercentage>) -> Self {
-        Self { color, position }
+        Self {
+            color,
+            positions: position.into_iter().collect(),
+        }
+    }
+
+    /// Retains zero, one or two checked line positions on one authored color stop.
+    pub fn try_from_positions(
+        color: CssColor,
+        positions: Vec<CssSpecifiedLengthPercentage>,
+    ) -> Result<Self, super::CssGradientStopConstructionError> {
+        if positions.len() > 2 {
+            return Err(super::CssGradientStopConstructionError::TooManyPositions);
+        }
+        Ok(Self { color, positions })
     }
 }
 
 impl CssLinearGradient {
     /// Constructs a linear gradient from an optional checked direction and a
-    /// checked list of at least two color stops.
+    /// checked nonempty list of color stops; interpolation is initially omitted.
     #[must_use]
     pub const fn new(
         direction: Option<CssLinearGradientDirection>,
         stops: CssColorStopList,
     ) -> Self {
-        Self { direction, stops }
+        Self {
+            direction,
+            interpolation: None,
+            stops,
+        }
     }
 }
 
@@ -480,7 +512,7 @@ impl CssRadialGradient {
     pub fn try_new(
         shape: Option<CssRadialShape>,
         size: Option<CssRadialSize>,
-        position: Option<CssPhysicalPosition>,
+        position: Option<super::CssPosition>,
         stops: CssColorStopList,
     ) -> Option<Self> {
         if !Self::allows_shape_size(shape, size.as_ref()) {
@@ -490,6 +522,7 @@ impl CssRadialGradient {
             shape,
             size,
             position,
+            interpolation: None,
             stops,
         })
     }

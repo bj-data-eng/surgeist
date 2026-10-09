@@ -220,8 +220,13 @@ fn checked_image_depth_includes_all_gradient_numeric_component_roles() {
         ] {
             let position = CssPhysicalPosition::try_new(horizontal, vertical).unwrap();
             values.push(CssImageValue::Gradient(CssGradient::Radial(
-                CssRadialGradient::try_new(None, None, Some(position), stops(named("red"), None))
-                    .unwrap(),
+                CssRadialGradient::try_new(
+                    None,
+                    None,
+                    Some(position.into()),
+                    stops(named("red"), None),
+                )
+                .unwrap(),
             )));
         }
         for value in values {

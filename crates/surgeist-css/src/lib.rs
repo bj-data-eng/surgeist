@@ -1375,7 +1375,13 @@
 //! # Backgrounds, border images, and gradients
 //!
 //! Background and image values preserve authored layer, image, gradient, stop,
-//! border-image, and object-sizing structure. They do not resolve URLs, load or
+//! border-image, and object-sizing structure. Selected Images 4 additions admit
+//! conic gradients, explicit shared [`CssColorInterpolation`], singleton lists,
+//! and two authored positions per stop. [`CssGradientColorStop::positions`]
+//! retains linear positions; [`CssAngularColorStopPosition`] retains conic angle,
+//! percentage, exact zero, and [`CssAnglePercentageCalculation`] branches.
+//! Radial and conic `at` fields use the full symbolic [`CssPosition`] owner.
+//! They do not resolve URLs, load or
 //! decode images, compute geometry, or paint.
 //! `background-color` contributes one noninherited [`CssColor`] with transparent
 //! intrinsic initial. Its existing color serializer retains symbolic dependencies;
@@ -1939,19 +1945,19 @@ mod source;
 mod syntax;
 mod tokenization;
 pub use numeric::{
-    CssAngleCalculation, CssCalculationConstantRef, CssCalculationExpressionRef,
-    CssCalculationFunctionRef, CssCalculationProductFactorRef, CssCalculationProductOperator,
-    CssCalculationProductRef, CssCalculationProfileChannelRef, CssCalculationSizeRef,
-    CssCalculationSumOperator, CssCalculationSumRef, CssCalculationSumTermRef,
-    CssCalculationTreeCountingRef, CssCalculationType, CssCalculationUnaryRef,
-    CssCalculationValueRef, CssCalculationVariableRef, CssFlexCalculation, CssFrequencyCalculation,
-    CssFrequencyPercentageCalculation, CssHintedNumberCalculation, CssIntegerCalculation,
-    CssLengthCalculation, CssLengthPercentageCalculation, CssMathFunction, CssNumberCalculation,
-    CssNumericConstant, CssNumericConstructionError, CssNumericConstructionErrorKind,
-    CssNumericDimension, CssNumericLiteralRef, CssNumericType, CssNumericUnit,
-    CssPercentageCalculation, CssProfileColorCalculation, CssProfileColorExpression,
-    CssProfileColorExpressionRef, CssResolutionCalculation, CssRoundingStrategy,
-    CssTimeCalculation, CssTreeCountingFunction,
+    CssAngleCalculation, CssAnglePercentageCalculation, CssCalculationConstantRef,
+    CssCalculationExpressionRef, CssCalculationFunctionRef, CssCalculationProductFactorRef,
+    CssCalculationProductOperator, CssCalculationProductRef, CssCalculationProfileChannelRef,
+    CssCalculationSizeRef, CssCalculationSumOperator, CssCalculationSumRef,
+    CssCalculationSumTermRef, CssCalculationTreeCountingRef, CssCalculationType,
+    CssCalculationUnaryRef, CssCalculationValueRef, CssCalculationVariableRef, CssFlexCalculation,
+    CssFrequencyCalculation, CssFrequencyPercentageCalculation, CssHintedNumberCalculation,
+    CssIntegerCalculation, CssLengthCalculation, CssLengthPercentageCalculation, CssMathFunction,
+    CssNumberCalculation, CssNumericConstant, CssNumericConstructionError,
+    CssNumericConstructionErrorKind, CssNumericDimension, CssNumericLiteralRef, CssNumericType,
+    CssNumericUnit, CssPercentageCalculation, CssProfileColorCalculation,
+    CssProfileColorExpression, CssProfileColorExpressionRef, CssResolutionCalculation,
+    CssRoundingStrategy, CssTimeCalculation, CssTreeCountingFunction,
 };
 #[cfg(test)]
 mod test_support;

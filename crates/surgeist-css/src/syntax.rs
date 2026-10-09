@@ -7668,7 +7668,7 @@ impl CssImageValueList {
     }
 }
 
-/// One of the four authored Images 3 gradient functions.
+/// One of the selected authored Images 3/4 gradient functions.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssGradient {
@@ -7676,6 +7676,7 @@ pub enum CssGradient {
     Radial(CssRadialGradient),
     RepeatingLinear(CssLinearGradient),
     RepeatingRadial(CssRadialGradient),
+    Conic(CssConicGradient),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -7747,9 +7748,19 @@ impl PartialEq for CssLinearGradientDirection {
 #[derive(Clone, Debug)]
 pub struct CssGradientColorStop {
     color: CssColor,
-    position: Option<CssSpecifiedLengthPercentage>,
+    positions: Vec<CssSpecifiedLengthPercentage>,
 }
-numeric_fields_eq!(CssGradientColorStop, [], [position], [color]);
+impl PartialEq for CssGradientColorStop {
+    fn eq(&self, other: &Self) -> bool {
+        self.color == other.color
+            && self.positions.len() == other.positions.len()
+            && self
+                .positions
+                .iter()
+                .zip(&other.positions)
+                .all(|(a, b)| a.structural_eq(b))
+    }
+}
 
 impl CssGradientColorStop {
     #[must_use]
@@ -7758,8 +7769,13 @@ impl CssGradientColorStop {
     }
 
     #[must_use]
-    pub const fn position(&self) -> Option<&CssSpecifiedLengthPercentage> {
-        self.position.as_ref()
+    pub fn position(&self) -> Option<&CssSpecifiedLengthPercentage> {
+        self.positions.first()
+    }
+
+    /// Borrows zero, one, or two authored positions without expanding the stop.
+    pub fn positions(&self) -> &[CssSpecifiedLengthPercentage] {
+        &self.positions
     }
 }
 
@@ -7781,7 +7797,7 @@ impl PartialEq for CssColorStopListItem {
     }
 }
 
-/// A checked authored color-stop list with two or more stops and interleaved hints.
+/// A checked authored color-stop list with one or more stops and interleaved hints.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssColorStopList {
     items: Vec<CssColorStopListItem>,
@@ -7790,10 +7806,6 @@ pub struct CssColorStopList {
 impl CssColorStopList {
     #[must_use]
     pub fn try_new(items: Vec<CssColorStopListItem>) -> Option<Self> {
-        let stop_count = items
-            .iter()
-            .filter(|item| matches!(item, CssColorStopListItem::Stop(_)))
-            .count();
         let ordered = matches!(items.first(), Some(CssColorStopListItem::Stop(_)))
             && matches!(items.last(), Some(CssColorStopListItem::Stop(_)))
             && items.windows(2).all(|pair| {
@@ -7802,7 +7814,7 @@ impl CssColorStopList {
                     [CssColorStopListItem::Hint(_), CssColorStopListItem::Hint(_)]
                 )
             });
-        (stop_count >= 2 && ordered).then_some(Self { items })
+        ordered.then_some(Self { items })
     }
 
     #[must_use]
@@ -7815,10 +7827,21 @@ impl CssColorStopList {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssLinearGradient {
     direction: Option<CssLinearGradientDirection>,
+    interpolation: Option<CssColorInterpolation>,
     stops: CssColorStopList,
 }
 
 impl CssLinearGradient {
+    /// Borrows the explicitly authored interpolation method; omission stays omitted.
+    pub const fn interpolation(&self) -> Option<&CssColorInterpolation> {
+        self.interpolation.as_ref()
+    }
+
+    /// Selects an intrinsically checked interpolation method, preserving direction and stops.
+    pub fn with_interpolation(mut self, interpolation: Option<CssColorInterpolation>) -> Self {
+        self.interpolation = interpolation;
+        self
+    }
     #[must_use]
     pub const fn direction(&self) -> Option<&CssLinearGradientDirection> {
         self.direction.as_ref()
@@ -7888,11 +7911,22 @@ impl PartialEq for CssRadialSize {
 pub struct CssRadialGradient {
     shape: Option<CssRadialShape>,
     size: Option<CssRadialSize>,
-    position: Option<CssPhysicalPosition>,
+    position: Option<CssPosition>,
+    interpolation: Option<CssColorInterpolation>,
     stops: CssColorStopList,
 }
 
 impl CssRadialGradient {
+    /// Borrows the explicitly authored interpolation method; omission stays omitted.
+    pub const fn interpolation(&self) -> Option<&CssColorInterpolation> {
+        self.interpolation.as_ref()
+    }
+
+    /// Selects an intrinsically checked interpolation method, preserving the radial prelude.
+    pub fn with_interpolation(mut self, interpolation: Option<CssColorInterpolation>) -> Self {
+        self.interpolation = interpolation;
+        self
+    }
     #[must_use]
     pub const fn shape(&self) -> Option<CssRadialShape> {
         self.shape
@@ -7904,7 +7938,7 @@ impl CssRadialGradient {
     }
 
     #[must_use]
-    pub const fn position(&self) -> Option<&CssPhysicalPosition> {
+    pub const fn position(&self) -> Option<&CssPosition> {
         self.position.as_ref()
     }
 
@@ -7914,8 +7948,156 @@ impl CssRadialGradient {
     }
 }
 
+/// Rejection of more than two authored positions on a single color stop.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssGradientStopConstructionError {
+    /// The authored stop supplies more than the grammar's two positions.
+    TooManyPositions,
+}
+impl std::fmt::Display for CssGradientStopConstructionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("a color stop admits at most two authored positions")
+    }
+}
+impl std::error::Error for CssGradientStopConstructionError {}
+
+/// An authored conic stop/hint position, with an unresolved angular percentage basis.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub enum CssAngularColorStopPosition {
+    Angle(CssAngleValue),
+    Percentage(crate::CssSpecifiedPercentage),
+    Zero(crate::CssZeroLiteral),
+    Calculation(crate::CssAnglePercentageCalculation),
+}
+impl PartialEq for CssAngularColorStopPosition {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Angle(a), Self::Angle(b)) => a.structural_eq(b),
+            (Self::Percentage(a), Self::Percentage(b)) => a.structural_eq(b),
+            (Self::Zero(a), Self::Zero(b)) => a.structural_eq(b),
+            (Self::Calculation(a), Self::Calculation(b)) => {
+                a.expression.structural_eq(&b.expression)
+            }
+            _ => false,
+        }
+    }
+}
+
+/// One authored angular color stop with zero, one, or two positions.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssAngularColorStop {
+    color: CssColor,
+    positions: Vec<CssAngularColorStopPosition>,
+}
+impl CssAngularColorStop {
+    /// Borrows the unresolved authored color.
+    pub const fn color(&self) -> &CssColor {
+        &self.color
+    }
+    /// Borrows zero, one, or two positions in their authored order.
+    pub fn positions(&self) -> &[CssAngularColorStopPosition] {
+        &self.positions
+    }
+    /// Checks authored cardinality without running stop fixup or interpolation.
+    pub fn try_new(
+        color: CssColor,
+        positions: Vec<CssAngularColorStopPosition>,
+    ) -> Result<Self, CssGradientStopConstructionError> {
+        if positions.len() > 2 {
+            return Err(CssGradientStopConstructionError::TooManyPositions);
+        }
+        Ok(Self { color, positions })
+    }
+}
+
+/// One conic stop or intervening angular hint, in authored order.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub enum CssAngularColorStopListItem {
+    Stop(Box<CssAngularColorStop>),
+    Hint(CssAngularColorStopPosition),
+}
+
+/// A nonempty angular stop list with no endpoint or consecutive hints.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssAngularColorStopList {
+    items: Vec<CssAngularColorStopListItem>,
+}
+impl CssAngularColorStopList {
+    /// Rejects an empty list and endpoint or adjacent interpolation hints.
+    pub fn try_new(items: Vec<CssAngularColorStopListItem>) -> Option<Self> {
+        let ordered = matches!(items.first(), Some(CssAngularColorStopListItem::Stop(_)))
+            && matches!(items.last(), Some(CssAngularColorStopListItem::Stop(_)))
+            && items.windows(2).all(|pair| {
+                !matches!(
+                    pair,
+                    [
+                        CssAngularColorStopListItem::Hint(_),
+                        CssAngularColorStopListItem::Hint(_)
+                    ]
+                )
+            });
+        ordered.then_some(Self { items })
+    }
+    /// Borrows the authored stop/hint sequence.
+    pub fn items(&self) -> &[CssAngularColorStopListItem] {
+        &self.items
+    }
+}
+
+/// Authored conic grammar; context-dependent geometry and color execution are deferred.
+#[derive(Clone, Debug)]
+pub struct CssConicGradient {
+    from: Option<CssAngleOrZero>,
+    position: Option<CssPosition>,
+    interpolation: Option<CssColorInterpolation>,
+    stops: CssAngularColorStopList,
+}
+numeric_fields_eq!(
+    CssConicGradient,
+    [],
+    [from],
+    [position, interpolation, stops]
+);
+impl CssConicGradient {
+    /// Composes checked children, preserving optional authored prelude fields.
+    /// `CssImage::try_new` checks the complete retained function-depth envelope.
+    pub const fn new(
+        from: Option<CssAngleOrZero>,
+        position: Option<CssPosition>,
+        interpolation: Option<CssColorInterpolation>,
+        stops: CssAngularColorStopList,
+    ) -> Self {
+        Self {
+            from,
+            position,
+            interpolation,
+            stops,
+        }
+    }
+    /// Borrows the explicit starting angle or exact bare zero, when authored.
+    pub const fn from(&self) -> Option<&CssAngleOrZero> {
+        self.from.as_ref()
+    }
+    /// Borrows the full symbolic position, when authored.
+    pub const fn position(&self) -> Option<&CssPosition> {
+        self.position.as_ref()
+    }
+    /// Borrows the explicit Color 4/5 interpolation method, preserving omission.
+    pub const fn interpolation(&self) -> Option<&CssColorInterpolation> {
+        self.interpolation.as_ref()
+    }
+    /// Borrows the nonempty authored angular stop list.
+    pub const fn stops(&self) -> &CssAngularColorStopList {
+        &self.stops
+    }
+}
+
 mod position;
 pub use position::*;
+mod gradients;
 
 mod images;
 pub use images::{

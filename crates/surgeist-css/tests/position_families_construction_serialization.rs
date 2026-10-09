@@ -676,7 +676,7 @@ fn mixed_math_offsets_keep_family_order_and_original_numeric_provenance() {
 }
 
 #[test]
-fn older_consumer_parsers_reject_logical_families_and_recover_to_siblings() {
+fn physical_consumers_reject_logical_families_while_gradients_import_full_position() {
     for position in [
         "x-start y-end",
         "block-start inline-end",
@@ -692,8 +692,6 @@ fn older_consumer_parsers_reject_logical_families_and_recover_to_siblings() {
             format!("background-position:{position}"),
             format!("background:url(bg.png) {position}"),
             format!("transform-origin:{position}"),
-            format!("background-image:radial-gradient(at {position},red,blue)"),
-            format!("background-image:repeating-radial-gradient(at {position},red,blue)"),
         ] {
             let source = format!("{declaration};color:blue");
             let report = parse_style_attribute(&source);
@@ -711,6 +709,15 @@ fn older_consumer_parsers_reject_logical_families_and_recover_to_siblings() {
                 validate_style_attribute(&source).unwrap_err().diagnostics(),
                 report.diagnostics()
             );
+        }
+        // Images4's specific at hyperlinks import Values5 WD2024-11-11 full
+        // Position, superseding its general Values3 fallback prose.
+        for function in ["radial-gradient", "repeating-radial-gradient"] {
+            let source = format!("background-image:{function}(at {position},red,blue);color:blue");
+            let report = parse_style_attribute(&source);
+            assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
+            assert_eq!(report.syntax().len(), 2, "{source}");
+            assert_eq!(validate_style_attribute(&source).unwrap(), *report.syntax());
         }
     }
 }
