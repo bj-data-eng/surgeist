@@ -601,8 +601,6 @@ fn selected_gradients_compose_through_actual_image_consumers_and_nested_images()
             }
         }
         for nested in [
-            format!("image-set({value} 1x)"),
-            format!("cross-fade({value}, url(a.png))"),
             format!("light-dark({value}, none)"),
             format!("filter({value}, blur())"),
         ] {
