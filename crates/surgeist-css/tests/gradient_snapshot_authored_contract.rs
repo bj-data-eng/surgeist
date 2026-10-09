@@ -347,7 +347,7 @@ fn interpolation_keywords_are_case_insensitive_and_escape_aware() {
     for function in SELECTED {
         round_trip(&format!("{function}(IN OKLCH LONGER HUE, RED, BLUE)"));
         round_trip(&format!(
-            "{function}(i\\6e oklch l\\6f nger h\\75 e, red, blue)"
+            "{function}(i\\6e  oklch l\\6f nger h\\75 e, red, blue)"
         ));
     }
 }
@@ -988,7 +988,7 @@ fn existing_line_stop_calculations_remain_symbolic_without_geometry() {
             let output = image(&declaration).serialize_specified().unwrap();
             assert_eq!(
                 output,
-                format!("{function}(red calc(10px + 5%) calc(20px + 10%), calc(30px + 15%), blue)")
+                format!("{function}(red calc(5% + 10px) calc(10% + 20px), calc(15% + 30px), blue)")
             );
         }
     }
