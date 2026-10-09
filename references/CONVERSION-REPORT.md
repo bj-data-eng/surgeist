@@ -1,6 +1,8 @@
 # Reference conversion and validation
 
-## Scope and result
+The current collection contains **150 source identities: 148 full documents/source witnesses and two metadata-only exceptions**, with 81 passive SVG assets. The original 2026-10-03 verification record is preserved below; the 2026-10-09 additions have their own verification section at the end.
+
+## Original collection scope and result
 
 - 126 retained source identities in the public catalog: 119 captured-HTML conversions, five generated renderings of pinned Bikeshed sources, one JSON source-history witness, and one Unicode URL/hash-only exception
 - Full source-based content for 125 entries; the normative Unicode report text is not distributed
@@ -78,3 +80,25 @@ The offline converter is convert_collection.py, with semantic_boxes.lua and svg_
 ## Informative Unicode companion and legacy navigation
 
 The bundle also includes a separately licensed Unicode 17 grapheme implementation rule-data companion, with immutable data/source hashes and the complete Unicode License v3. Its source-data excerpt is exact, but its engine-dependent notation and implicit start/end/default behavior are explicitly disclosed; it does not replace or reproduce the normative UAX 29 report. This informative companion is separate from the 126 retained source snapshot entries. A small `push-test.md` navigation guide preserves the earlier Nesting preview address without duplicating the complete conversion.
+
+## Exact-edition supplement — 2026-10-09
+
+Added 22 exact dated HTML editions, one readable rendering of the live Values 4 Bikeshed pin, and one WebKit metadata-only witness. All pre-existing specification bodies and source identities are retained. The unrelated Page 3 2023 discovery was excluded: the relevant Cascade bibliographies select Page 3 2018. The [edition mapping](SOURCE-EDITIONS.md) distinguishes Snapshot baseline, implementation-selected versions and bounded imports. Reference additions do not implement missing grammar or resolve source contradictions.
+
+### Acquisition and source identity
+
+Dated HTML was retrieved directly from the authoritative source URL; response identity, This Version, title, byte count and SHA-256 were checked. These hashes identify the retrieved official dated bytes, not unavailable audit-archive bytes or a claim that every dated publication is historically byte-immutable. Exact source hashes appear in the source catalog and each document. Source scripts were not executed. The WebKit witness remains metadata-only because file-specific redistribution terms could not be established.
+
+### Conversion and fidelity
+
+The earlier repaired converter, semantic-label filter, SVG handling, and ordinary/complex table methods were reused in an isolated new-source workspace with Pandoc 3.1.11.1, Python 3.12.14 and lxml 6.1.1. The 22 HTML inputs contribute 112,293 source text nodes, 1,614 headings, 2,625 definitions, 1,009 literal blocks, 1,002 inline-code runs, 1,930 script/variable nodes, 333 tables, 10,726 cells and 25,209 anchors. Source character checks use the actual GFM AST with whitespace-only prose comparison and exact code checks; coverage checks are not a proof of parser conformance or full rendering equivalence.
+
+Independent ordinary-table checks cover 285 HTML tables and 8,408 ordered source cells. Complex tables retain source-cell mappings, explicit spans/header relationships and literal color values; no flattened row/cell dumps or raw HTML table layouts remain. Four new MathML expressions pass independent token/matrix/script/fraction/root round trips and are bound to the actual emitted TeX. One new Images 4 SVG passes source geometry/attribute/text and six-label checks. The corresponding source and generated-output hashes are retained with the conversion evidence.
+
+Forty-eight ordinary-table link hover-title attributes are omitted while link targets and visible text remain; literal-code protection relocates some empty anchor markers within their original cells. All such source IDs remain once in the same cell, but original intra-cell ID order is not claimed. The new additions contain no malformed GFM autolinks. A separate scan observed 55 inherited malformed autolinks in unchanged older documents; those existing external-link formatting defects are not repaired or certified by this supplement. GFM does not reproduce native HTML table accessibility semantics. Source image/video links remain external, and neither external availability nor browser/pixel equivalence is certified.
+
+### Additional pinned Bikeshed rendering
+
+The original Values 4 source at `720ea2863696971ea6a6744e0f23acbb3e6936bd` is rendered with the recovered Bikeshed 7.1.3 environment and its unchanged support-data manifest SHA-256 `e70f976a413257fcd3c1406f5b7097ae7d95f9c78de5ed652a332290902e7211`. Source-authored metadata, all 25 WPT reference lists, link-defaults and ignored-specs configuration are retained. Five ambiguous automatic links remain unlinked; four compiler-generated CanIUse compatibility panels are omitted while the source configuration is retained. Generated bibliography and automatic reference resolution are compiler output, not historical publication evidence. The original source hash, not generated HTML, is the catalog identity; the pinned CSSWG license declaration matches the bundled declaration byte-for-byte.
+
+This supplement remains a source-reference maintenance change. The full CSS Snapshot 2026 language target and the separately identified implementation gaps are not narrowed or marked complete by these conversions.

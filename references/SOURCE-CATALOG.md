@@ -1,10 +1,10 @@
 # Exact source catalog
 
-126 retained source snapshots. Public full text is included for 125; Unicode revision 47 is metadata-only under its report-specific terms. Source hashes identify original snapshots, not converted Markdown hashes.
+150 retained source snapshots. Public full text is included for 148; Unicode revision 47 is metadata-only under its report-specific terms, and the pinned WebKit witness is metadata-only because file-specific redistribution terms remain unverified. Source hashes identify original snapshots, not converted Markdown hashes.
 
 Eight redundant plain-text extractions were removed from the public collection after whole-document comparison with their exact HTML editions. Their structured Markdown copies remain below; no distinct specification edition was removed. Each listed SHA-256 identifies the retained source snapshot for that row.
 
-Five pinned Bikeshed sources are rendered as readable Markdown using an offline compiler. Their SHA-256 values still identify the original source bytes. Generated supporting matter and the compiler support-data version are disclosed in the [conversion report](CONVERSION-REPORT.md#pinned-bikeshed-renderings); these are not official publications or captured historical HTML renderings.
+Six pinned Bikeshed sources are rendered as readable Markdown using an offline compiler. Their SHA-256 values still identify the original source bytes. Generated supporting matter and the compiler support-data version are disclosed in the [conversion report](CONVERSION-REPORT.md#pinned-bikeshed-renderings); these are not official publications or captured historical HTML renderings.
 
 | Source | Exact snapshot | Source SHA-256 | Representation |
 |---|---|---|---|
@@ -150,3 +150,34 @@ These are extra witness paths for already represented byte-identical sources, no
 ## Legacy navigation guide
 
 [Nesting preview guide](push-test.md) preserves the earlier preview filename and points to its canonical converted source; it is a navigation guide rather than another snapshot.
+
+## Exact editions added on 2026-10-09
+
+These entries supplement the preserved collection. Baseline membership, implementation provenance and bounded imports are distinguished in [Source editions](SOURCE-EDITIONS.md).
+
+| Source | Exact snapshot | Source SHA-256 | Representation |
+|---|---|---|---|
+| [CSS Color Module Level 4](css-color-4--CRD-css-color-4-20260502--cfd58f190b6f.md) | [upstream](https://www.w3.org/TR/2026/CRD-css-color-4-20260502/) | cfd58f190b6f1b873da18aac87f0c9dad816927dc4bbd23d504c9830d39d6250 | readable HTML conversion |
+| [CSS Display Module Level 3](css-display-3--CR-css-display-3-20230330--e4e7ee86ee9b.md) | [upstream](https://www.w3.org/TR/2023/CR-css-display-3-20230330/) | e4e7ee86ee9b144e85154c1a24f6e0aacfd989d51858fb15d420d5b05a5abf5b | readable HTML conversion |
+| [CSS Text Module Level 3](css-text-3--CRD-css-text-3-20240930--61d133c34716.md) | [upstream](https://www.w3.org/TR/2024/CRD-css-text-3-20240930/) | 61d133c347165af6c149db354252ae3c6dae9397dee6699fa12d2e821a1ddfc4 | readable HTML conversion |
+| [CSS Box Sizing Module Level 3](css-sizing-3--WD-css-sizing-3-20211217--88e7fb4fefc1.md) | [upstream](https://www.w3.org/TR/2021/WD-css-sizing-3-20211217/) | 88e7fb4fefc1ab7ec3f75b1058e6d9e003c937eb3c8049294adf113fdf3a4fc5 | readable HTML conversion |
+| [CSS Fonts Module Level 4](css-fonts-4--WD-css-fonts-4-20260422--fbcd4e298b4c.md) | [upstream](https://www.w3.org/TR/2026/WD-css-fonts-4-20260422/) | fbcd4e298b4ce7d0a0d2deda620df8a12acdc23cbb71691823a99379516644ee | readable HTML conversion |
+| [CSS Color Module Level 5](css-color-5--WD-css-color-5-20260507--08bdb8062820.md) | [upstream](https://www.w3.org/TR/2026/WD-css-color-5-20260507/) | 08bdb8062820fd515198f2ce97dccecec2214947b2a4f467e10269c20db683a7 | readable HTML conversion |
+| [CSS Images Module Level 4](css-images-4--WD-css-images-4-20250930--2784dc56db10.md) | [upstream](https://www.w3.org/TR/2025/WD-css-images-4-20250930/) | 2784dc56db1089852bddff8fff55c18a66b409310a9b99d36a20a42bf702fb0f | readable HTML conversion |
+| [CSS Inline Layout Module Level 3](css-inline-3--WD-css-inline-3-20241218--a73a73a45bf5.md) | [upstream](https://www.w3.org/TR/2024/WD-css-inline-3-20241218/) | a73a73a45bf591c5964c5d49212de94066a2e4aeda245c7eb1f984c5fd3bb152 | readable HTML conversion |
+| [CSS Box Sizing Module Level 4](css-sizing-4--WD-css-sizing-4-20210520--febb0814cb6d.md) | [upstream](https://www.w3.org/TR/2021/WD-css-sizing-4-20210520/) | febb0814cb6dd7ad343daea040f3aac9d3c56520bd20e64c6a8cf43ecc722e25 | readable HTML conversion |
+| [CSS Text Module Level 4](css-text-4--WD-css-text-4-20240529--be6e92f95bd4.md) | [upstream](https://www.w3.org/TR/2024/WD-css-text-4-20240529/) | be6e92f95bd4b660c50bcb32f7ada80e0d804ffb71597f765b34f91c6a9325b1 | readable HTML conversion |
+| [CSS Basic User Interface Module Level 3 (CSS3 UI)](css-ui-3--REC-css-ui-3-20180621--7f8a182b5285.md) | [upstream](https://www.w3.org/TR/2018/REC-css-ui-3-20180621/) | 7f8a182b5285d30d5fe8d1c138fed4fb1488a92fc98537ab7cabca6f5f2919c5 | readable HTML conversion |
+| [CSS Color Module Level 5](css-color-5--WD-css-color-5-20260618--cf6c99230e93.md) | [upstream](https://www.w3.org/TR/2026/WD-css-color-5-20260618/) | cf6c99230e933f378a1055d22b1b52076652473ae5752fd6955665d188232aa5 | readable HTML conversion |
+| [CSS Borders and Box Decorations Module Level 4](css-borders-4--WD-css-borders-4-20251216--49c70cb46005.md) | [upstream](https://www.w3.org/TR/2025/WD-css-borders-4-20251216/) | 49c70cb460051eadf74aacc76ec41e9e87c2cc909efce80b2274c68185829ac7 | readable HTML conversion |
+| [Fullscreen](fullscreen--WD-fullscreen-20120703--c83bc890be04.md) | [upstream](https://www.w3.org/TR/2012/WD-fullscreen-20120703/) | c83bc890be04c170d09ba9fb23b022e3c43cd2da55a0e2f4a42669859fa968b4 | readable HTML conversion |
+| [CSS Easing Functions Level 2](css-easing-2--WD-css-easing-2-20240829--570d12249ade.md) | [upstream](https://www.w3.org/TR/2024/WD-css-easing-2-20240829/) | 570d12249adedc9d0be3d027f23a43de05dae173fa652b3cff0e180dbe92c836 | readable HTML conversion |
+| [CSS Fonts Module Level 5](css-fonts-5--WD-css-fonts-5-20211221--6dfbf10b25f1.md) | [upstream](https://www.w3.org/TR/2021/WD-css-fonts-5-20211221/) | 6dfbf10b25f174035e51ed66209af885722d6bacf2d72b8612703d8a844142a1 | readable HTML conversion |
+| [CSS Values and Units Module Level 5](css-values-5--WD-css-values-5-20240917--9b60eb26cb8f.md) | [upstream](https://www.w3.org/TR/2024/WD-css-values-5-20240917/) | 9b60eb26cb8f3c06e84976e52d3d3796ea54e3493bbe878dde6d372bb6fa87c4 | readable HTML conversion |
+| [CSS Generated Content Module Level 3](css-content-3--WD-css-content-3-20190802--58d280c1fc9f.md) | [upstream](https://www.w3.org/TR/2019/WD-css-content-3-20190802/) | 58d280c1fc9f8a9db3dd3dde589117bd2129002feb92486224e4c984ff4cceaa | readable HTML conversion |
+| [CSS Values and Units Module Level 4](css-values-4--WD-css-values-4-20190131--403391ef96a7.md) | [upstream](https://www.w3.org/TR/2019/WD-css-values-4-20190131/) | 403391ef96a7c7d6a9b8c4e0a37622e793821b48dba073184969c04a058526e2 | readable HTML conversion |
+| [CSS Paged Media Module Level 3](css-page-3--WD-css-page-3-20181018--0c654ec792d0.md) | [upstream](https://www.w3.org/TR/2018/WD-css-page-3-20181018/) | 0c654ec792d0d0d451d7bd420903c6aefe68febb7f3bfc2db58de5490740471d | readable HTML conversion |
+| [CSS Values and Units Module Level 4](css-values-4--WD-css-values-4-20210715--23e1c33c648c.md) | [upstream](https://www.w3.org/TR/2021/WD-css-values-4-20210715/) | 23e1c33c648cb460d972bd5a0e190d7ff5565c953fbd1f5fe81725aa21a31bda | readable HTML conversion |
+| [CSS Values and Units Module Level 4](css-values-4--WD-css-values-4-20221019--b7ccf53eec03.md) | [upstream](https://www.w3.org/TR/2022/WD-css-values-4-20221019/) | b7ccf53eec03d519297dc42d7c6fe154dd4734834c29a6e25e67222290b528ea | readable HTML conversion |
+| [CSS Values and Units Module Level 4](css-values-4--720ea2863696971ea6a6744e0f23acbb3e6936bd--Overview.bs--593d3bb00def.md) | [upstream](https://raw.githubusercontent.com/w3c/csswg-drafts/720ea2863696971ea6a6744e0f23acbb3e6936bd/css-values-4/Overview.bs) | 593d3bb00defc9ed6d02a97a4f3e2dc0486fec9e20dde853ece69baa10c004c3 | readable pinned Bikeshed rendering |
+| [WebKit CSSProperties source witness](webkit-cssproperties--73aa6c89e2cb--848d6e24bbd4.md) | [upstream](https://raw.githubusercontent.com/WebKit/WebKit/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/CSSProperties.json) | 848d6e24bbd4421ced9e8e840d718a5da012703f9c95851d60f7c1d1364ebaac | metadata-only; file-specific redistribution terms unverified |

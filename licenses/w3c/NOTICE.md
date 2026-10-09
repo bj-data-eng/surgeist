@@ -16,7 +16,7 @@ The five readable renderings of pinned Bikeshed sources retain the [byte-identic
 
 ## Covered exact documents and copyright notices
 
-The [source catalog](../../references/SOURCE-CATALOG.md) identifies the exact body hashes, titles, representations and source URLs. This section covers the 123 retained W3C source-based references in this bundle and their 80 passive SVG figures: 52 source-extracted figures and 28 generated railroad diagrams. Each entry's original copyright statement is copied from its exact source or the identified edition title page; no copyright range is synthesized. The per-document wrapper records the format changes separately from original source content.
+The [source catalog](../../references/SOURCE-CATALOG.md) identifies the exact body hashes, titles, representations and source URLs. This section covers the 146 retained W3C source-based references in this bundle and their 81 passive SVG figures: 53 source-extracted figures and 28 generated railroad diagrams. Each entry's original copyright statement is copied from its exact source or the identified edition title page; no copyright range is synthesized. The per-document wrapper records the format changes separately from original source content.
 
 ### Compositing and Blending Level 1
 
@@ -1030,3 +1030,193 @@ Copyright © 2023 World Wide Web Consortium. W3C® liability, trademark and perm
 
 Licensed by contributors under the retained CSSWG repository declaration; no copyright year is stated there.
 
+
+## Exact sources added on 2026-10-09
+
+The following 23 sources add 22 captured dated HTML documents and one generated rendering of the exact Values 4 Bikeshed pin. The additional Images 4 SVG is extracted from its cited source. Earlier notices and identities remain unchanged.
+
+### CSS Color Module Level 4 — CRD-css-color-4-20260502
+
+* Bundled copy: [css-color-4--CRD-css-color-4-20260502--cfd58f190b6f.md](../../references/css-color-4--CRD-css-color-4-20260502--cfd58f190b6f.md)
+* Original: [CSS Color Module Level 4](https://www.w3.org/TR/2026/CRD-css-color-4-20260502/)
+* License: [software-license-2023](software-license-2023.txt)
+
+Copyright © 2026 World Wide Web Consortium . W3C ® liability , trademark and permissive document license rules apply.
+
+### CSS Display Module Level 3 — CR-css-display-3-20230330
+
+* Bundled copy: [css-display-3--CR-css-display-3-20230330--e4e7ee86ee9b.md](../../references/css-display-3--CR-css-display-3-20230330--e4e7ee86ee9b.md)
+* Original: [CSS Display Module Level 3](https://www.w3.org/TR/2023/CR-css-display-3-20230330/)
+* License: [software-license-2015](software-license-2015.txt)
+
+Copyright © 2023 World Wide Web Consortium . W3C ® liability , trademark and permissive document license rules apply.
+
+### CSS Text Module Level 3 — CRD-css-text-3-20240930
+
+* Bundled copy: [css-text-3--CRD-css-text-3-20240930--61d133c34716.md](../../references/css-text-3--CRD-css-text-3-20240930--61d133c34716.md)
+* Original: [CSS Text Module Level 3](https://www.w3.org/TR/2024/CRD-css-text-3-20240930/)
+* License: [software-license-2023](software-license-2023.txt)
+
+Copyright © 2024 World Wide Web Consortium . W3C ® liability , trademark and permissive document license rules apply.
+
+### CSS Box Sizing Module Level 3 — WD-css-sizing-3-20211217
+
+* Bundled copy: [css-sizing-3--WD-css-sizing-3-20211217--88e7fb4fefc1.md](../../references/css-sizing-3--WD-css-sizing-3-20211217--88e7fb4fefc1.md)
+* Original: [CSS Box Sizing Module Level 3](https://www.w3.org/TR/2021/WD-css-sizing-3-20211217/)
+* License: [software-license-2015](software-license-2015.txt)
+
+Copyright © 2021 W3C ® ( MIT , ERCIM , Keio , Beihang ). W3C liability , trademark and permissive document license rules apply.
+
+### CSS Fonts Module Level 4 — WD-css-fonts-4-20260422
+
+* Bundled copy: [css-fonts-4--WD-css-fonts-4-20260422--fbcd4e298b4c.md](../../references/css-fonts-4--WD-css-fonts-4-20260422--fbcd4e298b4c.md)
+* Original: [CSS Fonts Module Level 4](https://www.w3.org/TR/2026/WD-css-fonts-4-20260422/)
+* License: [software-license-2023](software-license-2023.txt)
+
+Copyright © 2026 World Wide Web Consortium . W3C ® liability , trademark and permissive document license rules apply.
+
+### CSS Color Module Level 5 — WD-css-color-5-20260507
+
+* Bundled copy: [css-color-5--WD-css-color-5-20260507--08bdb8062820.md](../../references/css-color-5--WD-css-color-5-20260507--08bdb8062820.md)
+* Original: [CSS Color Module Level 5](https://www.w3.org/TR/2026/WD-css-color-5-20260507/)
+* License: [software-license-2023](software-license-2023.txt)
+
+Copyright © 2026 World Wide Web Consortium . W3C ® liability , trademark and permissive document license rules apply.
+
+### CSS Images Module Level 4 — WD-css-images-4-20250930
+
+* Bundled copy: [css-images-4--WD-css-images-4-20250930--2784dc56db10.md](../../references/css-images-4--WD-css-images-4-20250930--2784dc56db10.md)
+* Original: [CSS Images Module Level 4](https://www.w3.org/TR/2025/WD-css-images-4-20250930/)
+* License: [software-license-2023](software-license-2023.txt)
+
+Copyright © 2025 World Wide Web Consortium . W3C ® liability , trademark and permissive document license rules apply.
+
+### CSS Inline Layout Module Level 3 — WD-css-inline-3-20241218
+
+* Bundled copy: [css-inline-3--WD-css-inline-3-20241218--a73a73a45bf5.md](../../references/css-inline-3--WD-css-inline-3-20241218--a73a73a45bf5.md)
+* Original: [CSS Inline Layout Module Level 3](https://www.w3.org/TR/2024/WD-css-inline-3-20241218/)
+* License: [software-license-2023](software-license-2023.txt)
+
+Copyright © 2024 World Wide Web Consortium . W3C ® liability , trademark and permissive document license rules apply.
+
+### CSS Box Sizing Module Level 4 — WD-css-sizing-4-20210520
+
+* Bundled copy: [css-sizing-4--WD-css-sizing-4-20210520--febb0814cb6d.md](../../references/css-sizing-4--WD-css-sizing-4-20210520--febb0814cb6d.md)
+* Original: [CSS Box Sizing Module Level 4](https://www.w3.org/TR/2021/WD-css-sizing-4-20210520/)
+* License: [software-license-2015](software-license-2015.txt)
+
+Copyright © 2021 W3C ® ( MIT , ERCIM , Keio , Beihang ). W3C liability , trademark and permissive document license rules apply.
+
+### CSS Text Module Level 4 — WD-css-text-4-20240529
+
+* Bundled copy: [css-text-4--WD-css-text-4-20240529--be6e92f95bd4.md](../../references/css-text-4--WD-css-text-4-20240529--be6e92f95bd4.md)
+* Original: [CSS Text Module Level 4](https://www.w3.org/TR/2024/WD-css-text-4-20240529/)
+* License: [software-license-2023](software-license-2023.txt)
+
+Copyright © 2024 World Wide Web Consortium . W3C ® liability , trademark and permissive document license rules apply.
+
+### CSS Basic User Interface Module Level 3 (CSS3 UI) — REC-css-ui-3-20180621
+
+* Bundled copy: [css-ui-3--REC-css-ui-3-20180621--7f8a182b5285.md](../../references/css-ui-3--REC-css-ui-3-20180621--7f8a182b5285.md)
+* Original: [CSS Basic User Interface Module Level 3 (CSS3 UI)](https://www.w3.org/TR/2018/REC-css-ui-3-20180621/)
+* License: [software-license-2015](software-license-2015.txt)
+
+Copyright © 2018 W3C ® ( MIT , ERCIM , Keio , Beihang ). W3C liability , trademark and permissive document license rules apply.
+
+### CSS Color Module Level 5 — WD-css-color-5-20260618
+
+* Bundled copy: [css-color-5--WD-css-color-5-20260618--cf6c99230e93.md](../../references/css-color-5--WD-css-color-5-20260618--cf6c99230e93.md)
+* Original: [CSS Color Module Level 5](https://www.w3.org/TR/2026/WD-css-color-5-20260618/)
+* License: [software-license-2023](software-license-2023.txt)
+
+Copyright © 2026 World Wide Web Consortium . W3C ® liability , trademark and permissive document license rules apply.
+
+### CSS Borders and Box Decorations Module Level 4 — WD-css-borders-4-20251216
+
+* Bundled copy: [css-borders-4--WD-css-borders-4-20251216--49c70cb46005.md](../../references/css-borders-4--WD-css-borders-4-20251216--49c70cb46005.md)
+* Original: [CSS Borders and Box Decorations Module Level 4](https://www.w3.org/TR/2025/WD-css-borders-4-20251216/)
+* License: [software-license-2023](software-license-2023.txt)
+
+Copyright © 2025 World Wide Web Consortium . W3C ® liability , trademark and permissive document license rules apply.
+
+### Fullscreen — WD-fullscreen-20120703
+
+* Bundled copy: [fullscreen--WD-fullscreen-20120703--c83bc890be04.md](../../references/fullscreen--WD-fullscreen-20120703--c83bc890be04.md)
+* Original: [Fullscreen](https://www.w3.org/TR/2012/WD-fullscreen-20120703/)
+* License: [document-license-2015](document-license-2015.txt)
+
+Copyright © 2012 W3C ® ( MIT , ERCIM , Keio ), All Rights Reserved. W3C liability , trademark and document use rules apply.
+
+### CSS Easing Functions Level 2 — WD-css-easing-2-20240829
+
+* Bundled copy: [css-easing-2--WD-css-easing-2-20240829--570d12249ade.md](../../references/css-easing-2--WD-css-easing-2-20240829--570d12249ade.md)
+* Original: [CSS Easing Functions Level 2](https://www.w3.org/TR/2024/WD-css-easing-2-20240829/)
+* License: [software-license-2023](software-license-2023.txt)
+
+Copyright © 2024 World Wide Web Consortium . W3C ® liability , trademark and permissive document license rules apply.
+
+### CSS Fonts Module Level 5 — WD-css-fonts-5-20211221
+
+* Bundled copy: [css-fonts-5--WD-css-fonts-5-20211221--6dfbf10b25f1.md](../../references/css-fonts-5--WD-css-fonts-5-20211221--6dfbf10b25f1.md)
+* Original: [CSS Fonts Module Level 5](https://www.w3.org/TR/2021/WD-css-fonts-5-20211221/)
+* License: [software-license-2015](software-license-2015.txt)
+
+Copyright © 2021 W3C ® ( MIT , ERCIM , Keio , Beihang ). W3C liability , trademark and permissive document license rules apply.
+
+### CSS Values and Units Module Level 5 — WD-css-values-5-20240917
+
+* Bundled copy: [css-values-5--WD-css-values-5-20240917--9b60eb26cb8f.md](../../references/css-values-5--WD-css-values-5-20240917--9b60eb26cb8f.md)
+* Original: [CSS Values and Units Module Level 5](https://www.w3.org/TR/2024/WD-css-values-5-20240917/)
+* License: [software-license-2023](software-license-2023.txt)
+
+Copyright © 2024 World Wide Web Consortium . W3C ® liability , trademark and permissive document license rules apply.
+
+### CSS Generated Content Module Level 3 — WD-css-content-3-20190802
+
+* Bundled copy: [css-content-3--WD-css-content-3-20190802--58d280c1fc9f.md](../../references/css-content-3--WD-css-content-3-20190802--58d280c1fc9f.md)
+* Original: [CSS Generated Content Module Level 3](https://www.w3.org/TR/2019/WD-css-content-3-20190802/)
+* License: [software-license-2015](software-license-2015.txt)
+
+Copyright © 2019 W3C ® ( MIT , ERCIM , Keio , Beihang ). W3C liability , trademark and permissive document license rules apply.
+
+### CSS Values and Units Module Level 4 — WD-css-values-4-20190131
+
+* Bundled copy: [css-values-4--WD-css-values-4-20190131--403391ef96a7.md](../../references/css-values-4--WD-css-values-4-20190131--403391ef96a7.md)
+* Original: [CSS Values and Units Module Level 4](https://www.w3.org/TR/2019/WD-css-values-4-20190131/)
+* License: [software-license-2015](software-license-2015.txt)
+
+Copyright © 2019 W3C ® ( MIT , ERCIM , Keio , Beihang ). W3C liability , trademark and permissive document license rules apply.
+
+### CSS Paged Media Module Level 3 — WD-css-page-3-20181018
+
+* Bundled copy: [css-page-3--WD-css-page-3-20181018--0c654ec792d0.md](../../references/css-page-3--WD-css-page-3-20181018--0c654ec792d0.md)
+* Original: [CSS Paged Media Module Level 3](https://www.w3.org/TR/2018/WD-css-page-3-20181018/)
+* License: [software-license-2015](software-license-2015.txt)
+
+Copyright © 2018 W3C ® ( MIT , ERCIM , Keio , Beihang ). W3C liability , trademark and permissive document license rules apply.
+
+### CSS Values and Units Module Level 4 — WD-css-values-4-20210715
+
+* Bundled copy: [css-values-4--WD-css-values-4-20210715--23e1c33c648c.md](../../references/css-values-4--WD-css-values-4-20210715--23e1c33c648c.md)
+* Original: [CSS Values and Units Module Level 4](https://www.w3.org/TR/2021/WD-css-values-4-20210715/)
+* License: [software-license-2015](software-license-2015.txt)
+
+Copyright © 2021 W3C® (MIT, ERCIM, Keio, Beihang). W3C liability, trademark and permissive document license rules apply.
+
+### CSS Values and Units Module Level 4 — WD-css-values-4-20221019
+
+* Bundled copy: [css-values-4--WD-css-values-4-20221019--b7ccf53eec03.md](../../references/css-values-4--WD-css-values-4-20221019--b7ccf53eec03.md)
+* Original: [CSS Values and Units Module Level 4](https://www.w3.org/TR/2022/WD-css-values-4-20221019/)
+* License: [software-license-2015](software-license-2015.txt)
+
+Copyright © 2022 W3C® (MIT, ERCIM, Keio, Beihang). W3C liability, trademark and permissive document license rules apply.
+
+### CSS Values and Units Module Level 4 — Overview.bs
+
+* Bundled copy: [css-values-4--720ea2863696971ea6a6744e0f23acbb3e6936bd--Overview.bs--593d3bb00def.md](../../references/css-values-4--720ea2863696971ea6a6744e0f23acbb3e6936bd--Overview.bs--593d3bb00def.md)
+* Original: [CSS Values and Units Module Level 4](https://raw.githubusercontent.com/w3c/csswg-drafts/720ea2863696971ea6a6744e0f23acbb3e6936bd/css-values-4/Overview.bs)
+* License: [software-license-2023](software-license-2023.txt)
+
+CSSWG repository declaration at the pinned source commit; no copyright year supplied.
+
+The CSSWG declaration is also verified byte-identical at `720ea2863696971ea6a6744e0f23acbb3e6936bd`; the new rendering retains source-authored configuration and test references. No WebKit source text is redistributed.
