@@ -55,10 +55,7 @@ impl CssFontFaceValueError {
     }
 
     fn grammar(error: Error, serialized: &CssSerializedValue) -> Self {
-        let origin = serialized
-            .origin_at(error.position().byte_offset().value())
-            .expect("font-face parser position stays inside serialized input or at EOF")
-            .clone();
+        let origin = error.component_input_origin(serialized);
         Self {
             kind: Box::new(CssFontFaceValueErrorKind::Grammar(error.kind().clone())),
             origin: Box::new(origin),

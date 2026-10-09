@@ -66,7 +66,7 @@ fn checked_constructors_preserve_function_identity_and_decoded_empty_targets() {
 
 #[test]
 fn parsed_src_casefolds_function_name_and_keeps_modifier_order() {
-    let parsed = background_url("SRC(\"asset.svg\" cors integrity(sha256))");
+    let parsed = background_url("SRC(\"asset.svg\" cors integrity(\"sha256\"))");
     assert_eq!(parsed.function(), CssUrlFunction::Src);
     assert_eq!(parsed.as_str(), "asset.svg");
     assert!(matches!(
@@ -74,7 +74,7 @@ fn parsed_src_casefolds_function_name_and_keeps_modifier_order() {
         [CssUrlModifier::Ident(ident), CssUrlModifier::Function(function)]
             if ident.as_str() == "cors"
                 && function.name() == "integrity"
-                && function.arguments().as_css() == "sha256"
+                && function.arguments().as_css() == "\"sha256\""
     ));
     let constructed = CssUrl::from_parts(
         CssUrlFunction::Src,
@@ -102,7 +102,7 @@ fn import_and_font_sources_expose_shared_payload_and_preserve_import_spelling() 
     let source = concat!(
         "@import SRC(\"theme.css\" cors) layer(theme); ",
         "@font-face { font-family: Demo; src: ",
-        "src(\"first.woff2\" integrity(sha256)), ",
+        "src(\"first.woff2\" integrity(\"sha256\")), ",
         "url(\"second.woff2\" cors); }"
     );
     let report = parse_sheet(source);
@@ -134,7 +134,7 @@ fn import_and_font_sources_expose_shared_payload_and_preserve_import_spelling() 
     assert_eq!(first.url().function(), CssUrlFunction::Src);
     assert!(
         matches!(first.url().modifiers(), [CssUrlModifier::Function(function)]
-        if function.name() == "integrity" && function.arguments().as_css() == "sha256")
+        if function.name() == "integrity" && function.arguments().as_css() == "\"sha256\"")
     );
     assert_eq!(second.url().as_str(), "second.woff2");
     assert_eq!(second.url().function(), CssUrlFunction::Url);

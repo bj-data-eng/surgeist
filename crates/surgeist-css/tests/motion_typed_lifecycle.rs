@@ -383,7 +383,7 @@ fn whole_path_views_preserve_none_box_only_and_each_coupled_path_kind() {
 fn path_url_view_retains_src_target_modifier_order_and_never_becomes_image() {
     let source = declaration(
         "offset-path",
-        "view-box SRC('é.svg' CORS integrity(sha256))",
+        "view-box SRC('é.svg' CORS integrity(\"sha256\"))",
     );
     let CssOffsetPathRef::Path(pair) = offset_path(&source).view() else {
         panic!("coupled path")
@@ -397,7 +397,7 @@ fn path_url_view_retains_src_target_modifier_order_and_never_becomes_image() {
     assert_eq!(url.modifiers().len(), 2);
     assert_eq!(
         pair.serialize_specified().unwrap(),
-        "src(\"é.svg\" CORS integrity(sha256)) view-box"
+        "src(\"é.svg\" CORS integrity(\"sha256\")) view-box"
     );
     let empty = CssOffsetPath::from_path(CssOffsetPathValue::new(
         CssOffsetPathKind::Url(CssUrl::new(String::new())),

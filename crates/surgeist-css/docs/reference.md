@@ -968,6 +968,27 @@ while `calc(1khz)` emits `calc(1000hz)`. Values 4 separately requires
 computed dimensions use their canonical `px`, `deg` or `hz` unit. Contextual
 length resolution remains with [the style owner](https://github.com/bj-data-eng/surgeist/issues/727).
 
+The [selected Values 5 request URL modifier grammar](https://www.w3.org/TR/2024/WD-css-values-5-20241111/#request-url-modifiers)
+requires `crossorigin(anonymous | use-credentials)`, `integrity(<string>)`, or
+`referrerpolicy()` with one of `no-referrer`, `no-referrer-when-downgrade`,
+`same-origin`, `origin`, `strict-origin`, `origin-when-cross-origin`,
+`strict-origin-when-cross-origin`, and `unsafe-url`. Shared quoted `url()`/`src()`
+parsing, checked construction and strict post-substitution reentry reject
+incorrect argument types, arity and keyword choices atomically. Integrity accepts
+any string, including empty text; CSS does not evaluate hashes.
+
+`CssUrlModifierFunction::request_modifier()` exposes a borrowed
+`CssRequestUrlModifierRef`: `CrossOrigin(CssUrlCrossOrigin)`, `Integrity(&str)`, or
+`ReferrerPolicy(CssUrlReferrerPolicy)`. The finite keyword identities are checked
+without changing the decoded authored name or retained argument components and
+origins. An unknown function returns `None` and remains generic extension syntax.
+Bare identifiers and repeated modifiers remain ordered in `CssUrl::modifiers()`.
+The CSS crate does not apply Fetch steps, change CORS policy, or retrieve a URL;
+[request execution](https://github.com/bj-data-eng/surgeist/issues/711) consumes
+these checked values downstream. Snapshot 2026 selects this bounded feature in
+[its pre-CR release exceptions](https://www.w3.org/TR/2026/NOTE-css-2026-20260622/#CR-exceptions),
+without selecting the entire Values 5 module.
+
 `CssUrl::serialize_specified()` reuses the existing URL provider and
 [common string escaping](#owned-component-values). It emits the authored decoded
 target through `url()` or `src()`, retaining function identity and ordered

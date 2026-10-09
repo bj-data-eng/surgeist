@@ -60,10 +60,7 @@ impl CssPropertyValueParseError {
         {
             return Self::from_component((**detail).clone());
         }
-        let origin = serialized
-            .origin_at(error.position().byte_offset().value())
-            .expect("the property parser reports a cursor within its serialized input or at EOF")
-            .clone();
+        let origin = error.component_input_origin(serialized);
         Self {
             detail: Box::new(PropertyValueParseErrorDetail {
                 kind: CssPropertyValueErrorKind::Grammar(error.kind().clone()),

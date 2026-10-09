@@ -312,8 +312,8 @@ fn imported_urls_preserve_function_modifiers_target_and_empty_resource_without_l
             ("url()", "url(\"\")"),
             ("src('')", "src(\"\")"),
             (
-                "SRC(\"é.svg\" CORS integrity(sha256))",
-                "src(\"é.svg\" CORS integrity(sha256))",
+                "SRC(\"é.svg\" CORS integrity(\"sha256\"))",
+                "src(\"é.svg\" CORS integrity(\"sha256\"))",
             ),
             ("url('#p') fill-box", "url(\"#p\") fill-box"),
         ],

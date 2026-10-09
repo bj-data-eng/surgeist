@@ -301,7 +301,7 @@ fn metric_calculations_remain_authored_and_original_after_aggregate_failure() {
 
 #[test]
 fn aggregate_source_emission_preserves_url_phase_modifiers_and_original_argument_origins() {
-    let source = "SRC(\"relative.face\" integrity(sha256)) format(WOFF2), url()";
+    let source = "SRC(\"relative.face\" integrity(\"sha256\")) format(WOFF2), url()";
     let value = ordinary(source, Kind::Src);
     let Value::Src(list) = &value else {
         panic!("source list")
@@ -315,7 +315,7 @@ fn aggregate_source_emission_preserves_url_phase_modifiers_and_original_argument
         panic!("integrity modifier")
     };
     let before = modifier.argument_components().clone();
-    let expected = "src(\"relative.face\" integrity(sha256)) format(woff2), url(\"\")";
+    let expected = "src(\"relative.face\" integrity(\"sha256\")) format(woff2), url(\"\")";
     assert_eq!(value.serialize_specified().unwrap(), expected);
     assert_eq!(
         value
@@ -335,7 +335,7 @@ fn aggregate_source_emission_preserves_url_phase_modifiers_and_original_argument
     assert_eq!(origin.source().as_str(), source);
     assert_eq!(
         origin.span().start().byte_offset().value(),
-        source.find("sha256").unwrap()
+        source.find("\"sha256\"").unwrap()
     );
     let CssFontFaceSource::Url(last) = &list.sources()[1] else {
         panic!("empty authored URL")

@@ -1072,6 +1072,24 @@ impl Error {
     pub const fn position(&self) -> CssSourcePosition {
         self.position
     }
+
+    /// Maps a checked grammar failure back to its supplied component input.
+    /// Component failures already retain their responsible original token;
+    /// their authored positions must not index the shorter serialized input.
+    pub(crate) fn component_input_origin(
+        &self,
+        serialized: &crate::CssSerializedValue,
+    ) -> crate::CssSerializedOrigin {
+        if let ErrorKind::InvalidComponentValue(detail) = self.kind() {
+            return crate::CssSerializedOrigin::Token(detail.origin().clone());
+        }
+        serialized
+            .origin_at(self.position().byte_offset().value())
+            .expect(
+                "checked grammar reports a serialized input cursor or retains a component origin",
+            )
+            .clone()
+    }
 }
 
 impl fmt::Display for Error {

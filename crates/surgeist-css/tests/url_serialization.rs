@@ -56,14 +56,15 @@ fn checked_urls_emit_explicit_lowercase_function_identity_and_decoded_target() {
 
 #[test]
 fn parsed_function_and_modifier_names_keep_decoded_case_and_order() {
-    let (value, clean) =
-        parsed_background_url("background-image: SRC(\"asset.svg\" CORS integrity(sha256) a\\ b)");
+    let (value, clean) = parsed_background_url(
+        "background-image: SRC(\"asset.svg\" CORS integrity(\"sha256\") a\\ b)",
+    );
     assert!(clean);
     assert_eq!(value.function(), CssUrlFunction::Src);
     assert_eq!(value.modifiers().len(), 3);
     assert_eq!(
         value.serialize_specified().unwrap(),
-        "src(\"asset.svg\" CORS integrity(sha256) a\\ b)"
+        "src(\"asset.svg\" CORS integrity(\"sha256\") a\\ b)"
     );
 
     let constructed = CssUrl::from_parts(
@@ -71,13 +72,13 @@ fn parsed_function_and_modifier_names_keep_decoded_case_and_order() {
         "asset.svg",
         vec![
             CssUrlModifier::Ident(CssIdent::try_new("CORS").unwrap()),
-            function_modifier("integrity", parse_component_values("sha256").unwrap()),
+            function_modifier("integrity", parse_component_values("\"sha256\"").unwrap()),
             CssUrlModifier::Ident(CssIdent::try_new("a b").unwrap()),
         ],
     );
     assert_eq!(
         constructed.serialize_specified().unwrap(),
-        "src(\"asset.svg\" CORS integrity(sha256) a\\ b)"
+        "src(\"asset.svg\" CORS integrity(\"sha256\") a\\ b)"
     );
 }
 

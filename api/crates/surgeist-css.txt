@@ -4576,6 +4576,10 @@ pub const fn surgeist_css::CssRelativeColorFunction::signature(self) -> (surgeis
 pub surgeist_css::CssRelativeColorResultDomain::Alpha
 pub surgeist_css::CssRelativeColorResultDomain::Hue
 pub surgeist_css::CssRelativeColorResultDomain::NumberPercentage
+#[non_exhaustive] pub enum surgeist_css::CssRequestUrlModifierRef<'a>
+pub surgeist_css::CssRequestUrlModifierRef::CrossOrigin(surgeist_css::CssUrlCrossOrigin)
+pub surgeist_css::CssRequestUrlModifierRef::Integrity(&'a str)
+pub surgeist_css::CssRequestUrlModifierRef::ReferrerPolicy(surgeist_css::CssUrlReferrerPolicy)
 #[non_exhaustive] pub enum surgeist_css::CssResize
 pub surgeist_css::CssResize::Block
 pub surgeist_css::CssResize::Both
@@ -5583,12 +5587,24 @@ pub surgeist_css::CssUnknownMediaFeatureReason::UnknownName
 #[non_exhaustive] pub enum surgeist_css::CssUnknownMediaFeatureRef<'a>
 pub surgeist_css::CssUnknownMediaFeatureRef::Boolean
 pub surgeist_css::CssUnknownMediaFeatureRef::Range(&'a surgeist_css::CssMediaRange<surgeist_css::CssComponentValues>)
+#[non_exhaustive] pub enum surgeist_css::CssUrlCrossOrigin
+pub surgeist_css::CssUrlCrossOrigin::Anonymous
+pub surgeist_css::CssUrlCrossOrigin::UseCredentials
 pub enum surgeist_css::CssUrlFunction
 pub surgeist_css::CssUrlFunction::Src
 pub surgeist_css::CssUrlFunction::Url
 #[non_exhaustive] pub enum surgeist_css::CssUrlModifier
 pub surgeist_css::CssUrlModifier::Function(surgeist_css::CssUrlModifierFunction)
 pub surgeist_css::CssUrlModifier::Ident(surgeist_css::CssIdent)
+#[non_exhaustive] pub enum surgeist_css::CssUrlReferrerPolicy
+pub surgeist_css::CssUrlReferrerPolicy::NoReferrer
+pub surgeist_css::CssUrlReferrerPolicy::NoReferrerWhenDowngrade
+pub surgeist_css::CssUrlReferrerPolicy::Origin
+pub surgeist_css::CssUrlReferrerPolicy::OriginWhenCrossOrigin
+pub surgeist_css::CssUrlReferrerPolicy::SameOrigin
+pub surgeist_css::CssUrlReferrerPolicy::StrictOrigin
+pub surgeist_css::CssUrlReferrerPolicy::StrictOriginWhenCrossOrigin
+pub surgeist_css::CssUrlReferrerPolicy::UnsafeUrl
 #[non_exhaustive] pub enum surgeist_css::CssUserAgentInitial
 pub surgeist_css::CssUserAgentInitial::FontFamily
 pub surgeist_css::CssUserAgentInitial::VoiceFamily
@@ -12327,6 +12343,7 @@ impl surgeist_css::CssUrlModifierFunction
 pub const fn surgeist_css::CssUrlModifierFunction::argument_components(&self) -> &surgeist_css::CssComponentValues
 pub const fn surgeist_css::CssUrlModifierFunction::arguments(&self) -> &surgeist_css::CssAuthoredFunctionArguments
 pub fn surgeist_css::CssUrlModifierFunction::name(&self) -> &str
+pub fn surgeist_css::CssUrlModifierFunction::request_modifier(&self) -> core::option::Option<surgeist_css::CssRequestUrlModifierRef<'_>>
 pub fn surgeist_css::CssUrlModifierFunction::try_new(name: surgeist_css::CssIdent, arguments: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssComponentValueError>
 impl core::cmp::Eq for surgeist_css::CssUrlModifierFunction
 impl core::cmp::PartialEq for surgeist_css::CssUrlModifierFunction

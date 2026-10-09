@@ -727,6 +727,15 @@ const D_VALUES5_ATTR: CssSpecificationSource = dated_source!(
     CssSpecificationTier::LaterStandard,
     "https://www.w3.org/TR/2024/WD-css-values-5-20241111/"
 );
+// Snapshot 2026 §4 selects request URL modifiers as a feature-scoped pre-CR
+// release exception; its bibliography pins Values 5 WD 2024-11-11.
+const I_VALUES5_REQUEST: CssSpecificationSource = dated_source!(
+    "I-VALUES5-REQUEST",
+    "CSS Values and Units",
+    "5",
+    CssSpecificationTier::Snapshot2026PreCrException,
+    "https://www.w3.org/TR/2024/WD-css-values-5-20241111/"
+);
 const O_BOX3: CssSpecificationSource = dated_source!(
     "O-BOX3",
     "CSS Box Model",
@@ -1349,6 +1358,7 @@ static SPECIFICATION_SOURCES: &[CssSpecificationSource] = &[
     O_VARIABLES1,
     D_ENV1,
     D_VALUES5_ATTR,
+    I_VALUES5_REQUEST,
     O_BOX3,
     O_COLOR4,
     O_BACKGROUNDS3,
@@ -2209,6 +2219,7 @@ static OFFICIAL_NON_PROPERTY_COVERAGE_ROWS: &[CssOfficialCoverageRecord] = &[
     active_coverage!("official.value.string"),
     active_coverage!("official.value.url"),
     active_coverage!("official.value.url-modifier"),
+    active_coverage!("required.value.request-url-modifier"),
     active_coverage!("official.value.integer"),
     active_coverage!("official.value.number"),
     active_coverage!("official.value.dimension"),
@@ -2982,7 +2993,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 793] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 794] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -3273,6 +3284,15 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 793] = [
         "<url-modifier>",
         I_VALUES4_20240312,
         "#url-modifiers",
+    ),
+    CssFeatureMetadata::partial(
+        "required.value.request-url-modifier",
+        CssFeatureKind::Value,
+        "recognized request URL modifier functions",
+        I_VALUES5_REQUEST,
+        "#request-url-modifiers,#typedef-request-url-modifier",
+        "Shared quoted url()/src() admission and checked modifier construction validate crossorigin(anonymous | use-credentials), integrity(<string>) and the eight referrerpolicy() keywords. Typed inspection retains decoded request data while original name, argument components, origins and modifier order remain authored; unknown functions and bare identifiers retain generic extension syntax. Strict importing-property and descriptor reentry reuses this grammar.",
+        "Fetch request steps, CORS behavior, integrity evaluation, referrer execution and resource resolution remain downstream; this feature-scoped record does not select all of Values 5.",
     ),
     CssFeatureMetadata::complete(
         "official.value.integer",

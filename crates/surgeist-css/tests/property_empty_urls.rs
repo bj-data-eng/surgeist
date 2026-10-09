@@ -129,7 +129,7 @@ fn quoted_whitespace_remains_data_and_nonempty_urls_remain_valid() {
 #[test]
 fn empty_quoted_url_keeps_modifiers_and_valid_neighbors() {
     let source =
-        "color: red; background-image: url(\"\" cors integrity(sha256)) !important; width: 2px";
+        "color: red; background-image: url(\"\" cors integrity(\"sha256\")) !important; width: 2px";
     let report = parse_style_attribute(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 3);
@@ -156,7 +156,7 @@ fn empty_quoted_url_keeps_modifiers_and_valid_neighbors() {
         url.modifiers(),
         [CssUrlModifier::Ident(ident), CssUrlModifier::Function(function)]
             if ident.as_str() == "cors" && function.name() == "integrity"
-                && function.arguments().as_css() == "sha256"
+                && function.arguments().as_css() == "\"sha256\""
     ));
 }
 

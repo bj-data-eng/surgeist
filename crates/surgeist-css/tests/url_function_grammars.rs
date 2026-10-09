@@ -147,7 +147,7 @@ fn quoted_url_controls_remain_clean_in_ordinary_import_and_font_paths() {
 #[test]
 fn quoted_src_accepts_ordered_modifiers_and_keeps_important_neighbors() {
     let source = concat!(
-        "color: red; background-image: src(\"icon.svg\" cors integrity(sha256)) ",
+        "color: red; background-image: src(\"icon.svg\" cors integrity(\"sha256\")) ",
         "!important; width: 2px"
     );
     let report = parse_style_attribute(source);
@@ -176,7 +176,7 @@ fn quoted_src_accepts_ordered_modifiers_and_keeps_important_neighbors() {
         url.modifiers(),
         [CssUrlModifier::Ident(ident), CssUrlModifier::Function(function)]
             if ident.as_str() == "cors" && function.name() == "integrity"
-                && function.arguments().as_css() == "sha256"
+                && function.arguments().as_css() == "\"sha256\""
     ));
 }
 
@@ -205,7 +205,7 @@ fn shared_url_shorthands_admit_quoted_src_images() {
 fn import_accepts_src_and_quoted_url_modifiers_without_losing_clauses() {
     let source = concat!(
         "@import src(\"theme.css\" cors) layer(theme) screen; ",
-        "@import url(\"base.css\" integrity(sha256)); ",
+        "@import url(\"base.css\" integrity(\"sha256\")); ",
         ".after { color: red; }"
     );
     let report = parse_sheet(source);
@@ -232,7 +232,7 @@ fn font_face_accepts_src_url_sources_with_ordered_hints() {
     let source = concat!(
         "@font-face { font-family: Demo; src: ",
         "src(\"first.woff2\" cors) format(\"woff2\"), ",
-        "url(\"second.woff2\" integrity(sha256)) tech(variations); } ",
+        "url(\"second.woff2\" integrity(\"sha256\")) tech(variations); } ",
         ".after { color: red; }"
     );
     let report = parse_sheet(source);

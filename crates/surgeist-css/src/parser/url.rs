@@ -76,7 +76,10 @@ pub(super) fn parse_url<'i, 't>(
                                     CssIdent::new(name.to_string()),
                                     arguments,
                                     function.values().clone(),
-                                ),
+                                )
+                                .map_err(|error| {
+                                    crate::error::invalid_component_value(modifier_location, error)
+                                })?,
                             ));
                         }
                         token => {

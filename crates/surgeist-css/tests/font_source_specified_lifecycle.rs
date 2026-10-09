@@ -192,8 +192,8 @@ fn technology_keywords_keep_authored_order_and_repetitions() {
 
 #[test]
 fn mixed_source_order_and_url_function_modifiers_use_the_shared_provider() {
-    let input = "local(First), SRC(\"relative.face\" CORS integrity(sha256) a\\ b) format(WOFF2) tech(PALETTES, PALETTES), url(), local('last')";
-    let expected = "local(\"First\"), src(\"relative.face\" CORS integrity(sha256) a\\ b) format(woff2) tech(palettes, palettes), url(\"\"), local(\"last\")";
+    let input = "local(First), SRC(\"relative.face\" CORS integrity(\"sha256\") a\\ b) format(WOFF2) tech(PALETTES, PALETTES), url(), local('last')";
+    let expected = "local(\"First\"), src(\"relative.face\" CORS integrity(\"sha256\") a\\ b) format(woff2) tech(palettes, palettes), url(\"\"), local(\"last\")";
     let value = parsed(input);
     assert_output(&value, expected);
     let CssFontFaceSource::Url(url) = &value.sources()[1] else {

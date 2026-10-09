@@ -12,7 +12,7 @@ use surgeist_css::{
 #[test]
 fn c14_remaining_shared_values_are_typed() {
     let report = parse_style_attribute(
-        "background-image: url(\"theme.css\" integrity(sha256) cors); width: 2px",
+        "background-image: url(\"theme.css\" integrity(\"sha256\") cors); width: 2px",
     );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 2);
@@ -33,7 +33,7 @@ fn c14_remaining_shared_values_are_typed() {
                     url.modifiers(),
                     [CssUrlModifier::Function(function), CssUrlModifier::Ident(ident)]
                         if function.name() == "integrity"
-                            && function.arguments().as_css() == "sha256"
+                            && function.arguments().as_css() == "\"sha256\""
                             && ident.as_str() == "cors"
                 )
     ));
