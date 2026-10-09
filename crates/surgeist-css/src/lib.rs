@@ -1079,8 +1079,13 @@
 //! dropped while valid descriptor and rule siblings remain eligible.
 //!
 //! [`CssRule::Page`] retains the CSS2 default page form or one [`CssPageSelector`] plus valid
-//! page-context margin declarations in authored order. The page body accepts only `margin` and
-//! its four longhands with the CSS2 length, percentage, `auto`, and negative-value domains.
+//! page-context declarations in authored order. The Page body admits `margin`, its
+//! four physical longhands and Page-local custom declarations. Shared CSS-wide,
+//! signed length-percentage and calculation grammar remains symbolic; CSS2's
+//! explicit `em`/`ex` exclusion applies to every ordinary margin operand.
+//! [`parse_page_property_value`] checks detached Page components through the same
+//! boundary. Pending margins retain Page context for strict complete replacement
+//! reentry. Variable lookup, fallback selection and Page cascade remain downstream.
 //! Logical 1 adds symbolic `:recto` and `:verso` alongside `:left`, `:right`, and `:first`.
 //! [`CssPageRule::specificity`] and [`CssPageSelector::specificity`] expose the comparable
 //! [`CssPageSpecificity`] ranks for this unnamed, single-pseudo grammar:
@@ -2028,8 +2033,8 @@ pub use parser::{
 };
 pub use properties::*;
 pub use property_value::{
-    CssPropertyValueErrorKind, CssPropertyValueParseError, parse_property_value,
-    parse_property_value_for_grammar,
+    CssPropertyValueErrorKind, CssPropertyValueParseError, parse_page_property_value,
+    parse_property_value, parse_property_value_for_grammar,
 };
 pub use rectangular_color_conversion::{
     CssRectangularColorConversionError, CssRectangularColorCoordinates, CssRectangularColorSpace,

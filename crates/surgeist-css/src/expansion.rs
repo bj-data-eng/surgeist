@@ -1260,7 +1260,9 @@ impl CssPendingSubstitution {
     ///
     /// A decoded `var()`, `env()`, or `attr()` at any component depth returns `ResidualSubstitution`
     /// before grammar checking. Other invalid values retain the same mapped
-    /// error as [`crate::parse_property_value`], including source resource limits.
+    /// error as the source's owning checked grammar, including source resource limits.
+    /// Page occurrences use [`crate::parse_page_property_value`] and retain their
+    /// explicit `em`/`ex`, physical-side and unitless-length restrictions.
     pub fn reenter(
         &self,
         replacement: CssComponentValues,
@@ -1271,11 +1273,22 @@ impl CssPendingSubstitution {
             ));
         }
         let body = match self.source.body() {
-            CssDeclarationBody::Known(known) => crate::property_value::checked_grammar_value_body(
-                known.grammar(),
-                &replacement,
-                self.source.parser_context(),
-            ),
+            CssDeclarationBody::Known(known) => match self.source.declaration_context() {
+                crate::syntax::DeclarationContext::Ordinary => {
+                    crate::property_value::checked_grammar_value_body(
+                        known.grammar(),
+                        &replacement,
+                        self.source.parser_context(),
+                    )
+                }
+                crate::syntax::DeclarationContext::Page => {
+                    crate::property_value::checked_page_property_value_body(
+                        crate::CssPropertyNameRef::Known(known.property()),
+                        &replacement,
+                        self.source.parser_context(),
+                    )
+                }
+            },
             CssDeclarationBody::SvgGlyphOrientationVertical(value) => {
                 crate::property_value::checked_svg_glyph_value_body(
                     value.admission(),

@@ -141,6 +141,124 @@ pub(crate) fn parse_property_value_with_context(
     ))
 }
 
+/// Checks detached components as one authored Page declaration.
+///
+/// Admits custom properties and `margin`/its four physical longhands. Shared
+/// CSS-wide, calculation, length-percentage and substitution grammar remains
+/// symbolic; CSS2's explicit Page `em`/`ex` exclusion applies to ordinary values
+/// and complete replacements, including every math operand. Custom token values
+/// are retained without margin restrictions or variable lookup.
+///
+/// The occurrence retains Page semantic context independently of document mode,
+/// so strict pending reentry cannot silently use ordinary element grammar.
+/// Component origins and supplied importance are preserved; no name/source span,
+/// page selector, cascade environment or enclosing rule is fabricated.
+///
+/// ```
+/// use surgeist_css::{
+///     CssExpansion, CssImportance, CssKnownProperty, CssPropertyNameRef,
+///     expand_declaration, parse_component_values, parse_page_property_value,
+/// };
+/// let margin = parse_page_property_value(
+///     CssPropertyNameRef::Known(CssKnownProperty::Margin),
+///     parse_component_values("var(--m, 1px)").unwrap(),
+///     CssImportance::Normal,
+/// ).unwrap();
+/// let CssExpansion::Pending(pending) = expand_declaration(&margin).unwrap() else {
+///     panic!("pending authored Page margin");
+/// };
+/// assert!(pending.reenter(parse_component_values("1em").unwrap()).is_err());
+/// assert!(pending.reenter(parse_component_values("calc(1Q + 2%)").unwrap()).is_ok());
+/// ```
+pub fn parse_page_property_value(
+    property: CssPropertyNameRef<'_>,
+    value: CssComponentValues,
+    importance: CssImportance,
+) -> Result<CssDeclaration, CssPropertyValueParseError> {
+    parse_page_property_value_with_context(
+        property,
+        value,
+        importance,
+        crate::CssParserContext::default(),
+    )
+}
+
+pub(crate) fn parse_page_property_value_with_context(
+    property: CssPropertyNameRef<'_>,
+    value: CssComponentValues,
+    importance: CssImportance,
+    parser_context: crate::CssParserContext,
+) -> Result<CssDeclaration, CssPropertyValueParseError> {
+    let body = checked_page_property_value_body(property, &value, parser_context)?;
+    Ok(CssDeclaration::new_constructed_in_context(
+        parser_context,
+        crate::syntax::DeclarationContext::Page,
+        body,
+        importance,
+        value,
+    ))
+}
+
+pub(crate) fn checked_page_property_value_body(
+    property: CssPropertyNameRef<'_>,
+    value: &CssComponentValues,
+    parser_context: crate::CssParserContext,
+) -> Result<crate::CssDeclarationBody, CssPropertyValueParseError> {
+    let body = checked_property_value_body(property, value, parser_context)?;
+    let admitted = match property {
+        CssPropertyNameRef::Known(property) => crate::parser::is_page_margin_property(property),
+        CssPropertyNameRef::Custom(_) => true,
+        CssPropertyNameRef::SvgGlyphOrientationVertical => false,
+    };
+    let violation = crate::parser::page_declaration_violation(&body, value);
+    if !admitted || violation.is_some() {
+        let component = violation
+            .as_ref()
+            .and_then(|violation| violation.component())
+            .or_else(|| crate::parser::first_page_component(value));
+        let name = match property {
+            CssPropertyNameRef::Known(property) => property.canonical_name(),
+            CssPropertyNameRef::Custom(name) => name.as_str(),
+            CssPropertyNameRef::SvgGlyphOrientationVertical => "glyph-orientation-vertical",
+        };
+        let error = component.map_or_else(
+            || {
+                crate::error::unexpected_end_at(
+                    cssparser::SourceLocation { line: 0, column: 1 },
+                    "an admitted Page declaration",
+                )
+            },
+            |component| {
+                // Only the typed kind is retained below. The public diagnostic
+                // origin comes directly from this component, including when it
+                // has no parsed source position.
+                let position = match component.origin() {
+                    crate::CssValueOrigin::Parsed(origin) => origin.span().start(),
+                    _ => crate::CssSourcePosition::from_byte_offset_in("", 0),
+                };
+                crate::error::unexpected_component_value_at(
+                    component,
+                    "an admitted Page declaration",
+                    position,
+                )
+            },
+        );
+        let error = crate::error::with_property_context(error, name);
+        let cssparser::ParseErrorKind::Custom(error) = error.kind else {
+            unreachable!("Page context errors use the typed property grammar error")
+        };
+        return Err(CssPropertyValueParseError {
+            detail: Box::new(PropertyValueParseErrorDetail {
+                kind: CssPropertyValueErrorKind::Grammar(error.kind().clone()),
+                origin: component.map_or(CssSerializedOrigin::End(None), |component| {
+                    CssSerializedOrigin::Token(component.origin().clone())
+                }),
+            }),
+        });
+    }
+    Ok(body)
+}
+
 // Declaration construction and strict expansion reentry share both the checked
 // grammar and its original-component error mapping. Reentry retains the original
 // occurrence and therefore must not manufacture a replacement declaration.

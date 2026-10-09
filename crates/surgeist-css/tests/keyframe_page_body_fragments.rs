@@ -295,16 +295,13 @@ fn page_body_retains_five_physical_margin_properties_priority_and_duplicates() {
 }
 
 #[test]
-fn page_css2_whitelist_rejects_other_properties_and_non_css2_margin_values_locally() {
+fn page_restrictions_reject_other_properties_logical_sides_and_em_ex_locally() {
     for invalid in [
         "color:red",
         "width:1px",
-        "--x:1",
         "margin-inline-start:1px",
         "margin-top:1em",
         "margin-top:1ex",
-        "margin-top:1rem",
-        "margin-top:calc(1px + 2%)",
         "margin:logical 1px",
         "margin-top:7",
     ] {
@@ -564,7 +561,7 @@ fn implicit_braces_retain_real_empty_or_nonempty_bodies_at_original_eof() {
 }
 
 #[test]
-fn retained_function_eof_is_implicit_and_page_math_is_still_outside_its_domain() {
+fn retained_keyframe_and_page_math_functions_keep_original_implicit_eof() {
     let source = "{opacity:calc(25%";
     let report = parse_keyframe_declaration_block(source);
     implicit(&report, source);
@@ -593,8 +590,23 @@ fn retained_function_eof_is_implicit_and_page_math_is_still_outside_its_domain()
     let source = "{margin-top:calc(1px";
     let page = parse_page_block(source);
     implicit(&page, source);
-    assert!(body(&page).body().is_empty());
-    recovered(&page, CssRecoveryAction::DropDeclaration);
+    assert_eq!(page_keys(body(&page).body()), [CssKnownProperty::MarginTop]);
+    let CssComponentValueRef::Function(function) =
+        body(&page).body()[0].value_components().items()[0].view()
+    else {
+        panic!("Page calc function")
+    };
+    let CssValueOrigin::ImplicitClosure { opening, at } = function.closing_origin() else {
+        panic!("original Page function closure")
+    };
+    origin(opening, source, 12, 17);
+    origin(at, source, source.len(), source.len());
+    assert!(
+        !page
+            .diagnostics()
+            .iter()
+            .any(|d| d.action() == CssRecoveryAction::DropDeclaration)
+    );
 }
 
 #[test]

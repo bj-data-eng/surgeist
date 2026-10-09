@@ -5,8 +5,8 @@ use cssparser::{
 
 use super::recovery::{RecoveryLoopOutcome, RecoveryProgress, RecoveryState};
 use super::{
-    DeclarationMode, ParsedDeclaration, block_item_diagnostic, is_declaration_recovery_unit,
-    parse_declaration_core, top_level_only_at_rule_placement,
+    DeclarationMode, block_item_diagnostic, is_declaration_recovery_unit, parse_declaration_core,
+    top_level_only_at_rule_placement,
 };
 use crate::error::{
     CssFeatureId, Error, basic, invalid_at_rule_body, property_name_error, unsupported_value,
@@ -14,10 +14,7 @@ use crate::error::{
 };
 use crate::properties::{CssKnownProperty, CssKnownPropertyValueRef};
 use crate::syntax::*;
-use crate::{
-    CssBoxSideKind, CssComponentValueRef, CssMarginValue, CssSpecifiedLengthPercentage,
-    CssValueTokenRef,
-};
+use crate::{CssBoxSideKind, CssComponentValueRef, CssMarginValue, CssValueTokenRef};
 
 pub(super) static IMPLEMENTED_SELECTORS: &[CssFeatureId] = &[
     CssFeatureId::new("official.selector.page-pseudo"),
@@ -205,13 +202,14 @@ impl<'i> DeclarationParser<'i> for PageBodyParser<'i> {
         let implicit_closures =
             self.recovery
                 .check_component_values(self.source, input, "css.declaration")?;
-        let Some(property) = CssKnownProperty::from_name(name.as_ref()) else {
+        let property = CssKnownProperty::from_name(name.as_ref());
+        if property.is_none() && !name.starts_with("--") {
             return Err(property_name_error(
                 declaration_start.source_location(),
                 name.as_ref(),
             ));
-        };
-        if !is_page_margin_property(property) {
+        }
+        if property.is_some_and(|property| !is_page_margin_property(property)) {
             return Err(with_property_context(
                 unsupported_value(input, None, "property is not accepted in page context"),
                 name.as_ref(),
@@ -226,18 +224,27 @@ impl<'i> DeclarationParser<'i> for PageBodyParser<'i> {
             self.recovery.source_snapshot(),
             self.recovery.parser_context(),
         )?;
-        if !is_css2_page_margin_value(&parsed) {
-            return Err(with_property_context(
-                unsupported_value(input, None, "value is outside the CSS2 page margin domain"),
-                name.as_ref(),
-            ));
+        if let Some(violation) = page_declaration_violation(&parsed.body, &parsed.components) {
+            let component = violation
+                .component()
+                .or_else(|| first_page_component(&parsed.components));
+            let error = component.map_or_else(
+                || unsupported_value(input, None, "invalid Page margin value"),
+                |component| {
+                    crate::error::unexpected_component_value(
+                        component,
+                        "an admitted Page margin value",
+                    )
+                },
+            );
+            return Err(with_property_context(error, name.as_ref()));
         }
         self.recovery.retain_component_closures(implicit_closures);
-        Ok(parsed.into_declaration())
+        Ok(parsed.into_declaration_in_context(DeclarationContext::Page))
     }
 }
 
-const fn is_page_margin_property(property: CssKnownProperty) -> bool {
+pub(crate) const fn is_page_margin_property(property: CssKnownProperty) -> bool {
     matches!(
         property,
         CssKnownProperty::Margin
@@ -248,59 +255,109 @@ const fn is_page_margin_property(property: CssKnownProperty) -> bool {
     )
 }
 
-fn is_css2_page_margin_value(parsed: &ParsedDeclaration) -> bool {
-    let CssDeclarationBody::Known(known) = &parsed.body else {
-        return false;
-    };
-    // CSS2 Page imports the physical margin grammars, including inherit.
-    if known.global() == Some(CssGlobalKeyword::Inherit) {
-        return is_page_margin_property(known.property());
+pub(crate) enum PageDeclarationViolation<'a> {
+    LogicalMargin,
+    NonzeroUnitlessLength(&'a crate::CssComponentValue),
+    FontRelativeUnit(&'a crate::CssComponentValue),
+}
+
+pub(crate) fn first_page_component(
+    values: &crate::CssComponentValues,
+) -> Option<&crate::CssComponentValue> {
+    values.items().iter().find(|value| {
+        !matches!(
+            value.view(),
+            CssComponentValueRef::Token(CssValueTokenRef::Whitespace(_))
+                | CssComponentValueRef::Comment(_)
+        )
+    })
+}
+
+impl<'a> PageDeclarationViolation<'a> {
+    pub(crate) fn component(&self) -> Option<&'a crate::CssComponentValue> {
+        match self {
+            Self::LogicalMargin => None,
+            Self::NonzeroUnitlessLength(value) | Self::FontRelativeUnit(value) => Some(value),
+        }
     }
-    match known.property_value() {
+}
+
+/// Applies only the additional Page restrictions to a shared checked body.
+/// Substitution-dependent values are admitted whole, then checked after the
+/// caller supplies a complete replacement. Custom tokens never use margin grammar.
+pub(crate) fn page_declaration_violation<'a>(
+    body: &'a CssDeclarationBody,
+    components: &'a crate::CssComponentValues,
+) -> Option<PageDeclarationViolation<'a>> {
+    let CssDeclarationBody::Known(known) = body else {
+        return None;
+    };
+    if known.substitution_dependent().is_some() || known.global().is_some() {
+        return None;
+    }
+    let unitless = match known.property_value() {
         Some(CssKnownPropertyValueRef::Margin(value)) => {
-            value.value().kind() == CssBoxSideKind::Physical
-                && value
-                    .value()
-                    .assigned_values()
-                    .into_iter()
-                    .all(is_css2_page_margin)
+            if value.value().kind() != CssBoxSideKind::Physical {
+                return Some(PageDeclarationViolation::LogicalMargin);
+            }
+            value
+                .value()
+                .assigned_values()
+                .into_iter()
+                .find_map(nonzero_unitless_page_length)
         }
-        Some(CssKnownPropertyValueRef::MarginTop(value)) => is_css2_page_margin(value.value()),
-        Some(CssKnownPropertyValueRef::MarginRight(value)) => is_css2_page_margin(value.value()),
-        Some(CssKnownPropertyValueRef::MarginBottom(value)) => is_css2_page_margin(value.value()),
-        Some(CssKnownPropertyValueRef::MarginLeft(value)) => is_css2_page_margin(value.value()),
-        _ => false,
-    }
-}
-
-fn is_css2_page_margin(value: &CssMarginValue) -> bool {
-    match value {
-        CssMarginValue::Auto => true,
-        CssMarginValue::LengthPercentage(value) => is_css2_page_length_percentage(value),
-    }
-}
-
-fn is_css2_page_length_percentage(value: &CssSpecifiedLengthPercentage) -> bool {
-    let Some(component) = value.literal_component() else {
-        return false;
+        Some(CssKnownPropertyValueRef::MarginTop(value)) => {
+            nonzero_unitless_page_length(value.value())
+        }
+        Some(CssKnownPropertyValueRef::MarginRight(value)) => {
+            nonzero_unitless_page_length(value.value())
+        }
+        Some(CssKnownPropertyValueRef::MarginBottom(value)) => {
+            nonzero_unitless_page_length(value.value())
+        }
+        Some(CssKnownPropertyValueRef::MarginLeft(value)) => {
+            nonzero_unitless_page_length(value.value())
+        }
+        _ => None,
     };
-    match component.view() {
-        CssComponentValueRef::Token(CssValueTokenRef::Number(number)) => {
-            crate::exact_decimal::LexicalDecimal::new(number.representation()).len == 0
+    if let Some(value) = unitless {
+        return Some(PageDeclarationViolation::NonzeroUnitlessLength(value));
+    }
+    // Inspect original components before any numeric projection can eliminate a
+    // zero operand. The CSS2 Page exclusion remains lexical even inside math.
+    let mut stack = vec![components.items().iter()];
+    while let Some(iter) = stack.last_mut() {
+        let Some(value) = iter.next() else {
+            stack.pop();
+            continue;
+        };
+        match value.view() {
+            CssComponentValueRef::Token(CssValueTokenRef::Dimension { unit, .. })
+                if unit.eq_ignore_ascii_case("em") || unit.eq_ignore_ascii_case("ex") =>
+            {
+                return Some(PageDeclarationViolation::FontRelativeUnit(value));
+            }
+            CssComponentValueRef::Function(function) => {
+                stack.push(function.values().items().iter())
+            }
+            CssComponentValueRef::Block(block) => stack.push(block.values().items().iter()),
+            _ => {}
         }
-        CssComponentValueRef::Token(CssValueTokenRef::Percentage(_)) => true,
-        CssComponentValueRef::Token(CssValueTokenRef::Dimension { unit, .. }) => matches!(
-            CssLengthUnit::from_css_unit(unit),
-            Some(
-                CssLengthUnit::Px
-                    | CssLengthUnit::Cm
-                    | CssLengthUnit::Mm
-                    | CssLengthUnit::In
-                    | CssLengthUnit::Pc
-                    | CssLengthUnit::Pt
-            )
-        ),
-        _ => false,
+    }
+    None
+}
+
+fn nonzero_unitless_page_length(value: &CssMarginValue) -> Option<&crate::CssComponentValue> {
+    let CssMarginValue::LengthPercentage(value) = value else {
+        return None;
+    };
+    let component = value.literal_component()?;
+    if matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number))
+        if crate::exact_decimal::LexicalDecimal::new(number.representation()).len != 0)
+    {
+        Some(component)
+    } else {
+        None
     }
 }
 

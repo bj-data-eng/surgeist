@@ -5393,13 +5393,53 @@ editions.
 
 `CssRule::Page` retains the default page form or one of the finite
 `CssPageSelector::{Left, Right, First, Recto, Verso}` choices, valid declarations in authored
-order, and the parser-produced position. Page bodies accept only `margin` and
-the four margin longhands with CSS2 lengths other than `em` and `ex`,
-percentages, `auto`, zero, negative values, and symbolic `inherit`. The selected
-CSS2 Page grammar imports this keyword from the physical margin definitions;
-the crate retains it without resolving inheritance. Known non-margin, unknown, and
+order, and the parser-produced position. Page bodies accept `margin`, its four
+physical longhands, and Page-local custom-property declarations. Physical margins
+compose all five CSS-wide values with the shared signed length-percentage grammar:
+`auto`, unitless zero, absolute units including `Q`, calculations, and selected
+font-, viewport- and container-relative lengths remain symbolic. The explicit
+[CSS2 Page `em`/`ex` exclusion](https://www.w3.org/TR/2011/REC-CSS2-20110607/page.html#page-margins)
+still applies, including every operand inside math and zero-multiplied operands.
+Logical-side shorthand syntax and bare nonzero lengths remain invalid, including
+in Quirks mode. Known non-margin, unknown, and
 invalid margin declarations receive their existing typed declaration
-diagnostics and are dropped individually. Block-form page rules are accepted at
+diagnostics and are dropped individually.
+
+`parse_page_property_value` and `CssParserContext::parse_page_property_value`
+check detached components through the same Page boundary and preserve each
+component's origin without fabricating an enclosing rule or name span. Page
+semantic context follows immutable declaration occurrences through clones,
+priority changes and list assembly, independently of Standards/Quirks mode.
+Pending margins retain their whole authored `var()` value. Expansion's `reenter`
+checks a caller-supplied complete replacement with the same Page grammar;
+residual substitutions fail before grammar checking. Failure publishes no
+partial contribution set and leaves the handle reusable. A supplied defined
+`--m: 1em` fails in `var(--m, 1px)`; CSS does not select or retry its fallback.
+Page-local custom values retain case-sensitive names, token streams, order,
+importance and their Page selector's scope. This syntax owner performs no Page
+cascade, variable lookup, fallback selection, cycles, invalid-at-computed-value
+handling or inheritance of the document root's custom environment.
+
+Page-local variable admission follows the approved bounded
+[WebKit declaration-dispatch witness](https://github.com/WebKit/WebKit/blob/68900c1e2adc8b79d928f39468a55183dcdf4878/Source/WebCore/css/parser/CSSParser.cpp#L1854-L1867)
+and [initial Page construction](https://github.com/WebKit/WebKit/blob/68900c1e2adc8b79d928f39468a55183dcdf4878/Source/WebCore/style/StyleResolver.cpp#L678-L699).
+This is a product disposition backed by static source inspection, not a browser
+printing claim or a settled specification inheritance rule.
+[Cascade's Page3 2018 referral is informative](https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/#informative)
+and does not select a replacement Page font model. Selected
+[Values3](https://www.w3.org/TR/2024/CRD-css-values-3-20240322/#font-relative-lengths)
+and [Values4](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#font-relative-lengths)
+assign initial font/line-height metrics to non-element contexts; this crate
+retains the units without substituting actual root metrics. Their separate
+Page3 2023 dependency is bounded to paged viewport/page-area definitions.
+[CSSWG #5437](https://github.com/w3c/csswg-drafts/issues/5437) still qualifies
+paged viewport interactions. The six
+[Conditional5 container lengths](https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#container-lengths)
+also remain authored; query-container selection and small-viewport fallback
+are downstream computed behavior. The fallback basis for non-element Page
+context remains qualified separately from this authored admission.
+
+Block-form page rules are accepted at
 the stylesheet top level and inside ordinary conditional and layer rule lists.
 Inside scope, ordinary conditional and layer bodies retain the same payload as
 `CssScopedRule::Page`; page selectors do not become scoped element selectors.

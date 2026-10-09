@@ -37,6 +37,7 @@ mod style_scope_media_separator_tests;
 mod syntax_bridge;
 pub use declaration_list::parse_declaration_list_text;
 pub(crate) use declaration_list::parse_declaration_list_text_with_context;
+pub(crate) use page::{first_page_component, is_page_margin_property, page_declaration_violation};
 mod gap;
 pub(crate) mod image_1d;
 mod masking;
@@ -4920,8 +4921,16 @@ pub(super) struct ParsedDeclaration {
 
 impl ParsedDeclaration {
     fn into_declaration(self) -> CssDeclaration {
+        self.into_declaration_in_context(crate::syntax::DeclarationContext::Ordinary)
+    }
+
+    fn into_declaration_in_context(
+        self,
+        declaration_context: crate::syntax::DeclarationContext,
+    ) -> CssDeclaration {
         CssDeclaration::new_parsed(
             self.parser_context,
+            declaration_context,
             self.body,
             self.importance,
             self.components,

@@ -145,10 +145,10 @@ pub enum CssRule {
     Scope(CssScopeRule),
 }
 
-/// One valid parser-produced page rule in the CSS2 and Logical 1 profile.
+/// One valid parser-produced rule in the composed authored Page profile.
 ///
 /// The private fields retain the optional authored page pseudo selector, the
-/// ordered page-context margin declarations, and the at-keyword position.
+/// ordered page-context physical margins and custom declarations, and the at-keyword position.
 /// This authored model does not paginate, cascade, match pages, or resolve
 /// lengths and percentages.
 #[derive(Clone, Debug, PartialEq)]
@@ -189,7 +189,7 @@ impl CssPageRule {
         }
     }
 
-    /// Returns the valid page-context margin declarations in authored order.
+    /// Returns valid page-context physical margins and custom declarations in authored order.
     #[must_use]
     pub const fn declarations(&self) -> &CssDeclarationList {
         &self.declarations
@@ -3639,7 +3639,7 @@ impl CssNestedDeclarationsRule {
     }
 }
 
-/// An ordered collection of parsed or checked ordinary authored declarations.
+/// An ordered collection of parsed or checked ordinary and Page authored declarations.
 ///
 /// Members retain their immutable occurrences, importance, component origins and
 /// individual parser contexts. Checked assembly requires complete specified output
@@ -3962,7 +3962,8 @@ pub enum CssImportance {
 /// This authored node records importance but does not apply cascade, substitution, or contextual
 /// resolution.
 /// Clones refer to the same immutable occurrence. Structural equality compares the body,
-/// importance, and optional name position; it does not compare token provenance or occurrence
+/// importance, semantic declaration context, and optional name position;
+/// it does not compare token provenance or occurrence
 /// identity. Use [`Self::same_occurrence`] when that identity matters.
 #[derive(Clone, Debug)]
 pub struct CssDeclaration {
@@ -3978,9 +3979,17 @@ struct DeclarationOccurrence {
 #[derive(Debug)]
 struct DeclarationPayload {
     parser_context: crate::CssParserContext,
+    declaration_context: DeclarationContext,
     body: CssDeclarationBody,
     components: CssComponentValues,
     provenance: DeclarationProvenance,
+}
+
+/// The semantic declaration owner, independent of document parser mode.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum DeclarationContext {
+    Ordinary,
+    Page,
 }
 
 #[derive(Debug)]
@@ -3998,6 +4007,7 @@ enum DeclarationProvenance {
 impl PartialEq for CssDeclaration {
     fn eq(&self, other: &Self) -> bool {
         self.parser_context() == other.parser_context()
+            && self.declaration_context() == other.declaration_context()
             && self.body() == other.body()
             && self.importance() == other.importance()
             && self.position() == other.position()
@@ -4018,6 +4028,7 @@ impl CssDeclaration {
     #[must_use]
     pub(crate) fn new_parsed(
         parser_context: crate::CssParserContext,
+        declaration_context: DeclarationContext,
         body: CssDeclarationBody,
         importance: CssImportance,
         components: CssComponentValues,
@@ -4029,6 +4040,7 @@ impl CssDeclaration {
                 importance,
                 payload: Arc::new(DeclarationPayload {
                     parser_context,
+                    declaration_context,
                     body,
                     components,
                     provenance: DeclarationProvenance::Parsed { name, value },
@@ -4049,6 +4061,7 @@ impl CssDeclaration {
                 importance,
                 payload: Arc::new(DeclarationPayload {
                     parser_context,
+                    declaration_context: DeclarationContext::Ordinary,
                     body,
                     components,
                     provenance: DeclarationProvenance::ParsedValue { value },
@@ -4063,11 +4076,28 @@ impl CssDeclaration {
         importance: CssImportance,
         components: CssComponentValues,
     ) -> Self {
+        Self::new_constructed_in_context(
+            parser_context,
+            DeclarationContext::Ordinary,
+            body,
+            importance,
+            components,
+        )
+    }
+
+    pub(crate) fn new_constructed_in_context(
+        parser_context: crate::CssParserContext,
+        declaration_context: DeclarationContext,
+        body: CssDeclarationBody,
+        importance: CssImportance,
+        components: CssComponentValues,
+    ) -> Self {
         Self {
             occurrence: Arc::new(DeclarationOccurrence {
                 importance,
                 payload: Arc::new(DeclarationPayload {
                     parser_context,
+                    declaration_context,
                     body,
                     components,
                     provenance: DeclarationProvenance::Constructed,
@@ -4080,6 +4110,10 @@ impl CssDeclaration {
     #[must_use]
     pub fn parser_context(&self) -> crate::CssParserContext {
         self.occurrence.payload.parser_context
+    }
+
+    pub(crate) fn declaration_context(&self) -> DeclarationContext {
+        self.occurrence.payload.declaration_context
     }
 
     /// Returns the property-coupled authored body.

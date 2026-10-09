@@ -215,6 +215,18 @@ impl CssParserContext {
     ) -> Result<CssDeclaration, CssPropertyValueParseError> {
         crate::property_value::parse_property_value_with_context(property, values, importance, self)
     }
+    /// Checks detached Page components with this document mode and definition choice.
+    /// Page admission and strict pending reentry follow [`parse_page_property_value`].
+    pub fn parse_page_property_value(
+        self,
+        property: CssPropertyNameRef<'_>,
+        values: CssComponentValues,
+        importance: CssImportance,
+    ) -> Result<CssDeclaration, CssPropertyValueParseError> {
+        crate::property_value::parse_page_property_value_with_context(
+            property, values, importance, self,
+        )
+    }
     /// Checks owned components with an explicit authored grammar.
     pub fn parse_property_value_for_grammar(
         self,

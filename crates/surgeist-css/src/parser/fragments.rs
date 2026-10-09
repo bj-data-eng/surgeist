@@ -589,10 +589,13 @@ pub(crate) fn parse_keyframe_declaration_block_with_context(
     )
 }
 
-/// Parses exactly one genuine curly body in the selected CSS2 Page domain.
+/// Parses exactly one genuine curly body in the composed authored Page domain.
 ///
-/// Empty bodies and ordered physical margin declarations with ordinary priority
-/// are retained. Unsupported properties/values and structural children, including
+/// Empty bodies, ordered physical margin declarations and Page-local custom
+/// declarations with ordinary priority are retained. Shared CSS-wide values,
+/// lengths and calculations remain symbolic; ordinary margins exclude `em`/`ex`.
+/// Pending margins retain Page context for strict caller-replacement reentry.
+/// Unsupported properties/values and structural children, including
 /// margin boxes, are recovered locally while admitted neighbors survive. No page
 /// selector, at-keyword or pagination context is fabricated.
 ///
@@ -601,7 +604,7 @@ pub(crate) fn parse_keyframe_declaration_block_with_context(
 /// counts toward the existing nesting limit. Recovery and implicit closures
 /// prevent clean validation. Free parsing uses the default document context;
 /// [`crate::CssParserContext::parse_page_block`] carries its context into ordinary
-/// property parsing before the same CSS2 Page value filter is applied.
+/// property parsing before the shared Page admission boundary is applied.
 #[must_use]
 pub fn parse_page_block(
     source: &str,
