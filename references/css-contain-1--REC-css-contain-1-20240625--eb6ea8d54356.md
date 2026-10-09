@@ -43,7 +43,7 @@ This CSS module describes the [contain](#propdef-contain) property, which indica
 <em>This section describes the status of this document at the time of its publication.
 	A list of current W3C publications
 	and the latest revision of this technical report
-	can be found in the <a href="https://www.w3.org/TR/">W3C technical reports index at https://www.w3.org/TR/.</a></em>
+	can be found in the <a href="https://www.w3.org/TR/">W3C technical reports index at https&#58;//www&#46;w3&#46;org/TR/.</a></em>
 
 This document was published by the [CSS Working Group](https://www.w3.org/groups/wg/css) as a W3C Recommendation using the [Recommendation track](https://www.w3.org/policies/process/20231103/#recs-and-notes). A W3C Recommendation is a specification that, after extensive consensus-building, is endorsed by W3C and its Members, and has commitments from Working Group members to [royalty-free licensing](https://www.w3.org/policies/patent-policy/#sec-Requirements) for implementations.
 

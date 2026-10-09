@@ -43,7 +43,7 @@ This module contains features to control panning and scrolling behavior with “
 	Other documents may supersede this document.
 	A list of current W3C publications
 	and the latest revision of this technical report
-	can be found in the <a href="https://www.w3.org/TR/">W3C technical reports index at https://www.w3.org/TR/.</a></em>
+	can be found in the <a href="https://www.w3.org/TR/">W3C technical reports index at https&#58;//www&#46;w3&#46;org/TR/.</a></em>
 
 This document was published by the [CSS Working Group](https://www.w3.org/Style/CSS/) as a <strong>Candidate Recommendation Snapshot</strong>. Publication as a Candidate Recommendation does not imply endorsement by the W3C Membership. A Candidate Recommendation Snapshot has received [wide review](https://www.w3.org/2020/Process-20200915/#dfn-wide-review) and is intended to gather implementation experience. This document is intended to become a W3C Recommendation; it will remain a Candidate Recommendation at least until 11 May 2021 to gather additional feedback.
 

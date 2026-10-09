@@ -41,7 +41,7 @@ New in this level is [§ 2.5 Scoping Styles: the @scope rule](#scoped-styles).
 <em>This section describes the status of this document at the time of its publication.
 	A list of current W3C publications
 	and the latest revision of this technical report
-	can be found in the <a href="https://www.w3.org/TR/">W3C technical reports index at https://www.w3.org/TR/.</a></em>
+	can be found in the <a href="https://www.w3.org/TR/">W3C technical reports index at https&#58;//www&#46;w3&#46;org/TR/.</a></em>
 
 This document was published by the [CSS Working Group](https://www.w3.org/groups/wg/css) as a <strong>Working Draft</strong> using the [Recommendation track](https://www.w3.org/policies/process/20231103/#recs-and-notes). Publication as a Working Draft does not imply endorsement by W3C and its Members.
 

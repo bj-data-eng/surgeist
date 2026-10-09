@@ -42,7 +42,7 @@ This module describes the fragmentation model that partitions a flow into pages,
 <em>This section describes the status of this document at the time of its publication.
 		Other documents may supersede this document.
 		A list of current W3C publications and the latest revision of this technical report
-		can be found in the <a href="https://www.w3.org/TR/">W3C technical reports index at https://www.w3.org/TR/.</a></em>
+		can be found in the <a href="https://www.w3.org/TR/">W3C technical reports index at https&#58;//www&#46;w3&#46;org/TR/.</a></em>
 
 This document was produced by the [CSS Working Group](https://www.w3.org/Style/CSS/members) as a Candidate Recommendation. This document is intended to become a W3C Recommendation. This document will remain a Candidate Recommendation at least until 4 March 2019 in order to ensure the opportunity for wide review.
 

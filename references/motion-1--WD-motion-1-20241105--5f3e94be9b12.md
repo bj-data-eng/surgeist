@@ -41,7 +41,7 @@ Motion path allows authors to position any graphical object and animate it along
    its publication. A list of
    current W3C publications and the latest revision of this technical report
    can be found in the <a href="https://www.w3.org/TR/">W3C technical reports
-   index at https://www.w3.org/TR/.</a></em>
+   index at https&#58;//www&#46;w3&#46;org/TR/.</a></em>
 
 Publication as a Working Draft does not imply endorsement by W3C and its Members. This is a draft document and may be updated, replaced or obsoleted by other documents at any time. It is inappropriate to cite this document as other than work in progress.
 

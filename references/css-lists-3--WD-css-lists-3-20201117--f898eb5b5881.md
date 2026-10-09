@@ -42,7 +42,7 @@ This module contains CSS features related to list counters: styling them, positi
 	Other documents may supersede this document.
 	A list of current W3C publications
 	and the latest revision of this technical report
-	can be found in the <a href="https://www.w3.org/TR/">W3C technical reports index at https://www.w3.org/TR/.</a></em>
+	can be found in the <a href="https://www.w3.org/TR/">W3C technical reports index at https&#58;//www&#46;w3&#46;org/TR/.</a></em>
 
 This document was published by the [CSS Working Group](https://www.w3.org/Style/CSS/) as a <strong>Working Draft</strong>. Publication as a Working Draft does not imply endorsement by the W3C Membership.
 

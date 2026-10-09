@@ -46,7 +46,7 @@ Although originally designed for use in SVG, filter effects are a set of operati
 
 ## <a id="status"></a>Status of this document
 
-<em>This section describes the status of this document at the time of&#xA;   its publication. Other documents may supersede this document. A list of&#xA;   current W3C publications and the latest revision of this technical report&#xA;   can be found in the <a href="https://www.w3.org/TR/">W3C technical reports&#xA;   index at https://www.w3.org/TR/.</a></em>
+<em>This section describes the status of this document at the time of&#xA;   its publication. Other documents may supersede this document. A list of&#xA;   current W3C publications and the latest revision of this technical report&#xA;   can be found in the <a href="https://www.w3.org/TR/">W3C technical reports&#xA;   index at https&#58;//www&#46;w3&#46;org/TR/.</a></em>
 
 Publication as a Working Draft does not imply endorsement by the W3C Membership. This is a draft document and may be updated, replaced or obsoleted by other documents at any time. It is inappropriate to cite this document as other than work in progress.
 

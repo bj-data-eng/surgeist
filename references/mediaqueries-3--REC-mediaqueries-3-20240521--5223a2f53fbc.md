@@ -36,7 +36,7 @@ A media query consists of a media type and zero or more expressions that check f
 
 ## <a id="status"></a>Status of this Document
 
-<em>This section describes the status of this document at the time of its publication. A list of current W3C publications and the latest revision of this technical report can be found in the <a href="https://www.w3.org/TR/">W3C technical reports index</a> at https://www.w3.org/TR/.</em>
+<em>This section describes the status of this document at the time of its publication. A list of current W3C publications and the latest revision of this technical report can be found in the <a href="https://www.w3.org/TR/">W3C technical reports index</a> at https&#58;//www&#46;w3&#46;org/TR/.</em>
 
 This document was published by the [CSS Working Group](https://www.w3.org/groups/wg/css) as a Recommendation using the [Recommendation track](https://www.w3.org/2023/Process-20231103/#recs-and-notes). It includes [proposed corrections](https://www.w3.org/2023/Process-20231103/#proposed-corrections).
 

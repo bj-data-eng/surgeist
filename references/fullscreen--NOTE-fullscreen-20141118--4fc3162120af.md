@@ -39,7 +39,7 @@ Fullscreen defines the fullscreen API for the web platform.
 publication. Other documents may supersede this document. A list of current W3C
 publications and the latest revision of this technical report can be found in
 the <a href="https://www.w3.org/TR/">W3C technical reports index</a> at
-http://www.w3.org/TR/.</i>
+http&#58;//www&#46;w3&#46;org/TR/.</i>
 
 This is the 18 November 2014 W3C Working Group Note of Fullscreen.
 

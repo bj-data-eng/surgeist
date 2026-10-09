@@ -40,7 +40,7 @@ This specification describes an API for observing changes to Element’s size.
    its publication. Other documents may supersede this document. A list of
    current W3C publications and the latest revision of this technical report
    can be found in the <a href="https://www.w3.org/TR/">W3C technical reports
-   index at https://www.w3.org/TR/.</a></em>
+   index at https&#58;//www&#46;w3&#46;org/TR/.</a></em>
 
 This document is a <b>First Public Working Draft</b>.
 

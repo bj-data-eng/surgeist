@@ -54,7 +54,7 @@ These expressions can also be used, for instance, to select a set of elements, o
     its publication. Other documents may supersede this document. A list
     of current W3C publications and the latest revision of this technical
     report can be found in the <a href="https://www.w3.org/TR/">W3C
-      technical reports index</a> at https://www.w3.org/TR/.</em>
+      technical reports index</a> at https&#58;//www&#46;w3&#46;org/TR/.</em>
 
 This W3C Recommendation is identical to the [11 September 2018 Proposed Recommendation](https://www.w3.org/TR/2018/PR-selectors-3-20180911/) except that the status and boilerplate are updated for W3C Recommendation.
 

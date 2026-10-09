@@ -44,7 +44,7 @@ CSS Writing Modes Level 3 defines CSS support for various writing modes and thei
 	Other documents may supersede this document.
 	A list of current <abbr title="World Wide Web Consortium">W3C</abbr> publications
 	and the latest revision of this technical report
-	can be found in the <a href="https://www.w3.org/TR/"><abbr title="World Wide Web Consortium">W3C</abbr> technical reports index</a> at https://www.w3.org/TR/.</em>
+	can be found in the <a href="https://www.w3.org/TR/"><abbr title="World Wide Web Consortium">W3C</abbr> technical reports index</a> at https&#58;//www&#46;w3&#46;org/TR/.</em>
 
 This document was published by the [CSS Working Group](https://www.w3.org/Style/CSS/) as a Recommendation.
 
