@@ -609,29 +609,31 @@ fn modern_unselected_whole_formats_keep_typed_limits_and_meaningful_compact_prov
 #[test]
 fn exact_rule_tariffs_include_shared_projection_and_retained_losing_occurrences() {
     // Style: rule + selector list + simple class =3. Empty build/output=2.
-    // All fallback probe: attempt1 + all368 admitted member presence checks=P369.
-    // One opacity build I5/P3, output I4/P373 => rule I12/P379.
-    // Duplicate opacity build I9/P5, same output => rule I16/P381.
+    // All fallback probe: attempt1 +370 admitted member presence checks=P371.
+    // The authored records include text-box-trim and text-box-edge; direction
+    // and unicode-bidi are excluded, and the independent SVG terminal is admitted.
+    // One opacity build I5/P3, output I4/P375 => rule I12/P381.
+    // Duplicate opacity build I9/P5, same output => rule I16/P383.
     limits(".a{}", ".a { }", 5, 5);
     limits(".日本{}", ".日本 { }", 5, 5);
-    limits(".a{opacity:0}", ".a { opacity: 0; }", 12, 379);
-    limits(".a{opacity:0;opacity:1}", ".a { opacity: 1; }", 16, 381);
+    limits(".a{opacity:0}", ".a { opacity: 0; }", 12, 381);
+    limits(".a{opacity:0;opacity:1}", ".a { opacity: 1; }", 16, 383);
     // Keyframes: rule/name2 + block/selector-list/From3. Empty build/output2.
-    // Keyframe All probe: attempt1 +361 admitted member presence checks=P362.
-    // Keyframe opacity build I5/P5 + output I4/P366 => I14/P376; duplicate I18/P380.
+    // Keyframe All probe: attempt1 +363 admitted member presence checks=P364.
+    // Keyframe opacity build I5/P5 + output I4/P368 => I14/P378; duplicate I18/P382.
     limits("@keyframes k{}", "@keyframes k {\n\n}", 2, 2);
     limits("@keyframes k{from{}}", "@keyframes k {\n  0% { }\n}", 7, 7);
     limits(
         "@keyframes k{from{opacity:0}}",
         "@keyframes k {\n  0% { opacity: 0; }\n}",
         14,
-        376,
+        378,
     );
     limits(
         "@keyframes k{from{opacity:0;opacity:1}}",
         "@keyframes k {\n  0% { opacity: 1; }\n}",
         18,
-        380,
+        382,
     );
     // Empty query Media: rule1 + query-list1; no child slice fee.
     limits("@media{}", "@media  {\n\n}", 2, 2);
@@ -732,7 +734,7 @@ fn block_resource_failure_keeps_the_actual_generated_member_and_source_occurrenc
     assert_eq!(value, before);
     assert_eq!(
         value
-            .serialize_cssom_with_limits(Limits::new(16, 381, 18))
+            .serialize_cssom_with_limits(Limits::new(16, 383, 18))
             .unwrap(),
         ".a { opacity: 1; }"
     );
@@ -768,7 +770,7 @@ fn block_resource_failure_keeps_the_actual_generated_member_and_source_occurrenc
     assert_eq!(value, before);
     assert_eq!(
         value
-            .serialize_cssom_with_limits(Limits::new(18, 380, expected.len()))
+            .serialize_cssom_with_limits(Limits::new(18, 382, expected.len()))
             .unwrap(),
         expected
     );
