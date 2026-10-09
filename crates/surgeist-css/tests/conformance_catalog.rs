@@ -4356,6 +4356,17 @@ fn font_source_complete_grammar_retains_legacy_controls_and_rejects_malformed_sr
 
 #[test]
 fn source_registry_lookups_are_exact_and_preserve_provenance_xor() {
+    // The selected Snapshot edition is the 2026 REC; the 2018 REC remains a
+    // separate retained reference witness, not this live registry source.
+    let ui3 = specification_source("O-UI3").expect("selected UI3 source");
+    assert_eq!(ui3.tier(), CssSpecificationTier::Snapshot2026Official);
+    assert_eq!(ui3.level(), "3");
+    assert_eq!(
+        ui3.url(),
+        Some("https://www.w3.org/TR/2026/REC-css-ui-3-20260407/")
+    );
+    assert_eq!(ui3.repository_provenance(), None);
+
     let url = specification_source("I-VALUES4-20240312").expect("dated URL source");
     assert_eq!(url.tier(), CssSpecificationTier::SurgeistExtension);
     assert_eq!(url.level(), "4");
@@ -5657,6 +5668,42 @@ fn completed_function_property_metadata_matches_public_current_accessors() {
 
 #[test]
 fn exclusion_registry_exposes_named_official_audit_facts() {
+    // UI3 REC 2026 §6.3.1 and UI4 WD 2026 §5.3.2 obsolete ime-mode;
+    // neither defines a current authored value production.
+    let ui3 = specification_source("O-UI3").unwrap();
+    let ime = conformance_exclusion("excluded.O-UI3.property.ime-mode").unwrap();
+    assert_eq!(ime.source(), *ui3);
+    assert_eq!(ime.production(), "#input-method-editor");
+    assert_eq!(
+        ime.reason(),
+        CssExclusionReason::SupersededWithoutCurrentProduction
+    );
+    assert_eq!(
+        ime.superseding_ids().map(|ids| ids[0].as_str()),
+        Some("X-UI4")
+    );
+    let ui4_ime = conformance_exclusion("excluded.X-UI4.property.ime-mode").unwrap();
+    assert_eq!(ui4_ime.source(), *specification_source("X-UI4").unwrap());
+    assert_eq!(ui4_ime.production(), "#input-method-editor");
+    assert_eq!(ui4_ime.reason(), ime.reason());
+    assert!(CssKnownProperty::from_name("ime-mode").is_none());
+
+    // These clauses exclude execution, not their admitted property grammars.
+    let ui3_behavior = conformance_exclusion("excluded.O-UI3.behavior").unwrap();
+    assert_eq!(ui3_behavior.source(), *ui3);
+    assert_eq!(
+        ui3_behavior.production(),
+        "#resize; #text-overflow; #ellipsing-details; #ellipsis-interaction; #ellipsis-scrolling; #cursor; #canvas_cursor; #caret-color (rendering and user interaction only)"
+    );
+    assert_eq!(
+        ui3_behavior.reason(),
+        CssExclusionReason::OutsideAuthoredSyntaxBoundary
+    );
+    assert!(ui3_behavior.superseding_ids().is_none());
+    let ui3_audit = conformance_exclusion("excluded.O-UI3.informative-audit").unwrap();
+    assert_eq!(ui3_audit.source(), *ui3);
+    assert_eq!(ui3_audit.reason(), CssExclusionReason::InformativeOnly);
+
     let predecessor = conformance_exclusion("excluded.O-CSS2.property.margin")
         .expect("superseded CSS2 margin definition");
     assert_eq!(predecessor.source().id().as_str(), "O-CSS2");

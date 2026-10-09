@@ -8285,6 +8285,20 @@ in its later owning phase.
 must not use it, and user repair guidance does not define an authored value
 grammar. No values are inferred from examples or HTML input guidance.
 
+The official UI3 source `O-UI3` selects [REC 2026-04-07](../../../references/css-ui-3--REC-css-ui-3-20260407--6dfbf85a9d9c.md).
+Its [§6.3.1](../../../references/css-ui-3--REC-css-ui-3-20260407--6dfbf85a9d9c.md#input-method-editor)
+contains the same obsolete `ime-mode` policy; the [REC 2018-06-21 clause](../../../references/css-ui-3--REC-css-ui-3-20180621--7f8a182b5285.md#input-method-editor)
+remains a separately identified historical witness. UI3's downstream-behavior
+exclusion names user resizing in [§5.1](../../../references/css-ui-3--REC-css-ui-3-20260407--6dfbf85a9d9c.md#resize),
+ellipsis rendering and interaction in [§5.2](../../../references/css-ui-3--REC-css-ui-3-20260407--6dfbf85a9d9c.md#text-overflow),
+and cursor/caret rendering in [§6.1.1](../../../references/css-ui-3--REC-css-ui-3-20260407--6dfbf85a9d9c.md#cursor)
+and [§6.2.1](../../../references/css-ui-3--REC-css-ui-3-20260407--6dfbf85a9d9c.md#caret-color).
+These exclusions concern execution, not authored property admission.
+[Appendix E's default HTML style additions](../../../references/css-ui-3--REC-css-ui-3-20260407--6dfbf85a9d9c.md#default-style-sheet)
+are explicitly informative and belong to `excluded.O-UI3.informative-audit`.
+UI property metadata retains its existing UI4 and shared-module owners, along
+with their accepted grammar and canonical-order policies.
+
 `CssCaretAnimation` admits Auto/Manual and `CssCaretShape` admits
 Auto/Bar/Block/Underscore. Both inherit with initial Auto. Animation's later
 animation type is discrete; shape's is by computed value. `CssCaret` retains

@@ -785,7 +785,7 @@ const O_UI3: CssSpecificationSource = dated_source!(
     "CSS Basic User Interface",
     "3",
     CssSpecificationTier::Snapshot2026Official,
-    "https://www.w3.org/TR/2018/REC-css-ui-3-20180621/"
+    "https://www.w3.org/TR/2026/REC-css-ui-3-20260407/"
 );
 const O_CONTAIN1: CssSpecificationSource = dated_source!(
     "O-CONTAIN1",
@@ -1467,7 +1467,7 @@ static CONFORMANCE_EXCLUSIONS: &[CssExclusionMetadata] = &[
     exclusion!(
         "excluded.O-UI3.property.ime-mode",
         O_UI3,
-        "#propdef-ime-mode",
+        "#input-method-editor",
         CssExclusionReason::SupersededWithoutCurrentProduction,
         ["X-UI4"]
     ),
@@ -1820,10 +1820,12 @@ static CONFORMANCE_EXCLUSIONS: &[CssExclusionMetadata] = &[
         "box/items/lines/layout/pagination/axis algorithms",
         CssExclusionReason::OutsideAuthoredSyntaxBoundary
     ),
+    // UI3 Appendix E (#default-style-sheet) is informative and covered by
+    // excluded.O-UI3.informative-audit, rather than an execution requirement.
     exclusion!(
         "excluded.O-UI3.behavior",
         O_UI3,
-        "ellipsis/input/default-style behavior sections",
+        "#resize; #text-overflow; #ellipsing-details; #ellipsis-interaction; #ellipsis-scrolling; #cursor; #canvas_cursor; #caret-color (rendering and user interaction only)",
         CssExclusionReason::OutsideAuthoredSyntaxBoundary
     ),
     exclusion!(
