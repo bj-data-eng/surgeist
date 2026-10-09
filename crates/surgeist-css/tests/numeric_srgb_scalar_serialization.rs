@@ -990,12 +990,14 @@ fn composition_text(property: CssKnownProperty, source: &str) -> String {
 }
 #[test]
 fn gradient_numeric_stop_uses_ordinary_scalar_policy() {
+    // Color4 CRD2026-09-08 §§13.2 and 16.2.2: emitting missing RGB as
+    // color(srgb) must preserve the original gradient's sRGB default.
     assert_eq!(
         composition_text(
             CssKnownProperty::BackgroundImage,
             "linear-gradient(rgb(none calc(50%) 0), blue)"
         ),
-        "linear-gradient(color(srgb none 0.5 0), blue)"
+        "linear-gradient(in srgb, color(srgb none 0.5 0), blue)"
     );
 }
 #[test]
