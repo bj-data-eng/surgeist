@@ -5179,7 +5179,7 @@ fn transform_three_dimensional_translations_keep_z_length_only() {
 #[test]
 fn official_easing_metadata_matches_typed_functions() {
     let report = parse_style_attribute(
-        "transition-timing-function: ease, cubic-bezier(.25, 0, .75, 1), steps(2, jump-none)",
+        "transition-timing-function: ease, cubic-bezier(.25, 0, .75, 1), steps(2, jump-none), linear(0, 1)",
     );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::TransitionTimingFunction(value) = report.syntax()[0]
@@ -5196,13 +5196,28 @@ fn official_easing_metadata_matches_typed_functions() {
             CssEasing::Keyword(_),
             CssEasing::CubicBezier(_),
             CssEasing::Steps(_),
+            CssEasing::Linear(_),
         ]
     ));
     assert_complete_function_metadata(
         "official.value.easing-function",
         "<easing-function>",
-        "O-EASING1",
+        "D-EASING2",
         "#easing-functions",
+    );
+    assert_complete_function_metadata(
+        "official.value.linear-easing",
+        "linear()",
+        "D-EASING2",
+        "#linear-easing-function-syntax,#create-a-linear-easing-function",
+    );
+    let source = feature_metadata("official.value.linear-easing")
+        .unwrap()
+        .source();
+    assert_eq!(source.tier(), CssSpecificationTier::LaterStandard);
+    assert_eq!(
+        source.url(),
+        Some("https://www.w3.org/TR/2024/WD-css-easing-2-20240829/")
     );
     assert_complete_function_metadata(
         "official.value.cubic-bezier-easing",

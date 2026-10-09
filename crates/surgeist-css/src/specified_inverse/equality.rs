@@ -432,7 +432,64 @@ getter_equality!(CssCubicBezierX; value: bounded);
 // The owning numeric_fields_eq compares y1/y2 before the x-coordinate carriers.
 getter_equality!(CssCubicBezier; y1: bounded, y2: bounded, x1: bounded, x2: bounded);
 getter_equality!(CssSteps; count: bounded, position: raw);
-branch_equality!(CssEasing; CubicBezier, Steps);
+impl BoundedStructuralEquality for CssLinearStop {
+    fn bounded_eq(
+        &self,
+        other: &Self,
+        context: &mut SpecifiedSerializationContext,
+    ) -> EqualityResult {
+        let output_equal = match (
+            self.output().literal_component(),
+            other.output().literal_component(),
+        ) {
+            (Some(left), Some(right)) => {
+                crate::specified_numeric::ordinary_literal_equal(left, right)
+            }
+            (None, None) => self
+                .output()
+                .calculation()
+                .expect("checked Number math")
+                .expression
+                .specified_inverse_eq(
+                    &other
+                        .output()
+                        .calculation()
+                        .expect("checked Number math")
+                        .expression,
+                    context,
+                )?,
+            _ => false,
+        };
+        if !output_equal || self.inputs().len() != other.inputs().len() {
+            return Ok(false);
+        }
+        for (left, right) in self.inputs().iter().zip(other.inputs()) {
+            let equal = match (left.literal_component(), right.literal_component()) {
+                (Some(left), Some(right)) => {
+                    crate::specified_numeric::ordinary_literal_equal(left, right)
+                }
+                (None, None) => left
+                    .calculation()
+                    .expect("checked Percentage math")
+                    .expression
+                    .specified_inverse_eq(
+                        &right
+                            .calculation()
+                            .expect("checked Percentage math")
+                            .expression,
+                        context,
+                    )?,
+                _ => false,
+            };
+            if !equal {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+}
+getter_equality!(CssLinearEasing; stops: bounded);
+branch_equality!(CssEasing; CubicBezier, Linear, Steps);
 getter_equality!(CssEasingList; values: bounded);
 
 branch_equality!(CssHorizontalPosition; Offset, LeftOffset, RightOffset, XStartOffset, XEndOffset);
@@ -707,3 +764,86 @@ impl BoundedStructuralEquality for CssShapeArcRadii {
     }
 }
 getter_equality!(CssShapeArc; endpoint: bounded, radii: bounded, sweep: raw, size: raw, rotation: bounded);
+
+#[cfg(test)]
+mod linear_equality_tests {
+    use super::*;
+
+    fn easing(source: &str) -> CssEasing {
+        let report = crate::parse_style_attribute(&format!("transition-timing-function:{source}"));
+        assert!(report.is_clean());
+        let CssKnownPropertyValueRef::TransitionTimingFunction(value) = report.syntax()[0]
+            .known()
+            .unwrap()
+            .property_value()
+            .unwrap()
+        else {
+            panic!("timing wrapper")
+        };
+        value.timing_functions().values()[0].clone()
+    }
+
+    #[test]
+    fn linear_output_and_percentage_math_share_bounded_comparison_work() {
+        let left = easing("linear(calc(1 + 2) calc(10% + 20%), 1)");
+        let right = easing("linear(calc(1 + 2) calc(10% + 20%), 1)");
+        // Each independent calc comparison schedules root, Sum and two leaves.
+        // Authored stop/list carriers and exact literal comparisons add no slots.
+        for projections in [8, 7, 8] {
+            let mut context = SpecifiedSerializationContext::new(
+                CssSpecifiedValueSerializationLimits::new(0, projections, 0),
+            );
+            let result = left.bounded_eq(&right, &mut context);
+            if projections == 8 {
+                assert!(result.unwrap());
+            } else {
+                assert_eq!(
+                    result.unwrap_err().kind(),
+                    CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn linear_ordinary_comparison_uses_exact_values_without_math_work() {
+        let mut context =
+            SpecifiedSerializationContext::new(CssSpecifiedValueSerializationLimits::new(0, 0, 0));
+        assert!(
+            easing("linear(+000.0 20e0%, 1e0)")
+                .bounded_eq(&easing("linear(0 20%, 1)"), &mut context)
+                .unwrap()
+        );
+        assert!(
+            !easing("linear(9007199254740993 20%, 1)")
+                .bounded_eq(&easing("linear(9007199254740992 20%, 1)"), &mut context)
+                .unwrap()
+        );
+        assert!(
+            !easing("linear(0 20.0000001%, 1)")
+                .bounded_eq(&easing("linear(0 20%, 1)"), &mut context)
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn linear_shape_differences_stop_before_unreached_math() {
+        let mut context =
+            SpecifiedSerializationContext::new(CssSpecifiedValueSerializationLimits::new(0, 0, 0));
+        assert!(
+            !easing("linear(0, calc(1 + 2))")
+                .bounded_eq(&easing("linear(0, 1, calc(1 + 2))"), &mut context)
+                .unwrap()
+        );
+        assert!(
+            !easing("linear(0 20%, calc(1 + 2))")
+                .bounded_eq(&easing("linear(0 20% 40%, calc(1 + 2))"), &mut context)
+                .unwrap()
+        );
+        assert!(
+            !easing("linear(0, calc(1 + 2))")
+                .bounded_eq(&CssEasing::Keyword(CssEasingKeyword::Linear), &mut context)
+                .unwrap()
+        );
+    }
+}

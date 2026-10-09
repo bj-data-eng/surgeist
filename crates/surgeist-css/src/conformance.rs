@@ -815,6 +815,14 @@ const O_EASING1: CssSpecificationSource = dated_source!(
     CssSpecificationTier::Snapshot2026Official,
     "https://www.w3.org/TR/2023/CRD-css-easing-1-20230213/"
 );
+// Required Transitions 1 definitions only; Easing 2 is not selected in full.
+const D_EASING2: CssSpecificationSource = dated_source!(
+    "D-EASING2",
+    "CSS Easing Functions",
+    "2",
+    CssSpecificationTier::LaterStandard,
+    "https://www.w3.org/TR/2024/WD-css-easing-2-20240829/"
+);
 const O_COUNTERSTYLES3: CssSpecificationSource = dated_source!(
     "O-COUNTERSTYLES3",
     "CSS Counter Styles",
@@ -1341,6 +1349,7 @@ static SPECIFICATION_SOURCES: &[CssSpecificationSource] = &[
     O_TRANSFORMS1,
     O_COMPOSITING1,
     O_EASING1,
+    D_EASING2,
     O_COUNTERSTYLES3,
     R_MEDIA4,
     R_SCROLLBARS1,
@@ -2276,6 +2285,7 @@ static OFFICIAL_NON_PROPERTY_COVERAGE_ROWS: &[CssOfficialCoverageRecord] = &[
     active_coverage!("official.value.transform.skew-y"),
     active_coverage!("official.value.blend-mode"),
     active_coverage!("official.value.easing-function"),
+    active_coverage!("official.value.linear-easing"),
     active_coverage!("official.value.cubic-bezier-easing"),
     active_coverage!("official.value.step-easing"),
     active_coverage!("official.value.step-position"),
@@ -2953,7 +2963,7 @@ const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.display-mode"),
 ];
 
-static FEATURE_CATALOG: [CssFeatureMetadata; 789] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 790] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -3864,8 +3874,15 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 789] = [
         "official.value.easing-function",
         CssFeatureKind::Value,
         "<easing-function>",
-        O_EASING1,
+        D_EASING2,
         "#easing-functions",
+    ),
+    CssFeatureMetadata::complete(
+        "official.value.linear-easing",
+        CssFeatureKind::Value,
+        "linear()",
+        D_EASING2,
+        "#linear-easing-function-syntax,#create-a-linear-easing-function",
     ),
     CssFeatureMetadata::complete(
         "official.value.cubic-bezier-easing",

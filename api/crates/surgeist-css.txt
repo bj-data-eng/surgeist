@@ -1237,6 +1237,7 @@ pub fn surgeist_css::CssDisplayValue::serialize_specified_with_limits(&self, lim
 #[non_exhaustive] pub enum surgeist_css::CssEasing
 pub surgeist_css::CssEasing::CubicBezier(surgeist_css::CssCubicBezier)
 pub surgeist_css::CssEasing::Keyword(surgeist_css::CssEasingKeyword)
+pub surgeist_css::CssEasing::Linear(surgeist_css::CssLinearEasing)
 pub surgeist_css::CssEasing::Steps(surgeist_css::CssSteps)
 impl surgeist_css::CssEasing
 pub fn surgeist_css::CssEasing::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
@@ -9376,12 +9377,29 @@ pub struct surgeist_css::CssLinePaddingPropertyValue
 impl surgeist_css::CssLinePaddingPropertyValue
 pub fn surgeist_css::CssLinePaddingPropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssLinePaddingPropertyValue::value(&self) -> &surgeist_css::CssSpecifiedLength
+pub struct surgeist_css::CssLinearEasing
+impl surgeist_css::CssLinearEasing
+pub fn surgeist_css::CssLinearEasing::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssLinearEasing::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssLinearEasing
+pub fn surgeist_css::CssLinearEasing::stops(&self) -> &[surgeist_css::CssLinearStop]
+pub fn surgeist_css::CssLinearEasing::try_new(stops: alloc::vec::Vec<surgeist_css::CssLinearStop>) -> core::option::Option<Self>
 pub struct surgeist_css::CssLinearGradient
 impl surgeist_css::CssLinearGradient
 pub const fn surgeist_css::CssLinearGradient::direction(&self) -> core::option::Option<&surgeist_css::CssLinearGradientDirection>
 pub const fn surgeist_css::CssLinearGradient::stops(&self) -> &surgeist_css::CssColorStopList
 impl surgeist_css::CssLinearGradient
 pub const fn surgeist_css::CssLinearGradient::new(direction: core::option::Option<surgeist_css::CssLinearGradientDirection>, stops: surgeist_css::CssColorStopList) -> Self
+pub struct surgeist_css::CssLinearStop
+impl surgeist_css::CssLinearStop
+pub fn surgeist_css::CssLinearStop::inputs(&self) -> &[surgeist_css::CssSpecifiedPercentage]
+pub const fn surgeist_css::CssLinearStop::output(&self) -> &surgeist_css::CssSpecifiedNumber
+pub fn surgeist_css::CssLinearStop::try_new(output: surgeist_css::CssSpecifiedNumber, inputs: alloc::vec::Vec<surgeist_css::CssSpecifiedPercentage>) -> core::option::Option<Self>
+impl surgeist_css::CssLinearStop
+pub fn surgeist_css::CssLinearStop::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssLinearStop::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl core::cmp::PartialEq for surgeist_css::CssLinearStop
+pub fn surgeist_css::CssLinearStop::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::CssListStyleImagePropertyValue
 impl surgeist_css::CssListStyleImagePropertyValue
 pub fn surgeist_css::CssListStyleImagePropertyValue::as_css(&self) -> &str

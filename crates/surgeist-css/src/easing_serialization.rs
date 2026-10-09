@@ -1,8 +1,8 @@
-//! CSS Easing Functions Level 1 specified serialization, before timing evaluation.
+//! Authored easing specified serialization, before timing evaluation.
 
 use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{
-    CssCubicBezier, CssEasing, CssEasingKeyword, CssEasingList,
+    CssCubicBezier, CssEasing, CssEasingKeyword, CssEasingList, CssLinearEasing, CssLinearStop,
     CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits, CssStepPosition,
     CssSteps,
 };
@@ -11,7 +11,7 @@ type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
 
 macro_rules! specified_methods {
     () => {
-        /// Serializes the authored easing value using CSS Easing Level 1 canonical syntax.
+        /// Serializes the authored easing value using canonical specified syntax.
         /// Calculations retain specified-value semantics without timing evaluation or clamping.
         pub fn serialize_specified(&self) -> Result<String> {
             self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
@@ -67,6 +67,7 @@ impl CssEasing {
             }
             Self::CubicBezier(value) => value.append_specified(context, output),
             Self::Steps(value) => value.append_specified(context, output),
+            Self::Linear(value) => value.append_specified(context, output),
         }
     }
 }
@@ -93,6 +94,49 @@ impl CssCubicBezier {
             context.append(output, &captured)?;
         }
         context.append(output, ")")
+    }
+}
+
+impl CssLinearEasing {
+    specified_methods!();
+
+    fn append_specified(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> Result<()> {
+        context.charge_input(1)?;
+        context.charge_projection(1)?;
+        context.append(output, "linear(")?;
+        for (index, stop) in self.stops().iter().enumerate() {
+            if index != 0 {
+                context.append(output, ", ")?;
+            }
+            stop.append_specified(context, output)?;
+        }
+        context.append(output, ")")
+    }
+}
+
+impl CssLinearStop {
+    specified_methods!();
+
+    fn append_specified(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> Result<()> {
+        // The authored stop is one node; scalar providers retain their own work.
+        context.charge_input(1)?;
+        context.charge_projection(1)?;
+        let captured = self.output().capture_specified(context)?;
+        context.append(output, &captured)?;
+        for input in self.inputs() {
+            context.append(output, " ")?;
+            let captured = input.capture_specified(context)?;
+            context.append(output, &captured)?;
+        }
+        Ok(())
     }
 }
 

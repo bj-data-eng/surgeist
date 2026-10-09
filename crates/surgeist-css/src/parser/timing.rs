@@ -9,6 +9,7 @@ use crate::validation::unsupported_keyword_reason;
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
     CssFeatureId::new("official.value.easing-function"),
     CssFeatureId::new("official.value.cubic-bezier-easing"),
+    CssFeatureId::new("official.value.linear-easing"),
     CssFeatureId::new("official.value.step-easing"),
     CssFeatureId::new("official.value.step-position"),
 ];
@@ -145,6 +146,7 @@ pub(super) fn parse_easing<'i, 't>(
     let kind = match name.to_ascii_lowercase().as_str() {
         "cubic-bezier" => CssEasingFunctionKind::CubicBezier,
         "steps" => CssEasingFunctionKind::Steps,
+        "linear" => CssEasingFunctionKind::Linear,
         _ => {
             return Err(unsupported_value(
                 input,
@@ -158,13 +160,66 @@ pub(super) fn parse_easing<'i, 't>(
             parse_cubic_bezier(input, numeric).map(CssEasing::CubicBezier)
         }
         CssEasingFunctionKind::Steps => parse_steps(input, numeric).map(CssEasing::Steps),
+        CssEasingFunctionKind::Linear => parse_linear(input, numeric).map(CssEasing::Linear),
     })
 }
 
 #[derive(Clone, Copy)]
 enum CssEasingFunctionKind {
     CubicBezier,
+    Linear,
     Steps,
+}
+
+fn parse_linear<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> std::result::Result<CssLinearEasing, ParseError<'i, Error>> {
+    let mut stops = Vec::new();
+    loop {
+        stops.push(
+            input.parse_until_before(cssparser::Delimiter::Comma, |input| {
+                parse_linear_stop(input, numeric)
+            })?,
+        );
+        if input.try_parse(Parser::expect_comma).is_err() {
+            break;
+        }
+    }
+    CssLinearEasing::from_parser(stops).ok_or_else(|| {
+        unsupported_value(input, None, "linear() requires at least two authored stops")
+    })
+}
+
+fn parse_linear_stop<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> std::result::Result<CssLinearStop, ParseError<'i, Error>> {
+    use super::values::{parse_specified_number, parse_specified_percentage};
+
+    let mut inputs = Vec::new();
+    let output = if let Ok(output) =
+        input.try_parse(|input| parse_specified_number(input, numeric, "linear output"))
+    {
+        for _ in 0..2 {
+            if input.is_exhausted() {
+                break;
+            }
+            inputs.push(parse_specified_percentage(input, numeric, "linear input")?);
+        }
+        output
+    } else {
+        inputs.push(parse_specified_percentage(input, numeric, "linear input")?);
+        if let Ok(second) =
+            input.try_parse(|input| parse_specified_percentage(input, numeric, "linear input"))
+        {
+            inputs.push(second);
+        }
+        parse_specified_number(input, numeric, "linear output")?
+    };
+    input.expect_exhausted().map_err(basic)?;
+    CssLinearStop::from_parser(output, inputs)
+        .ok_or_else(|| unsupported_value(input, None, "linear stop has more than two inputs"))
 }
 
 fn parse_cubic_bezier<'i, 't>(

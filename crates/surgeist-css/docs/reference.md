@@ -2477,7 +2477,7 @@ assert_eq!(rotation.serialize_specified()?, "hue-rotate(0)");
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-Easing values distinguish keywords, `cubic-bezier()`, and `steps()`.
+Easing values distinguish keywords, `cubic-bezier()`, `steps()`, and `linear()`.
 `CssCubicBezierX` checks an ordinary exact number against inclusive [0, 1],
 including signed zero and exponent spelling. A bare calculation root reenters
 that check, while genuine function calculations remain symbolic. Y coordinates
@@ -2490,7 +2490,8 @@ symbolic even when their authored expression is `calc(1)`. Ordinary zero,
 negative, decimal-point and exponent counts are rejected. Position omission
 remains distinct from explicit `end` or `JumpEnd`.
 
-`CssEasing`, `CssEasingList`, `CssCubicBezier`, and `CssSteps` expose
+`CssEasing`, `CssEasingList`, `CssCubicBezier`, `CssSteps`, `CssLinearEasing`,
+and `CssLinearStop` expose
 `serialize_specified()` and `serialize_specified_with_limits()`. Their canonical
 output follows [CSS Easing Functions Level 1 §2.4](https://www.w3.org/TR/2023/CRD-css-easing-1-20230213/#serialization):
 the five non-step keywords remain keywords, `step-start` becomes
@@ -2500,11 +2501,26 @@ spellings. Cubic coordinates retain their order and use the shared Number
 formatter; counts use the existing exact Integer and Integer-calculation owner.
 Specified calculations remain calculations, without coordinate clamping,
 positive-count clamping, integer rounding, or an assumed relative-unit basis.
-The selected publication does not admit `linear()` or `spring()` functions.
+Transitions 1 imports [Easing 2's dated `linear()` definition](https://www.w3.org/TR/2024/WD-css-easing-2-20240829/#linear-easing-function-syntax).
+`CssLinearEasing` retains at least two authored `CssLinearStop` values. Each
+stop has one unrestricted `CssSpecifiedNumber` output and zero, one, or two
+`CssSpecifiedPercentage` inputs, admitted as a contiguous group on either side
+of the output. Canonical specified output writes the output first, followed by
+the retained inputs. Omissions, two-position stops, symbolic calculations and
+descending inputs remain authored values. Endpoint assignment, point expansion,
+clamping, interpolation and Easing 2's computed-value serialization require the
+later resolved phase. The Level 1 baseline and its nonoverlapping rules remain
+selected; this required import does not select Easing 2 in full. `spring()`
+remains unsupported.
+Checked linear constructors reject recovered numeric graphs with implicit
+closures. Browser parsing retains its ordinary recovery behavior. Ordinary
+linear stop scalars compare exact numeric coefficients independently of spelling
+and origin; symbolic calculations retain their expression structure. The
+original scalar tokens and provenance remain available.
 
 One cumulative serialization context covers every list member and numeric
-child. A list, cubic function, or steps function charges one input and one
-projection node; enum dispatch adds no wrapper charge. Each stored position
+child. A list, cubic function, steps function, linear function, or linear stop
+charges one input and one projection node; enum dispatch adds no wrapper charge. Each stored step position
 charges one input node, and an emitted position charges one projection node.
 A keyword, including a step alias's canonical replacement, charges one of each.
 Numeric children retain their shared owner's visits and projection work; bytes

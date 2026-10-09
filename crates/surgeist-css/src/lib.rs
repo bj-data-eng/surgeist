@@ -453,7 +453,8 @@
 //! and shape rotation require an angle dimension or calculation. Raw scalars retain provenance while
 //! semantic aggregates compare structure independently of scalar origins.
 //! Easing values distinguish keywords,
-//! `cubic-bezier()`, and `steps()`. Box shadows and filter `drop-shadow()` have
+//! `cubic-bezier()`, `steps()`, and authored `linear()` stops. Box shadows and filter
+//! `drop-shadow()` have
 //! separate models, filter lists preserve URL/function order, and the selected
 //! basic-shape family exposes `inset()`, `circle()`, `ellipse()`, `polygon()`,
 //! `rect()`, `xywh()`, `path()`, and `shape()`, including polygon `round <length>` and optional

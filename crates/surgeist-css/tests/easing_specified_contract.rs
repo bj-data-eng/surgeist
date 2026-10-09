@@ -256,7 +256,7 @@ fn checked_composition_retains_original_components_and_origins() {
 #[test]
 fn invalid_grammar_drops_only_easing_and_strict_validation_agrees() {
     for invalid in [
-        "linear(0,1)",
+        "linear(0)",
         "spring(1,1,1,1)",
         "cubic-bezier(0,1,1)",
         "cubic-bezier(0 1 1 1)",

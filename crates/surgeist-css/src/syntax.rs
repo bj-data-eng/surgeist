@@ -9247,6 +9247,110 @@ impl CssCubicBezier {
     }
 }
 
+/// One authored `linear()` stop, before contextual input-position fixup.
+/// Output is a Number and the contiguous input group contains zero to two Percentages.
+#[derive(Clone, Debug)]
+pub struct CssLinearStop {
+    output: CssSpecifiedNumber,
+    inputs: Vec<CssSpecifiedPercentage>,
+}
+
+impl PartialEq for CssLinearStop {
+    fn eq(&self, other: &Self) -> bool {
+        let output_equal = match (
+            self.output.literal_component(),
+            other.output.literal_component(),
+        ) {
+            (Some(left), Some(right)) => {
+                crate::specified_numeric::ordinary_literal_equal(left, right)
+            }
+            _ => self.output.structural_eq(&other.output),
+        };
+        output_equal
+            && self.inputs.len() == other.inputs.len()
+            && self.inputs.iter().zip(&other.inputs).all(|(left, right)| {
+                match (left.literal_component(), right.literal_component()) {
+                    (Some(left), Some(right)) => {
+                        crate::specified_numeric::ordinary_literal_equal(left, right)
+                    }
+                    _ => left.structural_eq(right),
+                }
+            })
+    }
+}
+
+impl CssLinearStop {
+    /// Preserves signed outputs, omissions, pairs, and out-of-range inputs.
+    /// Rejects more than two inputs and numeric graphs retaining implicit closure.
+    #[must_use]
+    pub fn try_new(
+        output: CssSpecifiedNumber,
+        inputs: Vec<CssSpecifiedPercentage>,
+    ) -> Option<Self> {
+        let stop = Self::from_parser(output, inputs)?;
+        stop.has_explicit_numeric_closure().then_some(stop)
+    }
+
+    pub(crate) fn from_parser(
+        output: CssSpecifiedNumber,
+        inputs: Vec<CssSpecifiedPercentage>,
+    ) -> Option<Self> {
+        (inputs.len() <= 2).then_some(Self { output, inputs })
+    }
+
+    fn has_explicit_numeric_closure(&self) -> bool {
+        self.output
+            .calculation()
+            .is_none_or(|value| value.components().first_implicit_origin().is_none())
+            && self.inputs.iter().all(|input| {
+                input
+                    .calculation()
+                    .is_none_or(|value| value.components().first_implicit_origin().is_none())
+            })
+    }
+
+    #[must_use]
+    pub const fn output(&self) -> &CssSpecifiedNumber {
+        &self.output
+    }
+
+    #[must_use]
+    pub fn inputs(&self) -> &[CssSpecifiedPercentage] {
+        &self.inputs
+    }
+}
+
+/// An ordered authored `linear()` function with at least two stops.
+/// Omissions, percentage pairs, and symbolic calculations remain unresolved;
+/// numeric resolution and input-position fixup belong to later phases.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssLinearEasing {
+    stops: Vec<CssLinearStop>,
+}
+
+impl CssLinearEasing {
+    /// Rejects fewer than two authored stops, including a single percentage-pair stop,
+    /// and rejects stops whose numeric graphs retain implicit closure.
+    #[must_use]
+    pub fn try_new(stops: Vec<CssLinearStop>) -> Option<Self> {
+        let value = Self::from_parser(stops)?;
+        value
+            .stops
+            .iter()
+            .all(CssLinearStop::has_explicit_numeric_closure)
+            .then_some(value)
+    }
+
+    pub(crate) fn from_parser(stops: Vec<CssLinearStop>) -> Option<Self> {
+        (stops.len() >= 2).then_some(Self { stops })
+    }
+
+    #[must_use]
+    pub fn stops(&self) -> &[CssLinearStop] {
+        &self.stops
+    }
+}
+
 /// The optional authored position of a `steps()` easing function.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -9303,6 +9407,7 @@ impl CssSteps {
 pub enum CssEasing {
     Keyword(CssEasingKeyword),
     CubicBezier(CssCubicBezier),
+    Linear(CssLinearEasing),
     Steps(CssSteps),
 }
 
