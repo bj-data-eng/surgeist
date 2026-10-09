@@ -605,6 +605,10 @@ pub enum CssPseudoClass {
     HostContext(CssCompoundSelectorArgument),
     Root,
     Scope,
+    /// Host-defined construction state, retained without evaluating the host.
+    Defined,
+    /// Hyperlink identity, retained independently of Link and Visited.
+    AnyLink,
     Link,
     Visited,
     Target,
@@ -620,10 +624,13 @@ pub enum CssPseudoClass {
     Disabled,
     Enabled,
     Checked,
+    Unchecked,
     Required,
     Optional,
     Valid,
     Invalid,
+    UserValid,
+    UserInvalid,
     PlaceholderShown,
     /// The standard input autofill state; the required WebKit alias has this identity.
     Autofill,
@@ -642,8 +649,17 @@ pub enum CssPseudoClass {
     Is(CssPseudoSelectorList),
     Where(CssPseudoSelectorList),
     Has(CssRelativeSelectorList),
+    Playing,
+    Paused,
+    Seeking,
+    Buffering,
+    Stalled,
+    Muted,
+    VolumeLocked,
+    Open,
     Modal,
     Fullscreen,
+    PictureInPicture,
     PopoverOpen,
     Default,
     Indeterminate,
@@ -667,6 +683,8 @@ impl CssPseudoClass {
             | Self::HostContext(_)
             | Self::Root
             | Self::Scope
+            | Self::Defined
+            | Self::AnyLink
             | Self::Link
             | Self::Visited
             | Self::Target
@@ -681,10 +699,13 @@ impl CssPseudoClass {
             | Self::Disabled
             | Self::Enabled
             | Self::Checked
+            | Self::Unchecked
             | Self::Required
             | Self::Optional
             | Self::Valid
             | Self::Invalid
+            | Self::UserValid
+            | Self::UserInvalid
             | Self::PlaceholderShown
             | Self::Autofill
             | Self::FirstChild
@@ -696,8 +717,17 @@ impl CssPseudoClass {
             | Self::OnlyOfType
             | Self::NthOfType(_)
             | Self::NthLastOfType(_)
+            | Self::Playing
+            | Self::Paused
+            | Self::Seeking
+            | Self::Buffering
+            | Self::Stalled
+            | Self::Muted
+            | Self::VolumeLocked
+            | Self::Open
             | Self::Modal
             | Self::Fullscreen
+            | Self::PictureInPicture
             | Self::PopoverOpen
             | Self::Default
             | Self::Indeterminate

@@ -4325,10 +4325,13 @@ pub surgeist_css::CssPropertyValueErrorKind::Component(surgeist_css::CssComponen
 pub surgeist_css::CssPropertyValueErrorKind::Grammar(surgeist_css::ErrorKind)
 #[non_exhaustive] pub enum surgeist_css::CssPseudoClass
 pub surgeist_css::CssPseudoClass::Active
+pub surgeist_css::CssPseudoClass::AnyLink
 pub surgeist_css::CssPseudoClass::Autofill
+pub surgeist_css::CssPseudoClass::Buffering
 pub surgeist_css::CssPseudoClass::Checked
 pub surgeist_css::CssPseudoClass::Current
 pub surgeist_css::CssPseudoClass::Default
+pub surgeist_css::CssPseudoClass::Defined
 pub surgeist_css::CssPseudoClass::Dir(surgeist_css::CssDirectionality)
 pub surgeist_css::CssPseudoClass::Disabled
 pub surgeist_css::CssPseudoClass::Empty
@@ -4353,6 +4356,7 @@ pub surgeist_css::CssPseudoClass::LastChild
 pub surgeist_css::CssPseudoClass::LastOfType
 pub surgeist_css::CssPseudoClass::Link
 pub surgeist_css::CssPseudoClass::Modal
+pub surgeist_css::CssPseudoClass::Muted
 pub surgeist_css::CssPseudoClass::Not(surgeist_css::CssPseudoSelectorList)
 pub surgeist_css::CssPseudoClass::NthChild(surgeist_css::CssNthChildPattern)
 pub surgeist_css::CssPseudoClass::NthLastChild(surgeist_css::CssNthChildPattern)
@@ -4360,18 +4364,28 @@ pub surgeist_css::CssPseudoClass::NthLastOfType(surgeist_css::CssNthPattern)
 pub surgeist_css::CssPseudoClass::NthOfType(surgeist_css::CssNthPattern)
 pub surgeist_css::CssPseudoClass::OnlyChild
 pub surgeist_css::CssPseudoClass::OnlyOfType
+pub surgeist_css::CssPseudoClass::Open
 pub surgeist_css::CssPseudoClass::Optional
 pub surgeist_css::CssPseudoClass::OutOfRange
+pub surgeist_css::CssPseudoClass::Paused
+pub surgeist_css::CssPseudoClass::PictureInPicture
 pub surgeist_css::CssPseudoClass::PlaceholderShown
+pub surgeist_css::CssPseudoClass::Playing
 pub surgeist_css::CssPseudoClass::PopoverOpen
 pub surgeist_css::CssPseudoClass::ReadOnly
 pub surgeist_css::CssPseudoClass::ReadWrite
 pub surgeist_css::CssPseudoClass::Required
 pub surgeist_css::CssPseudoClass::Root
 pub surgeist_css::CssPseudoClass::Scope
+pub surgeist_css::CssPseudoClass::Seeking
+pub surgeist_css::CssPseudoClass::Stalled
 pub surgeist_css::CssPseudoClass::Target
+pub surgeist_css::CssPseudoClass::Unchecked
+pub surgeist_css::CssPseudoClass::UserInvalid
+pub surgeist_css::CssPseudoClass::UserValid
 pub surgeist_css::CssPseudoClass::Valid
 pub surgeist_css::CssPseudoClass::Visited
+pub surgeist_css::CssPseudoClass::VolumeLocked
 pub surgeist_css::CssPseudoClass::Where(surgeist_css::CssPseudoSelectorList)
 impl surgeist_css::CssPseudoClass
 pub fn surgeist_css::CssPseudoClass::has_pseudo_elements(&self) -> bool

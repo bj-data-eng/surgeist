@@ -1410,6 +1410,8 @@ fn pseudo_has_anchor(pseudo: &CssPseudoClass, kind: AnchorKind) -> bool {
         CssPseudoClass::Host
         | CssPseudoClass::Root
         | CssPseudoClass::Scope
+        | CssPseudoClass::Defined
+        | CssPseudoClass::AnyLink
         | CssPseudoClass::Link
         | CssPseudoClass::Visited
         | CssPseudoClass::Target
@@ -1424,10 +1426,13 @@ fn pseudo_has_anchor(pseudo: &CssPseudoClass, kind: AnchorKind) -> bool {
         | CssPseudoClass::Disabled
         | CssPseudoClass::Enabled
         | CssPseudoClass::Checked
+        | CssPseudoClass::Unchecked
         | CssPseudoClass::Required
         | CssPseudoClass::Optional
         | CssPseudoClass::Valid
         | CssPseudoClass::Invalid
+        | CssPseudoClass::UserValid
+        | CssPseudoClass::UserInvalid
         | CssPseudoClass::PlaceholderShown
         | CssPseudoClass::Autofill
         | CssPseudoClass::FirstChild
@@ -1439,8 +1444,17 @@ fn pseudo_has_anchor(pseudo: &CssPseudoClass, kind: AnchorKind) -> bool {
         | CssPseudoClass::OnlyOfType
         | CssPseudoClass::NthOfType(_)
         | CssPseudoClass::NthLastOfType(_)
+        | CssPseudoClass::Playing
+        | CssPseudoClass::Paused
+        | CssPseudoClass::Seeking
+        | CssPseudoClass::Buffering
+        | CssPseudoClass::Stalled
+        | CssPseudoClass::Muted
+        | CssPseudoClass::VolumeLocked
+        | CssPseudoClass::Open
         | CssPseudoClass::Modal
         | CssPseudoClass::Fullscreen
+        | CssPseudoClass::PictureInPicture
         | CssPseudoClass::PopoverOpen
         | CssPseudoClass::Default
         | CssPseudoClass::Indeterminate

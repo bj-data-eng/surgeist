@@ -5060,6 +5060,18 @@ scope, and the named Pseudo 4 and imported pseudo-element rows. Matching,
 specificity, cascade, namespace URI resolution, CSSOM serialization, and
 cross-crate lowering remain downstream exclusions.
 
+The selected [Selectors 4](https://www.w3.org/TR/2026/WD-selectors-4-20260122/)
+named states `:defined`, `:any-link`, `:playing`, `:paused`, `:seeking`,
+`:buffering`, `:stalled`, `:muted`, `:volume-locked`, `:open`,
+`:picture-in-picture`, `:unchecked`, `:user-valid` and `:user-invalid` each have a
+distinct `CssPseudoClass` identity. Decoded names admit ASCII case variations
+and CSS escapes; specified output uses the canonical lowercase spelling.
+Functional forms and unknown neighboring names are invalid. `:any-link` keeps
+its own identity without lowering to `:is(:link, :visited)`. These unresolved
+states compose with ordinary selectors, selector-function arguments, and
+permitted element-backed suffixes under the existing attachment restrictions;
+host-state evaluation remains downstream.
+
 ### Pseudo-element attachment and aliases
 
 The [Selectors 4 legacy alias rule](https://www.w3.org/TR/2026/WD-selectors-4-20260122/#legacy-aliasing)
@@ -6457,7 +6469,8 @@ media members cause an atomic serialization error.
 
 `@supports` conditions expose declaration tests, `not`/`and`/`or` grouping,
 complete Selectors 3 plus the selected existing selector extensions, including
-the `||` column combinator and the authored Pseudo 4 identities and contextual
+the fourteen named states described above, the `||` column combinator and the
+authored Pseudo 4 identities and contextual
 Current suffix described in [pseudo-element attachment](#pseudo-element-attachment-and-aliases), as the typed
 `selector()` subset, and exact balanced general-enclosed fallback syntax. The
 typed subset does not include unselected Selectors 4 pseudo-classes or
