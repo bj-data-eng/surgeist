@@ -402,6 +402,9 @@ fn a_greedy_imported_position_stops_before_the_whole_angle_function_and_rejects_
             assert!(ray.size().is_none());
             assert!(ray.contain());
             let position = ray.position().unwrap();
+            let CssPositionRef::Cartesian(position) = position.view() else {
+                panic!("Cartesian motion position")
+            };
             let CssHorizontalPosition::RightOffset(right) = position.horizontal() else {
                 panic!("right edge offset");
             };

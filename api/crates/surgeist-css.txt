@@ -4123,7 +4123,7 @@ pub fn surgeist_css::CssObjectFit::serialize_specified(&self) -> core::result::R
 pub fn surgeist_css::CssObjectFit::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 #[non_exhaustive] pub enum surgeist_css::CssOffsetAnchor
 pub surgeist_css::CssOffsetAnchor::Auto
-pub surgeist_css::CssOffsetAnchor::Position(surgeist_css::CssPhysicalPosition)
+pub surgeist_css::CssOffsetAnchor::Position(surgeist_css::CssPosition)
 impl surgeist_css::CssOffsetAnchor
 pub fn surgeist_css::CssOffsetAnchor::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssOffsetAnchor::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
@@ -4141,7 +4141,7 @@ pub surgeist_css::CssOffsetPathRef::Path(&'a surgeist_css::CssOffsetPathValue)
 #[non_exhaustive] pub enum surgeist_css::CssOffsetPosition
 pub surgeist_css::CssOffsetPosition::Auto
 pub surgeist_css::CssOffsetPosition::Normal
-pub surgeist_css::CssOffsetPosition::Position(surgeist_css::CssPhysicalPosition)
+pub surgeist_css::CssOffsetPosition::Position(surgeist_css::CssPosition)
 impl surgeist_css::CssOffsetPosition
 pub fn surgeist_css::CssOffsetPosition::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssOffsetPosition::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
@@ -10671,8 +10671,8 @@ pub struct surgeist_css::CssRay
 impl surgeist_css::CssRay
 pub const fn surgeist_css::CssRay::angle(&self) -> &surgeist_css::CssAngleValue
 pub const fn surgeist_css::CssRay::contain(&self) -> bool
-pub const fn surgeist_css::CssRay::new(angle: surgeist_css::CssAngleValue, size: core::option::Option<surgeist_css::CssRaySize>, contain: bool, position: core::option::Option<surgeist_css::CssPhysicalPosition>) -> Self
-pub const fn surgeist_css::CssRay::position(&self) -> core::option::Option<&surgeist_css::CssPhysicalPosition>
+pub const fn surgeist_css::CssRay::new(angle: surgeist_css::CssAngleValue, size: core::option::Option<surgeist_css::CssRaySize>, contain: bool, position: core::option::Option<surgeist_css::CssPosition>) -> Self
+pub const fn surgeist_css::CssRay::position(&self) -> core::option::Option<&surgeist_css::CssPosition>
 pub const fn surgeist_css::CssRay::size(&self) -> core::option::Option<surgeist_css::CssRaySize>
 impl surgeist_css::CssRay
 pub fn surgeist_css::CssRay::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>

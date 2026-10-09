@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 //! Motion WD 2024-11-05 authored syntax and lifecycle contract.
 //! Quoted offset-path imports its complete property grammar; Box3 coord-box
-//! has six names. Direct Motion positions consume the selected physical grammar.
+//! has six names. Direct Motion positions import the full Values5 position grammar.
 //! Bearing, paths, anchors, tangent rotation and resource loading stay symbolic.
 
 use surgeist_css::{
@@ -404,8 +404,8 @@ fn ray_rejects_missing_angle_duplicate_fields_unitless_angle_and_foreign_direct_
             "ray(90deg at left at right)",
             "ray(90deg at)",
             "ray(90deg at left 1px top)",
-            "ray(90deg at inline-end block-start)",
-            "ray(90deg at end start)",
+            "ray(90deg at inline-end y-start)",
+            "ray(90deg at end inline-start)",
             "ray(90deg,contain)",
             "ray(calc(1px))",
         ],
@@ -440,7 +440,7 @@ fn distance_keeps_negative_and_mixed_length_percentage_authored_values_without_p
 }
 
 #[test]
-fn position_and_anchor_share_only_the_selected_generic_physical_position_domain() {
+fn position_and_anchor_share_the_imported_generic_position_domain() {
     for name in ["offset-position", "offset-anchor"] {
         accept(
             name,
@@ -452,6 +452,9 @@ fn position_and_anchor_share_only_the_selected_generic_physical_position_domain(
                 ("bottom right", "right bottom"),
                 ("25%", "25% center"),
                 ("25% 75%", "25% 75%"),
+                ("inline-end block-start", "block-start inline-end"),
+                ("end start", "end start"),
+                ("x-start y-end", "x-start y-end"),
                 ("bottom 2% right 1px", "right 1px bottom 2%"),
                 ("calc(1px + 2%) -3px", "calc(2% + 1px) -3px"),
             ],
@@ -462,9 +465,9 @@ fn position_and_anchor_share_only_the_selected_generic_physical_position_domain(
                 "none",
                 "left 1px top",
                 "center 1px top",
-                "inline-end block-start",
-                "end start",
-                "x-start y-end",
+                "inline-end y-start",
+                "end inline-start",
+                "x-start block-end",
                 "1deg",
                 "left right",
                 "top bottom",

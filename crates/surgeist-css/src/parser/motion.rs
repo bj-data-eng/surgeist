@@ -100,7 +100,7 @@ fn parse_ray<'i, 't>(
             contain = true;
         } else if next_is_ident(input, "at") && position.is_none() {
             input.next().map_err(basic)?;
-            position = Some(super::position::parse_physical_position_before_angle(
+            position = Some(super::position::parse_full_position_before_angle(
                 input, numeric,
             )?);
         } else if size.is_none()
@@ -144,7 +144,7 @@ pub(super) fn parse_offset_position<'i, 't>(
     {
         return Ok(CssOffsetPosition::Auto);
     }
-    super::position::parse_physical_position(input, numeric).map(CssOffsetPosition::Position)
+    super::position::parse_full_position(input, numeric).map(CssOffsetPosition::Position)
 }
 pub(super) fn parse_offset_anchor<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -156,7 +156,7 @@ pub(super) fn parse_offset_anchor<'i, 't>(
     {
         return Ok(CssOffsetAnchor::Auto);
     }
-    super::position::parse_physical_position(input, numeric).map(CssOffsetAnchor::Position)
+    super::position::parse_full_position(input, numeric).map(CssOffsetAnchor::Position)
 }
 fn take_modifier<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -214,7 +214,7 @@ pub(super) fn parse_offset<'i, 't>(
         Some(CssOffsetPosition::Auto)
     } else if !next_path(input) && !next_is_delim(input, '/') {
         Some(CssOffsetPosition::Position(
-            super::position::parse_physical_position_before_angle(input, numeric)?,
+            super::position::parse_full_position_before_angle(input, numeric)?,
         ))
     } else {
         None

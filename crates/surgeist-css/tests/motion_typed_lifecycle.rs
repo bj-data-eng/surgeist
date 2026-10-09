@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 //! Functional new-model contracts from Motion WD 2024-11-05, Box 3 coord-box
-//! and the adopted physical position, angle, URL and complete Shapes owners.
+//! and the imported full position, angle, URL and complete Shapes owners.
 //! These wholly new typed APIs have no executable preimplementation boundary.
 use CssSpecifiedValueSerializationErrorKind as K;
 use CssSpecifiedValueSerializationLimits as L;
@@ -9,8 +9,10 @@ use surgeist_css::*;
 fn angle(number: &str, unit: CssAngleUnit) -> CssAngleValue {
     CssAngleValue::from_literal(CssAngleLiteral::try_new(number, unit).unwrap())
 }
-fn position() -> CssPhysicalPosition {
-    CssPhysicalPosition::try_new(CssHorizontalPosition::Left, CssVerticalPosition::Top).unwrap()
+fn position() -> CssPosition {
+    CssPhysicalPosition::try_new(CssHorizontalPosition::Left, CssVerticalPosition::Top)
+        .unwrap()
+        .into()
 }
 fn declaration(name: &str, input: &str) -> CssDeclaration {
     let css = format!("/*😀*/{name}:{input}!important");
@@ -147,10 +149,10 @@ fn ray_constructor_retains_required_bearing_and_optional_presence() {
         explicit.serialize_specified_with_limits(limits)
     });
     let full = CssRay::new(bearing, Some(CssRaySize::Sides), true, Some(position()));
-    assert_eq!(
-        full.position().unwrap().horizontal(),
-        &CssHorizontalPosition::Left
-    );
+    let CssPositionRef::Cartesian(axes) = full.position().unwrap().view() else {
+        panic!("Cartesian position")
+    };
+    assert_eq!(axes.horizontal(), &CssHorizontalPosition::Left);
     budget("ray(450deg sides contain at left top)", 7, |limits| {
         full.serialize_specified_with_limits(limits)
     });
@@ -422,8 +424,8 @@ fn physical_position_anchor_and_position_branches_retain_checked_axes_and_origin
         &CssHorizontalPosition::Offset(scalar.clone())
     );
     assert_eq!(scalar.origin(), &CssValueOrigin::Programmatic);
-    let start = CssOffsetPosition::Position(physical.clone());
-    let anchor = CssOffsetAnchor::Position(physical);
+    let start = CssOffsetPosition::Position(physical.clone().into());
+    let anchor = CssOffsetAnchor::Position(physical.into());
     // Position aggregate + two axis nodes + the retained percentage leaf.
     budget("-25% bottom", 4, |limits| {
         start.serialize_specified_with_limits(limits)

@@ -346,8 +346,9 @@
 //! Motion Path's five offset longhands and [`CssOffset`] compose the shared
 //! numeric, URL, position and BasicShape owners. [`CssOffsetPath::view`]
 //! distinguishes none, box-only and a path with an optional [`CssCoordBox`].
-//! [`CssRay`] retains a strict angle bearing and optional authored size,
-//! containment and physical position. [`CssOffsetRotate`] retains modifier/angle
+//! [`CssRay`] retains a strict angle bearing, optional authored size, containment
+//! and an optional [`CssPosition`] from the full symbolic Cartesian, named-flow
+//! and relative-flow families. [`CssOffsetRotate`] retains modifier/angle
 //! absence without applying tangent rotation. Offset's five ordered reset
 //! contributions use central normal/none/zero/auto/auto initials; its specified
 //! output emits only authored constituents. Geometry, resources and animation

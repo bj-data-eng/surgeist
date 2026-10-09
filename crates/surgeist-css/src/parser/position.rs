@@ -6,12 +6,32 @@ use crate::error::{Error, unsupported_value};
 use crate::syntax::*;
 
 pub(super) fn next_starts_background_position<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
+    next_starts_position(input, PositionGrammar::Physical)
+}
+
+fn next_starts_position<'i, 't>(input: &mut Parser<'i, 't>, grammar: PositionGrammar) -> bool {
     let state = input.state();
     let starts = match input.next() {
-        Ok(Token::Ident(value)) => matches!(
-            value.to_ascii_lowercase().as_str(),
-            "left" | "right" | "top" | "bottom" | "center"
-        ),
+        Ok(Token::Ident(value)) => {
+            let keyword = value.to_ascii_lowercase();
+            matches!(
+                keyword.as_str(),
+                "left" | "right" | "top" | "bottom" | "center"
+            ) || grammar == PositionGrammar::Full
+                && matches!(
+                    keyword.as_str(),
+                    "x-start"
+                        | "x-end"
+                        | "y-start"
+                        | "y-end"
+                        | "block-start"
+                        | "block-end"
+                        | "inline-start"
+                        | "inline-end"
+                        | "start"
+                        | "end"
+                )
+        }
         Ok(Token::Dimension { .. } | Token::Percentage { .. }) => true,
         Ok(Token::Number { value, .. }) => *value == 0.0,
         Ok(Token::Function(name)) => crate::numeric::is_math_function(name),
@@ -116,7 +136,7 @@ pub(super) fn parse_transform_origin<'i, 't>(
     Err(invalid_generic_position_atom(input, &states[invalid_index]))
 }
 
-// Shapes consumers select the full Values 5 position grammar.
+// Shapes and directly imported Motion consumers select the full Values 5 grammar.
 pub(super) fn parse_full_position<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
@@ -183,15 +203,15 @@ pub(super) fn parse_physical_position_prefix<'i, 't>(
         .ok_or_else(|| invalid_generic_position_atom(input, &states[invalid_atom_index(&atoms)]))
 }
 
-/// Motion's physical position uses the same greedy atom/builder owner, while an
-/// independently typed angle starts the next unordered ray constituent.
-pub(super) fn parse_physical_position_before_angle<'i, 't>(
+/// Motion uses the full greedy position owner, leaving an independently typed
+/// angle or another non-position constituent to its enclosing ray/shorthand.
+pub(super) fn parse_full_position_before_angle<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssPhysicalPosition, ParseError<'i, Error>> {
+) -> std::result::Result<CssPosition, ParseError<'i, Error>> {
     let mut atoms = Vec::new();
     let mut states = Vec::new();
-    while atoms.len() < 4 && next_starts_background_position(input) {
+    while atoms.len() < 4 && next_starts_position(input, PositionGrammar::Full) {
         let state = input.state();
         let angle = input.try_parse(|input| {
             super::values::parse_angle_value(
@@ -214,13 +234,13 @@ pub(super) fn parse_physical_position_before_angle<'i, 't>(
         atoms.push(parse_generic_position_atom(
             input,
             numeric,
-            PositionGrammar::Physical,
+            PositionGrammar::Full,
         )?);
     }
     if atoms.is_empty() {
         return Err(unsupported_value(input, None, "position is empty"));
     }
-    build_physical_position(&atoms)
+    build_full_position(&atoms)
         .ok_or_else(|| invalid_generic_position_atom(input, &states[invalid_atom_index(&atoms)]))
 }
 

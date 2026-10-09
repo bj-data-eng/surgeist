@@ -816,14 +816,17 @@ property_records! {
     }
     OffsetPosition, "offset-position" {
         metadata: longhand(false, |v| assert_eq!(*v, CssOffsetPosition::Normal)),
-        catalog: complete_grammar_catalog!("official.property.offset-position", "bottom right", rejected("inline-end block-start")),
+        catalog: complete_grammar_catalog!("official.property.offset-position", "x-start y-end", accepted("inline-end block-start", |known| {
+            let CssKnownPropertyValueRef::OffsetPosition(value) = known.property_value().unwrap() else { panic!("offset position") };
+            assert_eq!(value.value(), &CssOffsetPosition::Position(CssPosition::try_from_named_axes(CssBlockPosition::Start, CssInlinePosition::End).unwrap()));
+        })),
         source: "I-MOTION1",
         dispatch: "bottom right",
         wrapper: yes,
     }
     OffsetPath, "offset-path" {
         metadata: longhand(false, |v| assert_eq!(v.view(), CssOffsetPathRef::None)),
-        catalog: complete_grammar_catalog!("official.property.offset-path", "ray(90deg) view-box", rejected("margin-box")),
+        catalog: complete_grammar_catalog!("official.property.offset-path", "ray(90deg at inline-end block-start) view-box", rejected("margin-box")),
         source: "I-MOTION1",
         dispatch: "ray(90deg) view-box",
         wrapper: yes,
@@ -852,14 +855,14 @@ property_records! {
     }
     OffsetAnchor, "offset-anchor" {
         metadata: longhand(false, |v| assert_eq!(*v, CssOffsetAnchor::Auto)),
-        catalog: complete_grammar_catalog!("official.property.offset-anchor", "left top", rejected("normal")),
+        catalog: complete_grammar_catalog!("official.property.offset-anchor", "start end", rejected("normal")),
         source: "I-MOTION1",
         dispatch: "left top",
         wrapper: yes,
     }
     Offset, "offset" {
         metadata: shorthand([OffsetPosition, OffsetPath, OffsetDistance, OffsetRotate, OffsetAnchor], []),
-        catalog: complete_grammar_catalog!("official.property.offset", "normal none -25% reverse / auto", rejected("/ center")),
+        catalog: complete_grammar_catalog!("official.property.offset", "x-start none -25% reverse / inline-end block-start", rejected("/ center")),
         source: "I-MOTION1",
         dispatch: "normal none -25% reverse / auto",
         wrapper: yes,
@@ -3204,11 +3207,10 @@ property_records! {
 // Adopted CSSOM supported union: the independent SVG identity is neutral and
 // remains admitted in authored keyframes regardless of name-lookup selection.
 // Its finite Writing Modes legacy spelling still targets only TextOrientation.
-pub const INDEPENDENT_TERMINALS: &[IndependentTerminalExpectation] = &[
-    IndependentTerminalExpectation {
+pub const INDEPENDENT_TERMINALS: &[IndependentTerminalExpectation] =
+    &[IndependentTerminalExpectation {
         property: CssPropertyNameRef::SvgGlyphOrientationVertical,
         name: "glyph-orientation-vertical",
         mapping: MappingExpectation::Neutral,
         keyframe_admitted: true,
-    },
-];
+    }];

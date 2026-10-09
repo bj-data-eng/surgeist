@@ -1,6 +1,6 @@
 //! Checked authored Motion Path values. Geometry and resource resolution remain symbolic.
 
-use super::{CssBasicShape, CssBoxEdgeKeyword, CssPhysicalPosition, CssUrl, optional_numeric_eq};
+use super::{CssBasicShape, CssBoxEdgeKeyword, CssPosition, CssUrl, optional_numeric_eq};
 use crate::{CssAngleValue, CssSpecifiedLengthPercentage};
 use std::{error::Error, fmt};
 
@@ -123,7 +123,7 @@ pub struct CssRay {
     angle: CssAngleValue,
     size: Option<CssRaySize>,
     contain: bool,
-    position: Option<CssPhysicalPosition>,
+    position: Option<CssPosition>,
 }
 numeric_fields_eq!(CssRay, [angle], [], [size, contain, position]);
 impl CssRay {
@@ -133,7 +133,7 @@ impl CssRay {
         angle: CssAngleValue,
         size: Option<CssRaySize>,
         contain: bool,
-        position: Option<CssPhysicalPosition>,
+        position: Option<CssPosition>,
     ) -> Self {
         Self {
             angle,
@@ -155,7 +155,7 @@ impl CssRay {
         self.contain
     }
     #[must_use]
-    pub const fn position(&self) -> Option<&CssPhysicalPosition> {
+    pub const fn position(&self) -> Option<&CssPosition> {
         self.position.as_ref()
     }
 }
@@ -244,14 +244,14 @@ impl CssOffsetPath {
 pub enum CssOffsetPosition {
     Normal,
     Auto,
-    Position(CssPhysicalPosition),
+    Position(CssPosition),
 }
 /// The authored offset-anchor, before transform-origin or reference-box resolution.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssOffsetAnchor {
     Auto,
-    Position(CssPhysicalPosition),
+    Position(CssPosition),
 }
 /// An explicit authored tangent-rotation modifier; absence stays distinct from auto.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

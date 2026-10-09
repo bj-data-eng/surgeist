@@ -8510,11 +8510,11 @@ not compute them or animate them.
 
 | Property | Authored typed value | Intrinsic initial | Downstream computed/percentage contract |
 | --- | --- | --- | --- |
-| `offset-position` | `CssOffsetPosition`: normal, auto or physical position | normal | Keyword or position; containing-block dimensions |
+| `offset-position` | `CssOffsetPosition`: normal, auto or `CssPosition` | normal | Keyword or position; containing-block dimensions |
 | `offset-path` | `CssOffsetPath`: none, box-only or one path and optional box | none | As specified; omitted box and implicit box path require context |
 | `offset-distance` | Signed `CssSpecifiedLengthPercentage` | programmatic number zero | Length-percentage; offset-path length, no effect without a path |
 | `offset-rotate` | Checked nonempty `CssOffsetRotate` modifier/angle | auto, absent angle | Angle optionally preceded by auto; tangent and reverse's 180 degrees require context |
-| `offset-anchor` | `CssOffsetAnchor`: auto or physical position | auto | Auto or position; element reference-box dimensions, auto uses transform-origin |
+| `offset-anchor` | `CssOffsetAnchor`: auto or `CssPosition` | auto | Auto or position; element reference-box dimensions, auto uses transform-origin |
 
 `CssOffsetPath::view()` exposes `CssOffsetPathRef::None`, `CoordBox`, or
 `Path(&CssOffsetPathValue)`. The coupled path has exactly one `CssOffsetPathKind`
@@ -8535,7 +8535,7 @@ divergences do not enlarge or narrow the selected authored grammar. An omitted
 box remains absent; an explicit border-box remains explicit in output.
 
 `CssRay::new()` requires one already checked `CssAngleValue` and retains optional
-size, contain and physical position. The five sizes are closest-side,
+size, contain and optional `CssPosition`. The five sizes are closest-side,
 closest-corner, farthest-side, farthest-corner and sides. Its bearing is zero up
 and positive clockwise, without modulo or geometric evaluation. Ordinary angle
 units and magnitude are retained; math projection uses the existing angle owner.
@@ -8545,13 +8545,27 @@ charged even though canonical output suppresses that keyword. At-position
 omission remains absent. Whole ray arguments accept any order once each and
 serialize as angle, nondefault size, contain, at-position.
 
-Direct Motion positions and ray at-position use `CssPhysicalPosition`, with the
-selected greedy Values 3 one/two/four-component physical grammar. Background's
-three-component and newer logical position families are excluded here. This
-restriction does not change imported shape-internal positions. `CssOffsetRotate`
-requires modifier, angle or both and distinguishes absent modifier, auto and
-reverse, plus optional angle absence. Output orders modifier then angle; it
-does not insert auto or add reverse's contextual 180 degrees.
+Direct `offset-position`, `offset-anchor`, ray at-position and their quoted
+shorthand consumers use the existing checked `CssPosition` owner. Motion's
+explicit position links import [Values5 WD 2024-09-17 §4.2](https://www.w3.org/TR/2024/WD-css-values-5-20240917/#position),
+the edition selected in its bibliography. This direct import admits Cartesian
+physical and x/y-start/end axes, named block/inline-start/end axes, and relative
+start/end axes in the exact one/two/four-component productions. Relative start/end
+requires two or four components. Mixed coordinate families and Background's
+three-component positions remain invalid. Greedy parsing retains angle, ray-size,
+contain, path and slash boundaries for the enclosing motion grammar.
+
+Specified output uses the shared source-qualified symbolic position policy:
+Cartesian axes emit horizontal then vertical; named and relative flow axes emit
+block then inline, preserving their families, offsets and implied center. The
+imported two-component flow serialization wording remains incomplete; this
+context-independent policy does not resolve writing modes or claim a browser
+implementation settles that discrepancy. See [the full position owner](#symbolic-position-families)
+for construction and provider contracts.
+
+`CssOffsetRotate` requires modifier, angle or both and distinguishes absent
+modifier, auto and reverse, plus optional angle absence. Output orders modifier
+then angle; it does not insert auto or add reverse's contextual 180 degrees.
 
 `CssOffset::try_new()` retains five optional authored constituents. Position or
 path must be present; distance and rotate additionally require an explicitly
@@ -8568,7 +8582,7 @@ normalization use the common property engine.
 Every new aggregate exposes `serialize_specified()` and
 `serialize_specified_with_limits()`. One path/box pair, ray, rotate and offset
 each cost one input and projection node. Provided size, contain, coordinate box
-and rotate modifier each cost one; angle, length-percentage, physical positions,
+and rotate modifier each cost one; angle, length-percentage, full positions,
 URL and BasicShape retain their existing provider tariffs. None, box-only and
 position/anchor keywords cost one. Only present authored children are visited;
 explicit suppressed closest-side still costs one. A declaration adds two nodes
