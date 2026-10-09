@@ -90,6 +90,14 @@ fn matching_oklab_is_omitted_when_a_stable_nonlegacy_stop_proves_the_default() {
             "oklch(50% .2 30)",
             "color(srgb 1 0 0)",
             "color(display-p3 1 0 0)",
+            // ColorMix is outside Color4's legacy format list. Relative RGB
+            // uses the qualified frozen WebKit nonkeyword-carrier default:
+            // 73aa6c89e2cb77c46184a81aec944e4ab99d114d, Consumer+Image.cpp
+            // stopColorIs8Bit. Color5's comma-free grammar alone does not prove
+            // that default. Shared declared output preserves both carriers;
+            // neither the relative origin nor the mix result is evaluated.
+            "rgb(from currentcolor r g b)",
+            "color-mix(in srgb, currentcolor, blue)",
         ] {
             for colors in [
                 format!("{modern}, blue"),
@@ -125,12 +133,7 @@ fn matching_srgb_is_omitted_for_stable_ordinary_legacy_stops() {
 #[test]
 fn explicit_oklab_remains_when_only_legacy_or_unproved_unresolved_stops_are_present() {
     for function in FUNCTIONS {
-        for colors in [
-            "currentcolor, blue",
-            "CanvasText, red",
-            "rgb(from currentcolor r g b), blue",
-            "color-mix(in srgb, currentcolor, blue), red",
-        ] {
+        for colors in ["currentcolor, blue", "CanvasText, red"] {
             let specified = image_css(function, "oklab", colors);
             assert!(
                 specified.starts_with(&format!("{function}(in oklab, ")),
