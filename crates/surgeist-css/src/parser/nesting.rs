@@ -219,6 +219,37 @@ struct NestedStyleRuleParser<'s> {
     boundary: StyleRuleBoundary,
 }
 
+pub(super) fn admit_detached<'i, 't>(
+    source: &'i str,
+    input: &mut Parser<'i, 't>,
+    recovery: RecoveryState,
+    envelope: &super::rule_candidate::RuleEnvelope,
+) -> (
+    Result<super::CssAdmittedRule, ParseError<'i, Error>>,
+    Vec<crate::CssRecoveryDiagnostic>,
+) {
+    recovery.record_style_context(0);
+    let mut parser = NestedStyleRuleParser {
+        source,
+        recovery: recovery.clone(),
+        diagnostics: Vec::new(),
+        qualified_resource_error: None,
+        rejected_at_rule_start: None,
+        boundary: StyleRuleBoundary::None,
+    };
+    let result =
+        super::syntax_bridge::admit_envelope(source, input, &mut parser, &recovery, envelope).map(
+            |item| {
+                let StyleBlockItem::NestedRules(rules) = item else {
+                    unreachable!("detached rule admission does not parse declarations")
+                };
+                let [rule]: [CssRule; 1] = rules.try_into().expect("one detached nested rule");
+                super::CssAdmittedRule::Ordinary(rule)
+            },
+        );
+    (result, parser.diagnostics)
+}
+
 enum StyleBlockItem {
     Declaration(Box<CssDeclaration>),
     NestedRules(Vec<CssRule>),

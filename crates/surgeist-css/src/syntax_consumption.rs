@@ -666,6 +666,34 @@ pub(crate) fn source_document(
     )
 }
 
+pub(crate) fn source_document_with_limits(
+    text: &str,
+    limits: crate::CssComponentValueLimits,
+) -> Result<SyntaxDocument<'static>, CssComponentValueError> {
+    if text.len() > limits.max_css_bytes() {
+        return Err(CssComponentValueError::new(
+            CssComponentValueErrorKind::ByteLimit,
+            CssValueOrigin::UnretainedInput {
+                byte_length: text.len(),
+            },
+        ));
+    }
+    let original = CssSourceSnapshot::new(text);
+    normalize(
+        SyntaxInput::Source(SourceWindow {
+            text: Cow::Owned(text.to_owned()),
+            range: 0..text.len(),
+            original,
+        }),
+        SyntaxInputLimits {
+            max_depth: limits.max_nesting_depth(),
+            max_components: limits.max_components(),
+            max_known_spelling_bytes: limits.max_css_bytes(),
+        },
+        0,
+    )
+}
+
 // Only the native source resource owner supplies these scanner-proved ranges.
 // Direct Source/Tokens/Components/CheckedComponents admission remains strict.
 pub(crate) fn recovery_source_document(
@@ -1098,6 +1126,22 @@ pub(crate) enum GenericRule {
     At(GenericAtRule),
     Qualified(GenericQualifiedRule),
 }
+
+pub(crate) fn custom_property_rule_prelude(
+    document: &SyntaxDocument<'_>,
+    prelude: &[NodeId],
+) -> bool {
+    let mut meaningful = prelude
+        .iter()
+        .filter(|node| !document.nodes[**node].is_trivia());
+    matches!(meaningful.next().map(|node| document.nodes[*node].token().kind()), Some(TokenKind::Ident(name)) if name.starts_with("--"))
+        && matches!(
+            meaningful
+                .next()
+                .map(|node| document.nodes[*node].token().kind()),
+            Some(TokenKind::Colon)
+        )
+}
 pub(crate) type GenericRuleResult = Result<GenericRule, GenericSyntaxFault>;
 
 fn fault(cursor: &SyntaxCursor<'_>, start: usize, kind: GenericFaultKind) -> GenericSyntaxFault {
@@ -1163,6 +1207,13 @@ pub(crate) fn consume_comma_separated_components(
 }
 
 pub(crate) fn consume_at_rule(cursor: &mut SyntaxCursor<'_>) -> GenericAtRule {
+    consume_at_rule_context(cursor, false)
+}
+
+pub(crate) fn consume_at_rule_context(
+    cursor: &mut SyntaxCursor<'_>,
+    nested: bool,
+) -> GenericAtRule {
     let start = cursor.position();
     let CursorItem::Node(name) = cursor.consume() else {
         unreachable!("at-keyword dispatch")
@@ -1173,6 +1224,13 @@ pub(crate) fn consume_at_rule(cursor: &mut SyntaxCursor<'_>) -> GenericAtRule {
     ));
     let mut prelude = Vec::new();
     let (termination, block, problem) = loop {
+        if nested && block_contents_end(cursor) {
+            break (
+                RuleTermination::EndOfInput(cursor.boundary()),
+                None,
+                Some(fault(cursor, start, GenericFaultKind::AtRuleEndOfInput)),
+            );
+        }
         match cursor.consume() {
             CursorItem::EndOfInput(at) => {
                 break (
@@ -1213,9 +1271,26 @@ pub(crate) fn consume_at_rule(cursor: &mut SyntaxCursor<'_>) -> GenericAtRule {
 pub(crate) fn consume_qualified_rule(
     cursor: &mut SyntaxCursor<'_>,
 ) -> Result<GenericQualifiedRule, GenericSyntaxFault> {
+    consume_qualified_rule_context(cursor, false)
+}
+
+pub(crate) fn consume_qualified_rule_context(
+    cursor: &mut SyntaxCursor<'_>,
+    nested: bool,
+) -> Result<GenericQualifiedRule, GenericSyntaxFault> {
     let start = cursor.position();
     let mut prelude = Vec::new();
     loop {
+        if nested
+            && (block_contents_end(cursor)
+                || matches!(cursor.peek(), CursorItem::Node(node) if cursor.document.nodes[node].token().kind() == TokenKind::Semicolon))
+        {
+            return Err(fault(
+                cursor,
+                start,
+                GenericFaultKind::QualifiedRuleEndOfInput,
+            ));
+        }
         match cursor.consume() {
             CursorItem::EndOfInput(_) => {
                 return Err(fault(
@@ -1377,12 +1452,68 @@ pub(crate) fn consume_declaration(
     })
 }
 
+// Selected block-contents Syntax §5.5.6 step 8, after importance removal.
+// Keep this separate from the historical declaration-list consumer: only the
+// selected block-contents caller applies this value-shape restriction.
+pub(crate) fn consume_block_declaration(
+    cursor: &mut SyntaxCursor<'_>,
+) -> Result<GenericDeclaration, GenericSyntaxFault> {
+    let start = cursor.position();
+    let declaration = consume_declaration(cursor)?;
+    let custom = matches!(cursor.document.nodes[declaration.name].token().kind(), TokenKind::Ident(name) if name.starts_with("--"));
+    if !custom {
+        let mut components = 0_usize;
+        let mut has_curly_block = false;
+        for node in &declaration.value {
+            let node = &cursor.document.nodes[*node];
+            if node.is_trivia() {
+                continue;
+            }
+            components += 1;
+            has_curly_block |=
+                node.token().kind() == TokenKind::Opening(CssBlockKind::CurlyBracket);
+        }
+        if has_curly_block && components > 1 {
+            return Err(fault(cursor, start, GenericFaultKind::InvalidDeclaration));
+        }
+    }
+    Ok(declaration)
+}
+
 // Syntax's declaration-list attempt is bounded by a root semicolon, including
 // error nodes and complete nested groups. The delimiter remains outside it.
 pub(crate) fn consume_declaration_candidate(cursor: &mut SyntaxCursor<'_>) -> SyntaxRange {
     let start = cursor.position();
     while let CursorItem::Node(node) = cursor.peek() {
         if cursor.document.nodes[node].token().kind() == TokenKind::Semicolon {
+            break;
+        }
+        cursor.consume();
+    }
+    SyntaxRange {
+        list: cursor.list,
+        start,
+        end: cursor.position(),
+    }
+}
+
+// Current block-contents consumes nested units only up to a root closer. The
+// historical raw declaration-list selector intentionally does not use this.
+pub(crate) fn block_contents_end(cursor: &SyntaxCursor<'_>) -> bool {
+    match cursor.peek() {
+        CursorItem::EndOfInput(_) => true,
+        CursorItem::Node(node) => {
+            cursor.document.nodes[node].token().kind()
+                == TokenKind::Closing(CssBlockKind::CurlyBracket)
+        }
+    }
+}
+
+pub(crate) fn consume_block_declaration_candidate(cursor: &mut SyntaxCursor<'_>) -> SyntaxRange {
+    let start = cursor.position();
+    while !block_contents_end(cursor) {
+        if matches!(cursor.peek(), CursorItem::Node(node) if cursor.document.nodes[node].token().kind() == TokenKind::Semicolon)
+        {
             break;
         }
         cursor.consume();

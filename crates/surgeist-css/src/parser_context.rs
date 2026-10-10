@@ -112,6 +112,26 @@ impl CssParserContext {
     pub fn parse_declaration_list_text(self, source: &str) -> CssParseReport<CssDeclarationList> {
         crate::parser::parse_declaration_list_text_with_context(source, self)
     }
+    /// Parses raw current block contents with this declaration grammar context.
+    #[must_use]
+    pub fn parse_declaration_block_contents(
+        self,
+        source: &str,
+    ) -> CssParseReport<CssDeclarationList> {
+        self.parse_declaration_block_contents_with_limits(
+            source,
+            CssComponentValueLimits::default(),
+        )
+    }
+    /// Parses raw block contents with cumulative original-input limits.
+    #[must_use]
+    pub fn parse_declaration_block_contents_with_limits(
+        self,
+        source: &str,
+        limits: CssComponentValueLimits,
+    ) -> CssParseReport<CssDeclarationList> {
+        crate::parser::parse_declaration_block_contents_with_context(source, limits, self)
+    }
     /// Parses one complete declaration occurrence.
     #[must_use]
     pub fn parse_declaration(self, source: &str) -> CssParseReport<Option<CssDeclaration>> {

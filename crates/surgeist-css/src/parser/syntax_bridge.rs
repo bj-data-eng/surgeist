@@ -96,29 +96,66 @@ where
         }
     }
     let start = input.state();
-    let result = match selected {
-        Ok(GenericRule::At(rule)) => parse_at_selected(
-            source,
-            input,
-            parser,
-            recovery,
-            &start,
-            rule.termination.clone(),
-        ),
-        Ok(GenericRule::Qualified(_)) => {
-            parse_qualified_selected(source, input, parser, recovery, &start, false)
-        }
-        Err(error) => {
-            debug_assert_eq!(error.kind, GenericFaultKind::QualifiedRuleEndOfInput);
-            parse_qualified_selected(source, input, parser, recovery, &start, true)
-        }
-    };
-    result.map_err(|error| {
+    admit_selected(source, input, parser, recovery, &start, selected).map_err(|error| {
         (
             Box::new(error),
             &source[start_offset..input.position().byte_index()],
         )
     })
+}
+
+pub(super) fn admit_envelope<'i, 't, P, R>(
+    source: &'i str,
+    input: &mut Parser<'i, 't>,
+    parser: &mut P,
+    recovery: &RecoveryState,
+    envelope: &super::rule_candidate::RuleEnvelope,
+) -> Result<R, ParseError<'i, Error>>
+where
+    P: AtRuleParser<'i, AtRule = R, Error = Error>
+        + QualifiedRuleParser<'i, QualifiedRule = R, Error = Error>,
+{
+    input.skip_whitespace();
+    let start = input.state();
+    debug_assert_eq!(start.position().byte_index(), envelope.start);
+    let value = if let Some(termination) = &envelope.at_termination {
+        parse_at_selected(source, input, parser, recovery, &start, termination.clone())?
+    } else {
+        parse_qualified_selected(source, input, parser, recovery, &start, false)?
+    };
+    input.expect_exhausted()?;
+    Ok(value)
+}
+
+fn admit_selected<'i, 't, P, R>(
+    source: &'i str,
+    input: &mut Parser<'i, 't>,
+    parser: &mut P,
+    recovery: &RecoveryState,
+    start: &ParserState,
+    selected: &GenericRuleResult,
+) -> Result<R, ParseError<'i, Error>>
+where
+    P: AtRuleParser<'i, AtRule = R, Error = Error>
+        + QualifiedRuleParser<'i, QualifiedRule = R, Error = Error>,
+{
+    match selected {
+        Ok(GenericRule::At(rule)) => parse_at_selected(
+            source,
+            input,
+            parser,
+            recovery,
+            start,
+            rule.termination.clone(),
+        ),
+        Ok(GenericRule::Qualified(_)) => {
+            parse_qualified_selected(source, input, parser, recovery, start, false)
+        }
+        Err(error) => {
+            debug_assert_eq!(error.kind, GenericFaultKind::QualifiedRuleEndOfInput);
+            parse_qualified_selected(source, input, parser, recovery, start, true)
+        }
+    }
 }
 
 // Keep contextual prelude/error temporaries in their own dispatch branch. These
@@ -208,6 +245,24 @@ pub(super) fn arena_error(
     source: &str,
     error: crate::CssComponentValueError,
 ) -> crate::CssRecoveryDiagnostic {
+    component_error_diagnostic(
+        source,
+        error,
+        crate::CssSourceSpan::new(
+            crate::CssSourcePosition::from_byte_offset_in(source, 0),
+            crate::CssSourcePosition::from_byte_offset_in(source, source.len()),
+        )
+        .expect("complete source span"),
+        crate::CssRecoveryAction::DropQualifiedRule,
+    )
+}
+
+pub(super) fn component_error_diagnostic(
+    source: &str,
+    error: crate::CssComponentValueError,
+    span: crate::CssSourceSpan,
+    ordinary_action: crate::CssRecoveryAction,
+) -> crate::CssRecoveryDiagnostic {
     let position = match error.origin() {
         crate::CssValueOrigin::Parsed(origin) => origin.span().start(),
         _ => crate::CssSourcePosition::from_byte_offset_in(source, 0),
@@ -219,17 +274,9 @@ pub(super) fn arena_error(
         },
         error,
     );
-    let action = recovery_action_for_error(&parsed, crate::CssRecoveryAction::DropQualifiedRule);
-    crate::CssRecoveryDiagnostic::new(
-        from_parse_error(source, parsed),
-        crate::CssSourceSpan::new(
-            crate::CssSourcePosition::from_byte_offset_in(source, 0),
-            crate::CssSourcePosition::from_byte_offset_in(source, source.len()),
-        )
-        .expect("complete source span"),
-        action,
-    )
-    .expect("arena failure belongs to this source")
+    let action = recovery_action_for_error(&parsed, ordinary_action);
+    crate::CssRecoveryDiagnostic::new(from_parse_error(source, parsed), span, action)
+        .expect("arena failure belongs to this source")
 }
 
 // Native RuleBodyParser conflates semicolon and EOF only after admitting the

@@ -22,6 +22,10 @@ pub(super) enum BoundedParseContext {
         top_level: bool,
     },
     OneRule,
+    Candidate {
+        envelope: super::rule_candidate::RuleEnvelope,
+        context: super::CssRuleAdmissionContext,
+    },
     StyleBlock,
     GroupBlock,
     ScopedBlock {
@@ -40,6 +44,7 @@ pub(super) enum BoundedParseContext {
 pub(super) enum BoundedParseSyntax {
     Rules(CssSheet),
     OneRule(Option<CssRule>),
+    Candidate(Option<super::CssAdmittedRule>),
     StyleBlock(Option<CssStyleBlock>),
     GroupBlock(Option<crate::CssBlockFragment<crate::CssRuleList>>),
     ScopedBlock(Option<crate::CssBlockFragment<CssScopedRuleList>>),
@@ -59,7 +64,7 @@ impl BoundedParseContext {
             Self::Rules { top_level } => StructuralListContext::Rules {
                 top_level: *top_level,
             },
-            Self::OneRule | Self::StyleBlock | Self::GroupBlock => {
+            Self::Candidate { .. } | Self::OneRule | Self::StyleBlock | Self::GroupBlock => {
                 StructuralListContext::Rules { top_level: false }
             }
             Self::Style
@@ -91,12 +96,27 @@ impl BoundedParseContext {
     }
 
     fn is_style(&self) -> bool {
-        matches!(self, Self::Style)
+        matches!(
+            self,
+            Self::Style
+                | Self::Candidate {
+                    context: super::CssRuleAdmissionContext::Style,
+                    ..
+                }
+        )
     }
     fn has_style_ancestor(&self) -> bool {
         matches!(
             self,
             Self::Style
+                | Self::Candidate {
+                    context: super::CssRuleAdmissionContext::Style
+                        | super::CssRuleAdmissionContext::Scope(crate::CssStyleAncestor::Present)
+                        | super::CssRuleAdmissionContext::ScopedGroup(
+                            crate::CssStyleAncestor::Present
+                        ),
+                    ..
+                }
                 | Self::ScopedBlock {
                     has_style_ancestor: true,
                     ..
@@ -180,6 +200,9 @@ fn parse_bounded_with_captures(
         // different original unit. Lists alone recover by masking this unit.
         let (syntax, mut diagnostics) = match context {
             BoundedParseContext::OneRule => (BoundedParseSyntax::OneRule(None), Vec::new()),
+            BoundedParseContext::Candidate { .. } => {
+                (BoundedParseSyntax::Candidate(None), Vec::new())
+            }
             BoundedParseContext::StyleBlock => (BoundedParseSyntax::StyleBlock(None), Vec::new()),
             BoundedParseContext::GroupBlock => (BoundedParseSyntax::GroupBlock(None), Vec::new()),
             BoundedParseContext::ScopedBlock { .. } => {
@@ -257,6 +280,10 @@ fn parse_bounded_with_captures(
                 fragments::parse_rule_inner(source, recovery),
                 BoundedParseSyntax::OneRule,
             ),
+            BoundedParseContext::Candidate { envelope, context } => bounded_report(
+                super::rule_candidate::admit_inner(source, recovery, &envelope, context),
+                BoundedParseSyntax::Candidate,
+            ),
             BoundedParseContext::StyleBlock => bounded_report(
                 fragments::parse_style_block_inner(source, recovery),
                 BoundedParseSyntax::StyleBlock,
@@ -299,6 +326,14 @@ fn parse_bounded_with_captures(
     // retain original byte/line coordinates, and the completed child syntax is
     // spliced back into its parser-produced enclosing groups.
     let scoped_body = match &context {
+        BoundedParseContext::Candidate {
+            context: super::CssRuleAdmissionContext::Scope(_),
+            ..
+        } => Some(ScopedBodyKind::Scope),
+        BoundedParseContext::Candidate {
+            context: super::CssRuleAdmissionContext::ScopedGroup(_),
+            ..
+        } => Some(ScopedBodyKind::OrdinaryGroup),
         BoundedParseContext::Scoped { body, .. }
         | BoundedParseContext::ScopedBlock { body, .. } => Some(*body),
         _ => None,
@@ -550,6 +585,12 @@ fn bounded_parent_admitted(syntax: &BoundedParseSyntax, parents: &[StructuralPar
         BoundedParseSyntax::OneRule(Some(rule)) => {
             admitted_rule_path(std::slice::from_ref(rule), parents)
         }
+        BoundedParseSyntax::Candidate(Some(super::CssAdmittedRule::Ordinary(rule))) => {
+            admitted_rule_path(std::slice::from_ref(rule), parents)
+        }
+        BoundedParseSyntax::Candidate(Some(super::CssAdmittedRule::Scoped(rule))) => {
+            admitted_scoped_path(std::slice::from_ref(rule), parents)
+        }
         BoundedParseSyntax::StyleBlock(Some(block)) => {
             let Some((root, parents)) = parents.split_first() else {
                 return true;
@@ -574,7 +615,8 @@ fn bounded_parent_admitted(syntax: &BoundedParseSyntax, parents: &[StructuralPar
                 && matches!(root.kind, GroupKind::FragmentBody)
                 && admitted_scoped_path(block.body().rules(), parents)
         }
-        BoundedParseSyntax::OneRule(None)
+        BoundedParseSyntax::Candidate(None)
+        | BoundedParseSyntax::OneRule(None)
         | BoundedParseSyntax::StyleBlock(None)
         | BoundedParseSyntax::GroupBlock(None)
         | BoundedParseSyntax::ScopedBlock(None) => false,
@@ -635,6 +677,33 @@ fn splice_bounded_syntax(
             .expect("replay preserves its admitted single outer rule");
             BoundedParseSyntax::OneRule(Some(rule))
         }
+        BoundedParseSyntax::Candidate(Some(rule)) => {
+            let rule = match rule {
+                super::CssAdmittedRule::Ordinary(rule) => {
+                    let [rule]: [CssRule; 1] = splice_rule_list(
+                        std::slice::from_ref(&rule),
+                        parents,
+                        child_start,
+                        child_rules,
+                    )
+                    .try_into()
+                    .expect("one admitted candidate");
+                    super::CssAdmittedRule::Ordinary(rule)
+                }
+                super::CssAdmittedRule::Scoped(rule) => {
+                    let [rule]: [CssScopedRule; 1] = splice_scoped_rule_list(
+                        std::slice::from_ref(&rule),
+                        parents,
+                        child_start,
+                        child_rules,
+                    )
+                    .try_into()
+                    .expect("one admitted scoped candidate");
+                    super::CssAdmittedRule::Scoped(rule)
+                }
+            };
+            BoundedParseSyntax::Candidate(Some(rule))
+        }
         BoundedParseSyntax::StyleBlock(Some(block)) => {
             let (_, parents) = parents
                 .split_first()
@@ -675,7 +744,8 @@ fn splice_bounded_syntax(
                 block.origin().clone(),
             )))
         }
-        BoundedParseSyntax::OneRule(None)
+        BoundedParseSyntax::Candidate(None)
+        | BoundedParseSyntax::OneRule(None)
         | BoundedParseSyntax::StyleBlock(None)
         | BoundedParseSyntax::GroupBlock(None)
         | BoundedParseSyntax::ScopedBlock(None) => {

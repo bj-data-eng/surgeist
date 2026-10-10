@@ -18,7 +18,12 @@ mod box_spacing;
 pub(crate) mod color_profile;
 mod contain_intrinsic_size;
 pub(crate) mod counter_style;
+mod declaration_block;
 mod declaration_list;
+pub(crate) use declaration_block::parse_with_context as parse_declaration_block_contents_with_context;
+pub use declaration_block::{
+    parse_declaration_block_contents, parse_declaration_block_contents_with_limits,
+};
 mod descriptor_body;
 mod descriptor_values;
 mod effects;
@@ -41,12 +46,17 @@ use reconstruction::{
 };
 #[cfg(test)]
 mod native_batch_boundary_tests;
+mod rule_candidate;
 #[cfg(test)]
 mod style_scope_media_separator_tests;
 mod syntax_bridge;
 pub use declaration_list::parse_declaration_list_text;
 pub(crate) use declaration_list::parse_declaration_list_text_with_context;
 pub(crate) use page::{first_page_component, is_page_margin_property, page_declaration_violation};
+pub use rule_candidate::{
+    CssAdmittedRule, CssRuleAdmissionContext, CssRuleSyntax, CssRuleSyntaxKind,
+    classify_rule_syntax, classify_rule_syntax_with_limits,
+};
 mod gap;
 pub(crate) mod image_1d;
 mod masking;

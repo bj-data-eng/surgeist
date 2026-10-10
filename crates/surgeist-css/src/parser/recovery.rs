@@ -606,7 +606,7 @@ impl RecoveryState {
         Ok(self.component_openings_in(start..end))
     }
 
-    fn component_openings_in(&self, range: std::ops::Range<usize>) -> Vec<usize> {
+    pub(super) fn component_openings_in(&self, range: std::ops::Range<usize>) -> Vec<usize> {
         // Keep the same opening identities as the structural scanner, including
         // escaped function names and URL tokens, within this grammar unit only.
         self.implicit_openings

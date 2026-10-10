@@ -113,6 +113,9 @@ pub enum CssRecoveryAction {
     RetainWithImplicitClosure,
     /// The diagnostic phase retained a grammatical rule that made its stylesheet nonconforming.
     RetainNonconformingRule,
+    /// Preliminary generic rule syntax retained a recoverable fault before
+    /// semantic grammar admission. This does not assert a retained semantic rule.
+    RetainSyntaxCandidate,
     /// Retained an underscore-leading target as symbolic legacy navigation syntax.
     RetainLegacyNavigationTarget,
     /// The tokenizer ignored an authored comment terminated by EOF instead of `*/`.

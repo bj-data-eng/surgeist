@@ -2029,9 +2029,12 @@ pub use normalization::{
     normalize_sheet, normalize_sheet_with_limits,
 };
 pub use parser::{
-    CssNamespaceContext, CssParsedKeyframeRule, CssParsedKeyframeSelectors,
-    parse_color_profile_block, parse_color_profile_descriptor_value, parse_counter_style_block,
+    CssAdmittedRule, CssNamespaceContext, CssParsedKeyframeRule, CssParsedKeyframeSelectors,
+    CssRuleAdmissionContext, CssRuleSyntax, CssRuleSyntaxKind, classify_rule_syntax,
+    classify_rule_syntax_with_limits, parse_color_profile_block,
+    parse_color_profile_descriptor_value, parse_counter_style_block,
     parse_counter_style_descriptor_value, parse_cssom_media_query, parse_declaration,
+    parse_declaration_block_contents, parse_declaration_block_contents_with_limits,
     parse_declaration_list_text, parse_font_face_block, parse_font_face_descriptor_value,
     parse_font_feature_display_value, parse_font_feature_value, parse_font_feature_value_block,
     parse_font_feature_values_block, parse_font_palette_descriptor_value,
