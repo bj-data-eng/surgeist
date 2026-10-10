@@ -425,23 +425,12 @@ fn parse_authored_predefined_color<'i, 't>(
 ) -> std::result::Result<CssPredefinedColor, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
-    let color_space = match_ignore_ascii_case! { &ident,
-        "srgb" => CssPredefinedColorSpace::Srgb,
-        "srgb-linear" => CssPredefinedColorSpace::SrgbLinear,
-        "display-p3" => CssPredefinedColorSpace::DisplayP3,
-        "display-p3-linear" => CssPredefinedColorSpace::DisplayP3Linear,
-        "a98-rgb" => CssPredefinedColorSpace::A98Rgb,
-        "prophoto-rgb" => CssPredefinedColorSpace::ProphotoRgb,
-        "rec2020" => CssPredefinedColorSpace::Rec2020,
-        "xyz" | "xyz-d65" => CssPredefinedColorSpace::XyzD65,
-        "xyz-d50" => CssPredefinedColorSpace::XyzD50,
-        _ => {
-            return Err(with_color_context(
-                location.new_unexpected_token_error::<Error>(Token::Ident(ident)),
-                Some("color space"),
-            ));
-        }
-    };
+    let color_space = crate::syntax::color::predefined_color_space(&ident).ok_or_else(|| {
+        with_color_context(
+            location.new_unexpected_token_error::<Error>(Token::Ident(ident)),
+            Some("color space"),
+        )
+    })?;
     let channels = [
         parse_authored_color_component(input, numeric, true)?,
         parse_authored_color_component(input, numeric, true)?,
@@ -756,86 +745,6 @@ fn parse_typed_relative_color_expression<'i, 't>(
         })
 }
 
-pub(crate) fn numeric_relative_channel(
-    environment: CssRelativeColorEnvironment,
-    name: &str,
-) -> Option<(CssRelativeColorChannel, CssCalculationType)> {
-    let channel = relative_color_channel(environment, name)?;
-    Some((channel, relative_channel_type(environment, channel)))
-}
-
-fn relative_color_channel(
-    environment: CssRelativeColorEnvironment,
-    ident: &str,
-) -> Option<CssRelativeColorChannel> {
-    use CssRelativeColorChannel::{A, Alpha, B, C, G, H, L, R, S, W, X, Y, Z};
-    let channel = match environment {
-        CssRelativeColorEnvironment::Alpha => {
-            if ident.eq_ignore_ascii_case("alpha") {
-                Alpha
-            } else {
-                return None;
-            }
-        }
-        CssRelativeColorEnvironment::Rgb | CssRelativeColorEnvironment::PredefinedRgb(_) => {
-            match_ignore_ascii_case! { ident,
-                "r" => R,
-                "g" => G,
-                "b" => B,
-                "alpha" => Alpha,
-                _ => return None,
-            }
-        }
-        CssRelativeColorEnvironment::Hsl => match_ignore_ascii_case! { ident,
-            "h" => H,
-            "s" => S,
-            "l" => L,
-            "alpha" => Alpha,
-            _ => return None,
-        },
-        CssRelativeColorEnvironment::Hwb => match_ignore_ascii_case! { ident,
-            "h" => H,
-            "w" => W,
-            "b" => B,
-            "alpha" => Alpha,
-            _ => return None,
-        },
-        CssRelativeColorEnvironment::Lab | CssRelativeColorEnvironment::Oklab => {
-            match_ignore_ascii_case! { ident,
-                "l" => L,
-                "a" => A,
-                "b" => B,
-                "alpha" => Alpha,
-                _ => return None,
-            }
-        }
-        CssRelativeColorEnvironment::Lch | CssRelativeColorEnvironment::Oklch => {
-            match_ignore_ascii_case! { ident,
-                "l" => L,
-                "c" => C,
-                "h" => H,
-                "alpha" => Alpha,
-                _ => return None,
-            }
-        }
-        CssRelativeColorEnvironment::Xyz(_) => match_ignore_ascii_case! { ident,
-            "x" => X,
-            "y" => Y,
-            "z" => Z,
-            "alpha" => Alpha,
-            _ => return None,
-        },
-    };
-    Some(channel)
-}
-
-fn relative_channel_type(
-    _environment: CssRelativeColorEnvironment,
-    _channel: CssRelativeColorChannel,
-) -> CssCalculationType {
-    CssCalculationType::Number
-}
-
 #[derive(Clone, Copy)]
 enum RelativeColorFunction {
     Rgb,
@@ -868,23 +777,13 @@ fn parse_relative_predefined_color_space<'i, 't>(
 ) -> std::result::Result<CssPredefinedColorSpace, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
-    let color_space = match_ignore_ascii_case! { &ident,
-        "srgb" => CssPredefinedColorSpace::Srgb,
-        "srgb-linear" => CssPredefinedColorSpace::SrgbLinear,
-        "display-p3" => CssPredefinedColorSpace::DisplayP3,
-        "display-p3-linear" => CssPredefinedColorSpace::DisplayP3Linear,
-        "a98-rgb" => CssPredefinedColorSpace::A98Rgb,
-        "prophoto-rgb" => CssPredefinedColorSpace::ProphotoRgb,
-        "rec2020" => CssPredefinedColorSpace::Rec2020,
-        "xyz" => CssPredefinedColorSpace::XyzD65,
-        "xyz-d50" => CssPredefinedColorSpace::XyzD50,
-        "xyz-d65" => CssPredefinedColorSpace::XyzD65,
-        _ => return Err(unsupported_value_at(
+    let color_space = crate::syntax::color::predefined_color_space(&ident).ok_or_else(|| {
+        unsupported_value_at(
             location,
             None,
             format!("unsupported relative color space `{ident}`"),
-        )),
-    };
+        )
+    })?;
     Ok(color_space)
 }
 
@@ -1043,28 +942,22 @@ fn parse_color_interpolation_space<'i, 't>(
 ) -> std::result::Result<CssColorInterpolationSpace, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
-    let space = match_ignore_ascii_case! { &ident,
-        "srgb" => CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::Srgb),
-        "srgb-linear" => CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::SrgbLinear),
-        "display-p3" => CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::DisplayP3),
-        "display-p3-linear" => CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::DisplayP3Linear),
-        "a98-rgb" => CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::A98Rgb),
-        "prophoto-rgb" => CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::ProphotoRgb),
-        "rec2020" => CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::Rec2020),
-        "xyz" => CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::XyzD65),
-        "xyz-d50" => CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::XyzD50),
-        "xyz-d65" => CssColorInterpolationSpace::Predefined(CssPredefinedColorSpace::XyzD65),
-        "hsl" => CssColorInterpolationSpace::Hsl,
-        "hwb" => CssColorInterpolationSpace::Hwb,
-        "lab" => CssColorInterpolationSpace::Lab,
-        "lch" => CssColorInterpolationSpace::Lch,
-        "oklab" => CssColorInterpolationSpace::Oklab,
-        "oklch" => CssColorInterpolationSpace::Oklch,
-        _ => return Err(unsupported_value_at(
-            location,
-            None,
-            format!("unsupported color interpolation space `{ident}`"),
-        )),
+    let space = if let Some(space) = crate::syntax::color::predefined_color_space(&ident) {
+        CssColorInterpolationSpace::Predefined(space)
+    } else {
+        match_ignore_ascii_case! { &ident,
+            "hsl" => CssColorInterpolationSpace::Hsl,
+            "hwb" => CssColorInterpolationSpace::Hwb,
+            "lab" => CssColorInterpolationSpace::Lab,
+            "lch" => CssColorInterpolationSpace::Lch,
+            "oklab" => CssColorInterpolationSpace::Oklab,
+            "oklch" => CssColorInterpolationSpace::Oklch,
+            _ => return Err(unsupported_value_at(
+                location,
+                None,
+                format!("unsupported color interpolation space `{ident}`"),
+            )),
+        }
     };
     Ok(space)
 }

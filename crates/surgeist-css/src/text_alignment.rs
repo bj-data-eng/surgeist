@@ -175,18 +175,7 @@ impl CssCharacterAlignment {
     ) -> SerializationResult<()> {
         context.charge_input(1)?;
         context.charge_projection(1)?;
-        let mut writer = BoundedWriter {
-            context,
-            output,
-            failure: None,
-        };
-        if cssparser::serialize_string(self.decoded(), &mut writer).is_err() {
-            return Err(writer.failure.unwrap_or_else(|| {
-                CssSpecifiedValueSerializationError::new(
-                    crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
-                )
-            }));
-        }
+        crate::serialization_escaping::append_string(self.decoded(), context, output)?;
         if let Some(fallback) = self.authored_fallback {
             context.charge_input(1)?;
             context.charge_projection(1)?;
@@ -194,21 +183,6 @@ impl CssCharacterAlignment {
             context.append(output, fallback.keyword())?;
         }
         Ok(())
-    }
-}
-
-struct BoundedWriter<'a> {
-    context: &'a mut SpecifiedSerializationContext,
-    output: &'a mut String,
-    failure: Option<CssSpecifiedValueSerializationError>,
-}
-
-impl fmt::Write for BoundedWriter<'_> {
-    fn write_str(&mut self, text: &str) -> fmt::Result {
-        self.context.append(self.output, text).map_err(|error| {
-            self.failure = Some(error);
-            fmt::Error
-        })
     }
 }
 

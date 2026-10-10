@@ -247,7 +247,7 @@ fn emit_with_metadata(
 
 /// Emits a normalized finite decimal whose fractional part is already rounded.
 /// Count the final representation before reserving any storage.
-fn emit(
+pub(crate) fn emit(
     digits: impl Iterator<Item = u8>,
     len: usize,
     exponent: i128,
@@ -313,6 +313,46 @@ fn emit(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn normalized_decimal_layout_budgets_only_emitted_text() {
+        for (digits, exponent, negative, expected) in [
+            ("", 0, false, "0"),
+            ("", i128::MAX, true, "0"),
+            ("123", 0, false, "123"),
+            ("123", 2, true, "-12300"),
+            ("123", -1, false, "12.3"),
+            ("123", -3, true, "-0.123"),
+            ("123", -5, false, "0.00123"),
+            ("1", 3, false, "1000"),
+        ] {
+            let emit_at = |limit| {
+                emit(
+                    digits.bytes().map(|d| d - b'0'),
+                    digits.len(),
+                    exponent,
+                    negative,
+                    limit,
+                )
+            };
+            assert_eq!(emit_at(expected.len()).unwrap(), expected);
+            assert_eq!(emit_at(expected.len() - 1).unwrap_err().kind(), ByteLimit);
+        }
+        for exponent in [i128::MIN, i128::MAX] {
+            assert_eq!(
+                emit(std::iter::once(1), 1, exponent, false, usize::MAX)
+                    .unwrap_err()
+                    .kind(),
+                ByteLimit
+            );
+        }
+        assert_eq!(
+            emit(std::iter::once(1), 1, isize::MAX as i128, false, usize::MAX)
+                .unwrap_err()
+                .kind(),
+            CapacityOverflow
+        );
+    }
 
     #[test]
     fn projected_dyadic_rounding_uses_bits_and_actual_output_budgets() {

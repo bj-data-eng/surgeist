@@ -330,7 +330,7 @@ fn escaped_identifier(value: &str, context: &SpecifiedSerializationContext) -> R
     if context.output_suppressed() {
         return Ok(String::new());
     }
-    crate::numeric::capture_identifier(value, context)
+    crate::serialization_escaping::capture_identifier(value, context)
 }
 
 fn ordinary_number(value: f64, context: &SpecifiedSerializationContext) -> Result<String> {

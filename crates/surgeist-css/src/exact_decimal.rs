@@ -1795,16 +1795,10 @@ impl ExactRational {
             return Ok(String::new());
         }
         if self_.coefficient.is_zero() {
-            return crate::specified_serialization::format_digits(
-                std::iter::empty(),
-                0,
-                0,
-                false,
-                byte_limit,
-            );
+            return crate::numeric_formatting::emit(std::iter::empty(), 0, 0, false, byte_limit);
         }
         let digits = self_.coefficient.decimal_string(byte_limit)?;
-        crate::specified_serialization::format_digits(
+        crate::numeric_formatting::emit(
             digits.bytes().map(|byte| byte - b'0'),
             digits.len(),
             self_.exponent,
@@ -1834,13 +1828,7 @@ impl ExactRational {
             if suppressed {
                 return Ok(String::new());
             }
-            crate::specified_serialization::format_digits(
-                std::iter::empty(),
-                0,
-                0,
-                false,
-                byte_limit,
-            )
+            crate::numeric_formatting::emit(std::iter::empty(), 0, 0, false, byte_limit)
         };
         if lexical.len == 0 || factor.numerator == 0 {
             return zero();
@@ -1943,7 +1931,7 @@ impl ExactRational {
                 len += 1;
                 rounded /= 10;
             }
-            return crate::specified_serialization::format_digits(
+            return crate::numeric_formatting::emit(
                 digits[..len].iter().rev().copied(),
                 len,
                 exponent,
@@ -2026,25 +2014,13 @@ impl ExactRational {
             if suppressed {
                 return Ok(String::new());
             }
-            return crate::specified_serialization::format_digits(
-                std::iter::empty(),
-                0,
-                0,
-                false,
-                byte_limit,
-            );
+            return crate::numeric_formatting::emit(std::iter::empty(), 0, 0, false, byte_limit);
         }
         if self.coefficient.is_zero() {
             if suppressed {
                 return Ok(String::new());
             }
-            return crate::specified_serialization::format_digits(
-                std::iter::empty(),
-                0,
-                0,
-                false,
-                byte_limit,
-            );
+            return crate::numeric_formatting::emit(std::iter::empty(), 0, 0, false, byte_limit);
         }
         let places_i128 = i128::try_from(places).map_err(|_| {
             crate::CssSpecifiedValueSerializationError::new(
@@ -2153,7 +2129,7 @@ impl ExactRational {
             })?;
         let negative = negative && !rounded.is_zero();
         let digits = rounded.decimal_string(byte_limit)?;
-        crate::specified_serialization::format_digits(
+        crate::numeric_formatting::emit(
             digits.bytes().map(|byte| byte - b'0'),
             if rounded.is_zero() { 0 } else { digits.len() },
             exponent,

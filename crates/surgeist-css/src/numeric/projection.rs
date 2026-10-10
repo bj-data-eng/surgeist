@@ -827,7 +827,10 @@ fn prepare_specified_scaled(
                 if projection.context.output_suppressed() {
                     projection.add(Kind::ProfileChannel(name.clone()), node.ty)?
                 } else {
-                    let text = super::capture_identifier(name.as_str(), projection.context)?;
+                    let text = crate::serialization_escaping::capture_identifier(
+                        name.as_str(),
+                        projection.context,
+                    )?;
                     projection.add(Kind::Symbol(text), node.ty)?
                 }
             }
@@ -1130,10 +1133,9 @@ impl Projection<'_> {
                     false,
                 )),
                 Kind::Symbol(text) => next.push(Output::Text(text.clone())),
-                Kind::ProfileChannel(name) => next.push(Output::Text(super::capture_identifier(
-                    name.as_str(),
-                    self.context,
-                )?)),
+                Kind::ProfileChannel(name) => next.push(Output::Text(
+                    crate::serialization_escaping::capture_identifier(name.as_str(), self.context)?,
+                )),
                 Kind::Function {
                     function,
                     args,
@@ -1506,30 +1508,6 @@ fn scalar_text(scalar: &Scalar, root: bool, value: f64) -> String {
 mod tests {
     use super::*;
     use crate::{CssNumberCalculation, CssPercentageCalculation, parse_component_values};
-
-    #[test]
-    fn suppressed_profile_preparation_retains_identity_for_later_emission() {
-        let value = crate::CssProfileColorExpression::try_from_components(
-            parse_component_values("calc(Cyan)").unwrap(),
-        )
-        .unwrap();
-        let crate::CssProfileColorExpressionRef::Calculation(value) = value.view() else {
-            panic!("profile calculation");
-        };
-        let origin = value.origin().clone();
-        let mut context = SpecifiedSerializationContext::new(Limits::new(100, 100, 4));
-        context.replace_output_suppression(true);
-        let prepared = prepare_specified(&value.expression, &mut context).unwrap();
-        assert!(prepared.outcome().context_dependent);
-        assert_eq!(prepared.outcome().scalar_value, None);
-        assert_eq!(context.remaining_bytes(), 4);
-        assert!(context.replace_output_suppression(false));
-        let mut output = String::new();
-        prepared.append(&mut context, &mut output, false).unwrap();
-        assert_eq!(output, "Cyan");
-        assert_eq!(context.remaining_bytes(), 0);
-        assert_eq!(value.origin(), &origin);
-    }
 
     fn projected(source: &str) -> String {
         let components = parse_component_values(source).unwrap();

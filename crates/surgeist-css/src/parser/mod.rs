@@ -151,7 +151,6 @@ use border_style::*;
 use border_width::*;
 use box_model::*;
 use box_spacing::*;
-pub(crate) use color::numeric_relative_channel;
 use color::parse_color;
 use color_adjustment::*;
 use contain_intrinsic_size::*;

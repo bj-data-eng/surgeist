@@ -1789,6 +1789,7 @@ mod rectangular_color_conversion;
 mod resolution;
 mod rotate;
 mod scroll_snap;
+mod serialization_escaping;
 mod sizing;
 mod sizing_controls;
 mod speech;

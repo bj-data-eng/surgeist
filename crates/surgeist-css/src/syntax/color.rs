@@ -6,6 +6,8 @@ use super::{
 };
 
 mod inverse;
+mod recognition;
+pub(crate) use recognition::{numeric_relative_channel, predefined_color_space};
 pub(crate) mod serialization;
 
 /// An authored color retaining its specified syntax and symbolic dependencies.

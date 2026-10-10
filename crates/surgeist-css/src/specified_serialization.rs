@@ -790,63 +790,6 @@ mod composed_value_tests {
     }
 }
 
-pub(crate) fn format_digits(
-    digits: impl Iterator<Item = u8>,
-    len: usize,
-    exponent: i128,
-    negative: bool,
-    limit: usize,
-) -> Result<String> {
-    if len == 0 {
-        return if limit == 0 {
-            Err(CssSpecifiedValueSerializationError::new(Kind::ByteLimit))
-        } else {
-            Ok("0".into())
-        };
-    }
-    let point = (len as i128)
-        .checked_add(exponent)
-        .ok_or_else(|| CssSpecifiedValueSerializationError::new(Kind::ByteLimit))?;
-    let length = if point <= 0 {
-        (len as i128)
-            .checked_add(2)
-            .and_then(|n| n.checked_sub(point))
-    } else {
-        Some(point.max(len as i128) + i128::from(point < len as i128))
-    }
-    .and_then(|n| n.checked_add(i128::from(negative)))
-    .ok_or_else(|| CssSpecifiedValueSerializationError::new(Kind::ByteLimit))?;
-    if length > limit as i128 {
-        return Err(CssSpecifiedValueSerializationError::new(Kind::ByteLimit));
-    }
-    let length = usize::try_from(length)
-        .map_err(|_| CssSpecifiedValueSerializationError::new(Kind::CapacityOverflow))?;
-    if length > isize::MAX as usize {
-        return Err(CssSpecifiedValueSerializationError::new(
-            Kind::CapacityOverflow,
-        ));
-    }
-    let mut output = String::with_capacity(length);
-    if negative {
-        output.push('-');
-    }
-    if point <= 0 {
-        output.push_str("0.");
-        output.extend(std::iter::repeat_n('0', (-point) as usize));
-    }
-    for (index, digit) in digits.enumerate() {
-        if point > 0 && index as i128 == point {
-            output.push('.');
-        }
-        output.push(char::from(b'0' + digit));
-    }
-    if point > len as i128 {
-        output.extend(std::iter::repeat_n('0', (point - len as i128) as usize));
-    }
-    debug_assert_eq!(output.len(), length);
-    Ok(output)
-}
-
 // Rust's shortest round-trip spelling supplies the nearest decimal candidate.
 // At an exact decimal midpoint choose the numerically greater candidate, even
 // when the host formatter's last-digit tie rule chose the other neighbor.
@@ -886,7 +829,7 @@ pub(crate) fn format_binary64(value: f64) -> String {
         exponent += 1;
     }
     let coefficient = coefficient.to_string();
-    format_digits(
+    crate::numeric_formatting::emit(
         coefficient.bytes().map(|c| c - b'0'),
         coefficient.len(),
         i128::from(exponent),

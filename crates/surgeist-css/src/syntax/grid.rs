@@ -1171,8 +1171,10 @@ impl GridSpecified for CssGridLineNames {
             }
             grid_node(writer)?;
             if !writer.context.output_suppressed() {
-                let escaped =
-                    crate::numeric::capture_identifier(name.ident().as_str(), &writer.context)?;
+                let escaped = crate::serialization_escaping::capture_identifier(
+                    name.ident().as_str(),
+                    &writer.context,
+                )?;
                 writer.append(&escaped)?;
             }
         }

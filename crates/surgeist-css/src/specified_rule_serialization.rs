@@ -2,6 +2,8 @@
 
 use std::fmt;
 
+use crate::serialization_escaping::EscapedKind;
+
 use crate::{
     CssMediaCssomSerializationError, CssNamespaceRule, CssRule, CssSheet,
     CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,
@@ -339,46 +341,8 @@ impl SpecifiedRuleWriter {
         if self.context.output_suppressed() {
             return Ok(());
         }
-        let mut scratch = String::new();
-        let mut bounded = BoundedEscaped {
-            context: &self.context,
-            css: &mut scratch,
-            error: None,
-        };
-        let result = match kind {
-            EscapedKind::Identifier => cssparser::serialize_identifier(value, &mut bounded),
-            EscapedKind::String => cssparser::serialize_string(value, &mut bounded),
-        };
-        if result.is_err() {
-            return Err(bounded.error.unwrap_or_else(|| {
-                CssSpecifiedValueSerializationError::new(
-                    CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
-                )
-            }));
-        }
+        let scratch = crate::serialization_escaping::capture_escaped(value, kind, &self.context)?;
         self.append(&scratch)
-    }
-}
-
-enum EscapedKind {
-    Identifier,
-    String,
-}
-
-struct BoundedEscaped<'a> {
-    context: &'a SpecifiedSerializationContext,
-    css: &'a mut String,
-    error: Option<CssSpecifiedValueSerializationError>,
-}
-
-impl fmt::Write for BoundedEscaped<'_> {
-    fn write_str(&mut self, text: &str) -> fmt::Result {
-        self.context
-            .append_temporary(self.css, text)
-            .map_err(|error| {
-                self.error = Some(error);
-                fmt::Error
-            })
     }
 }
 
