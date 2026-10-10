@@ -4,16 +4,13 @@ use super::values::{
 };
 use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
-use super::background::{
-    parse_background_repeat_prefix, parse_background_size_prefix, parse_image_value,
-};
 use super::box_model::parse_drop_shadow;
-use super::position::{parse_full_position, parse_physical_position_prefix};
+use super::position::parse_full_position;
 use super::url::parse_url;
 use super::values::{
-    AngleParserContext, next_is_comma, next_is_delim, next_is_ident, parse_angle_or_zero,
-    parse_angle_value, parse_hinted_number_calculation, parse_nonnegative_number,
-    parse_nonnegative_percentage, parse_specified_number, parse_specified_percentage,
+    AngleParserContext, next_is_delim, next_is_ident, parse_angle_or_zero, parse_angle_value,
+    parse_hinted_number_calculation, parse_nonnegative_number, parse_nonnegative_percentage,
+    parse_specified_number, parse_specified_percentage,
 };
 use crate::CssValueOrigin;
 use crate::error::{CssFeatureId, Error, basic, unsupported_value, unsupported_value_at};
@@ -56,13 +53,6 @@ pub(super) fn parse_clip<'i, 't>(
     input
         .parse_nested_block(|input| parse_clip_rect(input, numeric))
         .map(CssClip::Rect)
-}
-
-pub(super) fn parse_outline_offset<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> Result<CssSpecifiedLength, ParseError<'i, Error>> {
-    parse_length(input, numeric, "outline-offset")
 }
 
 pub(super) fn parse_transform_box<'i, 't>(
@@ -1155,129 +1145,6 @@ pub(super) fn parse_clip_path_shape<'i, 't>(
         }
         Ok(shape)
     })
-}
-
-pub(super) fn parse_mask_list<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssMaskList, ParseError<'i, Error>> {
-    let mut layers = Vec::new();
-    loop {
-        layers.push(parse_mask_layer(input, numeric)?);
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
-        }
-        if input.is_exhausted() {
-            return Err(unsupported_value(
-                input,
-                None,
-                "mask list has an empty item",
-            ));
-        }
-    }
-    if layers.is_empty() {
-        Err(unsupported_value(input, None, "mask list is empty"))
-    } else {
-        Ok(CssMaskList::new(layers))
-    }
-}
-
-pub(super) fn parse_mask_layer<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssMaskLayer, ParseError<'i, Error>> {
-    let mut image = None;
-    let mut position = None;
-    let mut size = None;
-    let mut repeat = None;
-    let mut boxes = Vec::new();
-    let mut no_clip = false;
-    let mut composite = None;
-    let mut mode = None;
-
-    while !input.is_exhausted() && !next_is_comma(input) {
-        if image.is_none() {
-            match input.try_parse(|input| parse_image_value(input, numeric)) {
-                Ok(value) => {
-                    image = Some(value);
-                    continue;
-                }
-                Err(error) if crate::error::is_resource_parse_error(&error) => return Err(error),
-                Err(_) => {}
-            }
-        }
-        if repeat.is_none()
-            && let Ok(parsed_repeat) = input.try_parse(parse_background_repeat_prefix)
-        {
-            repeat = Some(parsed_repeat);
-            continue;
-        }
-        if position.is_none() {
-            match input.try_parse(|input| parse_physical_position_prefix(input, numeric)) {
-                Ok(parsed_position) => {
-                    position = Some(parsed_position);
-                    if input.try_parse(|input| input.expect_delim('/')).is_ok() {
-                        size = Some(parse_background_size_prefix(input, numeric)?);
-                    }
-                    continue;
-                }
-                Err(error) if crate::error::is_resource_parse_error(&error) => return Err(error),
-                Err(_) => {}
-            }
-        }
-        if mode.is_none()
-            && let Ok(value) = input.try_parse(super::masking::parse_mask_mode)
-        {
-            mode = Some(value);
-            continue;
-        }
-        if composite.is_none()
-            && let Ok(value) = input.try_parse(super::masking::parse_mask_composite)
-        {
-            composite = Some(value);
-            continue;
-        }
-        if let Ok(value) = input.try_parse(super::masking::parse_mask_clip) {
-            match value {
-                CssMaskClip::Box(value) => boxes.push(value),
-                CssMaskClip::NoClip if !no_clip => no_clip = true,
-                CssMaskClip::NoClip => {
-                    return Err(unsupported_value(input, None, "duplicate no-clip"));
-                }
-            }
-            if boxes.len() > 2 || no_clip && boxes.len() > 1 {
-                return Err(unsupported_value(
-                    input,
-                    None,
-                    "too many mask geometry slots",
-                ));
-            }
-            continue;
-        }
-        return Err(unsupported_value(input, None, "unsupported mask component"));
-    }
-    let boxes = match (boxes.as_slice(), no_clip) {
-        ([], false) => None,
-        ([], true) => Some(CssMaskLayerBoxes::NoClip),
-        ([value], false) => Some(CssMaskLayerBoxes::Box(*value)),
-        ([origin], true) => Some(CssMaskLayerBoxes::Pair {
-            origin: *origin,
-            clip: CssMaskClip::NoClip,
-        }),
-        ([origin, clip], false) => Some(CssMaskLayerBoxes::Pair {
-            origin: *origin,
-            clip: CssMaskClip::Box(*clip),
-        }),
-        _ => {
-            return Err(unsupported_value(
-                input,
-                None,
-                "invalid mask geometry slots",
-            ));
-        }
-    };
-    CssMaskLayer::try_new(image, position, size, repeat, boxes, composite, mode)
-        .ok_or_else(|| unsupported_value(input, None, "mask layer is empty"))
 }
 
 #[cfg(test)]
