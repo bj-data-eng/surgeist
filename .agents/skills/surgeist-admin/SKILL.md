@@ -67,8 +67,8 @@ directly as **not planned** and let the built-in closure rule set Done. Done
 means resolved or unplanned; it does not assert verified implementation.
 Before changing Status or issue state, account for these side effects. Trust
 successful API updates and the configured workflows without routine post-update
-issue or Project readback. The cloud agent
-monitors consistency periodically. Inspect state when an update fails or its
+issue or Project readback. The Architecture Coordinator thread is the current
+contact for architecture questions. Inspect state when an update fails or its
 outcome is uncertain, or when reconciling work on resume. Do not duplicate built-in
 transitions with synchronization scripts or assume an event order. Archive timing
 follows the last update, not simply the closure date. Workflow settings are
