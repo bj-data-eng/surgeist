@@ -97,6 +97,7 @@ pub(crate) fn sheet(rules: &[CssRule]) -> Result<(), CssRuleConstructionError> {
                 bindings.push((rule.prefix().cloned(), rule.name().clone()));
                 phase = 2;
             }
+            CssRule::SupportsCondition(_) => {}
             CssRule::LayerStatement(_) if phase == 0 => {}
             _ => phase = 3,
         }
