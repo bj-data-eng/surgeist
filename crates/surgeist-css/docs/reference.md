@@ -9549,3 +9549,84 @@ method syntax failures return `CssSupportsConstructionError` with the responsibl
 original argument origin. Ordinary unsupported declarations still retain an
 authored test without a known typed view. Both arguments keep separate source
 snapshots. These APIs do not evaluate support or execute DOM operations.
+
+### Surgeist named-support test child composition
+
+[Surgeist #644](https://github.com/bj-data-eng/surgeist/issues/644) selects an
+inert direct-child projection and canonical specified bytes where the selected
+Conditional Rules and CSSOM editions leave this live extension undefined. This
+is a Surgeist product contract, not a browser or standards interoperability claim.
+
+`parse_supports_test_contents` admits complete genuine unbraced input through
+native Syntax partitioning. Declaration runs flatten through `body.children()`;
+qualified and at-rule tests each retain their complete immutable nested body.
+`CssSupportsTestChild` and its borrowed `CssSupportsTestChildRef` have Declaration,
+QualifiedRule and AtRule variants. Unsupported names, selectors and at-rules stay
+structural tests; no rendering grammar, import loading or namespace registration
+is selected. Empty semicolons are ignored recursively. An actual leading `{`
+remains a qualified candidate, never an invented enclosing block.
+
+`parse_supports_test_child` requires exactly one projected child with no discarded
+candidate or recovery. Statement EOF without a semicolon is allowed; empty,
+multiple, trailing or implicitly closed input rejects. Both raw front doors have
+`_with_limits` variants taking `CssComponentValueLimits`. Whole original source,
+including trivia and discarded/trailing units, shares the native byte, component
+and depth allowance. Recovered raw contents return `Some(body)` and diagnostics;
+resource failure returns `None` with the actual typed diagnostic cause. Consumers
+must reject `None` rather than interpret it as successful clearing. Successful
+empty contents are `Some(empty)`.
+
+`body.recompose_children_with_limits(&refs, limits)` borrows checked occurrences,
+coalesces adjacent declarations into maximal runs and retains genuine payload
+origins. Its receiver supplies the retained body-local recovery baseline; removed
+children lose their owned descendant recovery. `local_recovery_origins()` exposes
+captured local ownership, `recovery_origins()` iterates the current union, and
+`recovery_origin()` selects the first body-local fault or first recovered child
+in current order. Historical report diagnostics remain unchanged. Ownership is
+captured while consuming native candidates, including dropped candidates and
+body delimiters; it is not inferred from source offsets or the old aggregate.
+The current union uses iterative borrowed traversal, avoiding full copied unions
+at every ancestor. Joint native component/depth admission and a counting token
+sink bound reconstruction. The sink retains no output or provenance map and is
+used only for resource measurement; payloads are never rebuilt from text or
+reparsed. Failure preserves the original body and all supplied occurrences.
+
+`CssRuleGraphInput::named_supports(&name, &current_body)` and
+`supports_test_child(child_ref)` explicitly select this product's canonical
+specified policy. They compose current bodies under ordinary rendering ancestors
+through one final native graph writer. Standard parsed SupportsCondition CSSOM
+serialization retains its source-qualified FormatUnavailable result.
+`serialize_cssom_with_graph_limits` takes `CssRuleGraphSerializationLimits` with
+public `values` and `max_depth` fields. The values budget owns the complete input,
+projection and UTF-8 output allowance, without per-child resets or concatenated
+separately formatted strings. Failure returns no partial CSS and permits an
+unchanged larger-budget retry. `DepthLimit` is a typed resource failure; its
+specified error exposes an optional genuine owning/component `origin()` and the
+graph error keeps the actual ordinary rule path. Opaque nested tests never gain
+invented live rule indices or source positions.
+
+Native graph root depth is zero; ordinary rendering children and direct named
+children add one. Native Page margin rules and Keyframe blocks are child edges
+even when their writers enumerate them outside ordinary graph events.
+Body and declaration-run containers are transparent. Each
+nested candidate child adds another level, and component function/block nesting
+adds depth beneath its owning named-test child, including empty enclosures. An empty
+candidate body adds no child level. A consumer with root-one depth must admit its
+root first, then subtract the actual root/subtree depth from its allowance before
+calling the native graph operation. It must not reset the allowance per child.
+Standalone body formatting has direct children at depth zero;
+`ChildRef::to_specified_css_with_graph_limits` has the selected child at depth
+zero. Existing value-only specified formatting remains a separate domain
+operation without a structural graph-depth bound. Ordinary semantic property,
+math and selector internal shapes retain their owning writers' selected value
+quotas; this graph operation measures rule edges and named-test opaque payload
+nesting rather than redefining those separate value domains.
+
+Canonical bytes use the existing native token writer. A whitespace-only but
+nonempty at-rule prelude contributes its separator even when canonical tokens
+trim to empty; therefore `@future {}` emits `@future  { }`. Checked names accept
+decoded identity; authored escaped names enter through checked components.
+Canonical output preserves content, order and direct projection on clean reparse,
+without promising original trivia, recovery history, source occurrence or live
+identity roundtrips. CSSOM continues to own live handles, transactions and
+publication; feature evaluation remains downstream.

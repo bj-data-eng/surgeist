@@ -105,6 +105,7 @@ impl SpecifiedRuleWriter {
         self.append(" { ")?;
         for index in 0..count {
             *block_index = Some(index);
+            self.check_graph_child_depth()?;
             if index != 0 {
                 self.append("\n")?;
             }

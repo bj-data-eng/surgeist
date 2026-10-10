@@ -93,6 +93,7 @@ impl CssSpecifiedRuleSerializationError {
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit
             | CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
             | CssSpecifiedValueSerializationErrorKind::ByteLimit
+            | CssSpecifiedValueSerializationErrorKind::DepthLimit
             | CssSpecifiedValueSerializationErrorKind::CapacityOverflow => {
                 CssSpecifiedRuleSerializationErrorKind::Resource(value_kind)
             }
@@ -158,6 +159,8 @@ impl InverseSourceTracking {
 pub(crate) struct SpecifiedRuleWriter {
     pub(crate) context: SpecifiedSerializationContext,
     pub(crate) css: String,
+    pub(crate) max_graph_depth: Option<usize>,
+    pub(crate) graph_depth: usize,
     inverse_source_tracking: Option<InverseSourceTracking>,
     inverse_source_member: Option<crate::CssKnownProperty>,
 }
@@ -167,6 +170,8 @@ impl SpecifiedRuleWriter {
         Self {
             context: SpecifiedSerializationContext::new(limits),
             css: String::new(),
+            max_graph_depth: None,
+            graph_depth: 0,
             inverse_source_tracking: None,
             inverse_source_member: None,
         }

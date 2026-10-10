@@ -5156,6 +5156,7 @@ pub surgeist_css::CssSpecifiedRuleSerializationErrorKind::Value(surgeist_css::Cs
 #[non_exhaustive] pub enum surgeist_css::CssSpecifiedValueSerializationErrorKind
 pub surgeist_css::CssSpecifiedValueSerializationErrorKind::ByteLimit
 pub surgeist_css::CssSpecifiedValueSerializationErrorKind::CapacityOverflow
+pub surgeist_css::CssSpecifiedValueSerializationErrorKind::DepthLimit
 pub surgeist_css::CssSpecifiedValueSerializationErrorKind::InputNodeLimit
 pub surgeist_css::CssSpecifiedValueSerializationErrorKind::NamespaceBindingUnavailable
 pub surgeist_css::CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
@@ -5240,6 +5241,21 @@ impl core::error::Error for surgeist_css::CssSupportsConstructionError
 pub fn surgeist_css::CssSupportsConstructionError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_css::CssSupportsConstructionError
 pub fn surgeist_css::CssSupportsConstructionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_css::CssSupportsTestChild
+pub surgeist_css::CssSupportsTestChild::AtRule(surgeist_css::CssSupportsAtRuleTest)
+pub surgeist_css::CssSupportsTestChild::Declaration(surgeist_css::CssSupportsTestDeclaration)
+pub surgeist_css::CssSupportsTestChild::QualifiedRule(surgeist_css::CssSupportsQualifiedRuleTest)
+impl surgeist_css::CssSupportsTestChild
+pub fn surgeist_css::CssSupportsTestChild::as_ref(&self) -> surgeist_css::CssSupportsTestChildRef<'_>
+pub enum surgeist_css::CssSupportsTestChildRef<'a>
+pub surgeist_css::CssSupportsTestChildRef::AtRule(&'a surgeist_css::CssSupportsAtRuleTest)
+pub surgeist_css::CssSupportsTestChildRef::Declaration(&'a surgeist_css::CssSupportsTestDeclaration)
+pub surgeist_css::CssSupportsTestChildRef::QualifiedRule(&'a surgeist_css::CssSupportsQualifiedRuleTest)
+impl surgeist_css::CssSupportsTestChildRef<'_>
+pub fn surgeist_css::CssSupportsTestChildRef<'_>::to_specified_css(self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssSupportsTestChildRef<'_>::to_specified_css_with_graph_limits(self, limits: surgeist_css::CssRuleGraphSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl<'a> surgeist_css::CssSupportsTestChildRef<'a>
+pub fn surgeist_css::CssSupportsTestChildRef<'a>::origin(self) -> &'a surgeist_css::CssValueOrigin
 #[non_exhaustive] pub enum surgeist_css::CssSupportsTestItem
 pub surgeist_css::CssSupportsTestItem::AtRule(surgeist_css::CssSupportsAtRuleTest)
 pub surgeist_css::CssSupportsTestItem::Declarations(surgeist_css::CssSupportsTestDeclarations)
@@ -11330,12 +11346,20 @@ pub const fn surgeist_css::CssRuleGraphInput<'a>::from_scoped_rule(rule: &'a sur
 pub const fn surgeist_css::CssRuleGraphInput<'a>::group(prelude: surgeist_css::CssEditedGroupPreludeRef<'a>, children: &'a [Self]) -> Self
 pub const fn surgeist_css::CssRuleGraphInput<'a>::import(rule: &'a surgeist_css::CssImportRule, media: &'a surgeist_css::CssMediaQueryList) -> Self
 pub const fn surgeist_css::CssRuleGraphInput<'a>::keyframes(name: &'a surgeist_css::CssKeyframesName, rules: &'a [surgeist_css::CssKeyframeRuleView<'a>]) -> Self
+pub const fn surgeist_css::CssRuleGraphInput<'a>::named_supports(name: &'a surgeist_css::CssSupportsConditionName, current_body: &'a surgeist_css::CssSupportsTestBody) -> Self
 pub const fn surgeist_css::CssRuleGraphInput<'a>::nested_declarations(declarations: &'a surgeist_css::CssSpecifiedDeclarationBlock) -> Self
 pub const fn surgeist_css::CssRuleGraphInput<'a>::page(page: surgeist_css::CssPageRuleView<'a>) -> Self
 pub const fn surgeist_css::CssRuleGraphInput<'a>::scoped_style(selectors: &'a surgeist_css::CssScopedStyleSelectorList, declarations: &'a surgeist_css::CssSpecifiedDeclarationBlock, children: &'a [Self]) -> Self
 pub fn surgeist_css::CssRuleGraphInput<'a>::serialize_cssom(self, namespaces: &surgeist_css::CssNamespaceContext, ancestor: surgeist_css::CssStyleAncestor) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssRuleGraphInput<'a>::serialize_cssom_with_graph_limits(self, namespaces: &surgeist_css::CssNamespaceContext, ancestor: surgeist_css::CssStyleAncestor, limits: surgeist_css::CssRuleGraphSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
 pub fn surgeist_css::CssRuleGraphInput<'a>::serialize_cssom_with_limits(self, namespaces: &surgeist_css::CssNamespaceContext, ancestor: surgeist_css::CssStyleAncestor, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
 pub const fn surgeist_css::CssRuleGraphInput<'a>::style(selectors: &'a surgeist_css::CssStyleSelectorList, declarations: &'a surgeist_css::CssSpecifiedDeclarationBlock, children: &'a [Self]) -> Self
+pub const fn surgeist_css::CssRuleGraphInput<'a>::supports_test_child(child: surgeist_css::CssSupportsTestChildRef<'a>) -> Self
+pub struct surgeist_css::CssRuleGraphSerializationLimits
+pub surgeist_css::CssRuleGraphSerializationLimits::max_depth: usize
+pub surgeist_css::CssRuleGraphSerializationLimits::values: surgeist_css::CssSpecifiedValueSerializationLimits
+impl core::default::Default for surgeist_css::CssRuleGraphSerializationLimits
+pub fn surgeist_css::CssRuleGraphSerializationLimits::default() -> Self
 pub struct surgeist_css::CssRuleList
 impl surgeist_css::CssRuleList
 pub fn surgeist_css::CssRuleList::rules(&self) -> &[surgeist_css::CssRule]
@@ -11998,6 +12022,7 @@ pub fn surgeist_css::CssSpecifiedRuleSerializationError::fmt(&self, formatter: &
 pub struct surgeist_css::CssSpecifiedValueSerializationError
 impl surgeist_css::CssSpecifiedValueSerializationError
 pub const fn surgeist_css::CssSpecifiedValueSerializationError::kind(&self) -> surgeist_css::CssSpecifiedValueSerializationErrorKind
+pub fn surgeist_css::CssSpecifiedValueSerializationError::origin(&self) -> core::option::Option<&surgeist_css::CssValueOrigin>
 impl core::convert::From<surgeist_css::CssSpecifiedValueSerializationError> for surgeist_css::CssDeclarationBlockError
 pub fn surgeist_css::CssDeclarationBlockError::from(error: surgeist_css::CssSpecifiedValueSerializationError) -> Self
 impl core::convert::From<surgeist_css::CssSpecifiedValueSerializationError> for surgeist_css::CssFontFaceDeclarationBlockError
@@ -12195,8 +12220,13 @@ impl surgeist_css::CssSupportsRule
 pub fn surgeist_css::CssSupportsRule::try_new(condition: surgeist_css::CssSupportsCondition, rules: alloc::vec::Vec<surgeist_css::CssRule>, context: &surgeist_css::CssNamespaceContext) -> core::result::Result<Self, surgeist_css::CssRuleConstructionError>
 pub struct surgeist_css::CssSupportsTestBody
 impl surgeist_css::CssSupportsTestBody
+pub fn surgeist_css::CssSupportsTestBody::children(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_css::CssSupportsTestChildRef<'_>>
 pub fn surgeist_css::CssSupportsTestBody::items(&self) -> &[surgeist_css::CssSupportsTestItem]
+pub fn surgeist_css::CssSupportsTestBody::local_recovery_origins(&self) -> &[surgeist_css::CssValueOrigin]
+pub fn surgeist_css::CssSupportsTestBody::recompose_children(&self, children: &[surgeist_css::CssSupportsTestChildRef<'_>]) -> core::result::Result<Self, surgeist_css::CssNamedSupportsConstructionError>
+pub fn surgeist_css::CssSupportsTestBody::recompose_children_with_limits(&self, children: &[surgeist_css::CssSupportsTestChildRef<'_>], limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssNamedSupportsConstructionError>
 pub fn surgeist_css::CssSupportsTestBody::recovery_origin(&self) -> core::option::Option<&surgeist_css::CssValueOrigin>
+pub fn surgeist_css::CssSupportsTestBody::recovery_origins(&self) -> impl core::iter::traits::iterator::Iterator<Item = &surgeist_css::CssValueOrigin>
 pub fn surgeist_css::CssSupportsTestBody::serialize(&self) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
 pub fn surgeist_css::CssSupportsTestBody::serialize_with_limit(&self, max_css_bytes: usize) -> core::result::Result<surgeist_css::CssSerializedValue, surgeist_css::CssComponentValueError>
 pub fn surgeist_css::CssSupportsTestBody::try_from_components(values: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssNamedSupportsConstructionError>
@@ -12204,6 +12234,8 @@ pub fn surgeist_css::CssSupportsTestBody::try_from_components_with_limits(values
 impl surgeist_css::CssSupportsTestBody
 pub fn surgeist_css::CssSupportsTestBody::to_specified_css(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssSupportsTestBody::to_specified_css_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssSupportsTestBody
+pub fn surgeist_css::CssSupportsTestBody::to_specified_css_with_graph_limits(&self, limits: surgeist_css::CssRuleGraphSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssSupportsTestDeclaration
 impl surgeist_css::CssSupportsTestDeclaration
 pub fn surgeist_css::CssSupportsTestDeclaration::components(&self) -> &[surgeist_css::CssComponentValue]
@@ -13231,6 +13263,10 @@ pub fn surgeist_css::parse_style_block(source: &str, context: &surgeist_css::Css
 pub fn surgeist_css::parse_style_selector_list(source: &str, namespaces: &surgeist_css::CssNamespaceContext, context: surgeist_css::CssStyleSelectorContext) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssParsedStyleSelectors>>
 pub fn surgeist_css::parse_style_selector_list_with_limits(source: &str, namespaces: &surgeist_css::CssNamespaceContext, context: surgeist_css::CssStyleSelectorContext, limits: surgeist_css::CssComponentValueLimits) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssParsedStyleSelectors>>
 pub fn surgeist_css::parse_supports_test_block(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<surgeist_css::CssSupportsTestBody>>>
+pub fn surgeist_css::parse_supports_test_child(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssSupportsTestChild>>
+pub fn surgeist_css::parse_supports_test_child_with_limits(source: &str, limits: surgeist_css::CssComponentValueLimits) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssSupportsTestChild>>
+pub fn surgeist_css::parse_supports_test_contents(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssSupportsTestBody>>
+pub fn surgeist_css::parse_supports_test_contents_with_limits(source: &str, limits: surgeist_css::CssComponentValueLimits) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssSupportsTestBody>>
 pub fn surgeist_css::parse_when_condition(source: &str) -> core::result::Result<surgeist_css::CssWhenCondition, surgeist_css::CssWhenConstructionError>
 pub fn surgeist_css::parse_when_condition_with_limits(source: &str, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<surgeist_css::CssWhenCondition, surgeist_css::CssWhenConstructionError>
 pub fn surgeist_css::property_support_metadata(name: &str) -> core::option::Option<surgeist_css::CssPropertySupportMetadata>

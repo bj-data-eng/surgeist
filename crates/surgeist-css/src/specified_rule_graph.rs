@@ -296,10 +296,27 @@ impl SpecifiedRuleWriter {
                         if format == Format::Cssom {
                             push(&mut work, Event::EndRule(index.is_some()))?;
                         }
+                        self.graph_depth = path.len();
+                        self.check_graph_depth(self.graph_depth)
+                            .map_err(|error| match kind {
+                                EditedRuleKind::NamedSupports(name, _) => {
+                                    error.at_origin(name.origin())
+                                }
+                                EditedRuleKind::SupportsTestChild(child) => {
+                                    error.at_origin(child.origin())
+                                }
+                                _ => error,
+                            })?;
                         self.node()?;
                         match kind {
                             EditedRuleKind::Parsed(_) | EditedRuleKind::ParsedScoped(_) => {
                                 unreachable!("parsed event forwarded")
+                            }
+                            EditedRuleKind::NamedSupports(name, body) => {
+                                self.named_supports_current(name, body)?;
+                            }
+                            EditedRuleKind::SupportsTestChild(child) => {
+                                self.named_supports_child(child)?;
                             }
                             EditedRuleKind::Page(page) => {
                                 self.append_selected_page(page, &mut margin_rule_index)?;
@@ -489,6 +506,8 @@ impl SpecifiedRuleWriter {
                         }
                         if format == Format::Cssom {
                             push(&mut work, Event::EndRule(index.is_some()))?;
+                            self.graph_depth = path.len();
+                            self.check_graph_depth(self.graph_depth)?;
                         }
                         match rule {
                             CssRule::Namespace(rule) => self.namespace(rule)?,
@@ -745,6 +764,8 @@ impl SpecifiedRuleWriter {
                         }
                         if format == Format::Cssom {
                             push(&mut work, Event::EndRule(index.is_some()))?;
+                            self.graph_depth = path.len();
+                            self.check_graph_depth(self.graph_depth)?;
                         }
                         match rule {
                             CssScopedRule::CounterStyle(rule) => {

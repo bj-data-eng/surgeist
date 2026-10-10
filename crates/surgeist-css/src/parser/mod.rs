@@ -237,6 +237,10 @@ use supports::{parse_supports_condition, with_supports_prelude_context};
 use ui::*;
 use will_change::*;
 pub(crate) mod named_supports;
+pub use named_supports::{
+    parse_supports_test_child, parse_supports_test_child_with_limits, parse_supports_test_contents,
+    parse_supports_test_contents_with_limits,
+};
 use speech::*;
 use text_alignment::*;
 use text_flow::*;

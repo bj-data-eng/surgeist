@@ -886,7 +886,7 @@ impl CssComponentValue {
         })
     }
 
-    fn child_values(&self) -> Option<&CssComponentValues> {
+    pub(crate) fn child_values(&self) -> Option<&CssComponentValues> {
         match &self.data {
             ComponentData::Function(function) => Some(&function.values),
             ComponentData::Block(block) => Some(&block.values),
@@ -1145,36 +1145,8 @@ impl CssComponentValues {
         &self,
         limits: CssComponentValueLimits,
     ) -> Result<(), CssComponentValueError> {
-        let mut pending: Vec<_> = self
-            .items
-            .iter()
-            .rev()
-            .map(|component| (component, 0))
-            .collect();
-        let mut count = 0usize;
-        while let Some((component, depth)) = pending.pop() {
-            count = count.checked_add(1).ok_or_else(|| {
-                CssComponentValueError::new(
-                    CssComponentValueErrorKind::CapacityOverflow,
-                    component.origin().clone(),
-                )
-            })?;
-            if count > limits.max_components {
-                return Err(CssComponentValueError::new(
-                    CssComponentValueErrorKind::ComponentLimit,
-                    component.origin().clone(),
-                ));
-            }
-            if let Some(children) = component.child_values() {
-                if depth >= limits.max_depth {
-                    return Err(CssComponentValueError::new(
-                        CssComponentValueErrorKind::NestingLimit,
-                        component.origin().clone(),
-                    ));
-                }
-                pending.extend(children.items.iter().rev().map(|child| (child, depth + 1)));
-            }
-        }
+        let mut context = ComponentAdmission::new(limits);
+        context.visit(self.items(), 0)?;
         serialize::validate(self, limits.max_css_bytes)
     }
 
@@ -1633,5 +1605,70 @@ mod original_region_tests {
                 .kind(),
             crate::CssSpecifiedValueSerializationErrorKind::UnserializableBoundary
         );
+    }
+}
+
+/// The native validator's component/depth work shared across borrowed slices.
+pub(crate) struct ComponentAdmission {
+    limits: CssComponentValueLimits,
+    count: usize,
+}
+impl ComponentAdmission {
+    pub(crate) fn new(limits: CssComponentValueLimits) -> Self {
+        Self { limits, count: 0 }
+    }
+    pub(crate) fn grammar(
+        &mut self,
+        origin: &CssValueOrigin,
+    ) -> Result<(), CssComponentValueError> {
+        self.count = self.count.checked_add(1).ok_or_else(|| {
+            CssComponentValueError::new(
+                CssComponentValueErrorKind::CapacityOverflow,
+                origin.clone(),
+            )
+        })?;
+        if self.count > self.limits.max_components {
+            return Err(CssComponentValueError::new(
+                CssComponentValueErrorKind::ComponentLimit,
+                origin.clone(),
+            ));
+        }
+        Ok(())
+    }
+    pub(crate) fn visit(
+        &mut self,
+        values: &[CssComponentValue],
+        depth: usize,
+    ) -> Result<(), CssComponentValueError> {
+        let mut pending: Vec<_> = values
+            .iter()
+            .rev()
+            .map(|component| (component, depth))
+            .collect();
+
+        while let Some((component, depth)) = pending.pop() {
+            self.count = self.count.checked_add(1).ok_or_else(|| {
+                CssComponentValueError::new(
+                    CssComponentValueErrorKind::CapacityOverflow,
+                    component.origin().clone(),
+                )
+            })?;
+            if self.count > self.limits.max_components {
+                return Err(CssComponentValueError::new(
+                    CssComponentValueErrorKind::ComponentLimit,
+                    component.origin().clone(),
+                ));
+            }
+            if let Some(children) = component.child_values() {
+                if depth >= self.limits.max_depth as usize {
+                    return Err(CssComponentValueError::new(
+                        CssComponentValueErrorKind::NestingLimit,
+                        component.origin().clone(),
+                    ));
+                }
+                pending.extend(children.items.iter().rev().map(|child| (child, depth + 1)));
+            }
+        }
+        Ok(())
     }
 }

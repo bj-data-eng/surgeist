@@ -128,6 +128,7 @@ impl CssRuleCssomSerializationError {
                 value @ (CssSpecifiedValueSerializationErrorKind::InputNodeLimit
                 | CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
                 | CssSpecifiedValueSerializationErrorKind::ByteLimit
+                | CssSpecifiedValueSerializationErrorKind::DepthLimit
                 | CssSpecifiedValueSerializationErrorKind::CapacityOverflow),
             ) => CssRuleCssomSerializationErrorKind::Resource(value),
             Some(value) => CssRuleCssomSerializationErrorKind::Value(value),

@@ -170,6 +170,7 @@ impl SpecifiedRuleWriter {
         }
         for (index, margin) in rule.margin_rules().iter().enumerate() {
             *margin_index = Some(index);
+            self.check_graph_child_depth()?;
             self.append_margin_cssom(margin)?;
             *margin_index = None;
             self.append(" ")?;

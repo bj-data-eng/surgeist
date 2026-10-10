@@ -1744,7 +1744,9 @@ mod supports;
 pub use supports::{CssSupportsAtRule, CssSupportsConstructionError};
 mod cssom_rule_serialization;
 mod edited_rule;
-pub use edited_rule::{CssEditedGroupPreludeRef, CssEditedRuleView, CssRuleGraphInput};
+pub use edited_rule::{
+    CssEditedGroupPreludeRef, CssEditedRuleView, CssRuleGraphInput, CssRuleGraphSerializationLimits,
+};
 mod keyframe_matching;
 mod keyframe_serialization;
 pub use keyframe_matching::{
@@ -1755,6 +1757,7 @@ pub use keyframe_serialization::{
     CssKeyframeRuleView, CssKeyframeRuleViewError, CssKeyframesRuleView,
 };
 mod media;
+mod named_supports_composition;
 mod named_supports_serialization;
 mod page_keyframe_serialization;
 mod page_projection;
@@ -2076,6 +2079,8 @@ pub use parser::{
     parse_relative_selector_list, parse_rule, parse_scope_block, parse_scoped_group_block,
     parse_selector, parse_selector_list, parse_sheet, parse_style_attribute, parse_style_block,
     parse_style_selector_list, parse_style_selector_list_with_limits, parse_supports_test_block,
+    parse_supports_test_child, parse_supports_test_child_with_limits, parse_supports_test_contents,
+    parse_supports_test_contents_with_limits,
 };
 pub use properties::*;
 pub use property_value::{

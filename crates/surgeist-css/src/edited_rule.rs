@@ -62,6 +62,11 @@ pub(crate) enum EditedRuleKind<'a> {
     Keyframes(crate::CssKeyframesRuleView<'a>),
     Import(crate::CssImportRuleView<'a>),
     FontFace(&'a crate::CssSpecifiedFontFaceDeclarationBlock),
+    NamedSupports(
+        &'a crate::CssSupportsConditionName,
+        &'a crate::CssSupportsTestBody,
+    ),
+    SupportsTestChild(crate::CssSupportsTestChildRef<'a>),
 }
 
 /// Borrowed current rule-graph input, admitted by one final CSSOM writer request.
@@ -166,6 +171,39 @@ impl<'a> CssRuleGraphInput<'a> {
         Self {
             kind: EditedRuleKind::Import(crate::CssImportRuleView::from_checked_parts(rule, media)),
         }
+    }
+    /// Selects Surgeist #644 canonical named-support bytes over a current body.
+    /// This explicit opt-in does not change the standard parsed rule serializer.
+    pub const fn named_supports(
+        name: &'a crate::CssSupportsConditionName,
+        current_body: &'a crate::CssSupportsTestBody,
+    ) -> Self {
+        Self {
+            kind: EditedRuleKind::NamedSupports(name, current_body),
+        }
+    }
+    /// Inert test child; it is never admitted as an ordinary rendering rule.
+    pub const fn supports_test_child(child: crate::CssSupportsTestChildRef<'a>) -> Self {
+        Self {
+            kind: EditedRuleKind::SupportsTestChild(child),
+        }
+    }
+    /// Root depth is zero; ordinary/test children add one, body/run containers
+    /// are transparent; named-test component enclosures add depth beneath their
+    /// leaf. Other semantic-value writers retain their selected value quotas.
+    /// A root-one consumer must admit its root then subtract one (or its actual
+    /// selected subtree depth) before passing the remaining native allowance.
+    /// One writer owns all graph/payload work and output; failure is atomic.
+    pub fn serialize_cssom_with_graph_limits(
+        self,
+        namespaces: &crate::CssNamespaceContext,
+        ancestor: crate::CssStyleAncestor,
+        limits: CssRuleGraphSerializationLimits,
+    ) -> Result<String, CssRuleCssomSerializationError> {
+        let mut writer = SpecifiedRuleWriter::new(limits.values);
+        writer.max_graph_depth = Some(limits.max_depth);
+        writer.append_rule_graph_input(self, namespaces, ancestor)?;
+        Ok(writer.css)
     }
     pub fn serialize_cssom(
         self,
@@ -430,5 +468,23 @@ impl<'a> CssEditedRuleView<'a> {
         let mut writer = SpecifiedRuleWriter::new(limits);
         writer.append_edited_rule_graph(self, cssom)?;
         Ok(writer.css)
+    }
+}
+
+/// Limits for the explicitly structural-depth-bounded native graph operation.
+/// Root depth is zero. Rule-child edges include native Page margins and Keyframe
+/// blocks; named-support candidate/component nesting also contributes depth.
+/// Existing value-only serialization limits remain independent domain requests.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CssRuleGraphSerializationLimits {
+    pub values: CssSpecifiedValueSerializationLimits,
+    pub max_depth: usize,
+}
+impl Default for CssRuleGraphSerializationLimits {
+    fn default() -> Self {
+        Self {
+            values: CssSpecifiedValueSerializationLimits::default(),
+            max_depth: 256,
+        }
     }
 }

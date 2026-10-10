@@ -288,6 +288,7 @@ impl SpecifiedRuleWriter {
         }
         for (index, margin) in page.margins.iter().enumerate() {
             *child = Some(index);
+            self.check_graph_child_depth()?;
             self.append_selected_margin(*margin)?;
             *child = None;
             self.append(" ")?;

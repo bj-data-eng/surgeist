@@ -56,6 +56,7 @@ pub struct CssSupportsTestDeclaration {
     pub(crate) importance_range: Option<Range<usize>>,
     pub(crate) name: String,
     pub(crate) terminator: CssValueOrigin,
+    pub(crate) recovery: Vec<CssValueOrigin>,
 }
 
 impl CssSupportsTestDeclaration {
@@ -113,44 +114,69 @@ impl CssSupportsTestDeclarations {
 /// A generic qualified rule tested by a named supports definition.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssSupportsQualifiedRuleTest {
+    pub(crate) data: Box<SupportsQualifiedRuleTestData>,
+}
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct SupportsQualifiedRuleTestData {
     pub(crate) prelude: CssComponentValues,
     pub(crate) body: Box<CssSupportsTestBody>,
     pub(crate) opening: CssValueOrigin,
     pub(crate) closing: CssValueOrigin,
+    pub(crate) recovery: Vec<CssValueOrigin>,
 }
 
 impl CssSupportsQualifiedRuleTest {
+    pub(crate) fn new(
+        prelude: CssComponentValues,
+        body: Box<CssSupportsTestBody>,
+        opening: CssValueOrigin,
+        closing: CssValueOrigin,
+    ) -> Self {
+        let recovery = retained_component_recovery(prelude.items());
+        Self {
+            data: Box::new(SupportsQualifiedRuleTestData {
+                prelude,
+                body,
+                opening,
+                closing,
+                recovery,
+            }),
+        }
+    }
+
     pub fn prelude(&self) -> &CssComponentValues {
-        &self.prelude
+        &self.data.prelude
     }
 
     pub fn body(&self) -> &CssSupportsTestBody {
-        &self.body
+        &self.data.body
     }
 
     pub fn origin(&self) -> &CssValueOrigin {
-        self.prelude
+        self.data
+            .prelude
             .items()
             .iter()
             .find(|value| !crate::supports::trivia(value))
-            .map_or(&self.opening, CssComponentValue::origin)
+            .map_or(&self.data.opening, CssComponentValue::origin)
     }
 }
 
 /// A generic at-rule test, including unknown future at-rules.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssSupportsAtRuleTest {
-    data: Box<SupportsAtRuleTestData>,
+    pub(crate) data: Box<SupportsAtRuleTestData>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct SupportsAtRuleTestData {
+pub(crate) struct SupportsAtRuleTestData {
     name: String,
     at_keyword: CssComponentValue,
     prelude: CssComponentValues,
     body: Option<Box<CssSupportsTestBody>>,
-    opening: Option<CssValueOrigin>,
-    closing: CssValueOrigin,
+    pub(crate) opening: Option<CssValueOrigin>,
+    pub(crate) closing: CssValueOrigin,
+    recovery: Vec<CssValueOrigin>,
 }
 
 impl CssSupportsAtRuleTest {
@@ -162,6 +188,7 @@ impl CssSupportsAtRuleTest {
         opening: Option<CssValueOrigin>,
         closing: CssValueOrigin,
     ) -> Self {
+        let recovery = retained_component_recovery(prelude.items());
         Self {
             data: Box::new(SupportsAtRuleTestData {
                 name,
@@ -170,6 +197,7 @@ impl CssSupportsAtRuleTest {
                 body,
                 opening,
                 closing,
+                recovery,
             }),
         }
     }
@@ -208,6 +236,7 @@ pub enum CssSupportsTestItem {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssSupportsTestBody {
     pub(crate) items: Vec<CssSupportsTestItem>,
+    pub(crate) local_recovery: Vec<CssValueOrigin>,
     pub(crate) recovery_origin: Option<CssValueOrigin>,
 }
 
@@ -240,6 +269,95 @@ impl CssSupportsTestBody {
 
     pub fn recovery_origin(&self) -> Option<&CssValueOrigin> {
         self.recovery_origin.as_ref()
+    }
+
+    /// Recovery owned by this body, independent of its retained children.
+    pub fn local_recovery_origins(&self) -> &[CssValueOrigin] {
+        &self.local_recovery
+    }
+
+    /// Current local-first union; historical report diagnostics are separate.
+    pub fn recovery_origins(&self) -> impl Iterator<Item = &CssValueOrigin> {
+        RecoveryOrigins {
+            pending: vec![RecoveryEvent::Body(self)],
+        }
+    }
+
+    pub(crate) fn from_parts(
+        items: Vec<CssSupportsTestItem>,
+        local_recovery: Vec<CssValueOrigin>,
+    ) -> Self {
+        let recovery_origin = local_recovery.first().cloned().or_else(|| {
+            children(&items).find_map(|child| child.recovery_origins().next().cloned())
+        });
+        Self {
+            items,
+            local_recovery,
+            recovery_origin,
+        }
+    }
+
+    /// Flatten declaration runs without allocating or changing source occurrences.
+    pub fn children(&self) -> impl Iterator<Item = CssSupportsTestChildRef<'_>> {
+        children(&self.items)
+    }
+
+    /// Rebuilds runs from checked occurrences. Only this receiver's body-local
+    /// recovery persists; the descendant union follows the supplied child order.
+    pub fn recompose_children(
+        &self,
+        children: &[CssSupportsTestChildRef<'_>],
+    ) -> Result<Self, CssNamedSupportsConstructionError> {
+        self.recompose_children_with_limits(children, CssComponentValueLimits::default())
+    }
+    /// One native component/depth context and counting token sink admit the joint
+    /// borrowed payload before cloning. Counting retains no output/map and never
+    /// reparses or supplies semantics for reconstruction. Failure is atomic.
+    pub fn recompose_children_with_limits(
+        &self,
+        children: &[CssSupportsTestChildRef<'_>],
+        limits: CssComponentValueLimits,
+    ) -> Result<Self, CssNamedSupportsConstructionError> {
+        crate::named_supports_composition::admit(children, limits)?;
+        let mut items = Vec::new();
+        items.try_reserve(children.len()).map_err(|_| {
+            CssComponentValueError::new(
+                crate::CssComponentValueErrorKind::CapacityOverflow,
+                children
+                    .first()
+                    .map_or(CssValueOrigin::Programmatic, |v| v.origin().clone()),
+            )
+        })?;
+        let mut run = Vec::new();
+        for child in children {
+            match child {
+                CssSupportsTestChildRef::Declaration(v) => run.push((*v).clone()),
+                _ => {
+                    if !run.is_empty() {
+                        items.push(CssSupportsTestItem::Declarations(
+                            CssSupportsTestDeclarations {
+                                declarations: std::mem::take(&mut run),
+                            },
+                        ));
+                    }
+                    items.push(match child {
+                        CssSupportsTestChildRef::QualifiedRule(v) => {
+                            CssSupportsTestItem::QualifiedRule((*v).clone())
+                        }
+                        CssSupportsTestChildRef::AtRule(v) => {
+                            CssSupportsTestItem::AtRule((*v).clone())
+                        }
+                        CssSupportsTestChildRef::Declaration(_) => unreachable!("run handled"),
+                    });
+                }
+            }
+        }
+        if !run.is_empty() {
+            items.push(CssSupportsTestItem::Declarations(
+                CssSupportsTestDeclarations { declarations: run },
+            ));
+        }
+        Ok(Self::from_parts(items, self.local_recovery.clone()))
     }
 
     pub fn serialize(&self) -> Result<CssSerializedValue, CssComponentValueError> {
@@ -275,10 +393,10 @@ impl CssSupportsTestBody {
                     }
                 }
                 Event::Item(CssSupportsTestItem::QualifiedRule(rule)) => {
-                    out.push_components(rule.prelude.items())?;
-                    out.push_grammar(CssCanonicalToken::OpenBrace, &rule.opening)?;
-                    pending.push(Event::Close(&rule.closing));
-                    pending.push(Event::Body(&rule.body));
+                    out.push_components(rule.data.prelude.items())?;
+                    out.push_grammar(CssCanonicalToken::OpenBrace, &rule.data.opening)?;
+                    pending.push(Event::Close(&rule.data.closing));
+                    pending.push(Event::Body(&rule.data.body));
                 }
                 Event::Item(CssSupportsTestItem::AtRule(rule)) => {
                     out.push_component(&rule.data.at_keyword)?;
@@ -465,5 +583,144 @@ impl std::error::Error for CssNamedSupportsConstructionError {
             Self::Component(error) => Some(error),
             _ => None,
         }
+    }
+}
+
+/// One inert direct child. Nested candidate bodies remain immutable CSS payload.
+#[derive(Clone, Debug, PartialEq)]
+pub enum CssSupportsTestChild {
+    Declaration(CssSupportsTestDeclaration),
+    QualifiedRule(CssSupportsQualifiedRuleTest),
+    AtRule(CssSupportsAtRuleTest),
+}
+
+/// Borrowed direct-child projection, transparent to native serialization costs.
+#[derive(Clone, Copy, Debug)]
+pub enum CssSupportsTestChildRef<'a> {
+    Declaration(&'a CssSupportsTestDeclaration),
+    QualifiedRule(&'a CssSupportsQualifiedRuleTest),
+    AtRule(&'a CssSupportsAtRuleTest),
+}
+impl CssSupportsTestChild {
+    pub fn as_ref(&self) -> CssSupportsTestChildRef<'_> {
+        match self {
+            Self::Declaration(v) => CssSupportsTestChildRef::Declaration(v),
+            Self::QualifiedRule(v) => CssSupportsTestChildRef::QualifiedRule(v),
+            Self::AtRule(v) => CssSupportsTestChildRef::AtRule(v),
+        }
+    }
+}
+impl<'a> CssSupportsTestChildRef<'a> {
+    pub fn origin(self) -> &'a CssValueOrigin {
+        match self {
+            Self::Declaration(v) => v.origin(),
+            Self::QualifiedRule(v) => v.origin(),
+            Self::AtRule(v) => v.origin(),
+        }
+    }
+    pub(crate) fn recovery_origins(self) -> impl Iterator<Item = &'a CssValueOrigin> {
+        RecoveryOrigins {
+            pending: vec![RecoveryEvent::Child(self)],
+        }
+    }
+}
+fn children(items: &[CssSupportsTestItem]) -> impl Iterator<Item = CssSupportsTestChildRef<'_>> {
+    items.iter().flat_map(|item| {
+        let (declarations, candidate) = match item {
+            CssSupportsTestItem::Declarations(v) => (v.declarations(), None),
+            CssSupportsTestItem::QualifiedRule(v) => {
+                (&[][..], Some(CssSupportsTestChildRef::QualifiedRule(v)))
+            }
+            CssSupportsTestItem::AtRule(v) => (&[][..], Some(CssSupportsTestChildRef::AtRule(v))),
+        };
+        declarations
+            .iter()
+            .map(CssSupportsTestChildRef::Declaration)
+            .chain(candidate)
+    })
+}
+/// Capture component closures at their retained candidate, not on its parent body.
+pub(crate) fn retained_component_recovery(values: &[CssComponentValue]) -> Vec<CssValueOrigin> {
+    let mut pending: Vec<_> = values.iter().rev().collect();
+    let mut origins = Vec::new();
+    while let Some(value) = pending.pop() {
+        if let Some(origin) = value.implicit_termination_origin() {
+            origins.push(origin.clone());
+        }
+        if let Some(children) = value.child_values() {
+            pending.extend(children.items().iter().rev());
+        }
+    }
+    origins
+}
+
+// Borrowed current union uses only traversal continuations, not cloned ancestor
+// copies of every descendant fault. Body/run containers remain transparent.
+enum RecoveryEvent<'a> {
+    Body(&'a CssSupportsTestBody),
+    Items(&'a [CssSupportsTestItem]),
+    Declarations(&'a [CssSupportsTestDeclaration]),
+    Child(CssSupportsTestChildRef<'a>),
+    Origins(&'a [CssValueOrigin]),
+}
+struct RecoveryOrigins<'a> {
+    pending: Vec<RecoveryEvent<'a>>,
+}
+impl<'a> Iterator for RecoveryOrigins<'a> {
+    type Item = &'a CssValueOrigin;
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(event) = self.pending.pop() {
+            match event {
+                RecoveryEvent::Body(body) => {
+                    self.pending.push(RecoveryEvent::Items(&body.items));
+                    self.pending
+                        .push(RecoveryEvent::Origins(&body.local_recovery));
+                }
+                RecoveryEvent::Items(items) => {
+                    if let Some((first, rest)) = items.split_first() {
+                        self.pending.push(RecoveryEvent::Items(rest));
+                        match first {
+                            CssSupportsTestItem::Declarations(run) => self
+                                .pending
+                                .push(RecoveryEvent::Declarations(run.declarations())),
+                            CssSupportsTestItem::QualifiedRule(v) => self.pending.push(
+                                RecoveryEvent::Child(CssSupportsTestChildRef::QualifiedRule(v)),
+                            ),
+                            CssSupportsTestItem::AtRule(v) => self
+                                .pending
+                                .push(RecoveryEvent::Child(CssSupportsTestChildRef::AtRule(v))),
+                        }
+                    }
+                }
+                RecoveryEvent::Declarations(values) => {
+                    if let Some((first, rest)) = values.split_first() {
+                        self.pending.push(RecoveryEvent::Declarations(rest));
+                        self.pending.push(RecoveryEvent::Origins(&first.recovery));
+                    }
+                }
+                RecoveryEvent::Child(child) => match child {
+                    CssSupportsTestChildRef::Declaration(v) => {
+                        self.pending.push(RecoveryEvent::Origins(&v.recovery))
+                    }
+                    CssSupportsTestChildRef::QualifiedRule(v) => {
+                        self.pending.push(RecoveryEvent::Body(v.body()));
+                        self.pending.push(RecoveryEvent::Origins(&v.data.recovery));
+                    }
+                    CssSupportsTestChildRef::AtRule(v) => {
+                        if let Some(body) = v.body() {
+                            self.pending.push(RecoveryEvent::Body(body));
+                        }
+                        self.pending.push(RecoveryEvent::Origins(&v.data.recovery));
+                    }
+                },
+                RecoveryEvent::Origins(origins) => {
+                    if let Some((first, rest)) = origins.split_first() {
+                        self.pending.push(RecoveryEvent::Origins(rest));
+                        return Some(first);
+                    }
+                }
+            }
+        }
+        None
     }
 }

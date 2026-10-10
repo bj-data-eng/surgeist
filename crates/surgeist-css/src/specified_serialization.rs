@@ -56,6 +56,8 @@ pub enum CssSpecifiedValueSerializationErrorKind {
     InputNodeLimit,
     ProjectionNodeLimit,
     ByteLimit,
+    /// The explicitly depth-bounded graph operation exceeded structural depth.
+    DepthLimit,
     CapacityOverflow,
     /// Retained component boundaries cannot be emitted without changing tokens.
     UnserializableBoundary,
@@ -71,11 +73,23 @@ pub enum CssSpecifiedValueSerializationErrorKind {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssSpecifiedValueSerializationError {
     kind: CssSpecifiedValueSerializationErrorKind,
+    origin: Option<Box<crate::CssValueOrigin>>,
 }
 
 impl CssSpecifiedValueSerializationError {
     pub(crate) const fn new(kind: CssSpecifiedValueSerializationErrorKind) -> Self {
-        Self { kind }
+        Self { kind, origin: None }
+    }
+    /// Genuine owning/component provenance when the selected operation has an
+    /// attributable witness. A programmatic graph wrapper can have no origin.
+    pub fn origin(&self) -> Option<&crate::CssValueOrigin> {
+        self.origin.as_deref()
+    }
+    pub(crate) fn at_origin(mut self, origin: &crate::CssValueOrigin) -> Self {
+        if self.origin.is_none() {
+            self.origin = Some(Box::new(origin.clone()));
+        }
+        self
     }
     #[must_use]
     pub const fn kind(&self) -> CssSpecifiedValueSerializationErrorKind {
@@ -93,6 +107,9 @@ impl fmt::Display for CssSpecifiedValueSerializationError {
             }
             CssSpecifiedValueSerializationErrorKind::ByteLimit => {
                 "specified-value CSS byte limit exceeded"
+            }
+            CssSpecifiedValueSerializationErrorKind::DepthLimit => {
+                "CSS graph structural depth limit exceeded"
             }
             CssSpecifiedValueSerializationErrorKind::CapacityOverflow => {
                 "specified-value capacity calculation overflowed"

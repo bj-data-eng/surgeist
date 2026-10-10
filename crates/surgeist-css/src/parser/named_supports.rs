@@ -9,7 +9,8 @@ use crate::syntax_consumption::{
 };
 use crate::{
     CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueErrorKind,
-    CssComponentValueLimits, CssRecoveryAction, CssRecoveryDiagnostic, CssValueOrigin,
+    CssComponentValueLimits, CssParseReport, CssRecoveryAction, CssRecoveryDiagnostic,
+    CssValueOrigin,
 };
 use cssparser::{ParseError, Parser, ParserState};
 
@@ -323,32 +324,24 @@ struct PendingQualified {
 struct PartitionFrame<'a> {
     cursor: SyntaxCursor<'a>,
     closing: Option<CssValueOrigin>,
-    initial_issues: usize,
+    local_recovery: Vec<CssValueOrigin>,
     items: Vec<CssSupportsTestItem>,
     run: Vec<CssSupportsTestDeclaration>,
     pending: Option<PendingChild>,
-    implicit: Option<CssValueOrigin>,
 }
 impl<'a> PartitionFrame<'a> {
     fn new(
         document: &'a SyntaxDocument<'a>,
         list: ListId,
         closing: Option<CssValueOrigin>,
-        initial_issues: usize,
     ) -> Self {
         Self {
             cursor: document.cursor(list),
             closing,
-            initial_issues,
+            local_recovery: Vec::new(),
             items: Vec::new(),
             run: Vec::new(),
             pending: None,
-            implicit: None,
-        }
-    }
-    fn retain_implicit(&mut self, values: &CssComponentValues) {
-        if self.implicit.is_none() {
-            self.implicit = values.first_implicit_origin().cloned();
         }
     }
 }
@@ -360,28 +353,27 @@ fn partition(
     recover: bool,
     issues: &mut Vec<PartitionIssue>,
 ) -> Result<CssSupportsTestBody, CssComponentValueError> {
-    let mut frames = vec![PartitionFrame::new(document, list, closing, issues.len())];
+    let mut frames = vec![PartitionFrame::new(document, list, closing)];
     loop {
         let frame = frames.last_mut().expect("partition frame");
-        frame.cursor.skip_trivia();
+        while let CursorItem::Node(node) = frame.cursor.peek() {
+            if !document.nodes[node].is_trivia() {
+                break;
+            }
+            frame.local_recovery.extend(retained_component_recovery(
+                promote(document, &[node])?.items(),
+            ));
+            frame.cursor.consume();
+        }
         let CursorItem::Node(first) = frame.cursor.peek() else {
             flush_run(&mut frame.run, &mut frame.items);
-            let completed = CssSupportsTestBody {
-                items: std::mem::take(&mut frame.items),
-                recovery_origin: issues
-                    .get(frame.initial_issues)
-                    .map(|issue| issue.origin().clone())
-                    .or_else(|| frame.implicit.clone())
-                    .or_else(|| {
-                        frame
-                            .closing
-                            .as_ref()
-                            .filter(|origin| {
-                                matches!(origin, CssValueOrigin::ImplicitClosure { .. })
-                            })
-                            .cloned()
-                    }),
-            };
+            if let Some(origin @ CssValueOrigin::ImplicitClosure { .. }) = &frame.closing {
+                frame.local_recovery.push(origin.clone());
+            }
+            let completed = CssSupportsTestBody::from_parts(
+                std::mem::take(&mut frame.items),
+                std::mem::take(&mut frame.local_recovery),
+            );
             frames.pop();
             let Some(parent) = frames.last_mut() else {
                 return Ok(completed);
@@ -399,18 +391,26 @@ fn partition(
                                 Some(pending.opening),
                                 pending.closing,
                             )));
+                    } else {
+                        parent
+                            .local_recovery
+                            .extend(completed.recovery_origins().cloned());
                     }
                 }
                 PendingChild::Qualified(pending) => {
                     if !pending.malformed {
                         parent.items.push(CssSupportsTestItem::QualifiedRule(
-                            CssSupportsQualifiedRuleTest {
-                                prelude: pending.prelude,
-                                body: Box::new(completed),
-                                opening: pending.opening,
-                                closing: pending.closing,
-                            },
+                            CssSupportsQualifiedRuleTest::new(
+                                pending.prelude,
+                                Box::new(completed),
+                                pending.opening,
+                                pending.closing,
+                            ),
                         ));
+                    } else {
+                        parent
+                            .local_recovery
+                            .extend(completed.recovery_origins().cloned());
                     }
                 }
             }
@@ -424,18 +424,23 @@ fn partition(
             let name = name.to_owned();
             flush_run(&mut frame.run, &mut frame.items);
             let candidate = syntax::consume_at_rule(&mut frame.cursor);
+            let issue_start = issues.len();
             let malformed = faults(
                 document,
                 &candidate.prelude,
                 CssRecoveryAction::DropAtRule,
                 issues,
             );
+            frame.local_recovery.extend(
+                issues[issue_start..]
+                    .iter()
+                    .map(|issue| issue.origin().clone()),
+            );
             let prelude = if malformed {
                 CssComponentValues::try_new(Vec::new())?
             } else {
                 promote(document, &candidate.prelude)?
             };
-            frame.retain_implicit(&prelude);
             let at_keyword = promote(document, &[candidate.name])?.items()[0].clone();
             if let Some(block) = candidate.block {
                 let opening = document.nodes[block].token().origin.clone().into_owned();
@@ -452,7 +457,6 @@ fn partition(
                     document,
                     document.nodes[block].children().expect("body"),
                     Some(closing),
-                    issues.len(),
                 ));
             } else if !malformed {
                 let terminator = match candidate.termination {
@@ -469,6 +473,7 @@ fn partition(
             } else if !recover {
                 return Ok(CssSupportsTestBody {
                     items: std::mem::take(&mut frame.items),
+                    local_recovery: Vec::new(),
                     recovery_origin: None,
                 });
             }
@@ -494,7 +499,13 @@ fn partition(
         if let Ok(declaration) = parsed
             && permitted_value
         {
+            let issue_start = issues.len();
             let malformed = faults(document, nodes, CssRecoveryAction::DropDeclaration, issues);
+            frame.local_recovery.extend(
+                issues[issue_start..]
+                    .iter()
+                    .map(|issue| issue.origin().clone()),
+            );
             let terminator = match attempt.peek() {
                 CursorItem::Node(node) => document.nodes[node].token().origin.clone().into_owned(),
                 _ => CssValueOrigin::Programmatic,
@@ -505,7 +516,6 @@ fn partition(
             }
             if !malformed {
                 let components = promote(document, nodes)?;
-                frame.retain_implicit(&components);
                 let TokenKind::Ident(name) = document.nodes[declaration.name].token().kind() else {
                     unreachable!("declaration name");
                 };
@@ -522,11 +532,13 @@ fn partition(
                         None
                     },
                     name: name.to_owned(),
+                    recovery: retained_component_recovery(components.items()),
                     terminator,
                 });
             } else if !recover {
                 return Ok(CssSupportsTestBody {
                     items: std::mem::take(&mut frame.items),
+                    local_recovery: Vec::new(),
                     recovery_origin: None,
                 });
             }
@@ -539,18 +551,23 @@ fn partition(
         };
         if let Some(candidate) = candidate {
             flush_run(&mut frame.run, &mut frame.items);
+            let issue_start = issues.len();
             let malformed = faults(
                 document,
                 &candidate.prelude,
                 CssRecoveryAction::DropQualifiedRule,
                 issues,
             );
+            frame.local_recovery.extend(
+                issues[issue_start..]
+                    .iter()
+                    .map(|issue| issue.origin().clone()),
+            );
             let prelude = if malformed {
                 CssComponentValues::try_new(Vec::new())?
             } else {
                 promote(document, &candidate.prelude)?
             };
-            frame.retain_implicit(&prelude);
             let opening = document.nodes[candidate.block]
                 .token()
                 .origin
@@ -572,16 +589,21 @@ fn partition(
                 document,
                 document.nodes[candidate.block].children().expect("body"),
                 Some(closing),
-                issues.len(),
             ));
             continue;
         }
+        let issue_start = issues.len();
         if !faults(document, nodes, CssRecoveryAction::DropDeclaration, issues) {
             issues.push(PartitionIssue::Grammar(
                 document.nodes[first].token().origin.clone().into_owned(),
                 CssRecoveryAction::DropDeclaration,
             ));
         }
+        frame.local_recovery.extend(
+            issues[issue_start..]
+                .iter()
+                .map(|issue| issue.origin().clone()),
+        );
         frame.cursor = attempt;
         if matches!(frame.cursor.peek(), CursorItem::Node(_)) {
             frame.cursor.consume();
@@ -589,10 +611,111 @@ fn partition(
         if !recover {
             return Ok(CssSupportsTestBody {
                 items: std::mem::take(&mut frame.items),
+                local_recovery: Vec::new(),
                 recovery_origin: None,
             });
         }
     }
+}
+
+/// Admits complete genuine unbraced named-test contents. Recovered syntax is
+/// `Some` with diagnostics; typed resource failure is `None`, never a clearing.
+#[must_use]
+pub fn parse_supports_test_contents(source: &str) -> CssParseReport<Option<CssSupportsTestBody>> {
+    parse_supports_test_contents_with_limits(source, CssComponentValueLimits::default())
+}
+
+/// Whole original input, including discarded units/trivia, shares one arena's
+/// component, byte and structural-depth admission before native partitioning.
+#[must_use]
+pub fn parse_supports_test_contents_with_limits(
+    source: &str,
+    limits: CssComponentValueLimits,
+) -> CssParseReport<Option<CssSupportsTestBody>> {
+    fragments::bounded_execution(source, || {
+        let document = match syntax::source_document_with_limits(source, limits) {
+            Ok(document) => document,
+            Err(error) => {
+                return CssParseReport::new(None, vec![syntax_bridge::arena_error(source, error)]);
+            }
+        };
+        let mut issues = Vec::new();
+        let body = match partition(&document, document.root, None, true, &mut issues) {
+            Ok(body) => body,
+            Err(error) => {
+                return CssParseReport::new(None, vec![syntax_bridge::arena_error(source, error)]);
+            }
+        };
+        let mut diagnostics: Vec<_> = issues
+            .into_iter()
+            .filter_map(|issue| issue_diagnostic(source, issue))
+            .collect();
+        for origin in body.recovery_origins() {
+            if let CssValueOrigin::ImplicitClosure { opening, at } = origin
+                && let Some(diagnostic) = CssRecoveryDiagnostic::new(
+                    crate::error::implicit_eof(source),
+                    crate::CssSourceSpan::new(opening.span().start(), at.span().end())
+                        .expect("actual implicit source extent"),
+                    CssRecoveryAction::RetainWithImplicitClosure,
+                )
+            {
+                diagnostics.push(diagnostic);
+            }
+        }
+        recovery::finish_report(source, CssParseReport::new(Some(body), diagnostics))
+    })
+}
+
+/// Admits exactly one flattened direct child with no discarded candidate or
+/// structural recovery. Empty semicolons/trivia are ignored at every depth.
+#[must_use]
+pub fn parse_supports_test_child(source: &str) -> CssParseReport<Option<CssSupportsTestChild>> {
+    parse_supports_test_child_with_limits(source, CssComponentValueLimits::default())
+}
+
+#[must_use]
+pub fn parse_supports_test_child_with_limits(
+    source: &str,
+    limits: CssComponentValueLimits,
+) -> CssParseReport<Option<CssSupportsTestChild>> {
+    let report = parse_supports_test_contents_with_limits(source, limits);
+    let (body, mut diagnostics) = report.into_parts();
+    let Some(body) = body else {
+        return CssParseReport::new(None, diagnostics);
+    };
+    if !diagnostics.is_empty() || body.recovery_origin().is_some() {
+        return CssParseReport::new(None, diagnostics);
+    }
+    let mut children = body.children();
+    let first = children.next();
+    let extra = children.next();
+    if first.is_none() || extra.is_some() {
+        let snapshot = CssSourceSnapshot::new(source);
+        let origin = extra
+            .map(CssSupportsTestChildRef::origin)
+            .cloned()
+            .unwrap_or_else(|| {
+                CssValueOrigin::Parsed(
+                    CssParsedOrigin::from_range(&snapshot, 0..0).expect("original empty position"),
+                )
+            });
+        let kind = if first.is_none() {
+            CssComponentValueErrorKind::EmptyInput
+        } else {
+            CssComponentValueErrorKind::TrailingInput
+        };
+        diagnostics.push(syntax_bridge::arena_error(
+            source,
+            CssComponentValueError::new(kind, origin),
+        ));
+        return CssParseReport::new(None, diagnostics);
+    }
+    let child = match first.expect("one child") {
+        CssSupportsTestChildRef::Declaration(v) => CssSupportsTestChild::Declaration(v.clone()),
+        CssSupportsTestChildRef::QualifiedRule(v) => CssSupportsTestChild::QualifiedRule(v.clone()),
+        CssSupportsTestChildRef::AtRule(v) => CssSupportsTestChild::AtRule(v.clone()),
+    };
+    CssParseReport::new(Some(child), diagnostics)
 }
 
 #[cfg(test)]
