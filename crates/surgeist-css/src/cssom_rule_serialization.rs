@@ -30,7 +30,6 @@ pub enum CssRuleCssomFormat {
     CustomMedia,
     LayerStatement,
     LayerBlock,
-    Supports,
     Container,
     Scope,
 }

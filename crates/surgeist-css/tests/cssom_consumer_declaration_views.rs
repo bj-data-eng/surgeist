@@ -468,12 +468,16 @@ fn edited_group_views_reuse_preludes_and_retain_typed_literal_unavailability() {
     else {
         panic!("groups");
     };
+    let supports_view = View::try_group(Prelude::Supports(supports.condition()), &[]).unwrap();
+    assert_eq!(
+        supports_view.to_specified_css().unwrap(),
+        "@supports (display:grid) { }"
+    );
+    assert_eq!(
+        supports_view.serialize_cssom().unwrap(),
+        "@supports (display:grid) {\n}"
+    );
     for (prelude, expected, format) in [
-        (
-            Prelude::Supports(supports.condition()),
-            "@supports (display:grid) { }",
-            CssRuleCssomFormat::Supports,
-        ),
         (
             Prelude::Container(container.prelude()),
             "@container (width>1px) { }",

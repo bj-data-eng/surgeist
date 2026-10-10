@@ -557,11 +557,6 @@ fn modern_unselected_whole_formats_keep_typed_limits_and_meaningful_compact_prov
         ),
         ("@layer a{}", CssRuleCssomFormat::LayerBlock, "@layer a { }"),
         (
-            "@supports(display:grid){}",
-            CssRuleCssomFormat::Supports,
-            "@supports (display:grid) { }",
-        ),
-        (
             "@container(width > 1px){}",
             CssRuleCssomFormat::Container,
             "@container (width > 1px) { }",

@@ -7,7 +7,7 @@ use std::error::Error;
 use surgeist_css::{
     CssEditedGroupPreludeRef as Prelude, CssEditedRuleView as Edited, CssImportRule,
     CssImportRuleView as ImportView, CssMediaCssomSerializationError, CssMediaQueryList, CssRule,
-    CssRuleCssomFormat, CssRuleCssomSerializationErrorKind as Kind,
+    CssRuleCssomSerializationErrorKind as Kind,
     CssSpecifiedValueSerializationErrorKind as Resource,
     CssSpecifiedValueSerializationLimits as Limits, CssValueOrigin, parse_media_query_list,
     parse_sheet,
@@ -156,8 +156,8 @@ fn modern_clause_and_extended_target_output_retains_existing_qualification() {
     };
     let group = Edited::try_group(Prelude::Supports(supports.condition()), &children).unwrap();
     assert_eq!(
-        group.serialize_cssom().unwrap_err().kind(),
-        Kind::FormatUnavailable(CssRuleCssomFormat::Supports)
+        group.serialize_cssom().unwrap(),
+        "@supports (display: grid) {\n  @import url(\"x\") print;\n}"
     );
 }
 

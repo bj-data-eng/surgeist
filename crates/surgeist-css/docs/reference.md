@@ -9180,7 +9180,7 @@ core. Leading declarations and later runs retain their positions around nested
 rules; coalescing stays within one run. Original parsed syntax, diagnostics and
 occurrence handles remain available.
 
-Style, Media and Keyframes use literal line feeds and prefix each child string
+Style, Media, Supports and Keyframes use literal line feeds and prefix each child string
 once with two spaces. This preserves the selected dated child-prefix algorithm,
 including its unusual multiline result. Empty Media contains two line feeds;
 its wrapper retains both spaces even for a genuinely empty query list.
@@ -9191,6 +9191,26 @@ supports and media clauses. Namespace uses its escaped prefix and quoted URL
 provider. FontFace retains the selected modern fourteen-kind effective descriptor
 order, width identity, shortest family spelling and owning value shortening.
 It emits only present descriptors.
+
+Supports reuses the checked specified condition provider without logical
+simplification or loss of future general-enclosed tokens. Its selected wrapper
+is `@supports `, condition text and ` {`, followed by LF and two spaces before
+each nonempty complete child string, then LF and `}`. Empty groups and groups
+whose children all serialize to empty strings have exactly one LF. Prefixes
+affect only the first line of each child. Parsed, scoped borrowed and edited
+children share the same recursive writer and cumulative limits; empty children
+still consume their actual provider work and retain their index and provenance.
+Selected declaration survivors are emitted without rebuilding authored sources.
+The wrapper follows the retained
+[WebKit Supports witness](../../../references/webkit-cssom-wrapper-rules--73aa6c89e2cb.md#csssupportsrule-cpp)
+and its
+[grouping helper](../../../references/webkit-cssom-core-rules--73aa6c89e2cb.md#cssgroupingrule-cpp).
+Condition semantics follow the selected
+[Conditional3 contract](../../../references/css-conditional-3--CRD-css-conditional-3-20240815--672eb79c78c5.md#the-csssupportsrule-interface).
+This does not select literal formats for named-support, Container, Scope,
+When/Else or other wrappers. See the independent
+[wrapper contract tests](../tests/cssom_supports_wrapper_contract.rs) and
+[composition tests](../tests/cssom_supports_composition.rs).
 
 Ordinary Style selectors omit an unqualified universal before a retained class,
 ID or attribute when the effective namespace is Any or Default and the compound

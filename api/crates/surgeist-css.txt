@@ -4851,7 +4851,6 @@ pub surgeist_css::CssRuleCssomFormat::FontPaletteValues
 pub surgeist_css::CssRuleCssomFormat::LayerBlock
 pub surgeist_css::CssRuleCssomFormat::LayerStatement
 pub surgeist_css::CssRuleCssomFormat::Scope
-pub surgeist_css::CssRuleCssomFormat::Supports
 pub surgeist_css::CssRuleCssomFormat::SupportsCondition
 #[non_exhaustive] pub enum surgeist_css::CssRuleCssomKind
 pub surgeist_css::CssRuleCssomKind::Else
