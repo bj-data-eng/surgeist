@@ -189,9 +189,9 @@ fn named_definition_does_not_reopen_imports_or_namespaces_after_ordinary_body() 
 }
 
 #[test]
-fn named_prefix_preserves_namespace_mismatch_validation() {
+fn named_prefix_preserves_absent_namespace_prefix_rejection() {
     let mut rules = clean_rules("@supports-condition --x{}@namespace n 'urn:n';");
-    let body = clean_rules("@namespace n 'urn:other';n|item {}");
+    let body = clean_rules("@namespace m 'urn:m';m|item {}");
     rules.push(body[1].clone());
     let error = CssSheet::try_from_rules(rules).unwrap_err();
     assert_eq!(
