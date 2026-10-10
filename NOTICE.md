@@ -374,3 +374,7 @@ transitive binary-release inventory.
 | surgeist-test | [NOTICE.md](crates/surgeist-test/NOTICE.md) |
 | surgeist-text | [NOTICE.md](crates/surgeist-text/NOTICE.md) |
 | surgeist-window | [NOTICE.md](crates/surgeist-window/NOTICE.md) |
+
+## HTML parser research references
+
+Pinned source excerpts and selected complete files are retained solely as research references. [html5ever](https://github.com/servo/html5ever) is dual-licensed MIT OR Apache-2.0; see its [local attribution and licenses](licenses/html5ever/NOTICE.md). [html5gum](https://github.com/untitaker/html5gum) is MIT-licensed; see its [local attribution and license](licenses/html5gum/NOTICE.md). This capture adds no production dependency.

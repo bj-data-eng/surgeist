@@ -1,6 +1,6 @@
 # Reference conversion and validation
 
-The current collection contains **259 source identities: 220 full documents/source witnesses, 37 partial witnesses and two metadata-only exceptions**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
+The current collection contains **274 source identities: 233 full documents/source witnesses, 39 partial witnesses and two metadata-only exceptions**, with 81 passive SVG assets. The original 2026-10-03 verification record and subsequent dated addition records are preserved below.
 
 ## Original collection scope and result
 
@@ -190,3 +190,9 @@ The standards conversions retain the complete selected clauses, document head, s
 Four WebKit table files, one GridLanesLayout.cpp file and two Blink flex files retain complete original UTF-8 source bodies. Other browser records explicitly delimit excerpts and retain each complete original file-level copyright/license header. Their full-file hashes, exact ranges and omission boundaries remain in the references. Preferred and newer FlexFormattingContext.cpp complete-file hashes differ; only the retained header and complete placeFlexItems function are byte-identical and share one displayed body. Leader evidence is limited to the named content model/parser front doors; it does not establish engine-wide absence. StyleAdjuster.cpp retains only the identified adjustment branch. Overflow witnesses do not define clipping, transform or margin policies beyond the retained evidence.
 
 Exact source/legal comparisons and bounded-conversion checks passed for the final author inventories. The independent integration review is recorded separately; these checks establish reference fidelity rather than product behavior. The [source-edition mapping](SOURCE-EDITIONS.md#layout-sizing-fragmentation-and-overflow-source-resolution) owns selection, and the [W3C](../licenses/w3c/NOTICE.md#layout-source-resolution-clause-captures), [WebKit](../licenses/webkit/NOTICE.md#layout-sizing-fragmentation-leaders-and-overflow-witnesses) and [Chromium](../licenses/chromium/NOTICE.md#flex-fragmentation-and-content-parser-witnesses) notices retain per-source legal coverage. Existing historical entries and their verification records remain unchanged.
+
+## HTML parser source witnesses
+
+Captured 2026-10-10: 13 complete files and 2 partial files from pinned html5ever and html5gum checkouts. Markdown, TOML and Rust sources are preserved in four-backtick fences with complete-file SHA-256, immutable upstream URLs and original line ranges for excerpts. No HTML conversion or Pandoc was needed; no tables were reconstructed. Original licenses and copyright notices accompany the witnesses. These are bounded implementation evidence, not a converted HTML standard or a whole-repository snapshot.
+
+Byte comparison verified all fifteen retained file bodies/excerpts and complete-file hashes against the pinned checkouts. The upstream html5ever README contains one trailing space retained verbatim inside its source fence; this intentional source-fidelity exception is reported by `git diff --check`. Added prose and generated wrappers have no whitespace findings.
