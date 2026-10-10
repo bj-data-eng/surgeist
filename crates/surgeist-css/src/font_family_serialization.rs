@@ -163,3 +163,30 @@ fn can_serialize_family_unquoted(name: &str) -> bool {
         chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c as u32 >= 0x80)
     })
 }
+
+/// Emits actual decoded literal families in order, separated by comma-space.
+/// An empty slice emits empty text; feature-value nonemptiness is checked by
+/// [`crate::CssFontFeatureValuesFamilyList`], independently of this formatter.
+pub fn serialize_font_face_family_list(families: &[CssFontFaceFamily]) -> Result<String> {
+    serialize_font_face_family_list_with_limits(
+        families,
+        CssSpecifiedValueSerializationLimits::default(),
+    )
+}
+
+/// Uses one native writer and cumulative input, projection and UTF-8 output
+/// budget. Each literal costs one input and one projection node; the container
+/// adds no charge. Failure returns no partial text and leaves the slice unchanged.
+pub fn serialize_font_face_family_list_with_limits(
+    families: &[CssFontFaceFamily],
+    limits: CssSpecifiedValueSerializationLimits,
+) -> Result<String> {
+    let mut writer = SpecifiedRuleWriter::new(limits);
+    for (index, family) in families.iter().enumerate() {
+        if index != 0 {
+            writer.append(", ")?;
+        }
+        family.append_to_rule_writer(&mut writer)?;
+    }
+    Ok(writer.css)
+}

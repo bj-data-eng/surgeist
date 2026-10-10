@@ -4260,6 +4260,24 @@ names. Emitting a family does not provide a complete font-face or feature-rule
 writer. The existing font shorthand and palette descriptor/rule writers share
 these family helpers and the common CSSOM escaping writer.
 
+`parse_font_feature_values_family_list()` and its bounded variant admit an
+actual raw, nonempty nongeneric literal-family prelude through the same grammar
+as `@font-feature-values`. `CssParserContext` exposes both fronts. They require
+full consumption, retain the complete original source and per-member occurrences
+(excluding surrounding trivia), and distinguish syntax rejection from typed
+resource diagnostics. Valid native EOF recovery can retain a list with notes;
+report cleanliness and list retention are separate decisions for callers.
+`CssFontFeatureValuesFamilyList::try_new()` checks a programmatic nonempty list
+without inventing source coordinates or reparsing decoded literal names.
+
+The checked list's specified serializer and
+`serialize_font_face_family_list[_with_limits]()` emit actual ordered literal
+families with comma-space separators through one native writer. The slice
+formatter accepts an empty slice as empty text, independently of the feature
+prelude's nonempty requirement. Input/projection limits accumulate across every
+family; output limits include separators and CSS escapes. These providers do
+not mutate CSSOM objects or supply rule wrappers, font loading or selection.
+
 One cumulative serialization budget covers all emitted bytes and visited name
 nodes. Property names charge one node plus each retained identifier token;
 generic and quoted property names charge one node. A decoded descriptor family

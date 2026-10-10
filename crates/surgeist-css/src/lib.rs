@@ -2022,6 +2022,9 @@ pub use expansion::{
 pub use font_face_values::{
     CssFontMetricOverride, CssFontNamedInstance, CssFontNamedInstanceString,
 };
+pub use font_family_serialization::{
+    serialize_font_face_family_list, serialize_font_face_family_list_with_limits,
+};
 pub use font_feature_values::*;
 pub use font_palette::*;
 pub use font_palette_values::*;
@@ -2057,7 +2060,8 @@ pub use parser::{
     parse_declaration_list_text, parse_font_face_block, parse_font_face_declaration_block_contents,
     parse_font_face_declaration_block_contents_with_limits, parse_font_face_descriptor_value,
     parse_font_feature_display_value, parse_font_feature_value, parse_font_feature_value_block,
-    parse_font_feature_values_block, parse_font_palette_descriptor_value,
+    parse_font_feature_values_block, parse_font_feature_values_family_list,
+    parse_font_feature_values_family_list_with_limits, parse_font_palette_descriptor_value,
     parse_font_palette_values_block, parse_group_block, parse_keyframe_declaration_block,
     parse_keyframe_rule, parse_keyframe_selector_list, parse_keyframes_block, parse_margin_block,
     parse_media_query, parse_media_query_list, parse_page_block,

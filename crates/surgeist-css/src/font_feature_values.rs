@@ -336,6 +336,74 @@ impl CssFontFeatureValuesRule {
     }
 }
 
+/// A nonempty ordered list of decoded literal feature-value family names.
+///
+/// Parsed lists retain the actual raw prelude and each comma-delimited member
+/// (excluding surrounding trivia). Programmatic lists claim no parsed source.
+/// Generic-family admission and authored quoting belong to the parser, while
+/// serialization uses the literal family writer rather than property-family forms.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssFontFeatureValuesFamilyList {
+    families: Vec<CssFontFaceFamily>,
+    origin: crate::CssValueOrigin,
+    family_origins: Vec<CssParsedOrigin>,
+}
+impl CssFontFeatureValuesFamilyList {
+    /// Checks the nonempty literal list; existing literal values are not reparsed.
+    pub fn try_new(families: Vec<CssFontFaceFamily>) -> Result<Self, CssFontFeatureValuesError> {
+        if families.is_empty() {
+            return Err(CssFontFeatureValuesError::new(
+                CssFontFeatureValuesErrorKind::EmptyFamilies,
+            ));
+        }
+        Ok(Self {
+            families,
+            origin: crate::CssValueOrigin::Programmatic,
+            family_origins: Vec::new(),
+        })
+    }
+    pub(crate) fn from_parsed(
+        families: Vec<CssFontFaceFamily>,
+        origin: CssParsedOrigin,
+        family_origins: Vec<CssParsedOrigin>,
+    ) -> Self {
+        debug_assert!(!families.is_empty() && families.len() == family_origins.len());
+        Self {
+            families,
+            origin: crate::CssValueOrigin::Parsed(origin),
+            family_origins,
+        }
+    }
+    /// Returns literal names in input order.
+    #[must_use]
+    pub fn families(&self) -> &[CssFontFaceFamily] {
+        &self.families
+    }
+    /// Returns the complete original input, or honest programmatic provenance.
+    #[must_use]
+    pub const fn origin(&self) -> &crate::CssValueOrigin {
+        &self.origin
+    }
+    /// Returns an original member occurrence; programmatic lists have none.
+    #[must_use]
+    pub fn family_origin(&self, index: usize) -> Option<&CssParsedOrigin> {
+        self.family_origins.get(index)
+    }
+    /// Emits the literal list with one cumulative default budget.
+    pub fn serialize_specified(
+        &self,
+    ) -> Result<String, crate::CssSpecifiedValueSerializationError> {
+        crate::serialize_font_face_family_list(&self.families)
+    }
+    /// Emits atomically with one cumulative budget across every family and separator.
+    pub fn serialize_specified_with_limits(
+        &self,
+        limits: crate::CssSpecifiedValueSerializationLimits,
+    ) -> Result<String, crate::CssSpecifiedValueSerializationError> {
+        crate::serialize_font_face_family_list_with_limits(&self.families, limits)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

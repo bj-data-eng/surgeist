@@ -20,13 +20,31 @@ pub(super) fn parse_families<'i>(
     input: &mut Parser<'i, '_>,
     recovery: &RecoveryState,
 ) -> Result<Vec<CssFontFaceFamily>, ParseError<'i, Error>> {
+    parse_families_observed(source, input, recovery, |_, _| Ok(()))
+}
+
+// One grammar for rule ingress and raw family-list ingress. Observation adds
+// provenance only; existing rule parsing needs no member-origin allocation.
+pub(super) fn parse_families_observed<'i>(
+    source: &'i str,
+    input: &mut Parser<'i, '_>,
+    recovery: &RecoveryState,
+    mut observe: impl FnMut(
+        std::ops::Range<usize>,
+        cssparser::SourceLocation,
+    ) -> Result<(), ParseError<'i, Error>>,
+) -> Result<Vec<CssFontFaceFamily>, ParseError<'i, Error>> {
     recovery.check_specialized_components(source, input, "later.rule.font-feature-values")?;
     input
         .parse_comma_separated(|input| {
+            let start = input.position().byte_index();
+            let location = input.current_source_location();
             let name = super::typography::parse_non_generic_font_family_name(input)?;
             input.expect_exhausted().map_err(basic)?;
-            CssFontFaceFamily::try_new(name.as_str())
-                .ok_or_else(|| invalid_syntax(input.current_source_location()))
+            let family = CssFontFaceFamily::try_new(name.as_str())
+                .ok_or_else(|| invalid_syntax(input.current_source_location()))?;
+            observe(start..input.position().byte_index(), location)?;
+            Ok(family)
         })
         .map_err(|error| {
             with_at_rule_prelude_context(

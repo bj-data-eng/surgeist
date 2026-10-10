@@ -38,6 +38,10 @@ mod flex;
 mod font_controls;
 pub(crate) mod font_face;
 pub(crate) mod font_feature_values;
+pub(crate) mod font_feature_values_family_list;
+pub use font_feature_values_family_list::{
+    parse_font_feature_values_family_list, parse_font_feature_values_family_list_with_limits,
+};
 mod font_palette;
 pub(crate) mod font_palette_values;
 mod font_settings;

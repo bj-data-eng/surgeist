@@ -28,6 +28,26 @@ enum GlyphDefinition {
     Svg,
 }
 impl CssParserContext {
+    /// Parses a complete raw feature-value literal-family prelude in this context.
+    #[must_use]
+    pub fn parse_font_feature_values_family_list(
+        self,
+        source: &str,
+    ) -> CssParseReport<Option<CssFontFeatureValuesFamilyList>> {
+        self.parse_font_feature_values_family_list_with_limits(
+            source,
+            CssComponentValueLimits::default(),
+        )
+    }
+    /// Preserves this context and uses one complete-input component budget.
+    #[must_use]
+    pub fn parse_font_feature_values_family_list_with_limits(
+        self,
+        source: &str,
+        limits: CssComponentValueLimits,
+    ) -> CssParseReport<Option<CssFontFeatureValuesFamilyList>> {
+        crate::parser::font_feature_values_family_list::parse_with_context(source, limits, self)
+    }
     /// Selects one closed authored document mode.
     #[must_use]
     pub const fn new(mode: CssParserMode) -> Self {

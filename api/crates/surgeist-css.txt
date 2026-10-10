@@ -8556,6 +8556,14 @@ pub const fn surgeist_css::CssFontFeatureValuesError::kind(&self) -> surgeist_cs
 impl core::error::Error for surgeist_css::CssFontFeatureValuesError
 impl core::fmt::Display for surgeist_css::CssFontFeatureValuesError
 pub fn surgeist_css::CssFontFeatureValuesError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_css::CssFontFeatureValuesFamilyList
+impl surgeist_css::CssFontFeatureValuesFamilyList
+pub fn surgeist_css::CssFontFeatureValuesFamilyList::families(&self) -> &[surgeist_css::CssFontFaceFamily]
+pub fn surgeist_css::CssFontFeatureValuesFamilyList::family_origin(&self, index: usize) -> core::option::Option<&surgeist_css::CssParsedOrigin>
+pub const fn surgeist_css::CssFontFeatureValuesFamilyList::origin(&self) -> &surgeist_css::CssValueOrigin
+pub fn surgeist_css::CssFontFeatureValuesFamilyList::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontFeatureValuesFamilyList::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssFontFeatureValuesFamilyList::try_new(families: alloc::vec::Vec<surgeist_css::CssFontFaceFamily>) -> core::result::Result<Self, surgeist_css::CssFontFeatureValuesError>
 pub struct surgeist_css::CssFontFeatureValuesRule
 impl surgeist_css::CssFontFeatureValuesRule
 pub fn surgeist_css::CssFontFeatureValuesRule::families(&self) -> &[surgeist_css::CssFontFaceFamily]
@@ -10735,6 +10743,8 @@ pub fn surgeist_css::CssParserContext::parse_declaration(self, source: &str) -> 
 pub fn surgeist_css::CssParserContext::parse_declaration_block_contents(self, source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssDeclarationList>
 pub fn surgeist_css::CssParserContext::parse_declaration_block_contents_with_limits(self, source: &str, limits: surgeist_css::CssComponentValueLimits) -> surgeist_css::CssParseReport<surgeist_css::CssDeclarationList>
 pub fn surgeist_css::CssParserContext::parse_declaration_list_text(self, source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssDeclarationList>
+pub fn surgeist_css::CssParserContext::parse_font_feature_values_family_list(self, source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssFontFeatureValuesFamilyList>>
+pub fn surgeist_css::CssParserContext::parse_font_feature_values_family_list_with_limits(self, source: &str, limits: surgeist_css::CssComponentValueLimits) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssFontFeatureValuesFamilyList>>
 pub fn surgeist_css::CssParserContext::parse_group_block(self, source: &str, namespaces: &surgeist_css::CssNamespaceContext) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<surgeist_css::CssRuleList>>>
 pub fn surgeist_css::CssParserContext::parse_keyframe_declaration_block(self, source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<surgeist_css::CssKeyframeDeclarationList>>>
 pub fn surgeist_css::CssParserContext::parse_keyframes_block(self, source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<alloc::vec::Vec<surgeist_css::CssKeyframeBlock>>>>
@@ -13160,6 +13170,8 @@ pub fn surgeist_css::parse_font_feature_display_value(source: &str) -> surgeist_
 pub fn surgeist_css::parse_font_feature_value(source: &str, kind: surgeist_css::CssFontFeatureValueKind) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssFontFeatureValue>>
 pub fn surgeist_css::parse_font_feature_value_block(source: &str, kind: surgeist_css::CssFontFeatureValueKind) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<surgeist_css::CssFontFeatureValueBlock>>>
 pub fn surgeist_css::parse_font_feature_values_block(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<alloc::vec::Vec<surgeist_css::CssFontFeatureValuesItem>>>>
+pub fn surgeist_css::parse_font_feature_values_family_list(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssFontFeatureValuesFamilyList>>
+pub fn surgeist_css::parse_font_feature_values_family_list_with_limits(source: &str, limits: surgeist_css::CssComponentValueLimits) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssFontFeatureValuesFamilyList>>
 pub fn surgeist_css::parse_font_palette_descriptor_value(source: &str, descriptor: surgeist_css::CssFontPaletteDescriptorKind) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssFontPaletteDescriptorValue>>
 pub fn surgeist_css::parse_font_palette_values_block(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<alloc::vec::Vec<surgeist_css::CssFontPaletteDescriptor>>>>
 pub fn surgeist_css::parse_group_block(source: &str, namespaces: &surgeist_css::CssNamespaceContext) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<surgeist_css::CssRuleList>>>
@@ -13207,6 +13219,8 @@ pub fn surgeist_css::serialize_css_string(value: &str) -> core::result::Result<a
 pub fn surgeist_css::serialize_css_string_with_limits(value: &str, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::serialize_css_whitespace_separated_list(items: &[&str]) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::serialize_css_whitespace_separated_list_with_limits(items: &[&str], limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::serialize_font_face_family_list(families: &[surgeist_css::CssFontFaceFamily]) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::serialize_font_face_family_list_with_limits(families: &[surgeist_css::CssFontFaceFamily], limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::specification_source(id: &str) -> core::option::Option<&'static surgeist_css::CssSpecificationSource>
 pub const fn surgeist_css::specification_sources() -> &'static [surgeist_css::CssSpecificationSource]
 pub fn surgeist_css::validate_declaration_list_text(input: &str) -> core::result::Result<surgeist_css::CssDeclarationList, surgeist_css::CssValidationFailure>
