@@ -873,7 +873,8 @@ impl CssLayerBlockRule {
 }
 
 fn is_valid_layer_name_component(component: &str) -> bool {
-    !is_parser_reserved_layer_name(component) && is_exact_css_identifier(component)
+    // Components are decoded identifier values, not authored token spellings.
+    !is_parser_reserved_layer_name(component) && CssIdent::try_new(component).is_ok()
 }
 
 fn is_parser_reserved_layer_name(component: &str) -> bool {
