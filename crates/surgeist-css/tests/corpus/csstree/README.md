@@ -41,11 +41,15 @@ maintenance change that alters any of those bindings must update the oracle in
 the same reviewed change; the ordinary offline tests validate the complete
 935-record contract without running the parser or generator.
 
-The current captured oracle binds the reconciled CSS-owned registry: 820 cases
+The [committed oracle](../../csstree/oracle.json) binds the reconciled CSS-owned registry: 820 cases
 have full public-parser observations and 115 retain explicit panic-freedom-only
-policies. Outcomes are 348 clean, 339 strict rejections, 95 recoveries, and 153
-explicit unsupported dispositions. These corpus results do not establish complete
-grammar coverage of the selected standards profile.
+policies. Across all 935 retained records, outcomes are 351 clean, 337 strict
+rejections, 94 recoveries, and 153 explicit unsupported dispositions. The
+unsupported count includes all 115 panic-freedom-only records and 38 active
+records; it is not an additional set of cases. The
+[census contract](../../csstree_oracle.rs) independently asserts this partition.
+These corpus results do not establish complete grammar coverage of the selected
+standards profile.
 
 The CSS-owned adapter registry sends ordinary `selector`, `selectorList`, and
 `mediaQuery` fixtures directly to their matching raw fragment parsers. Inputs

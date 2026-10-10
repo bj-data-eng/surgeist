@@ -118,9 +118,8 @@ Validation is available with the ordinary dependency:
 surgeist-css = { path = "../surgeist/crates/surgeist-css" }
 ```
 
-Remove `app-strict` from existing dependency feature lists. The validators retain
-their names and behavior. Call the matching validator when every recovery should
-reject the input:
+The crate defines no optional features. Call the matching validator when every
+recovery should reject the input:
 
 ```rust
 use surgeist_css::{CssRecoveryAction, validate_style_attribute};
@@ -136,8 +135,10 @@ assert_eq!(failure.first().action(), CssRecoveryAction::DropDeclaration);
 ```
 
 The first call returns retained declarations; the second returns the complete
-recovery diagnostic sequence. For stylesheets, use `validate_sheet`. Enabling
-this feature leaves ordinary parsing and recovery unchanged.
+recovery diagnostic sequence. For stylesheets, use `validate_sheet`. Each
+validator accepts exactly a clean ordinary parse report using the same grammar.
+Use the ordinary parser when recovered syntax and
+its diagnostics are useful to the caller.
 
 ## Inspect support metadata
 
@@ -153,16 +154,18 @@ the remainder may describe a known implementation gap or unresolved standard
 applicability. Use the parser to check implemented acceptance and the cited
 standard to determine normative validity.
 
-### Migrate property support lookups
+### Distinguish support and intrinsic metadata
 
-Rename `property_metadata` calls to `property_support_metadata` and explicit
-`CssPropertyMetadata` support-wrapper types to `CssPropertySupportMetadata`.
-The `feature()`, `property()`, `canonical_name()`, and `aliases()` methods retain
-their existing meanings. Name matching and lookup availability are unchanged:
-all recognized catalog properties remain available, including properties whose
-intrinsic metadata has not yet been implemented.
+`property_support_metadata` returns `CssPropertySupportMetadata` for a recognized
+catalog property. Use `feature()` for its support record, `property()` for its
+canonical identity, and `canonical_name()` and `aliases()` for its catalog
+spellings.
 
-Support metadata describes the parser support catalog. The planned intrinsic
-property metadata describes grammar, initial values, and shorthand expansion.
-Availability in the support catalog does not imply intrinsic metadata is available
-or that every authored grammar is supported.
+For intrinsic property information, call `CssKnownProperty::metadata()` or
+`CssPropertyGrammar::metadata()`. Intrinsic metadata is available for every
+current catalog property and recognized legacy shorthand grammar. The returned
+`CssPropertyMetadata` describes property kind, longhand inheritance and initial
+values, or shorthand members. Support lookup remains independent.
+See [intrinsic metadata and authored grammar identity](reference.md#intrinsic-metadata-and-authored-grammar-identity)
+for the checked initial-value and shorthand contracts. Metadata availability
+does not establish complete authored grammar support.
