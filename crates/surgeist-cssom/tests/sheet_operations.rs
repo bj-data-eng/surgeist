@@ -493,9 +493,7 @@ fn parser_input_drift_fails_but_unrelated_facts_and_other_sheet_jobs_compose() {
     edit.update_context(CssomContext {
         inputs: vec![CssomInput {
             version: version(CssomInputRole::Support, "support", 1),
-            data: CssomInputData::Support {
-                profile: "explicit".into(),
-            },
+            data: CssomInputData::Support(CssomDeclarationSupport::default()),
         }],
         linked: Vec::new(),
     })
@@ -655,10 +653,8 @@ fn pending_record_quota_blocks_unrelated_admission_without_stranding_cleanup() {
     let mut edit = batch(&bytes);
     edit.update_context(CssomContext {
         inputs: vec![CssomInput {
-            version: version(CssomInputRole::Support, "s", 1),
-            data: CssomInputData::Support {
-                profile: "xxxxx".into(),
-            },
+            version: version(CssomInputRole::Support, "xxxxxs", 1),
+            data: CssomInputData::Support(CssomDeclarationSupport::default()),
         }],
         linked: Vec::new(),
     })

@@ -45,11 +45,28 @@ pub enum surgeist_cssom::CssomChanges
 pub surgeist_cssom::CssomChanges::FullRecompute(surgeist_cssom::CssomRecomputeReason)
 pub surgeist_cssom::CssomChanges::Incremental(alloc::boxed::Box<surgeist_cssom::CssomChangeSummary>)
 pub surgeist_cssom::CssomChanges::Unchanged
+pub enum surgeist_cssom::CssomDeclarationEditResult
+pub surgeist_cssom::CssomDeclarationEditResult::Noop
+pub surgeist_cssom::CssomDeclarationEditResult::Replaced
+pub surgeist_cssom::CssomDeclarationEditResult::Set
+pub surgeist_cssom::CssomDeclarationEditResult::Set::updated: bool
+pub enum surgeist_cssom::CssomDeclarationUsability
+pub surgeist_cssom::CssomDeclarationUsability::Unusable
+pub surgeist_cssom::CssomDeclarationUsability::Usable
+pub enum surgeist_cssom::CssomDeclarationValue
+pub surgeist_cssom::CssomDeclarationValue::FontFaceDescriptor(surgeist_css::syntax::font_face::CssFontFaceDescriptor)
+pub surgeist_cssom::CssomDeclarationValue::PageDescriptor(surgeist_css::syntax::page::CssPageDescriptor)
+pub surgeist_cssom::CssomDeclarationValue::Property(surgeist_css::syntax::CssDeclaration)
 #[non_exhaustive] pub enum surgeist_cssom::CssomError
 pub surgeist_cssom::CssomError::AuthoredFeatureConversion
 pub surgeist_cssom::CssomError::BatchAborted
 pub surgeist_cssom::CssomError::Component(surgeist_css::component_values::CssComponentValueError)
+pub surgeist_cssom::CssomError::ComputedStyleUpdatePrecondition
 pub surgeist_cssom::CssomError::Declaration(surgeist_css::specified_declaration_block::CssDeclarationBlockError)
+pub surgeist_cssom::CssomError::EffectAlreadyConsumed
+pub surgeist_cssom::CssomError::EffectIdentityExhausted
+pub surgeist_cssom::CssomError::Expansion(surgeist_css::expansion::CssExpansionError)
+pub surgeist_cssom::CssomError::FontFace(surgeist_css::font_face_declaration_block::CssFontFaceDeclarationBlockError)
 pub surgeist_cssom::CssomError::ForeignOwner
 pub surgeist_cssom::CssomError::ForeignTicket
 pub surgeist_cssom::CssomError::Format(surgeist_css::cssom_rule_serialization::CssRuleCssomSerializationError)
@@ -59,14 +76,21 @@ pub surgeist_cssom::CssomError::Limit
 pub surgeist_cssom::CssomError::Limit::maximum: usize
 pub surgeist_cssom::CssomError::Limit::resource: &'static str
 pub surgeist_cssom::CssomError::Media(surgeist_css::media::CssMediaCssomSerializationError)
+pub surgeist_cssom::CssomError::Metadata(surgeist_css::expansion::CssPropertyMetadataError)
 pub surgeist_cssom::CssomError::MissingObject
 pub surgeist_cssom::CssomError::Page(surgeist_css::page_projection::CssPageProjectionError)
+pub surgeist_cssom::CssomError::PageBlock(surgeist_css::syntax::page::CssPageBlockError)
 pub surgeist_cssom::CssomError::ParseResource(alloc::boxed::Box<surgeist_css::report::CssRecoveryDiagnostic>)
 pub surgeist_cssom::CssomError::RevisionExhausted
 pub surgeist_cssom::CssomError::Source(surgeist_cssom::CssomException)
 pub surgeist_cssom::CssomError::StaleContext
+pub surgeist_cssom::CssomError::StaleDeclarationDecision
+pub surgeist_cssom::CssomError::StaleOwnerEffect
+pub surgeist_cssom::CssomError::StaleOwnerNotification
 pub surgeist_cssom::CssomError::StaleReplacement
 pub surgeist_cssom::CssomError::StaleRevision
+pub surgeist_cssom::CssomError::UnresolvedDeclarationPreparation
+pub surgeist_cssom::CssomError::Value(surgeist_css::specified_serialization::CssSpecifiedValueSerializationError)
 pub surgeist_cssom::CssomError::WrongKind
 impl core::error::Error for surgeist_cssom::CssomError
 pub fn surgeist_cssom::CssomError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
@@ -128,8 +152,7 @@ pub surgeist_cssom::CssomInputData::Owner
 pub surgeist_cssom::CssomInputData::Owner::attribute: core::option::Option<alloc::string::String>
 pub surgeist_cssom::CssomInputData::Owner::identity: alloc::string::String
 pub surgeist_cssom::CssomInputData::ParserMode(surgeist_css::parser_context::CssParserContext)
-pub surgeist_cssom::CssomInputData::Support
-pub surgeist_cssom::CssomInputData::Support::profile: alloc::string::String
+pub surgeist_cssom::CssomInputData::Support(surgeist_cssom::CssomDeclarationSupport)
 impl surgeist_cssom::CssomInputData
 pub const fn surgeist_cssom::CssomInputData::role(&self) -> surgeist_cssom::CssomInputRole
 pub enum surgeist_cssom::CssomInputRole
@@ -149,6 +172,16 @@ pub surgeist_cssom::CssomObjectId::Rule(surgeist_cssom::CssomRuleId)
 pub surgeist_cssom::CssomObjectId::RuleList(surgeist_cssom::CssomRuleListId)
 pub surgeist_cssom::CssomObjectId::Sheet(surgeist_cssom::CssomSheetId)
 pub surgeist_cssom::CssomObjectId::SheetList(surgeist_cssom::CssomSheetListId)
+pub enum surgeist_cssom::CssomOwnerEffectStatus
+pub surgeist_cssom::CssomOwnerEffectStatus::Abandoned
+pub surgeist_cssom::CssomOwnerEffectStatus::Applied
+pub surgeist_cssom::CssomOwnerEffectStatus::Applying
+pub surgeist_cssom::CssomOwnerEffectStatus::Canceled
+pub surgeist_cssom::CssomOwnerEffectStatus::HostFailed
+pub surgeist_cssom::CssomOwnerEffectStatus::Pending
+pub enum surgeist_cssom::CssomOwnerNotification
+pub surgeist_cssom::CssomOwnerNotification::MatchingEcho
+pub surgeist_cssom::CssomOwnerNotification::Unrelated
 pub enum surgeist_cssom::CssomParent
 pub surgeist_cssom::CssomParent::Detached
 pub surgeist_cssom::CssomParent::Rule(surgeist_cssom::CssomRuleId)
@@ -164,6 +197,7 @@ pub enum surgeist_cssom::CssomPropertyOccurrences
 pub surgeist_cssom::CssomPropertyOccurrences::Keyframe(surgeist_css::syntax::CssKeyframeDeclarationList)
 pub surgeist_cssom::CssomPropertyOccurrences::Margin(surgeist_css::syntax::page::CssMarginDeclarationBlock)
 pub surgeist_cssom::CssomPropertyOccurrences::Ordinary(surgeist_css::syntax::CssDeclarationList)
+pub surgeist_cssom::CssomPropertyOccurrences::RawContents(surgeist_css::syntax::CssDeclarationList)
 pub enum surgeist_cssom::CssomPublication
 pub surgeist_cssom::CssomPublication::Changed(alloc::boxed::Box<surgeist_cssom::CssomChangeSummary>)
 pub surgeist_cssom::CssomPublication::Unchanged
@@ -227,6 +261,9 @@ pub fn surgeist_cssom::CssomRuleData::children(&self) -> core::option::Option<&s
 pub enum surgeist_cssom::CssomSelectors
 pub surgeist_cssom::CssomSelectors::Ordinary(surgeist_css::syntax::CssStyleSelectorList)
 pub surgeist_cssom::CssomSelectors::Scoped(surgeist_css::syntax::CssScopedStyleSelectorList)
+pub enum surgeist_cssom::CssomUsabilityRequirement
+pub surgeist_cssom::CssomUsabilityRequirement::AllCheckedValues
+pub surgeist_cssom::CssomUsabilityRequirement::WholeDeclarationDecision
 pub struct surgeist_cssom::CssomBatch
 impl surgeist_cssom::CssomBatch
 pub fn surgeist_cssom::CssomBatch::add_sheet_rule(&mut self, sheet: &surgeist_cssom::CssomSheetId, selector: core::option::Option<&str>, block: core::option::Option<&str>, index: core::option::Option<usize>) -> core::result::Result<i32, surgeist_cssom::CssomError>
@@ -236,6 +273,14 @@ impl surgeist_cssom::CssomBatch
 pub fn surgeist_cssom::CssomBatch::append_medium(&mut self, id: &surgeist_cssom::CssomMediaListId, source: &str) -> core::result::Result<surgeist_cssom::CssomMediaEdit, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::delete_medium(&mut self, id: &surgeist_cssom::CssomMediaListId, source: &str) -> core::result::Result<surgeist_cssom::CssomMediaEdit, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::set_media_text(&mut self, id: &surgeist_cssom::CssomMediaListId, source: &str) -> core::result::Result<surgeist_cssom::CssomMediaEdit, surgeist_cssom::CssomError>
+impl surgeist_cssom::CssomBatch
+pub fn surgeist_cssom::CssomBatch::apply_declaration(&mut self, prepared: surgeist_cssom::CssomPreparedDeclaration, decisions: &[surgeist_cssom::CssomDeclarationDecision]) -> core::result::Result<surgeist_cssom::CssomDeclarationEditResult, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomBatch::apply_declaration_with_inputs(&mut self, prepared: surgeist_cssom::CssomPreparedDeclaration, decisions: &[surgeist_cssom::CssomDeclarationDecision], current: &[surgeist_cssom::CssomInputVersion]) -> core::result::Result<surgeist_cssom::CssomDeclarationEditResult, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomBatch::prepare_css_float(&mut self, id: &surgeist_cssom::CssomBlockId, value: &str, limits: surgeist_cssom::CssomDeclarationRequestLimits) -> core::result::Result<surgeist_cssom::CssomPreparedDeclaration, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomBatch::prepare_css_text(&mut self, id: &surgeist_cssom::CssomBlockId, text: &str, limits: surgeist_cssom::CssomDeclarationRequestLimits) -> core::result::Result<surgeist_cssom::CssomPreparedDeclaration, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomBatch::prepare_set_property(&mut self, id: &surgeist_cssom::CssomBlockId, name: &str, value: &str, priority: &str, limits: surgeist_cssom::CssomDeclarationRequestLimits) -> core::result::Result<surgeist_cssom::CssomPreparedDeclaration, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomBatch::prepare_style_attribute_change(&mut self, id: &surgeist_cssom::CssomBlockId, change: &surgeist_cssom::CssomStyleAttributeChange, limits: surgeist_cssom::CssomDeclarationRequestLimits) -> core::result::Result<core::option::Option<surgeist_cssom::CssomPreparedDeclaration>, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomBatch::remove_property(&mut self, id: &surgeist_cssom::CssomBlockId, name: &str, limits: surgeist_cssom::CssomDeclarationRequestLimits) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
 impl surgeist_cssom::CssomBatch
 pub fn surgeist_cssom::CssomBatch::associate_import(&mut self, rule: &surgeist_cssom::CssomRuleId, sheet: &surgeist_cssom::CssomSheetId, input: surgeist_cssom::CssomInputVersion, resolved_location: core::option::Option<alloc::string::String>) -> core::result::Result<bool, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::create_declarations(&mut self, declarations: surgeist_css::syntax::CssDeclarationList, computed: bool, readonly: bool, owner: core::option::Option<surgeist_cssom::CssomInputVersion>) -> core::result::Result<surgeist_cssom::CssomBlockTicket, surgeist_cssom::CssomError>
@@ -262,10 +307,13 @@ pub fn surgeist_cssom::CssomBatch::insert_group_rule(&mut self, id: &surgeist_cs
 pub fn surgeist_cssom::CssomBatch::insert_sheet_rule(&mut self, id: &surgeist_cssom::CssomSheetId, source: &str, index: usize) -> core::result::Result<(usize, surgeist_cssom::CssomRuleTicket), surgeist_cssom::CssomError>
 pub struct surgeist_cssom::CssomBlock
 impl surgeist_cssom::CssomBlock
+pub fn surgeist_cssom::CssomBlock::admission_inputs(&self) -> &[surgeist_cssom::CssomInputVersion]
 pub fn surgeist_cssom::CssomBlock::data(&self) -> &surgeist_cssom::CssomBlockData
 pub const fn surgeist_cssom::CssomBlock::flags(&self) -> surgeist_cssom::CssomBlockFlags
 pub fn surgeist_cssom::CssomBlock::owner(&self) -> core::option::Option<&surgeist_cssom::CssomInputVersion>
 pub fn surgeist_cssom::CssomBlock::parent(&self) -> core::option::Option<&surgeist_cssom::CssomRuleId>
+pub fn surgeist_cssom::CssomBlock::replacement_input(&self) -> core::option::Option<&surgeist_cssom::CssomDeclarationInput>
+pub fn surgeist_cssom::CssomBlock::selected_font_face(&self) -> core::option::Option<&surgeist_cssom::CssomProjection<surgeist_css::font_face_declaration_block::CssSpecifiedFontFaceDeclarationBlock, surgeist_css::font_face_declaration_block::CssFontFaceDeclarationBlockError>>
 pub struct surgeist_cssom::CssomBlockFlags
 pub surgeist_cssom::CssomBlockFlags::computed: bool
 pub surgeist_cssom::CssomBlockFlags::readonly: bool
@@ -288,9 +336,11 @@ pub fn surgeist_cssom::CssomChangeSummary::to(&self) -> &surgeist_cssom::CssomRe
 pub struct surgeist_cssom::CssomCommit
 impl surgeist_cssom::CssomCommit
 pub fn surgeist_cssom::CssomCommit::block(&self, ticket: &surgeist_cssom::CssomBlockTicket) -> core::result::Result<&surgeist_cssom::CssomBlockId, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomCommit::owner_effects(&self) -> &[surgeist_cssom::CssomOwnerEffect]
 pub fn surgeist_cssom::CssomCommit::publication(&self) -> &surgeist_cssom::CssomPublication
 pub fn surgeist_cssom::CssomCommit::rule(&self, ticket: &surgeist_cssom::CssomRuleTicket) -> core::result::Result<&surgeist_cssom::CssomRuleId, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomCommit::sheet(&self, ticket: &surgeist_cssom::CssomSheetTicket) -> core::result::Result<&surgeist_cssom::CssomSheetId, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomCommit::take_owner_effects(&mut self) -> alloc::vec::Vec<surgeist_cssom::CssomOwnerEffect>
 pub struct surgeist_cssom::CssomConstructorDocument
 pub surgeist_cssom::CssomConstructorDocument::base_location: alloc::string::String
 pub surgeist_cssom::CssomConstructorDocument::identity: alloc::string::String
@@ -298,6 +348,44 @@ pub surgeist_cssom::CssomConstructorDocument::version: surgeist_cssom::CssomInpu
 pub struct surgeist_cssom::CssomContext
 pub surgeist_cssom::CssomContext::inputs: alloc::vec::Vec<surgeist_cssom::CssomInput>
 pub surgeist_cssom::CssomContext::linked: alloc::vec::Vec<surgeist_cssom::CssomLinkedInput>
+pub struct surgeist_cssom::CssomDeclarationCandidate
+impl surgeist_cssom::CssomDeclarationCandidate
+pub fn surgeist_cssom::CssomDeclarationCandidate::decide(&self, version: surgeist_cssom::CssomInputVersion, usability: surgeist_cssom::CssomDeclarationUsability) -> core::result::Result<surgeist_cssom::CssomDeclarationDecision, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomDeclarationCandidate::declaration(&self) -> core::option::Option<&surgeist_css::syntax::CssDeclaration>
+pub fn surgeist_cssom::CssomDeclarationCandidate::value(&self) -> &surgeist_cssom::CssomDeclarationValue
+pub struct surgeist_cssom::CssomDeclarationDecision
+pub struct surgeist_cssom::CssomDeclarationInput
+pub surgeist_cssom::CssomDeclarationInput::diagnostics: alloc::vec::Vec<surgeist_css::report::CssRecoveryDiagnostic>
+pub surgeist_cssom::CssomDeclarationInput::parser_context: surgeist_css::parser_context::CssParserContext
+pub surgeist_cssom::CssomDeclarationInput::source: alloc::string::String
+pub struct surgeist_cssom::CssomDeclarationRequestLimits
+pub surgeist_cssom::CssomDeclarationRequestLimits::max_entries: usize
+pub surgeist_cssom::CssomDeclarationRequestLimits::max_input_bytes: usize
+pub surgeist_cssom::CssomDeclarationRequestLimits::max_input_components: usize
+pub surgeist_cssom::CssomDeclarationRequestLimits::max_nesting_depth: u32
+pub surgeist_cssom::CssomDeclarationRequestLimits::provider: surgeist_css::specified_serialization::CssSpecifiedValueSerializationLimits
+impl core::default::Default for surgeist_cssom::CssomDeclarationRequestLimits
+pub fn surgeist_cssom::CssomDeclarationRequestLimits::default() -> Self
+pub struct surgeist_cssom::CssomDeclarationSupport
+impl surgeist_cssom::CssomDeclarationSupport
+pub fn surgeist_cssom::CssomDeclarationSupport::font_face_descriptors(&self) -> &[(surgeist_css::syntax::font_face::CssFontFaceDescriptorKind, surgeist_cssom::CssomUsabilityRequirement)]
+pub fn surgeist_cssom::CssomDeclarationSupport::page_descriptors(&self) -> &[(surgeist_css::syntax::page::CssPageDescriptorKind, surgeist_cssom::CssomUsabilityRequirement)]
+pub fn surgeist_cssom::CssomDeclarationSupport::properties(&self) -> &[(surgeist_css::properties::CssPropertyGrammar, surgeist_cssom::CssomUsabilityRequirement)]
+pub fn surgeist_cssom::CssomDeclarationSupport::svg_glyph_orientation_vertical(&self) -> core::option::Option<surgeist_cssom::CssomUsabilityRequirement>
+pub fn surgeist_cssom::CssomDeclarationSupport::try_new(properties: alloc::vec::Vec<(surgeist_css::properties::CssPropertyGrammar, surgeist_cssom::CssomUsabilityRequirement)>) -> core::result::Result<Self, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomDeclarationSupport::with_font_face_descriptors(self, descriptors: alloc::vec::Vec<(surgeist_css::syntax::font_face::CssFontFaceDescriptorKind, surgeist_cssom::CssomUsabilityRequirement)>) -> core::result::Result<Self, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomDeclarationSupport::with_page_descriptors(self, descriptors: alloc::vec::Vec<(surgeist_css::syntax::page::CssPageDescriptorKind, surgeist_cssom::CssomUsabilityRequirement)>) -> core::result::Result<Self, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomDeclarationSupport::with_svg_glyph_orientation_vertical(self, requirement: surgeist_cssom::CssomUsabilityRequirement) -> Self
+pub struct surgeist_cssom::CssomDeclarationView<'a>
+impl surgeist_cssom::CssomDeclarationView<'_>
+pub fn surgeist_cssom::CssomDeclarationView<'_>::css_float(&self) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomDeclarationView<'_>::css_text(&self) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomDeclarationView<'_>::flags(&self) -> surgeist_cssom::CssomBlockFlags
+pub fn surgeist_cssom::CssomDeclarationView<'_>::get_property_priority(&self, name: &str) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomDeclarationView<'_>::get_property_value(&self, name: &str) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomDeclarationView<'_>::item(&self, index: usize) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomDeclarationView<'_>::length(&self) -> core::result::Result<usize, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomDeclarationView<'_>::parent_rule(&self) -> core::option::Option<&surgeist_cssom::CssomRuleId>
 pub struct surgeist_cssom::CssomEditGuard
 impl surgeist_cssom::CssomEditGuard
 pub fn surgeist_cssom::CssomEditGuard::for_inputs(snapshot: &surgeist_cssom::CssomSnapshot, current: surgeist_cssom::CssomContext) -> Self
@@ -320,6 +408,7 @@ pub surgeist_cssom::CssomInput::version: surgeist_cssom::CssomInputVersion
 pub struct surgeist_cssom::CssomInputManifest
 pub surgeist_cssom::CssomInputManifest::blocks: alloc::vec::Vec<(surgeist_cssom::CssomBlockId, surgeist_cssom::CssomInputVersion)>
 pub surgeist_cssom::CssomInputManifest::context: surgeist_cssom::CssomContext
+pub surgeist_cssom::CssomInputManifest::declaration_admissions: alloc::vec::Vec<(surgeist_cssom::CssomBlockId, alloc::vec::Vec<surgeist_cssom::CssomInputVersion>)>
 pub surgeist_cssom::CssomInputManifest::imports: alloc::vec::Vec<(surgeist_cssom::CssomRuleId, surgeist_cssom::CssomInputVersion)>
 pub surgeist_cssom::CssomInputManifest::sheets: alloc::vec::Vec<(surgeist_cssom::CssomSheetId, surgeist_cssom::CssomInputVersion)>
 pub struct surgeist_cssom::CssomInputVersion
@@ -333,6 +422,9 @@ pub surgeist_cssom::CssomLimits::max_entries: usize
 pub surgeist_cssom::CssomLimits::max_identity: u64
 pub surgeist_cssom::CssomLimits::max_input_bytes: usize
 pub surgeist_cssom::CssomLimits::max_objects: usize
+pub surgeist_cssom::CssomLimits::max_owner_effect_identity: u64
+pub surgeist_cssom::CssomLimits::max_pending_owner_effect_bytes: usize
+pub surgeist_cssom::CssomLimits::max_pending_owner_effects: usize
 pub surgeist_cssom::CssomLimits::max_revision: u64
 pub surgeist_cssom::CssomLimits::max_string_bytes: usize
 pub surgeist_cssom::CssomLimits::summary_history: usize
@@ -352,6 +444,27 @@ pub fn surgeist_cssom::CssomMediaEdit::diagnostics(&self) -> &[surgeist_css::rep
 pub struct surgeist_cssom::CssomMediaListId
 impl surgeist_cssom::CssomMediaListId
 pub fn surgeist_cssom::CssomMediaListId::owner(&self) -> &surgeist_cssom::CssomOwnerId
+pub struct surgeist_cssom::CssomOwnerApplication<'store, 'effect>
+impl surgeist_cssom::CssomOwnerApplication<'_, '_>
+pub fn surgeist_cssom::CssomOwnerApplication<'_, '_>::classify(&self, change: &surgeist_cssom::CssomStyleAttributeChange) -> surgeist_cssom::CssomOwnerNotification
+pub fn surgeist_cssom::CssomOwnerApplication<'_, '_>::effect(&self) -> &surgeist_cssom::CssomOwnerEffect
+pub fn surgeist_cssom::CssomOwnerApplication<'_, '_>::finish_host_failure(self)
+pub fn surgeist_cssom::CssomOwnerApplication<'_, '_>::finish_success(self)
+pub fn surgeist_cssom::CssomOwnerApplication<'_, '_>::flags(&self) -> surgeist_cssom::CssomBlockFlags
+impl core::ops::drop::Drop for surgeist_cssom::CssomOwnerApplication<'_, '_>
+pub fn surgeist_cssom::CssomOwnerApplication<'_, '_>::drop(&mut self)
+pub struct surgeist_cssom::CssomOwnerEffect
+impl surgeist_cssom::CssomOwnerEffect
+pub fn surgeist_cssom::CssomOwnerEffect::block(&self) -> &surgeist_cssom::CssomBlockId
+pub fn surgeist_cssom::CssomOwnerEffect::cancel(&mut self) -> core::result::Result<(), surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomOwnerEffect::id(&self) -> &surgeist_cssom::CssomOwnerEffectId
+pub fn surgeist_cssom::CssomOwnerEffect::owner(&self) -> &surgeist_cssom::CssomInputVersion
+pub fn surgeist_cssom::CssomOwnerEffect::revision(&self) -> &surgeist_cssom::CssomRevision
+pub fn surgeist_cssom::CssomOwnerEffect::status(&self) -> surgeist_cssom::CssomOwnerEffectStatus
+pub fn surgeist_cssom::CssomOwnerEffect::value(&self) -> &str
+impl core::ops::drop::Drop for surgeist_cssom::CssomOwnerEffect
+pub fn surgeist_cssom::CssomOwnerEffect::drop(&mut self)
+pub struct surgeist_cssom::CssomOwnerEffectId
 pub struct surgeist_cssom::CssomOwnerId(_)
 impl core::cmp::Eq for surgeist_cssom::CssomOwnerId
 impl core::cmp::PartialEq for surgeist_cssom::CssomOwnerId
@@ -360,6 +473,11 @@ impl core::fmt::Debug for surgeist_cssom::CssomOwnerId
 pub fn surgeist_cssom::CssomOwnerId::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::hash::Hash for surgeist_cssom::CssomOwnerId
 pub fn surgeist_cssom::CssomOwnerId::hash<H: core::hash::Hasher>(&self, state: &mut H)
+pub struct surgeist_cssom::CssomPreparedDeclaration
+impl surgeist_cssom::CssomPreparedDeclaration
+pub fn surgeist_cssom::CssomPreparedDeclaration::candidates(&self) -> &[surgeist_cssom::CssomDeclarationCandidate]
+pub fn surgeist_cssom::CssomPreparedDeclaration::diagnostics(&self) -> &[surgeist_css::report::CssRecoveryDiagnostic]
+pub fn surgeist_cssom::CssomPreparedDeclaration::profile_version(&self) -> core::option::Option<&surgeist_cssom::CssomInputVersion>
 pub struct surgeist_cssom::CssomReplaceCompletion
 impl surgeist_cssom::CssomReplaceCompletion
 pub fn surgeist_cssom::CssomReplaceCompletion::outcome(&self) -> &surgeist_cssom::CssomReplaceOutcome
@@ -463,6 +581,8 @@ pub fn surgeist_cssom::CssomSnapshot::sheet_rules(&self, id: &surgeist_cssom::Cs
 pub fn surgeist_cssom::CssomSnapshot::sheets(&self) -> &[surgeist_cssom::CssomSheetId]
 pub fn surgeist_cssom::CssomSnapshot::specified_property_css_text(&self, id: &surgeist_cssom::CssomBlockId, limits: surgeist_css::specified_serialization::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
 impl surgeist_cssom::CssomSnapshot
+pub fn surgeist_cssom::CssomSnapshot::declarations(&self, id: &surgeist_cssom::CssomBlockId, limits: surgeist_cssom::CssomDeclarationRequestLimits) -> core::result::Result<surgeist_cssom::CssomDeclarationView<'_>, surgeist_cssom::CssomError>
+impl surgeist_cssom::CssomSnapshot
 pub fn surgeist_cssom::CssomSnapshot::inputs(&self) -> surgeist_cssom::CssomInputManifest
 impl surgeist_cssom::CssomSnapshot
 pub fn surgeist_cssom::CssomSnapshot::media_item(&self, id: &surgeist_cssom::CssomMediaListId, index: usize, limits: surgeist_css::specified_serialization::CssSpecifiedValueSerializationLimits) -> core::result::Result<core::option::Option<alloc::string::String>, surgeist_cssom::CssomError>
@@ -489,7 +609,16 @@ pub fn surgeist_cssom::CssomStore::limits(&self) -> &surgeist_cssom::CssomLimits
 pub fn surgeist_cssom::CssomStore::new(limits: surgeist_cssom::CssomLimits, context: surgeist_cssom::CssomContext) -> core::result::Result<Self, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomStore::snapshot(&self) -> surgeist_cssom::CssomSnapshot
 impl surgeist_cssom::CssomStore
+pub fn surgeist_cssom::CssomStore::begin_owner_application<'store, 'effect>(&'store mut self, effect: &'effect mut surgeist_cssom::CssomOwnerEffect) -> core::result::Result<surgeist_cssom::CssomOwnerApplication<'store, 'effect>, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomStore::declaration_flags(&self, id: &surgeist_cssom::CssomBlockId) -> core::result::Result<surgeist_cssom::CssomBlockFlags, surgeist_cssom::CssomError>
+impl surgeist_cssom::CssomStore
 pub fn surgeist_cssom::CssomStore::begin_replace_sheet(&mut self, guard: surgeist_cssom::CssomEditGuard, sheet: &surgeist_cssom::CssomSheetId, source: &str) -> core::result::Result<surgeist_cssom::CssomReplaceJob, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomStore::cancel_replace_sheet(&mut self, token: &surgeist_cssom::CssomReplaceToken) -> core::result::Result<surgeist_cssom::CssomReplaceCompletion, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomStore::finish_replace_sheet(&mut self, guard: surgeist_cssom::CssomEditGuard, work: surgeist_cssom::CssomReplaceWork) -> core::result::Result<surgeist_cssom::CssomReplaceCompletion, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomStore::pending_sheet_replacement(&self, sheet: &surgeist_cssom::CssomSheetId) -> core::result::Result<core::option::Option<&surgeist_cssom::CssomReplaceToken>, surgeist_cssom::CssomError>
+pub struct surgeist_cssom::CssomStyleAttributeChange
+pub surgeist_cssom::CssomStyleAttributeChange::echo: core::option::Option<surgeist_cssom::CssomOwnerEffectId>
+pub surgeist_cssom::CssomStyleAttributeChange::local_name: alloc::string::String
+pub surgeist_cssom::CssomStyleAttributeChange::namespace: core::option::Option<alloc::string::String>
+pub surgeist_cssom::CssomStyleAttributeChange::owner: surgeist_cssom::CssomInputVersion
+pub surgeist_cssom::CssomStyleAttributeChange::value: core::option::Option<alloc::string::String>

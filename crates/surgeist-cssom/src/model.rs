@@ -15,6 +15,9 @@ pub struct CssomLimits {
     pub max_revision: u64,
     pub summary_history: usize,
     pub css: CssSpecifiedValueSerializationLimits,
+    pub max_pending_owner_effects: usize,
+    pub max_pending_owner_effect_bytes: usize,
+    pub max_owner_effect_identity: u64,
 }
 impl Default for CssomLimits {
     fn default() -> Self {
@@ -28,6 +31,9 @@ impl Default for CssomLimits {
             max_revision: u64::MAX,
             summary_history: 128,
             css: CssSpecifiedValueSerializationLimits::default(),
+            max_pending_owner_effects: 1024,
+            max_pending_owner_effect_bytes: 16 * 1024 * 1024,
+            max_owner_effect_identity: u64::MAX,
         }
     }
 }
@@ -74,9 +80,7 @@ pub enum CssomInputData {
         identity: String,
         attribute: Option<String>,
     },
-    Support {
-        profile: String,
-    },
+    Support(CssomDeclarationSupport),
     Import {
         resolved_location: Option<String>,
     },
@@ -90,7 +94,7 @@ impl CssomInputData {
             Self::Layer { .. } => CssomInputRole::Layer,
             Self::Base { .. } => CssomInputRole::Base,
             Self::Owner { .. } => CssomInputRole::Owner,
-            Self::Support { .. } => CssomInputRole::Support,
+            Self::Support(_) => CssomInputRole::Support,
             Self::Import { .. } => CssomInputRole::Import,
         }
     }
@@ -396,6 +400,8 @@ pub enum CssomPropertyOccurrences {
     Ordinary(CssDeclarationList),
     Keyframe(CssKeyframeDeclarationList),
     Margin(CssMarginDeclarationBlock),
+    /// Genuine raw contents admitted for a live domain without fabricating authored AST.
+    RawContents(CssDeclarationList),
 }
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct CssomBlockFlags {
@@ -423,14 +429,40 @@ pub enum CssomBlockData {
     CounterStyle(Box<CssCounterStyleDescriptors>),
     FontFace(CssFontFaceDescriptors),
 }
+/// Genuine raw contents of the last replacement request, independent of edited selected values.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssomDeclarationInput {
+    pub source: String,
+    pub parser_context: CssParserContext,
+    pub diagnostics: Vec<CssRecoveryDiagnostic>,
+}
 #[derive(Clone, Debug)]
 pub struct CssomBlock {
     pub(crate) parent: Option<CssomRuleId>,
     pub(crate) owner: Option<CssomInputVersion>,
     pub(crate) flags: CssomBlockFlags,
     pub(crate) data: CssomBlockData,
+    pub(crate) admission_inputs: Vec<CssomInputVersion>,
+    pub(crate) replacement_input: Option<CssomDeclarationInput>,
+    pub(crate) selected_font_face: Option<
+        CssomProjection<CssSpecifiedFontFaceDeclarationBlock, CssFontFaceDeclarationBlockError>,
+    >,
 }
 impl CssomBlock {
+    /// Current unique selected descriptors, independent of retained authored occurrences.
+    pub fn selected_font_face(
+        &self,
+    ) -> Option<
+        &CssomProjection<CssSpecifiedFontFaceDeclarationBlock, CssFontFaceDeclarationBlockError>,
+    > {
+        self.selected_font_face.as_ref()
+    }
+    pub fn replacement_input(&self) -> Option<&CssomDeclarationInput> {
+        self.replacement_input.as_ref()
+    }
+    pub fn admission_inputs(&self) -> &[CssomInputVersion] {
+        &self.admission_inputs
+    }
     pub fn parent(&self) -> Option<&CssomRuleId> {
         self.parent.as_ref()
     }
@@ -654,6 +686,18 @@ pub enum CssomException {
 #[non_exhaustive]
 pub enum CssomError {
     Source(CssomException),
+    ComputedStyleUpdatePrecondition,
+    UnresolvedDeclarationPreparation,
+    StaleDeclarationDecision,
+    EffectAlreadyConsumed,
+    StaleOwnerEffect,
+    StaleOwnerNotification,
+    EffectIdentityExhausted,
+    Metadata(CssPropertyMetadataError),
+    Expansion(CssExpansionError),
+    PageBlock(CssPageBlockError),
+    FontFace(CssFontFaceDeclarationBlockError),
+    Value(CssSpecifiedValueSerializationError),
     ForeignOwner,
     MissingObject,
     WrongKind,
@@ -686,6 +730,11 @@ impl std::error::Error for CssomError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Declaration(e) => Some(e),
+            Self::Expansion(e) => Some(e),
+            Self::PageBlock(e) => Some(e),
+            Self::FontFace(e) => Some(e),
+            Self::Metadata(e) => Some(e),
+            Self::Value(e) => Some(e),
             Self::Page(e) => Some(e),
             Self::Format(e) => Some(e),
             Self::Component(e) => Some(e),

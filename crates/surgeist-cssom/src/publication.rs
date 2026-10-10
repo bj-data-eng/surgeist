@@ -34,23 +34,21 @@ pub struct CssomInputManifest {
     pub sheets: Vec<(CssomSheetId, CssomInputVersion)>,
     pub blocks: Vec<(CssomBlockId, CssomInputVersion)>,
     pub imports: Vec<(CssomRuleId, CssomInputVersion)>,
+    pub declaration_admissions: Vec<(CssomBlockId, Vec<CssomInputVersion>)>,
 }
-impl CssomSnapshot {
-    pub fn inputs(&self) -> CssomInputManifest {
+impl crate::model::State {
+    pub(crate) fn input_manifest(&self) -> CssomInputManifest {
         let mut sheets = self
-            .state
             .sheets
             .iter()
             .map(|(id, v)| (id.clone(), v.inputs.version.clone()))
             .collect::<Vec<_>>();
         let mut blocks = self
-            .state
             .blocks
             .iter()
             .filter_map(|(id, v)| v.owner.clone().map(|v| (id.clone(), v)))
             .collect::<Vec<_>>();
         let mut imports = self
-            .state
             .rules
             .iter()
             .filter_map(|(id, v)| match &v.data {
@@ -61,12 +59,26 @@ impl CssomSnapshot {
         sheets.sort_by_key(|v| v.0.serial);
         blocks.sort_by_key(|v| v.0.serial);
         imports.sort_by_key(|v| v.0.serial);
+        let mut declaration_admissions = self
+            .blocks
+            .iter()
+            .filter(|(_, block)| !block.admission_inputs.is_empty())
+            .map(|(id, block)| (id.clone(), block.admission_inputs.clone()))
+            .collect::<Vec<_>>();
+        declaration_admissions.sort_by_key(|(id, _)| id.serial);
         CssomInputManifest {
-            context: self.context().clone(),
+            declaration_admissions,
+            context: self.context.clone(),
             sheets,
             blocks,
             imports,
         }
+    }
+}
+
+impl CssomSnapshot {
+    pub fn inputs(&self) -> CssomInputManifest {
+        self.state.input_manifest()
     }
 }
 

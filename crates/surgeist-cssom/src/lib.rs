@@ -5,17 +5,23 @@
 #![forbid(unsafe_code)]
 
 mod css_adapter;
+mod declaration;
+mod declaration_support;
 mod identity;
 mod media_operations;
 mod model;
+mod owner_effect;
 mod publication;
 mod rule_operations;
 mod sheet_operations;
 mod store;
 
+pub use declaration::*;
+pub use declaration_support::*;
 pub use identity::*;
 pub use media_operations::CssomMediaEdit;
 pub use model::*;
+pub use owner_effect::*;
 pub use publication::*;
 pub use sheet_operations::*;
 pub use store::*;

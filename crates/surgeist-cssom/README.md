@@ -37,9 +37,9 @@ Current selected property entries are independent of raw authored occurrences.
 Direct terminal removal rebuilds through the CSS checked selected-entry boundary,
 preserving each survivor's source occurrence, priority and order. It never expands
 the old shorthand again. Ordinary, keyframe, margin, mixed Page, counter and font
-descriptor blocks have explicit domains. The implemented property profile is the
-CSS provider profile (#22/#471); valid symbolic inputs can retain a typed unavailable
-projection rather than becoming an empty or partial block. Storage does not imply
+descriptor blocks have explicit domains. Checked grammar recognition and usable composed-owner support are separate.
+Valid symbolic inputs can retain a typed unavailable projection rather than becoming
+an empty or partial block. Storage does not imply
 that every authored property or whole-rule format is supported.
 
 Live counter names are raw strings. Seven ordered feature maps accept raw keys and
@@ -73,7 +73,7 @@ the same classified source occurrence. `add_sheet_rule` supplies the standard
 legacy defaults, builds its actual bounded input and delegates insertion, returning
 `-1`; absent index means the current end. `remove_sheet_rule` delegates deletion,
 defaulting its index to zero. These are CSS-standard aliases, not crate shims.
-Complete #1049 selector/property operations remain separate work.
+Complete #1049 rule text/selector operations remain separate work.
 The CSSRule cssText setter is implemented as its standards-defined no-op.
 
 `replace_sheet_sync` delegates the recovered replacement algorithm. Asynchronous
@@ -94,11 +94,59 @@ Dropping detached work leaves an explicit owner-side record visible through
 access from drop, Promise, scheduler or resource loader is implied. Owner drop
 removes the live operation; already captured snapshots remain historical values.
 
-Bounded supplied owner facts are supported, including a declaration block's nullable
-owner. The foundation performs no host attribute writes and emits no host effects.
-Its `updating` read is false; the future #835/#840 synchronous application seam must
-own a transient correlated application lease and binding echo suppression, with
-cleanup on success, failure and unwind. A published boolean alone is insufficient.
+Common source declaration operations provide `length`, `item`, `parent_rule`,
+`css_text`, property value/priority and `css_float` reads, together with prepared
+`cssText`/property/float setters and direct source removal. These operations are
+separate from the foundation's direct selected-terminal product primitive.
+Ordinary/keyframe/margin properties, mixed Page descriptors/properties and FontFace
+descriptors use their existing CSS owners. Page `size` is a descriptor; ordinary
+width/height cannot supply its missing value. FontFace retains raw occurrences and
+an independent unique current selection; descriptor aliases share the CSS kind,
+important values are inadmissible, and `src` member recovery remains CSS-owned.
+CounterStyle's specialized reflections belong to its separate descriptor owner.
+
+`CssomInputData::Support` contains a concrete `CssomDeclarationSupport` supplied by
+the composed owner. It selects complete grammar/descriptor identities, including
+the independent SVG terminal separately from its finite legacy alias. Parser
+recognition or a conformance catalog never grants usable support. A profile can
+promise all checked values or require a decision for each actual whole candidate.
+Custom properties bypass usable membership and preserve the exact supplied
+semantic name, including punctuation, backslashes, case and NUL. CSS output
+escaping does not change live identity.
+
+Prepare, inspect the checked candidates and resolve conditional decisions with
+`apply_declaration`; independently revised decision owners use
+`apply_declaration_with_inputs`. Tickets and decisions are correlated to their
+batch, candidate and captured context. Wrong/stale decisions and unresolved
+preparations cannot publish. Dropping a preparation abandons it. Bulk recovery
+keeps genuine raw replacement input, effective parser context and diagnostics,
+including when all declarations are discarded. Source setters use actual value-only parsers and retain the provenance those
+CSS-owned values expose, with no invented parsed name position; retained survivors
+keep their original checked occurrences. Parsed/typed ingress remains
+honest about its original parser context.
+
+Readonly errors precede source mutation branches. Computed remains independent:
+reads/no-ops follow their selected source branches, while a reached owner-update
+branch returns `ComputedStyleUpdatePrecondition` before testing for a null owner.
+A successful `cssText` setter requires the owner update even for equal/empty text;
+absent removal and setter `updated=false` require none. Equal serialized text can
+still publish changed occurrence provenance without creating an owner effect.
+
+Bounded nonnull owner facts and nullable owners are supported. Commit reserves
+non-clone, single-use `CssomOwnerEffect` tokens correlated with the exact block,
+owner version, publication revision and owning input manifest. A binding calls
+`begin_owner_application` before its synchronous host write. Its exclusive lease
+sets actual transient updating, exposed by `declaration_flags`/lease flags; owning
+snapshots preserve their captured flags. Only a notification with that token,
+owner, exact style local name, null namespace and exact value is a matching echo.
+Unrelated notifications remain owned/queued by the binding and can later enter
+`prepare_style_attribute_change`. Qualifying external attribute changes bypass
+readonly, replace from real raw contents, and never echo another host write.
+
+The binding reports success or post-publication host failure. Dropping/unwinding
+the lease always clears updating and releases the reservation; canceling/dropping
+an unused token releases it too. Host failure never rolls back committed CSS.
+CSSOM runs no host callback and constructs no Window, Document or runtime adapter.
 
 Trusted snapshot inspection is Rust transport for downstream styling. Source
 `sheet_rules` enforces the origin-clean security guard. A binding must call that
@@ -115,11 +163,20 @@ selector matching, cascade, layout, scheduling or resource loading.
 
 `CssomLimits` controls retained objects, entries, host/live UTF-8 string bytes,
 per-parse and retained property-input bytes, structural/linked-input depth, identity/revision capacity,
-history and CSS projection work. Zero is valid. These are admission/storage/work
+history, pending owner-effect count/bytes/identity and CSS projection work.
+`CssomDeclarationRequestLimits` composes input, scans, schema-derived new expansion,
+projection, output and final effect formatting. Every CSS provider receives a
+disjoint reserved allowance because it exposes no mutable work counter; unused
+reservations are conservatively retained. Zero is valid. These are admission/storage/work
 quotas; they do not promise an allocator/process-memory bound or recovery from
 system OOM. Checked CSS payloads retain their existing provider constraints.
 
-Run the [external consumer](examples/snapshot_consumer.rs) for direct inspection
-and contiguous incremental coverage. [Foundation tests](tests/foundation.rs) and
-[stylesheet operation tests](tests/sheet_operations.rs) exercise owning state,
-source construction/recovery, stable identities and bounded terminal cleanup.
+Run the [source declaration consumer](examples/declaration_consumer.rs) for supplied
+usable support, source edits and owning old/new captures. Run the
+[external snapshot consumer](examples/snapshot_consumer.rs) for direct inspection
+and contiguous incremental coverage. [Public tests](tests/foundation.rs) exercise
+the owning state and exceptional live cases;
+[declaration tests](tests/declaration_operations.rs) exercise source ordering,
+domain dispatch, supplied support, atomic failures, effects and provenance.
+[Stylesheet tests](tests/sheet_operations.rs) cover source construction,
+replacement reservations and bounded terminal cleanup.

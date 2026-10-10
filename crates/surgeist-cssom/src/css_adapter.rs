@@ -43,6 +43,26 @@ impl State {
             owner: self.owner.clone(),
             serial: self.allocate(limits)?,
         };
+        let selected_font_face = if let CssomBlockData::FontFace(authored) = &data {
+            let entries = font_winners(authored.occurrences().cloned().collect());
+            Some(
+                match CssSpecifiedFontFaceDeclarationBlock::try_from_entries_with_limits(
+                    &entries, limits.css,
+                ) {
+                    Ok(selected) => CssomProjection::Available(selected),
+                    Err(CssFontFaceDeclarationBlockError::Serialization(error))
+                        if resource_kind(error.kind()) =>
+                    {
+                        return Err(CssomError::FontFace(
+                            CssFontFaceDeclarationBlockError::Serialization(error),
+                        ));
+                    }
+                    Err(error) => CssomProjection::Unavailable(error),
+                },
+            )
+        } else {
+            None
+        };
         self.blocks.insert(
             id.clone(),
             CssomBlock {
@@ -50,6 +70,9 @@ impl State {
                 owner,
                 flags,
                 data,
+                admission_inputs: Vec::new(),
+                replacement_input: None,
+                selected_font_face,
             },
         );
         Ok(id)
@@ -581,4 +604,25 @@ pub(crate) fn parse(
         }
     }
     Ok(report.into_parts())
+}
+
+/// The existing FontFace inventory defines a last occurrence winner, including pending values.
+/// Keep those actual winning occurrences in their authored order, without a kind-order table.
+pub(crate) fn font_winners(entries: Vec<CssFontFaceDescriptor>) -> Vec<CssFontFaceDescriptor> {
+    let mut seen = Vec::new();
+    let mut winners = entries
+        .into_iter()
+        .rev()
+        .filter(|entry| {
+            let kind = entry.value().kind();
+            if seen.contains(&kind) {
+                false
+            } else {
+                seen.push(kind);
+                true
+            }
+        })
+        .collect::<Vec<_>>();
+    winners.reverse();
+    winners
 }

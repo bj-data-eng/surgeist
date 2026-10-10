@@ -6,6 +6,7 @@ use crate::{
 use std::{
     collections::{BTreeSet, HashMap, VecDeque},
     sync::Arc,
+    sync::atomic::{AtomicUsize, Ordering},
 };
 use surgeist_css::*;
 
@@ -16,6 +17,9 @@ pub struct CssomStore {
     pub(crate) history: VecDeque<CssomChangeSummary>,
     pub(crate) pending_replacements:
         HashMap<CssomSheetId, crate::sheet_operations::PendingReplacement>,
+    pub(crate) effect_quota: Arc<crate::owner_effect::EffectQuota>,
+    pub(crate) next_effect: u64,
+    pub(crate) updating: Option<CssomBlockId>,
 }
 impl CssomStore {
     pub fn new(limits: CssomLimits, context: CssomContext) -> Result<Self, CssomError> {
@@ -49,6 +53,9 @@ impl CssomStore {
             limits,
             history: VecDeque::new(),
             pending_replacements: HashMap::new(),
+            effect_quota: Arc::new(crate::owner_effect::EffectQuota::default()),
+            next_effect: 1,
+            updating: None,
         })
     }
     pub fn snapshot(&self) -> CssomSnapshot {
@@ -72,6 +79,9 @@ impl CssomStore {
             created: Vec::new(),
             full_recompute: false,
             terminal_replacement: None,
+            declaration_changes: Vec::new(),
+            owner_updates: Vec::new(),
+            pending_preparations: Arc::new(AtomicUsize::new(0)),
         })
     }
     pub(crate) fn check_guard(&self, guard: &CssomEditGuard) -> Result<(), CssomError> {
@@ -92,6 +102,9 @@ impl CssomStore {
             revision: batch.base.revision.clone(),
             context: batch.base.context.clone(),
         })?;
+        if batch.pending_preparations.load(Ordering::Relaxed) != 0 {
+            return Err(CssomError::UnresolvedDeclarationPreparation);
+        }
         if batch.poisoned {
             return Err(CssomError::BatchAborted);
         }
@@ -101,7 +114,11 @@ impl CssomStore {
             .check_limits(&self.replacement_limits(reserved)?)?;
         let changed = batch.changed();
         if !changed {
+            let (effects, next_effect) =
+                self.reserve_owner_effects(&batch, &self.state.revision)?;
+            self.next_effect = next_effect;
             return Ok(CssomCommit {
+                effects,
                 token: batch.token,
                 created: batch.created,
                 publication: CssomPublication::Unchanged {
@@ -121,6 +138,11 @@ impl CssomStore {
                     .is_some_and(|end| end <= self.limits.max_revision)
             })
             .ok_or(CssomError::RevisionExhausted)?;
+        let effect_revision = CssomRevision {
+            owner: self.state.owner.clone(),
+            value: revision,
+        };
+        let (effects, next_effect) = self.reserve_owner_effects(&batch, &effect_revision)?;
         let before = self.snapshot();
         let mut next = batch.staged;
         next.revision = CssomRevision {
@@ -162,7 +184,9 @@ impl CssomStore {
         if let Some(token) = batch.terminal_replacement {
             self.pending_replacements.remove(token.sheet());
         }
+        self.next_effect = next_effect;
         Ok(CssomCommit {
+            effects,
             token: batch.token,
             created: batch.created,
             publication: CssomPublication::Changed(Box::new(summary)),
@@ -230,17 +254,17 @@ impl CssomStore {
 /// Batch-local creation references cannot be used as live identities.
 #[derive(Clone, Debug)]
 pub struct CssomSheetTicket {
-    token: Arc<()>,
+    pub(crate) token: Arc<()>,
     index: usize,
 }
 #[derive(Clone, Debug)]
 pub struct CssomBlockTicket {
-    token: Arc<()>,
+    pub(crate) token: Arc<()>,
     index: usize,
 }
 #[derive(Clone, Debug)]
 pub struct CssomRuleTicket {
-    token: Arc<()>,
+    pub(crate) token: Arc<()>,
     index: usize,
 }
 #[derive(Clone, Debug)]
@@ -250,11 +274,18 @@ enum Created {
     Rule(CssomRuleId),
 }
 pub struct CssomCommit {
-    token: Arc<()>,
+    effects: Vec<CssomOwnerEffect>,
+    pub(crate) token: Arc<()>,
     created: Vec<Created>,
     publication: CssomPublication,
 }
 impl CssomCommit {
+    pub fn owner_effects(&self) -> &[CssomOwnerEffect] {
+        &self.effects
+    }
+    pub fn take_owner_effects(&mut self) -> Vec<CssomOwnerEffect> {
+        std::mem::take(&mut self.effects)
+    }
     pub fn publication(&self) -> &CssomPublication {
         &self.publication
     }
@@ -289,15 +320,18 @@ impl CssomCommit {
 
 /// Private staging state; dropped/failed batches expose no tentative live IDs.
 pub struct CssomBatch {
-    token: Arc<()>,
-    base: Arc<State>,
+    pub(crate) token: Arc<()>,
+    pub(crate) base: Arc<State>,
     pub(crate) staged: State,
     pub(crate) limits: CssomLimits,
-    poisoned: bool,
-    categories: BTreeSet<CssomChange>,
-    affected: Vec<CssomObjectId>,
+    pub(crate) poisoned: bool,
+    pub(crate) categories: BTreeSet<CssomChange>,
+    pub(crate) affected: Vec<CssomObjectId>,
     created: Vec<Created>,
-    full_recompute: bool,
+    pub(crate) full_recompute: bool,
+    pub(crate) declaration_changes: Vec<CssomBlockId>,
+    pub(crate) owner_updates: Vec<(CssomBlockId, crate::declaration_support::DeclarationBudget)>,
+    pub(crate) pending_preparations: Arc<AtomicUsize>,
     pub(crate) terminal_replacement: Option<CssomReplaceToken>,
 }
 impl CssomBatch {
@@ -942,7 +976,8 @@ impl CssomBatch {
         })
     }
     fn changed(&self) -> bool {
-        if self.staged.next_identity != self.base.next_identity
+        if !self.declaration_changes.is_empty()
+            || self.staged.next_identity != self.base.next_identity
             || self.staged.context != self.base.context
         {
             return true;
@@ -1020,6 +1055,16 @@ impl State {
         {
             return Err(CssomError::InvalidInput("ambiguous parser mode input"));
         }
+        if self
+            .context
+            .inputs
+            .iter()
+            .filter(|input| matches!(input.data, CssomInputData::Support(_)))
+            .count()
+            > 1
+        {
+            return Err(CssomError::InvalidInput("ambiguous declaration support"));
+        }
         for (i, input) in self.context.inputs.iter().enumerate() {
             if input.version.role != input.data.role() {
                 return Err(CssomError::InvalidInput("supplied input role mismatch"));
@@ -1084,10 +1129,7 @@ impl State {
             version(&mut strings, &input.version);
             add(&mut entries, 1);
             match &input.data {
-                CssomInputData::Document { identity }
-                | CssomInputData::Support { profile: identity } => {
-                    add(&mut strings, identity.len())
-                }
+                CssomInputData::Document { identity } => add(&mut strings, identity.len()),
                 CssomInputData::Origin { origin, profile } => {
                     add(&mut strings, origin.len());
                     add(&mut strings, profile.len());
@@ -1118,6 +1160,13 @@ impl State {
                     }
                 }
                 CssomInputData::ParserMode(_) => {}
+                CssomInputData::Support(support) => add(
+                    &mut entries,
+                    support.properties().len()
+                        + support.page_descriptors().len()
+                        + support.font_face_descriptors().len()
+                        + usize::from(support.svg_glyph_orientation_vertical().is_some()),
+                ),
             }
         }
         for linked in &self.context.linked {
@@ -1150,6 +1199,17 @@ impl State {
             add(&mut entries, media.queries().len());
         }
         for block in self.blocks.values() {
+            if let Some(CssomProjection::Available(selected)) = &block.selected_font_face {
+                add(&mut entries, selected.entries().len());
+            }
+            if let Some(input) = &block.replacement_input {
+                add(&mut strings, input.source.len());
+                add(&mut entries, input.diagnostics.len());
+            }
+            add(&mut entries, block.admission_inputs.len());
+            for input in &block.admission_inputs {
+                version(&mut strings, input);
+            }
             if let Some(owner) = &block.owner {
                 version(&mut strings, owner);
             }
@@ -1160,7 +1220,8 @@ impl State {
                     add(
                         &mut entries,
                         match authored {
-                            CssomPropertyOccurrences::Ordinary(v) => v.len(),
+                            CssomPropertyOccurrences::Ordinary(v)
+                            | CssomPropertyOccurrences::RawContents(v) => v.len(),
                             CssomPropertyOccurrences::Keyframe(v) => v.len(),
                             CssomPropertyOccurrences::Margin(v) => v.properties().len(),
                         },
