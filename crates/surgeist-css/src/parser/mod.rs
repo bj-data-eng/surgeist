@@ -58,7 +58,10 @@ use reconstruction::{
 };
 #[cfg(test)]
 mod native_batch_boundary_tests;
+mod page_margin_rule;
 mod rule_candidate;
+pub(crate) use page_margin_rule::parse_with_context as parse_page_margin_rule_with_context;
+pub use page_margin_rule::{parse_page_margin_rule, parse_page_margin_rule_with_limits};
 #[cfg(test)]
 mod style_scope_media_separator_tests;
 mod syntax_bridge;

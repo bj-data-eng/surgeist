@@ -170,6 +170,92 @@ struct PageBodyParser<'s> {
     margin: bool,
 }
 
+/// The detached boundary admits only the existing Page margin branch. Other
+/// Page-body items never become a detached margin occurrence.
+struct DetachedMarginParser<'s> {
+    page: PageBodyParser<'s>,
+}
+impl<'i> AtRuleParser<'i> for DetachedMarginParser<'i> {
+    type Prelude = PageBodyAtRulePrelude<'i>;
+    type AtRule = PageBodyItem;
+    type Error = Error;
+    fn parse_prelude<'t>(
+        &mut self,
+        name: CowRcStr<'i>,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Self::Prelude, ParseError<'i, Error>> {
+        let location = input.current_source_location();
+        match AtRuleParser::parse_prelude(&mut self.page, name.clone(), input)? {
+            prelude @ PageBodyAtRulePrelude::MarginBox(_) => Ok(prelude),
+            PageBodyAtRulePrelude::TopLevelOnly(name, location) => {
+                Err(top_level_only_at_rule_placement(location, name.as_ref()))
+            }
+            PageBodyAtRulePrelude::Other => {
+                Err(location.new_error(cssparser::BasicParseErrorKind::AtRuleInvalid(name)))
+            }
+        }
+    }
+    fn rule_without_block(
+        &mut self,
+        prelude: Self::Prelude,
+        start: &ParserState,
+    ) -> Result<Self::AtRule, ()> {
+        AtRuleParser::rule_without_block(&mut self.page, prelude, start)
+    }
+    fn parse_block<'t>(
+        &mut self,
+        prelude: Self::Prelude,
+        start: &ParserState,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Self::AtRule, ParseError<'i, Error>> {
+        AtRuleParser::parse_block(&mut self.page, prelude, start, input)
+    }
+}
+impl<'i> QualifiedRuleParser<'i> for DetachedMarginParser<'i> {
+    type Prelude = ();
+    type QualifiedRule = PageBodyItem;
+    type Error = Error;
+}
+
+pub(super) fn admit_margin_rule(
+    source: &str,
+    recovery: RecoveryState,
+    envelope: &super::rule_candidate::RuleEnvelope,
+) -> crate::CssParseReport<Option<CssMarginRule>> {
+    let working_source = crate::tokenization::prepare(source);
+    let mut parser_input = cssparser::ParserInput::new(&working_source);
+    let mut input = Parser::new(&mut parser_input);
+    let mut parser = DetachedMarginParser {
+        page: PageBodyParser {
+            source,
+            recovery: recovery.clone(),
+            diagnostics: Vec::new(),
+            margin: false,
+        },
+    };
+    let admitted =
+        super::syntax_bridge::admit_envelope(source, &mut input, &mut parser, &recovery, envelope);
+    let (margin, mut diagnostics) = match admitted {
+        Ok(PageBodyItem::Margin(margin)) => (Some(margin), parser.page.diagnostics),
+        Ok(PageBodyItem::Declaration(_)) => unreachable!("rule driver cannot emit a declaration"),
+        Err(error) => (
+            None,
+            vec![super::fragments::reject(
+                source,
+                error,
+                crate::CssRecoveryAction::RejectInput,
+            )],
+        ),
+    };
+    let margin = if super::recovery::has_resource_failure(&diagnostics) {
+        None
+    } else {
+        margin
+    };
+    diagnostics.extend(recovery.take_implicit_closure_diagnostics(source));
+    crate::CssParseReport::new(margin, diagnostics)
+}
+
 pub(super) fn parse_contents(
     source: &str,
     limits: crate::CssComponentValueLimits,

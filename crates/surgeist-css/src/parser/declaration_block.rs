@@ -279,16 +279,7 @@ pub(super) fn parse_contents<R: Receiver>(
         };
         diagnostics.extend(receiver.take_diagnostics());
         if R::ABORT_ON_RESOURCE {
-            resource_failure |=
-                diagnostics
-                    .iter()
-                    .any(|diagnostic| match diagnostic.error().kind() {
-                        crate::ErrorKind::NestingLimit(_) => true,
-                        crate::ErrorKind::InvalidComponentValue(error) => {
-                            crate::error::is_component_resource_error(error)
-                        }
-                        _ => false,
-                    });
+            resource_failure |= recovery::has_resource_failure(&diagnostics);
         }
         diagnostics.extend(recovery.take_implicit_closure_diagnostics(source));
         // Tokenizer recovery belongs to consumed contents, not text after `}`.

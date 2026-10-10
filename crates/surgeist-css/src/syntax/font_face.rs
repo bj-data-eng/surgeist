@@ -84,7 +84,13 @@ impl CssFontFaceDescriptorKind {
         }
     }
 
-    pub(crate) fn from_css_name(name: &str) -> Option<Self> {
+    /// Looks up an exact decoded descriptor name, ignoring ASCII case.
+    ///
+    /// `font-stretch` is the existing CSS alias for `font-width`. Unknown names,
+    /// whitespace, escapes and punctuation return `None`; this does not tokenize
+    /// CSS or manufacture a named descriptor occurrence.
+    #[must_use]
+    pub fn from_css_name(name: &str) -> Option<Self> {
         [
             Self::FontFamily,
             Self::Src,

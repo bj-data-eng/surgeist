@@ -153,6 +153,23 @@ impl CssParserContext {
     ) -> CssParseReport<Option<crate::CssPageDeclarationBlock>> {
         crate::parser::parse_page_declaration_block_contents_with_context(source, limits, self)
     }
+    /// Parses one complete detached margin child in an actual Page destination.
+    #[must_use]
+    pub fn parse_page_margin_rule(
+        self,
+        source: &str,
+    ) -> CssParseReport<Option<crate::CssMarginRule>> {
+        self.parse_page_margin_rule_with_limits(source, CssComponentValueLimits::default())
+    }
+    /// Uses cumulative original-input limits and this document-mode context.
+    #[must_use]
+    pub fn parse_page_margin_rule_with_limits(
+        self,
+        source: &str,
+        limits: CssComponentValueLimits,
+    ) -> CssParseReport<Option<crate::CssMarginRule>> {
+        crate::parser::parse_page_margin_rule_with_context(source, limits, self)
+    }
     /// Parses one complete declaration occurrence.
     #[must_use]
     pub fn parse_declaration(self, source: &str) -> CssParseReport<Option<CssDeclaration>> {

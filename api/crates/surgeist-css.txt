@@ -155,6 +155,9 @@ pub surgeist_css::CssAuthoredFontFaceDescriptorValue::Pending(surgeist_css::CssP
 impl surgeist_css::CssAuthoredFontFaceDescriptorValue
 pub const fn surgeist_css::CssAuthoredFontFaceDescriptorValue::kind(&self) -> surgeist_css::CssFontFaceDescriptorKind
 impl surgeist_css::CssAuthoredFontFaceDescriptorValue
+pub fn surgeist_css::CssAuthoredFontFaceDescriptorValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssAuthoredFontFaceDescriptorValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+impl surgeist_css::CssAuthoredFontFaceDescriptorValue
 pub fn surgeist_css::CssAuthoredFontFaceDescriptorValue::try_from_components(kind: surgeist_css::CssFontFaceDescriptorKind, values: surgeist_css::CssComponentValues) -> core::result::Result<Self, surgeist_css::CssFontFaceValueError>
 pub fn surgeist_css::CssAuthoredFontFaceDescriptorValue::try_from_components_with_limits(kind: surgeist_css::CssFontFaceDescriptorKind, values: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::CssFontFaceValueError>
 impl core::convert::From<surgeist_css::CssFontFaceDescriptorValue> for surgeist_css::CssAuthoredFontFaceDescriptorValue
@@ -1448,6 +1451,16 @@ pub surgeist_css::CssFontDisplay::Block
 pub surgeist_css::CssFontDisplay::Fallback
 pub surgeist_css::CssFontDisplay::Optional
 pub surgeist_css::CssFontDisplay::Swap
+#[non_exhaustive] pub enum surgeist_css::CssFontFaceDeclarationBlockError
+pub surgeist_css::CssFontFaceDeclarationBlockError::DuplicateDescriptor
+pub surgeist_css::CssFontFaceDeclarationBlockError::DuplicateDescriptor::kind: surgeist_css::CssFontFaceDescriptorKind
+pub surgeist_css::CssFontFaceDeclarationBlockError::Serialization(surgeist_css::CssSpecifiedValueSerializationError)
+impl core::convert::From<surgeist_css::CssSpecifiedValueSerializationError> for surgeist_css::CssFontFaceDeclarationBlockError
+pub fn surgeist_css::CssFontFaceDeclarationBlockError::from(error: surgeist_css::CssSpecifiedValueSerializationError) -> Self
+impl core::error::Error for surgeist_css::CssFontFaceDeclarationBlockError
+pub fn surgeist_css::CssFontFaceDeclarationBlockError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_css::CssFontFaceDeclarationBlockError
+pub fn surgeist_css::CssFontFaceDeclarationBlockError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_css::CssFontFaceDescriptorKind
 pub surgeist_css::CssFontFaceDescriptorKind::AscentOverride
 pub surgeist_css::CssFontFaceDescriptorKind::DescentOverride
@@ -1465,6 +1478,7 @@ pub surgeist_css::CssFontFaceDescriptorKind::Src
 pub surgeist_css::CssFontFaceDescriptorKind::UnicodeRange
 impl surgeist_css::CssFontFaceDescriptorKind
 pub const fn surgeist_css::CssFontFaceDescriptorKind::css_name(self) -> &'static str
+pub fn surgeist_css::CssFontFaceDescriptorKind::from_css_name(name: &str) -> core::option::Option<Self>
 #[non_exhaustive] pub enum surgeist_css::CssFontFaceDescriptorValue
 pub surgeist_css::CssFontFaceDescriptorValue::AscentOverride(surgeist_css::CssFontMetricOverride)
 pub surgeist_css::CssFontFaceDescriptorValue::DescentOverride(surgeist_css::CssFontMetricOverride)
@@ -4327,6 +4341,7 @@ pub surgeist_css::CssPageDescriptorKind::PageOrientation
 pub surgeist_css::CssPageDescriptorKind::Size
 impl surgeist_css::CssPageDescriptorKind
 pub const fn surgeist_css::CssPageDescriptorKind::css_name(self) -> &'static str
+pub fn surgeist_css::CssPageDescriptorKind::from_name(name: &str) -> core::option::Option<Self>
 #[non_exhaustive] pub enum surgeist_css::CssPageDescriptorValueRef<'a>
 pub surgeist_css::CssPageDescriptorValueRef::Bleed(&'a surgeist_css::CssPageBleed)
 pub surgeist_css::CssPageDescriptorValueRef::Global(surgeist_css::CssGlobalKeyword)
@@ -9862,6 +9877,7 @@ pub const fn surgeist_css::CssMarginRightPropertyValue::value(&self) -> &surgeis
 pub struct surgeist_css::CssMarginRule
 impl surgeist_css::CssMarginRule
 pub const fn surgeist_css::CssMarginRule::declarations(&self) -> &surgeist_css::CssMarginDeclarationBlock
+pub const fn surgeist_css::CssMarginRule::detached_origin(&self) -> core::option::Option<&surgeist_css::CssParsedOrigin>
 pub const fn surgeist_css::CssMarginRule::name(&self) -> surgeist_css::CssMarginBox
 pub const fn surgeist_css::CssMarginRule::new(name: surgeist_css::CssMarginBox, declarations: surgeist_css::CssMarginDeclarationBlock) -> Self
 pub const fn surgeist_css::CssMarginRule::position(&self) -> core::option::Option<surgeist_css::CssSourcePosition>
@@ -10721,6 +10737,8 @@ pub fn surgeist_css::CssParserContext::parse_margin_block(self, source: &str) ->
 pub fn surgeist_css::CssParserContext::parse_page_block(self, source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssBlockFragment<surgeist_css::CssPageBody>>>
 pub fn surgeist_css::CssParserContext::parse_page_declaration_block_contents(self, source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssPageDeclarationBlock>>
 pub fn surgeist_css::CssParserContext::parse_page_declaration_block_contents_with_limits(self, source: &str, limits: surgeist_css::CssComponentValueLimits) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssPageDeclarationBlock>>
+pub fn surgeist_css::CssParserContext::parse_page_margin_rule(self, source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssMarginRule>>
+pub fn surgeist_css::CssParserContext::parse_page_margin_rule_with_limits(self, source: &str, limits: surgeist_css::CssComponentValueLimits) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssMarginRule>>
 pub fn surgeist_css::CssParserContext::parse_page_property_value(self, property: surgeist_css::CssPropertyNameRef<'_>, values: surgeist_css::CssComponentValues, importance: surgeist_css::CssImportance) -> core::result::Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError>
 pub fn surgeist_css::CssParserContext::parse_property_value(self, property: surgeist_css::CssPropertyNameRef<'_>, values: surgeist_css::CssComponentValues, importance: surgeist_css::CssImportance) -> core::result::Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError>
 pub fn surgeist_css::CssParserContext::parse_property_value_for_grammar(self, grammar: surgeist_css::CssPropertyGrammar, values: surgeist_css::CssComponentValues, importance: surgeist_css::CssImportance) -> core::result::Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError>
@@ -10797,6 +10815,9 @@ pub const fn surgeist_css::CssPendingFontFaceDescriptorValue::kind(&self) -> sur
 impl surgeist_css::CssPendingFontFaceDescriptorValue
 pub fn surgeist_css::CssPendingFontFaceDescriptorValue::reparse_after_substitution(&self, replacement: surgeist_css::CssComponentValues) -> core::result::Result<surgeist_css::CssFontFaceDescriptorValue, surgeist_css::CssFontFaceValueError>
 pub fn surgeist_css::CssPendingFontFaceDescriptorValue::reparse_after_substitution_with_limits(&self, replacement: surgeist_css::CssComponentValues, limits: surgeist_css::CssComponentValueLimits) -> core::result::Result<surgeist_css::CssFontFaceDescriptorValue, surgeist_css::CssFontFaceValueError>
+impl surgeist_css::CssPendingFontFaceDescriptorValue
+pub fn surgeist_css::CssPendingFontFaceDescriptorValue::serialize_specified(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
+pub fn surgeist_css::CssPendingFontFaceDescriptorValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub struct surgeist_css::CssPendingSubstitution
 impl surgeist_css::CssPendingSubstitution
 pub fn surgeist_css::CssPendingSubstitution::reenter(&self, replacement: surgeist_css::CssComponentValues) -> core::result::Result<surgeist_css::CssContributions, surgeist_css::CssExpansionError>
@@ -11269,6 +11290,8 @@ pub fn surgeist_css::CssRuleList::rules(&self) -> &[surgeist_css::CssRule]
 pub struct surgeist_css::CssRuleSyntax
 impl surgeist_css::CssRuleSyntax
 pub fn surgeist_css::CssRuleSyntax::admit(&self, namespaces: &surgeist_css::CssNamespaceContext, context: surgeist_css::CssRuleAdmissionContext) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssAdmittedRule>>
+pub fn surgeist_css::CssRuleSyntax::admit_page_margin_rule(&self) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssMarginRule>>
+pub fn surgeist_css::CssRuleSyntax::admit_page_margin_rule_with_context(&self, parser_context: surgeist_css::CssParserContext) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssMarginRule>>
 pub fn surgeist_css::CssRuleSyntax::admit_with_context(&self, namespaces: &surgeist_css::CssNamespaceContext, context: surgeist_css::CssRuleAdmissionContext, parser_context: surgeist_css::CssParserContext) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssAdmittedRule>>
 pub fn surgeist_css::CssRuleSyntax::at_rule_name(&self) -> core::option::Option<&str>
 pub const fn surgeist_css::CssRuleSyntax::component_count(&self) -> usize
@@ -11799,6 +11822,13 @@ pub fn surgeist_css::CssSpecifiedFlex::serialize_specified(&self) -> core::resul
 pub fn surgeist_css::CssSpecifiedFlex::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 pub fn surgeist_css::CssSpecifiedFlex::try_from_calculation(calculation: surgeist_css::CssFlexCalculation) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
 pub fn surgeist_css::CssSpecifiedFlex::try_from_component(component: surgeist_css::CssComponentValue) -> core::result::Result<Self, surgeist_css::CssNumericConstructionError>
+pub struct surgeist_css::CssSpecifiedFontFaceDeclarationBlock
+impl surgeist_css::CssSpecifiedFontFaceDeclarationBlock
+pub fn surgeist_css::CssSpecifiedFontFaceDeclarationBlock::entries(&self) -> &[surgeist_css::CssFontFaceDescriptor]
+pub fn surgeist_css::CssSpecifiedFontFaceDeclarationBlock::serialize_cssom(&self) -> core::result::Result<alloc::string::String, surgeist_css::CssFontFaceDeclarationBlockError>
+pub fn surgeist_css::CssSpecifiedFontFaceDeclarationBlock::serialize_cssom_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssFontFaceDeclarationBlockError>
+pub fn surgeist_css::CssSpecifiedFontFaceDeclarationBlock::try_from_entries(entries: &[surgeist_css::CssFontFaceDescriptor]) -> core::result::Result<Self, surgeist_css::CssFontFaceDeclarationBlockError>
+pub fn surgeist_css::CssSpecifiedFontFaceDeclarationBlock::try_from_entries_with_limits(entries: &[surgeist_css::CssFontFaceDescriptor], limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssFontFaceDeclarationBlockError>
 pub struct surgeist_css::CssSpecifiedLength
 impl surgeist_css::CssSpecifiedLength
 pub fn surgeist_css::CssSpecifiedLength::calculation(&self) -> core::option::Option<&surgeist_css::CssLengthCalculation>
@@ -11918,6 +11948,8 @@ impl surgeist_css::CssSpecifiedValueSerializationError
 pub const fn surgeist_css::CssSpecifiedValueSerializationError::kind(&self) -> surgeist_css::CssSpecifiedValueSerializationErrorKind
 impl core::convert::From<surgeist_css::CssSpecifiedValueSerializationError> for surgeist_css::CssDeclarationBlockError
 pub fn surgeist_css::CssDeclarationBlockError::from(error: surgeist_css::CssSpecifiedValueSerializationError) -> Self
+impl core::convert::From<surgeist_css::CssSpecifiedValueSerializationError> for surgeist_css::CssFontFaceDeclarationBlockError
+pub fn surgeist_css::CssFontFaceDeclarationBlockError::from(error: surgeist_css::CssSpecifiedValueSerializationError) -> Self
 impl core::convert::From<surgeist_css::CssSpecifiedValueSerializationError> for surgeist_css::CssPageBlockError
 pub fn surgeist_css::CssPageBlockError::from(error: surgeist_css::CssSpecifiedValueSerializationError) -> Self
 impl core::convert::From<surgeist_css::CssSpecifiedValueSerializationError> for surgeist_css::CssPageProjectionError
@@ -13124,6 +13156,8 @@ pub fn surgeist_css::parse_page_block(source: &str) -> surgeist_css::CssParseRep
 pub fn surgeist_css::parse_page_declaration_block_contents(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssPageDeclarationBlock>>
 pub fn surgeist_css::parse_page_declaration_block_contents_with_limits(source: &str, limits: surgeist_css::CssComponentValueLimits) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssPageDeclarationBlock>>
 pub fn surgeist_css::parse_page_descriptor_value(source: &str, kind: surgeist_css::CssPageDescriptorKind) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssPageDescriptorValue>>
+pub fn surgeist_css::parse_page_margin_rule(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssMarginRule>>
+pub fn surgeist_css::parse_page_margin_rule_with_limits(source: &str, limits: surgeist_css::CssComponentValueLimits) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssMarginRule>>
 pub fn surgeist_css::parse_page_property_value(property: surgeist_css::CssPropertyNameRef<'_>, value: surgeist_css::CssComponentValues, importance: surgeist_css::CssImportance) -> core::result::Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError>
 pub fn surgeist_css::parse_page_selector_list(source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssPageSelectorList>>
 pub fn surgeist_css::parse_property_value(property: surgeist_css::CssPropertyNameRef<'_>, value: surgeist_css::CssComponentValues, importance: surgeist_css::CssImportance) -> core::result::Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError>

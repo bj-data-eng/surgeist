@@ -171,7 +171,11 @@ impl CssPageDescriptorKind {
             Self::Bleed => "bleed",
         }
     }
-    pub(crate) fn from_name(name: &str) -> Option<Self> {
+    /// Looks up an exact decoded Page descriptor name, ignoring ASCII case.
+    /// Unknown names, whitespace, escapes and punctuation return `None`.
+    /// Ordinary Page properties and custom names remain separate domains.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
         [Self::Size, Self::PageOrientation, Self::Marks, Self::Bleed]
             .into_iter()
             .find(|kind| name.eq_ignore_ascii_case(kind.css_name()))
@@ -546,11 +550,15 @@ impl CssMarginDeclarationBlock {
         self.properties.is_empty()
     }
 }
+/// Authored margin rule data, including any retained detached input occurrence.
+/// Equality includes that optional parsed origin; live CSSOM identity/publication
+/// facts remain separate from equality of this CSS-owned authored carrier.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssMarginRule {
     name: CssMarginBox,
     declarations: CssMarginDeclarationBlock,
     position: Option<CssSourcePosition>,
+    detached_origin: Option<CssParsedOrigin>,
 }
 impl CssMarginRule {
     #[must_use]
@@ -559,6 +567,7 @@ impl CssMarginRule {
             name,
             declarations,
             position: None,
+            detached_origin: None,
         }
     }
     pub(crate) const fn from_parsed(
@@ -570,6 +579,7 @@ impl CssMarginRule {
             name,
             declarations,
             position: Some(position),
+            detached_origin: None,
         }
     }
     #[must_use]
@@ -583,6 +593,19 @@ impl CssMarginRule {
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
         self.position
+    }
+    /// The complete detached raw occurrence when admitted through the Page
+    /// margin-rule boundary, excluding surrounding trivia but owning the full
+    /// supplied input snapshot. Programmatic and Page-body child construction
+    /// retain their existing positions/value origins and have no detached origin.
+    #[must_use]
+    pub const fn detached_origin(&self) -> Option<&CssParsedOrigin> {
+        self.detached_origin.as_ref()
+    }
+    pub(crate) fn with_detached_origin(mut self, origin: CssParsedOrigin) -> Self {
+        debug_assert_eq!(self.position, Some(origin.span().start()));
+        self.detached_origin = Some(origin);
+        self
     }
 }
 #[derive(Clone, Debug, PartialEq)]

@@ -4,7 +4,8 @@ use crate::{
     CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue, CssFontFaceRule,
     CssFontFeatureDisplayValue, CssFontFeatureDisplayValueRef, CssFontFeatureValue,
     CssFontFeatureValueDefinition, CssFontFeatureValueRef, CssFontFeatureValuesItem,
-    CssFontFeatureValuesRule, CssSpecifiedValueSerializationError as Error,
+    CssFontFeatureValuesRule, CssPendingFontFaceDescriptorValue,
+    CssSpecifiedValueSerializationError as Error,
     CssSpecifiedValueSerializationErrorKind as ErrorKind,
     CssSpecifiedValueSerializationLimits as Limits, CssValueTokenRef,
     specified_rule_serialization::SpecifiedRuleWriter,
@@ -123,6 +124,41 @@ fn authored(
                 &mut writer.css,
             )
         }
+    }
+}
+
+impl CssAuthoredFontFaceDescriptorValue {
+    /// Reads a checked ordinary or pending descriptor through its owning writer.
+    /// No descriptor name or containing rule is generated.
+    pub fn serialize_specified(&self) -> Result<String> {
+        self.serialize_specified_with_limits(Limits::default())
+    }
+    /// One cumulative input/projection/output allowance; failure returns no text.
+    pub fn serialize_specified_with_limits(&self, limits: Limits) -> Result<String> {
+        let mut writer = SpecifiedRuleWriter::new(limits);
+        self.append_to_rule_writer(&mut writer)?;
+        Ok(writer.css)
+    }
+    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        authored(writer, self)
+    }
+}
+
+impl CssPendingFontFaceDescriptorValue {
+    /// Reads the supported pending whole-descriptor component stream without
+    /// substitution, resolving a font or changing its original token origins.
+    pub fn serialize_specified(&self) -> Result<String> {
+        self.serialize_specified_with_limits(Limits::default())
+    }
+    /// Nested/trivia components and actual output share cumulative allowances.
+    pub fn serialize_specified_with_limits(&self, limits: Limits) -> Result<String> {
+        let mut writer = SpecifiedRuleWriter::new(limits);
+        crate::pending_serialization::append_pending_specified(
+            self.components(),
+            &mut writer.context,
+            &mut writer.css,
+        )?;
+        Ok(writer.css)
     }
 }
 

@@ -161,7 +161,45 @@ impl CssRuleSyntax {
             };
             CssParseReport::new(rules, diagnostics)
         });
-        let (rule, mut diagnostics) = recovery::finish_report(source, report).into_parts();
+        self.with_preliminary_diagnostics(recovery::finish_report(source, report))
+    }
+
+    /// Admits this complete raw occurrence as a margin child in a Page destination.
+    /// No containing Page rule is fabricated. Outside-Page hierarchy and live
+    /// insertion order remain CSSOM decisions after preliminary classification.
+    #[must_use]
+    pub fn admit_page_margin_rule(&self) -> CssParseReport<Option<crate::CssMarginRule>> {
+        self.admit_page_margin_rule_with_context(CssParserContext::default())
+    }
+    /// Uses the actual document mode and the already charged original occurrence.
+    /// The existing Page name/prelude/body callbacks preserve applicable
+    /// declarations, priority, local recovery and original coordinates. Resource
+    /// failure rejects the complete preparation with its typed cause; a reusable
+    /// candidate never exposes a partial child. Unsupported names, invalid
+    /// framing/preludes and Page placement failures keep distinct typed errors.
+    #[must_use]
+    pub fn admit_page_margin_rule_with_context(
+        &self,
+        parser_context: CssParserContext,
+    ) -> CssParseReport<Option<crate::CssMarginRule>> {
+        let source = self.origin.source().as_str();
+        let report = fragments::bounded_execution(source, || {
+            let state = RecoveryState::at_depth_with_snapshot(
+                source,
+                0,
+                StyleContextCaptures::default(),
+                self.origin.source().clone(),
+            )
+            .with_parser_context(parser_context);
+            super::page::admit_margin_rule(source, state, &self.envelope)
+        });
+        let (margin, diagnostics) = recovery::finish_report(source, report).into_parts();
+        let margin = margin.map(|margin| margin.with_detached_origin(self.origin.clone()));
+        self.with_preliminary_diagnostics(CssParseReport::new(margin, diagnostics))
+    }
+
+    fn with_preliminary_diagnostics<T>(&self, report: CssParseReport<T>) -> CssParseReport<T> {
+        let (rule, mut diagnostics) = report.into_parts();
         // Preserve preliminary recovery as a multiset: several EOF closures may
         // share a span/action. Only equal occurrences already emitted are reused.
         let mut additional = Vec::new();

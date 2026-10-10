@@ -1694,6 +1694,7 @@ mod easing_serialization;
 mod error;
 mod expansion;
 mod filter_serialization;
+mod font_face_declaration_block;
 mod font_face_values;
 mod font_family_serialization;
 mod font_feature_values;
@@ -1701,6 +1702,9 @@ mod font_palette;
 mod font_palette_serialization;
 mod font_palette_values;
 mod font_rule_serialization;
+pub use font_face_declaration_block::{
+    CssFontFaceDeclarationBlockError, CssSpecifiedFontFaceDeclarationBlock,
+};
 mod font_source_serialization;
 mod font_synthesis;
 mod font_variant;
@@ -2058,11 +2062,11 @@ pub use parser::{
     parse_keyframe_rule, parse_keyframe_selector_list, parse_keyframes_block, parse_margin_block,
     parse_media_query, parse_media_query_list, parse_page_block,
     parse_page_declaration_block_contents, parse_page_declaration_block_contents_with_limits,
-    parse_page_descriptor_value, parse_page_selector_list, parse_property_value_text,
-    parse_property_value_text_for_grammar, parse_relative_selector_list, parse_rule,
-    parse_scope_block, parse_scoped_group_block, parse_selector, parse_selector_list, parse_sheet,
-    parse_style_attribute, parse_style_block, parse_style_selector_list,
-    parse_style_selector_list_with_limits, parse_supports_test_block,
+    parse_page_descriptor_value, parse_page_margin_rule, parse_page_margin_rule_with_limits,
+    parse_page_selector_list, parse_property_value_text, parse_property_value_text_for_grammar,
+    parse_relative_selector_list, parse_rule, parse_scope_block, parse_scoped_group_block,
+    parse_selector, parse_selector_list, parse_sheet, parse_style_attribute, parse_style_block,
+    parse_style_selector_list, parse_style_selector_list_with_limits, parse_supports_test_block,
 };
 pub use properties::*;
 pub use property_value::{

@@ -151,6 +151,27 @@ retain their typed causes, and permit an unchanged larger-budget retry. Parsed
 occurrences keep the owning input snapshot after the caller drops its string.
 Live identity, child preservation, host guards and mutation remain with CSSOM.
 
+## Detached Page margin insertion
+
+`parse_page_margin_rule` and its limits variant admit exactly one complete raw
+margin at-rule in a Page destination. `CssRuleSyntax::admit_page_margin_rule`
+provides the same admission after complete-input classification;
+`CssParserContext` and the candidate context method supply document mode.
+The actual Page callbacks decode the name, require an empty prelude, and recover
+applicable margin declarations locally. Extra nontrivia rejects preparation.
+No Page wrapper or shifted coordinates are introduced. The complete original
+input is charged before admission, and grammar resource failures discard the
+child with their precise typed diagnostics. `None` must never publish insertion.
+Syntax, placement and unsupported-name diagnostics remain distinct; CSSOM owns
+outside-Page hierarchy and live insertion guards after actual classification.
+
+`CssMarginRule::detached_origin` retains the actual complete candidate span and
+owning original input, even for an empty body after the caller drops its string.
+Programmatic construction and existing Page-body children keep their explicit
+absence of this detached occurrence; declaration origins remain independently
+retained. Authored equality includes this optional origin. Live CSSOM identity
+and publication checks remain separate consumer decisions.
+
 ## Authored CSSOM declaration blocks
 
 This projection follows the
@@ -7889,6 +7910,28 @@ expression structures remain distinct unless an existing numeric owner supplies
 an exact proof; equal-looking rounded unequal endpoints remain two values. The older CSSOM-listed descriptor kinds preserve
 their relative order, with additional Fonts 4 kinds appended in descriptor-kind
 declaration order as an explicit project ordering policy.
+
+`CssPageDescriptorKind::from_name` and
+`CssFontFaceDescriptorKind::from_css_name` expose the owning decoded-name
+lookup, using ASCII case-insensitive exact names. FontFace accepts the selected
+`font-stretch` alias as `FontWidth`; whitespace, CSS escapes and punctuation must
+already be handled by the input owner.
+
+`CssSpecifiedFontFaceDeclarationBlock::try_from_entries` checks ordered unique
+selected descriptor occurrences, preserving their parsed origins. Empty selected
+membership is valid; duplicate canonical kinds fail without selecting a winner.
+Its unbraced `serialize_cssom` emits the supplied order, independently of the
+whole FontFace rule's fixed effective-kind order. CSSOM owns winner selection,
+live ordering and edits. Explicit construction limits cumulatively charge input
+and value projection without producing output; serialization additionally charges
+all actual punctuation and output bytes. Failures are typed and atomic, and an
+unchanged larger-budget retry is independent.
+
+`CssAuthoredFontFaceDescriptorValue::serialize_specified` and
+`CssPendingFontFaceDescriptorValue::serialize_specified` expose the shared scalar
+writer, including supported pending component text with its actual origins.
+They provide the same explicit limits and typed resource/capability failures as
+ordinary descriptor formatting, without substitution or a containing rule.
 
 Feature-values output keeps all seven selected block kinds and effective outer
 `font-display`. Repeated types merge in first-occurrence type order (project

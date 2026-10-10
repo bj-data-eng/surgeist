@@ -24,6 +24,20 @@ pub(super) static IMPLEMENTED_SHARED_VALUES: &[crate::CssFeatureId] = &[
 pub(super) use crate::STRUCTURAL_NESTING_LIMIT;
 pub(super) const DIRECT_PARSE_DEPTH: u32 = 128;
 
+/// Domain replacement/admission must not publish a payload after a typed
+/// resource failure, including one recovered inside a member callback.
+pub(super) fn has_resource_failure(diagnostics: &[crate::CssRecoveryDiagnostic]) -> bool {
+    diagnostics
+        .iter()
+        .any(|diagnostic| match diagnostic.error().kind() {
+            crate::ErrorKind::NestingLimit(_) => true,
+            crate::ErrorKind::InvalidComponentValue(error) => {
+                crate::error::is_component_resource_error(error)
+            }
+            _ => false,
+        })
+}
+
 /// Publish tokenizer recovery once, after the public grammar entry finishes.
 /// Lexical errors are independent of whether the enclosing grammar unit survived.
 /// Internal probes and recursive parses leave this step to the caller with the
