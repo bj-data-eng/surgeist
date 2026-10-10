@@ -8126,8 +8126,12 @@ pub fn surgeist_css::CssEditedRuleView<'a>::to_specified_css(self) -> core::resu
 pub fn surgeist_css::CssEditedRuleView<'a>::to_specified_css_with_limits(self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
 pub fn surgeist_css::CssEditedRuleView<'a>::try_group(prelude: surgeist_css::CssEditedGroupPreludeRef<'a>, children: &'a [Self]) -> core::result::Result<Self, surgeist_css::CssRuleCssomSerializationError>
 pub fn surgeist_css::CssEditedRuleView<'a>::try_group_with_limits(prelude: surgeist_css::CssEditedGroupPreludeRef<'a>, children: &'a [Self], limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssEditedRuleView<'a>::try_keyframes(keyframes: surgeist_css::CssKeyframesRuleView<'a>) -> core::result::Result<Self, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssEditedRuleView<'a>::try_keyframes_with_limits(keyframes: surgeist_css::CssKeyframesRuleView<'a>, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssRuleCssomSerializationError>
 pub fn surgeist_css::CssEditedRuleView<'a>::try_nested_declarations(declarations: &'a surgeist_css::CssSpecifiedDeclarationBlock) -> core::result::Result<Self, surgeist_css::CssRuleCssomSerializationError>
 pub fn surgeist_css::CssEditedRuleView<'a>::try_nested_declarations_with_limits(declarations: &'a surgeist_css::CssSpecifiedDeclarationBlock, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssEditedRuleView<'a>::try_page(page: surgeist_css::CssPageRuleView<'a>) -> core::result::Result<Self, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssEditedRuleView<'a>::try_page_with_limits(page: surgeist_css::CssPageRuleView<'a>, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssRuleCssomSerializationError>
 pub fn surgeist_css::CssEditedRuleView<'a>::try_scoped_style(selectors: &'a surgeist_css::CssScopedStyleSelectorList, declarations: &'a surgeist_css::CssSpecifiedDeclarationBlock, children: &'a [Self]) -> core::result::Result<Self, surgeist_css::CssRuleCssomSerializationError>
 pub fn surgeist_css::CssEditedRuleView<'a>::try_scoped_style_with_limits(selectors: &'a surgeist_css::CssScopedStyleSelectorList, declarations: &'a surgeist_css::CssSpecifiedDeclarationBlock, children: &'a [Self], limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssRuleCssomSerializationError>
 pub fn surgeist_css::CssEditedRuleView<'a>::try_style(selectors: &'a surgeist_css::CssStyleSelectorList, declarations: &'a surgeist_css::CssSpecifiedDeclarationBlock, children: &'a [Self]) -> core::result::Result<Self, surgeist_css::CssRuleCssomSerializationError>
@@ -9562,6 +9566,14 @@ impl surgeist_css::CssKeyframesRule
 pub fn surgeist_css::CssKeyframesRule::blocks(&self) -> &[surgeist_css::CssKeyframeBlock]
 pub const fn surgeist_css::CssKeyframesRule::name(&self) -> &surgeist_css::CssKeyframesName
 pub const fn surgeist_css::CssKeyframesRule::position(&self) -> surgeist_css::CssSourcePosition
+pub struct surgeist_css::CssKeyframesRuleView<'a>
+impl<'a> surgeist_css::CssKeyframesRuleView<'a>
+pub const fn surgeist_css::CssKeyframesRuleView<'a>::name(self) -> &'a surgeist_css::CssKeyframesName
+pub const fn surgeist_css::CssKeyframesRuleView<'a>::rules(self) -> &'a [surgeist_css::CssKeyframeRuleView<'a>]
+pub fn surgeist_css::CssKeyframesRuleView<'a>::serialize_cssom(self) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssKeyframesRuleView<'a>::serialize_cssom_with_limits(self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssKeyframesRuleView<'a>::try_new(name: &'a surgeist_css::CssKeyframesName, rules: &'a [surgeist_css::CssKeyframeRuleView<'a>]) -> core::result::Result<Self, surgeist_css::CssRuleCssomSerializationError>
+pub fn surgeist_css::CssKeyframesRuleView<'a>::try_new_with_limits(name: &'a surgeist_css::CssKeyframesName, rules: &'a [surgeist_css::CssKeyframeRuleView<'a>], limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<Self, surgeist_css::CssRuleCssomSerializationError>
 pub struct surgeist_css::CssKeyframesString
 impl surgeist_css::CssKeyframesString
 pub fn surgeist_css::CssKeyframesString::as_str(&self) -> &str

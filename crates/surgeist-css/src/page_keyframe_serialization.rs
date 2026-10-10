@@ -54,9 +54,43 @@ impl SpecifiedRuleWriter {
         rule: &CssKeyframesRule,
         block_index: &mut Option<usize>,
     ) -> std::result::Result<(), crate::cssom_rule_serialization::RuleCssomSource> {
+        self.keyframes_cssom_payload(
+            rule.name(),
+            rule.blocks().len(),
+            block_index,
+            |writer, index| {
+                let block = &rule.blocks()[index];
+                writer.keyframe_cssom_payload(
+                    block.selectors(),
+                    !block.declarations().is_empty(),
+                    |writer| {
+                        writer
+                            .append_cssom_keyframe_declaration_list(block.declarations())
+                            .map_err(Into::into)
+                    },
+                )
+            },
+        )
+    }
+
+    /// Reuses the selected CSSOM whole-rule wrapper for authored and edited state.
+    /// The caller has charged the logical rule; every child shares this budget.
+    pub(crate) fn keyframes_cssom_payload(
+        &mut self,
+        name: &CssKeyframesName,
+        count: usize,
+        block_index: &mut Option<usize>,
+        mut child: impl FnMut(
+            &mut Self,
+            usize,
+        ) -> std::result::Result<
+            (),
+            crate::cssom_rule_serialization::RuleCssomSource,
+        >,
+    ) -> std::result::Result<(), crate::cssom_rule_serialization::RuleCssomSource> {
         self.append("@keyframes ")?;
         self.node()?;
-        let name = match rule.name() {
+        let name = match name {
             CssKeyframesName::Ident(name) => name.as_str(),
             CssKeyframesName::String(name) => name.as_str(),
         };
@@ -69,29 +103,38 @@ impl SpecifiedRuleWriter {
             self.append_identifier(name)?;
         }
         self.append(" { ")?;
-        for (index, block) in rule.blocks().iter().enumerate() {
+        for index in 0..count {
             *block_index = Some(index);
             if index != 0 {
                 self.append("\n")?;
             }
             self.append("  ")?;
-            self.node()?;
-            self.node()?; // Selector-list aggregate.
-            for (index, selector) in block.selectors().selectors().iter().enumerate() {
-                if index != 0 {
-                    self.append(", ")?;
-                }
-                self.keyframe_selector(selector)?;
-            }
-            self.append(" {")?;
-            if !block.declarations().is_empty() {
-                self.append(" ")?;
-            }
-            self.append_cssom_keyframe_declaration_list(block.declarations())?;
-            self.append(" }")?;
+            child(self, index)?;
             *block_index = None;
         }
         self.append("\n}")?;
+        Ok(())
+    }
+
+    pub(crate) fn keyframe_cssom_payload(
+        &mut self,
+        selectors: &crate::CssKeyframeSelectorList,
+        nonempty: bool,
+        declarations: impl FnOnce(
+            &mut Self,
+        ) -> std::result::Result<
+            (),
+            crate::cssom_rule_serialization::RuleCssomSource,
+        >,
+    ) -> std::result::Result<(), crate::cssom_rule_serialization::RuleCssomSource> {
+        self.node()?;
+        self.keyframe_selectors(selectors)?;
+        self.append(" {")?;
+        if nonempty {
+            self.append(" ")?;
+        }
+        declarations(self)?;
+        self.append(" }")?;
         Ok(())
     }
 

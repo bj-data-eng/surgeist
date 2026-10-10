@@ -34,6 +34,8 @@ pub(crate) enum EditedRuleKind<'a> {
     ),
     Group(CssEditedGroupPreludeRef<'a>, &'a [CssEditedRuleView<'a>]),
     NestedDeclarations(&'a CssSpecifiedDeclarationBlock),
+    Page(crate::CssPageRuleView<'a>),
+    Keyframes(crate::CssKeyframesRuleView<'a>),
 }
 
 /// A checked immutable formatting view over edited payloads and child order.
@@ -142,6 +144,37 @@ impl<'a> CssEditedRuleView<'a> {
         };
         view.to_specified_css_with_limits(limits)?;
         Ok(view)
+    }
+    /// Embeds current selected Page state and its ordered, domain-checked margin children.
+    /// This checks formatting, while contextual placement remains with the consumer.
+    pub fn try_page(
+        page: crate::CssPageRuleView<'a>,
+    ) -> Result<Self, CssRuleCssomSerializationError> {
+        Self::try_page_with_limits(page, CssSpecifiedValueSerializationLimits::default())
+    }
+    pub fn try_page_with_limits(
+        page: crate::CssPageRuleView<'a>,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<Self, CssRuleCssomSerializationError> {
+        Self {
+            kind: EditedRuleKind::Page(page),
+        }
+        .checked(limits)
+    }
+    /// Embeds a checked current whole-keyframes payload without reconstructing authored rules.
+    pub fn try_keyframes(
+        keyframes: crate::CssKeyframesRuleView<'a>,
+    ) -> Result<Self, CssRuleCssomSerializationError> {
+        Self::try_keyframes_with_limits(keyframes, CssSpecifiedValueSerializationLimits::default())
+    }
+    pub fn try_keyframes_with_limits(
+        keyframes: crate::CssKeyframesRuleView<'a>,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<Self, CssRuleCssomSerializationError> {
+        Self {
+            kind: EditedRuleKind::Keyframes(keyframes),
+        }
+        .checked(limits)
     }
     pub fn try_nested_declarations(
         declarations: &'a CssSpecifiedDeclarationBlock,

@@ -265,21 +265,10 @@ impl<'a> CssPageRuleView<'a> {
     ) -> Result<String, CssRuleCssomSerializationError> {
         let mut writer = SpecifiedRuleWriter::new(limits);
         let mut child = None;
-        let result = (|| -> Result<(), RuleCssomSource> {
-            writer.node()?;
-            writer.append_page_header(self.selectors)?;
-            if writer.append_selected_page_block(self.declarations)? {
-                writer.append(" ")?;
-            }
-            for (index, margin) in self.margins.iter().enumerate() {
-                child = Some(index);
-                writer.append_selected_margin(*margin)?;
-                child = None;
-                writer.append(" ")?;
-            }
-            writer.append("}")?;
-            Ok(())
-        })();
+        let result = writer
+            .node()
+            .map_err(RuleCssomSource::from)
+            .and_then(|()| writer.append_selected_page(self, &mut child));
         result.map_err(|v| {
             CssRuleCssomSerializationError::new(v, child.into_iter().collect(), None)
         })?;
@@ -287,6 +276,25 @@ impl<'a> CssPageRuleView<'a> {
     }
 }
 impl SpecifiedRuleWriter {
+    /// The graph or standalone view owns the logical Page charge.
+    pub(crate) fn append_selected_page(
+        &mut self,
+        page: CssPageRuleView<'_>,
+        child: &mut Option<usize>,
+    ) -> Result<(), RuleCssomSource> {
+        self.append_page_header(page.selectors)?;
+        if self.append_selected_page_block(page.declarations)? {
+            self.append(" ")?;
+        }
+        for (index, margin) in page.margins.iter().enumerate() {
+            *child = Some(index);
+            self.append_selected_margin(*margin)?;
+            *child = None;
+            self.append(" ")?;
+        }
+        self.append("}")?;
+        Ok(())
+    }
     pub(crate) fn append_selected_page_block(
         &mut self,
         block: &CssSpecifiedPageDeclarationBlock,

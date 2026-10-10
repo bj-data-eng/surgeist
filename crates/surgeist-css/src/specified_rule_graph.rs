@@ -188,6 +188,15 @@ impl SpecifiedRuleWriter {
                                 EditedRuleKind::Parsed(_) | EditedRuleKind::ParsedScoped(_) => {
                                     unreachable!("parsed event forwarded")
                                 }
+                                EditedRuleKind::Page(page) => {
+                                    self.append_selected_page(page, &mut margin_rule_index)?;
+                                }
+                                EditedRuleKind::Keyframes(keyframes) => {
+                                    self.append_selected_keyframes(
+                                        keyframes,
+                                        &mut keyframe_block_index,
+                                    )?;
+                                }
                                 EditedRuleKind::NestedDeclarations(block) => {
                                     block.append_cssom(self)?
                                 }

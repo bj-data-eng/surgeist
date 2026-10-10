@@ -1742,7 +1742,9 @@ mod cssom_rule_serialization;
 mod edited_rule;
 pub use edited_rule::{CssEditedGroupPreludeRef, CssEditedRuleView};
 mod keyframe_serialization;
-pub use keyframe_serialization::{CssKeyframeRuleView, CssKeyframeRuleViewError};
+pub use keyframe_serialization::{
+    CssKeyframeRuleView, CssKeyframeRuleViewError, CssKeyframesRuleView,
+};
 mod media;
 mod named_supports_serialization;
 mod page_keyframe_serialization;

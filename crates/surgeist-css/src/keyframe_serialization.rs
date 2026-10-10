@@ -147,23 +147,97 @@ impl<'a> CssKeyframeRuleView<'a> {
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String, CssKeyframeRuleViewError> {
         let mut writer = SpecifiedRuleWriter::new(limits);
-        let selectors = (|| {
-            writer.node()?;
-            writer.keyframe_selectors(self.selectors)?;
-            writer.append(" { ")
-        })();
-        selectors.map_err(CssKeyframeRuleViewError::Serialization)?;
-        self.declarations
-            .append_cssom(&mut writer)
-            .map_err(CssKeyframeRuleViewError::Declaration)?;
-        if !self.declarations.entries().is_empty() {
-            writer
-                .append(" ")
-                .map_err(CssKeyframeRuleViewError::Serialization)?;
-        }
         writer
-            .append("}")
-            .map_err(CssKeyframeRuleViewError::Serialization)?;
+            .append_selected_keyframe(*self)
+            .map_err(|error| match error {
+                crate::cssom_rule_serialization::RuleCssomSource::DeclarationBlock(error) => {
+                    CssKeyframeRuleViewError::Declaration(error)
+                }
+                crate::cssom_rule_serialization::RuleCssomSource::Provider(
+                    crate::specified_rule_serialization::SpecifiedRuleSerializationSource::Value(
+                        error,
+                    ),
+                ) => CssKeyframeRuleViewError::Serialization(error),
+                _ => unreachable!("selected keyframe has only value and declaration providers"),
+            })?;
         Ok(writer.css)
+    }
+}
+
+/// Borrowed current whole-keyframes payload, without live identity or authored coordinates.
+///
+/// The checked name and every checked Keyframe-domain child are borrowed directly.
+/// Children retain supplied order, duplicates and empty blocks. Appending, deleting,
+/// matching and revisions belong to the consumer; no authored envelope is rebuilt.
+#[derive(Clone, Copy, Debug)]
+pub struct CssKeyframesRuleView<'a> {
+    name: &'a crate::CssKeyframesName,
+    rules: &'a [CssKeyframeRuleView<'a>],
+}
+impl<'a> CssKeyframesRuleView<'a> {
+    pub fn try_new(
+        name: &'a crate::CssKeyframesName,
+        rules: &'a [CssKeyframeRuleView<'a>],
+    ) -> Result<Self, crate::CssRuleCssomSerializationError> {
+        Self::try_new_with_limits(name, rules, CssSpecifiedValueSerializationLimits::default())
+    }
+    /// Checks the complete current payload with one cumulative formatting budget.
+    pub fn try_new_with_limits(
+        name: &'a crate::CssKeyframesName,
+        rules: &'a [CssKeyframeRuleView<'a>],
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<Self, crate::CssRuleCssomSerializationError> {
+        let view = Self { name, rules };
+        view.serialize_cssom_with_limits(limits)?;
+        Ok(view)
+    }
+    #[must_use]
+    pub const fn name(self) -> &'a crate::CssKeyframesName {
+        self.name
+    }
+    #[must_use]
+    pub const fn rules(self) -> &'a [CssKeyframeRuleView<'a>] {
+        self.rules
+    }
+    pub fn serialize_cssom(self) -> Result<String, crate::CssRuleCssomSerializationError> {
+        self.serialize_cssom_with_limits(CssSpecifiedValueSerializationLimits::default())
+    }
+    /// Failure publishes no partial text; borrowed payloads and retry are unchanged.
+    pub fn serialize_cssom_with_limits(
+        self,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String, crate::CssRuleCssomSerializationError> {
+        let mut writer = SpecifiedRuleWriter::new(limits);
+        let mut index = None;
+        writer
+            .node()
+            .map_err(crate::cssom_rule_serialization::RuleCssomSource::from)
+            .and_then(|()| writer.append_selected_keyframes(self, &mut index))
+            .map_err(|error| {
+                crate::CssRuleCssomSerializationError::new(error, Vec::new(), index)
+            })?;
+        Ok(writer.css)
+    }
+}
+impl SpecifiedRuleWriter {
+    pub(crate) fn append_selected_keyframe(
+        &mut self,
+        view: CssKeyframeRuleView<'_>,
+    ) -> Result<(), crate::cssom_rule_serialization::RuleCssomSource> {
+        self.keyframe_cssom_payload(
+            view.selectors,
+            !view.declarations.entries().is_empty(),
+            |writer| view.declarations.append_cssom(writer).map_err(Into::into),
+        )
+    }
+    /// The caller owns the logical rule charge; children use the existing leaf owner.
+    pub(crate) fn append_selected_keyframes(
+        &mut self,
+        view: CssKeyframesRuleView<'_>,
+        index: &mut Option<usize>,
+    ) -> Result<(), crate::cssom_rule_serialization::RuleCssomSource> {
+        self.keyframes_cssom_payload(view.name, view.rules.len(), index, |writer, index| {
+            writer.append_selected_keyframe(view.rules[index])
+        })
     }
 }

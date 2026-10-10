@@ -3922,6 +3922,24 @@ is infallible. Constructed NUL remains observable as a specified-serialization
 failure. The frozen WebKit empty-name restriction is narrower than this selected
 publication, so it does not constrain this string domain.
 
+`CssKeyframesRuleView::try_new[_with_limits]` borrows a checked current
+`CssKeyframesName` and an ordered slice of checked `CssKeyframeRuleView` children.
+It expresses renamed, reordered, appended, removed and empty current sequences
+without rebuilding an authored rule or re-expanding retained shorthand sources.
+Equivalent and duplicate children remain separate. Name classification, keyText,
+declaration scheduling and whole-rule punctuation reuse the selected
+[CSSOM keyframes branch](../../../references/cssom-1--editor-capture-20261009--d42e145ec395.md#serialize-a-css-rule).
+`CssEditedRuleView::try_keyframes[_with_limits]` embeds the same payload in the
+shared recursive writer. Limits accumulate across the name, each child, and all
+ancestors; failures retain the current keyframe-block index and recursive rule
+path, publish no partial string, and permit unchanged retry. Borrowed declaration
+entries and selector/value origins retain actual authored observations; a
+programmatic name/container has no fabricated source coordinates. Matching,
+append/delete decisions, placement, live identity and revisions belong to CSSOM.
+Edited Page and keyframes payloads retain these selected wrappers when requested
+through the edited view's specified-output phase; surrounding group punctuation
+still follows that phase's existing compact provider.
+
 Literal keyframe percentages use binary64 conversion of the original coefficient,
 then finite inclusive `[0,100]` admission. This selected precision follows frozen
 [WebKit's tokenizer](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/parser/CSSTokenizer.cpp#L552-L599)
@@ -5469,6 +5487,15 @@ property reconstruction uses explicit domain constructors; a borrowed
 `CssMarginRuleView` children. Pending source identity and original provenance
 survive edits. A shared unresolved mode-switch footprint remains a typed failure
 until a completed replacement establishes it.
+
+`CssEditedRuleView::try_page[_with_limits]` embeds that same selected Page
+payload in recursive edited group output. Margin children remain inside the
+Page payload, with their actual Margin domain and supplied order. All ancestors
+and descendants spend one shared writer budget; a margin failure extends the
+ancestor rule path with its current child index. Construction establishes
+formatting capability, while contextual insertion permission uses the existing
+rule-admission owner. Ordinary conditional/layer ancestry permits Page; style
+ancestry does not. Programmatic edited wrappers have no authored coordinates.
 
 Whole Page and margin CSSOM output follows the adopted bounded
 [Blink wrapper witness](../../../references/blink-cssom-page-rules--7984f9d11800.md).
