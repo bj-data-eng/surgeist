@@ -65,8 +65,8 @@ records its font and notice hashes. These fonts are test assets.
 ### Chromium Blink implementation references
 
 The reference collection retains selected Blink source files as readable
-implementation evidence for CSSOM rules, wrappers, and bounded implementation
-gaps. Each file preserves its original copyright and license notice; the accompanying legal
+implementation evidence for CSSOM rules, text and painting behavior, and bounded
+implementation gaps. Each file preserves its original copyright and license notice; the accompanying legal
 material identifies the exact retained source scope.
 
 * Licenses and exact covered files: [Chromium reference attribution](licenses/chromium/NOTICE.md)
@@ -83,6 +83,26 @@ from commit `88e3d965c0b1628642a30a841745b410d6835052`, distributed by Roman Dvo
 The [pinned corpus README](https://github.com/bj-data-eng/surgeist-css/blob/14ff8f37b2417c5c836eb04986188aadbc9310f1/tests/corpus/csstree/README.md)
 records the source tree, import, and transformation provenance. The source
 license is included verbatim, retaining the 2016–2026 copyright attribution.
+
+### Fontations source references
+
+The [text contract witness](references/parley-0.9-text-contract-witness.md#supporting-provider-skrifa-0421-metricsrs)
+also retains a bounded metric declaration and documentation excerpt from Skrifa
+0.42.1 in Fontations. Its package identity, original file hash and covered lines
+are recorded separately from the Parley excerpts.
+
+* Licenses: [Apache-2.0](crates/surgeist-render/licenses/fontations/LICENSE-APACHE) OR [MIT](crates/surgeist-render/licenses/fontations/LICENSE-MIT)
+* Homepage: [Fontations](https://github.com/googlefonts/fontations)
+
+### Parley 0.9.0 source references
+
+The [text contract witness](references/parley-0.9-text-contract-witness.md)
+retains bounded excerpts from Parley 0.9.0, distributed by the Parley Authors.
+Each excerpt records the original file identity, covered lines and copyright
+header. These are reference excerpts, not an ingested production implementation.
+
+* Licenses: [Apache-2.0](crates/surgeist-text/licenses/parley/LICENSE-APACHE) OR [MIT](crates/surgeist-text/licenses/parley/LICENSE-MIT)
+* Homepage: [Linebender Parley](https://github.com/linebender/parley)
 
 ### public-api 0.50.0
 

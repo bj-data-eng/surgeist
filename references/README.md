@@ -1,16 +1,22 @@
 # Consolidated specification references
 
-The [source catalog](SOURCE-CATALOG.md) links all 193 retained source identities and states their representations: 190 full documents/source witnesses, one partial clause witness, and two metadata-only exceptions. Read the [conversion report](CONVERSION-REPORT.md) for checks, link policy and explicit limitations.
+The [source catalog](SOURCE-CATALOG.md) links all 237 retained source identities and states their representations: 213 full documents/source witnesses, 22 partial witnesses, and two metadata-only exceptions. Read the [conversion report](CONVERSION-REPORT.md) for checks, link policy and explicit limitations.
 
 The references are format conversions, not summaries or replacement standards. Distinct specification editions remain separate. Eight redundant plain-text extractions were removed after comparison with the exact HTML editions already represented by structured Markdown. Source copyright/licensing notices, normative/informative classifications, literal code, definitions and published fragment IDs are retained where present.
 
 ## Source editions
 
-[Source editions and bounded imports](SOURCE-EDITIONS.md) separates the pinned Snapshot bibliography from later implementation-selected editions and importer-specific witnesses. No implementation behavior or source-selection decision is changed by adding these documents.
+[Source editions and bounded imports](SOURCE-EDITIONS.md) separates the pinned Snapshot bibliography from later implementation-selected editions and importer-specific witnesses. Source-selection boundaries are recorded there; captures provide evidence without implementing the selected behavior.
 
 The [CSSOM planning sources](SOURCE-EDITIONS.md#cssom-planning-sources) select complete current CSSOM, Counter Styles 3, and Conditional 5 captures for the new CSSOM work. Historical editions remain available for completed CSS consumers; each planning contribution uses one operative edition.
 
 The [bounded Page3 supplement](SOURCE-EDITIONS.md#bounded-page-page-orientation-supplement) retains complete §1.1 and §7.1.2 from one hashed editor capture for the named `page-orientation` grammar. It explicitly has partial document coverage and adds no font-model selection; other Page/margin domains retain their own requirements and source selections. The historical Page3 witness remains dated evidence, and the adopted Blink Page/margin serialization format is unchanged.
+
+## Text, font and effects sources
+
+The [text, font and effects edition mapping](SOURCE-EDITIONS.md#text-font-and-effects-source-resolution) identifies five partial current-draft captures, pinned WebKit/Blink evidence and the installed Parley/provider source excerpts. Each partial witness names its complete sections or exact line ranges and identifies the full original source by hash. These ten reference files add 44 source identities without replacing historical editions.
+
+Standards gaps remain visible in the captures. Browser algorithms supply bounded implementation evidence. The [seven-issue source-decision mapping](SOURCE-EDITIONS.md#operative-source-decisions-by-issue) links the owning feature determinations and distinguishes normative interpretation, pinned browser compatibility and authorized product policy. The [text/layout contract](../docs/text-layout-contract.md) separately owns the shared preparation, metric and admission mechanisms. Reference retention does not claim that the planned text, layout or effects behavior has shipped.
 
 ## Coverage exceptions
 

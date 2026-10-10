@@ -16,7 +16,7 @@ The five readable renderings of pinned Bikeshed sources retain the [byte-identic
 
 ## Covered exact documents and copyright notices
 
-The [source catalog](../../references/SOURCE-CATALOG.md) identifies the exact body hashes, titles, representations and source URLs. This section covers the 146 retained W3C source-based references in this bundle and their 81 passive SVG figures: 53 source-extracted figures and 28 generated railroad diagrams. Each entry's original copyright statement is copied from its exact source or the identified edition title page; no copyright range is synthesized. The per-document wrapper records the format changes separately from original source content.
+The [source catalog](../../references/SOURCE-CATALOG.md) identifies the exact body hashes, titles, representations and source URLs. This section covers the 151 retained W3C source-based references in this bundle and their 81 passive SVG figures: 53 source-extracted figures and 28 generated railroad diagrams. Each entry's original copyright statement is copied from its exact source or the identified edition title page; no copyright range is synthesized. The per-document wrapper records the format changes separately from original source content.
 
 ### Compositing and Blending Level 1
 
@@ -1252,3 +1252,43 @@ Copyright © 2026 World Wide Web Consortium. W3C® liability, trademark and perm
 * License: [software-license-2023](software-license-2023.txt)
 
 Copyright © 2026 World Wide Web Consortium. W3C® liability, trademark and permissive document license rules apply. Complete §1.1 and §7.1.2 only are retained; the bundled copy explicitly identifies partial coverage and retains the original legal links and full license text. Original HTML SHA-256: `48ec99cd3a581f90b588c6d578be8fd97102c01d6482b1d75ebf39108924dbfb`.
+
+### CSS Fonts Module Level 4 — bounded editor capture retrieved 2026-10-10
+
+* Bundled copy: [css-fonts-4-width-matching--editor-capture-20261010--72f4c49ea2ec.md](../../references/css-fonts-4-width-matching--editor-capture-20261010--72f4c49ea2ec.md)
+* Original: [CSS Fonts Module Level 4](https://drafts.csswg.org/css-fonts-4/)
+* License: [software-license-2023](software-license-2023.txt)
+
+Copyright © 2026 World Wide Web Consortium. W3C® liability, trademark and permissive document license rules apply. Complete §§2.3 and 5.2, including their subsections are retained with the complete original source head and legal notice; all other clauses are excluded. Original complete HTML SHA-256: `72f4c49ea2ec6b3e417f2c3cb8e140d4106ffba9f2610b9b74219231424dddb7`. The bundled copy records its exact bounded-input hash and representation changes. Upstream image links do not add bundled figures.
+
+### CSS Text Decoration Module Level 4 — bounded editor capture retrieved 2026-10-10
+
+* Bundled copy: [css-text-decor-4-position-controls--editor-capture-20261010--8820547faa34.md](../../references/css-text-decor-4-position-controls--editor-capture-20261010--8820547faa34.md)
+* Original: [CSS Text Decoration Module Level 4](https://drafts.csswg.org/css-text-decor-4/)
+* License: [software-license-2023](software-license-2023.txt)
+
+Copyright © 2026 World Wide Web Consortium. W3C® liability, trademark and permissive document license rules apply. Complete §§2.4–2.9, including their subsections are retained with the complete original source head and legal notice; all other clauses are excluded. Original complete HTML SHA-256: `8820547faa34362e96dd4542039da8374f416634dc36f5e58f7a03346e7a4277`. The bundled copy records its exact bounded-input hash and representation changes. Upstream image links do not add bundled figures.
+
+### CSS Text Module Level 4 — bounded editor capture retrieved 2026-10-10
+
+* Bundled copy: [css-text-4-whitespace-alignment-hyphenation--editor-capture-20261010--2b0d3e0d5174.md](../../references/css-text-4-whitespace-alignment-hyphenation--editor-capture-20261010--2b0d3e0d5174.md)
+* Original: [CSS Text Module Level 4](https://drafts.csswg.org/css-text-4/)
+* License: [software-license-2023](software-license-2023.txt)
+
+Copyright © 2026 World Wide Web Consortium. W3C® liability, trademark and permissive document license rules apply. Complete §§4.1, 4.3, 6.3.5, 6.4, 7.1 and 7.2 are retained with the complete original source head and legal notice; all other clauses are excluded. Original complete HTML SHA-256: `84295064951605c856935d2216b8952060726da6794412c8c4ab35a86a298f64`. The bundled copy records its exact bounded-input hash and representation changes. Upstream image links do not add bundled figures.
+
+### CSS Transforms Module Level 2 — bounded editor capture retrieved 2026-10-10
+
+* Bundled copy: [css-transforms-2-effects-clauses--editor-capture-20261010--ec252486c8c9.md](../../references/css-transforms-2-effects-clauses--editor-capture-20261010--ec252486c8c9.md)
+* Original: [CSS Transforms Module Level 2](https://drafts.csswg.org/css-transforms-2/)
+* License: [software-license-2023](software-license-2023.txt)
+
+Copyright © 2025 World Wide Web Consortium. W3C® liability, trademark and permissive document license rules apply. Complete selected transform-rendering, CTM, backface-visibility and mathematical-description sections are retained with the complete original source head and legal notice; all other clauses are excluded. Original complete HTML SHA-256: `e3de1ccf32db61406fcb5cbb8feb0791b8375844f6f6eebf1cb016e73167f2fe`. The bundled copy records its exact bounded-input hash and representation changes. Upstream image links do not add bundled figures.
+
+### Filter Effects Module Level 1 — bounded editor capture retrieved 2026-10-10
+
+* Bundled copy: [filter-effects-1-effects-clauses--editor-capture-20261010--b9a791956ef1.md](../../references/filter-effects-1-effects-clauses--editor-capture-20261010--b9a791956ef1.md)
+* Original: [Filter Effects Module Level 1](https://drafts.csswg.org/filter-effects-1/)
+* License: [software-license-2023](software-license-2023.txt)
+
+Copyright © 2026 World Wide Web Consortium. W3C® liability, trademark and permissive document license rules apply. Complete selected placement, filter-property, primitive-overview, color-matrix, displacement-map, color-interpolation, equivalent-hue-rotation and tainted-primitive/restriction sections are retained with the complete original source head and legal notice; all other clauses are excluded. Original complete HTML SHA-256: `2ead3581d431bf3663167ada7e410793e0e561812b772081bc286da489826e29`. The bundled copy records its exact bounded-input hash and representation changes. Upstream image links do not add bundled figures.
