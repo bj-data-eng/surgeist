@@ -13,9 +13,13 @@ that restore the original observable state preserve the revision. IDs are never
 reused within an owner. Dropping a staged ticket/batch cannot publish an identity.
 Constructed initial ingestion and recovered replacement filter import roots;
 external ingestion retains them. Original checked occurrences stay separately owned.
-This convenience product ingress is distinct from the source stylesheet constructor,
-which starts empty; `CssomSheetInputs::constructed` supplies its explicit defaults
-and constructor-document facts without inventing a document object.
+This convenience product ingress is distinct from `construct_sheet`, which starts
+empty with new rule-list/media identities. Its explicit Document capture supplies
+fixed location and constructor identity; nullable base URL remains separate.
+MediaList constructor input is copied through its actual CSSOM text and reparsed,
+including recovered `not all` text. Construction does not assert membership in a
+host's styleSheets collection: `set_sheet_list_membership` publishes its supplied
+selection/order. Length/item inspect that collection and return null out of range.
 
 The supplied parser context applies to subsequent parsed creation/replacement;
 context updates preserve existing checked values and their original parser facts.
@@ -56,9 +60,39 @@ the associated collection's identity and earlier snapshots, without applying
 sheet guards or writing owner attributes. Recovered parser diagnostics and typed
 resource failures remain observable. Append/delete charge the candidate and
 all current members through one cumulative CSS input, projection and output
-budget. Complete #1049 text/selector/property operations and async
-replacement are separate implementation work. No stub methods stand in for them.
+budget.
+
+Source sheet getters and the guarded deprecated `rules` alias retain
+the same live identities. Owner attribute captures update title/media (absence
+clears), without changing fixed location or emitting a host attribute write.
+Disabled mutations do not inherit cssRules security/modification guards.
+`insert_sheet_rule` uses the shared rule insertion owner after stylesheet security,
+modification and preliminary syntax/constructed-import checks. That owner checks
+index, contextual admission, hierarchy and whole-list namespace state, then adopts
+the same classified source occurrence. `add_sheet_rule` supplies the standard
+legacy defaults, builds its actual bounded input and delegates insertion, returning
+`-1`; absent index means the current end. `remove_sheet_rule` delegates deletion,
+defaulting its index to zero. These are CSS-standard aliases, not crate shims.
+Complete #1049 selector/property operations remain separate work.
 The CSSRule cssText setter is implemented as its standards-defined no-op.
+
+`replace_sheet_sync` delegates the recovered replacement algorithm. Asynchronous
+replacement is a finite core lifecycle: `begin_replace_sheet` publishes the
+exclusive modification lock and returns detached bounded CSS parse work;
+`finish_replace_sheet` publishes recovered replacement and unlocks together.
+The exact owner/sheet/operation token is checked independently of publication
+revision. A matching completion with stale guard/parser facts, parse resource
+failure or adoption failure preserves old rules and returns `Failed(error)` with
+the cleanup publication. Foreign/reused work returns an error and cannot release
+an active operation. `cancel_replace_sheet` releases only the matching operation.
+Pending records consume object/string quotas; begin reserves a terminal revision
+and actual history capacity, and unrelated commits preserve those reservations.
+No-op publications consume none of that capacity. Successful replacement can
+require more resources; its fallback cleanup requires no new identity or rules.
+Dropping detached work leaves an explicit owner-side record visible through
+`pending_sheet_replacement`; its host must cancel that record. No automatic Store
+access from drop, Promise, scheduler or resource loader is implied. Owner drop
+removes the live operation; already captured snapshots remain historical values.
 
 Bounded supplied owner facts are supported, including a declaration block's nullable
 owner. The foundation performs no host attribute writes and emits no host effects.
@@ -86,5 +120,6 @@ quotas; they do not promise an allocator/process-memory bound or recovery from
 system OOM. Checked CSS payloads retain their existing provider constraints.
 
 Run the [external consumer](examples/snapshot_consumer.rs) for direct inspection
-and contiguous incremental coverage. [Public tests](tests/foundation.rs) exercise
-the owning state and exceptional live cases.
+and contiguous incremental coverage. [Foundation tests](tests/foundation.rs) and
+[stylesheet operation tests](tests/sheet_operations.rs) exercise owning state,
+source construction/recovery, stable identities and bounded terminal cleanup.

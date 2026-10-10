@@ -161,6 +161,10 @@ impl State {
                     block,
                 }
             }
+            CssomAuthoredRule::RawNestedDeclarations(v) => {
+                let block = self.ordinary_block(v, &id, limits)?;
+                CssomRuleData::NestedDeclarations { block }
+            }
             CssomAuthoredRule::Margin(v) => {
                 check_declarations(v.declarations().properties().iter(), limits)?;
                 let selected = projection(

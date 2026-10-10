@@ -199,6 +199,8 @@ pub enum CssomAuthoredRule {
     Scoped(CssScopedRule),
     Keyframe(CssKeyframeBlock),
     Margin(CssMarginRule),
+    /// Genuine raw declaration input retained without manufacturing a rule position.
+    RawNestedDeclarations(CssDeclarationList),
 }
 #[derive(Clone, Debug)]
 pub enum CssomSelectors {
@@ -657,6 +659,7 @@ pub enum CssomError {
     WrongKind,
     StaleRevision,
     StaleContext,
+    StaleReplacement,
     BatchAborted,
     ForeignTicket,
     IdentityExhausted,

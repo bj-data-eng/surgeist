@@ -11,9 +11,11 @@ use surgeist_css::*;
 
 /// Exclusive live writer. Snapshots/batches own captures and never borrow this store.
 pub struct CssomStore {
-    state: Arc<State>,
-    limits: CssomLimits,
-    history: VecDeque<CssomChangeSummary>,
+    pub(crate) state: Arc<State>,
+    pub(crate) limits: CssomLimits,
+    pub(crate) history: VecDeque<CssomChangeSummary>,
+    pub(crate) pending_replacements:
+        HashMap<CssomSheetId, crate::sheet_operations::PendingReplacement>,
 }
 impl CssomStore {
     pub fn new(limits: CssomLimits, context: CssomContext) -> Result<Self, CssomError> {
@@ -46,6 +48,7 @@ impl CssomStore {
             state: Arc::new(state),
             limits,
             history: VecDeque::new(),
+            pending_replacements: HashMap::new(),
         })
     }
     pub fn snapshot(&self) -> CssomSnapshot {
@@ -68,9 +71,10 @@ impl CssomStore {
             affected: Vec::new(),
             created: Vec::new(),
             full_recompute: false,
+            terminal_replacement: None,
         })
     }
-    fn check_guard(&self, guard: &CssomEditGuard) -> Result<(), CssomError> {
+    pub(crate) fn check_guard(&self, guard: &CssomEditGuard) -> Result<(), CssomError> {
         if guard.revision.owner != self.state.owner {
             return Err(CssomError::ForeignOwner);
         }
@@ -91,7 +95,10 @@ impl CssomStore {
         if batch.poisoned {
             return Err(CssomError::BatchAborted);
         }
-        batch.staged.check_limits(&self.limits)?;
+        let reserved = self.replacement_reservations(batch.terminal_replacement.as_ref())?;
+        batch
+            .staged
+            .check_limits(&self.replacement_limits(reserved)?)?;
         let changed = batch.changed();
         if !changed {
             return Ok(CssomCommit {
@@ -107,7 +114,12 @@ impl CssomStore {
             .revision
             .value
             .checked_add(1)
-            .filter(|v| *v <= self.limits.max_revision)
+            .filter(|v| {
+                u64::try_from(reserved.0)
+                    .ok()
+                    .and_then(|count| v.checked_add(count))
+                    .is_some_and(|end| end <= self.limits.max_revision)
+            })
             .ok_or(CssomError::RevisionExhausted)?;
         let before = self.snapshot();
         let mut next = batch.staged;
@@ -131,16 +143,25 @@ impl CssomStore {
         };
         // Allocate history before the only live publication. Allocator failure is typed.
         if self.limits.summary_history > 0 {
-            self.history.try_reserve(1).map_err(|_| CssomError::Limit {
+            let slots = reserved.0.checked_add(1).ok_or(CssomError::Limit {
                 resource: "summary capacity",
                 maximum: self.limits.summary_history,
             })?;
+            self.history
+                .try_reserve(slots)
+                .map_err(|_| CssomError::Limit {
+                    resource: "summary capacity",
+                    maximum: self.limits.summary_history,
+                })?;
             self.history.push_back(summary.clone());
             while self.history.len() > self.limits.summary_history {
                 self.history.pop_front();
             }
         }
         self.state = next;
+        if let Some(token) = batch.terminal_replacement {
+            self.pending_replacements.remove(token.sheet());
+        }
         Ok(CssomCommit {
             token: batch.token,
             created: batch.created,
@@ -277,6 +298,7 @@ pub struct CssomBatch {
     affected: Vec<CssomObjectId>,
     created: Vec<Created>,
     full_recompute: bool,
+    pub(crate) terminal_replacement: Option<CssomReplaceToken>,
 }
 impl CssomBatch {
     pub(crate) fn apply<T>(
@@ -293,10 +315,18 @@ impl CssomBatch {
         }
         result
     }
-    fn affect(&mut self, id: CssomObjectId, changes: &[CssomChange]) {
+    pub(crate) fn affect(&mut self, id: CssomObjectId, changes: &[CssomChange]) {
         self.categories.extend(changes.iter().copied());
         if !self.affected.contains(&id) {
             self.affected.push(id);
+        }
+    }
+    pub(crate) fn retain_rule_ticket(&mut self, id: CssomRuleId) -> CssomRuleTicket {
+        let index = self.created.len();
+        self.created.push(Created::Rule(id));
+        CssomRuleTicket {
+            token: self.token.clone(),
+            index,
         }
     }
     pub fn create_parsed_sheet(
@@ -307,7 +337,7 @@ impl CssomBatch {
         self.apply(|this| {
             let (sheet, diagnostics) =
                 parse(source, &this.limits, this.staged.context.parser_context())?;
-            this.create_sheet(sheet, diagnostics, inputs)
+            this.create_sheet(sheet, diagnostics, inputs, true)
         })
     }
     pub fn create_typed_sheet(
@@ -315,13 +345,14 @@ impl CssomBatch {
         sheet: CssSheet,
         inputs: CssomSheetInputs,
     ) -> Result<CssomSheetTicket, CssomError> {
-        self.apply(|this| this.create_sheet(sheet, Vec::new(), inputs))
+        self.apply(|this| this.create_sheet(sheet, Vec::new(), inputs, true))
     }
-    fn create_sheet(
+    pub(crate) fn create_sheet(
         &mut self,
         authored: CssSheet,
         diagnostics: Vec<CssRecoveryDiagnostic>,
         inputs: CssomSheetInputs,
+        register: bool,
     ) -> Result<CssomSheetTicket, CssomError> {
         let id = CssomSheetId {
             owner: self.staged.owner.clone(),
@@ -358,7 +389,9 @@ impl CssomBatch {
                 diagnostics,
             },
         );
-        self.staged.sheet_order.push(id.clone());
+        if register {
+            self.staged.sheet_order.push(id.clone());
+        }
         let index = self.created.len();
         self.created.push(Created::Sheet(id.clone()));
         self.affect(
@@ -545,7 +578,7 @@ impl CssomBatch {
             this.replace(id, authored, diagnostics)
         })
     }
-    fn replace(
+    pub(crate) fn replace(
         &mut self,
         id: &CssomSheetId,
         authored: CssSheet,
@@ -667,7 +700,11 @@ impl CssomBatch {
             this.delete(&list, index)
         })
     }
-    fn delete(&mut self, list: &CssomRuleListId, index: usize) -> Result<CssomRuleId, CssomError> {
+    pub(crate) fn delete(
+        &mut self,
+        list: &CssomRuleListId,
+        index: usize,
+    ) -> Result<CssomRuleId, CssomError> {
         let members = self.staged.lists.get(list).expect("owned list");
         let root = members
             .get(index)
@@ -708,7 +745,7 @@ impl CssomBatch {
         );
         Ok(root)
     }
-    fn refresh_namespaces(&mut self, id: &CssomSheetId) {
+    pub(crate) fn refresh_namespaces(&mut self, id: &CssomSheetId) {
         let list = &self.staged.sheets[id].rules;
         let bindings = self.staged.lists[list]
             .iter()

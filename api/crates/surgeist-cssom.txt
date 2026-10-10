@@ -6,6 +6,7 @@ pub enum surgeist_cssom::CssomAuthoredRule
 pub surgeist_cssom::CssomAuthoredRule::Keyframe(surgeist_css::syntax::CssKeyframeBlock)
 pub surgeist_cssom::CssomAuthoredRule::Margin(surgeist_css::syntax::page::CssMarginRule)
 pub surgeist_cssom::CssomAuthoredRule::Ordinary(surgeist_css::syntax::CssRule)
+pub surgeist_cssom::CssomAuthoredRule::RawNestedDeclarations(surgeist_css::syntax::CssDeclarationList)
 pub surgeist_cssom::CssomAuthoredRule::Scoped(surgeist_css::syntax::CssScopedRule)
 pub enum surgeist_cssom::CssomBlockData
 pub surgeist_cssom::CssomBlockData::CounterStyle(alloc::boxed::Box<surgeist_css::syntax::counter_style::CssCounterStyleDescriptors>)
@@ -64,6 +65,7 @@ pub surgeist_cssom::CssomError::ParseResource(alloc::boxed::Box<surgeist_css::re
 pub surgeist_cssom::CssomError::RevisionExhausted
 pub surgeist_cssom::CssomError::Source(surgeist_cssom::CssomException)
 pub surgeist_cssom::CssomError::StaleContext
+pub surgeist_cssom::CssomError::StaleReplacement
 pub surgeist_cssom::CssomError::StaleRevision
 pub surgeist_cssom::CssomError::WrongKind
 impl core::error::Error for surgeist_cssom::CssomError
@@ -103,6 +105,11 @@ pub surgeist_cssom::CssomGroupPrelude::Supports(surgeist_css::syntax::CssSupport
 pub surgeist_cssom::CssomGroupPrelude::When(surgeist_css::when::CssWhenCondition)
 impl surgeist_cssom::CssomGroupPrelude
 pub const fn surgeist_cssom::CssomGroupPrelude::kind(&self) -> surgeist_cssom::CssomGroupKind
+pub enum surgeist_cssom::CssomInitialMedia<'a>
+pub surgeist_cssom::CssomInitialMedia::List
+pub surgeist_cssom::CssomInitialMedia::List::id: &'a surgeist_cssom::CssomMediaListId
+pub surgeist_cssom::CssomInitialMedia::List::snapshot: &'a surgeist_cssom::CssomSnapshot
+pub surgeist_cssom::CssomInitialMedia::Text(&'a str)
 pub enum surgeist_cssom::CssomInputData
 pub surgeist_cssom::CssomInputData::Base
 pub surgeist_cssom::CssomInputData::Base::location: core::option::Option<alloc::string::String>
@@ -167,6 +174,10 @@ pub surgeist_cssom::CssomRecomputeReason::ContextMismatch
 pub surgeist_cssom::CssomRecomputeReason::CoverageGap
 pub surgeist_cssom::CssomRecomputeReason::ForeignOwner
 pub surgeist_cssom::CssomRecomputeReason::FutureRevision
+pub enum surgeist_cssom::CssomReplaceOutcome
+pub surgeist_cssom::CssomReplaceOutcome::Cancelled
+pub surgeist_cssom::CssomReplaceOutcome::Failed(surgeist_cssom::CssomError)
+pub surgeist_cssom::CssomReplaceOutcome::Replaced
 pub enum surgeist_cssom::CssomRuleData
 pub surgeist_cssom::CssomRuleData::CounterStyle
 pub surgeist_cssom::CssomRuleData::CounterStyle::block: surgeist_cssom::CssomBlockId
@@ -218,6 +229,10 @@ pub surgeist_cssom::CssomSelectors::Ordinary(surgeist_css::syntax::CssStyleSelec
 pub surgeist_cssom::CssomSelectors::Scoped(surgeist_css::syntax::CssScopedStyleSelectorList)
 pub struct surgeist_cssom::CssomBatch
 impl surgeist_cssom::CssomBatch
+pub fn surgeist_cssom::CssomBatch::add_sheet_rule(&mut self, sheet: &surgeist_cssom::CssomSheetId, selector: core::option::Option<&str>, block: core::option::Option<&str>, index: core::option::Option<usize>) -> core::result::Result<i32, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomBatch::remove_sheet_rule(&mut self, sheet: &surgeist_cssom::CssomSheetId, index: core::option::Option<usize>) -> core::result::Result<surgeist_cssom::CssomRuleId, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomBatch::replace_sheet_sync(&mut self, sheet: &surgeist_cssom::CssomSheetId, source: &str) -> core::result::Result<(), surgeist_cssom::CssomError>
+impl surgeist_cssom::CssomBatch
 pub fn surgeist_cssom::CssomBatch::append_medium(&mut self, id: &surgeist_cssom::CssomMediaListId, source: &str) -> core::result::Result<surgeist_cssom::CssomMediaEdit, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::delete_medium(&mut self, id: &surgeist_cssom::CssomMediaListId, source: &str) -> core::result::Result<surgeist_cssom::CssomMediaEdit, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::set_media_text(&mut self, id: &surgeist_cssom::CssomMediaListId, source: &str) -> core::result::Result<surgeist_cssom::CssomMediaEdit, surgeist_cssom::CssomError>
@@ -238,6 +253,13 @@ pub fn surgeist_cssom::CssomBatch::set_feature(&mut self, id: &surgeist_cssom::C
 pub fn surgeist_cssom::CssomBatch::set_media(&mut self, id: &surgeist_cssom::CssomMediaListId, value: surgeist_css::syntax::CssMediaQueryList) -> core::result::Result<bool, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::set_rule_css_text(&mut self, id: &surgeist_cssom::CssomRuleId, _text: &str) -> core::result::Result<(), surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::update_context(&mut self, context: surgeist_cssom::CssomContext) -> core::result::Result<bool, surgeist_cssom::CssomError>
+impl surgeist_cssom::CssomBatch
+pub fn surgeist_cssom::CssomBatch::construct_sheet(&mut self, document: surgeist_cssom::CssomConstructorDocument, init: surgeist_cssom::CssomSheetInit<'_>) -> core::result::Result<surgeist_cssom::CssomSheetConstruction, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomBatch::set_sheet_list_membership(&mut self, id: &surgeist_cssom::CssomSheetListId, members: &[surgeist_cssom::CssomSheetId]) -> core::result::Result<bool, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomBatch::update_sheet_owner_attributes(&mut self, id: &surgeist_cssom::CssomSheetId, attributes: surgeist_cssom::CssomSheetOwnerAttributes<'_>) -> core::result::Result<surgeist_cssom::CssomSheetAttributeEdit, surgeist_cssom::CssomError>
+impl surgeist_cssom::CssomBatch
+pub fn surgeist_cssom::CssomBatch::insert_group_rule(&mut self, id: &surgeist_cssom::CssomRuleId, source: &str, index: usize) -> core::result::Result<surgeist_cssom::CssomRuleTicket, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomBatch::insert_sheet_rule(&mut self, id: &surgeist_cssom::CssomSheetId, source: &str, index: usize) -> core::result::Result<(usize, surgeist_cssom::CssomRuleTicket), surgeist_cssom::CssomError>
 pub struct surgeist_cssom::CssomBlock
 impl surgeist_cssom::CssomBlock
 pub fn surgeist_cssom::CssomBlock::data(&self) -> &surgeist_cssom::CssomBlockData
@@ -269,6 +291,10 @@ pub fn surgeist_cssom::CssomCommit::block(&self, ticket: &surgeist_cssom::CssomB
 pub fn surgeist_cssom::CssomCommit::publication(&self) -> &surgeist_cssom::CssomPublication
 pub fn surgeist_cssom::CssomCommit::rule(&self, ticket: &surgeist_cssom::CssomRuleTicket) -> core::result::Result<&surgeist_cssom::CssomRuleId, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomCommit::sheet(&self, ticket: &surgeist_cssom::CssomSheetTicket) -> core::result::Result<&surgeist_cssom::CssomSheetId, surgeist_cssom::CssomError>
+pub struct surgeist_cssom::CssomConstructorDocument
+pub surgeist_cssom::CssomConstructorDocument::base_location: alloc::string::String
+pub surgeist_cssom::CssomConstructorDocument::identity: alloc::string::String
+pub surgeist_cssom::CssomConstructorDocument::version: surgeist_cssom::CssomInputVersion
 pub struct surgeist_cssom::CssomContext
 pub surgeist_cssom::CssomContext::inputs: alloc::vec::Vec<surgeist_cssom::CssomInput>
 pub surgeist_cssom::CssomContext::linked: alloc::vec::Vec<surgeist_cssom::CssomLinkedInput>
@@ -334,6 +360,23 @@ impl core::fmt::Debug for surgeist_cssom::CssomOwnerId
 pub fn surgeist_cssom::CssomOwnerId::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::hash::Hash for surgeist_cssom::CssomOwnerId
 pub fn surgeist_cssom::CssomOwnerId::hash<H: core::hash::Hasher>(&self, state: &mut H)
+pub struct surgeist_cssom::CssomReplaceCompletion
+impl surgeist_cssom::CssomReplaceCompletion
+pub fn surgeist_cssom::CssomReplaceCompletion::outcome(&self) -> &surgeist_cssom::CssomReplaceOutcome
+pub fn surgeist_cssom::CssomReplaceCompletion::publication(&self) -> &surgeist_cssom::CssomPublication
+pub fn surgeist_cssom::CssomReplaceCompletion::sheet(&self) -> &surgeist_cssom::CssomSheetId
+pub struct surgeist_cssom::CssomReplaceJob
+impl surgeist_cssom::CssomReplaceJob
+pub fn surgeist_cssom::CssomReplaceJob::begin_publication(&self) -> &surgeist_cssom::CssomPublication
+pub fn surgeist_cssom::CssomReplaceJob::parse(self) -> surgeist_cssom::CssomReplaceWork
+pub fn surgeist_cssom::CssomReplaceJob::token(&self) -> &surgeist_cssom::CssomReplaceToken
+pub struct surgeist_cssom::CssomReplaceToken
+impl surgeist_cssom::CssomReplaceToken
+pub fn surgeist_cssom::CssomReplaceToken::owner(&self) -> &surgeist_cssom::CssomOwnerId
+pub fn surgeist_cssom::CssomReplaceToken::sheet(&self) -> &surgeist_cssom::CssomSheetId
+pub struct surgeist_cssom::CssomReplaceWork
+impl surgeist_cssom::CssomReplaceWork
+pub fn surgeist_cssom::CssomReplaceWork::token(&self) -> &surgeist_cssom::CssomReplaceToken
 pub struct surgeist_cssom::CssomRevision
 impl surgeist_cssom::CssomRevision
 pub fn surgeist_cssom::CssomRevision::owner(&self) -> &surgeist_cssom::CssomOwnerId
@@ -359,9 +402,23 @@ pub fn surgeist_cssom::CssomSheet::media(&self) -> &surgeist_cssom::CssomMediaLi
 pub fn surgeist_cssom::CssomSheet::namespaces(&self) -> &surgeist_css::parser::CssNamespaceContext
 pub fn surgeist_cssom::CssomSheet::owner_rule(&self) -> core::option::Option<&surgeist_cssom::CssomRuleId>
 pub fn surgeist_cssom::CssomSheet::rules(&self) -> &surgeist_cssom::CssomRuleListId
+pub struct surgeist_cssom::CssomSheetAttributeEdit
+impl surgeist_cssom::CssomSheetAttributeEdit
+pub const fn surgeist_cssom::CssomSheetAttributeEdit::changed(&self) -> bool
+pub fn surgeist_cssom::CssomSheetAttributeEdit::diagnostics(&self) -> &[surgeist_css::report::CssRecoveryDiagnostic]
+pub struct surgeist_cssom::CssomSheetConstruction
+impl surgeist_cssom::CssomSheetConstruction
+pub fn surgeist_cssom::CssomSheetConstruction::media_diagnostics(&self) -> &[surgeist_css::report::CssRecoveryDiagnostic]
+pub fn surgeist_cssom::CssomSheetConstruction::ticket(&self) -> &surgeist_cssom::CssomSheetTicket
 pub struct surgeist_cssom::CssomSheetId
 impl surgeist_cssom::CssomSheetId
 pub fn surgeist_cssom::CssomSheetId::owner(&self) -> &surgeist_cssom::CssomOwnerId
+pub struct surgeist_cssom::CssomSheetInit<'a>
+pub surgeist_cssom::CssomSheetInit::base_url: core::option::Option<alloc::string::String>
+pub surgeist_cssom::CssomSheetInit::disabled: bool
+pub surgeist_cssom::CssomSheetInit::media: surgeist_cssom::CssomInitialMedia<'a>
+impl core::default::Default for surgeist_cssom::CssomSheetInit<'_>
+pub fn surgeist_cssom::CssomSheetInit<'_>::default() -> Self
 pub struct surgeist_cssom::CssomSheetInputs
 pub surgeist_cssom::CssomSheetInputs::alternate: bool
 pub surgeist_cssom::CssomSheetInputs::base_url: core::option::Option<alloc::string::String>
@@ -381,6 +438,11 @@ pub fn surgeist_cssom::CssomSheetInputs::external(version: surgeist_cssom::Cssom
 pub struct surgeist_cssom::CssomSheetListId
 impl surgeist_cssom::CssomSheetListId
 pub fn surgeist_cssom::CssomSheetListId::owner(&self) -> &surgeist_cssom::CssomOwnerId
+pub struct surgeist_cssom::CssomSheetOwnerAttributes<'a>
+pub surgeist_cssom::CssomSheetOwnerAttributes::media: core::option::Option<&'a str>
+pub surgeist_cssom::CssomSheetOwnerAttributes::owner: &'a str
+pub surgeist_cssom::CssomSheetOwnerAttributes::title: core::option::Option<&'a str>
+pub surgeist_cssom::CssomSheetOwnerAttributes::version: surgeist_cssom::CssomInputVersion
 pub struct surgeist_cssom::CssomSheetTicket
 pub struct surgeist_cssom::CssomSnapshot
 impl surgeist_cssom::CssomSnapshot
@@ -406,6 +468,18 @@ impl surgeist_cssom::CssomSnapshot
 pub fn surgeist_cssom::CssomSnapshot::media_item(&self, id: &surgeist_cssom::CssomMediaListId, index: usize, limits: surgeist_css::specified_serialization::CssSpecifiedValueSerializationLimits) -> core::result::Result<core::option::Option<alloc::string::String>, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomSnapshot::media_length(&self, id: &surgeist_cssom::CssomMediaListId) -> core::result::Result<usize, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomSnapshot::media_text(&self, id: &surgeist_cssom::CssomMediaListId, limits: surgeist_css::specified_serialization::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
+impl surgeist_cssom::CssomSnapshot
+pub fn surgeist_cssom::CssomSnapshot::sheet_css_rules(&self, id: &surgeist_cssom::CssomSheetId) -> core::result::Result<&surgeist_cssom::CssomRuleListId, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomSnapshot::sheet_disabled(&self, id: &surgeist_cssom::CssomSheetId) -> core::result::Result<bool, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomSnapshot::sheet_href(&self, id: &surgeist_cssom::CssomSheetId) -> core::result::Result<core::option::Option<&str>, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomSnapshot::sheet_legacy_rules(&self, id: &surgeist_cssom::CssomSheetId) -> core::result::Result<&surgeist_cssom::CssomRuleListId, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomSnapshot::sheet_list_item(&self, id: &surgeist_cssom::CssomSheetListId, index: usize) -> core::result::Result<core::option::Option<&surgeist_cssom::CssomSheetId>, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomSnapshot::sheet_list_length(&self, id: &surgeist_cssom::CssomSheetListId) -> core::result::Result<usize, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomSnapshot::sheet_media(&self, id: &surgeist_cssom::CssomSheetId) -> core::result::Result<&surgeist_cssom::CssomMediaListId, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomSnapshot::sheet_owner_node(&self, id: &surgeist_cssom::CssomSheetId) -> core::result::Result<core::option::Option<&str>, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomSnapshot::sheet_owner_rule(&self, id: &surgeist_cssom::CssomSheetId) -> core::result::Result<core::option::Option<&surgeist_cssom::CssomRuleId>, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomSnapshot::sheet_title(&self, id: &surgeist_cssom::CssomSheetId) -> core::result::Result<core::option::Option<&str>, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomSnapshot::sheet_type(&self, id: &surgeist_cssom::CssomSheetId) -> core::result::Result<&'static str, surgeist_cssom::CssomError>
 pub struct surgeist_cssom::CssomStore
 impl surgeist_cssom::CssomStore
 pub fn surgeist_cssom::CssomStore::batch(&self, guard: surgeist_cssom::CssomEditGuard) -> core::result::Result<surgeist_cssom::CssomBatch, surgeist_cssom::CssomError>
@@ -414,3 +488,8 @@ pub fn surgeist_cssom::CssomStore::commit(&mut self, batch: surgeist_cssom::Csso
 pub fn surgeist_cssom::CssomStore::limits(&self) -> &surgeist_cssom::CssomLimits
 pub fn surgeist_cssom::CssomStore::new(limits: surgeist_cssom::CssomLimits, context: surgeist_cssom::CssomContext) -> core::result::Result<Self, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomStore::snapshot(&self) -> surgeist_cssom::CssomSnapshot
+impl surgeist_cssom::CssomStore
+pub fn surgeist_cssom::CssomStore::begin_replace_sheet(&mut self, guard: surgeist_cssom::CssomEditGuard, sheet: &surgeist_cssom::CssomSheetId, source: &str) -> core::result::Result<surgeist_cssom::CssomReplaceJob, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomStore::cancel_replace_sheet(&mut self, token: &surgeist_cssom::CssomReplaceToken) -> core::result::Result<surgeist_cssom::CssomReplaceCompletion, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomStore::finish_replace_sheet(&mut self, guard: surgeist_cssom::CssomEditGuard, work: surgeist_cssom::CssomReplaceWork) -> core::result::Result<surgeist_cssom::CssomReplaceCompletion, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomStore::pending_sheet_replacement(&self, sheet: &surgeist_cssom::CssomSheetId) -> core::result::Result<core::option::Option<&surgeist_cssom::CssomReplaceToken>, surgeist_cssom::CssomError>

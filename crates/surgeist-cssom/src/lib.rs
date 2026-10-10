@@ -9,10 +9,13 @@ mod identity;
 mod media_operations;
 mod model;
 mod publication;
+mod rule_operations;
+mod sheet_operations;
 mod store;
 
 pub use identity::*;
 pub use media_operations::CssomMediaEdit;
 pub use model::*;
 pub use publication::*;
+pub use sheet_operations::*;
 pub use store::*;
