@@ -1292,3 +1292,65 @@ Copyright © 2025 World Wide Web Consortium. W3C® liability, trademark and perm
 * License: [software-license-2023](software-license-2023.txt)
 
 Copyright © 2026 World Wide Web Consortium. W3C® liability, trademark and permissive document license rules apply. Complete selected placement, filter-property, primitive-overview, color-matrix, displacement-map, color-interpolation, equivalent-hue-rotation and tainted-primitive/restriction sections are retained with the complete original source head and legal notice; all other clauses are excluded. Original complete HTML SHA-256: `2ead3581d431bf3663167ada7e410793e0e561812b772081bc286da489826e29`. The bundled copy records its exact bounded-input hash and representation changes. Upstream image links do not add bundled figures.
+
+## Layout source-resolution clause captures
+
+These seven bounded renderings retain original source head/status/legal notices and complete selected clauses. Six have new complete-source identities; the Grid 2 capture shares the already fully represented 2025-03-26 CRD identity. Attribution and conversion notices were added for implementation support; other clauses and upstream figures are not bundled by these additions. Original status, open questions and normative/informative distinctions remain unchanged.
+
+### CSS Tables 3 sizing — bounded capture retrieved 2026-10-10
+
+* Bundled copy: [css-tables-3-sizing--editor-capture-20261010--e0ddc09996f1.md](../../references/css-tables-3-sizing--editor-capture-20261010--e0ddc09996f1.md)
+* Original: [CSS Tables 3 sizing](https://drafts.csswg.org/css-tables-3/)
+* License: [W3C Software and Document License 2023](software-license-2023.txt)
+
+Copyright © 2026 World Wide Web Consortium. W3C® liability, trademark and permissive document license rules apply. Scope: complete sections 3.1, 3.5.1, 3.8, 3.9, 3.10 and 9, including descendants, plus original head/status/legal notice. Complete original HTML SHA-256: `f5adcb6c9ca724aad1dd1a04e20c2dab2695b33707af6da2acae30225ec4e381`; bounded input SHA-256: `e0ddc09996f1f860a83fd67a72b8fd8148e79ee22c5c6e1f0b0172b879007505`. The source remains authoritative; this copy is not a replacement technical specification.
+
+### CSS Flexbox 1 intrinsic sizing and fragmentation — bounded capture retrieved 2026-10-10
+
+* Bundled copy: [css-flexbox-1-intrinsic-fragmentation--editor-capture-20261010--cc15b06af9bf.md](../../references/css-flexbox-1-intrinsic-fragmentation--editor-capture-20261010--cc15b06af9bf.md)
+* Original: [CSS Flexbox 1 intrinsic sizing and fragmentation](https://drafts.csswg.org/css-flexbox-1/)
+* License: [W3C Software and Document License 2023](software-license-2023.txt)
+
+Copyright © 2026 World Wide Web Consortium. W3C® liability, trademark and permissive document license rules apply. Scope: complete section 9.9 and section 10, including informative section 10.1, plus original head/status/legal notice. Complete original HTML SHA-256: `cc15b06af9bfc9b875db1072d5ae8c2e153017efbc07aa405d6aca5e3dc2a7bd`; bounded input SHA-256: `9e189415a389d3757a6828cb0fe8f3d9918dd597eab3eafb8914a583595d1845`. The source remains authoritative; this copy is not a replacement technical specification.
+
+### CSS Grid Layout Module Level 3 — bounded capture retrieved 2026-10-10
+
+* Bundled copy: [css-grid-3-layout-decisions--editor-capture-20261010--54fd3c34f1ce.md](../../references/css-grid-3-layout-decisions--editor-capture-20261010--54fd3c34f1ce.md)
+* Original: [CSS Grid Layout Module Level 3](https://drafts.csswg.org/css-grid-3/)
+* License: [W3C Software and Document License 2023](software-license-2023.txt)
+
+Copyright © 2026 World Wide Web Consortium. W3C® liability, trademark and permissive document license rules apply. Scope: complete selected heading sections `grid-lanes-model`, `grid-lanes-track-templates`, `grid-lanes-track-placement`, `intrinsic-sizes`, `alignment`, `pagination`, `abspos`, plus original head/status/legal notice. Complete original HTML SHA-256: `3d85385289b72096aa6ce0af877211e42401573304821b5cb71f3f2f85ee121f`; bounded input SHA-256: `54fd3c34f1ce1b5ff1937a46dc1ac1975012b01c045577ab2b2c2926df580fa3`. The source remains authoritative; this copy is not a replacement technical specification.
+
+### CSS Fragmentation Module Level 3 — bounded capture retrieved 2026-10-10
+
+* Bundled copy: [css-break-3-layout-decisions--editor-capture-20261010--debb8c3e11e2.md](../../references/css-break-3-layout-decisions--editor-capture-20261010--debb8c3e11e2.md)
+* Original: [CSS Fragmentation Module Level 3](https://drafts.csswg.org/css-break-3/)
+* License: [W3C Software and Document License 2023](software-license-2023.txt)
+
+Copyright © 2025 World Wide Web Consortium. W3C® liability, trademark and permissive document license rules apply. Scope: complete selected heading sections `fragmentation-model`, `breaking-controls`, `breaking-rules`, `breaking-boxes`, plus original head/status/legal notice. Complete original HTML SHA-256: `854ffd2e0e97b08f218c80bcfcbf2d5b4fa9711ae2f695750d13d98925e00dc2`; bounded input SHA-256: `debb8c3e11e2bd1a6a2fb82f5d93e3a4a2f2432e05f23a3c624f101f0c23831a`. The source remains authoritative; this copy is not a replacement technical specification.
+
+### CSS Grid Layout Module Level 2 — bounded capture retrieved 2026-10-10
+
+* Bundled copy: [css-grid-2-fragmentation-clauses--editor-capture-20261010--444e85eb609a.md](../../references/css-grid-2-fragmentation-clauses--editor-capture-20261010--444e85eb609a.md)
+* Original: [CSS Grid Layout Module Level 2](https://www.w3.org/TR/css-grid-2/)
+* License: [W3C Software and Document License 2023](software-license-2023.txt)
+
+Copyright © 2025 World Wide Web Consortium. W3C® liability, trademark and permissive document license rules apply. Scope: complete selected heading sections `pagination`, plus original head/status/legal notice. Complete original HTML SHA-256: `05aa64853c4428146973943b35caf121e44c1076bdf5b8c29f8896dba9b778e2`; bounded input SHA-256: `444e85eb609a7e27708f04240dd60df1e104c651b398f6f519488d24d608a601`. The source remains authoritative; this copy is not a replacement technical specification.
+
+### CSS Content 3 leaders — bounded capture retrieved 2026-10-10
+
+* Bundled copy: [css-content-3-leaders-clauses--editor-capture-20261010--586d408a8de7.md](../../references/css-content-3-leaders-clauses--editor-capture-20261010--586d408a8de7.md)
+* Original: [CSS Content 3 leaders](https://drafts.csswg.org/css-content-3/)
+* License: [W3C Software and Document License 2023](software-license-2023.txt)
+
+Copyright © 2026 World Wide Web Consortium. W3C® liability, trademark and permissive document license rules apply. Scope: complete content-property (including accessibility), strings and leaders sections, plus original head/status/legal notice. Complete original HTML SHA-256: `a0db7cbeb488725fe33adf99a6dde5adbca4afe14ed45fa5bdc7f44ef864dc94`; bounded input SHA-256: `586d408a8de7bd160fa01009331ef04ec7d283e7e71278a0dfe9ad63c0b9f9c0`. The source remains authoritative; this copy is not a replacement technical specification.
+
+### CSS Overflow 3 geometry — bounded capture retrieved 2026-10-10
+
+* Bundled copy: [css-overflow-3-geometry-clauses--editor-capture-20261010--86c09a636507.md](../../references/css-overflow-3-geometry-clauses--editor-capture-20261010--86c09a636507.md)
+* Original: [CSS Overflow 3 geometry](https://drafts.csswg.org/css-overflow-3/)
+* License: [W3C Software and Document License 2023](software-license-2023.txt)
+
+Copyright © 2026 World Wide Web Consortium. W3C® liability, trademark and permissive document license rules apply. Scope: complete sections 2 and 3, including all subsections, plus original head/status/legal notice. Complete original HTML SHA-256: `4635826dcd37bbf938b4043c08359ccf5c9a0befe88c6c8a33480bae523cd979`; bounded input SHA-256: `86c09a636507eabbbe39c1a9507d79602e9c75451170c90077c1b4c6cb207ed5`. The source remains authoritative; this copy is not a replacement technical specification.
+
+The complete FixedTableLayout.cpp browser witness also retains its explicitly attributed CSS 2.1 quotation. That quotation is covered by the already retained [CSS 2 reference attribution](NOTICE.md#cascading-style-sheets-level-2-revision-1-css-21-specification) and [W3C Document License 2015](document-license-2015.txt); its wording and attribution remain unchanged.

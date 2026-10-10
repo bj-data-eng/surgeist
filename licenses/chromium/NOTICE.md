@@ -36,3 +36,15 @@ The [text source witness](../../references/blink-text-source-gaps--7984f9d11800.
 | [text_decoration_info.cc](https://chromium.googlesource.com/chromium/src/+/7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2/third_party/blink/renderer/core/paint/text_decoration_info.cc) | Copyright 2020 The Chromium Authors |
 
 All four carry the Chromium BSD-style project-license declaration and are covered by the exact retained [Chromium root LICENSE](LICENSE.txt) from that revision. No LGPL terms are substituted across files; the earlier Page/margin LGPL source notices remain unchanged. These reference additions do not compile or link copied source into Surgeist.
+
+## Flex fragmentation and content-parser witnesses
+
+The [flex fragmentation reference](../../references/browser-flex-fragmentation--pinned-20261010.md) retains two complete Blink source files, and the [leader-support reference](../../references/browser-leader-support--webkit-73aa6c89e2cb-blink-7984f9d11800.md#blink-content-parser) retains an explicitly bounded content-parser excerpt. All three are at immutable Chromium revision `7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2`. Complete original file-level headers, full decoded-byte source hashes and excerpt boundaries are retained.
+
+| Retained source and scope | Original copyright declaration and local license |
+| --- | --- |
+| [flex_layout_algorithm.cc](https://chromium.googlesource.com/chromium/src/+/7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2/third_party/blink/renderer/core/layout/flex/flex_layout_algorithm.cc): complete source file; exact original header and UTF-8 bytes retained | Copyright 2018 The Chromium Authors; [Chromium BSD-style root license](LICENSE.txt) |
+| [flex_break_token_data.h](https://chromium.googlesource.com/chromium/src/+/7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2/third_party/blink/renderer/core/layout/flex/flex_break_token_data.h): complete source file; exact original header and UTF-8 bytes retained | Copyright 2021 The Chromium Authors; [Chromium BSD-style root license](LICENSE.txt) |
+| [longhands_custom.cc](https://chromium.googlesource.com/chromium/src/+/7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2/third_party/blink/renderer/core/css/properties/longhands/longhands_custom.cc): complete original header and bounded source lines 3131–3211, 3215–3220; other source omitted | Copyright 2019 The Chromium Authors; [Chromium BSD-style root license](LICENSE.txt) |
+
+These sources retain their BSD-style project-license declarations and are covered by the exact existing root license from this revision. No new LGPL file or alternative is introduced. Added line labels and omission boundaries are documentation formatting; retained source bytes are unchanged. Parser-front-door evidence does not establish engine-wide leader support or absence. These copies are not compiled or linked into Surgeist.

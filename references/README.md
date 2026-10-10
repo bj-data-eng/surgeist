@@ -1,6 +1,6 @@
 # Consolidated specification references
 
-The [source catalog](SOURCE-CATALOG.md) links all 237 retained source identities and states their representations: 213 full documents/source witnesses, 22 partial witnesses, and two metadata-only exceptions. Read the [conversion report](CONVERSION-REPORT.md) for checks, link policy and explicit limitations.
+The [source catalog](SOURCE-CATALOG.md) links all 259 retained source identities and states their representations: 220 full documents/source witnesses, 37 partial witnesses, and two metadata-only exceptions. Read the [conversion report](CONVERSION-REPORT.md) for checks, link policy and explicit limitations.
 
 The references are format conversions, not summaries or replacement standards. Distinct specification editions remain separate. Eight redundant plain-text extractions were removed after comparison with the exact HTML editions already represented by structured Markdown. Source copyright/licensing notices, normative/informative classifications, literal code, definitions and published fragment IDs are retained where present.
 
@@ -45,3 +45,7 @@ An original fragment-only self-link stays local only when the original HTML base
 ## Legacy navigation
 
 The [Nesting preview guide](push-test.md) preserves the earlier preview address and points to the canonical converted snapshot. It is tracked as a navigation guide, separately from source entries.
+
+## Layout source-resolution witnesses
+
+The [layout sizing, fragmentation and overflow edition mapping](SOURCE-EDITIONS.md#layout-sizing-fragmentation-and-overflow-source-resolution) selects twelve additional references for tables, flex, grid lanes, fragmentation, generated-content leaders and overflow geometry. Six new standards identities have partial clause coverage; browser witnesses distinguish seven complete files from nine partial identities, including preferred and newer FlexFormattingContext.cpp revisions with identical retained segments but different complete-file hashes. The catalog also links complementary Grid 2 and TransformationMatrix.cpp witnesses under their existing identities. Historical references and completed acceptance remain intact. Source evidence, browser behavior and Surgeist policy are stated separately; retaining these witnesses does not implement the selected contracts.

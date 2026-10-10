@@ -65,7 +65,7 @@ records its font and notice hashes. These fonts are test assets.
 ### Chromium Blink implementation references
 
 The reference collection retains selected Blink source files as readable
-implementation evidence for CSSOM rules, text and painting behavior, and bounded
+implementation evidence for CSSOM rules, text, painting, layout and content parsing, and bounded
 implementation gaps. Each file preserves its original copyright and license notice; the accompanying legal
 material identifies the exact retained source scope.
 
@@ -306,7 +306,7 @@ authorship and status remain intact; no endorsement is implied.
 ### WebKit implementation references
 
 The reference collection retains selected WebKit source files as readable
-implementation evidence for CSSOM requirements. These are documentation copies,
+implementation evidence for CSSOM, text, effects, layout and content parsing. These are documentation copies,
 not compiled or linked dependencies. Each retained file preserves its original
 copyright, redistribution conditions and disclaimer.
 
