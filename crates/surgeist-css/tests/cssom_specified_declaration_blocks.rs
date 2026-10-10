@@ -73,6 +73,64 @@ fn read(block: &CssSpecifiedDeclarationBlock, property: CssKnownProperty) -> Opt
         .property_value(CssPropertyNameRef::Known(property))
         .unwrap()
 }
+
+#[test]
+fn gradient_inverses_preserve_conic_interpolation_and_double_stop_roles() {
+    // Independently authored canonical values exercise reconstruction from
+    // separate image occurrences, rather than direct authored-value emission.
+    for (authored, expected) in [
+        ("conic-gradient(red,blue)", "conic-gradient(red, blue)"),
+        (
+            "conic-gradient(from 45deg in oklch longer hue,red 0deg 90deg,blue)",
+            "conic-gradient(from 45deg in oklch longer hue, red 0deg 90deg, blue)",
+        ),
+        (
+            "conic-gradient(in oklab,red 0 50%,blue)",
+            "conic-gradient(in oklab, red 0 50%, blue)",
+        ),
+        (
+            "linear-gradient(in lab,red 10% 20%,blue)",
+            "linear-gradient(in lab, red 10% 20%, blue)",
+        ),
+        (
+            "radial-gradient(in oklab,red 10px 20%,blue)",
+            "radial-gradient(in oklab, red 10px 20%, blue)",
+        ),
+    ] {
+        let source = format!("background:none;background-image:{authored}");
+        let ordinary = specified_block(&source);
+        let rule = keyframes(&format!("@keyframes k {{ from {{ {source} }} }}"));
+        let keyframe = CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(
+            rule.blocks()[0].declarations(),
+        )
+        .unwrap();
+        for block in [&ordinary, &keyframe] {
+            let sources: Vec<_> = block.entries().iter().map(|e| e.source().clone()).collect();
+            assert_eq!(
+                read(block, CssKnownProperty::Background).as_deref(),
+                Some(expected)
+            );
+            let css = format!("background: {expected};");
+            assert_eq!(block.serialize_cssom().unwrap(), css);
+            let error = block
+                .serialize_cssom_with_limits(CssSpecifiedValueSerializationLimits::new(
+                    usize::MAX,
+                    usize::MAX,
+                    0,
+                ))
+                .unwrap_err();
+            assert_eq!(
+                resource(&error),
+                CssSpecifiedValueSerializationErrorKind::ByteLimit
+            );
+            assert_eq!(block.serialize_cssom().unwrap(), css);
+            for (entry, source) in block.entries().iter().zip(&sources) {
+                assert!(entry.source().same_occurrence(source));
+            }
+        }
+    }
+}
+
 fn keyframes(source: &str) -> CssKeyframesRule {
     let report = parse_sheet(source);
     assert!(report.is_clean(), "{source}: {report:?}");
