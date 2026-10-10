@@ -198,7 +198,7 @@ impl CssRule {
         limits: CssSpecifiedValueSerializationLimits,
     ) -> Result<String, CssRuleCssomSerializationError> {
         let mut writer = SpecifiedRuleWriter::new(limits);
-        writer.append_cssom_rule_graph(self, Vec::new())?;
+        writer.append_cssom_rule_graph(self, Vec::new(), None)?;
         Ok(writer.css)
     }
 }
@@ -217,6 +217,7 @@ impl CssSheet {
         writer
             .node()
             .map_err(|value| CssRuleCssomSerializationError::new(value.into(), Vec::new(), None))?;
+        let namespaces = crate::CssNamespaceContext::from_sheet(self);
         for (index, rule) in self.rules().iter().enumerate() {
             let mut path = Vec::new();
             path.try_reserve(1).map_err(|_| {
@@ -239,7 +240,7 @@ impl CssSheet {
                     None,
                 ));
             }
-            writer.append_cssom_rule_graph(rule, path)?;
+            writer.append_cssom_rule_graph(rule, path, Some(&namespaces))?;
         }
         Ok(writer.css)
     }

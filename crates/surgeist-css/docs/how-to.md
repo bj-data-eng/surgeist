@@ -169,3 +169,32 @@ values, or shorthand members. Support lookup remains independent.
 See [intrinsic metadata and authored grammar identity](reference.md#intrinsic-metadata-and-authored-grammar-identity)
 for the checked initial-value and shorthand contracts. Metadata availability
 does not establish complete authored grammar support.
+
+## Format a literal selector payload
+
+Pass the actual namespace environment and rule role to the pure selector owner.
+The parsed wrapper retains its admission role and original occurrence:
+
+```rust
+use surgeist_css::{CssNamespaceContext, CssStyleSelectorContext,
+    parse_style_selector_list};
+let namespaces = CssNamespaceContext::default();
+let report = parse_style_selector_list(
+    ".card, > [|data-x]", &namespaces, CssStyleSelectorContext::Nested);
+let parsed = report.syntax().as_ref().expect("admitted nested list");
+assert_eq!(parsed.serialize_cssom(&namespaces).unwrap(), "& .card, & > [data-x]");
+assert_eq!(parsed.origin().source().as_str(), ".card, > [|data-x]");
+```
+
+Use each list's `serialize_cssom_with_limits` for one atomic cumulative budget.
+Ordinary/scoped lists reject an incompatible role or anchor domain. A missing
+required namespace binding has the distinct `NamespaceBindingUnavailable`
+error kind. Derive retained sheet bindings with `CssNamespaceContext::from_sheet`,
+or supply host-owned bindings with `from_bindings`; do not infer namespace names
+from prefix text. Contextless whole-rule output preserves symbolic spelling.
+
+For scope getters, call `CssScopeRule::serialize_cssom_start` with the actual
+enclosing `CssScopeNestingContext`, and `serialize_cssom_end` for the introduced
+scope. These return nullable bound text without parentheses, independently of
+whole Scope formatting availability. See the
+[literal selector context contract](reference.md#authored-literal-cssom-rule-and-sheet-output).

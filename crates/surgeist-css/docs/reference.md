@@ -9118,6 +9118,55 @@ therefore provides the selected safe canonicalization, rather than a general
 shortest-selector search. Standalone selector and compact rule output preserve
 the authored explicit universals.
 
+The bounded standalone `serialize_cssom[_with_limits]` methods on
+`CssSelectorList`, `CssRelativeSelectorList`, `CssStyleSelectorList` and
+`CssScopedStyleSelectorList` share this same selector visitor. Supply the actual
+`CssNamespaceContext`; style lists also require `CssStyleSelectorContext`.
+`CssParsedStyleSelectors` delegates using its retained admission context and
+preserves its original occurrence. Incompatible ordinary/scoped anchor domains
+and ordinary roles receiving leading relatives return `UnrepresentableValue`.
+General relatives keep their leading relationships; literal nested members emit
+their implied `&`, including implicit descendants. Explicit/repeated anchors
+and exact retained invalid forgiving members keep their owning representation.
+Actual style ancestry propagates through grouping children and restores at the
+next sibling. Compact output does not introduce implied anchors.
+
+This follows the selected [Nesting CSSOM clause](../../../references/css-nesting-1--WD-css-nesting-1-20260122--b29b0db74b96.md#cssom)
+and [ampersand containment definition](../../../references/css-nesting-1--WD-css-nesting-1-20260122--b29b0db74b96.md#contain-the-nesting-selector).
+Containment inspection reuses normalization's shared semantic owner. Each
+inspected selector/compound/pseudo spends cumulative input work; emitted implied
+anchors spend projection work and UTF-8 bytes without fabricating input nodes.
+The bounded observer checks structural argument depth before further descent.
+
+With supplied bindings, or a real sheet's retained top-level namespace bindings,
+the [current CSSOM simple-selector rules](../../../references/cssom-1--editor-capture-20261009--d42e145ec395.md#serialize-a-simple-selector)
+compare actual namespace names. A named type in the default namespace omits its
+prefix, a concrete null type emits `|`, and null attributes omit their separator:
+`[|a]` becomes `[a]`. Empty binding names are the null namespace; an absent default
+is distinct. Named aliases compare their namespace names, not their prefix
+spelling. Unprefixed attributes never inherit the default. Any stays raw `*|`;
+the protected universal-node omission policy above still applies. All logical
+arguments share the same namespace input while retaining protected universals.
+Missing required named/default bindings return `NamespaceBindingUnavailable`,
+distinct from resource exhaustion or invalid domain/context. An incompatible
+supplied binding environment cannot silently change an unqualified Any constraint
+into Default. Bindings supplied to these methods must be the associated
+environment of their checked input, as in the existing namespace front doors.
+Contextless detached whole-rule output conservatively preserves unresolved
+symbolic namespace spelling; compact output always preserves it. URI resolution,
+loading, imports and live CSSOM state remain outside this operation.
+
+`CssScopeSelectorList` takes `CssScopeSelectorCssomContext::Start` or `End` and
+formats a bound without parentheses or a whole-rule wrapper. `CssScopeRule`'s
+`serialize_cssom_start[_with_limits]` and `serialize_cssom_end[_with_limits]`
+return `Option<String>`: an omitted bound stays `None`, including at zero limits.
+The start role includes the actual enclosing `CssScopeNestingContext`;
+end relatives bind to the introduced scope. Whole Scope formatting can still
+report its existing `FormatUnavailable(Scope)` independently of these bound
+operations. All present lists/bounds use one cumulative input/projection/byte
+context and return no partial text on failure. See the independent
+[context-formatting tests](../tests/cssom_selector_context_formatting.rs).
+
 The pinned CSSOM source has no normative Page wrapper; the selected Page/margin
 consumer uses the bounded adopted Blink format described above. The adopted
 When/Else profile has no selected literal algorithm and reports `SourceUndefined`

@@ -1757,6 +1757,8 @@ pub use page_projection::{
 mod query_rule_serialization;
 mod rule_construction;
 mod selector_serialization;
+pub use selector_serialization::CssScopeSelectorCssomContext;
+mod selector_anchors;
 mod shadow_serialization;
 #[cfg(test)]
 mod specified_provider_composition_tests;

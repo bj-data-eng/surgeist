@@ -565,7 +565,7 @@ fn scoped_position(rule: &CssScopedRule) -> Option<CssSourcePosition> {
     }
 }
 
-fn check_namespace(
+pub(crate) fn check_namespace(
     prefix: &CssQualifiedNamePrefix,
     constraint: &CssNamespaceConstraint,
     context: &CssNamespaceContext,

@@ -97,7 +97,8 @@ impl CssSpecifiedRuleSerializationError {
                 CssSpecifiedRuleSerializationErrorKind::Resource(value_kind)
             }
             CssSpecifiedValueSerializationErrorKind::UnserializableBoundary
-            | CssSpecifiedValueSerializationErrorKind::UnrepresentableValue => {
+            | CssSpecifiedValueSerializationErrorKind::UnrepresentableValue
+            | CssSpecifiedValueSerializationErrorKind::NamespaceBindingUnavailable => {
                 CssSpecifiedRuleSerializationErrorKind::Value(value_kind)
             }
         };

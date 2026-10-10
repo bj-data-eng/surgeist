@@ -207,7 +207,7 @@ fn selector_provider_composes_groups_namespaces_pseudos_anb_and_escapes() {
         ),
         (
             r#"@namespace n 'urn:x';n|leaf[n|key='v']{}*|*[|key]{}|leaf{}"#,
-            "@namespace n url(\"urn:x\");\nn|leaf[n|key=\"v\"] { }\n*|*[|key] { }\n|leaf { }",
+            "@namespace n url(\"urn:x\");\nn|leaf[n|key=\"v\"] { }\n*|*[key] { }\n|leaf { }",
         ),
     ] {
         exact(source, expected);
@@ -913,12 +913,13 @@ fn literal_universal_omission_preserves_explicit_namespace_prefixes_and_real_typ
     ] {
         // n deliberately binds the same URI as Default: a symbolic authored
         // prefix still does not become an unqualified literal output name.
-        universal_case(
-            authored,
-            expected,
-            expected,
-            &universal_default_namespaces(),
-        );
+        // #1020's current null-attribute rule drops only the literal separator.
+        let literal = if authored == "*|*[|data-x]" {
+            "*|*[data-x]"
+        } else {
+            expected
+        };
+        universal_case(authored, expected, literal, &universal_default_namespaces());
     }
     for selector in ["|*.card", "*|*.card"] {
         universal_case(

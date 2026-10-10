@@ -63,6 +63,8 @@ pub enum CssSpecifiedValueSerializationErrorKind {
     /// capability or precision policy. This includes invalid retained selector
     /// identity and numeric rounding that loses a required slot distinction.
     UnrepresentableValue,
+    /// An explicitly supplied selector context lacks a required namespace binding.
+    NamespaceBindingUnavailable,
 }
 
 /// Atomic failure: no partial CSS is returned and the authored input is unchanged.
@@ -97,6 +99,9 @@ impl fmt::Display for CssSpecifiedValueSerializationError {
             }
             CssSpecifiedValueSerializationErrorKind::UnserializableBoundary => {
                 "specified-value component boundary cannot be serialized"
+            }
+            CssSpecifiedValueSerializationErrorKind::NamespaceBindingUnavailable => {
+                "selector namespace binding unavailable"
             }
             CssSpecifiedValueSerializationErrorKind::UnrepresentableValue => {
                 "specified value cannot be represented by the selected serializer"

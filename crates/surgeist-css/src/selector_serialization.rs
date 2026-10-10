@@ -39,10 +39,11 @@ enum Event<'a> {
         bool,
     ),
     RelativeList(&'a [CssRelativeSelector], usize, CssSelectorGrammarContext),
-    StyleList(&'a [CssStyleSelector], usize),
-    ScopedStyleList(&'a [CssScopedStyleSelector], usize),
-    ScopeList(&'a [CssScopeSelector], usize),
+    StyleList(&'a [CssStyleSelector], usize, bool),
+    ScopedStyleList(&'a [CssScopedStyleSelector], usize, bool),
+    ScopeList(&'a [CssScopeSelector], usize, bool),
     Relative(&'a CssRelativeSelector, CssSelectorGrammarContext),
+    LiteralMember(&'a CssSelector, Option<CssSelectorCombinator>, bool),
     Text(&'a str),
     OutputRole(OutputRole),
     Nth(CssNthPattern),
@@ -61,7 +62,14 @@ fn push<'a>(work: &mut Vec<Event<'a>>, event: Event<'a>) -> Result<()> {
 fn push_argument<'a>(work: &mut Vec<Event<'a>>, event: Event<'a>, role: OutputRole) -> Result<()> {
     push(work, Event::OutputRole(role))?;
     push(work, event)?;
-    push(work, Event::OutputRole(OutputRole::SelectorArgument))
+    push(
+        work,
+        Event::OutputRole(if role == OutputRole::Authored {
+            OutputRole::Authored
+        } else {
+            OutputRole::SelectorArgument
+        }),
+    )
 }
 
 impl CssSelector {
@@ -113,6 +121,274 @@ impl CssRelativeSelectorList {
     }
 }
 
+/// The actual role of a checked scope boundary. Start binds to its enclosing
+/// context; End binds to the scope introduced by its rule.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CssScopeSelectorCssomContext {
+    Start(CssScopeNestingContext),
+    End,
+}
+
+impl CssSelectorList {
+    /// Formats a literal ordinary list using actual namespace URI bindings.
+    pub fn serialize_cssom(&self, namespaces: &CssNamespaceContext) -> Result<String> {
+        self.serialize_cssom_with_limits(
+            namespaces,
+            CssSpecifiedValueSerializationLimits::default(),
+        )
+    }
+    pub fn serialize_cssom_with_limits(
+        &self,
+        namespaces: &CssNamespaceContext,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String> {
+        let mut writer = SpecifiedRuleWriter::new(limits);
+        writer.node()?;
+        for selector in self.selectors() {
+            writer.check_anchor_domain(selector, false)?;
+        }
+        writer.selector_events_with_role(
+            Event::List(self.selectors(), 0, CssSelectorGrammarContext::ORDINARY),
+            OutputRole::LiteralStyle,
+            Some(namespaces),
+        )?;
+        Ok(writer.css)
+    }
+}
+impl CssRelativeSelectorList {
+    /// Formats general relative selectors. These are not nested style rules;
+    /// their leading relationships remain relative, including inside `:has()`.
+    pub fn serialize_cssom(&self, namespaces: &CssNamespaceContext) -> Result<String> {
+        self.serialize_cssom_with_limits(
+            namespaces,
+            CssSpecifiedValueSerializationLimits::default(),
+        )
+    }
+    pub fn serialize_cssom_with_limits(
+        &self,
+        namespaces: &CssNamespaceContext,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String> {
+        let mut writer = SpecifiedRuleWriter::new(limits);
+        writer.node()?;
+        for relative in self.selectors() {
+            writer.check_anchor_domain(relative.selector(), false)?;
+        }
+        writer.selector_events_with_role(
+            Event::RelativeList(self.selectors(), 0, CssSelectorGrammarContext::ORDINARY),
+            OutputRole::LiteralStyle,
+            Some(namespaces),
+        )?;
+        Ok(writer.css)
+    }
+}
+impl CssStyleSelectorList {
+    /// Formats checked ordinary or nested style selectors in their actual role.
+    /// A scoped role is rejected rather than changing their anchor domain.
+    pub fn serialize_cssom(
+        &self,
+        namespaces: &CssNamespaceContext,
+        context: CssStyleSelectorContext,
+    ) -> Result<String> {
+        self.serialize_cssom_with_limits(
+            namespaces,
+            context,
+            CssSpecifiedValueSerializationLimits::default(),
+        )
+    }
+    pub fn serialize_cssom_with_limits(
+        &self,
+        namespaces: &CssNamespaceContext,
+        context: CssStyleSelectorContext,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String> {
+        let nested = match context {
+            CssStyleSelectorContext::Ordinary => false,
+            CssStyleSelectorContext::Nested => true,
+            CssStyleSelectorContext::Scoped(_) => return Err(invalid_context()),
+        };
+        let mut writer = SpecifiedRuleWriter::new(limits);
+        for member in self.selectors() {
+            let selector = match member {
+                CssStyleSelector::Selector(value) => value,
+                CssStyleSelector::Relative(value) => {
+                    if !nested {
+                        return Err(invalid_context());
+                    }
+                    value.selector()
+                }
+            };
+            writer.check_anchor_domain(selector, false)?;
+        }
+        writer.cssom_style_selectors(self, nested, Some(namespaces))?;
+        Ok(writer.css)
+    }
+}
+impl CssScopedStyleSelectorList {
+    /// Formats scoped selectors while preserving their genuine scope anchors.
+    pub fn serialize_cssom(
+        &self,
+        namespaces: &CssNamespaceContext,
+        context: CssStyleSelectorContext,
+    ) -> Result<String> {
+        self.serialize_cssom_with_limits(
+            namespaces,
+            context,
+            CssSpecifiedValueSerializationLimits::default(),
+        )
+    }
+    pub fn serialize_cssom_with_limits(
+        &self,
+        namespaces: &CssNamespaceContext,
+        context: CssStyleSelectorContext,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String> {
+        let CssStyleSelectorContext::Scoped(ancestor) = context else {
+            return Err(invalid_context());
+        };
+        let nested = ancestor == CssStyleAncestor::Present;
+        let mut writer = SpecifiedRuleWriter::new(limits);
+        for member in self.selectors() {
+            let selector = match member {
+                CssScopedStyleSelector::Selector(value) => value,
+                CssScopedStyleSelector::Relative(value) => value.selector(),
+            };
+            writer.check_anchor_domain(selector, true)?;
+        }
+        writer.cssom_scoped_style_selectors(self, nested, Some(namespaces))?;
+        Ok(writer.css)
+    }
+}
+impl CssParsedStyleSelectors {
+    /// Delegates using the actual retained admission role and original graph.
+    /// Namespace URI bindings remain an explicit, separate context input.
+    pub fn serialize_cssom(&self, namespaces: &CssNamespaceContext) -> Result<String> {
+        self.serialize_cssom_with_limits(
+            namespaces,
+            CssSpecifiedValueSerializationLimits::default(),
+        )
+    }
+    pub fn serialize_cssom_with_limits(
+        &self,
+        namespaces: &CssNamespaceContext,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String> {
+        match self.selectors() {
+            CssAdmittedStyleSelectors::Ordinary(list) => {
+                list.serialize_cssom_with_limits(namespaces, self.context(), limits)
+            }
+            CssAdmittedStyleSelectors::Scoped(list) => {
+                list.serialize_cssom_with_limits(namespaces, self.context(), limits)
+            }
+        }
+    }
+}
+impl CssScopeSelectorList {
+    /// Formats one scope bound without parentheses or an enclosing rule.
+    pub fn serialize_cssom(
+        &self,
+        namespaces: &CssNamespaceContext,
+        context: CssScopeSelectorCssomContext,
+    ) -> Result<String> {
+        self.serialize_cssom_with_limits(
+            namespaces,
+            context,
+            CssSpecifiedValueSerializationLimits::default(),
+        )
+    }
+    pub fn serialize_cssom_with_limits(
+        &self,
+        namespaces: &CssNamespaceContext,
+        context: CssScopeSelectorCssomContext,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<String> {
+        let (nested, scoped) = match context {
+            CssScopeSelectorCssomContext::Start(context) => (
+                context != CssScopeNestingContext::None,
+                context == CssScopeNestingContext::Scope,
+            ),
+            CssScopeSelectorCssomContext::End => (false, true),
+        };
+        let mut writer = SpecifiedRuleWriter::new(limits);
+        writer.node()?;
+        for member in self.selectors() {
+            if matches!(member, CssScopeSelector::Relative(_))
+                && matches!(
+                    context,
+                    CssScopeSelectorCssomContext::Start(CssScopeNestingContext::None)
+                )
+            {
+                return Err(invalid_context());
+            }
+            writer.check_anchor_domain(member.selector(), scoped)?;
+        }
+        writer.selector_events_with_role(
+            Event::ScopeList(self.selectors(), 0, nested),
+            OutputRole::LiteralStyle,
+            Some(namespaces),
+        )?;
+        Ok(writer.css)
+    }
+}
+impl CssScopeRule {
+    /// Returns the independently formatted start bound, or None for an omitted
+    /// start. No empty string substitutes for an absent bound.
+    pub fn serialize_cssom_start(
+        &self,
+        namespaces: &CssNamespaceContext,
+        nesting: CssScopeNestingContext,
+    ) -> Result<Option<String>> {
+        self.serialize_cssom_start_with_limits(
+            namespaces,
+            nesting,
+            CssSpecifiedValueSerializationLimits::default(),
+        )
+    }
+    pub fn serialize_cssom_start_with_limits(
+        &self,
+        namespaces: &CssNamespaceContext,
+        nesting: CssScopeNestingContext,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<Option<String>> {
+        self.root()
+            .map(|list| {
+                list.serialize_cssom_with_limits(
+                    namespaces,
+                    CssScopeSelectorCssomContext::Start(nesting),
+                    limits,
+                )
+            })
+            .transpose()
+    }
+    /// Returns the independently formatted end bound, or None for an omitted end.
+    pub fn serialize_cssom_end(&self, namespaces: &CssNamespaceContext) -> Result<Option<String>> {
+        self.serialize_cssom_end_with_limits(
+            namespaces,
+            CssSpecifiedValueSerializationLimits::default(),
+        )
+    }
+    pub fn serialize_cssom_end_with_limits(
+        &self,
+        namespaces: &CssNamespaceContext,
+        limits: CssSpecifiedValueSerializationLimits,
+    ) -> Result<Option<String>> {
+        self.limit()
+            .map(|list| {
+                list.serialize_cssom_with_limits(
+                    namespaces,
+                    CssScopeSelectorCssomContext::End,
+                    limits,
+                )
+            })
+            .transpose()
+    }
+}
+fn invalid_context() -> CssSpecifiedValueSerializationError {
+    CssSpecifiedValueSerializationError::new(
+        CssSpecifiedValueSerializationErrorKind::UnrepresentableValue,
+    )
+}
+
 impl SpecifiedRuleWriter {
     pub(crate) fn node(&mut self) -> Result<()> {
         self.context.charge_input(1)?;
@@ -156,6 +432,100 @@ impl SpecifiedRuleWriter {
                 self.append("|")
             }
         }
+    }
+    fn has_anchor(
+        &mut self,
+        selector: &CssSelector,
+        kind: crate::selector_anchors::AnchorKind,
+    ) -> Result<bool> {
+        crate::selector_anchors::selector_has_anchor(selector, kind, &mut |depth| {
+            if depth > crate::STRUCTURAL_NESTING_LIMIT {
+                return Err(invalid_context());
+            }
+            self.context.charge_input(1)
+        })
+    }
+    fn check_anchor_domain(&mut self, selector: &CssSelector, scoped: bool) -> Result<()> {
+        let forbidden = if scoped {
+            crate::selector_anchors::AnchorKind::TypedNesting
+        } else {
+            crate::selector_anchors::AnchorKind::TypedScope
+        };
+        if self.has_anchor(selector, forbidden)? {
+            Err(invalid_context())
+        } else {
+            Ok(())
+        }
+    }
+    fn check_name_context(
+        &self,
+        prefix: &CssQualifiedNamePrefix,
+        constraint: &CssNamespaceConstraint,
+        element: bool,
+        namespaces: &CssNamespaceContext,
+    ) -> Result<()> {
+        let available = match constraint {
+            CssNamespaceConstraint::Default => namespaces.default_namespace().is_some(),
+            CssNamespaceConstraint::Named(prefix) => namespaces.named_namespace(prefix).is_some(),
+            _ => true,
+        };
+        if !available {
+            return Err(CssSpecifiedValueSerializationError::new(
+                CssSpecifiedValueSerializationErrorKind::NamespaceBindingUnavailable,
+            ));
+        }
+        crate::rule_construction::check_namespace(prefix, constraint, namespaces, element)
+            .map_err(|_| invalid_context())
+    }
+    fn output_name_prefix(
+        &mut self,
+        prefix: &CssQualifiedNamePrefix,
+        constraint: &CssNamespaceConstraint,
+        element: bool,
+        role: OutputRole,
+        namespaces: Option<&CssNamespaceContext>,
+    ) -> Result<()> {
+        if role != OutputRole::Authored
+            && let Some(namespaces) = namespaces
+        {
+            self.check_name_context(prefix, constraint, element, namespaces)?;
+        }
+        if role == OutputRole::Authored || matches!(prefix, CssQualifiedNamePrefix::Any) {
+            return self.name_prefix(prefix);
+        }
+        if !element && matches!(constraint, CssNamespaceConstraint::ExplicitNone) {
+            return Ok(());
+        }
+        let Some(namespaces) = namespaces else {
+            return self.name_prefix(prefix);
+        };
+        let missing = || {
+            CssSpecifiedValueSerializationError::new(
+                CssSpecifiedValueSerializationErrorKind::NamespaceBindingUnavailable,
+            )
+        };
+        let uri = match constraint {
+            CssNamespaceConstraint::Any => return self.name_prefix(prefix),
+            CssNamespaceConstraint::ExplicitNone => "",
+            CssNamespaceConstraint::Default => {
+                namespaces.default_namespace().ok_or_else(missing)?.as_str()
+            }
+            CssNamespaceConstraint::Named(name) => namespaces
+                .named_namespace(name)
+                .ok_or_else(missing)?
+                .as_str(),
+        };
+        if uri.is_empty() {
+            return if element { self.append("|") } else { Ok(()) };
+        }
+        if element
+            && namespaces
+                .default_namespace()
+                .is_some_and(|default| default.as_str() == uri)
+        {
+            return Ok(());
+        }
+        self.name_prefix(prefix)
     }
     pub(crate) fn selector(&mut self, selector: &CssSelector) -> Result<()> {
         self.selector_events(Event::Selector(
@@ -219,7 +589,7 @@ impl SpecifiedRuleWriter {
     /// before consuming the same selector provider as an absolute member.
     pub(crate) fn style_selectors(&mut self, list: &CssStyleSelectorList) -> Result<()> {
         self.node()?;
-        self.selector_events(Event::StyleList(list.selectors(), 0))
+        self.selector_events(Event::StyleList(list.selectors(), 0, false))
     }
 
     pub(crate) fn scoped_style_selectors(
@@ -227,41 +597,51 @@ impl SpecifiedRuleWriter {
         list: &CssScopedStyleSelectorList,
     ) -> Result<()> {
         self.node()?;
-        self.selector_events(Event::ScopedStyleList(list.selectors(), 0))
+        self.selector_events(Event::ScopedStyleList(list.selectors(), 0, false))
     }
 
-    pub(crate) fn cssom_style_selectors(&mut self, list: &CssStyleSelectorList) -> Result<()> {
+    pub(crate) fn cssom_style_selectors(
+        &mut self,
+        list: &CssStyleSelectorList,
+        nested: bool,
+        namespaces: Option<&CssNamespaceContext>,
+    ) -> Result<()> {
         self.node()?;
         self.selector_events_with_role(
-            Event::StyleList(list.selectors(), 0),
+            Event::StyleList(list.selectors(), 0, nested),
             OutputRole::LiteralStyle,
+            namespaces,
         )
     }
 
     pub(crate) fn cssom_scoped_style_selectors(
         &mut self,
         list: &CssScopedStyleSelectorList,
+        nested: bool,
+        namespaces: Option<&CssNamespaceContext>,
     ) -> Result<()> {
         self.node()?;
         self.selector_events_with_role(
-            Event::ScopedStyleList(list.selectors(), 0),
+            Event::ScopedStyleList(list.selectors(), 0, nested),
             OutputRole::LiteralStyle,
+            namespaces,
         )
     }
 
     pub(crate) fn scope_selectors(&mut self, list: &CssScopeSelectorList) -> Result<()> {
         self.node()?;
-        self.selector_events(Event::ScopeList(list.selectors(), 0))
+        self.selector_events(Event::ScopeList(list.selectors(), 0, false))
     }
 
     fn selector_events(&mut self, initial: Event<'_>) -> Result<()> {
-        self.selector_events_with_role(initial, OutputRole::Authored)
+        self.selector_events_with_role(initial, OutputRole::Authored, None)
     }
 
     fn selector_events_with_role(
         &mut self,
         initial: Event<'_>,
         mut role: OutputRole,
+        namespaces: Option<&CssNamespaceContext>,
     ) -> Result<()> {
         let mut work = Vec::new();
         push(&mut work, initial)?;
@@ -269,6 +649,32 @@ impl SpecifiedRuleWriter {
             match event {
                 Event::Text(value) => self.append(value)?,
                 Event::OutputRole(value) => role = value,
+                Event::LiteralMember(value, leading, nested) => {
+                    if role == OutputRole::Authored {
+                        if let Some(combinator) = leading {
+                            self.node()?;
+                            self.combinator(combinator, true)?;
+                        }
+                    } else if leading.is_some()
+                        || (nested
+                            && !self
+                                .has_anchor(value, crate::selector_anchors::AnchorKind::Either)?)
+                    {
+                        self.context.charge_projection(1)?;
+                        self.append("&")?;
+                        self.combinator(
+                            leading.unwrap_or(CssSelectorCombinator::Descendant),
+                            false,
+                        )?;
+                        if leading.is_some() {
+                            self.node()?;
+                        }
+                    }
+                    push(
+                        &mut work,
+                        Event::Selector(value, CssSelectorGrammarContext::ORDINARY),
+                    )?;
+                }
                 Event::Selector(value, grammar) => {
                     if !grammar.admits_selector(value) {
                         return Err(CssSpecifiedValueSerializationError::new(
@@ -278,6 +684,16 @@ impl SpecifiedRuleWriter {
                     match value {
                         CssSelector::Tag(value) => {
                             self.node()?;
+                            if role != OutputRole::Authored
+                                && let Some(namespaces) = namespaces
+                            {
+                                self.check_name_context(
+                                    &CssQualifiedNamePrefix::Unqualified,
+                                    &CssNamespaceConstraint::Any,
+                                    true,
+                                    namespaces,
+                                )?;
+                            }
                             self.selector_identifier(value)?;
                         }
                         CssSelector::Key(value) => {
@@ -317,6 +733,16 @@ impl SpecifiedRuleWriter {
                         self.node()?;
                         // The real type-name visit above remains charged even when
                         // its star contributes no bytes under the selected literal policy.
+                        if role != OutputRole::Authored
+                            && let Some(namespaces) = namespaces
+                        {
+                            self.check_name_context(
+                                name.prefix(),
+                                name.namespace(),
+                                true,
+                                namespaces,
+                            )?;
+                        }
                         let omit = role == OutputRole::LiteralStyle
                             && name.local_name().is_none()
                             && matches!(name.prefix(), CssQualifiedNamePrefix::Unqualified)
@@ -330,7 +756,13 @@ impl SpecifiedRuleWriter {
                                 || !value.classes().is_empty()
                                 || !value.attributes().is_empty());
                         if !omit {
-                            self.name_prefix(name.prefix())?;
+                            self.output_name_prefix(
+                                name.prefix(),
+                                name.namespace(),
+                                true,
+                                role,
+                                namespaces,
+                            )?;
                             if let Some(local) = name.local_name() {
                                 self.selector_identifier(local)?;
                             } else {
@@ -450,59 +882,65 @@ impl SpecifiedRuleWriter {
                         push(&mut work, Event::Relative(value, grammar))?;
                     }
                 }
-                Event::StyleList(values, index) => {
+                Event::StyleList(values, index, nested) => {
                     if let Some(value) = values.get(index) {
                         if index != 0 {
                             self.append(", ")?;
                         }
-                        push(&mut work, Event::StyleList(values, index + 1))?;
+                        push(&mut work, Event::StyleList(values, index + 1, nested))?;
                         push(
                             &mut work,
                             match value {
                                 CssStyleSelector::Selector(value) => {
-                                    Event::Selector(value, CssSelectorGrammarContext::ORDINARY)
+                                    Event::LiteralMember(value, None, nested)
                                 }
-                                CssStyleSelector::Relative(value) => {
-                                    Event::Relative(value, CssSelectorGrammarContext::ORDINARY)
-                                }
+                                CssStyleSelector::Relative(value) => Event::LiteralMember(
+                                    value.selector(),
+                                    Some(value.combinator()),
+                                    nested,
+                                ),
                             },
                         )?;
                     }
                 }
-                Event::ScopedStyleList(values, index) => {
+                Event::ScopedStyleList(values, index, nested) => {
                     if let Some(value) = values.get(index) {
                         if index != 0 {
                             self.append(", ")?;
                         }
-                        push(&mut work, Event::ScopedStyleList(values, index + 1))?;
+                        push(&mut work, Event::ScopedStyleList(values, index + 1, nested))?;
                         push(
                             &mut work,
                             match value {
                                 CssScopedStyleSelector::Selector(value) => {
-                                    Event::Selector(value, CssSelectorGrammarContext::ORDINARY)
+                                    Event::LiteralMember(value, None, nested)
                                 }
-                                CssScopedStyleSelector::Relative(value) => {
-                                    Event::Relative(value, CssSelectorGrammarContext::ORDINARY)
-                                }
+                                CssScopedStyleSelector::Relative(value) => Event::LiteralMember(
+                                    value.selector(),
+                                    Some(value.combinator()),
+                                    nested,
+                                ),
                             },
                         )?;
                     }
                 }
-                Event::ScopeList(values, index) => {
+                Event::ScopeList(values, index, nested) => {
                     if let Some(value) = values.get(index) {
                         if index != 0 {
                             self.append(", ")?;
                         }
-                        push(&mut work, Event::ScopeList(values, index + 1))?;
+                        push(&mut work, Event::ScopeList(values, index + 1, nested))?;
                         push(
                             &mut work,
                             match value {
                                 CssScopeSelector::Selector(value) => {
-                                    Event::Selector(value, CssSelectorGrammarContext::ORDINARY)
+                                    Event::LiteralMember(value, None, nested)
                                 }
-                                CssScopeSelector::Relative(value) => {
-                                    Event::Relative(value, CssSelectorGrammarContext::ORDINARY)
-                                }
+                                CssScopeSelector::Relative(value) => Event::LiteralMember(
+                                    value.selector(),
+                                    Some(value.combinator()),
+                                    nested,
+                                ),
                             },
                         )?;
                     }
@@ -515,7 +953,13 @@ impl SpecifiedRuleWriter {
                 Event::Attribute(value) => {
                     self.node()?;
                     self.append("[")?;
-                    self.name_prefix(value.qualified_name().prefix())?;
+                    self.output_name_prefix(
+                        value.qualified_name().prefix(),
+                        value.qualified_name().namespace(),
+                        false,
+                        role,
+                        namespaces,
+                    )?;
                     self.selector_identifier(value.name().as_str())?;
                     let (operator, string) = match value.matcher() {
                         CssAttributeMatcher::Exists => ("", None),

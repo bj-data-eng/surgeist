@@ -49,6 +49,7 @@ enum Event<'a> {
     Declarations(&'a CssDeclarationList),
     Text(&'static str),
     EndRule(bool),
+    StyleAncestor(bool),
 }
 
 fn push<'a>(work: &mut Vec<Event<'a>>, event: Event<'a>) -> ValueResult<()> {
@@ -68,19 +69,25 @@ impl SpecifiedRuleWriter {
         &mut self,
         rule: &CssRule,
     ) -> std::result::Result<(), SpecifiedRuleSerializationSource> {
-        self.append_graph(Event::Ordinary(rule, None), Format::Compact, Vec::new())
-            .map_err(|error| match error.source {
-                RuleCssomSource::Provider(source) => source,
-                _ => unreachable!("compact traversal uses only compact providers"),
-            })
+        self.append_graph(
+            Event::Ordinary(rule, None),
+            Format::Compact,
+            Vec::new(),
+            None,
+        )
+        .map_err(|error| match error.source {
+            RuleCssomSource::Provider(source) => source,
+            _ => unreachable!("compact traversal uses only compact providers"),
+        })
     }
 
     pub(crate) fn append_cssom_rule_graph(
         &mut self,
         rule: &CssRule,
         path: Vec<usize>,
+        namespaces: Option<&crate::CssNamespaceContext>,
     ) -> std::result::Result<(), CssRuleCssomSerializationError> {
-        self.append_graph(Event::Ordinary(rule, None), Format::Cssom, path)
+        self.append_graph(Event::Ordinary(rule, None), Format::Cssom, path, namespaces)
             .map_err(|failure| {
                 CssRuleCssomSerializationError::new(
                     failure.source,
@@ -103,6 +110,7 @@ impl SpecifiedRuleWriter {
                 Format::Compact
             },
             Vec::new(),
+            None,
         )
         .map_err(|failure| {
             CssRuleCssomSerializationError::new(
@@ -118,10 +126,12 @@ impl SpecifiedRuleWriter {
         first: Event<'_>,
         format: Format,
         mut path: Vec<usize>,
+        namespaces: Option<&crate::CssNamespaceContext>,
     ) -> std::result::Result<(), GraphFailure> {
         let mut work = Vec::new();
         let mut keyframe_block_index = None;
         let mut margin_rule_index = None;
+        let mut style_ancestor = false;
         let result =
             (|| -> Result<()> {
                 push(&mut work, first)?;
@@ -204,19 +214,29 @@ impl SpecifiedRuleWriter {
                                     match selectors {
                                         EditedStyleSelectorsRef::Ordinary(selectors) => {
                                             if format == Format::Cssom {
-                                                self.cssom_style_selectors(selectors)?;
+                                                self.cssom_style_selectors(
+                                                    selectors,
+                                                    style_ancestor,
+                                                    namespaces,
+                                                )?;
                                             } else {
                                                 self.style_selectors(selectors)?;
                                             }
                                         }
                                         EditedStyleSelectorsRef::Scoped(selectors) => {
                                             if format == Format::Cssom {
-                                                self.cssom_scoped_style_selectors(selectors)?;
+                                                self.cssom_scoped_style_selectors(
+                                                    selectors,
+                                                    style_ancestor,
+                                                    namespaces,
+                                                )?;
                                             } else {
                                                 self.scoped_style_selectors(selectors)?;
                                             }
                                         }
                                     }
+                                    push(&mut work, Event::StyleAncestor(style_ancestor))?;
+                                    style_ancestor = true;
                                     self.style_payload_block(
                                         &mut work,
                                         declarations.entries().is_empty(),
@@ -305,6 +325,7 @@ impl SpecifiedRuleWriter {
                                 }
                             }
                         }
+                        Event::StyleAncestor(value) => style_ancestor = value,
                         Event::Text(text) => self.append(text)?,
                         Event::EndRule(pop) => {
                             if pop {
@@ -472,10 +493,16 @@ impl SpecifiedRuleWriter {
                                 CssRule::Style(rule) => {
                                     self.node()?;
                                     if format == Format::Cssom {
-                                        self.cssom_style_selectors(rule.selectors())?;
+                                        self.cssom_style_selectors(
+                                            rule.selectors(),
+                                            style_ancestor,
+                                            namespaces,
+                                        )?;
                                     } else {
                                         self.style_selectors(rule.selectors())?;
                                     }
+                                    push(&mut work, Event::StyleAncestor(style_ancestor))?;
+                                    style_ancestor = true;
                                     self.style_block(
                                         &mut work,
                                         rule.declarations(),
@@ -705,11 +732,17 @@ impl SpecifiedRuleWriter {
                                 CssScopedRule::Style(rule) => {
                                     self.node()?;
                                     if format == Format::Cssom {
-                                        self.cssom_scoped_style_selectors(rule.selectors())?;
+                                        self.cssom_scoped_style_selectors(
+                                            rule.selectors(),
+                                            style_ancestor,
+                                            namespaces,
+                                        )?;
                                     } else {
                                         self.scoped_style_selectors(rule.selectors())?;
                                     }
                                     // Scoped style children have ordinary nesting semantics.
+                                    push(&mut work, Event::StyleAncestor(style_ancestor))?;
+                                    style_ancestor = true;
                                     self.style_block(
                                         &mut work,
                                         rule.declarations(),

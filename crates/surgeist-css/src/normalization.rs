@@ -1336,132 +1336,13 @@ fn scoped_position(rule: &CssScopedRule) -> Option<CssSourcePosition> {
     })
 }
 
-#[derive(Clone, Copy)]
-enum AnchorKind {
-    Nesting,
-    Scope,
-}
-
+use crate::selector_anchors::AnchorKind;
 fn selector_has_anchor(selector: &CssSelector, kind: AnchorKind) -> bool {
-    match selector {
-        CssSelector::Compound(compound) => compound_has_anchor(compound, kind),
-        CssSelector::Complex(complex) => {
-            compound_has_anchor(complex.first(), kind)
-                || complex
-                    .rest()
-                    .iter()
-                    .any(|part| compound_has_anchor(part.selector(), kind))
-        }
-        CssSelector::PseudoClass(pseudo) => pseudo_has_anchor(pseudo, kind),
-        CssSelector::Tag(_) | CssSelector::Key(_) | CssSelector::Class(_) => false,
-    }
-}
-
-fn compound_has_anchor(compound: &CssCompoundSelector, kind: AnchorKind) -> bool {
-    let direct = match kind {
-        AnchorKind::Nesting => compound.nesting_selectors() > 0,
-        AnchorKind::Scope => compound.has_scope_anchor(),
-    };
-    direct
-        || compound
-            .pseudo_classes()
-            .iter()
-            .any(|pseudo| pseudo_has_anchor(pseudo, kind))
-        || compound.pseudo_elements().is_some_and(|sequence| {
-            sequence.segments().iter().any(|segment| match segment {
-                CssPseudoElementSegment::PseudoClass(pseudo) => pseudo_has_anchor(pseudo, kind),
-                CssPseudoElementSegment::PseudoElement(CssPseudoElement::Slotted(argument)) => {
-                    compound_has_anchor(argument.compound(), kind)
-                }
-                CssPseudoElementSegment::PseudoElement(_) => false,
-            })
-        })
-}
-
-fn pseudo_has_anchor(pseudo: &CssPseudoClass, kind: AnchorKind) -> bool {
-    match pseudo {
-        CssPseudoClass::HostFunction(argument) | CssPseudoClass::HostContext(argument) => {
-            compound_has_anchor(argument.compound(), kind)
-        }
-        CssPseudoClass::Not(list) | CssPseudoClass::Is(list) | CssPseudoClass::Where(list) => {
-            list.items().iter().any(|item| match item {
-                CssPseudoSelectorListItem::Selector(selector) => {
-                    selector_has_anchor(selector, kind)
-                }
-                CssPseudoSelectorListItem::InvalidNesting(_) => matches!(kind, AnchorKind::Nesting),
-            })
-        }
-        CssPseudoClass::Has(list) => list
-            .selectors()
-            .iter()
-            .any(|relative| selector_has_anchor(relative.selector(), kind)),
-        CssPseudoClass::NthChild(pattern) | CssPseudoClass::NthLastChild(pattern) => {
-            pattern.selector_list().is_some_and(|list| {
-                list.items().iter().any(|item| match item {
-                    CssPseudoSelectorListItem::Selector(selector) => {
-                        selector_has_anchor(selector, kind)
-                    }
-                    CssPseudoSelectorListItem::InvalidNesting(_) => {
-                        matches!(kind, AnchorKind::Nesting)
-                    }
-                })
-            })
-        }
-        CssPseudoClass::Host
-        | CssPseudoClass::Root
-        | CssPseudoClass::Scope
-        | CssPseudoClass::Defined
-        | CssPseudoClass::AnyLink
-        | CssPseudoClass::Link
-        | CssPseudoClass::Visited
-        | CssPseudoClass::Target
-        | CssPseudoClass::Current
-        | CssPseudoClass::Dir(_)
-        | CssPseudoClass::Lang(_)
-        | CssPseudoClass::Hover
-        | CssPseudoClass::Active
-        | CssPseudoClass::Focus
-        | CssPseudoClass::FocusVisible
-        | CssPseudoClass::FocusWithin
-        | CssPseudoClass::Disabled
-        | CssPseudoClass::Enabled
-        | CssPseudoClass::Checked
-        | CssPseudoClass::Unchecked
-        | CssPseudoClass::Required
-        | CssPseudoClass::Optional
-        | CssPseudoClass::Valid
-        | CssPseudoClass::Invalid
-        | CssPseudoClass::UserValid
-        | CssPseudoClass::UserInvalid
-        | CssPseudoClass::PlaceholderShown
-        | CssPseudoClass::Autofill
-        | CssPseudoClass::FirstChild
-        | CssPseudoClass::LastChild
-        | CssPseudoClass::OnlyChild
-        | CssPseudoClass::Empty
-        | CssPseudoClass::FirstOfType
-        | CssPseudoClass::LastOfType
-        | CssPseudoClass::OnlyOfType
-        | CssPseudoClass::NthOfType(_)
-        | CssPseudoClass::NthLastOfType(_)
-        | CssPseudoClass::Playing
-        | CssPseudoClass::Paused
-        | CssPseudoClass::Seeking
-        | CssPseudoClass::Buffering
-        | CssPseudoClass::Stalled
-        | CssPseudoClass::Muted
-        | CssPseudoClass::VolumeLocked
-        | CssPseudoClass::Open
-        | CssPseudoClass::Modal
-        | CssPseudoClass::Fullscreen
-        | CssPseudoClass::PictureInPicture
-        | CssPseudoClass::PopoverOpen
-        | CssPseudoClass::Default
-        | CssPseudoClass::Indeterminate
-        | CssPseudoClass::ReadOnly
-        | CssPseudoClass::ReadWrite
-        | CssPseudoClass::InRange
-        | CssPseudoClass::OutOfRange => false,
+    match crate::selector_anchors::selector_has_anchor(selector, kind, &mut |_| {
+        Ok::<_, std::convert::Infallible>(())
+    }) {
+        Ok(value) => value,
+        Err(never) => match never {},
     }
 }
 
